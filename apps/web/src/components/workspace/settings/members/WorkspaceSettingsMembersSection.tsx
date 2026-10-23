@@ -56,7 +56,6 @@ export default function WorkspaceSettingsMembersSection({
   const canManageAdditional = canInviteAdditionalWorkspaceMembers(workspace);
   const AdditionalMembersSection = enterpriseMembersModule.AdditionalMembersSection;
   const showEnterpriseMembers = Boolean(AdditionalMembersSection);
-  const enterpriseMembersUnlocked = canManageAdditional && showEnterpriseMembers;
 
   const load = useCallback(async () => {
     if (!core) {
@@ -114,7 +113,7 @@ export default function WorkspaceSettingsMembersSection({
 
   const openOwnerMemberCard = useCallback(
     (member: WorkspaceMemberDto) => {
-      if (!enterpriseMembersUnlocked) {
+      if (!showEnterpriseMembers) {
         return;
       }
       const id = member.userId ?? member.invitationId;
@@ -126,8 +125,10 @@ export default function WorkspaceSettingsMembersSection({
         search: popupQuerySearch(location.search, buildPopupQueryValue(EDIT_MEMBER_POPUP_ID, id)),
       });
     },
-    [enterpriseMembersUnlocked, navigate, location.pathname, location.search],
+    [showEnterpriseMembers, navigate, location.pathname, location.search],
   );
+
+  const additionalMembersUpsell = <AdditionalMembersUpsell t={t} />;
 
   return (
     <div className="flex flex-col gap-9">
@@ -155,7 +156,7 @@ export default function WorkspaceSettingsMembersSection({
             <MembersListCard
               members={[ownerMember]}
               t={t}
-              onMemberClick={enterpriseMembersUnlocked ? openOwnerMemberCard : undefined}
+              onMemberClick={showEnterpriseMembers ? openOwnerMemberCard : undefined}
             />
           ) : null}
 
@@ -166,9 +167,9 @@ export default function WorkspaceSettingsMembersSection({
               t={t}
               resourcePermissions={resourcePermissions}
               readOnly={!canManageAdditional}
+              emptyFallback={!canManageAdditional ? additionalMembersUpsell : undefined}
             />
-          ) : null}
-          {!AdditionalMembersSection && core ? (
+          ) : core ? (
             <AdditionalMembersUpsell t={t}>
               <RemnantMembersList
                 workspaceId={workspaceId}
@@ -180,9 +181,9 @@ export default function WorkspaceSettingsMembersSection({
                 onChanged={load}
               />
             </AdditionalMembersUpsell>
-          ) : !enterpriseMembersUnlocked ? (
-            <AdditionalMembersUpsell t={t} />
-          ) : null}
+          ) : (
+            additionalMembersUpsell
+          )}
         </>
       ) : null}
     </div>

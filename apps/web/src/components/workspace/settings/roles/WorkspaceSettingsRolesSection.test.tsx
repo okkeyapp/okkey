@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import type { ComponentType } from "react";
+import type { ComponentType, ReactNode } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { PlanTier, WorkspaceResourcePermissionDto, WorkspaceRoleListItemDto } from "@okkey/types";
@@ -160,7 +160,7 @@ describe("WorkspaceSettingsRolesSection", () => {
     expect(screen.getByRole("link", { name: "Change your plan" })).toHaveAttribute("href", "/settings/plan");
   });
 
-  it("keeps built-in roles non-clickable on FREE even when enterprise popups are loaded", async () => {
+  it("makes built-in roles clickable on FREE when enterprise popups are loaded", async () => {
     function BuiltInPopupStub() {
       return <p>Built-in role popup</p>;
     }
@@ -172,8 +172,7 @@ describe("WorkspaceSettingsRolesSection", () => {
     await waitFor(() => {
       expect(screen.getByText("Built-in roles")).toBeInTheDocument();
     });
-    expect(screen.queryByRole("button", { name: /Owner/i })).not.toBeInTheDocument();
-    expect(screen.queryByText("Built-in role popup")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Owner/i })).toBeInTheDocument();
   });
 
   it("renders enterprise custom roles section when module is loaded on paid plan", () => {
@@ -190,8 +189,19 @@ describe("WorkspaceSettingsRolesSection", () => {
   });
 
   it("mounts enterprise section read-only with upsell on FREE when module is loaded", () => {
-    function EnterpriseStub({ readOnly }: { readOnly?: boolean }) {
-      return <p>{readOnly ? "Enterprise roles read-only" : "Enterprise roles editable"}</p>;
+    function EnterpriseStub({
+      readOnly,
+      emptyFallback,
+    }: {
+      readOnly?: boolean;
+      emptyFallback?: ReactNode;
+    }) {
+      return (
+        <>
+          <p>{readOnly ? "Enterprise roles read-only" : "Enterprise roles editable"}</p>
+          {readOnly ? emptyFallback : null}
+        </>
+      );
     }
 
     enterpriseModuleMock.EnterpriseRolesSection = EnterpriseStub as ComponentType<unknown>;
@@ -203,8 +213,19 @@ describe("WorkspaceSettingsRolesSection", () => {
   });
 
   it("mounts enterprise section read-only when plan override forbids customWorkspaceRoles", () => {
-    function EnterpriseStub({ readOnly }: { readOnly?: boolean }) {
-      return <p>{readOnly ? "Enterprise roles read-only" : "Enterprise roles editable"}</p>;
+    function EnterpriseStub({
+      readOnly,
+      emptyFallback,
+    }: {
+      readOnly?: boolean;
+      emptyFallback?: ReactNode;
+    }) {
+      return (
+        <>
+          <p>{readOnly ? "Enterprise roles read-only" : "Enterprise roles editable"}</p>
+          {readOnly ? emptyFallback : null}
+        </>
+      );
     }
 
     enterpriseModuleMock.EnterpriseRolesSection = EnterpriseStub as ComponentType<unknown>;

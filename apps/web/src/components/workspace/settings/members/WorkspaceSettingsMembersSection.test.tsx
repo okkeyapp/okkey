@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import type { ReactNode } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { WorkspaceMemberDto } from "@okkey/types";
@@ -22,7 +23,9 @@ vi.mock("../../../../auth/SectionReauthContext", () => ({
 }));
 
 const enterpriseMembersMock = vi.hoisted(() => ({
-  AdditionalMembersSection: null as ((props: { readOnly?: boolean }) => JSX.Element) | null,
+  AdditionalMembersSection: null as
+    | ((props: { readOnly?: boolean; emptyFallback?: ReactNode }) => JSX.Element)
+    | null,
 }));
 
 vi.mock("@okkey-enterprise/workspace-members", () => ({
@@ -289,8 +292,11 @@ describe("WorkspaceSettingsMembersSection", () => {
   });
 
   it("mounts enterprise members read-only with upsell on FREE when module is loaded", async () => {
-    enterpriseMembersMock.AdditionalMembersSection = ({ readOnly }) => (
-      <div data-testid="enterprise-members">{readOnly ? "read-only" : "editable"}</div>
+    enterpriseMembersMock.AdditionalMembersSection = ({ readOnly, emptyFallback }) => (
+      <div data-testid="enterprise-members">
+        {readOnly ? "read-only" : "editable"}
+        {readOnly ? emptyFallback : null}
+      </div>
     );
 
     coreMock.listWorkspaceMembers.mockResolvedValue({
@@ -346,12 +352,15 @@ describe("WorkspaceSettingsMembersSection", () => {
       expect(screen.getByTestId("enterprise-members")).toHaveTextContent("read-only");
     });
     expect(screen.getByText("Примечание")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /owner@example.com/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /owner@example.com/i })).toBeInTheDocument();
   });
 
   it("mounts enterprise members read-only when plan override forbids additionalWorkspaceMembers", async () => {
-    enterpriseMembersMock.AdditionalMembersSection = ({ readOnly }) => (
-      <div data-testid="enterprise-members">{readOnly ? "read-only" : "editable"}</div>
+    enterpriseMembersMock.AdditionalMembersSection = ({ readOnly, emptyFallback }) => (
+      <div data-testid="enterprise-members">
+        {readOnly ? "read-only" : "editable"}
+        {readOnly ? emptyFallback : null}
+      </div>
     );
 
     coreMock.listWorkspaceMembers.mockResolvedValue({
@@ -378,7 +387,7 @@ describe("WorkspaceSettingsMembersSection", () => {
       expect(screen.getByTestId("enterprise-members")).toHaveTextContent("read-only");
     });
     expect(screen.getByText("Примечание")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /owner@example.com/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /owner@example.com/i })).toBeInTheDocument();
   });
 
   it("FREE + stub: invitee/pending member visible and revocable", async () => {

@@ -140,7 +140,7 @@ const sharedVault = {
 };
 
 describe("WorkspaceSettingsVaultsSection", () => {
-  it("renders personal vault and hides shared vaults section on clean FREE", () => {
+  it("renders personal vault and shared vaults upsell on clean FREE", () => {
     render(
       <MemoryRouter>
         <WorkspaceSettingsVaultsSection
@@ -156,8 +156,8 @@ describe("WorkspaceSettingsVaultsSection", () => {
     expect(screen.getByText("Мой сейф")).toBeInTheDocument();
     expect(screen.getByText("Доступен только Вам")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Мой сейф/i })).toBeInTheDocument();
-    expect(screen.queryByText("Общие сейфы")).not.toBeInTheDocument();
-    expect(screen.queryByText("Note")).not.toBeInTheDocument();
+    expect(screen.getByText("Общие сейфы")).toBeInTheDocument();
+    expect(screen.getByText("Note")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Создать/i })).not.toBeInTheDocument();
   });
 

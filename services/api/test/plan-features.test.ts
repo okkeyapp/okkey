@@ -163,7 +163,7 @@ test("PLAN_QUOTA_LIMITS: FREE zeros; ENTERPRISE unlimited", () => {
   assert.equal(getPlanQuotaLimits("unknown").maxAdditionalMembers, 0);
 });
 
-test("self_hosted entitlements ignore plan_tier; use enterpriseModulesActive", () => {
+test("self_hosted entitlements: modules off → FREE; modules on → honor plan_tier", () => {
   assert.equal(
     resolveEntitlementPlanTier("ENTERPRISE", {
       deploymentMode: "self_hosted",
@@ -173,6 +173,13 @@ test("self_hosted entitlements ignore plan_tier; use enterpriseModulesActive", (
   );
   assert.equal(
     resolveEntitlementPlanTier("FREE", {
+      deploymentMode: "self_hosted",
+      enterpriseModulesActive: true,
+    }),
+    "FREE",
+  );
+  assert.equal(
+    resolveEntitlementPlanTier("ENTERPRISE", {
       deploymentMode: "self_hosted",
       enterpriseModulesActive: true,
     }),
@@ -190,12 +197,26 @@ test("self_hosted entitlements ignore plan_tier; use enterpriseModulesActive", (
       deploymentMode: "self_hosted",
       enterpriseModulesActive: true,
     }),
+    false,
+  );
+  assert.equal(
+    hasPlanFeature("ENTERPRISE", "sharedVaults", {
+      deploymentMode: "self_hosted",
+      enterpriseModulesActive: true,
+    }),
     true,
   );
   assert.equal(
     hasPlanFeature("FREE", "filesInItems", {
       deploymentMode: "self_hosted",
       enterpriseModulesActive: false,
+    }),
+    true,
+  );
+  assert.equal(
+    hasPlanFeature("FREE", "filesInItems", {
+      deploymentMode: "self_hosted",
+      enterpriseModulesActive: true,
     }),
     true,
   );
@@ -208,6 +229,13 @@ test("self_hosted entitlements ignore plan_tier; use enterpriseModulesActive", (
   );
   assert.equal(
     getPlanQuotaLimits("FREE", {
+      deploymentMode: "self_hosted",
+      enterpriseModulesActive: true,
+    }).maxAdditionalMembers,
+    0,
+  );
+  assert.equal(
+    getPlanQuotaLimits("ENTERPRISE", {
       deploymentMode: "self_hosted",
       enterpriseModulesActive: true,
     }).maxAdditionalMembers,

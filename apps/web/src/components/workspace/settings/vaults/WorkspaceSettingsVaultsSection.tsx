@@ -25,6 +25,7 @@ import {
 } from "../../../../routes/popupQuery";
 
 import RemnantSharedVaultsSection from "./RemnantSharedVaultsSection";
+import SharedVaultsUpsell from "./SharedVaultsUpsell";
 import VaultListRow from "./VaultListRow";
 import VaultsSectionHeader from "./VaultsSectionHeader";
 import SettingsListCardSkeleton from "../SettingsListCardSkeleton";
@@ -62,7 +63,8 @@ export default function WorkspaceSettingsVaultsSection({
   const canManageSharedPlan = workspaceHasPlanFeature(workspace, "sharedVaults");
   const SharedVaultsSection = enterpriseSharedVaultsModule.SharedVaultsSection;
   const PersonalVaultCardPopup = enterpriseSharedVaultsModule.PersonalVaultCardPopup;
-  const showEnterpriseShared = Boolean(canManageSharedPlan && SharedVaultsSection);
+  const showEnterpriseShared = Boolean(SharedVaultsSection);
+  const sharedVaultsReadOnly = !canManageSharedPlan;
   /** Personal vault rename/edit needs the enterprise popup module only — not `sharedVaults` plan. */
   const canOpenPersonalVault = Boolean(PersonalVaultCardPopup);
 
@@ -81,6 +83,20 @@ export default function WorkspaceSettingsVaultsSection({
   const editingVault = editVaultId ? vaults.find((vault) => vault.id === editVaultId) : undefined;
   const editingPersonal =
     editingVault && editingVault.isPersonal && canOpenPersonalVault ? editingVault : undefined;
+
+  const sharedVaultsUpsell = (
+    <section className="flex flex-col gap-4">
+      <div className="flex min-w-0 flex-col gap-1">
+        <h3 className="text-sm font-medium text-foreground">
+          {t("web.workspaceSettings.vaults.shared.title")}
+        </h3>
+        <p className="text-sm text-muted-foreground">
+          {t("web.workspaceSettings.vaults.shared.subtitle")}
+        </p>
+      </div>
+      <SharedVaultsUpsell t={t} />
+    </section>
+  );
 
   function openPopup(value: string) {
     navigate(
@@ -143,6 +159,8 @@ export default function WorkspaceSettingsVaultsSection({
           onVaultsChanged={onVaultsChanged}
           personalVaultId={personalVault?.id ?? null}
           resourcePermissions={resourcePermissions}
+          readOnly={sharedVaultsReadOnly}
+          emptyFallback={sharedVaultsReadOnly ? sharedVaultsUpsell : undefined}
         />
       ) : showRemnantShared ? (
         <RemnantSharedVaultsSection
@@ -152,7 +170,9 @@ export default function WorkspaceSettingsVaultsSection({
           onVaultsChanged={onVaultsChanged}
           resourcePermissions={resourcePermissions}
         />
-      ) : null}
+      ) : (
+        sharedVaultsUpsell
+      )}
 
       {showPersonalEdit && editingPersonal && core && userId && PersonalVaultCardPopup ? (
         <PersonalVaultCardPopup

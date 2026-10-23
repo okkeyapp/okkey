@@ -50,10 +50,22 @@ test("denies ITEM_CREATE in shared vault when modules off", () => {
   }
 });
 
-test("allows ITEM_CREATE in shared vault when modules on", () => {
+test("denies ITEM_CREATE in shared vault when modules on but plan_tier is FREE", () => {
   const result = evaluateSharedVaultItemCreateGate({
     vault: sharedVault,
     workspace,
+    config: { deploymentMode: "self_hosted", enterpriseModulesEnabled: true },
+  });
+  assert.equal(result.ok, false);
+  if (!result.ok) {
+    assert.equal(result.code, "PLAN_FEATURE_REQUIRED");
+  }
+});
+
+test("allows ITEM_CREATE in shared vault when modules on and plan_tier is ENTERPRISE", () => {
+  const result = evaluateSharedVaultItemCreateGate({
+    vault: sharedVault,
+    workspace: { ...workspace, planTier: "ENTERPRISE" },
     config: { deploymentMode: "self_hosted", enterpriseModulesEnabled: true },
   });
   assert.equal(result.ok, true);

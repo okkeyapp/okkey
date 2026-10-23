@@ -1,5 +1,4 @@
 import type { Workspace, WorkspaceResourcePermissionDto } from "@okkey/types";
-import { workspaceHasPlanFeature } from "../../../../workspace/planEntitlements";
 import type { WebMessageValues } from "@okkey/i18n";
 import { useState } from "react";
 import { Link } from "react-router-dom";
@@ -30,7 +29,6 @@ export default function WorkspaceSettingsRolesSection({
   const core = useAuthenticatedCoreClient();
   const [builtInReloadKey, setBuiltInReloadKey] = useState(0);
   const canManageCustom = canManageCustomWorkspaceRoles(workspace);
-  const canOpenBuiltInCards = workspaceHasPlanFeature(workspace, "customWorkspaceRoles");
   const EnterpriseRolesSection = enterpriseRolesModule.EnterpriseRolesSection;
   const BuiltInRoleCardPopup = enterpriseRolesModule.BuiltInRoleCardPopup;
   if (!core) {
@@ -44,6 +42,7 @@ export default function WorkspaceSettingsRolesSection({
       {t("web.workspaceSettings.sections.profiles")}
     </Link>
   );
+  const customRolesUpsell = <CustomRolesUpsell t={t} />;
 
   return (
     <div className="flex flex-col gap-9">
@@ -53,7 +52,7 @@ export default function WorkspaceSettingsRolesSection({
         core={core}
         t={t}
         profilesLink={profilesLink}
-        RoleCardPopup={canOpenBuiltInCards ? BuiltInRoleCardPopup ?? undefined : undefined}
+        RoleCardPopup={BuiltInRoleCardPopup ?? undefined}
         reloadKey={builtInReloadKey}
       />
       {EnterpriseRolesSection ? (
@@ -65,9 +64,9 @@ export default function WorkspaceSettingsRolesSection({
           t={t}
           resourcePermissions={resourcePermissions}
           readOnly={!canManageCustom}
+          emptyFallback={!canManageCustom ? customRolesUpsell : undefined}
         />
-      ) : null}
-      {!EnterpriseRolesSection ? (
+      ) : (
         <CustomRolesUpsell t={t}>
           <RemnantCustomRolesList
             workspaceId={workspaceId}
@@ -77,9 +76,7 @@ export default function WorkspaceSettingsRolesSection({
             onDeleted={() => setBuiltInReloadKey((key) => key + 1)}
           />
         </CustomRolesUpsell>
-      ) : !canManageCustom ? (
-        <CustomRolesUpsell t={t} />
-      ) : null}
+      )}
     </div>
   );
 }
