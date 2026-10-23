@@ -3,6 +3,7 @@
  */
 export {
   SettingsRow,
+  SettingsFieldRow,
   SettingsSectionDivider,
   SettingsSectionHeading,
 } from "@okkey/ui";
