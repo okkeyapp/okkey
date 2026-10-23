@@ -56,7 +56,15 @@ type MultiSelectSharedProps = {
 export type MultiSelectProps = MultiSelectSharedProps &
   (
     | { displayMode?: "chips" }
-    | { displayMode: "summary"; selectionCountLabel: string }
+    | {
+        displayMode: "summary";
+        /**
+         * Default summary: `{selectionCountLabel}: {count}`.
+         * When `selectionSummaryText` is set, that string is shown alone (select-like).
+         */
+        selectionCountLabel?: string;
+        selectionSummaryText?: string;
+      }
   );
 
 type MultiSelectContextValue = {
@@ -69,6 +77,7 @@ type MultiSelectContextValue = {
   variant: SelectVariant;
   displayMode: MultiSelectDisplayMode;
   selectionCountLabel: string;
+  selectionSummaryText: string | null;
   listId: string;
   labelMap: Record<string, React.ReactNode>;
   registerItem: (value: string, labelForChip: React.ReactNode) => void;
@@ -113,7 +122,15 @@ function MultiSelect(props: MultiSelectProps) {
   } = props;
   const displayMode: MultiSelectDisplayMode = props.displayMode ?? "chips";
   const selectionCountLabel =
-    displayMode === "summary" && "selectionCountLabel" in props ? props.selectionCountLabel : "";
+    displayMode === "summary" && "selectionCountLabel" in props
+      ? (props.selectionCountLabel ?? "")
+      : "";
+  const selectionSummaryText =
+    displayMode === "summary" &&
+    "selectionSummaryText" in props &&
+    typeof props.selectionSummaryText === "string"
+      ? props.selectionSummaryText
+      : null;
   const [open, setOpenState] = React.useState(false);
   const [searchQuery, setSearchQueryState] = React.useState("");
   const searchInputId = React.useId();
@@ -213,6 +230,7 @@ function MultiSelect(props: MultiSelectProps) {
       variant,
       displayMode,
       selectionCountLabel,
+      selectionSummaryText,
       listId,
       labelMap,
       registerItem,
@@ -238,6 +256,7 @@ function MultiSelect(props: MultiSelectProps) {
       variant,
       displayMode,
       selectionCountLabel,
+      selectionSummaryText,
       listId,
       labelMap,
       registerItem,
@@ -314,8 +333,14 @@ const MultiSelectTrigger = React.forwardRef<HTMLDivElement, React.HTMLAttributes
                 className="flex min-h-[28px] min-w-0 flex-1 items-center truncate text-sm text-foreground normal-case"
                 aria-live="polite"
               >
-                {ctx.selectionCountLabel}:{" "}
-                <span className="tabular-nums">{ctx.value.length}</span>
+                {ctx.selectionSummaryText != null ? (
+                  <span className="tabular-nums">{ctx.selectionSummaryText}</span>
+                ) : (
+                  <>
+                    {ctx.selectionCountLabel}:{" "}
+                    <span className="tabular-nums">{ctx.value.length}</span>
+                  </>
+                )}
               </span>
             ) : ctx.value.length === 0 ? (
               <span className="flex min-h-[28px] min-w-0 flex-1 items-center truncate text-sm text-muted-foreground normal-case">

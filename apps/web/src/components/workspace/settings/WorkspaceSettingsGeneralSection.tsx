@@ -717,8 +717,17 @@ export default function WorkspaceSettingsGeneralSection({
                 onValueChange={(value) => void handleAllowedCapsuleTypesChange(value)}
                 placeholder={t("web.workspaceSettings.capsules.allowedTypes.placeholder")}
                 disabled={!canEdit}
+                displayMode="summary"
+                selectionSummaryText={
+                  capsulePolicies.allowedCapsuleTypes.length === ALL_CAPSULE_TYPES.length
+                    ? t("web.workspaceSettings.capsules.allowedTypes.all")
+                    : String(capsulePolicies.allowedCapsuleTypes.length)
+                }
               >
-                <MultiSelectTrigger id="capsule-allowed-types" className="h-9 w-full shrink-0 font-normal sm:w-[220px]" />
+                <MultiSelectTrigger
+                  id="capsule-allowed-types"
+                  className="!h-9 min-h-9 w-full shrink-0 font-normal sm:w-[150px]"
+                />
                 <MultiSelectContent className="min-w-[min(100vw-2rem,16rem)]">
                   {ALL_CAPSULE_TYPES.map((type) => (
                     <MultiSelectItem key={type} value={type} chipLabel={t(CAPSULE_TYPE_LABEL_KEYS[type])}>

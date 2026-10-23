@@ -17,6 +17,9 @@ import {
 } from "@okkey/types";
 import { workspaceHasPlanFeature } from "../../workspace/planEntitlements";
 import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
   Button,
   Calendar,
   CalendarMonthYearCaption,
@@ -360,6 +363,12 @@ export default function NewCapsulePopup({
       setType(capsuleTypeOptions[0][0]);
     }
   }, [capsuleTypeOptions, isEditing, open, type]);
+
+  useEffect(() => {
+    if (!advancedAvailable) {
+      setViewLimitAction("deactivate");
+    }
+  }, [advancedAvailable]);
 
   useEffect(() => {
     if (isEditing) return;
@@ -921,7 +930,12 @@ export default function NewCapsulePopup({
         encryptedMetadata: generated.encryptedMetadata,
         ownerKeyWrap: generated.ownerKeyWrap,
         keyTransportMode: "fragment",
-        ...(effectiveViewsEnabled ? { maxViews: effectiveMaxViews, viewLimitAction } : {}),
+        ...(effectiveViewsEnabled
+          ? {
+              maxViews: effectiveMaxViews,
+              viewLimitAction: advancedAvailable ? viewLimitAction : "deactivate",
+            }
+          : {}),
         ...(effectiveTimeEnabled
           ? {
               ...(activateAt ? { activateAt } : {}),
@@ -1065,32 +1079,30 @@ export default function NewCapsulePopup({
             {error ?? t("web.capsules.popup.loading")}
           </p>
         ) : allTypesDisabled ? (
-          <div className="flex flex-col gap-2 rounded-xl bg-secondary p-4 text-sm">
-            <p className="text-muted-foreground">{t("web.capsules.popup.typesAllDisabled")}</p>
-            <Link
-              to={settingsPath("capsules")}
-              className="font-medium text-primary underline-offset-4 hover:underline"
-              onClick={handleClose}
-            >
-              {t("web.capsules.popup.typesAllDisabledLink")}
-            </Link>
-          </div>
+          <CapsuleTypesSettingsAlert
+            t={t}
+            descriptionKey="web.capsules.popup.typesAllDisabled"
+            linkKey="web.capsules.popup.typesAllDisabledLink"
+            onNavigate={handleClose}
+          />
+        ) : typeLocked ? (
+          <CapsuleTypesSettingsAlert
+            t={t}
+            descriptionKey="web.capsules.popup.typeLockedNotice"
+            linkKey="web.capsules.popup.typeLockedLink"
+            onNavigate={handleClose}
+          />
         ) : (
           <>
-        {typeLocked ? (
-          <p className="text-sm text-muted-foreground">{t("web.capsules.popup.typeLockedNotice")}</p>
-        ) : null}
         {capsuleTypeOptions.length > 0 ? (
         <div className="relative flex w-fit rounded-lg bg-secondary p-1">
           {capsuleTypeOptions.map(([value, Icon, label]) => {
             const active = type === value;
-            const tabDisabled = typeLocked;
             return (
               <Button
                 key={value}
                 size="sm"
                 variant={active ? "outline" : "ghost"}
-                disabled={tabDisabled}
                 className={cn(
                   "relative border",
                   active
@@ -1115,9 +1127,7 @@ export default function NewCapsulePopup({
                         "active:bg-foreground/10",
                       ),
                 )}
-                onClick={() => {
-                  if (!tabDisabled) setType(value);
-                }}
+                onClick={() => setType(value)}
               >
                 <Icon data-icon="inline-start" />
                 {label}
@@ -1127,7 +1137,7 @@ export default function NewCapsulePopup({
         </div>
         ) : null}
 
-        {typeLocked ? null : type === "item" ? (
+        {type === "item" ? (
           <div className="flex flex-col gap-4">
             {selectedItem && selectedRecord ? (
               <div className="overflow-hidden rounded-xl border bg-card">
@@ -1378,7 +1388,6 @@ export default function NewCapsulePopup({
           </>
         )}
 
-        {!typeLocked ? (
         <Button
           variant="secondary"
           className="w-full"
@@ -1402,9 +1411,8 @@ export default function NewCapsulePopup({
             className={advancedOpen ? "rotate-180" : undefined}
           />
         </Button>
-        ) : null}
 
-        {advancedOpen && !typeLocked ? (
+        {advancedOpen ? (
           <div className="overflow-hidden rounded-xl bg-secondary">
             {!advancedAvailable ? (
               <>
@@ -1425,8 +1433,9 @@ export default function NewCapsulePopup({
                       <label className="flex flex-col gap-3 text-sm font-normal">
                         {t("web.capsules.popup.views.limitAction")}
                         <CapsuleSelect
-                          value={viewLimitAction}
+                          value="deactivate"
                           onChange={() => undefined}
+                          disabled
                           options={[
                             ["deactivate", t("web.capsules.popup.views.action.deactivate")],
                             ["delete", t("web.capsules.popup.views.action.delete")],
@@ -1857,6 +1866,54 @@ function AdvancedRow({
   );
 }
 
+function CapsuleTypesSettingsAlert({
+  t,
+  descriptionKey,
+  linkKey,
+  onNavigate,
+}: {
+  t: (messageKey: string, values?: WebMessageValues) => string;
+  descriptionKey: string;
+  linkKey: string;
+  onNavigate?: () => void;
+}) {
+  return (
+    <Alert variant="info">
+      <CapsuleAlertInfoIcon className="size-4" />
+      <AlertTitle>{t("web.capsules.popup.typesNoticeTitle")}</AlertTitle>
+      <AlertDescription>
+        {t(descriptionKey)}
+        <Link
+          to={settingsPath("capsules")}
+          className="font-medium text-foreground underline decoration-border underline-offset-4 transition-colors hover:text-primary"
+          onClick={onNavigate}
+        >
+          {t(linkKey)}
+        </Link>
+      </AlertDescription>
+    </Alert>
+  );
+}
+
+function CapsuleAlertInfoIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+      {...props}
+    >
+      <circle cx="12" cy="12" r="10" />
+      <path d="M12 16v-4" />
+      <path d="M12 8h.01" />
+    </svg>
+  );
+}
+
 function CapsuleSelect({
   value,
   onChange,
@@ -1864,6 +1921,7 @@ function CapsuleSelect({
   triggerClassName,
   sectionLabelAfterNever,
   invalid = false,
+  disabled = false,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -1871,13 +1929,14 @@ function CapsuleSelect({
   triggerClassName?: string;
   sectionLabelAfterNever?: string;
   invalid?: boolean;
+  disabled?: boolean;
 }) {
   const hasNeverOption = options.some(([option]) => option === "never");
   const firstRelativeOption = options.find(
     ([option]) => option !== "custom" && option !== "never" && option !== "now",
   )?.[0];
   return (
-    <Select value={value} onValueChange={onChange}>
+    <Select value={value} onValueChange={onChange} disabled={disabled}>
       <SelectTrigger
         aria-invalid={invalid || undefined}
         className={cn("font-normal", triggerClassName)}
