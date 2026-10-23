@@ -295,6 +295,30 @@ export function assertEmailTransportConfig(config: ApiConfig): void {
   }
 }
 
+/**
+ * Whether outbound mail can actually leave the instance (not `logger`-only).
+ * Used by sales / license-request UX so the web app can fall back to `mailto:`
+ * instead of pretending a logger send succeeded.
+ */
+export function isOutboundEmailDeliverable(config: ApiConfig): boolean {
+  switch (config.emailProvider) {
+    case "logger":
+      return false;
+    case "smtp":
+      return Boolean(config.smtpHost.trim());
+    case "http-api":
+      return Boolean(config.emailApiEndpoint.trim() && config.emailApiKey.trim());
+    case "ses":
+      return Boolean(
+        config.sesRegion.trim() &&
+          config.sesAccessKeyId.trim() &&
+          config.sesSecretAccessKey.trim(),
+      );
+    default:
+      return false;
+  }
+}
+
 /** Create the provider that actually delivers mail (SMTP / SES / logger / http-api). */
 export async function createTransportEmailSender(
   config: ApiConfig,
