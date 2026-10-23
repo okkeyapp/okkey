@@ -157,7 +157,7 @@ describe("WorkspaceSettingsProfilesSection", () => {
     expect(screen.getByText("Change your plan")).toBeTruthy();
   });
 
-  it("keeps built-in profiles non-clickable on FREE even when enterprise popups are loaded", async () => {
+  it("makes built-in profiles clickable on FREE when enterprise popups are loaded", async () => {
     function BuiltInPopupStub() {
       return <p>Built-in profile popup</p>;
     }
@@ -169,8 +169,7 @@ describe("WorkspaceSettingsProfilesSection", () => {
     await waitFor(() => {
       expect(screen.getByText("Built-in profiles")).toBeInTheDocument();
     });
-    expect(screen.queryByRole("button", { name: /Extended/i })).not.toBeInTheDocument();
-    expect(screen.queryByText("Built-in profile popup")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Extended/i })).toBeInTheDocument();
   });
 
   it("mounts enterprise section read-only with upsell on FREE when module is loaded", async () => {

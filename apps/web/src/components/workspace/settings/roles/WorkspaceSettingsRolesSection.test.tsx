@@ -160,7 +160,7 @@ describe("WorkspaceSettingsRolesSection", () => {
     expect(screen.getByRole("link", { name: "Change your plan" })).toHaveAttribute("href", "/settings/plan");
   });
 
-  it("keeps built-in roles non-clickable on FREE even when enterprise popups are loaded", async () => {
+  it("makes built-in roles clickable on FREE when enterprise popups are loaded", async () => {
     function BuiltInPopupStub() {
       return <p>Built-in role popup</p>;
     }
@@ -172,8 +172,7 @@ describe("WorkspaceSettingsRolesSection", () => {
     await waitFor(() => {
       expect(screen.getByText("Built-in roles")).toBeInTheDocument();
     });
-    expect(screen.queryByRole("button", { name: /Owner/i })).not.toBeInTheDocument();
-    expect(screen.queryByText("Built-in role popup")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Owner/i })).toBeInTheDocument();
   });
 
   it("renders enterprise custom roles section when module is loaded on paid plan", () => {

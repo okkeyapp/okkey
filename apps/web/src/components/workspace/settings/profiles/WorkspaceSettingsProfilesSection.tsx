@@ -1,5 +1,4 @@
 import type { Workspace, WorkspaceResourcePermissionDto } from "@okkey/types";
-import { workspaceHasPlanFeature } from "../../../../workspace/planEntitlements";
 import type { WebMessageValues } from "@okkey/i18n";
 import { Link } from "react-router-dom";
 
@@ -28,7 +27,6 @@ export default function WorkspaceSettingsProfilesSection({
 }: WorkspaceSettingsProfilesSectionProps) {
   const core = useAuthenticatedCoreClient();
   const canManageCustom = canManageCustomWorkspaceProfiles(workspace);
-  const canOpenBuiltInCards = workspaceHasPlanFeature(workspace, "customWorkspaceProfiles");
   const EnterpriseProfilesSection = enterpriseProfilesModule.EnterpriseProfilesSection;
   const BuiltInProfileCardPopup = enterpriseProfilesModule.BuiltInProfileCardPopup;
   if (!core) {
@@ -42,6 +40,7 @@ export default function WorkspaceSettingsProfilesSection({
       {t("web.workspaceSettings.sections.roles")}
     </Link>
   );
+  const customProfilesUpsell = <CustomProfilesUpsell t={t} />;
 
   return (
     <div className="flex flex-col gap-9">
@@ -51,7 +50,7 @@ export default function WorkspaceSettingsProfilesSection({
         core={core}
         t={t}
         rolesLink={rolesLink}
-        ProfileCardPopup={canOpenBuiltInCards ? BuiltInProfileCardPopup ?? undefined : undefined}
+        ProfileCardPopup={BuiltInProfileCardPopup ?? undefined}
       />
       {EnterpriseProfilesSection ? (
         <EnterpriseProfilesSection
@@ -62,9 +61,9 @@ export default function WorkspaceSettingsProfilesSection({
           t={t}
           resourcePermissions={resourcePermissions}
           readOnly={!canManageCustom}
+          emptyFallback={!canManageCustom ? customProfilesUpsell : undefined}
         />
-      ) : null}
-      {!EnterpriseProfilesSection ? (
+      ) : (
         <CustomProfilesUpsell t={t}>
           <RemnantCustomProfilesList
             workspaceId={workspaceId}
@@ -73,9 +72,7 @@ export default function WorkspaceSettingsProfilesSection({
             resourcePermissions={resourcePermissions}
           />
         </CustomProfilesUpsell>
-      ) : !canManageCustom ? (
-        <CustomProfilesUpsell t={t} />
-      ) : null}
+      )}
     </div>
   );
 }
