@@ -1,4 +1,9 @@
-import type { Vault } from "@okkey/types";
+import {
+  DEFAULT_WORKSPACE_CAPSULE_POLICIES,
+  isCapsuleAllowedForMember,
+  isCapsuleTypeAllowed,
+  type Vault,
+} from "@okkey/types";
 import { Button, Spinner, type KeyFieldFileValue } from "@okkey/ui";
 import { useMemo, useRef, useCallback, useState } from "react";
 import { Link, useLocation, useNavigate, useOutletContext, useSearchParams } from "react-router-dom";
@@ -133,7 +138,14 @@ export default function ItemDetailCard({ itemId, vaults, workspaceId: workspaceI
   const canArchive = vaultIdForPermits ? canUseFunction(vaultIdForPermits, "archive") : false;
   const canDelete = vaultIdForPermits ? canDeleteItem(vaultIdForPermits, createdByUserId) : false;
   const canFavorite = vaultIdForPermits ? canUseFunction(vaultIdForPermits, "favorite") : false;
-  const canCreateCapsule = vaultIdForPermits ? canUseFunction(vaultIdForPermits, "create_capsules") : false;
+  const capsulePolicies =
+    outletContext?.workspace?.capsulePolicies ?? DEFAULT_WORKSPACE_CAPSULE_POLICIES;
+  const canCreateCapsule = Boolean(
+    vaultIdForPermits &&
+      canUseFunction(vaultIdForPermits, "create_capsules") &&
+      isCapsuleAllowedForMember(capsulePolicies, userId) &&
+      isCapsuleTypeAllowed(capsulePolicies, "item"),
+  );
   const canCopy = vaultIdForPermits ? canUseFunction(vaultIdForPermits, "save_to_personal") : false;
   const openCapsuleFromItem = useCallback(() => {
     navigate({

@@ -4,6 +4,8 @@ import type { Locale } from "date-fns";
 import {
   DEFAULT_WORKSPACE_CAPSULE_POLICIES,
   isCapsuleAllowedForMember,
+  isCapsuleTypeAllowed,
+  resolveEffectiveCapsulePolicies,
   type CapsuleAccessDefaultsDto,
   type CapsuleCreateRequestDto,
   type CapsuleOwnerDetailDto,
@@ -15,6 +17,9 @@ import {
 } from "@okkey/types";
 import { workspaceHasPlanFeature } from "../../workspace/planEntitlements";
 import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
   Button,
   Calendar,
   CalendarMonthYearCaption,
@@ -41,6 +46,10 @@ import {
   SelectTrigger,
   SelectValue,
   Switch,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
   cn,
   controlGroupItemFixedClassName,
   getKeyFieldSurfaceRounding,
@@ -58,7 +67,8 @@ import {
   type SVGProps,
 } from "react";
 import { toast } from "sonner";
-import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { settingsPath } from "../../routes/paths";
 
 import {
   useAuthVault,
@@ -196,8 +206,12 @@ export default function NewCapsulePopup({
     ? (searchParams.get(CAPSULE_FROM_ITEM_QUERY_PARAM)?.trim() ?? "")
     : "";
   const advancedAvailable = workspaceHasPlanFeature(workspace, "capsuleAccessSettings");
-  const capsulePolicies: WorkspaceCapsulePolicies =
+  const storedCapsulePolicies: WorkspaceCapsulePolicies =
     workspace?.capsulePolicies ?? DEFAULT_WORKSPACE_CAPSULE_POLICIES;
+  const capsulePolicies = useMemo(
+    () => resolveEffectiveCapsulePolicies(storedCapsulePolicies, advancedAvailable),
+    [advancedAvailable, storedCapsulePolicies],
+  );
   const capsulesAllowedForMember = isCapsuleAllowedForMember(capsulePolicies, userId);
   const forceMaxViews = capsulePolicies.forceMaxViews > 0;
   const forceTimeDeactivation = capsulePolicies.requireTimeDeactivation;
@@ -215,16 +229,6 @@ export default function NewCapsulePopup({
     }
     return scheduleOptions.filter((option) => option.value !== "never");
   }, [forceTimeDeactivation, scheduleOptions]);
-  const capsuleTypeOptions = useMemo(
-    () =>
-      [
-        ["text", CapsuleTextIcon, t("web.capsules.list.type.text")],
-        ["file", CapsuleFileIcon, t("web.capsules.list.type.file")],
-        ["item", CapsuleItemIcon, t("web.capsules.list.type.item")],
-      ] as const,
-    [t],
-  );
-
   const [type, setType] = useState<CapsuleType>("text");
   const [name, setName] = useState("");
   const [text, setText] = useState("");
@@ -271,6 +275,33 @@ export default function NewCapsulePopup({
   const [hadRecipients, setHadRecipients] = useState(false);
   const [editHydrated, setEditHydrated] = useState(false);
   const [editBaseline, setEditBaseline] = useState<string | null>(null);
+  const allCapsuleTypeOptions = useMemo(
+    () =>
+      [
+        ["text", CapsuleTextIcon, t("web.capsules.list.type.text")],
+        ["file", CapsuleFileIcon, t("web.capsules.list.type.file")],
+        ["item", CapsuleItemIcon, t("web.capsules.list.type.item")],
+      ] as const,
+    [t],
+  );
+  const capsuleTypeOptions = useMemo(() => {
+    const allowed = allCapsuleTypeOptions.filter(([value]) =>
+      isCapsuleTypeAllowed(capsulePolicies, value),
+    );
+    if (isEditing && editingDetail) {
+      const current = allCapsuleTypeOptions.find(([value]) => value === editingDetail.type);
+      if (current && !allowed.some(([value]) => value === current[0])) {
+        return [...allowed, current];
+      }
+    }
+    return allowed;
+  }, [allCapsuleTypeOptions, capsulePolicies, editingDetail, isEditing]);
+  const allTypesDisabled = !isEditing && capsuleTypeOptions.length === 0;
+  const typeLocked = Boolean(
+    isEditing &&
+      editingDetail &&
+      !isCapsuleTypeAllowed(capsulePolicies, editingDetail.type),
+  );
   const popupIdentity = !open ? "closed" : isEditing ? `edit:${editingCapsuleId}` : "create";
   const activationMinimumDate = useMemo(
     () =>
@@ -280,7 +311,9 @@ export default function NewCapsulePopup({
   );
 
   useEffect(() => {
-    setType("text");
+    const firstAllowed =
+      (capsulePolicies.allowedCapsuleTypes[0] as CapsuleType | undefined) ?? "text";
+    setType(firstAllowed);
     setName("");
     setText("");
     setFile(null);
@@ -319,7 +352,23 @@ export default function NewCapsulePopup({
     setHadRecipients(false);
     setEditHydrated(false);
     setEditBaseline(null);
+    // popupIdentity reset; allowed types read from current policies snapshot.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reset only on popup identity change
   }, [popupIdentity]);
+
+  useEffect(() => {
+    if (!open || isEditing) return;
+    if (capsuleTypeOptions.length === 0) return;
+    if (!capsuleTypeOptions.some(([value]) => value === type)) {
+      setType(capsuleTypeOptions[0][0]);
+    }
+  }, [capsuleTypeOptions, isEditing, open, type]);
+
+  useEffect(() => {
+    if (!advancedAvailable) {
+      setViewLimitAction("deactivate");
+    }
+  }, [advancedAvailable]);
 
   useEffect(() => {
     if (isEditing) return;
@@ -369,7 +418,7 @@ export default function NewCapsulePopup({
 
   useEffect(() => {
     if (!open) return;
-    if (!isEditing && sourceItemId) {
+    if (!isEditing && sourceItemId && isCapsuleTypeAllowed(capsulePolicies, "item")) {
       setType("item");
       setSelectedItemId(sourceItemId);
     }
@@ -638,6 +687,8 @@ export default function NewCapsulePopup({
     ? editBaseline !== null && editorFingerprint !== editBaseline
     : createDirty;
   const canSave =
+    !typeLocked &&
+    !allTypesDisabled &&
     (!isEditing || editHydrated) &&
     (!isEditing || dirty) &&
     (type === "item" || name.trim().length > 0) &&
@@ -879,7 +930,12 @@ export default function NewCapsulePopup({
         encryptedMetadata: generated.encryptedMetadata,
         ownerKeyWrap: generated.ownerKeyWrap,
         keyTransportMode: "fragment",
-        ...(effectiveViewsEnabled ? { maxViews: effectiveMaxViews, viewLimitAction } : {}),
+        ...(effectiveViewsEnabled
+          ? {
+              maxViews: effectiveMaxViews,
+              viewLimitAction: advancedAvailable ? viewLimitAction : "deactivate",
+            }
+          : {}),
         ...(effectiveTimeEnabled
           ? {
               ...(activateAt ? { activateAt } : {}),
@@ -1009,9 +1065,11 @@ export default function NewCapsulePopup({
               <Button variant="outline" onClick={handleClose}>
                 {t("web.newItemPopup.cancel")}
               </Button>
-              <Button disabled={!canSave || saving} onClick={() => void save()}>
-                {t("web.newItemPopup.save")}
-              </Button>
+              {!typeLocked && !allTypesDisabled ? (
+                <Button disabled={!canSave || saving} onClick={() => void save()}>
+                  {t("web.newItemPopup.save")}
+                </Button>
+              ) : null}
             </div>
           </div>
         }
@@ -1020,8 +1078,23 @@ export default function NewCapsulePopup({
           <p className={error ? "text-sm text-destructive" : "text-sm text-muted-foreground"}>
             {error ?? t("web.capsules.popup.loading")}
           </p>
+        ) : allTypesDisabled ? (
+          <CapsuleTypesSettingsAlert
+            t={t}
+            descriptionKey="web.capsules.popup.typesAllDisabled"
+            linkKey="web.capsules.popup.typesAllDisabledLink"
+            onNavigate={handleClose}
+          />
+        ) : typeLocked ? (
+          <CapsuleTypesSettingsAlert
+            t={t}
+            descriptionKey="web.capsules.popup.typeLockedNotice"
+            linkKey="web.capsules.popup.typeLockedLink"
+            onNavigate={handleClose}
+          />
         ) : (
           <>
+        {capsuleTypeOptions.length > 0 ? (
         <div className="relative flex w-fit rounded-lg bg-secondary p-1">
           {capsuleTypeOptions.map(([value, Icon, label]) => {
             const active = type === value;
@@ -1062,6 +1135,7 @@ export default function NewCapsulePopup({
             );
           })}
         </div>
+        ) : null}
 
         {type === "item" ? (
           <div className="flex flex-col gap-4">
@@ -1342,27 +1416,67 @@ export default function NewCapsulePopup({
           <div className="overflow-hidden rounded-xl bg-secondary">
             {!advancedAvailable ? (
               <>
-                <p className="p-4 text-sm text-muted-foreground">
-                  {t("web.capsules.popup.enterpriseHint")}
-                </p>
-                {(
-                  [
-                    "web.capsules.popup.settings.views",
-                    "web.capsules.popup.settings.time",
-                    "web.capsules.popup.settings.access",
-                    "web.capsules.popup.settings.password",
-                    "web.capsules.popup.settings.approval",
-                  ] as const
-                ).map((titleKey) => (
-                  <AdvancedRow
-                    key={titleKey}
-                    title={t(titleKey)}
-                    description={t("web.capsules.popup.planUnavailable")}
-                    checked={false}
-                    onChange={() => undefined}
-                    disabled
-                  />
-                ))}
+                <AdvancedRow
+                  title={t("web.capsules.popup.views.title")}
+                  description={t("web.capsules.popup.views.description")}
+                  checked={forceMaxViews}
+                  onChange={() => undefined}
+                  disabled
+                  disabledTooltip={t("web.capsules.popup.planUnavailable")}
+                >
+                  {forceMaxViews ? (
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                      <label className="flex flex-col gap-3 text-sm font-normal">
+                        {t("web.capsules.popup.views.maxViews")}
+                        <Input type="number" min={1} value={capsulePolicies.forceMaxViews} disabled />
+                      </label>
+                      <label className="flex flex-col gap-3 text-sm font-normal">
+                        {t("web.capsules.popup.views.limitAction")}
+                        <CapsuleSelect
+                          value="deactivate"
+                          onChange={() => undefined}
+                          disabled
+                          options={[
+                            ["deactivate", t("web.capsules.popup.views.action.deactivate")],
+                            ["delete", t("web.capsules.popup.views.action.delete")],
+                          ]}
+                        />
+                      </label>
+                    </div>
+                  ) : null}
+                </AdvancedRow>
+                <AdvancedRow
+                  title={t("web.capsules.popup.time.title")}
+                  description={t("web.capsules.popup.time.description")}
+                  checked={false}
+                  onChange={() => undefined}
+                  disabled
+                  disabledTooltip={t("web.capsules.popup.planUnavailable")}
+                />
+                <AdvancedRow
+                  title={t("web.capsules.popup.access.title")}
+                  description={t("web.capsules.popup.access.description")}
+                  checked={false}
+                  onChange={() => undefined}
+                  disabled
+                  disabledTooltip={t("web.capsules.popup.planUnavailable")}
+                />
+                <AdvancedRow
+                  title={t("web.capsules.popup.password.title")}
+                  description={t("web.capsules.popup.password.description")}
+                  checked={false}
+                  onChange={() => undefined}
+                  disabled
+                  disabledTooltip={t("web.capsules.popup.planUnavailable")}
+                />
+                <AdvancedRow
+                  title={t("web.capsules.popup.approval.title")}
+                  description={t("web.capsules.popup.approval.description")}
+                  checked={false}
+                  onChange={() => undefined}
+                  disabled
+                  disabledTooltip={t("web.capsules.popup.planUnavailable")}
+                />
               </>
             ) : (
               <>
@@ -1709,6 +1823,7 @@ function AdvancedRow({
   onChange,
   children,
   disabled,
+  disabledTooltip,
 }: {
   title: string;
   description: string;
@@ -1716,7 +1831,16 @@ function AdvancedRow({
   onChange: (checked: boolean) => void;
   children?: ReactNode;
   disabled?: boolean;
+  disabledTooltip?: string;
 }) {
+  const switchControl = (
+    <Switch
+      size="lg"
+      checked={checked}
+      onCheckedChange={onChange}
+      disabled={disabled}
+    />
+  );
   return (
     <section className="border-b p-4 last:border-b-0">
       <div className="flex items-center gap-3">
@@ -1724,15 +1848,69 @@ function AdvancedRow({
           <p className="text-sm font-medium">{title}</p>
           <p className="text-sm text-muted-foreground">{description}</p>
         </div>
-        <Switch
-          size="lg"
-          checked={checked}
-          onCheckedChange={onChange}
-          disabled={disabled}
-        />
+        {disabled && disabledTooltip ? (
+          <TooltipProvider delayDuration={200}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="inline-flex">{switchControl}</span>
+              </TooltipTrigger>
+              <TooltipContent>{disabledTooltip}</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        ) : (
+          switchControl
+        )}
       </div>
       {checked && children ? <div className="mt-4">{children}</div> : null}
     </section>
+  );
+}
+
+function CapsuleTypesSettingsAlert({
+  t,
+  descriptionKey,
+  linkKey,
+  onNavigate,
+}: {
+  t: (messageKey: string, values?: WebMessageValues) => string;
+  descriptionKey: string;
+  linkKey: string;
+  onNavigate?: () => void;
+}) {
+  return (
+    <Alert variant="info">
+      <CapsuleAlertInfoIcon className="size-4" />
+      <AlertTitle>{t("web.capsules.popup.typesNoticeTitle")}</AlertTitle>
+      <AlertDescription>
+        {t(descriptionKey)}
+        <Link
+          to={settingsPath("capsules")}
+          className="font-medium text-foreground underline decoration-border underline-offset-4 transition-colors hover:text-primary"
+          onClick={onNavigate}
+        >
+          {t(linkKey)}
+        </Link>
+      </AlertDescription>
+    </Alert>
+  );
+}
+
+function CapsuleAlertInfoIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+      {...props}
+    >
+      <circle cx="12" cy="12" r="10" />
+      <path d="M12 16v-4" />
+      <path d="M12 8h.01" />
+    </svg>
   );
 }
 
@@ -1743,6 +1921,7 @@ function CapsuleSelect({
   triggerClassName,
   sectionLabelAfterNever,
   invalid = false,
+  disabled = false,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -1750,13 +1929,14 @@ function CapsuleSelect({
   triggerClassName?: string;
   sectionLabelAfterNever?: string;
   invalid?: boolean;
+  disabled?: boolean;
 }) {
   const hasNeverOption = options.some(([option]) => option === "never");
   const firstRelativeOption = options.find(
     ([option]) => option !== "custom" && option !== "never" && option !== "now",
   )?.[0];
   return (
-    <Select value={value} onValueChange={onChange}>
+    <Select value={value} onValueChange={onChange} disabled={disabled}>
       <SelectTrigger
         aria-invalid={invalid || undefined}
         className={cn("font-normal", triggerClassName)}

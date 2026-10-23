@@ -1,5 +1,7 @@
 import type { WorkspacesRepository } from "../storage/repositories.ts";
 import type { QueryExecutor } from "../storage/postgres.ts";
+import type { ApiConfig } from "../config.ts";
+import { workspaceHasPlanFeature } from "../plan-entitlements.ts";
 import {
   assertWorkspacePermission,
   resolveWorkspacePermissions,
@@ -9,6 +11,7 @@ import {
 import {
   MAX_MAX_FILE_SIZE_MB,
   MIN_MAX_FILE_SIZE_MB,
+  mergeCapsulePoliciesForPlan,
   normalizeAllowedFileExtensions,
   workspaceCapsulePoliciesFromDto,
   workspaceCapsulePoliciesToDto,
@@ -69,15 +72,18 @@ export interface WorkspaceSettingsServiceDeps {
     "findById" | "hasAccess" | "updateGeneralSettings" | "deleteOwnedWorkspace"
   >;
   db: QueryExecutor;
+  config: Pick<ApiConfig, "deploymentMode" | "enterpriseModulesEnabled">;
 }
 
 export class WorkspaceSettingsService {
   private readonly workspaces: WorkspaceSettingsServiceDeps["workspaces"];
   private readonly db: QueryExecutor;
+  private readonly config: WorkspaceSettingsServiceDeps["config"];
 
   constructor(deps: WorkspaceSettingsServiceDeps) {
     this.workspaces = deps.workspaces;
     this.db = deps.db;
+    this.config = deps.config;
   }
 
   async getSettings(workspaceId: string, userId: string): Promise<WorkspaceSettingsSnapshot> {
@@ -111,7 +117,17 @@ export class WorkspaceSettingsService {
       update.filesInItemsEnabled = sanitizeFilesInItemsEnabled(patch.filesInItemsEnabled);
     }
     if (patch.capsulePolicies !== undefined) {
-      update.capsulePolicies = sanitizeCapsulePolicies(patch.capsulePolicies);
+      const sanitized = sanitizeCapsulePolicies(patch.capsulePolicies);
+      const accessSettingsEnabled = workspaceHasPlanFeature(
+        this.config,
+        workspace,
+        "capsuleAccessSettings",
+      );
+      update.capsulePolicies = mergeCapsulePoliciesForPlan(
+        workspace.capsulePolicies,
+        sanitized,
+        accessSettingsEnabled,
+      );
     }
     if (patch.monitoringCardSettings !== undefined) {
       update.monitoringCardSettings = sanitizeMonitoringCardSettings(patch.monitoringCardSettings);

@@ -39,6 +39,12 @@ declare module "@okkey-enterprise/workspace-shared-vaults" {
   export default enterpriseSharedVaultsModule;
 }
 
+declare module "@okkey-enterprise/workspace-capsules" {
+  import type { WorkspaceSettingsCapsulesModule } from "./workspace-features/registry";
+  const enterpriseCapsulesModule: WorkspaceSettingsCapsulesModule;
+  export default enterpriseCapsulesModule;
+}
+
 declare module "@okkey-enterprise/legal" {
   import type { LegalModule } from "./workspace-features/legal-registry";
   const legalModule: LegalModule;

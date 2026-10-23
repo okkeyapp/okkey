@@ -26,6 +26,7 @@ function workspaceStub(overrides: Partial<WorkspaceRecord> = {}): WorkspaceRecor
     capsulePolicies: {
       allowMode: "all",
       allowMemberIds: [],
+      allowedCapsuleTypes: ["text", "file", "item"] as const,
       forceMaxViews: 0,
       passwordAttemptLimit: 0,
     },

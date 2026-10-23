@@ -56,7 +56,15 @@ type MultiSelectSharedProps = {
 export type MultiSelectProps = MultiSelectSharedProps &
   (
     | { displayMode?: "chips" }
-    | { displayMode: "summary"; selectionCountLabel: string }
+    | {
+        displayMode: "summary";
+        /**
+         * Default summary: `{selectionCountLabel}: {count}`.
+         * When `selectionSummaryText` is set, that string is shown alone (select-like).
+         */
+        selectionCountLabel?: string;
+        selectionSummaryText?: string;
+      }
   );
 
 type MultiSelectContextValue = {
@@ -69,6 +77,7 @@ type MultiSelectContextValue = {
   variant: SelectVariant;
   displayMode: MultiSelectDisplayMode;
   selectionCountLabel: string;
+  selectionSummaryText: string | null;
   listId: string;
   labelMap: Record<string, React.ReactNode>;
   registerItem: (value: string, labelForChip: React.ReactNode) => void;
@@ -113,7 +122,15 @@ function MultiSelect(props: MultiSelectProps) {
   } = props;
   const displayMode: MultiSelectDisplayMode = props.displayMode ?? "chips";
   const selectionCountLabel =
-    displayMode === "summary" && "selectionCountLabel" in props ? props.selectionCountLabel : "";
+    displayMode === "summary" && "selectionCountLabel" in props
+      ? (props.selectionCountLabel ?? "")
+      : "";
+  const selectionSummaryText =
+    displayMode === "summary" &&
+    "selectionSummaryText" in props &&
+    typeof props.selectionSummaryText === "string"
+      ? props.selectionSummaryText
+      : null;
   const [open, setOpenState] = React.useState(false);
   const [searchQuery, setSearchQueryState] = React.useState("");
   const searchInputId = React.useId();
@@ -213,6 +230,7 @@ function MultiSelect(props: MultiSelectProps) {
       variant,
       displayMode,
       selectionCountLabel,
+      selectionSummaryText,
       listId,
       labelMap,
       registerItem,
@@ -238,6 +256,7 @@ function MultiSelect(props: MultiSelectProps) {
       variant,
       displayMode,
       selectionCountLabel,
+      selectionSummaryText,
       listId,
       labelMap,
       registerItem,
@@ -314,8 +333,14 @@ const MultiSelectTrigger = React.forwardRef<HTMLDivElement, React.HTMLAttributes
                 className="flex min-h-[28px] min-w-0 flex-1 items-center truncate text-sm text-foreground normal-case"
                 aria-live="polite"
               >
-                {ctx.selectionCountLabel}:{" "}
-                <span className="tabular-nums">{ctx.value.length}</span>
+                {ctx.selectionSummaryText != null ? (
+                  <span className="tabular-nums">{ctx.selectionSummaryText}</span>
+                ) : (
+                  <>
+                    {ctx.selectionCountLabel}:{" "}
+                    <span className="tabular-nums">{ctx.value.length}</span>
+                  </>
+                )}
               </span>
             ) : ctx.value.length === 0 ? (
               <span className="flex min-h-[28px] min-w-0 flex-1 items-center truncate text-sm text-muted-foreground normal-case">
@@ -526,7 +551,8 @@ const MultiSelectItem = React.forwardRef<HTMLDivElement, MultiSelectItemProps>(
         className={cn(
           "relative flex w-full cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm text-foreground outline-none normal-case",
           "data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
-          selected ? "bg-secondary/60 hover:bg-secondary hover:text-foreground" : "hover:bg-secondary hover:text-foreground",
+          /* Selected state is the checkmark only (same as /capsules column picker) — no filled row. */
+          "hover:bg-secondary hover:text-foreground",
           /* `hidden` attr loses to Tailwind `flex`; use important so filter actually hides rows */
           !matches && "!hidden",
           className,

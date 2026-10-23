@@ -82,6 +82,7 @@ function renderRolesSection(
           capsulePolicies: {
             allowMode: "all",
             allowMemberIds: [],
+            allowedCapsuleTypes: ["text", "file", "item"] as const,
             forceMaxViews: 0,
             requireTimeDeactivation: false,
             requireAccess: false,

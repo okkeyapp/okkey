@@ -122,3 +122,16 @@ export type WorkspaceSettingsSharedVaultsModule = {
   PersonalVaultCardPopup: ComponentType<PersonalVaultCardPopupProps> | null;
   SharedVaultCardPopup: ComponentType<SharedVaultCardPopupProps> | null;
 };
+
+export type EnterpriseCapsulesAdvancedPoliciesSectionProps = {
+  policies: import("@okkey/types").WorkspaceCapsulePolicies;
+  canEdit: boolean;
+  t: (messageKey: string, values?: WebMessageValues) => string;
+  onPersist: (
+    next: import("@okkey/types").WorkspaceCapsulePolicies,
+  ) => void | Promise<void>;
+};
+
+export type WorkspaceSettingsCapsulesModule = {
+  CapsulesAdvancedPoliciesSection: ComponentType<EnterpriseCapsulesAdvancedPoliciesSectionProps> | null;
+};

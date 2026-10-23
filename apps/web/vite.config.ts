@@ -71,6 +71,14 @@ export default defineConfig(({ mode }) => {
     __dirname,
     "./src/workspace-features/stubs/enterprise-shared-vaults-stub.ts",
   );
+  const enterpriseCapsulesPath = path.resolve(
+    enterpriseRoot,
+    "web/workspace-capsules/src/index.ts",
+  );
+  const enterpriseCapsulesStubPath = path.resolve(
+    __dirname,
+    "./src/workspace-features/stubs/enterprise-capsules-stub.ts",
+  );
   const enterpriseLegalPath = path.resolve(enterpriseRoot, "web/legal/src/index.ts");
   const enterpriseLegalStubPath = path.resolve(
     __dirname,
@@ -169,6 +177,9 @@ export default defineConfig(({ mode }) => {
         "@okkey-enterprise/workspace-shared-vaults": enterpriseModules
           ? enterpriseSharedVaultsPath
           : enterpriseSharedVaultsStubPath,
+        "@okkey-enterprise/workspace-capsules": enterpriseModules
+          ? enterpriseCapsulesPath
+          : enterpriseCapsulesStubPath,
         "@okkey-enterprise/legal": enterpriseModules ? enterpriseLegalPath : enterpriseLegalStubPath,
         "@okkey-enterprise/workspace-plan": enterpriseModules
           ? enterprisePlanPath

@@ -1,4 +1,5 @@
 import {
+  ALL_CAPSULE_TYPES,
   DEFAULT_ALLOWED_FILE_EXTENSIONS,
   DEFAULT_MAX_FILE_SIZE_MB,
   DEFAULT_WORKSPACE_CAPSULE_POLICIES,
@@ -7,8 +8,8 @@ import {
   normalizeMaxFileSizeMbInput,
   resolveMaxFileSizeMbFromInput,
   workspaceCapsulePoliciesToDto,
-  type CapsuleAccessAudience,
   type CapsuleAllowMode,
+  type CapsuleType,
   type Vault,
   type Workspace,
   type WorkspaceCapsulePolicies,
@@ -31,7 +32,10 @@ import {
 } from "@okkey/ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import workspaceCapsulesModule from "@okkey-enterprise/workspace-capsules";
 import workspaceTenancyModule from "@okkey-enterprise/workspace-tenancy";
+
+import { workspaceHasPlanFeature } from "../../../workspace/planEntitlements";
 
 import {
   deleteKeyFieldFileAttachment,
@@ -59,8 +63,15 @@ function cloneCapsulePolicies(policies: WorkspaceCapsulePolicies): WorkspaceCaps
   return {
     ...policies,
     allowMemberIds: [...policies.allowMemberIds],
+    allowedCapsuleTypes: [...policies.allowedCapsuleTypes],
   };
 }
+
+const CAPSULE_TYPE_LABEL_KEYS: Record<CapsuleType, string> = {
+  text: "web.capsules.list.type.text",
+  file: "web.capsules.list.type.file",
+  item: "web.capsules.list.type.item",
+};
 
 function capsulePoliciesEqual(a: WorkspaceCapsulePolicies, b: WorkspaceCapsulePolicies): boolean {
   return (
@@ -117,11 +128,15 @@ export default function WorkspaceSettingsGeneralSection({
     cloneCapsulePolicies(DEFAULT_WORKSPACE_CAPSULE_POLICIES),
   );
   const [forceMaxViewsInput, setForceMaxViewsInput] = useState("0");
-  const [passwordAttemptLimitInput, setPasswordAttemptLimitInput] = useState("0");
   const [directoryMembers, setDirectoryMembers] = useState<WorkspaceMemberDirectoryEntryDto[]>([]);
 
   const isOwner = Boolean(workspace && userId && workspace.ownerId === userId);
   const canEdit = canPut ?? isOwner;
+  const canManageCapsuleAccessSettings = workspaceHasPlanFeature(workspace, "capsuleAccessSettings");
+  const CapsulesAdvancedPoliciesSection = workspaceCapsulesModule.CapsulesAdvancedPoliciesSection;
+  const showCapsuleAccessSettings = Boolean(
+    CapsulesAdvancedPoliciesSection && canManageCapsuleAccessSettings,
+  );
   const DangerZoneSection = workspaceTenancyModule.DangerZoneSection;
   const showDangerZone = Boolean(isOwner && DangerZoneSection);
   const personalVault = useMemo(() => vaults.find((vault) => vault.isPersonal), [vaults]);
@@ -163,7 +178,6 @@ export default function WorkspaceSettingsGeneralSection({
       setFilesInItemsEnabled(patch.filesInItemsEnabled);
       setCapsulePolicies(cloneCapsulePolicies(patch.capsulePolicies));
       setForceMaxViewsInput(String(patch.capsulePolicies.forceMaxViews));
-      setPasswordAttemptLimitInput(String(patch.capsulePolicies.passwordAttemptLimit));
     } catch (err: unknown) {
       setLoadError(err instanceof Error ? err.message : t(SAVE_TOAST.error));
     } finally {
@@ -224,10 +238,6 @@ export default function WorkspaceSettingsGeneralSection({
     );
     setForceMaxViewsInput((prev) => {
       const next = String(patch.capsulePolicies.forceMaxViews);
-      return prev === next ? prev : next;
-    });
-    setPasswordAttemptLimitInput((prev) => {
-      const next = String(patch.capsulePolicies.passwordAttemptLimit);
       return prev === next ? prev : next;
     });
     onSettingsChanged?.(patch);
@@ -304,13 +314,11 @@ export default function WorkspaceSettingsGeneralSection({
     const previous = cloneCapsulePolicies(capsulePolicies);
     setCapsulePolicies(cloneCapsulePolicies(next));
     setForceMaxViewsInput(String(next.forceMaxViews));
-    setPasswordAttemptLimitInput(String(next.passwordAttemptLimit));
     try {
       await persistSettings({ capsule_policies: workspaceCapsulePoliciesToDto(next) });
     } catch {
       setCapsulePolicies(previous);
       setForceMaxViewsInput(String(previous.forceMaxViews));
-      setPasswordAttemptLimitInput(String(previous.passwordAttemptLimit));
     }
   }
 
@@ -340,14 +348,12 @@ export default function WorkspaceSettingsGeneralSection({
     await persistCapsulePolicies({ ...capsulePolicies, forceMaxViews: nextValue });
   }
 
-  async function handlePasswordAttemptLimitBlur() {
-    const parsed = Number.parseInt(passwordAttemptLimitInput.trim(), 10);
-    const nextValue = Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
-    setPasswordAttemptLimitInput(String(nextValue));
-    if (nextValue === capsulePolicies.passwordAttemptLimit) {
-      return;
-    }
-    await persistCapsulePolicies({ ...capsulePolicies, passwordAttemptLimit: nextValue });
+  async function handleAllowedCapsuleTypesChange(values: string[]) {
+    const nextTypes = ALL_CAPSULE_TYPES.filter((type) => values.includes(type));
+    await persistCapsulePolicies({
+      ...capsulePolicies,
+      allowedCapsuleTypes: nextTypes,
+    });
   }
 
   const showCapsuleMemberPicker =
@@ -697,6 +703,43 @@ export default function WorkspaceSettingsGeneralSection({
 
             <div className="my-4 border-t border-border" aria-hidden />
 
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+              <div className="min-w-0 flex-1 space-y-1">
+                <label htmlFor="capsule-allowed-types" className="text-sm font-medium text-foreground">
+                  {t("web.workspaceSettings.capsules.allowedTypes.label")}
+                </label>
+                <p className="text-sm text-muted-foreground">
+                  {t("web.workspaceSettings.capsules.allowedTypes.description")}
+                </p>
+              </div>
+              <MultiSelect
+                value={capsulePolicies.allowedCapsuleTypes}
+                onValueChange={(value) => void handleAllowedCapsuleTypesChange(value)}
+                placeholder={t("web.workspaceSettings.capsules.allowedTypes.placeholder")}
+                disabled={!canEdit}
+                displayMode="summary"
+                selectionSummaryText={
+                  capsulePolicies.allowedCapsuleTypes.length === ALL_CAPSULE_TYPES.length
+                    ? t("web.workspaceSettings.capsules.allowedTypes.all")
+                    : String(capsulePolicies.allowedCapsuleTypes.length)
+                }
+              >
+                <MultiSelectTrigger
+                  id="capsule-allowed-types"
+                  className="!h-9 min-h-9 w-full shrink-0 font-normal sm:w-[150px]"
+                />
+                <MultiSelectContent className="min-w-[min(100vw-2rem,16rem)]">
+                  {ALL_CAPSULE_TYPES.map((type) => (
+                    <MultiSelectItem key={type} value={type} chipLabel={t(CAPSULE_TYPE_LABEL_KEYS[type])}>
+                      {t(CAPSULE_TYPE_LABEL_KEYS[type])}
+                    </MultiSelectItem>
+                  ))}
+                </MultiSelectContent>
+              </MultiSelect>
+            </div>
+
+            <div className="my-4 border-t border-border" aria-hidden />
+
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
               <div className="min-w-0 flex-1 space-y-1">
                 <label htmlFor="capsule-force-max-views" className="text-sm font-medium text-foreground">
@@ -719,157 +762,14 @@ export default function WorkspaceSettingsGeneralSection({
               />
             </div>
 
-            <div className="my-4 border-t border-border" aria-hidden />
-
-            <div className="flex items-center justify-between gap-4">
-              <div className="min-w-0 flex-1 space-y-1">
-                <p className="text-sm font-medium text-foreground">
-                  {t("web.workspaceSettings.capsules.requireTimeDeactivation.label")}
-                </p>
-                <p className="text-sm text-muted-foreground">
-                  {t("web.workspaceSettings.capsules.requireTimeDeactivation.description")}
-                </p>
-              </div>
-              <Switch
-                size="lg"
-                checked={capsulePolicies.requireTimeDeactivation}
-                disabled={!canEdit}
-                onCheckedChange={(checked) =>
-                  void persistCapsulePolicies({ ...capsulePolicies, requireTimeDeactivation: checked })
-                }
-                aria-label={t("web.workspaceSettings.capsules.requireTimeDeactivation.label")}
+            {showCapsuleAccessSettings && CapsulesAdvancedPoliciesSection ? (
+              <CapsulesAdvancedPoliciesSection
+                policies={capsulePolicies}
+                canEdit={canEdit}
+                t={t}
+                onPersist={persistCapsulePolicies}
               />
-            </div>
-
-            <div className="my-4 border-t border-border" aria-hidden />
-
-            <div className="flex items-center justify-between gap-4">
-              <div className="min-w-0 flex-1 space-y-1">
-                <p className="text-sm font-medium text-foreground">
-                  {t("web.workspaceSettings.capsules.requireAccess.label")}
-                </p>
-                <p className="text-sm text-muted-foreground">
-                  {t("web.workspaceSettings.capsules.requireAccess.description")}
-                </p>
-              </div>
-              <Switch
-                size="lg"
-                checked={capsulePolicies.requireAccess}
-                disabled={!canEdit}
-                onCheckedChange={(checked) =>
-                  void persistCapsulePolicies({ ...capsulePolicies, requireAccess: checked })
-                }
-                aria-label={t("web.workspaceSettings.capsules.requireAccess.label")}
-              />
-            </div>
-
-            <div className="my-4 border-t border-border" aria-hidden />
-
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-              <div className="min-w-0 flex-1 space-y-1">
-                <label htmlFor="capsule-access-audience" className="text-sm font-medium text-foreground">
-                  {t("web.workspaceSettings.capsules.accessAudience.label")}
-                </label>
-                <p className="text-sm text-muted-foreground">
-                  {t("web.workspaceSettings.capsules.accessAudience.description")}
-                </p>
-              </div>
-              <Select
-                value={capsulePolicies.accessAudience}
-                disabled={!canEdit}
-                onValueChange={(value) =>
-                  void persistCapsulePolicies({
-                    ...capsulePolicies,
-                    accessAudience: value as CapsuleAccessAudience,
-                  })
-                }
-              >
-                <SelectTrigger id="capsule-access-audience" className="h-9 w-full shrink-0 sm:w-[150px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all_users">
-                    {t("web.workspaceSettings.capsules.accessAudience.allUsers")}
-                  </SelectItem>
-                  <SelectItem value="workspace_members_only">
-                    {t("web.workspaceSettings.capsules.accessAudience.workspaceMembersOnly")}
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="my-4 border-t border-border" aria-hidden />
-
-            <div className="flex items-center justify-between gap-4">
-              <div className="min-w-0 flex-1 space-y-1">
-                <p className="text-sm font-medium text-foreground">
-                  {t("web.workspaceSettings.capsules.requirePassword.label")}
-                </p>
-                <p className="text-sm text-muted-foreground">
-                  {t("web.workspaceSettings.capsules.requirePassword.description")}
-                </p>
-              </div>
-              <Switch
-                size="lg"
-                checked={capsulePolicies.requirePassword}
-                disabled={!canEdit}
-                onCheckedChange={(checked) =>
-                  void persistCapsulePolicies({ ...capsulePolicies, requirePassword: checked })
-                }
-                aria-label={t("web.workspaceSettings.capsules.requirePassword.label")}
-              />
-            </div>
-
-            <div className="my-4 border-t border-border" aria-hidden />
-
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-              <div className="min-w-0 flex-1 space-y-1">
-                <label
-                  htmlFor="capsule-password-attempt-limit"
-                  className="text-sm font-medium text-foreground"
-                >
-                  {t("web.workspaceSettings.capsules.passwordAttemptLimit.label")}
-                </label>
-                <p className="text-sm text-muted-foreground">
-                  {t("web.workspaceSettings.capsules.passwordAttemptLimit.description")}
-                </p>
-              </div>
-              <Input
-                id="capsule-password-attempt-limit"
-                type="number"
-                min={0}
-                inputMode="numeric"
-                className="w-full shrink-0 sm:w-[150px]"
-                value={passwordAttemptLimitInput}
-                disabled={!canEdit}
-                onChange={(event) =>
-                  setPasswordAttemptLimitInput(event.target.value.replace(/[^\d]/g, ""))
-                }
-                onBlur={() => void handlePasswordAttemptLimitBlur()}
-              />
-            </div>
-
-            <div className="my-4 border-t border-border" aria-hidden />
-
-            <div className="flex items-center justify-between gap-4">
-              <div className="min-w-0 flex-1 space-y-1">
-                <p className="text-sm font-medium text-foreground">
-                  {t("web.workspaceSettings.capsules.requireApproval.label")}
-                </p>
-                <p className="text-sm text-muted-foreground">
-                  {t("web.workspaceSettings.capsules.requireApproval.description")}
-                </p>
-              </div>
-              <Switch
-                size="lg"
-                checked={capsulePolicies.requireApproval}
-                disabled={!canEdit}
-                onCheckedChange={(checked) =>
-                  void persistCapsulePolicies({ ...capsulePolicies, requireApproval: checked })
-                }
-                aria-label={t("web.workspaceSettings.capsules.requireApproval.label")}
-              />
-            </div>
+            ) : null}
           </div>
         </div>
         ) : null}

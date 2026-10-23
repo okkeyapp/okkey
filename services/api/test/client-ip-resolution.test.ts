@@ -3,6 +3,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import test from "node:test";
 import { AuthError, AuthService } from "../src/auth/service.ts";
 import { CapsuleService, CapsuleServiceError } from "../src/capsule/service.ts";
+import { resetEgressPublicIpCache } from "../src/capsule/geoip.ts";
 import { createApiApp } from "../src/app.ts";
 import type { ApiConfig } from "../src/config.ts";
 import { createTestApiConfig } from "./test-api-config.ts";
@@ -177,6 +178,11 @@ test("capsule open limit keeps the socket address when the peer is not loopback"
 });
 
 test("capsule password and open limits use TCP address when TRUSTED_PROXY_HOPS=0", async () => {
+  // Use a non-loopback peer so resolveClientIpForGeo does not hit live egress
+  // lookup (ipify), which made this assertion flake when one call got 127.0.0.1
+  // and the next got the runner public IP.
+  resetEgressPublicIpCache();
+  const tcpPeer = "10.0.0.42";
   const service = createCapsuleService(
     createTestApiConfig({
       trustedProxyHops: 0,
@@ -185,13 +191,14 @@ test("capsule password and open limits use TCP address when TRUSTED_PROXY_HOPS=0
     }),
   );
   const first = await service.resolveRequesterContext({
-    remoteAddress: "127.0.0.1",
+    remoteAddress: tcpPeer,
     forwardedFor: "198.51.100.10",
   });
   const second = await service.resolveRequesterContext({
-    remoteAddress: "127.0.0.1",
+    remoteAddress: tcpPeer,
     forwardedFor: "203.0.113.20",
   });
+  assert.equal(first.ipAddress, tcpPeer);
   assert.equal(
     first.ipAddress,
     second.ipAddress,
