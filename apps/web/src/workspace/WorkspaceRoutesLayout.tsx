@@ -22,7 +22,16 @@ import {
   type OkkeySidebarVaultItem,
   workspaceSwitcherActiveItemClassName,
 } from "@okkey/ui";
-import { useEffect, useMemo, useRef, useState, useCallback, type ComponentProps, type PointerEvent } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useCallback,
+  type ComponentProps,
+  type PointerEvent,
+  type ReactNode,
+} from "react";
 import { Outlet, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import workspaceTenancyModule from "@okkey-enterprise/workspace-tenancy";
 import { tryCompletePendingVaultWraps } from "@okkey-enterprise/workspace-members";
@@ -108,6 +117,7 @@ import {
 import { webDisplayPlanTier } from "./planEntitlements";
 import { planTierLabel } from "./planTierLabel";
 import { formatInstanceVersionLabel, useInstanceVersion } from "./useInstanceVersion";
+import { formatAvailableUpdatesSummary, useUpdateCheck } from "./useUpdateCheck";
 
 function SharedVaultMembersIcon({ className }: { className?: string }) {
   return (
@@ -191,9 +201,18 @@ const ContactsShareAutoEnrollController = accountRecoveryModule.ContactsShareAut
 export default function WorkspaceRoutesLayout() {
   const { t } = useLocale();
   const instanceVersion = useInstanceVersion();
-  const footerVersionLabel = instanceVersion
-    ? formatInstanceVersionLabel(instanceVersion, t)
-    : null;
+  const updateCheck = useUpdateCheck();
+  const updateFromToSummary = updateCheck ? formatAvailableUpdatesSummary(updateCheck) : null;
+  const footerVersionNode = instanceVersion ? (
+    <span data-testid="sidebar-instance-version-label">
+      {formatInstanceVersionLabel(instanceVersion, t)}
+      {updateFromToSummary ? (
+        <span className="sr-only" data-testid="sidebar-update-from-to">
+          {updateFromToSummary}
+        </span>
+      ) : null}
+    </span>
+  ) : null;
   const { userId, profile, logout, passwordShareC, vaultKey, vaultUnlocked } = useAuthVault();
   const core = useAuthenticatedCoreClient();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -905,7 +924,7 @@ export default function WorkspaceRoutesLayout() {
                   documentation: t("web.nav.documentation"),
                   help: t("web.nav.help"),
                 }}
-                footerVersion={footerVersionLabel}
+                footerVersion={footerVersionNode}
                 openFoldersSettingsPopup={openFoldersSettingsPopup}
                 openNewVaultPopup={openNewVaultPopup}
                 core={core}
@@ -950,7 +969,7 @@ type WorkspaceShellWithItemsProps = {
   folderTreeForItems: OkkeySidebarFolderTreeNode[];
   accountMenu: OkkeyAppSidebarAccountMenu | undefined;
   footerPlainLinkLabels: { documentation: string; help: string };
-  footerVersion: string | null;
+  footerVersion: ReactNode;
   openFoldersSettingsPopup: () => void;
   openNewVaultPopup: (event: PointerEvent<HTMLButtonElement>) => void;
   core: ReturnType<typeof useAuthenticatedCoreClient>;

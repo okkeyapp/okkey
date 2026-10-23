@@ -71,6 +71,14 @@ export interface ApiConfig {
   /** Load enterprise backend plugins from `enterpriseModulesPath`. */
   enterpriseModulesEnabled: boolean;
   enterpriseModulesPath: string;
+  /**
+   * Optional HTTPS feed for GET /updates/check (self-host). Empty = no remote check.
+   * Prefer `updateFeedPath` in isolated/perimeter installs (no outbound).
+   */
+  updateFeedUrl: string;
+  /** Optional local JSON feed path (takes precedence over URL when set). */
+  updateFeedPath: string;
+  updateFeedTimeoutMs: number;
   defaultEmailLocale: string;
   /** Base URL for links in transactional email (e.g. https://app.example.com); empty = text-only hints */
   publicAppBaseUrl: string;
@@ -443,6 +451,9 @@ export function loadConfig(): ApiConfig {
     enterpriseModulesRequested,
     enterpriseModulesEnabled,
     enterpriseModulesPath,
+    updateFeedUrl: (process.env.OKKEY_UPDATE_FEED_URL ?? "").trim(),
+    updateFeedPath: (process.env.OKKEY_UPDATE_FEED_PATH ?? "").trim(),
+    updateFeedTimeoutMs: parsePositiveInt(process.env.OKKEY_UPDATE_FEED_TIMEOUT_MS, 5000),
     defaultEmailLocale: process.env.EMAIL_DEFAULT_LOCALE ?? "en",
     publicAppBaseUrl: (process.env.PUBLIC_APP_URL ?? "").trim(),
     emailFrom: process.env.EMAIL_FROM ?? "no-reply@okkey.local",

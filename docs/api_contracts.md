@@ -67,6 +67,7 @@ Malformed route parameters (missing `workspaceId` / `vaultId` in path) may retur
 | `GET` | `/health` | No | Liveness |
 | `GET` | `/ready` | No | Readiness (deps) |
 | `GET` | `/version` | No | Product build/version for UI (self-host sidebar) |
+| `GET` | `/updates/check` | No | Compare instance vs update feed (`from`→`to`); orthogonal to license |
 
 ### `GET /version`
 
@@ -86,6 +87,40 @@ Example `200`:
 ```
 
 Orthogonal to licensing: clients may call this with a missing/expired license.
+
+### `GET /updates/check`
+
+Self-host update feed probe. Config: `OKKEY_UPDATE_FEED_PATH` (preferred, perimeter file) and/or `OKKEY_UPDATE_FEED_URL` (optional remote). Empty both → `feedConfigured: false`, `available: []` (no call to license.okkey.io). SaaS always returns empty `available`. Does **not** consult license validity.
+
+Feed JSON (`schemaVersion: 1`):
+
+```json
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-10-23T00:00:00.000Z",
+  "components": [
+    { "id": "okkey", "version": "1.0.1", "notes": "optional", "packageUrl": "optional", "digest": "optional" },
+    { "id": "okkey-enterprise", "version": "1.0.1" }
+  ]
+}
+```
+
+Example `200` when an update is available:
+
+```json
+{
+  "deploymentMode": "self_hosted",
+  "feedConfigured": true,
+  "current": { "okkey": "1.0.0", "enterprise": null },
+  "available": [
+    { "id": "okkey", "from": "1.0.0", "to": "1.0.1", "notes": "fixes", "packageUrl": null, "digest": null }
+  ],
+  "requestId": "req_01HZZZZ",
+  "time": "2026-10-23T16:00:00.000Z"
+}
+```
+
+On feed load failure with a configured source: `502` + `error: "UPDATE_FEED_UNAVAILABLE"` (instance stays on current version; `available` empty).
 
 ---
 

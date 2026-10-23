@@ -1011,6 +1011,77 @@ paths:
                     type: string
                     format: date-time
 
+  /updates/check:
+    get:
+      tags: [System]
+      summary: Check available product updates against feed
+      description: >
+        Public check of okkey (+ okkey-enterprise when installed) against a configured
+        feed (OKKEY_UPDATE_FEED_PATH and/or OKKEY_UPDATE_FEED_URL). Empty config → no
+        outbound call. SaaS returns empty available. Orthogonal to licensing.
+      responses:
+        "200":
+          description: Update check result
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - deploymentMode
+                  - feedConfigured
+                  - current
+                  - available
+                  - requestId
+                  - time
+                properties:
+                  deploymentMode:
+                    type: string
+                    enum: [self_hosted, saas]
+                  feedConfigured:
+                    type: boolean
+                  current:
+                    type: object
+                    required: [okkey, enterprise]
+                    properties:
+                      okkey:
+                        type: string
+                      enterprise:
+                        type: string
+                        nullable: true
+                  available:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, from, to, notes, packageUrl, digest]
+                      properties:
+                        id:
+                          type: string
+                          enum: [okkey, okkey-enterprise]
+                        from:
+                          type: string
+                        to:
+                          type: string
+                        notes:
+                          type: string
+                          nullable: true
+                        packageUrl:
+                          type: string
+                          nullable: true
+                        digest:
+                          type: string
+                          nullable: true
+                  requestId:
+                    type: string
+                  time:
+                    type: string
+                    format: date-time
+        "502":
+          description: Feed configured but unreachable / invalid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+
   /auth/email/start:
     post:
       tags: [Auth]
