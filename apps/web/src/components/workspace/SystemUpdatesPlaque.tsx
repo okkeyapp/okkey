@@ -100,29 +100,33 @@ export default function SystemUpdatesPlaque({
       data-testid="sidebar-updates-plaque"
       onClick={onClick}
       className={cn(
-        "flex w-full flex-col gap-0.5 rounded-lg px-2 py-2 text-left transition-[background-color,box-shadow]",
+        "flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left transition-[background-color,box-shadow]",
         // Default = user-button hover surface; hover = darker.
         "bg-[rgba(0,0,0,0.05)] hover:bg-[rgba(0,0,0,0.1)] dark:bg-[rgba(255,255,255,0.08)] dark:hover:bg-[rgba(255,255,255,0.14)]",
         plaqueFocusRingClassName,
         className,
       )}
     >
-      <span
-        className="truncate text-xs leading-4 text-foreground"
-        data-testid="sidebar-instance-version-label"
-      >
-        {versionLabel}
-      </span>
-      <span
-        className="inline-flex max-w-full items-center gap-1 truncate text-xs font-medium leading-4 text-muted-foreground"
-        data-testid={updateAvailable ? "sidebar-update-notice" : "sidebar-update-check"}
-      >
+      <span className="shrink-0 text-muted-foreground" aria-hidden>
         {updateAvailable ? (
           <UpdateInfoTriangleIcon className="text-muted-foreground" />
         ) : (
           <RefreshCircularIcon className="text-muted-foreground" />
         )}
-        <span className="truncate">{secondary}</span>
+      </span>
+      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <span
+          className="truncate text-xs leading-4 text-foreground"
+          data-testid="sidebar-instance-version-label"
+        >
+          {versionLabel}
+        </span>
+        <span
+          className="truncate text-xs font-medium leading-4 text-muted-foreground"
+          data-testid={updateAvailable ? "sidebar-update-notice" : "sidebar-update-check"}
+        >
+          {secondary}
+        </span>
       </span>
     </button>
   );
