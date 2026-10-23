@@ -56,6 +56,7 @@ import { SectionReauthProvider, useSectionReauth } from "../auth/SectionReauthCo
 import WorkspaceErrorState from "../pages/workspace/WorkspaceErrorState";
 import CreateWorkspacePopup from "../pages/workspaces/CreateWorkspacePopup";
 import { createWorkspaceRequest, toastWorkspaceCreated } from "../pages/workspaces/createWorkspaceFlow";
+import SystemUpdatesPopup from "../components/workspace/SystemUpdatesPopup";
 import NewItemPopup from "../components/items/NewItemPopup";
 import EditItemPopup from "../components/items/EditItemPopup";
 import PersonalDataBootstrapController from "../components/items/PersonalDataBootstrapController";
@@ -203,15 +204,26 @@ export default function WorkspaceRoutesLayout() {
   const instanceVersion = useInstanceVersion();
   const updateCheck = useUpdateCheck();
   const updateFromToSummary = updateCheck ? formatAvailableUpdatesSummary(updateCheck) : null;
+  const [updatesPopupOpen, setUpdatesPopupOpen] = useState(false);
   const footerVersionNode = instanceVersion ? (
-    <span data-testid="sidebar-instance-version-label">
-      {formatInstanceVersionLabel(instanceVersion, t)}
+    <div className="flex flex-col gap-1" data-testid="sidebar-instance-version-label">
+      <span>{formatInstanceVersionLabel(instanceVersion, t)}</span>
       {updateFromToSummary ? (
-        <span className="sr-only" data-testid="sidebar-update-from-to">
-          {updateFromToSummary}
-        </span>
+        <>
+          <span className="sr-only" data-testid="sidebar-update-from-to">
+            {updateFromToSummary}
+          </span>
+          <button
+            type="button"
+            data-testid="sidebar-update-notice"
+            className="w-fit max-w-full truncate text-left text-xs font-medium leading-4 text-primary underline-offset-2 hover:underline"
+            onClick={() => setUpdatesPopupOpen(true)}
+          >
+            {t("web.updates.notice")}
+          </button>
+        </>
       ) : null}
-    </span>
+    </div>
   ) : null;
   const { userId, profile, logout, passwordShareC, vaultKey, vaultUnlocked } = useAuthVault();
   const core = useAuthenticatedCoreClient();
@@ -833,6 +845,18 @@ export default function WorkspaceRoutesLayout() {
 
   return (
     <SectionReauthProvider>
+      {updateCheck && updateFromToSummary ? (
+        <SystemUpdatesPopup
+          open={updatesPopupOpen}
+          info={updateCheck}
+          t={t}
+          onClose={() => setUpdatesPopupOpen(false)}
+          onUpdate={() => {
+            // Apply flow lands in u5; shell closes for now.
+            setUpdatesPopupOpen(false);
+          }}
+        />
+      ) : null}
       <CreateWorkspacePopup
         open={createWorkspaceOpen}
         submitting={createWorkspaceSubmitting}
