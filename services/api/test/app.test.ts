@@ -162,6 +162,19 @@ test("GET /updates/check returns from→to from mock feed path", async () => {
   }
 });
 
+test("POST /updates/apply returns 501 until update agent exists", async () => {
+  const { res } = await dispatch("POST", "/updates/apply");
+  assert.equal(res.statusCode, 501);
+  const payload = JSON.parse(res.body) as {
+    error: string;
+    applied: boolean;
+    deploymentMode: string;
+  };
+  assert.equal(payload.error, "UPDATE_APPLY_UNAVAILABLE");
+  assert.equal(payload.applied, false);
+  assert.equal(payload.deploymentMode, "self_hosted");
+});
+
 test("unknown route returns 404", async () => {
   const { res } = await dispatch("GET", "/missing");
   assert.equal(res.statusCode, 404);

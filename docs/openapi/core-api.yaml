@@ -1082,6 +1082,62 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorBody"
 
+  /updates/apply:
+    post:
+      tags: [System]
+      summary: Apply available product updates (self-host)
+      description: >
+        Requests apply of okkey (+ okkey-enterprise) updates. The API does not use
+        docker.sock. Until a signed update agent is configured, returns 501
+        UPDATE_APPLY_UNAVAILABLE (applied=false). SaaS → 404. Orthogonal to licensing.
+      responses:
+        "501":
+          description: Update agent / signature path not available
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - error
+                  - message
+                  - applied
+                  - deploymentMode
+                  - current
+                  - requestId
+                  - time
+                properties:
+                  error:
+                    type: string
+                    enum: [UPDATE_APPLY_UNAVAILABLE]
+                  message:
+                    type: string
+                  applied:
+                    type: boolean
+                    enum: [false]
+                  deploymentMode:
+                    type: string
+                    enum: [self_hosted]
+                  current:
+                    type: object
+                    required: [okkey, enterprise]
+                    properties:
+                      okkey:
+                        type: string
+                      enterprise:
+                        type: string
+                        nullable: true
+                  requestId:
+                    type: string
+                  time:
+                    type: string
+                    format: date-time
+        "404":
+          description: Not available on SaaS
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+
   /auth/email/start:
     post:
       tags: [Auth]

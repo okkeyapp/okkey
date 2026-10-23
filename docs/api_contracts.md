@@ -122,6 +122,22 @@ Example `200` when an update is available:
 
 On feed load failure with a configured source: `502` + `error: "UPDATE_FEED_UNAVAILABLE"` (instance stays on current version; `available` empty).
 
+### `POST /updates/apply`
+
+Self-host only. Requests package apply for available updates. The API process **never** mounts docker.sock and does **not** apply unsigned packages. Until a separate signed update agent is wired, the route returns `501` + `error: "UPDATE_APPLY_UNAVAILABLE"` with `applied: false` (instance unchanged). SaaS → `404`. Orthogonal to licensing.
+
+```json
+{
+  "error": "UPDATE_APPLY_UNAVAILABLE",
+  "message": "Update agent is not configured. …",
+  "applied": false,
+  "deploymentMode": "self_hosted",
+  "current": { "okkey": "1.0.0", "enterprise": null },
+  "requestId": "req_01HZZZZ",
+  "time": "2026-10-23T16:00:00.000Z"
+}
+```
+
 ---
 
 ## Auth (email challenge)

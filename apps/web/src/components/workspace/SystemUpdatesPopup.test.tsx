@@ -1,8 +1,14 @@
-import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { UpdateCheckInfo } from "../../workspace/useUpdateCheck";
 import SystemUpdatesPopup from "./SystemUpdatesPopup";
+
+const applySystemUpdate = vi.hoisted(() => vi.fn());
+
+vi.mock("../../workspace/applySystemUpdate", () => ({
+  applySystemUpdate: (...args: unknown[]) => applySystemUpdate(...args),
+}));
 
 const info: UpdateCheckInfo = {
   deploymentMode: "self_hosted",
@@ -15,10 +21,13 @@ const info: UpdateCheckInfo = {
 };
 
 describe("SystemUpdatesPopup", () => {
-  it("renders from→to rows and wires Ignore / Update", () => {
+  beforeEach(() => {
+    applySystemUpdate.mockReset();
+  });
+
+  it("renders from→to rows and wires Ignore", () => {
     const onClose = vi.fn();
     const onIgnore = vi.fn();
-    const onUpdate = vi.fn();
     render(
       <SystemUpdatesPopup
         open
@@ -31,7 +40,6 @@ describe("SystemUpdatesPopup", () => {
         }}
         onClose={onClose}
         onIgnore={onIgnore}
-        onUpdate={onUpdate}
       />,
     );
 
@@ -45,9 +53,31 @@ describe("SystemUpdatesPopup", () => {
     fireEvent.click(screen.getByTestId("system-updates-ignore"));
     expect(onIgnore).toHaveBeenCalledTimes(1);
     expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("shows apply error when agent returns UPDATE_APPLY_UNAVAILABLE", async () => {
+    applySystemUpdate.mockResolvedValue({
+      ok: false,
+      error: "UPDATE_APPLY_UNAVAILABLE",
+      message: "agent missing",
+    });
+    render(
+      <SystemUpdatesPopup
+        open
+        info={info}
+        t={(key) => key}
+        onClose={vi.fn()}
+        onIgnore={vi.fn()}
+      />,
+    );
 
     fireEvent.click(screen.getByTestId("system-updates-update"));
-    expect(onUpdate).toHaveBeenCalledTimes(1);
+    await waitFor(() => {
+      expect(screen.getByTestId("system-updates-apply-error")).toHaveTextContent(
+        "web.updatesPopup.applyUnavailable",
+      );
+    });
+    expect(applySystemUpdate).toHaveBeenCalledTimes(1);
   });
 
   it("renders nothing when closed", () => {
@@ -58,7 +88,6 @@ describe("SystemUpdatesPopup", () => {
         t={(key) => key}
         onClose={vi.fn()}
         onIgnore={vi.fn()}
-        onUpdate={vi.fn()}
       />,
     );
     expect(container).toBeEmptyDOMElement();

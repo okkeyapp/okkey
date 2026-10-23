@@ -869,10 +869,6 @@ export default function WorkspaceRoutesLayout() {
             setUpdatesDismissed(true);
             setUpdatesPopupOpen(false);
           }}
-          onUpdate={() => {
-            // Apply flow lands in u5; shell closes for now.
-            setUpdatesPopupOpen(false);
-          }}
         />
       ) : null}
       <CreateWorkspacePopup
