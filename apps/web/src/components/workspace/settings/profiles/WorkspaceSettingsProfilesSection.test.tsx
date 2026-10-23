@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import type { ComponentType } from "react";
+import type { ComponentType, ReactNode } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -173,8 +173,19 @@ describe("WorkspaceSettingsProfilesSection", () => {
   });
 
   it("mounts enterprise section read-only with upsell on FREE when module is loaded", async () => {
-    function EnterpriseStub({ readOnly }: { readOnly?: boolean }) {
-      return <p>{readOnly ? "Enterprise profiles read-only" : "Enterprise profiles editable"}</p>;
+    function EnterpriseStub({
+      readOnly,
+      emptyFallback,
+    }: {
+      readOnly?: boolean;
+      emptyFallback?: ReactNode;
+    }) {
+      return (
+        <>
+          <p>{readOnly ? "Enterprise profiles read-only" : "Enterprise profiles editable"}</p>
+          {readOnly ? emptyFallback : null}
+        </>
+      );
     }
 
     enterpriseModuleMock.EnterpriseProfilesSection = EnterpriseStub as ComponentType<unknown>;
@@ -189,8 +200,19 @@ describe("WorkspaceSettingsProfilesSection", () => {
   });
 
   it("mounts enterprise section read-only when plan override forbids customWorkspaceProfiles", async () => {
-    function EnterpriseStub({ readOnly }: { readOnly?: boolean }) {
-      return <p>{readOnly ? "Enterprise profiles read-only" : "Enterprise profiles editable"}</p>;
+    function EnterpriseStub({
+      readOnly,
+      emptyFallback,
+    }: {
+      readOnly?: boolean;
+      emptyFallback?: ReactNode;
+    }) {
+      return (
+        <>
+          <p>{readOnly ? "Enterprise profiles read-only" : "Enterprise profiles editable"}</p>
+          {readOnly ? emptyFallback : null}
+        </>
+      );
     }
 
     enterpriseModuleMock.EnterpriseProfilesSection = EnterpriseStub as ComponentType<unknown>;

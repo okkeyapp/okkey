@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import type { ComponentType } from "react";
+import type { ComponentType, ReactNode } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { PlanTier, WorkspaceResourcePermissionDto, WorkspaceRoleListItemDto } from "@okkey/types";
@@ -189,8 +189,19 @@ describe("WorkspaceSettingsRolesSection", () => {
   });
 
   it("mounts enterprise section read-only with upsell on FREE when module is loaded", () => {
-    function EnterpriseStub({ readOnly }: { readOnly?: boolean }) {
-      return <p>{readOnly ? "Enterprise roles read-only" : "Enterprise roles editable"}</p>;
+    function EnterpriseStub({
+      readOnly,
+      emptyFallback,
+    }: {
+      readOnly?: boolean;
+      emptyFallback?: ReactNode;
+    }) {
+      return (
+        <>
+          <p>{readOnly ? "Enterprise roles read-only" : "Enterprise roles editable"}</p>
+          {readOnly ? emptyFallback : null}
+        </>
+      );
     }
 
     enterpriseModuleMock.EnterpriseRolesSection = EnterpriseStub as ComponentType<unknown>;
@@ -202,8 +213,19 @@ describe("WorkspaceSettingsRolesSection", () => {
   });
 
   it("mounts enterprise section read-only when plan override forbids customWorkspaceRoles", () => {
-    function EnterpriseStub({ readOnly }: { readOnly?: boolean }) {
-      return <p>{readOnly ? "Enterprise roles read-only" : "Enterprise roles editable"}</p>;
+    function EnterpriseStub({
+      readOnly,
+      emptyFallback,
+    }: {
+      readOnly?: boolean;
+      emptyFallback?: ReactNode;
+    }) {
+      return (
+        <>
+          <p>{readOnly ? "Enterprise roles read-only" : "Enterprise roles editable"}</p>
+          {readOnly ? emptyFallback : null}
+        </>
+      );
     }
 
     enterpriseModuleMock.EnterpriseRolesSection = EnterpriseStub as ComponentType<unknown>;
