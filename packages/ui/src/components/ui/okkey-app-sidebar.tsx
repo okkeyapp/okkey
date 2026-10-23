@@ -1093,8 +1093,10 @@ export type OkkeyAppSidebarProps = {
   /** When set, footer Documentation / Help use these strings (e.g. i18n); otherwise English gallery labels. */
   footerPlainLinkLabels?: { documentation: string; help: string };
   /**
-   * Optional build/version line above the account footer (host supplies i18n + fetch).
-   * Shown when the sidebar is expanded (or mobile drawer open); omitted when collapsed.
+   * Optional build/version line in {@link SidebarFooter} above the account row
+   * (host supplies i18n + fetch). Shown when the sidebar is expanded (or mobile
+   * drawer open); omitted when collapsed. Kept outside {@link SidebarContent}
+   * scroll so long folder trees cannot clip it.
    */
   footerVersion?: React.ReactNode;
   /**
@@ -1519,7 +1521,8 @@ function OkkeyAppSidebarInner({
       </SidebarHeader>
 
       <SidebarContent className="flex min-h-0 flex-1 flex-col">
-        <ScrollArea className="min-h-0 min-w-0 flex-1">
+        {/* h-0 + flex-1: force Radix ScrollArea to take remaining height instead of growing with content */}
+        <ScrollArea className="h-0 min-h-0 min-w-0 flex-1">
           <div className="flex flex-col gap-6 p-2">
             {!showExpanded ? (
               <SidebarMenu>
@@ -1671,21 +1674,18 @@ function OkkeyAppSidebarInner({
               <OkkeySidebarPlainLinksMenu items={footerPlainItems} />
             )
           ) : null}
-          {showExpanded && footerVersion ? (
-            <div
-              data-testid="sidebar-instance-version"
-              className={cn(
-                "px-2 text-xs leading-4 text-muted-foreground",
-                showFooterPlain ? "pt-2" : "pt-0",
-              )}
-            >
-              {footerVersion}
-            </div>
-          ) : null}
         </div>
       </SidebarContent>
 
       <SidebarFooter>
+        {showExpanded && footerVersion ? (
+          <div
+            data-testid="sidebar-instance-version"
+            className="px-2 pb-1 text-xs leading-4 text-muted-foreground"
+          >
+            {footerVersion}
+          </div>
+        ) : null}
         <DropdownMenu open={profileMenuOpen} onOpenChange={setProfileMenuOpen}>
           {showExpanded ? (
             <DropdownMenuTrigger asChild>
