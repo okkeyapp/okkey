@@ -10,13 +10,23 @@ beforeEach(async () => {
 });
 
 describe("web plan entitlements (self_hosted)", () => {
-  it("unlocks paid features from modules active, ignoring plan_tier", async () => {
+  it("honors FREE plan_tier when modules are active (read-only paid features)", async () => {
     vi.stubEnv("VITE_DEPLOYMENT_MODE", "self_hosted");
     vi.stubEnv("VITE_ENTERPRISE_MODULES_ACTIVE", "true");
     const { workspaceHasPlanFeature, webDisplayPlanTier } = await import("./planEntitlements");
-    expect(workspaceHasPlanFeature({ planTier: "FREE" }, "sharedVaults")).toBe(true);
-    expect(workspaceHasPlanFeature({ planTier: "FREE" }, "customWorkspaceRoles")).toBe(true);
-    expect(webDisplayPlanTier({ planTier: "FREE" })).toBe("ENTERPRISE");
+    expect(workspaceHasPlanFeature({ planTier: "FREE" }, "sharedVaults")).toBe(false);
+    expect(workspaceHasPlanFeature({ planTier: "FREE" }, "customWorkspaceRoles")).toBe(false);
+    expect(workspaceHasPlanFeature({ planTier: "FREE" }, "filesInItems")).toBe(true);
+    expect(webDisplayPlanTier({ planTier: "FREE" })).toBe("FREE");
+  });
+
+  it("unlocks paid features when modules are active and plan_tier is ENTERPRISE", async () => {
+    vi.stubEnv("VITE_DEPLOYMENT_MODE", "self_hosted");
+    vi.stubEnv("VITE_ENTERPRISE_MODULES_ACTIVE", "true");
+    const { workspaceHasPlanFeature, webDisplayPlanTier } = await import("./planEntitlements");
+    expect(workspaceHasPlanFeature({ planTier: "ENTERPRISE" }, "sharedVaults")).toBe(true);
+    expect(workspaceHasPlanFeature({ planTier: "ENTERPRISE" }, "customWorkspaceRoles")).toBe(true);
+    expect(webDisplayPlanTier({ planTier: "ENTERPRISE" })).toBe("ENTERPRISE");
   });
 
   it("downgrades when API reports enterpriseModulesActive=false", async () => {
@@ -29,7 +39,9 @@ describe("web plan entitlements (self_hosted)", () => {
     } = await import("./planEntitlements");
     setBackendEnterpriseModulesActive(false);
     expect(workspaceHasPlanFeature({ planTier: "FREE" }, "sharedVaults")).toBe(false);
+    expect(workspaceHasPlanFeature({ planTier: "ENTERPRISE" }, "sharedVaults")).toBe(false);
     expect(webDisplayPlanTier({ planTier: "FREE" })).toBe("FREE");
+    expect(webDisplayPlanTier({ planTier: "ENTERPRISE" })).toBe("FREE");
   });
 });
 

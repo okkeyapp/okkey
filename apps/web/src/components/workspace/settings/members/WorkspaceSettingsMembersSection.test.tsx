@@ -292,13 +292,7 @@ describe("WorkspaceSettingsMembersSection", () => {
   });
 
   it("mounts enterprise members read-only with upsell on FREE when module is loaded", async () => {
-    enterpriseMembersMock.AdditionalMembersSection = ({
-      readOnly,
-      emptyFallback,
-    }: {
-      readOnly?: boolean;
-      emptyFallback?: React.ReactNode;
-    }) => (
+    enterpriseMembersMock.AdditionalMembersSection = ({ readOnly, emptyFallback }) => (
       <div data-testid="enterprise-members">
         {readOnly ? "read-only" : "editable"}
         {readOnly ? emptyFallback : null}
@@ -362,13 +356,7 @@ describe("WorkspaceSettingsMembersSection", () => {
   });
 
   it("mounts enterprise members read-only when plan override forbids additionalWorkspaceMembers", async () => {
-    enterpriseMembersMock.AdditionalMembersSection = ({
-      readOnly,
-      emptyFallback,
-    }: {
-      readOnly?: boolean;
-      emptyFallback?: React.ReactNode;
-    }) => (
+    enterpriseMembersMock.AdditionalMembersSection = ({ readOnly, emptyFallback }) => (
       <div data-testid="enterprise-members">
         {readOnly ? "read-only" : "editable"}
         {readOnly ? emptyFallback : null}

@@ -41,16 +41,15 @@ const SELF_HOSTED_SALES_REQUEST_TIER = "ENTERPRISE" as const;
 
 type SelfHostedFreePlanSectionProps = {
   workspaceId: string;
-  /** Kept for PlanSection prop parity; Core self-host UI ignores DB `plan_tier`. */
+  /** Display tier from entitlements (FREE on self-host without paid license). */
   planTier: string | null | undefined;
   t: (messageKey: string, values?: WebMessageValues) => string;
   canRequest: boolean;
 };
 
 /**
- * Public Core plan page when enterprise modules are not loaded: FREE notice + sales request.
- * Self-host display is driven by modules (this section mounts only when modules are off),
- * not by workspace `plan_tier`.
+ * Self-hosted FREE plan page: notice + sales request.
+ * Mounts when modules are off, or when modules are on but display tier is still FREE.
  */
 export default function SelfHostedFreePlanSection({
   workspaceId,
