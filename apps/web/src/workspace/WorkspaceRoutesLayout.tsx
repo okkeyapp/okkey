@@ -218,26 +218,27 @@ export default function WorkspaceRoutesLayout() {
     setUpdatesDismissed(isUpdateNoticeDismissed(updateCheck));
   }, [updateCheck, updateFromToSummary]);
   const showUpdateNotice = Boolean(updateFromToSummary) && !updatesDismissed;
-  const footerVersionNode = instanceVersion ? (
-    <div className="flex flex-col gap-1" data-testid="sidebar-instance-version-label">
-      <span>{formatInstanceVersionLabel(instanceVersion, t)}</span>
-      {showUpdateNotice ? (
-        <>
-          <span className="sr-only" data-testid="sidebar-update-from-to">
-            {updateFromToSummary}
-          </span>
-          <button
-            type="button"
-            data-testid="sidebar-update-notice"
-            className="w-fit max-w-full truncate text-left text-xs font-medium leading-4 text-primary underline-offset-2 hover:underline"
-            onClick={() => setUpdatesPopupOpen(true)}
-          >
-            {t("web.updates.notice")}
-          </button>
-        </>
-      ) : null}
-    </div>
-  ) : null;
+  const footerVersionNode =
+    instanceVersion?.deploymentMode === "self_hosted" ? (
+      <div className="flex flex-col gap-1" data-testid="sidebar-instance-version-label">
+        <span>{formatInstanceVersionLabel(instanceVersion, t)}</span>
+        {showUpdateNotice ? (
+          <>
+            <span className="sr-only" data-testid="sidebar-update-from-to">
+              {updateFromToSummary}
+            </span>
+            <button
+              type="button"
+              data-testid="sidebar-update-notice"
+              className="w-fit max-w-full truncate text-left text-xs font-medium leading-4 text-primary underline-offset-2 hover:underline"
+              onClick={() => setUpdatesPopupOpen(true)}
+            >
+              {t("web.updates.notice")}
+            </button>
+          </>
+        ) : null}
+      </div>
+    ) : null;
   const { userId, profile, logout, passwordShareC, vaultKey, vaultUnlocked } = useAuthVault();
   const core = useAuthenticatedCoreClient();
   const [searchParams, setSearchParams] = useSearchParams();

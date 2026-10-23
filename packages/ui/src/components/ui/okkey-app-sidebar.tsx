@@ -1809,6 +1809,7 @@ export function OkkeyAppSidebar({
   folderEmptyLabel,
   accountMenu,
   footerPlainLinkLabels,
+  footerVersion,
   showFooterPlainLinks,
   vaultHeaderPlusAriaLabel,
   folderHeaderPlusAriaLabel,
@@ -1882,6 +1883,7 @@ export function OkkeyAppSidebar({
                   folderEmptyLabel={folderEmptyLabel}
                   accountMenu={accountMenu}
                   footerPlainLinkLabels={footerPlainLinkLabels}
+                  footerVersion={footerVersion}
                   showFooterPlainLinks={showFooterPlainLinks}
                   vaultHeaderPlusAriaLabel={vaultHeaderPlusAriaLabel}
                   folderHeaderPlusAriaLabel={folderHeaderPlusAriaLabel}
@@ -1924,6 +1926,7 @@ export function OkkeyAppSidebar({
                     folderEmptyLabel={folderEmptyLabel}
                     accountMenu={accountMenu}
                     footerPlainLinkLabels={footerPlainLinkLabels}
+                    footerVersion={footerVersion}
                     showFooterPlainLinks={showFooterPlainLinks}
                     vaultHeaderPlusAriaLabel={vaultHeaderPlusAriaLabel}
                     folderHeaderPlusAriaLabel={folderHeaderPlusAriaLabel}

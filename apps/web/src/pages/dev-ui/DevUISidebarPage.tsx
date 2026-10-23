@@ -41,7 +41,21 @@ export default function DevUISidebarPage() {
         <div className="relative isolate overflow-x-auto rounded-lg">
           <BodyGradient />
           <div className="relative flex h-[min(640px,75vh)] min-h-[360px] w-max min-w-full">
-            <OkkeyAppSidebar className="h-full min-h-0">
+            <OkkeyAppSidebar
+              className="h-full min-h-0"
+              footerVersion={
+                <div className="flex flex-col gap-1" data-testid="sidebar-instance-version-label">
+                  <span>Version 1.0.0 · Enterprise 1.0.0-beta.1</span>
+                  <button
+                    type="button"
+                    data-testid="sidebar-update-notice"
+                    className="w-fit max-w-full truncate text-left text-xs font-medium leading-4 text-primary underline-offset-2 hover:underline"
+                  >
+                    Update available
+                  </button>
+                </div>
+              }
+            >
               <OkkeyAppSidebarToolbar />
               <div className="mt-2 mr-2 mb-2 flex min-h-0 flex-1 items-center justify-center rounded-xl bg-background px-6 text-sm text-muted-foreground shadow-[0_1px_3px_rgba(0,0,0,0.1)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.35)]">
                 Main content
