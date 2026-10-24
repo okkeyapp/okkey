@@ -43,6 +43,81 @@ need_cmd() {
   command -v "$1" >/dev/null 2>&1 || die "missing required command: $1"
 }
 
+# Cosign keyless OIDC identity for Core publish workflow
+# (.github/workflows/publish-images.yml on okkeyapp/okkey).
+OKKEY_COSIGN_CERTIFICATE_IDENTITY_REGEXP="${OKKEY_COSIGN_CERTIFICATE_IDENTITY_REGEXP:-https://github.com/okkeyapp/okkey/\.github/workflows/publish-images\.yml@refs/(heads/dev|tags/v.+)}"
+OKKEY_COSIGN_CERTIFICATE_OIDC_ISSUER="${OKKEY_COSIGN_CERTIFICATE_OIDC_ISSUER:-https://token.actions.githubusercontent.com}"
+
+# Resolve image ref used by compose for a service (env override → default GHCR).
+compose_image_ref() {
+  local env_key="$1"
+  local default_image="$2"
+  local tag="$3"
+  local image
+  image="$(env_file_value "${env_key}")"
+  image="${image:-${default_image}}"
+  printf '%s:%s\n' "${image}" "${tag}"
+}
+
+# Resolve a pulled image to a registry digest ref (name@sha256:…).
+image_digest_ref() {
+  local ref="$1"
+  local digest_line digest
+  digest_line="$(docker image inspect --format '{{index .RepoDigests 0}}' "${ref}" 2>/dev/null || true)"
+  if [[ -z "${digest_line}" || "${digest_line}" == "<no value>" ]]; then
+    die "cannot resolve digest for ${ref} after pull (RepoDigests empty).
+hint: re-pull from GHCR, or set OKKEY_SKIP_COSIGN_VERIFY=1 only for local/unsigned images."
+  fi
+  # RepoDigests is already name@sha256:…
+  if [[ "${digest_line}" == *@sha256:* ]]; then
+    printf '%s\n' "${digest_line}"
+    return 0
+  fi
+  digest="$(docker image inspect --format '{{.Id}}' "${ref}" 2>/dev/null || true)"
+  die "unexpected RepoDigests format for ${ref}: ${digest_line} (id=${digest})"
+}
+
+# Verify cosign keyless signatures for api/web/worker before compose up.
+# Skip only with an explicit flag (default: verify on). Local/preloaded
+# installs that skip pull also skip verify unless OKKEY_FORCE_COSIGN_VERIFY=1.
+verify_pulled_image_signatures() {
+  local tag="$1"
+  local skip_pull="${2:-0}"
+
+  if [[ "${OKKEY_SKIP_COSIGN_VERIFY:-}" == "1" ]]; then
+    log "==> WARNING: skipping image signature verify (OKKEY_SKIP_COSIGN_VERIFY=1)"
+    return 0
+  fi
+  if [[ "${skip_pull}" == "1" && "${OKKEY_FORCE_COSIGN_VERIFY:-}" != "1" ]]; then
+    log "==> WARNING: skipping image signature verify (OKKEY_SKIP_PULL=1; set OKKEY_FORCE_COSIGN_VERIFY=1 to require cosign)"
+    return 0
+  fi
+
+  need_cmd cosign
+  need_cmd docker
+
+  local refs=()
+  refs+=("$(compose_image_ref OKKEY_API_IMAGE ghcr.io/okkeyapp/api "${tag}")")
+  refs+=("$(compose_image_ref OKKEY_WORKER_IMAGE ghcr.io/okkeyapp/worker "${tag}")")
+  refs+=("$(compose_image_ref OKKEY_WEB_IMAGE ghcr.io/okkeyapp/web "${tag}")")
+
+  local ref digest_ref
+  for ref in "${refs[@]}"; do
+    digest_ref="$(image_digest_ref "${ref}")"
+    log "==> Verifying cosign signature: ${digest_ref}"
+    if ! cosign verify \
+      --certificate-identity-regexp "${OKKEY_COSIGN_CERTIFICATE_IDENTITY_REGEXP}" \
+      --certificate-oidc-issuer "${OKKEY_COSIGN_CERTIFICATE_OIDC_ISSUER}" \
+      "${digest_ref}"; then
+      die "cosign verify failed for ${digest_ref}.
+hint: Core images must be signed keyless by .github/workflows/publish-images.yml.
+  Install cosign (https://docs.sigstore.dev/cosign/system_config/installation/).
+  Emergency bypass only: OKKEY_SKIP_COSIGN_VERIFY=1 (prints a warning; not for prod)."
+    fi
+  done
+  log "==> Image signatures OK (api, worker, web)"
+}
+
 gen_secret() {
   if command -v openssl >/dev/null 2>&1; then
     openssl rand -hex 32
@@ -321,7 +396,9 @@ image_tag="$(env_file_value OKKEY_IMAGE_TAG)"
 image_tag="${image_tag:-dev}"
 log "==> Pulling images and starting stack (compose project=$(compose_project_name), OKKEY_IMAGE_TAG=${image_tag})"
 # OKKEY_SKIP_PULL=1: use images already present locally (e.g. :local / pre-loaded tags).
+skip_pull=0
 if [[ "${OKKEY_SKIP_PULL:-}" == "1" ]]; then
+  skip_pull=1
   log "==> Skipping pull (OKKEY_SKIP_PULL=1)"
 else
   if ! run_compose .env pull; then
@@ -332,6 +409,8 @@ hint: the tag must exist in GHCR (ghcr.io/okkeyapp/{api,web,worker}).
   Or set OKKEY_SKIP_PULL=1 with local images."
   fi
 fi
+# Signature check before compose up — unsigned / mismatched digest stops install.
+verify_pulled_image_signatures "${image_tag}" "${skip_pull}"
 run_compose .env up -d
 wait_for_api_healthy
 
