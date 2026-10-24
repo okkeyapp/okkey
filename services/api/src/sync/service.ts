@@ -92,6 +92,7 @@ export interface SyncServiceDeps {
     | "append"
     | "deleteByVaultAndReferencedItemId"
     | "hasItemCreateEvent"
+    | "findByIdempotencyKey"
   >;
   softDeletes?: Pick<VaultItemSoftDeletesRepository, "upsert" | "remove">;
   users?: Pick<UsersRepository, "findById">;
@@ -390,6 +391,20 @@ export class SyncService {
         referencedItemId,
       );
       if (alreadyCreated) {
+        // Same-key retries must keep returning the original create (append short-circuit).
+        if (input.idempotencyKey) {
+          const existingByKey = await this.events.findByIdempotencyKey(
+            vaultId,
+            input.idempotencyKey,
+          );
+          if (
+            existingByKey &&
+            existingByKey.eventType === "ITEM_CREATE" &&
+            existingByKey.referencedItemId === referencedItemId
+          ) {
+            return mapEventToResponse(existingByKey);
+          }
+        }
         throw new SyncServiceError(
           "SYNC_ITEM_ALREADY_EXISTS",
           409,
