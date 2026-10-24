@@ -12,6 +12,8 @@ import {
   buildFolderUpdateAppendRequest,
   buildItemFolderAssignAppendRequest,
   buildItemFavoriteSetAppendRequest,
+  eventsListHasMore,
+  latestVersionFromEventsPage,
   replayWorkspaceFolderEvents,
   WorkspacePersonalOutboxClient,
   type WorkspaceFolderReplayState,
@@ -254,9 +256,8 @@ export function createWorkspaceFoldersSyncController(input: {
     let decryptAttempts = 0;
     let decryptFailures = 0;
     let eventsFetched = 0;
-    // Mirror vault-items read: keep paging until the server returns an empty page.
-    // (Personal-events currently returns the full remainder in one response, but
-    // looping stays correct if a limit is introduced later.)
+    // Page until the server says the tail is complete (`hasMore: false`).
+    // Avoids the historical always-empty follow-up GET after a full page.
     // eslint-disable-next-line no-constant-condition
     while (true) {
       const page = await input.core.listWorkspacePersonalEvents(input.workspaceId, cursor);
@@ -290,6 +291,9 @@ export function createWorkspaceFoldersSyncController(input: {
         break;
       }
       cursor = lastVersion;
+      if (!eventsListHasMore(page)) {
+        break;
+      }
     }
     // replayWorkspaceFolderEvents swallows per-event decrypt errors. If every
     // ciphertext failed, surface a hard error so hosts do not render a false
@@ -733,11 +737,14 @@ export function createWorkspaceFoldersSyncController(input: {
       if (!page.events.length) {
         break;
       }
-      tip = page.events[page.events.length - 1]?.version ?? tip;
+      tip = latestVersionFromEventsPage(cursor, page.events, page.latestVersion);
       if (tip <= cursor) {
         break;
       }
       cursor = tip;
+      if (!eventsListHasMore(page)) {
+        break;
+      }
     }
     return tip;
   }

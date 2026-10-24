@@ -787,9 +787,16 @@ Allowed `eventType` values (must match exactly):
       "version": 1,
       "createdAt": "2026-01-01T12:00:00.000Z"
     }
-  ]
+  ],
+  "latestVersion": 1,
+  "hasMore": false
 }
 ```
+
+| Field | Notes |
+|--------|------|
+| `latestVersion` | Max `version` in `events`, or `afterVersion` when the page is empty. |
+| `hasMore` | `false` while the API returns the full remainder in one response. Clients must stop paging when `hasMore` is false (do not issue an empty confirmation GET). |
 
 **Errors:**
 
@@ -869,9 +876,13 @@ Per-user workspace personal metadata stream (folders, item→folder assignments)
       "version": 1,
       "createdAt": "2026-01-01T12:00:00.000Z"
     }
-  ]
+  ],
+  "latestVersion": 1,
+  "hasMore": false
 }
 ```
+
+`latestVersion` / `hasMore` have the same meaning as on `GET /vaults/:vaultId/events`.
 
 Allowed `eventType` values: `FOLDER_CREATE`, `FOLDER_UPDATE`, `FOLDER_DELETE`, `ITEM_FOLDER_ASSIGN`.
 

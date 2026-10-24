@@ -34,11 +34,16 @@ export function createWorkspacePersonalEventsListRoute(
       const afterVersionRaw = url.searchParams.get("afterVersion") ?? "0";
       const afterVersion = Number(afterVersionRaw);
       const events = await syncService.listEvents(workspaceId, userId, afterVersion);
+      const latestVersion =
+        events.length > 0 ? (events[events.length - 1]?.version ?? afterVersion) : afterVersion;
       json(ctx.res, 200, {
         workspaceId,
         userId,
         afterVersion,
         events,
+        // Full tail in one response today — clients stop without an empty follow-up GET.
+        latestVersion,
+        hasMore: false,
       });
     } catch (error) {
       handleSyncError(ctx.requestId, ctx.res, error);

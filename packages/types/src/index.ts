@@ -1128,6 +1128,13 @@ export interface SyncEventsListResponseDto {
   vaultId: EntityId;
   afterVersion: number;
   events: SyncEventWireDto[];
+  /** Highest version in this response, or `afterVersion` when `events` is empty. */
+  latestVersion: number;
+  /**
+   * When false, this page is the full remainder after `afterVersion`.
+   * Clients must not issue another GET just to observe an empty page.
+   */
+  hasMore: boolean;
 }
 
 /** Workspace personal metadata event on the wire. */
@@ -1149,6 +1156,13 @@ export interface WorkspacePersonalEventsListResponseDto {
   userId: EntityId;
   afterVersion: number;
   events: WorkspacePersonalEventWireDto[];
+  /** Highest version in this response, or `afterVersion` when `events` is empty. */
+  latestVersion: number;
+  /**
+   * When false, this page is the full remainder after `afterVersion`.
+   * Clients must not issue another GET just to observe an empty page.
+   */
+  hasMore: boolean;
 }
 
 /** `POST /vaults/:vaultId/events` request body. */

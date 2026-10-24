@@ -4,6 +4,7 @@ import type {
   WorkspacePersonalEventsListResponseDto,
 } from "@okkey/types";
 import { generateEntityId } from "@okkey/id";
+import { eventsListHasMore } from "./events-list-page.js";
 import { replayWorkspaceFolderEvents } from "./workspace-folder-replay.js";
 
 export type WorkspacePersonalOutboxEntryStatus = "pending" | "sending" | "failed" | "dead";
@@ -231,6 +232,7 @@ export class WorkspacePersonalOutboxClient {
       const next = page.events[page.events.length - 1]?.version ?? cursor;
       if (next <= cursor) break;
       cursor = next;
+      if (!eventsListHasMore(page)) break;
     }
     return out;
   }
@@ -259,15 +261,20 @@ export class WorkspacePersonalOutboxClient {
     entry.updatedAtMs = this.nowMs();
   }
 
-  async drain(workspaceId?: string): Promise<void> {
+  /**
+   * Drain pending appends. Returns successfully appended wire events in order
+   * so callers can materialize without a follow-up empty list GET.
+   */
+  async drain(workspaceId?: string): Promise<WorkspacePersonalEventWireDto[]> {
     await this.ensureLoaded();
+    const appended: WorkspacePersonalEventWireDto[] = [];
 
     // eslint-disable-next-line no-constant-condition
     while (true) {
       const entry = this.nextSendableEntry(workspaceId);
       if (!entry) {
         await this.flush();
-        return;
+        return appended;
       }
 
       entry.status = "sending";
@@ -275,7 +282,11 @@ export class WorkspacePersonalOutboxClient {
       await this.flush();
 
       try {
-        await this.transport.appendWorkspacePersonalEvent(entry.workspaceId, entry.request);
+        const created = await this.transport.appendWorkspacePersonalEvent(
+          entry.workspaceId,
+          entry.request,
+        );
+        appended.push(created);
         this.entries = this.entries.filter((e) => e.id !== entry.id);
         await this.flush();
         continue;
