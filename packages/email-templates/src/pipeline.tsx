@@ -479,7 +479,9 @@ export async function renderPlanChangeRequest(
     senderEmail: variables.accountEmail,
     replyEmail: variables.contactEmail,
   });
-  const element = <PlanChangeRequestEmail lead={copy.lead} lines={copy.lines} />;
+  const element = (
+    <PlanChangeRequestEmail locale={locale} lead={copy.lead} lines={copy.lines} />
+  );
   const html = renderEmailHtml(element);
   return { subject: copy.subject, html, text: copy.body };
 }

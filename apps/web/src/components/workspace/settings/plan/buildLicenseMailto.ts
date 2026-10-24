@@ -3,11 +3,9 @@ import {
   type LicenseRequestEmailFields,
 } from "@okkey/i18n";
 
-/** Default sales inbox when API does not return `sales_email`. */
-export const DEFAULT_LICENSE_SALES_EMAIL = "get-license@okkey.io";
-
 export type LicenseMailtoFields = LicenseRequestEmailFields & {
-  salesEmail?: string | null;
+  /** Required sales inbox from API `sales_email` (no client-side default). */
+  salesEmail: string;
   /**
    * Locale for subject/body labels (`en` | `ru`).
    * Also written into the Locale field via `fields.locale` when callers set both the same.
@@ -20,8 +18,10 @@ export type LicenseMailtoFields = LicenseRequestEmailFields & {
  * (`buildLicenseRequestEmailCopy`). Used when outbound email is not deliverable.
  */
 export function buildLicenseMailto(fields: LicenseMailtoFields): string {
-  const to =
-    (fields.salesEmail ?? "").trim() || DEFAULT_LICENSE_SALES_EMAIL;
+  const to = fields.salesEmail.trim();
+  if (!to) {
+    throw new Error("sales email is required for mailto");
+  }
   const emailLocale = fields.emailLocale ?? fields.locale;
   const { subject, body } = buildLicenseRequestEmailCopy(emailLocale, {
     workspaceName: fields.workspaceName,

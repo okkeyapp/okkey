@@ -2,10 +2,33 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  PLAN_CHANGE_REQUEST_DAILY_LIMIT,
   PlanChangeRequestService,
   PlanChangeRequestServiceError,
+  planChangeRequestDailyRedisKey,
+  secondsUntilNextUtcMidnight,
 } from "../src/plan-change-request/service.ts";
 import type { DeploymentMode } from "../src/config.ts";
+
+function makeMemoryRedis() {
+  const counts = new Map<string, number>();
+  const expires = new Map<string, number>();
+  return {
+    counts,
+    expires,
+    redis: {
+      incr: async (key: string) => {
+        const next = (counts.get(key) ?? 0) + 1;
+        counts.set(key, next);
+        return next;
+      },
+      expire: async (key: string, seconds: number) => {
+        expires.set(key, seconds);
+        return true;
+      },
+    },
+  };
+}
 
 function makeService(overrides?: {
   planTier?: string;
@@ -17,14 +40,19 @@ function makeService(overrides?: {
   publicAppBaseUrl?: string;
   deploymentMode?: DeploymentMode;
   markSent?: () => Promise<boolean>;
+  redis?: ReturnType<typeof makeMemoryRedis>["redis"];
+  now?: () => Date;
 }) {
   const sent: unknown[] = [];
   let markCalls = 0;
+  const memory = overrides?.redis ? null : makeMemoryRedis();
   const service = new PlanChangeRequestService({
     salesEmail: overrides?.salesEmail ?? "sales@example.com",
     salesEmailDeliverable: overrides?.salesEmailDeliverable,
     deploymentMode: overrides?.deploymentMode ?? "self_hosted",
     publicAppBaseUrl: overrides?.publicAppBaseUrl ?? "https://vault.example",
+    redis: overrides?.redis ?? memory!.redis,
+    now: overrides?.now,
     db: {
       query: async (sql: string) => {
         if (sql.includes("owner_id")) {
@@ -82,7 +110,7 @@ function makeService(overrides?: {
     },
   });
 
-  return { service, sent, getMarkCalls: () => markCalls };
+  return { service, sent, getMarkCalls: () => markCalls, memory };
 }
 
 const baseSubmit = {
@@ -290,4 +318,30 @@ test("PlanChangeRequestService does not mark sent when email fails", async () =>
       error instanceof PlanChangeRequestServiceError && error.code === "EMAIL_SEND_FAILED",
   );
   assert.equal(getMarkCalls(), 0);
+});
+
+test("PlanChangeRequestService allows three sends per UTC day then rate-limits with Retry-After", async () => {
+  const fixedNow = new Date("2026-10-24T12:00:00.000Z");
+  const { service, sent, memory } = makeService({ now: () => fixedNow });
+  assert.ok(memory);
+
+  for (let i = 0; i < PLAN_CHANGE_REQUEST_DAILY_LIMIT; i += 1) {
+    const result = await service.submit(baseSubmit);
+    assert.deepEqual(result, { submitted: true });
+  }
+  assert.equal(sent.length, PLAN_CHANGE_REQUEST_DAILY_LIMIT);
+
+  const key = planChangeRequestDailyRedisKey("ws_1", fixedNow);
+  assert.equal(memory.counts.get(key), PLAN_CHANGE_REQUEST_DAILY_LIMIT);
+  assert.equal(memory.expires.get(key), secondsUntilNextUtcMidnight(fixedNow));
+
+  await assert.rejects(
+    () => service.submit(baseSubmit),
+    (error: unknown) =>
+      error instanceof PlanChangeRequestServiceError &&
+      error.code === "RATE_LIMITED" &&
+      error.status === 429 &&
+      error.details?.retryAfterSeconds === secondsUntilNextUtcMidnight(fixedNow),
+  );
+  assert.equal(sent.length, PLAN_CHANGE_REQUEST_DAILY_LIMIT);
 });

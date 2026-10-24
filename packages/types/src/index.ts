@@ -1277,7 +1277,7 @@ export interface WorkspacePlanChangeRequestStatusDto {
    * open `mailto:` instead of the in-app form.
    */
   sales_email_deliverable: boolean;
-  /** Sales inbox for mailto fallback (`OKKEY_SALES_EMAIL` / default get-license@okkey.io). */
+  /** Sales inbox for mailto fallback (`OKKEY_SALES_EMAIL`; required server setting, no default). */
   sales_email: string;
 }
 
