@@ -18,6 +18,7 @@ const deviceVars = {
   requestIp: "198.51.100.2",
   helpUrl: "https://app.example/items?popup=settings|devices",
   requestedAtIso: "2026-10-16T07:09:00.000Z",
+  expiresAtIso: "2026-10-16T07:19:00.000Z",
 } as const;
 
 const workspaceVars = {
@@ -57,11 +58,21 @@ test("renderEmailTemplate auth_email_code en and ru", async () => {
   assert.match(en.html, /cid:okkey-mark/);
   assert.equal(en.html.includes("data:image"), false);
   assert.match(en.html, /#f1f5f9/i);
-  assert.match(en.html, /no-reply/i);
-  assert.match(
-    en.html,
-    new RegExp(formatEmailMessage("en", "email.common.ignoreIfMistake", {}), "i"),
+  const otpFooterEn = formatEmailMessage("en", "email.auth.signInCode.footer", {});
+  // HTML encodes apostrophes (there's / didn't); assert on plain text + a stable HTML fragment.
+  assert.match(en.html, /sent automatically/i);
+  assert.match(en.html, /safely ignore it/i);
+  assert.equal(
+    en.html.includes(formatEmailMessage("en", "email.common.ignoreIfMistake", {})),
+    false,
+    "OTP must not duplicate the shared ignoreIfMistake line",
   );
+  assert.equal(
+    en.html.includes(formatEmailMessage("en", "email.common.noReply", {})),
+    false,
+    "OTP must not duplicate the shared noReply line",
+  );
+  assert.ok(en.text.includes(otpFooterEn));
   assert.ok(
     formatEmailMessage("en", "email.common.ignoreIfMistake", {}).endsWith("."),
     "EN ignoreIfMistake must end with a period",
@@ -86,7 +97,9 @@ test("renderEmailTemplate auth_email_code en and ru", async () => {
   assert.match(ru.text, /654321/);
   assert.match(ru.html, /654321/);
   assert.equal(ru.html.includes("654 321"), false);
-  assert.match(ru.html, /no-reply/i);
+  const otpFooterRu = formatEmailMessage("ru", "email.auth.signInCode.footer", {});
+  assert.ok(ru.html.includes(otpFooterRu));
+  assert.equal(ru.html.includes(formatEmailMessage("ru", "email.common.ignoreIfMistake", {})), false);
   assert.match(ru.html, /проигнорируйте/i);
   assertNoMustachePlaceholders(ru.text);
   assertNoNulBytes(ru.html);
@@ -110,6 +123,12 @@ test("renderEmailTemplate auth_email_code email_change purpose uses dedicated co
   assert.equal(/sign-in/i.test(en.html), false);
   assert.match(en.html, /146805/);
   assert.equal(en.html.includes("146 805"), false);
+  assert.ok(en.text.includes(formatEmailMessage("en", "email.auth.emailChangeCode.footer", {})));
+  assert.match(en.html, /sent automatically/i);
+  assert.equal(
+    en.html.includes(formatEmailMessage("en", "email.common.ignoreIfMistake", {})),
+    false,
+  );
   assertNoMustachePlaceholders(en.text);
 
   const ru = await renderEmailTemplate("auth_email_code", "ru", {
@@ -134,22 +153,42 @@ test("renderEmailTemplate auth_email_code email_change purpose uses dedicated co
 test("renderEmailTemplate device_approval_request en and ru", async () => {
   const en = await renderEmailTemplate("device_approval_request", "en", deviceVars);
   assert.match(en.subject, /device|approval/i);
-  assert.match(en.text, /Mobile Android - App/);
+  // Single device line (no Device/Platform duplicate).
   assert.match(en.text, /Mobile · App · Android/);
+  assert.equal(en.text.includes("Mobile Android - App"), false);
   assert.match(en.text, /Oct 16, 2026, 7:09 AM UTC/);
-  assert.match(en.html, /Mobile Android - App/);
+  assert.match(en.text, /Oct 16, 2026, 7:19 AM UTC/);
+  assert.match(en.text, /Settings → Devices/);
+  assert.match(en.html, /Mobile · App · Android/);
   assert.match(en.html, /Okkey/);
   assert.match(en.html, /#3B82F6/i);
   assert.match(en.html, /Oct 16, 2026, 7:09 AM UTC/);
+  assert.equal(
+    en.html.includes(formatEmailMessage("en", "email.common.ignoreIfMistake", {})),
+    false,
+    "security mail must omit shared ignoreIfMistake",
+  );
+  assert.match(en.html, /no-reply/i);
   assertNoMustachePlaceholders(en.text);
 
   const ru = await renderEmailTemplate("device_approval_request", "ru", deviceVars);
   assert.equal(ru.subject, formatEmailMessage("ru", "email.device.approval.subject", {}));
-  assert.match(ru.text, /Mobile Android - App/);
   assert.match(ru.text, /Mobile · App · Android/);
   assert.match(ru.text, /07:09 UTC/);
+  assert.match(ru.text, /Настройки → Устройства/);
   assert.equal(ru.text.includes("UTC UTC"), false);
+  assert.equal(
+    ru.html.includes(formatEmailMessage("ru", "email.common.ignoreIfMistake", {})),
+    false,
+  );
   assertNoMustachePlaceholders(ru.text);
+
+  const noGeo = await renderEmailTemplate("device_approval_request", "en", {
+    ...deviceVars,
+    city: null,
+    country: null,
+  });
+  assert.match(noGeo.text, /Location: not determined/);
 });
 
 test("renderEmailTemplate workspace_invite en and ru", async () => {
@@ -207,7 +246,11 @@ test("renderEmailTemplate two_factor_disabled en and ru", async () => {
   assert.equal(ru.text.includes("UTC UTC"), false);
   assert.match(ru.html, /popup=settings\|twoFactor/);
   assert.match(ru.text, /popup=settings\|twoFactor/);
-  assert.ok(ru.html.includes(formatEmailMessage("ru", "email.common.ignoreIfMistake", {})));
+  assert.equal(
+    ru.html.includes(formatEmailMessage("ru", "email.common.ignoreIfMistake", {})),
+    false,
+  );
+  assert.match(ru.html, /администратору/);
   assertNoMustachePlaceholders(ru.text);
 });
 
@@ -288,10 +331,11 @@ test("renderEmailTemplate account_email_changed en and ru", async () => {
   assert.match(en.text, /Jan 1, 2026, 12:00 PM UTC/);
   assert.equal(en.text.includes("UTC UTC"), false);
   assert.match(en.html, /no-reply/i);
-  assert.match(
-    en.html,
-    new RegExp(formatEmailMessage("en", "email.common.ignoreIfMistake", {}), "i"),
+  assert.equal(
+    en.html.includes(formatEmailMessage("en", "email.common.ignoreIfMistake", {})),
+    false,
   );
+  assert.match(en.text, /contact your administrator/i);
   assert.match(en.html, /popup=settings\|twoFactor/);
   assert.match(en.text, /popup=settings\|twoFactor/);
   assert.equal(en.html.includes("/settings/security"), false);
@@ -306,7 +350,11 @@ test("renderEmailTemplate account_email_changed en and ru", async () => {
   assert.match(ru.html, /изменён/i);
   assert.match(ru.text, /12:00 UTC/);
   assert.equal(ru.text.includes("UTC UTC"), false);
-  assert.match(ru.html, /проигнорируйте/i);
+  assert.equal(
+    ru.html.includes(formatEmailMessage("ru", "email.common.ignoreIfMistake", {})),
+    false,
+  );
+  assert.match(ru.html, /администратору/);
   assert.match(ru.html, /popup=settings\|twoFactor/);
   assertNoMustachePlaceholders(ru.text);
 });
@@ -516,7 +564,12 @@ test("EmailTemplateService device and contact recovery request emails render CTA
   assert.equal(sent.length, 2);
   assert.equal(sent[0].subject, formatEmailMessage("en", "email.device.recovery.subject", {}));
   assert.match(sent[0].html, /popup=settings\|recovery/);
-  assert.match(sent[0].html, /Web Chrome/);
+  assert.match(sent[0].html, /Web · Chrome · macOS/);
+  assert.match(sent[0].html, /Settings → Recovery/);
+  assert.equal(
+    sent[0].html.includes(formatEmailMessage("en", "email.common.ignoreIfMistake", {})),
+    false,
+  );
   assert.match(sent[0].text, /203\.0\.113\.9/);
   assert.equal(sent[0].text.includes("{{"), false);
   assert.equal(sent[1].subject, formatEmailMessage("ru", "email.contacts.recovery.subject", {}));
@@ -565,14 +618,18 @@ test("EmailTemplateService sendTrustedContactInvite renders inviter details", as
 
 test("device approval footnotes render below EmailShell separator", async () => {
   const en = await renderEmailTemplate("device_approval_request", "en", deviceVars);
-  const note = formatEmailMessage("en", "email.common.ignoreIfMistake", {});
-  const noteIdx = en.html.indexOf(note);
+  const block = formatEmailMessage("en", "email.device.approval.noteBlockIfNotYou", {});
+  const blockIdx = en.html.indexOf(block);
   const lastHr = en.html.lastIndexOf("<hr");
-  assert.ok(noteIdx > lastHr && lastHr > 0, "device approval footnote must be below separator");
+  assert.ok(blockIdx > lastHr && lastHr > 0, "device approval footnote must be below separator");
   assert.match(en.html, /no-reply/i);
+  assert.equal(
+    en.html.includes(formatEmailMessage("en", "email.common.ignoreIfMistake", {})),
+    false,
+  );
 });
 
-test("workspace invite and two-factor emails include shared no-reply footer", async () => {
+test("workspace invite keeps ignore; security notices omit it", async () => {
   const invite = await renderEmailTemplate("workspace_invite", "en", workspaceVars);
   const twoFactor = await renderEmailTemplate("two_factor_enabled", "ru", twoFactorVars);
   const twoFactorDisabled = await renderEmailTemplate("two_factor_disabled", "en", twoFactorVars);
@@ -580,16 +637,18 @@ test("workspace invite and two-factor emails include shared no-reply footer", as
   const ignoreRu = formatEmailMessage("ru", "email.common.ignoreIfMistake", {});
   assert.ok(invite.html.includes(ignoreEn));
   assert.match(invite.html, /no-reply/i);
-  assert.ok(twoFactor.html.includes(ignoreRu));
+  assert.equal(twoFactor.html.includes(ignoreRu), false);
   assert.match(twoFactor.html, /no-reply/i);
-  assert.ok(twoFactorDisabled.html.includes(ignoreEn));
+  assert.equal(twoFactorDisabled.html.includes(ignoreEn), false);
   assert.match(twoFactorDisabled.html, /no-reply/i);
 });
 
 test("RU email copy uses consistent typography and lowercase вы", async () => {
   const blockNote = formatEmailMessage("ru", "email.device.approval.noteBlockIfNotYou", {});
   const ignoreMistake = formatEmailMessage("ru", "email.common.ignoreIfMistake", {});
+  const otpFooter = formatEmailMessage("ru", "email.auth.signInCode.footer", {});
   const backupLine2 = formatEmailMessage("ru", "email.twoFactor.backupRegen.line2", {});
+  const recoveryBlock = formatEmailMessage("ru", "email.device.recovery.noteBlockIfNotYou", {});
 
   assert.ok(blockNote.endsWith("."), "device approval RU block note must end with a period");
   assert.ok(blockNote.includes(" вы "), "device approval should address with lowercase вы");
@@ -602,6 +661,8 @@ test("RU email copy uses consistent typography and lowercase вы", async () => 
     ignoreMistake.includes("—") || ignoreMistake.includes(","),
     "prefer em dash or comma over hyphen",
   );
+  assert.ok(otpFooter.includes(" вы "), "OTP footer should address with lowercase вы");
+  assert.ok(recoveryBlock.includes("не подтверждайте"));
 
   assert.equal(backupLine2.includes("ответе приложения"), false);
   assert.ok(backupLine2.includes("в приложении"));
@@ -610,7 +671,7 @@ test("RU email copy uses consistent typography and lowercase вы", async () => 
 
   const ru = await renderEmailTemplate("device_approval_request", "ru", deviceVars);
   assert.ok(ru.text.includes(blockNote));
-  assert.ok(ru.text.includes(ignoreMistake));
+  assert.equal(ru.text.includes(ignoreMistake), false);
   assert.equal(ru.text.includes("Вы "), false);
   assert.equal(ru.text.includes("Вам "), false);
   assert.equal(ru.text.includes(" по ошибке - "), false);
@@ -622,4 +683,5 @@ test("RU email copy uses consistent typography and lowercase вы", async () => 
   );
   assert.ok(backup.text.includes(backupLine2));
   assert.equal(backup.text.includes("ответе приложения"), false);
+  assert.equal(backup.text.includes(ignoreMistake), false);
 });

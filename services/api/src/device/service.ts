@@ -377,6 +377,10 @@ export class DeviceService {
       }
     }
 
+    const requestedAt = this.now();
+    const expiresAt = new Date(
+      requestedAt.getTime() + this.config.deviceApprovalTtlSeconds * 1000,
+    );
     await this.emailTemplates.sendDeviceApprovalRequest({
       to: user.email,
       localeHints: {
@@ -399,7 +403,8 @@ export class DeviceService {
           this.config.publicAppBaseUrl,
           "/items?popup=settings|devices",
         ),
-        requestedAtIso: this.now().toISOString(),
+        requestedAtIso: requestedAt.toISOString(),
+        expiresAtIso: expiresAt.toISOString(),
       },
     });
   }

@@ -16,7 +16,8 @@ export interface RecoveryActionEmailProps {
   noteNoUrl: string;
   noteIgnore: string;
   noReply: string;
-  ignoreIfMistake: string;
+  /** Empty for security mail (contact recovery); invites keep the shared ignore line. */
+  ignoreIfMistake?: string;
 }
 
 /** Shared layout for enterprise recovery notify emails (device approve / contact release / invite). */

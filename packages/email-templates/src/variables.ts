@@ -18,6 +18,8 @@ export interface DeviceApprovalRequestVariables {
   city?: string | null;
   /** ISO timestamp of the approval request (shown as date + time). */
   requestedAtIso?: string | null;
+  /** ISO timestamp when the pending approval challenge expires. */
+  expiresAtIso?: string | null;
 }
 
 export interface WorkspaceInviteVariables {
