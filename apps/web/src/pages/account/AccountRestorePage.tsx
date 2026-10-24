@@ -375,9 +375,11 @@ export default function AccountRestorePage() {
     }
     try {
       await navigator.clipboard.writeText(newRecoverySecret);
-      setNewKeyExported(true);
+      // Ack must complete before enabling Continue — otherwise ProtectedVaultLayout
+      // remints RecoveryKeyRequiredScreen (exportedAt still null) after navigate.
       const core = createAuthenticatedCoreClient(accessToken);
       await core.ackAccountRecoveryKeyExport();
+      setNewKeyExported(true);
       toast.success(t("web.toast.save.success"));
     } catch {
       setFormError(t("web.settingsPopup.recovery.error.copyFailed"));
@@ -394,9 +396,9 @@ export default function AccountRestorePage() {
         title: t("account.restore.newKey.pdfTitle"),
         description: t("account.restore.newKey.pdfDescription"),
       });
-      setNewKeyExported(true);
       const core = createAuthenticatedCoreClient(accessToken);
       await core.ackAccountRecoveryKeyExport();
+      setNewKeyExported(true);
     } catch {
       setFormError(t("web.settingsPopup.recovery.error.generic"));
     } finally {

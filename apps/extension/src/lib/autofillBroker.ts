@@ -22,9 +22,10 @@ import {
   type AutofillItemCategory,
 } from "@okkey/vault";
 
-import { createCoreClient } from "./api";
+import { createCoreClient, isUnauthorizedApiError } from "./api";
 import { EMAIL_OTP_URL } from "./autofillFieldClassify";
 import {
+  clearAllPendingSaveOffers,
   clearPendingSaveOffer,
   getPendingSaveOffer,
   markPendingSaveDismissed,
@@ -51,8 +52,17 @@ import {
 } from "./autofillMessages";
 import { readExtensionUnlockSessionIfFresh, touchExtensionUnlockSession } from "./extensionVaultSession";
 import { initExtensionCrypto } from "./initExtensionCrypto";
-import { readProfile, readSession } from "./storage";
+import { readProfile, readSession, wipeAllExtensionData } from "./storage";
 import { readExtensionVaultBundle, readStoredCurrentWorkspaceId } from "./vaultStorage";
+
+async function wipeIfUnauthorized(err: unknown): Promise<boolean> {
+  if (!isUnauthorizedApiError(err)) {
+    return false;
+  }
+  await wipeAllExtensionData();
+  await clearAllPendingSaveOffers();
+  return true;
+}
 
 export {
   clearPendingSaveOffer,
@@ -523,6 +533,11 @@ async function previewFaviconPng(apiBaseUrl: string, accessToken: string, urls: 
       },
       body: JSON.stringify({ urls }),
     });
+    if (response.status === 401) {
+      await wipeAllExtensionData();
+      await clearAllPendingSaveOffers();
+      return null;
+    }
     if (!response.ok) {
       return null;
     }
@@ -549,7 +564,9 @@ export async function handleAutofillSiteIcon(
   const lookupUrls = [...new Set([...(urls ?? []), websiteUrl].map((u) => u.trim()).filter(Boolean))];
   const png = await previewFaviconPng(profile.apiBaseUrl, session.access_token, lookupUrls);
   if (!png || png.byteLength === 0) {
-    return { status: "missing" };
+    // Favicon 401 wipes local state; surface signed-out instead of "missing".
+    const stillSignedIn = await readSession();
+    return stillSignedIn ? { status: "missing" } : { status: "signed-out" };
   }
   return { status: "ok", iconUrl: pngToDataUrl(png) };
 }
@@ -583,6 +600,11 @@ async function uploadFaviconAttachment(input: {
         body: encrypted.encryptedBody,
       },
     );
+    if (response.status === 401) {
+      await wipeAllExtensionData();
+      await clearAllPendingSaveOffers();
+      return null;
+    }
     if (!response.ok) {
       return null;
     }
@@ -814,7 +836,10 @@ export async function handleAutofillSaveContext(): Promise<AutofillSaveContextRe
       vaults: options,
       defaultVaultId: defaultVault.id,
     };
-  } catch {
+  } catch (err: unknown) {
+    if (await wipeIfUnauthorized(err)) {
+      return { status: "signed-out" };
+    }
     return { status: "locked" };
   }
 }
@@ -998,6 +1023,9 @@ export async function handleAutofillSave(input: {
       controller.dispose();
     }
   } catch (err: unknown) {
+    if (await wipeIfUnauthorized(err)) {
+      return { status: "signed-out" };
+    }
     const message = err instanceof Error ? err.message : String(err);
     return { status: "error", message };
   }
@@ -1103,6 +1131,9 @@ export async function handleAutofillSaveFormDraft(
       controller.dispose();
     }
   } catch (err: unknown) {
+    if (await wipeIfUnauthorized(err)) {
+      return { status: "signed-out" };
+    }
     const message = err instanceof Error ? err.message : String(err);
     return { status: "error", message };
   }
@@ -1223,6 +1254,9 @@ export async function handleAutofillSaveFormCommit(
       controller.dispose();
     }
   } catch (err: unknown) {
+    if (await wipeIfUnauthorized(err)) {
+      return { status: "signed-out" };
+    }
     const message = err instanceof Error ? err.message : String(err);
     return { status: "error", message };
   }

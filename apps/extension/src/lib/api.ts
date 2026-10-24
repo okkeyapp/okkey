@@ -1,9 +1,14 @@
-import { ApiClient, createCoreApiClient, type CoreApiClient } from "@okkey/api";
+import { ApiClient, ApiRequestError, createCoreApiClient, type CoreApiClient } from "@okkey/api";
 import { AuthClient } from "@okkey/auth";
 import type { AccessTokenResponseDto } from "@okkey/types";
 
 import { EXTENSION_AUTH_CLIENT_ID } from "./pkce";
 import type { ExtensionSession } from "./storage";
+
+/** True when the API rejected the Bearer token (expired / revoked session). */
+export function isUnauthorizedApiError(err: unknown): boolean {
+  return err instanceof ApiRequestError && err.status === 401;
+}
 
 export function createPublicApi(apiBaseUrl: string): ApiClient {
   return new ApiClient({ baseUrl: apiBaseUrl.replace(/\/$/, "") });

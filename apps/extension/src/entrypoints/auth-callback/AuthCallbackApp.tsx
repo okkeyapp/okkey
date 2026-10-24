@@ -9,6 +9,7 @@ import { readStoredExtensionLocale } from "../../lib/locale";
 import {
   clearPkcePending,
   readPkcePending,
+  wipeAllExtensionData,
   writeProfile,
   writeSession,
 } from "../../lib/storage";
@@ -57,6 +58,9 @@ export function AuthCallbackApp() {
           code,
           codeVerifier: pending.codeVerifier,
         });
+        // Drop previous account / unlock / pending-save state before binding the new session
+        // (covers same-server account switch; keeps lastServer preference).
+        await wipeAllExtensionData();
         await writeSession(session);
         await writeProfile({
           webBaseUrl: pending.webBaseUrl,

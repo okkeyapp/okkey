@@ -165,6 +165,31 @@ describe("AuthRegistrationPage recovery key", () => {
     });
   });
 
+  it("keeps Continue disabled until export ack resolves after copy", async () => {
+    enrollAccountRecoveryKey.mockResolvedValue({});
+    let resolveAck: ((value: unknown) => void) | undefined;
+    ackAccountRecoveryKeyExport.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveAck = resolve;
+        }),
+    );
+    renderPage();
+    await submitRegistration();
+
+    const next = await screen.findByRole("button", { name: "auth.registration.recovery.next" });
+    fireEvent.click(screen.getByRole("button", { name: "auth.registration.recovery.copy" }));
+    await waitFor(() => {
+      expect(ackAccountRecoveryKeyExport).toHaveBeenCalled();
+    });
+    expect(next).toBeDisabled();
+
+    resolveAck?.({});
+    await waitFor(() => {
+      expect(next).toBeEnabled();
+    });
+  });
+
   it("enables Continue after the recovery PDF is downloaded", async () => {
     enrollAccountRecoveryKey.mockResolvedValue({});
     renderPage();

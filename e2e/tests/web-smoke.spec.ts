@@ -146,10 +146,13 @@ test("4) recovery key → new master password → items readable", async () => {
   const cont = page.getByRole("button", { name: /^continue$/i });
   await expect(cont).toBeDisabled();
   await page.getByRole("button", { name: /^copy$/i }).click();
+  // Continue stays disabled until server export ack finishes (see AccountRestorePage).
   await expect(cont).toBeEnabled({ timeout: 15_000 });
   await cont.click();
+  await expect(newKeyHeading).toBeHidden({ timeout: 30_000 });
 
   // After recovery the app may land unlocked on /items (CI screenshot) or on lock.
+  // Must not remint the post-login recovery gate ("Save your recovery key").
   const lock = page.getByRole("heading", { name: /vault is locked/i });
   const topbar = page.getByTestId("items-shell-topbar");
   await expect(lock.or(topbar)).toBeVisible({ timeout: 60_000 });

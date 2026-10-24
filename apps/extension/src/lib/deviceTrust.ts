@@ -1,18 +1,21 @@
 import type { CoreApiClient } from "@okkey/api";
 import type { DeviceListItemDto, DeviceRegisterResponseDto } from "@okkey/types";
 
-import { randomDevicePublicKeyB64, randomDeviceShareB64 } from "./api";
-import { parseBrowserEnvironment } from "./browserEnvironment";
+import { isUnauthorizedApiError, randomDevicePublicKeyB64, randomDeviceShareB64 } from "./api.ts";
+import { parseBrowserEnvironment } from "./browserEnvironment.ts";
 import {
   clearDeviceDeferred,
+  clearExtensionSessionArea,
+  clearSessionAfterLostDeviceTrust,
   readDeviceDeferred,
   readDeviceFingerprint,
+  readDeviceId,
   readDevicePublicKey,
   writeDeviceDeferred,
   writeDeviceFingerprint,
   writeDeviceId,
   writeDevicePublicKey,
-} from "./storage";
+} from "./storage.ts";
 
 export type DeviceTrustStatus =
   | "checking"
@@ -114,6 +117,7 @@ export async function resolveExtensionDeviceTrust(
 ): Promise<DeviceTrustSnapshot> {
   const fingerprint = await ensureFingerprint();
   const deferred = options?.forceRegister ? null : await readDeviceDeferred();
+  const previousDeviceId = await readDeviceId();
 
   let listed: {
     devices: DeviceListItemDto[];
@@ -123,6 +127,10 @@ export async function resolveExtensionDeviceTrust(
   try {
     listed = await core.listDevices(fingerprint);
   } catch (error: unknown) {
+    // Let the popup wipe local state on expired/revoked Bearer tokens.
+    if (isUnauthorizedApiError(error)) {
+      throw error;
+    }
     return {
       status: "error",
       deviceId: null,
@@ -139,6 +147,8 @@ export async function resolveExtensionDeviceTrust(
       blockedMatch.blocked_until == null ? null : new Date(blockedMatch.blocked_until).getTime();
     if (untilMs === null || untilMs > Date.now()) {
       await clearDeviceDeferred();
+      // Lost trusted status (blocked) — do not keep vaultKey in session storage.
+      await clearSessionAfterLostDeviceTrust(previousDeviceId);
       return {
         status: "blocked",
         deviceId: blockedMatch.device_id,
@@ -158,6 +168,11 @@ export async function resolveExtensionDeviceTrust(
       approverDevices: listed.devices,
     };
   }
+
+  // Previously known install is no longer trusted (revoked / removed). Drop unlock
+  // session and pending-save material so a later re-approval cannot restore vaultKey
+  // without master password / PIN. Keep account session for pending approval UX.
+  await clearSessionAfterLostDeviceTrust(previousDeviceId);
 
   const pendingMatch = listed.pending.find((device) => fingerprintMatch(device, fingerprint));
   if (pendingMatch) {
@@ -238,6 +253,7 @@ export async function pollExtensionDeviceTrust(
       blockedMatch.blocked_until == null ? null : new Date(blockedMatch.blocked_until).getTime();
     if (untilMs === null || untilMs > Date.now()) {
       await clearDeviceDeferred();
+      await clearExtensionSessionArea();
       return {
         status: "blocked",
         deviceId: blockedMatch.device_id,
@@ -257,6 +273,9 @@ export async function pollExtensionDeviceTrust(
       approverDevices: listed.devices,
     };
   }
+
+  // Still not trusted while polling — keep session storage free of vaultKey.
+  await clearExtensionSessionArea();
 
   const pendingMatch =
     listed.pending.find((device) => fingerprintMatch(device, fingerprint)) ??
