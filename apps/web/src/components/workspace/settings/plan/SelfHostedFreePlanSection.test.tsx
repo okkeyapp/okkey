@@ -103,6 +103,10 @@ describe("SelfHostedFreePlanSection", () => {
     );
 
     expect(mailtoHref.startsWith("mailto:get-license@okkey.io?")).toBe(true);
+    expect(mailtoHref).toContain("License%20request%3A%20ENTERPRISE");
+    expect(mailtoHref).toContain("Requested%20plan%3A%20ENTERPRISE");
+    expect(mailtoHref).toContain("Current%20plan%3A%20FREE");
+    expect(mailtoHref).toContain("Deployment%3A%20self-hosted");
     expect(mailtoHref).toContain("Members%3A%207");
     expect(mailtoHref).toContain("Reply%20email%3A%20reply%40okkey.local");
     expect(mailtoHref).not.toMatch(/[?&](?:subject|body)=[^&]*\+/);

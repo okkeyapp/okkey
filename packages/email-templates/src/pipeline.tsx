@@ -465,19 +465,21 @@ export async function renderPlanChangeRequest(
     "deploymentMode",
     "actorUserId",
   ]);
-  // Same plain field list as mailto (logger): subject + body from shared builder.
+  // Same subject/lead/field list as mailto (logger): shared builder keeps SMTP ≡ mailto.
   // workspaceUrl may be empty when PUBLIC_APP_URL is unset; rendered as "—".
   const copy = buildLicenseRequestEmailCopy(locale, {
     workspaceName: variables.workspaceName,
     workspaceUrl: variables.workspaceUrl,
+    currentPlanTier: variables.currentPlanTier,
+    requestedPlanTier: variables.requestedPlanTier,
+    deploymentMode: variables.deploymentMode,
     memberCount: variables.workspaceMemberCount,
     region: variables.region.trim() || null,
     locale: variables.locale,
     senderEmail: variables.accountEmail,
     replyEmail: variables.contactEmail,
   });
-  // Subject + plain body match mailto exactly (no extra lead/footer in text).
-  const element = <PlanChangeRequestEmail lines={copy.lines} />;
+  const element = <PlanChangeRequestEmail lead={copy.lead} lines={copy.lines} />;
   const html = renderEmailHtml(element);
   return { subject: copy.subject, html, text: copy.body };
 }
