@@ -143,6 +143,7 @@ async function main(): Promise<void> {
     workspaces: storage.repositories.workspaces,
     users: storage.repositories.users,
     emailTemplates,
+    redis: storage.redis,
     salesEmail: config.salesEmail,
     salesEmailDeliverable: isOutboundEmailDeliverable(config),
     deploymentMode: config.deploymentMode,

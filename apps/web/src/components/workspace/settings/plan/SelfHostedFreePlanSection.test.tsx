@@ -76,6 +76,17 @@ describe("SelfHostedFreePlanSection", () => {
     };
     vi.stubGlobal("location", locationStub);
 
+    getStatus.mockResolvedValue({
+      submitted: false,
+      sent_at: null,
+      sales_email_deliverable: false,
+      sales_email: "sales@example.com",
+    });
+    useCore.mockReturnValue({
+      getWorkspacePlanChangeRequestStatus: getStatus,
+      requestWorkspacePlanChange: requestChange,
+    });
+
     render(
       <SelfHostedFreePlanSection
         workspaceId="ws-1"
@@ -84,6 +95,12 @@ describe("SelfHostedFreePlanSection", () => {
         t={(key) => key}
       />,
     );
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: "web.workspaceSettings.plan.selfHosted.requestCta" }),
+      ).toBeEnabled();
+    });
 
     fireEvent.click(
       screen.getByRole("button", { name: "web.workspaceSettings.plan.selfHosted.requestCta" }),
@@ -102,7 +119,7 @@ describe("SelfHostedFreePlanSection", () => {
       screen.getByRole("button", { name: "web.workspaceSettings.plan.selfHosted.requestSubmit" }),
     );
 
-    expect(mailtoHref.startsWith("mailto:get-license@okkey.io?")).toBe(true);
+    expect(mailtoHref.startsWith("mailto:sales@example.com?")).toBe(true);
     expect(mailtoHref).toContain("License%20request%3A%20ENTERPRISE");
     expect(mailtoHref).toContain("Requested%20plan%3A%20ENTERPRISE");
     expect(mailtoHref).toContain("Current%20plan%3A%20FREE");
@@ -125,7 +142,7 @@ describe("SelfHostedFreePlanSection", () => {
       submitted: true,
       sent_at: "2026-10-22T12:00:00.000Z",
       sales_email_deliverable: true,
-      sales_email: "get-license@okkey.io",
+      sales_email: "sales@example.com",
     });
     useCore.mockReturnValue({
       getWorkspacePlanChangeRequestStatus: getStatus,
@@ -162,7 +179,7 @@ describe("SelfHostedFreePlanSection", () => {
       submitted: true,
       sent_at: "2026-10-22T12:00:00.000Z",
       sales_email_deliverable: true,
-      sales_email: "get-license@okkey.io",
+      sales_email: "sales@example.com",
     });
     requestChange.mockResolvedValue({ submitted: true });
     useCore.mockReturnValue({

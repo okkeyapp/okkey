@@ -1,11 +1,12 @@
 import { buildLicenseRequestEmailCopy } from "@okkey/i18n";
 import { describe, expect, it } from "vitest";
 
-import { buildLicenseMailto, DEFAULT_LICENSE_SALES_EMAIL } from "./buildLicenseMailto";
+import { buildLicenseMailto } from "./buildLicenseMailto";
 
 describe("buildLicenseMailto", () => {
-  it("prefills subject/body identical to shared builder and defaults sales inbox", () => {
+  it("prefills subject/body identical to shared builder using API sales inbox", () => {
     const fields = {
+      salesEmail: "sales@example.com",
       workspaceName: "Acme",
       workspaceUrl: "https://vault.example",
       currentPlanTier: "FREE",
@@ -21,7 +22,7 @@ describe("buildLicenseMailto", () => {
     const href = buildLicenseMailto(fields);
     const copy = buildLicenseRequestEmailCopy("ru", fields);
 
-    expect(href.startsWith(`mailto:${DEFAULT_LICENSE_SALES_EMAIL}?`)).toBe(true);
+    expect(href.startsWith("mailto:sales@example.com?")).toBe(true);
     // Mailto must use %20, not application/x-www-form-urlencoded `+` for spaces.
     expect(href).not.toMatch(/[?&](?:subject|body)=[^&]*\+/);
     const query = new URL(href).searchParams;
@@ -44,6 +45,7 @@ describe("buildLicenseMailto", () => {
 
   it("encodes multi-word workspace labels with %20 (not +)", () => {
     const href = buildLicenseMailto({
+      salesEmail: "inbox@example.com",
       workspaceName: "Okkey team",
       workspaceUrl: "https://okkey.example",
       currentPlanTier: "FREE",
@@ -61,25 +63,19 @@ describe("buildLicenseMailto", () => {
     expect(href).not.toContain("Workspace+name");
   });
 
-  it("uses sales_email from API when provided", () => {
-    const href = buildLicenseMailto({
-      salesEmail: "sales@example.com",
-      workspaceName: "Demo",
-      workspaceUrl: "",
-      currentPlanTier: "FREE",
-      requestedPlanTier: "ENTERPRISE",
-      deploymentMode: "self-hosted",
-      region: null,
-      locale: "en",
-      senderEmail: "a@b.co",
-    });
-    expect(href.startsWith("mailto:sales@example.com?")).toBe(true);
-    const body = new URL(href).searchParams.get("body") ?? "";
-    expect(body).toContain("New Okkey license request.");
-    expect(body).toContain("Requested plan: ENTERPRISE");
-    expect(body).toContain("Current plan: FREE");
-    expect(body).toContain("Deployment: self-hosted");
-    expect(body).toContain("Members: ");
-    expect(body).toContain("Region: —");
+  it("rejects empty sales email (no client default)", () => {
+    expect(() =>
+      buildLicenseMailto({
+        salesEmail: "  ",
+        workspaceName: "Demo",
+        workspaceUrl: "",
+        currentPlanTier: "FREE",
+        requestedPlanTier: "ENTERPRISE",
+        deploymentMode: "self-hosted",
+        region: null,
+        locale: "en",
+        senderEmail: "a@b.co",
+      }),
+    ).toThrow(/sales email is required/i);
   });
 });
