@@ -2,6 +2,9 @@
  * RFC 6238 TOTP (HMAC-SHA1) for autofill. Uses Web Crypto — no Node `crypto`.
  */
 
+/** RFC 6238 default time step (seconds). */
+export const DEFAULT_TOTP_PERIOD_SECONDS = 30;
+
 function base32Decode(encoded: string): Uint8Array {
   const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
   const cleaned = encoded.toUpperCase().replace(/=+$/g, "").replace(/\s+/g, "");
@@ -39,18 +42,19 @@ function parseTotpParams(secretOrUri: string): {
       if (!secret) {
         return null;
       }
-      const periodRaw = Number(parsed.searchParams.get("period") ?? "30");
+      const periodRaw = Number(parsed.searchParams.get("period") ?? String(DEFAULT_TOTP_PERIOD_SECONDS));
       const digitsRaw = Number(parsed.searchParams.get("digits") ?? "6");
       return {
         secretBase32: secret,
-        periodSeconds: Number.isFinite(periodRaw) && periodRaw > 0 ? periodRaw : 30,
+        periodSeconds:
+          Number.isFinite(periodRaw) && periodRaw > 0 ? periodRaw : DEFAULT_TOTP_PERIOD_SECONDS,
         digits: Number.isFinite(digitsRaw) && digitsRaw > 0 ? digitsRaw : 6,
       };
     } catch {
       return null;
     }
   }
-  return { secretBase32: trimmed, periodSeconds: 30, digits: 6 };
+  return { secretBase32: trimmed, periodSeconds: DEFAULT_TOTP_PERIOD_SECONDS, digits: 6 };
 }
 
 async function hmacSha1(key: Uint8Array, data: Uint8Array): Promise<Uint8Array> {

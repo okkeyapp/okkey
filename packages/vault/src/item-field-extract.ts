@@ -4,6 +4,8 @@ import {
   parseKeyFieldAddressValue,
 } from "@okkey/ui/lib/key-field-address";
 
+import { DEFAULT_TOTP_PERIOD_SECONDS } from "./item-totp.js";
+
 export type ExtensionItemListRecord = {
   id: string;
   vaultId: string;
@@ -235,7 +237,7 @@ export function extractLoginAutofillSecrets(item: ItemPlaintextV2): LoginAutofil
   let username = "";
   let password = "";
   let totpSecretBase32 = "";
-  let totpPeriodSeconds = 30;
+  let totpPeriodSeconds = DEFAULT_TOTP_PERIOD_SECONDS;
   let totpDigits = 6;
 
   for (const field of orderedItemFields(item)) {
@@ -247,7 +249,10 @@ export function extractLoginAutofillSecrets(item: ItemPlaintextV2): LoginAutofil
     }
     if (!totpSecretBase32 && field.value.kind === "totp") {
       totpSecretBase32 = field.value.secretBase32.trim();
-      totpPeriodSeconds = field.value.periodSeconds && field.value.periodSeconds > 0 ? field.value.periodSeconds : 30;
+      totpPeriodSeconds =
+        field.value.periodSeconds && field.value.periodSeconds > 0
+          ? field.value.periodSeconds
+          : DEFAULT_TOTP_PERIOD_SECONDS;
       totpDigits = field.value.digits && field.value.digits > 0 ? field.value.digits : 6;
     }
   }

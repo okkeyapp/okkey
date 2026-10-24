@@ -2,6 +2,7 @@ import type { ItemFieldV2, ItemPlaintextV2 } from "@okkey/types";
 import { coerceRecoveryCodesRawToFormValue, coerceSecretRawToFormValue, formatCardExpiry, formatCardNumber, getSecretKindFromRaw, normalizePinValue, serializeKeyFieldFileValue } from "@okkey/ui";
 
 import type { KeyFormEditorField, KeyFormEditorSection } from "../key-form/KeyFormEditor.js";
+import { DEFAULT_TOTP_PERIOD_SECONDS } from "../key-form/totpFromSecret.js";
 import type { KeyFormEditorMessages } from "../key-form/keyFormI18n.js";
 import { resolveKeyFormFieldLabel } from "../key-form/keyFormFieldLabel.js";
 import {
@@ -1132,6 +1133,14 @@ function toFormField(
             field.value.kind === "url" && field.value.urlAutofillScope
               ? field.value.urlAutofillScope
               : ("entire-site" as const),
+        }
+      : {}),
+    ...(type === "totp" && field.value.kind === "totp"
+      ? {
+          totpPeriodSeconds:
+            field.value.periodSeconds && field.value.periodSeconds > 0
+              ? field.value.periodSeconds
+              : DEFAULT_TOTP_PERIOD_SECONDS,
         }
       : {}),
     ...(type === "multiline-text" && field.value.kind === "note" && field.value.disableClickCopy
