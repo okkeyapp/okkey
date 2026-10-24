@@ -7,20 +7,25 @@ export interface EmailStandardFooterProps {
   /** Optional contextual notes above the shared no-reply / mistake lines. */
   footnotes?: React.ReactNode;
   noReply: string;
-  ignoreIfMistake: string;
+  /** Omit or pass empty for security emails (no “ignore if mistake”). */
+  ignoreIfMistake?: string;
 }
 
-/** Shared no-reply + mistake footer for all transactional emails. */
+/** Shared no-reply footer; optional mistake line for non-security mail. */
 export function EmailStandardFooter({
   footnotes,
   noReply,
   ignoreIfMistake,
 }: EmailStandardFooterProps) {
+  const ignore = ignoreIfMistake?.trim() ?? "";
+  const hasIgnore = ignore.length > 0;
   return (
     <>
       {footnotes}
-      <Text style={footnotes ? footnoteStyle : footnoteStyleFirst}>{noReply}</Text>
-      <Text style={footnoteStyleLast}>{ignoreIfMistake}</Text>
+      <Text style={hasIgnore ? (footnotes ? footnoteStyle : footnoteStyleFirst) : footnoteStyleLast}>
+        {noReply}
+      </Text>
+      {hasIgnore ? <Text style={footnoteStyleLast}>{ignore}</Text> : null}
     </>
   );
 }
