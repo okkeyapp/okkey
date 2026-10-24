@@ -125,6 +125,8 @@ GEOIP_AUTO_UPDATE=true
 TRUSTED_PROXY_HOPS=1
 ```
 
+When `TRUSTED_PROXY_HOPS≥1`, keep the API unreachable except via the trusted proxy (self-host `deploy/docker/docker-compose.prod.yml` binds the published API port to `127.0.0.1`; nginx uses Docker DNS `api:4000`).
+
 The optional `geoip-updater` service (repo-root compose profile `geoip`) downloads DB-IP City Lite into a shared volume.
 The production MVP compose leaves GeoIP off by default (`GEOIP_ENABLED=false`).
 

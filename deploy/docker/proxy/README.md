@@ -67,6 +67,8 @@ OKKEY_API_HOST=api.example.com
 TRUSTED_PROXY_HOPS=1
 ```
 
+nginx reaches the API as `api:4000` on the Compose network (`OKKEY_API_UPSTREAM`). The prod compose publishes the API host port on **`127.0.0.1` only** — do not change that publish to `0.0.0.0` while `TRUSTED_PROXY_HOPS≥1`, or clients could bypass the proxy and forge `X-Forwarded-For`.
+
 From a **git checkout** of this repo (recommended for `--build`):
 
 ```bash
