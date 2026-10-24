@@ -2,6 +2,10 @@
 
 Run Okkey Core on your own machine with Docker Compose — **no monorepo clone or local build**.
 
+## Requirements
+
+- **Docker Engine ≥ 28.0** and the Compose plugin. Before Engine 28.0, ports published on `127.0.0.1` could still be reached from other hosts on the same L2 segment ([moby#45610](https://github.com/moby/moby/issues/45610)). Self-host compose relies on true loopback-only publish for the API port.
+
 ## One-command install
 
 **Tracking / QA** (floating `:dev` images, published on every push to `dev` after the publish workflow lands):
@@ -35,7 +39,7 @@ Optional env:
 | `OKKEY_INSTALL_DIR` | Install directory (default `~/okkey`). Compose project name = directory basename (containers/volumes are namespaced per install dir). |
 | `OKKEY_SKIP_PULL=1` | Skip `docker compose pull` (local/preloaded images) |
 | `OKKEY_RESET_VOLUMES=1` | `docker compose down -v` before start (wipe Postgres/Redis/MinIO data) |
-| `WEB_PORT` / `API_PORT` | Host ports for web/API. **API is published on `127.0.0.1` only** (not `0.0.0.0`) so forged `X-Forwarded-For` cannot reach the API when `TRUSTED_PROXY_HOPS≥1`. On **fresh** installs, written into `.env`; when set without explicit URLs, also derives `PUBLIC_APP_URL` / `OKKEY_API_PUBLIC_URL` / `CORS_ORIGIN` / `WEBAUTHN_ORIGINS`. |
+| `WEB_PORT` / `API_PORT` | Host ports for web/API. **API is published on `127.0.0.1` only** (not `0.0.0.0`) so forged `X-Forwarded-For` cannot reach the API when `TRUSTED_PROXY_HOPS≥1`. On **fresh** installs, written into `.env`; when set without explicit URLs, also derives `PUBLIC_APP_URL` / `OKKEY_API_PUBLIC_URL` / `CORS_ORIGIN` / `WEBAUTHN_ORIGINS`. Without a reverse proxy, other machines cannot call the API on `http://<host>:4000` (or any `API_PORT`) — use the [`proxy/`](./proxy/) overlay (TLS, `TRUSTED_PROXY_HOPS=1`) for network access. |
 | `PUBLIC_APP_URL` / `OKKEY_API_PUBLIC_URL` / `CORS_ORIGIN` / `WEBAUTHN_ORIGINS` | Optional overrides written into `.env` on fresh installs (keep `config.js` and `.env` aligned). |
 
 ### Reinstall / password mismatch
@@ -60,6 +64,8 @@ This will:
 4. `docker compose pull && up -d`
 
 Then open **http://localhost:8080** (web) and check **http://127.0.0.1:4000/health** (API; loopback bind — same host only). After `up -d`, `install.sh` prints a large **OKKEY** banner and the web URL (`PUBLIC_APP_URL`, or `http://localhost:$WEB_PORT`).
+
+**Remote / LAN access:** the published API port is loopback-only. Other machines cannot call `http://<server>:4000` (or any `API_PORT`). Loading the web UI from another host (for example `http://<server>:8080`) still cannot reach the API unless `OKKEY_API_PUBLIC_URL` points at a network-reachable edge. For off-host access, run the TLS proxy under [`proxy/`](./proxy/) with `TRUSTED_PROXY_HOPS=1` and set `PUBLIC_APP_URL` / `OKKEY_API_PUBLIC_URL` to the proxy hosts — see [TLS / domain](#tls--domain).
 
 ## First-run (empty database)
 
@@ -178,7 +184,9 @@ Self-host uses Redis keys `okkey:email:queue` / `okkey:email:delayed` / `okkey:e
 
 ## TLS / domain
 
-**Primary edge template (self-host):** [`proxy/`](./proxy/) — nginx + OpenSSL ≥ 3.5, default hybrid group `X25519MLKEM768`, TLS 1.3 only (no silent classical downgrade). Classical-only clients need an **explicit, isolated, time-boxed** compat listener (`proxy/compat.env.example`, `policy-compat.sh`) — never on the default host. Caddy/Traefik are notes-only; see [`proxy/README.md`](./proxy/README.md).
+Required for any access that is not same-host loopback: the API host port stays on `127.0.0.1`, so the reverse proxy is the supported way to expose API (and web) on the network.
+
+**Primary edge template (self-host):** [`proxy/`](./proxy/) — nginx + OpenSSL ≥ 3.5, default hybrid group `X25519MLKEM768`, TLS 1.3 only (no silent classical downgrade). Set `TRUSTED_PROXY_HOPS=1` when the API sits behind this proxy. Classical-only clients need an **explicit, isolated, time-boxed** compat listener (`proxy/compat.env.example`, `policy-compat.sh`) — never on the default host. Caddy/Traefik are notes-only; see [`proxy/README.md`](./proxy/README.md).
 
 **SaaS stage/prod edge:** [`../saas/edge/`](../saas/edge/) — same nginx image + hybrid group; overlays `stage.env` / `prod.env`.
 
