@@ -86,7 +86,14 @@ export class SyncServiceError extends Error {
 
 export interface SyncServiceDeps {
   vaults: Pick<VaultsRepository, "findById" | "canReadVault">;
-  events: Pick<EventsRepository, "listAfterVersion" | "append" | "deleteByVaultAndReferencedItemId">;
+  events: Pick<
+    EventsRepository,
+    | "listAfterVersion"
+    | "append"
+    | "deleteByVaultAndReferencedItemId"
+    | "hasItemCreateEvent"
+    | "findByIdempotencyKey"
+  >;
   softDeletes?: Pick<VaultItemSoftDeletesRepository, "upsert" | "remove">;
   users?: Pick<UsersRepository, "findById">;
   /** Required in production to gate ITEM_CREATE on shared vaults after EE→FREE. */
@@ -116,6 +123,7 @@ export interface SyncEventResponse {
   signature?: unknown;
   idempotencyKey: string | null;
   clientCreatedAt: string | null;
+  referencedItemId?: string | null;
   version: number;
   createdAt: string;
 }
@@ -377,6 +385,35 @@ export class SyncService {
       );
     }
 
+    if (input.eventType === "ITEM_CREATE" && referencedItemId) {
+      const alreadyCreated = await this.events.hasItemCreateEvent(
+        vaultId,
+        referencedItemId,
+      );
+      if (alreadyCreated) {
+        // Same-key retries must keep returning the original create (append short-circuit).
+        if (input.idempotencyKey) {
+          const existingByKey = await this.events.findByIdempotencyKey(
+            vaultId,
+            input.idempotencyKey,
+          );
+          if (
+            existingByKey &&
+            existingByKey.eventType === "ITEM_CREATE" &&
+            existingByKey.referencedItemId === referencedItemId
+          ) {
+            return mapEventToResponse(existingByKey);
+          }
+        }
+        throw new SyncServiceError(
+          "SYNC_ITEM_ALREADY_EXISTS",
+          409,
+          "ITEM_CREATE already exists for this item id",
+          { referencedItemId },
+        );
+      }
+    }
+
     if (input.itemSoftDeleted === true) {
       if (
         input.itemDeletedAtMs === undefined ||
@@ -589,6 +626,7 @@ function mapEventToResponse(event: EventRecord): SyncEventResponse {
     payloadSchemaVersion: encryptedBlob.crypto_version,
     idempotencyKey: event.idempotencyKey,
     clientCreatedAt: event.clientCreatedAt,
+    referencedItemId: event.referencedItemId,
     version: event.version,
     createdAt: event.createdAt,
   } as SyncEventResponse;

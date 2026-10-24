@@ -1119,6 +1119,11 @@ export interface SyncEventWireDto {
   signature?: HybridSignatureEnvelopeDto;
   idempotencyKey: EntityId | null;
   clientCreatedAt: string | null;
+  /**
+   * Server-side item id for ITEM_* events (retention + client integrity checks).
+   * Clients must ignore ITEM_* events whose decrypted plaintext.itemId differs.
+   */
+  referencedItemId?: EntityId | null;
   version: number;
   createdAt: string;
 }

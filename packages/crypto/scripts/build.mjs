@@ -26,6 +26,15 @@ const pkgPath = join(outDir, "package.json");
 const pkg = JSON.parse(readFileSync(pkgPath, "utf8"));
 pkg.name = "@okkey/crypto-wasm";
 pkg.type = "module";
+// Node resolves bare `@okkey/crypto-wasm` via `main`/`exports` (not the bundler-only `module` field).
+pkg.main = "okkey_crypto_engine.js";
+pkg.exports = {
+  ".": {
+    types: "./okkey_crypto_engine.d.ts",
+    import: "./okkey_crypto_engine.js",
+    default: "./okkey_crypto_engine.js",
+  },
+};
 writeFileSync(pkgPath, JSON.stringify(pkg, null, 2));
 
 const idDir = join(root, "packages", "id");
