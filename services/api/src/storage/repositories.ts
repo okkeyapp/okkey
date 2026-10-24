@@ -2779,6 +2779,36 @@ export class EventsRepository {
     return Boolean(rows[0]?.exists);
   }
 
+  async findByIdempotencyKey(
+    vaultId: string,
+    idempotencyKey: string,
+  ): Promise<EventRecord | null> {
+    const rows = await this.db.query<{
+      id: string;
+      vault_id: string;
+      actor_id: string | null;
+      event_type: string;
+      encrypted_payload: Buffer;
+      payload_schema_version: number;
+      idempotency_key: string | null;
+      client_created_at: string | null;
+      referenced_item_id: string | null;
+      version: number;
+      created_at: string;
+    }>(
+      `
+        SELECT id, vault_id, actor_id, event_type, encrypted_payload,
+               payload_schema_version, idempotency_key, client_created_at,
+               referenced_item_id::text AS referenced_item_id, version, created_at
+        FROM events
+        WHERE vault_id = $1 AND idempotency_key = $2::bigint
+        LIMIT 1
+      `,
+      [vaultId, idempotencyKey],
+    );
+    return rows[0] ? mapEvent(rows[0]) : null;
+  }
+
   async listAfterVersion(vaultId: string, afterVersion: number): Promise<EventRecord[]> {
     const rows = await this.db.query<{
       id: string;
