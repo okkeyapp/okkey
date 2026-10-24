@@ -15,6 +15,7 @@ async function readErrorMessage(status: number, responseText: string): Promise<s
 export async function previewItemFavicon(
   accessToken: string,
   urls: readonly string[],
+  options?: { signal?: AbortSignal },
 ): Promise<Blob | null> {
   const response = await fetch(`${getApiBaseUrl()}/favicon/preview`, {
     method: "POST",
@@ -23,6 +24,7 @@ export async function previewItemFavicon(
       "Content-Type": "application/json",
     },
     body: JSON.stringify({ urls: [...urls] }),
+    signal: options?.signal,
   });
 
   if (response.status === 404) {

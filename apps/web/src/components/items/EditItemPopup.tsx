@@ -17,7 +17,12 @@ import {
   buildTemplateUpdatePayload,
   syncTemplateFaviconForSnapshot,
 } from "../../items/itemTemplateHelpers";
-import { keyFieldFileValueFromFaviconId, syncItemFaviconForPlaintext } from "../../items/syncItemFavicon";
+import {
+  attachWebsiteFaviconFromNetwork,
+  keyFieldFileValueFromFaviconId,
+  shouldAttachWebsiteFaviconInBackground,
+  syncItemFaviconForPlaintext,
+} from "../../items/syncItemFavicon";
 import { useWorkspaceItemTemplates } from "../../items/useWorkspaceItemTemplates";
 import { useWorkspaceItems } from "../../items/WorkspaceItemsContext";
 import { useWorkspaceVaultProfiles } from "../../items/WorkspaceVaultProfilesContext";
@@ -266,6 +271,7 @@ export default function EditItemPopup({
             let updatedItem = buildItemFromEditSavePayload(uploadedPayload, uploadedPayload.createdAtMs!, item);
             let uploadedFavicon: KeyFieldFileValue | undefined;
             try {
+              // Reuse form preview / keep icon when URLs unchanged — never block Save on site fetch.
               const faviconSync = await syncItemFaviconForPlaintext(
                 accessToken,
                 itemVaultKey,
@@ -276,6 +282,24 @@ export default function EditItemPopup({
               updatedItem = faviconSync.item;
               uploadedFavicon = faviconSync.uploadedFavicon;
               await updateItem(updatedItem);
+              if (shouldAttachWebsiteFaviconInBackground(updatedItem, faviconSyncInput)) {
+                void attachWebsiteFaviconFromNetwork(accessToken, itemVaultKey, updatedItem)
+                  .then(async (attached) => {
+                    if (!attached?.item.faviconId) {
+                      return;
+                    }
+                    await updateItem(attached.item);
+                    if (updatedItem.faviconId && updatedItem.faviconId !== attached.item.faviconId) {
+                      await deleteKeyFieldFileAttachment({
+                        accessToken,
+                        vaultId: item.vaultId,
+                        itemId: item.itemId,
+                        file: keyFieldFileValueFromFaviconId(updatedItem.faviconId),
+                      }).catch(() => undefined);
+                    }
+                  })
+                  .catch(() => undefined);
+              }
             } catch (error) {
               const filesToDelete = uploadedFavicon ? [...uploadedFiles, uploadedFavicon] : uploadedFiles;
               await Promise.allSettled(
