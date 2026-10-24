@@ -212,7 +212,10 @@ function getEventBlob(event: SyncEventWireDto): { crypto_version: number; payloa
 async function applyVaultItemEvents(
   state: VaultItemsMaterializedState,
   events: SyncEventWireDto[],
-  decryptWirePayload: (encryptedPayloadBase64: string) => Promise<Uint8Array>,
+  decryptWirePayload: (
+    encryptedPayloadBase64: string,
+    itemId?: string | null,
+  ) => Promise<Uint8Array>,
 ): Promise<VaultItemsMaterializedState> {
   const items = new Map(state.items);
   const itemActivity = new Map(state.itemActivity);
@@ -237,13 +240,20 @@ async function applyVaultItemEvents(
 
     let plaintextBytes: Uint8Array;
     try {
-      plaintextBytes = await decryptWirePayload(blob.payload);
+      plaintextBytes = await decryptWirePayload(blob.payload, event.referencedItemId);
     } catch {
       lastAppliedVersion = event.version;
       continue;
     }
     const parsed = parseAndNormalizeItemPlaintextUtf8(plaintextBytes);
     if (!parsed) {
+      lastAppliedVersion = event.version;
+      continue;
+    }
+    if (
+      event.referencedItemId &&
+      parsed.itemId !== event.referencedItemId
+    ) {
       lastAppliedVersion = event.version;
       continue;
     }
@@ -362,8 +372,13 @@ export function createWorkspaceVaultItemsReadController(input: {
   async function replayVaultIncremental(vaultId: string): Promise<void> {
     let state = ensureVaultState(vaultId);
     const vaultKey = await resolveVaultKey(vaultId);
-    const decryptWirePayload = async (encryptedPayloadBase64: string) =>
-      decryptVaultItemPayload(vaultKey, base64ToBytes(encryptedPayloadBase64));
+    const decryptWirePayload = async (
+      encryptedPayloadBase64: string,
+      itemId?: string | null,
+    ) =>
+      decryptVaultItemPayload(vaultKey, base64ToBytes(encryptedPayloadBase64), 2, {
+        itemId,
+      });
 
     while (true) {
       const page = await input.core.listVaultEvents(vaultId, state.lastAppliedVersion);
