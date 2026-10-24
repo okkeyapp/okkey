@@ -25,8 +25,9 @@ import {
 } from "./email-props.js";
 import { EmailRenderError } from "./errors.js";
 import type { RenderedEmail } from "./rendered.js";
-import {
+  import {
   appendStandardFooterPlain,
+  buildEmailSecurityFooterCopy,
   buildEmailStandardFooterCopy,
 } from "./standard-footer.js";
 import type {
@@ -87,17 +88,15 @@ export async function renderAuthEmailCode(
     code: variables.code,
   });
   const props = buildAuthSignInCodeEmailProps(locale, variables);
-  const standard = buildEmailStandardFooterCopy(locale);
-  const plainText = appendStandardFooterPlain(
-    [
-      formatEmailMessage(locale, `${messagePrefix}.plain`, {
-        code: variables.code,
-        minutes,
-      }),
-      props.ignore,
-    ].join("\n"),
-    standard,
-  );
+  // Variant A: one combined footer line (no separate no-reply + ignoreIfMistake).
+  const plainText = [
+    formatEmailMessage(locale, `${messagePrefix}.plain`, {
+      code: variables.code,
+      minutes,
+    }),
+    "",
+    props.footer,
+  ].join("\n");
   const element = <AuthSignInCodeEmail {...props} />;
   const html = renderEmailHtml(element);
   return { subject, html, text: plainText };
@@ -124,25 +123,27 @@ export async function renderDeviceApprovalRequest(
   const {
     lead,
     deviceLine,
-    platformLine,
     whenLine,
+    expiresLine,
     ipLine,
     locationLine,
+    noteConfirmWhere,
     noteNoUrl,
     noteBlockIfNotYou,
   } = props;
   const footer = helpUrl
     ? formatEmailMessage(locale, "email.device.approval.textFooterWithUrl", { helpUrl })
     : noteNoUrl;
-  const standard = buildEmailStandardFooterCopy(locale);
+  const standard = buildEmailSecurityFooterCopy(locale);
   const plainText = appendStandardFooterPlain(
     formatEmailMessage(locale, "email.device.approval.plain", {
       lead,
       deviceLine,
-      platformLine,
       whenLine: whenLine || "",
+      expiresLine: expiresLine || "",
       ipLine,
       locationLine: locationLine || "",
+      noteConfirmWhere,
       footer,
       noteBlockIfNotYou,
     }),
@@ -226,7 +227,7 @@ async function renderTwoFactorNotice(
   const footer = securityUrl
     ? formatEmailMessage(locale, keys.plainFooterUrl, { url: securityUrl })
     : "";
-  const standard = buildEmailStandardFooterCopy(locale);
+  const standard = buildEmailSecurityFooterCopy(locale);
   const plainText = appendStandardFooterPlain(
     formatEmailMessage(locale, keys.plain, {
       line1,
@@ -300,7 +301,7 @@ export async function renderAccountEmailChanged(
         url: securityUrl,
       })
     : "";
-  const standard = buildEmailStandardFooterCopy(locale);
+  const standard = buildEmailSecurityFooterCopy(locale);
   const plainText = appendStandardFooterPlain(
     formatEmailMessage(locale, "email.account.emailChanged.plain", {
       line1,
@@ -338,31 +339,29 @@ export async function renderDeviceRecoveryApprovalRequest(
   const {
     lead,
     deviceLine,
-    platformLine,
     whenLine,
     expiresLine,
     ipLine,
     locationLine,
+    noteConfirmWhere,
     noteNoUrl,
     noteBlockIfNotYou,
-    noteIgnoreIfMistake,
   } = props;
   const footer = helpUrl
     ? formatEmailMessage(locale, "email.device.recovery.textFooterWithUrl", { helpUrl })
     : noteNoUrl;
-  const standard = buildEmailStandardFooterCopy(locale);
+  const standard = buildEmailSecurityFooterCopy(locale);
   const plainText = appendStandardFooterPlain(
     formatEmailMessage(locale, "email.device.recovery.plain", {
       lead,
       deviceLine,
-      platformLine,
       whenLine: whenLine || "",
       expiresLine: expiresLine || "",
       ipLine,
       locationLine: locationLine || "",
+      noteConfirmWhere,
       footer,
       noteBlockIfNotYou,
-      noteIgnoreIfMistake: noteIgnoreIfMistake || "",
     }),
     standard,
   );
@@ -393,7 +392,7 @@ export async function renderContactRecoveryReleaseRequest(
   const footer = helpUrl
     ? formatEmailMessage(locale, "email.contacts.recovery.textFooterWithUrl", { helpUrl })
     : props.noteNoUrl;
-  const standard = buildEmailStandardFooterCopy(locale);
+  const standard = buildEmailSecurityFooterCopy(locale);
   const plainText = appendStandardFooterPlain(
     formatEmailMessage(locale, "email.contacts.recovery.plain", {
       lead: props.lead,

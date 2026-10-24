@@ -2,36 +2,18 @@ import { Section, Text } from "@react-email/components";
 import * as React from "react";
 
 import { EMAIL_CANVAS, EMAIL_PRIMARY_TEXT, EMAIL_SECONDARY_TEXT, EmailShell } from "./EmailShell.js";
-import { EmailStandardFooter } from "./EmailStandardFooter.js";
 
 export interface AuthSignInCodeEmailProps {
   beforeCode: string;
   code: string;
   line2: string;
-  ignore: string;
-  noReply: string;
-  ignoreIfMistake: string;
+  /** Variant A: single combined no-reply + ignore line. */
+  footer: string;
 }
 
-export function AuthSignInCodeEmail({
-  beforeCode,
-  code,
-  line2,
-  ignore,
-  noReply,
-  ignoreIfMistake,
-}: AuthSignInCodeEmailProps) {
+export function AuthSignInCodeEmail({ beforeCode, code, line2, footer }: AuthSignInCodeEmailProps) {
   return (
-    <EmailShell
-      preview={beforeCode}
-      footer={
-        <EmailStandardFooter
-          footnotes={<Text style={footnoteStyle}>{ignore}</Text>}
-          noReply={noReply}
-          ignoreIfMistake={ignoreIfMistake}
-        />
-      }
-    >
+    <EmailShell preview={beforeCode} footer={footer}>
       <Text style={leadStyle}>{beforeCode}</Text>
       <Section style={codeWrapStyle}>
         <table
@@ -89,13 +71,6 @@ const codeStyle: React.CSSProperties = {
 const noteStyle: React.CSSProperties = {
   fontSize: "14px",
   lineHeight: "22px",
-  color: EMAIL_SECONDARY_TEXT,
-  margin: "0 0 8px",
-};
-
-const footnoteStyle: React.CSSProperties = {
-  fontSize: "13px",
-  lineHeight: "20px",
   color: EMAIL_SECONDARY_TEXT,
   margin: "0 0 8px",
 };

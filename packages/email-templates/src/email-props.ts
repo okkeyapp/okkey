@@ -3,8 +3,12 @@ import type { AuthSignInCodeEmailProps } from "./components/AuthSignInCodeEmail.
 import type { DeviceApprovalEmailProps } from "./components/DeviceApprovalEmail.js";
 import type { TwoFactorNoticeEmailProps } from "./components/TwoFactorNoticeEmail.js";
 import type { WorkspaceInviteEmailProps } from "./components/WorkspaceInviteEmail.js";
+import { resolveDeviceDetailName } from "./device-display-name.js";
 import { formatUtcWhen } from "./format-utc.js";
-import { buildEmailStandardFooterCopy } from "./standard-footer.js";
+import {
+  buildEmailSecurityFooterCopy,
+  buildEmailStandardFooterCopy,
+} from "./standard-footer.js";
 import type {
   AccountEmailChangedVariables,
   AuthEmailCodeVariables,
@@ -28,16 +32,28 @@ export function buildAuthSignInCodeEmailProps(
   variables: AuthEmailCodeVariables,
 ): AuthSignInCodeEmailProps {
   const minutes = Math.ceil(variables.ttlSeconds / 60);
-  const standard = buildEmailStandardFooterCopy(locale);
   const prefix = authEmailCodeMessagePrefix(variables.purpose);
   return {
     beforeCode: formatEmailMessage(locale, `${prefix}.beforeCode`, {}),
     code: variables.code,
     line2: formatEmailMessage(locale, `${prefix}.line2`, { minutes }),
-    ignore: formatEmailMessage(locale, `${prefix}.ignore`, {}),
-    noReply: standard.noReply,
-    ignoreIfMistake: standard.ignoreIfMistake,
+    footer: formatEmailMessage(locale, `${prefix}.footer`, {}),
   };
+}
+
+function buildLocationLine(
+  locale: EmailLocale,
+  city: string | null | undefined,
+  country: string | null | undefined,
+): string {
+  const locationParts = [city, country].filter(
+    (part): part is string => typeof part === "string" && part.trim().length > 0,
+  );
+  const location =
+    locationParts.length > 0
+      ? locationParts.join(", ")
+      : formatEmailMessage(locale, "email.device.approval.locationUnknown", {});
+  return formatEmailMessage(locale, "email.device.approval.locationLine", { location });
 }
 
 export function buildDeviceApprovalEmailProps(
@@ -45,48 +61,52 @@ export function buildDeviceApprovalEmailProps(
   variables: DeviceApprovalRequestVariables,
 ): DeviceApprovalEmailProps {
   const helpUrl = variables.helpUrl.trim();
-  const platformOs = `${variables.platform} · ${variables.osName}`;
+  const deviceDetail = resolveDeviceDetailName(
+    variables.deviceName,
+    variables.platform,
+    variables.osName,
+  );
   const lead = formatEmailMessage(locale, "email.device.approval.lead", {});
   const deviceLine = formatEmailMessage(locale, "email.device.approval.deviceLine", {
-    deviceName: variables.deviceName,
-  });
-  const platformLine = formatEmailMessage(locale, "email.device.approval.platformLine", {
-    platformOs,
+    deviceName: deviceDetail,
   });
   const whenLine = variables.requestedAtIso
     ? formatEmailMessage(locale, "email.device.approval.whenLine", {
         when: formatUtcWhen(locale, variables.requestedAtIso),
       })
     : "";
+  const expiresLine = variables.expiresAtIso
+    ? formatEmailMessage(locale, "email.device.approval.expiresLine", {
+        when: formatUtcWhen(locale, variables.expiresAtIso),
+      })
+    : "";
   const ipLine = formatEmailMessage(locale, "email.device.approval.ipLine", {
     ip: variables.requestIp,
   });
-  const locationParts = [variables.city, variables.country].filter(
-    (part): part is string => typeof part === "string" && part.trim().length > 0,
-  );
-  const locationLine =
-    locationParts.length > 0
-      ? formatEmailMessage(locale, "email.device.approval.locationLine", {
-          location: locationParts.join(", "),
-        })
-      : "";
+  const locationLine = buildLocationLine(locale, variables.city, variables.country);
   const ctaLabel = formatEmailMessage(locale, "email.device.approval.ctaOpenSettings", {});
+  const noteConfirmWhere = formatEmailMessage(
+    locale,
+    "email.device.approval.noteConfirmWhere",
+    {},
+  );
   const noteNoUrl = formatEmailMessage(locale, "email.device.approval.noteNoUrl", {});
   const noteBlockIfNotYou = formatEmailMessage(
     locale,
     "email.device.approval.noteBlockIfNotYou",
     {},
   );
-  const standard = buildEmailStandardFooterCopy(locale);
+  const standard = buildEmailSecurityFooterCopy(locale);
   return {
     lead,
     deviceLine,
-    platformLine,
     whenLine,
+    expiresLine,
     ipLine,
     locationLine,
     helpUrl,
     ctaLabel,
+    noteConfirmWhere,
     noteNoUrl,
     noteBlockIfNotYou,
     noReply: standard.noReply,
@@ -139,7 +159,7 @@ function buildTwoFactorNoticeEmailProps(
 ): TwoFactorNoticeEmailProps {
   const securityUrl = variables.securitySettingsUrl.trim();
   const whenUtc = formatUtcWhen(locale, variables.occurredAtIso);
-  const standard = buildEmailStandardFooterCopy(locale);
+  const standard = buildEmailSecurityFooterCopy(locale);
   return {
     line1: formatEmailMessage(locale, keys.line1, { whenUtc }),
     line2: formatEmailMessage(locale, keys.line2, {}),
@@ -177,7 +197,7 @@ export function buildAccountEmailChangedEmailProps(
 ): TwoFactorNoticeEmailProps {
   const securityUrl = variables.securitySettingsUrl.trim();
   const whenUtc = formatUtcWhen(locale, variables.occurredAtIso);
-  const standard = buildEmailStandardFooterCopy(locale);
+  const standard = buildEmailSecurityFooterCopy(locale);
   return {
     line1: formatEmailMessage(locale, "email.account.emailChanged.line1", {
       newEmailMasked: variables.newEmailMasked,
@@ -195,18 +215,16 @@ export function buildDeviceRecoveryApprovalEmailProps(
   locale: EmailLocale,
   variables: DeviceRecoveryApprovalRequestVariables,
 ): DeviceApprovalEmailProps {
-  const platformOs = `${variables.platform} · ${variables.osName}`;
-  const locationParts = [variables.city, variables.country].filter(
-    (part): part is string => typeof part === "string" && part.trim().length > 0,
+  const deviceDetail = resolveDeviceDetailName(
+    variables.deviceName,
+    variables.platform,
+    variables.osName,
   );
-  const standard = buildEmailStandardFooterCopy(locale);
+  const standard = buildEmailSecurityFooterCopy(locale);
   return {
     lead: formatEmailMessage(locale, "email.device.recovery.lead", {}),
     deviceLine: formatEmailMessage(locale, "email.device.approval.deviceLine", {
-      deviceName: variables.deviceName,
-    }),
-    platformLine: formatEmailMessage(locale, "email.device.approval.platformLine", {
-      platformOs,
+      deviceName: deviceDetail,
     }),
     whenLine: formatEmailMessage(locale, "email.device.approval.whenLine", {
       when: formatUtcWhen(locale, variables.requestedAtIso),
@@ -217,17 +235,12 @@ export function buildDeviceRecoveryApprovalEmailProps(
     ipLine: formatEmailMessage(locale, "email.device.approval.ipLine", {
       ip: variables.requestIp,
     }),
-    locationLine:
-      locationParts.length > 0
-        ? formatEmailMessage(locale, "email.device.approval.locationLine", {
-            location: locationParts.join(", "),
-          })
-        : "",
+    locationLine: buildLocationLine(locale, variables.city, variables.country),
     helpUrl: variables.helpUrl.trim(),
     ctaLabel: formatEmailMessage(locale, "email.device.recovery.cta", {}),
+    noteConfirmWhere: formatEmailMessage(locale, "email.device.recovery.noteConfirmWhere", {}),
     noteNoUrl: formatEmailMessage(locale, "email.device.recovery.noteNoUrl", {}),
-    noteBlockIfNotYou: formatEmailMessage(locale, "email.device.approval.noteBlockIfNotYou", {}),
-    noteIgnoreIfMistake: formatEmailMessage(locale, "email.device.recovery.noteIgnore", {}),
+    noteBlockIfNotYou: formatEmailMessage(locale, "email.device.recovery.noteBlockIfNotYou", {}),
     noReply: standard.noReply,
     ignoreIfMistake: standard.ignoreIfMistake,
   };
@@ -237,7 +250,7 @@ export function buildContactRecoveryReleaseEmailProps(
   locale: EmailLocale,
   variables: ContactRecoveryReleaseRequestVariables,
 ): RecoveryActionEmailProps {
-  const standard = buildEmailStandardFooterCopy(locale);
+  const standard = buildEmailSecurityFooterCopy(locale);
   return {
     lead: formatEmailMessage(locale, "email.contacts.recovery.lead", {}),
     detailLine: formatEmailMessage(locale, "email.contacts.recovery.accountLine", {
@@ -295,6 +308,7 @@ export const previewSampleDeviceApproval: DeviceApprovalRequestVariables = {
   city: "Singapore",
   helpUrl: "https://app.okkey.local/items?popup=settings|devices",
   requestedAtIso: "2026-01-15T10:00:00.000Z",
+  expiresAtIso: "2026-01-15T10:10:00.000Z",
 };
 
 export const previewSampleWorkspaceInvite: WorkspaceInviteVariables = {
