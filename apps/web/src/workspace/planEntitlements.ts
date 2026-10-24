@@ -69,14 +69,14 @@ export function webPlanEntitlementOptions(workspace?: WorkspaceLike | null): Pla
 
 /**
  * Catalog tier for plan labels /settings/plan on this client.
- * Self-hosted without modules → FREE; with modules → workspace `plan_tier`.
+ * Self-hosted: modules off → FREE; modules on → ENTERPRISE (`plan_tier` ignored).
  * SaaS → workspace `plan_tier`.
  */
 export function webDisplayPlanTier(workspace?: WorkspaceLike | null): PlanTier {
   return resolveEntitlementPlanTier(workspace?.planTier, webPlanEntitlementOptions(workspace));
 }
 
-/** Web feature gate: self-host modules-off → FREE; otherwise `plan_tier` (+ self-host FREE extras). */
+/** Web feature gate: self-host modules on → ENTERPRISE; modules off → FREE (+ extras); SaaS → `plan_tier`. */
 export function workspaceHasPlanFeature(
   workspace: WorkspaceLike | null | undefined,
   feature: PlanFeature,
