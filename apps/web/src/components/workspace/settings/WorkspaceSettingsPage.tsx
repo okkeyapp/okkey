@@ -87,7 +87,7 @@ export default function WorkspaceSettingsPage({
   const activeSection = requestedSection;
   const sectionPermissions = settingsSectionPermissionCell(workspacePermissions, activeSection);
   const displayPlanTier = webDisplayPlanTier(workspace);
-  // Self-hosted FREE (modules on or off) keeps Core FREE notice + sales; EE overlay is licensed only.
+  // Self-hosted without modules → Core FREE notice + sales; with modules → EE plan section.
   const PlanSection =
     webDeploymentMode() === "self_hosted" && displayPlanTier === "FREE"
       ? SelfHostedFreePlanSection

@@ -1,9 +1,11 @@
 import {
+  getPlanQuotaLimits,
   hasPlanFeature,
   planEntitlementOptionsFromWorkspace,
   type PlanEntitlementOptions,
   type PlanFeature,
   type PlanFeatureOverrides,
+  type PlanQuotaLimits,
 } from "@okkey/types";
 
 import type { ApiConfig } from "./config.ts";
@@ -19,7 +21,7 @@ export type WorkspacePlanEntitlementSource = {
   planFeatureOverrides?: PlanFeatureOverrides | null;
 };
 
-/** Runtime entitlement context from API config (self-host modules-off → FREE; else plan_tier). */
+/** Runtime entitlement context from API config (self-host: modules → ENTERPRISE / FREE; SaaS: plan_tier). */
 export function planEntitlementRuntimeFromConfig(
   config: PlanEntitlementRuntimeConfig,
 ): Pick<PlanEntitlementOptions, "deploymentMode" | "enterpriseModulesActive"> {
@@ -39,7 +41,7 @@ export function workspacePlanEntitlementOptions(
   };
 }
 
-/** Feature gate: self-host without modules → FREE; with modules / SaaS → `plan_tier`. */
+/** Feature gate: self-host modules on → ENTERPRISE; modules off → FREE; SaaS → `plan_tier`. */
 export function workspaceHasPlanFeature(
   config: PlanEntitlementRuntimeConfig,
   workspace: WorkspacePlanEntitlementSource,
@@ -49,5 +51,16 @@ export function workspaceHasPlanFeature(
     workspace.planTier,
     feature,
     workspacePlanEntitlementOptions(config, workspace),
+  );
+}
+
+/** Soft numeric quotas for the effective entitlement tier. */
+export function workspaceGetPlanQuotaLimits(
+  config: PlanEntitlementRuntimeConfig,
+  workspace: WorkspacePlanEntitlementSource,
+): PlanQuotaLimits {
+  return getPlanQuotaLimits(
+    workspace.planTier,
+    planEntitlementRuntimeFromConfig(config),
   );
 }
