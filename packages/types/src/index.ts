@@ -1467,7 +1467,8 @@ export interface DeviceRevokeResponseDto {
 
 /** `POST /auth/register/complete` request body (snake_case on wire). */
 export interface RegisterCompleteRequestDto {
-  auth_state_id: EntityId;
+  /** Opaque auth state id from email confirm (CSPRNG hex; not a snowflake entity id). */
+  auth_state_id: string;
   user_public_key: string;
   /** ML-KEM-768 encapsulation key (1184 raw bytes), standard base64. */
   user_public_pq_key: string;
@@ -1505,9 +1506,15 @@ export interface RegisterCompleteResponseDto {
   vault_id: EntityId;
   device_id: EntityId;
   device_status: "trusted";
-  access_token: string;
-  expires_at: string;
-  token_type: "Bearer";
+  /**
+   * Short-lived bootstrap Bearer for recovery key enroll + export ack only.
+   * Present on the first successful completion; omitted on idempotent replay.
+   */
+  access_token?: string;
+  expires_at?: string;
+  token_type?: "Bearer";
+  /** When `access_token` is present: `registration_recovery`. */
+  scope?: "registration_recovery";
 }
 
 /** `GET /account/profile` (Bearer) — non-sensitive display fields for UI. */

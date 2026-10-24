@@ -5,11 +5,12 @@ import type { SessionService } from "../src/session/service.ts";
 export function createMockSessionService(): Pick<SessionService, "createSession"> {
   let seq = 0;
   return {
-    async createSession(userId: string) {
+    async createSession(userId: string, options = {}) {
       seq += 1;
       return {
         accessToken: `mock-access-token-${userId}-${seq}`,
         expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+        scope: options.scope ?? null,
       };
     },
   };
@@ -40,8 +41,11 @@ export function createTestApiConfig(overrides: Partial<ApiConfig> = {}): ApiConf
     invitePreviewRateLimitPerIp: 60,
     authRateLimitConfirmPerIp: 30,
     authRateLimitResendPerIp: 10,
+    authRateLimitRegisterCompletePerIp: 100_000,
+    authRateLimitRegisterCompletePerEmail: 100_000,
     registrationAuthStateTtlSeconds: 3600,
     registrationResultTtlSeconds: 604800,
+    registrationBootstrapSessionTtlSeconds: 900,
     deviceApprovalTtlSeconds: 600,
     sessionSecret: "test-session-secret-key-min-32-chars",
     sessionTtlSeconds: 3600,

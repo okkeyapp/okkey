@@ -125,6 +125,7 @@ function setupAuthService(params?: {
     now: () => redis.now(),
     generateCode: () => generatedCode,
     generateId: () => `id-${nextId++}`,
+    generateAuthStateId: () => `auth-state-${nextId++}`,
   });
 
   return { service, sentEmails, redis };

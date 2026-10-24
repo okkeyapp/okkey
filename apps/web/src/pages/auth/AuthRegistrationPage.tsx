@@ -35,8 +35,8 @@ import { getOrCreateDeviceFingerprint } from "../../auth/deviceFingerprint";
 import { parseBrowserEnvironment } from "../../auth/browserEnvironment";
 import { DEVICE_PUBLIC_KEY_KEY } from "../../auth/storageKeys";
 import { useLocale } from "../../locale/LocaleContext";
-import { ACCOUNT_LOCK_PATH, AUTH_EMAIL_PATH, accountLockWithRedirectQuery, invitePath } from "../../routes/paths";
-import { readPendingInviteToken } from "../../auth/pendingInviteStorage";
+import { AUTH_EMAIL_PATH } from "../../routes/paths";
+import { writeLastLoginMethodHint } from "../../auth/loginMethodStorage";
 import { completeExtensionAuthHandoffIfPending } from "../../auth/completeExtensionAuthHandoff";
 import { registrationErrorI18nKey } from "./registrationErrors";
 import {
@@ -76,7 +76,6 @@ export default function AuthRegistrationPage() {
     saveVaultBundle,
     updateLocalProfile,
     setRegistrationAuthStateId,
-    applyAccessTokenResponse,
     clearEmailLoginFlow,
     logout,
     accessToken,
@@ -95,6 +94,9 @@ export default function AuthRegistrationPage() {
   const [recoveryExported, setRecoveryExported] = useState(false);
   const [recoveryCopied, setRecoveryCopied] = useState(false);
   const recoveryCopyResetTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Dedupes Copy/Download ack; bootstrap token is revoked after the first success. */
+  const recoveryAckedRef = useRef(false);
+  const recoveryAckInFlightRef = useRef<Promise<void> | null>(null);
   /** Held only until recovery enroll succeeds; wiped on success or unmount. */
   const vaultKeyPendingEnrollRef = useRef<Uint8Array | null>(null);
   const [postRegRedirect, setPostRegRedirect] = useState<string | null>(null);
@@ -210,18 +212,16 @@ export default function AuthRegistrationPage() {
       };
 
       const reg = await authClient.completeRegistration(body);
-      // Enter post-signup recovery before clearing registrationAuthStateId so the
-      // redirect effect cannot race with async enroll and skip the export screen.
+      if (!reg.access_token?.trim()) {
+        throw new Error("registration bootstrap token missing");
+      }
+      // Bootstrap token is scoped to recovery enroll/ack only — do not persist as a
+      // full Bearer session. Full session requires the normal email login flow.
+      // Keep registrationAuthStateId until finishRegistration so AuthSessionGate /
+      // guestEntryPaths still allow /account/new during enroll + recovery export.
       setStep("enrolling");
       setPostRegAccessToken(reg.access_token);
-      applyAccessTokenResponse({
-        access_token: reg.access_token,
-        expires_at: reg.expires_at,
-        user_id: reg.user_id,
-        token_type: reg.token_type,
-      });
       finalizePendingVaultBundle(reg.user_id);
-      setRegistrationAuthStateId(null);
       clearEmailLoginFlow();
 
       updateLocalProfile({
@@ -229,12 +229,13 @@ export default function AuthRegistrationPage() {
         firstName: firstName.trim(),
         lastName: lastName.trim(),
       });
-
-      const pendingInvite = readPendingInviteToken();
-      const nextPath = pendingInvite
-        ? accountLockWithRedirectQuery(encodeURIComponent(invitePath(pendingInvite)))
-        : ACCOUNT_LOCK_PATH;
-      setPostRegRedirect(nextPath);
+      writeLastLoginMethodHint({ email, primary: "email" });
+      // After recovery export, sign in again for a full session (invite handoff survives in storage).
+      setPostRegRedirect(
+        email.trim()
+          ? `${AUTH_EMAIL_PATH}?email=${encodeURIComponent(email.trim())}`
+          : AUTH_EMAIL_PATH,
+      );
 
       // Keep vault key until enroll succeeds (no navigate/handoff).
       vaultKeyPendingEnrollRef.current = material.vaultKey;
@@ -308,12 +309,27 @@ export default function AuthRegistrationPage() {
   }
 
   async function ackRecoveryKeyExport(): Promise<void> {
+    if (recoveryAckedRef.current || recoveryExported) {
+      return;
+    }
+    if (recoveryAckInFlightRef.current) {
+      return recoveryAckInFlightRef.current;
+    }
     const token = postRegAccessToken ?? accessToken;
     if (!token) {
       throw new Error("missing access token for recovery key export ack");
     }
-    const core = createAuthenticatedCoreClient(token);
-    await core.ackAccountRecoveryKeyExport();
+    const run = (async () => {
+      const core = createAuthenticatedCoreClient(token);
+      await core.ackAccountRecoveryKeyExport();
+      recoveryAckedRef.current = true;
+    })();
+    recoveryAckInFlightRef.current = run;
+    try {
+      await run;
+    } finally {
+      recoveryAckInFlightRef.current = null;
+    }
   }
 
   async function handleRecoveryCopy() {
@@ -359,10 +375,13 @@ export default function AuthRegistrationPage() {
 
   function finishRegistration() {
     void (async () => {
+      // Bootstrap token cannot issue extension auth codes; require full login first.
       if (await completeExtensionAuthHandoffIfPending()) {
         return;
       }
-      const target = postRegRedirect ?? ACCOUNT_LOCK_PATH;
+      setPostRegAccessToken(null);
+      setRegistrationAuthStateId(null);
+      const target = postRegRedirect ?? AUTH_EMAIL_PATH;
       setRecoverySecret(null);
       navigate(target, { replace: true });
     })();

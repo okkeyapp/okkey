@@ -1,6 +1,11 @@
 import { createHash, randomBytes } from "node:crypto";
 import type { ApiConfig } from "../config.ts";
 import type { SessionsRepository } from "../storage/repositories.ts";
+import {
+  isFullSessionScope,
+  SESSION_SCOPE_FULL,
+  type SessionScope,
+} from "./scopes.ts";
 
 export class SessionServiceError extends Error {
   readonly code: string;
@@ -11,6 +16,24 @@ export class SessionServiceError extends Error {
     this.code = code;
     this.statusCode = statusCode;
   }
+}
+
+export interface CreateSessionOptions {
+  /** Defaults to `config.sessionTtlSeconds`. */
+  ttlSeconds?: number;
+  /** Defaults to full session (`null`). */
+  scope?: SessionScope;
+  /** Bind session to a device when known (e.g. registration device). */
+  deviceId?: string | null;
+}
+
+export interface ResolvedAccessToken {
+  userId: string;
+  deviceId: string | null;
+  /** `null` = full session. */
+  scope: string | null;
+  /** Present so callers can revoke the exact session (e.g. after recovery ack). */
+  tokenHash: string;
 }
 
 export interface SessionServiceDeps {
@@ -38,20 +61,27 @@ export class SessionService {
     return randomBytes(32).toString("hex");
   }
 
-  async createSession(userId: string): Promise<{ accessToken: string; expiresAt: string }> {
+  async createSession(
+    userId: string,
+    options: CreateSessionOptions = {},
+  ): Promise<{ accessToken: string; expiresAt: string; scope: SessionScope }> {
     const accessToken = this.mintAccessToken();
     const now = this.now();
-    const expires = new Date(now.getTime() + this.config.sessionTtlSeconds * 1000);
+    const ttlSeconds = options.ttlSeconds ?? this.config.sessionTtlSeconds;
+    const scope = options.scope === undefined ? SESSION_SCOPE_FULL : options.scope;
+    const expires = new Date(now.getTime() + ttlSeconds * 1000);
     const expiresAt = expires.toISOString();
     await this.sessions.createSession({
       userId,
       tokenHash: this.hashAccessToken(accessToken),
       expiresAtIso: expiresAt,
+      deviceId: options.deviceId ?? null,
+      scope,
     });
-    return { accessToken, expiresAt };
+    return { accessToken, expiresAt, scope };
   }
 
-  async resolveAccessToken(token: string): Promise<{ userId: string } | null> {
+  async resolveAccessToken(token: string): Promise<ResolvedAccessToken | null> {
     const trimmed = token.trim();
     if (!trimmed) {
       return null;
@@ -61,6 +91,22 @@ export class SessionService {
       this.hashAccessToken(trimmed),
       nowIso,
     );
-    return row ? { userId: row.userId } : null;
+    if (!row) {
+      return null;
+    }
+    return {
+      userId: row.userId,
+      deviceId: row.deviceId,
+      scope: isFullSessionScope(row.scope) ? null : row.scope,
+      tokenHash: this.hashAccessToken(trimmed),
+    };
+  }
+
+  async revokeAccessToken(token: string): Promise<boolean> {
+    const trimmed = token.trim();
+    if (!trimmed) {
+      return false;
+    }
+    return this.sessions.deleteByTokenHash(this.hashAccessToken(trimmed));
   }
 }

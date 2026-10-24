@@ -51,6 +51,9 @@ jobs:
       CRYPTO_ROLLOUT_MODE: compat
       CRYPTO_ROLLOUT_ENABLED: "true"
       CRYPTO_ROLLOUT_STATE: resume
+      # Shared 127.0.0.1 across integration cases; production defaults stay 10/5.
+      AUTH_RATE_LIMIT_REGISTER_COMPLETE_PER_IP: "100000"
+      AUTH_RATE_LIMIT_REGISTER_COMPLETE_PER_EMAIL: "100000"
       # Env only — API integration tests use LocalObjectStorage (MinIO not required).
       S3_ENDPOINT: http://localhost:9000
       S3_REGION: us-east-1

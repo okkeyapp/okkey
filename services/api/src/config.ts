@@ -51,8 +51,17 @@ export interface ApiConfig {
   invitePreviewRateLimitPerIp: number;
   authRateLimitConfirmPerIp: number;
   authRateLimitResendPerIp: number;
+  /** POST /auth/register/complete per-IP budget within `authRateLimitWindowSeconds`. */
+  authRateLimitRegisterCompletePerIp: number;
+  /** Same window; keyed by email from the auth state (normalized). */
+  authRateLimitRegisterCompletePerEmail: number;
   registrationAuthStateTtlSeconds: number;
   registrationResultTtlSeconds: number;
+  /**
+   * TTL for the post-registration bootstrap Bearer (`registration_recovery` scope).
+   * Default 900s (15 minutes). Full sessions use `sessionTtlSeconds`.
+   */
+  registrationBootstrapSessionTtlSeconds: number;
   deviceApprovalTtlSeconds: number;
   /** Server secret: AES key for TOTP at rest, backup-code pepper, session binding */
   sessionSecret: string;
@@ -399,6 +408,14 @@ export function loadConfig(): ApiConfig {
       process.env.AUTH_RATE_LIMIT_RESEND_PER_IP,
       10,
     ),
+    authRateLimitRegisterCompletePerIp: parsePositiveInt(
+      process.env.AUTH_RATE_LIMIT_REGISTER_COMPLETE_PER_IP,
+      10,
+    ),
+    authRateLimitRegisterCompletePerEmail: parsePositiveInt(
+      process.env.AUTH_RATE_LIMIT_REGISTER_COMPLETE_PER_EMAIL,
+      5,
+    ),
     registrationAuthStateTtlSeconds: parsePositiveInt(
       process.env.REGISTRATION_AUTH_STATE_TTL_SECONDS,
       3600,
@@ -406,6 +423,10 @@ export function loadConfig(): ApiConfig {
     registrationResultTtlSeconds: parsePositiveInt(
       process.env.REGISTRATION_RESULT_TTL_SECONDS,
       604800,
+    ),
+    registrationBootstrapSessionTtlSeconds: parsePositiveInt(
+      process.env.REGISTRATION_BOOTSTRAP_SESSION_TTL_SECONDS,
+      900,
     ),
     deviceApprovalTtlSeconds: parsePositiveInt(
       process.env.DEVICE_APPROVAL_TTL_SECONDS,
