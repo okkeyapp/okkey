@@ -73,10 +73,10 @@ export const CRYPTO_POLICY_MATRIX: Readonly<CryptoPolicyMatrix> = Object.freeze(
         Object.freeze({
           version: 1,
           configId: "v1",
-          state: "deprecated",
-          allowedForWrite: true,
+          state: "forbidden",
+          allowedForWrite: false,
           encryptedBlobAlgorithm: "opaque",
-          notes: "Legacy profile for local development and fixtures only.",
+          notes: "Legacy profile is forbidden for vault item reads and writes.",
           deprecation: V1_DEPRECATION_WINDOW,
         }),
         Object.freeze({
@@ -100,7 +100,7 @@ export const CRYPTO_POLICY_MATRIX: Readonly<CryptoPolicyMatrix> = Object.freeze(
           state: "forbidden",
           allowedForWrite: false,
           encryptedBlobAlgorithm: "opaque",
-          notes: "Legacy profile is blocked for stage write paths.",
+          notes: "Legacy profile is forbidden for vault item reads and writes.",
           deprecation: V1_DEPRECATION_WINDOW,
         }),
         Object.freeze({
@@ -124,7 +124,7 @@ export const CRYPTO_POLICY_MATRIX: Readonly<CryptoPolicyMatrix> = Object.freeze(
           state: "forbidden",
           allowedForWrite: false,
           encryptedBlobAlgorithm: "opaque",
-          notes: "Legacy profile is blocked for production write paths.",
+          notes: "Legacy profile is forbidden for vault item reads and writes.",
           deprecation: V1_DEPRECATION_WINDOW,
         }),
         Object.freeze({

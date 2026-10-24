@@ -24,14 +24,15 @@ import {
 const SHARE_LEN = 32;
 const KDF_SALT_LEN = 16;
 
-/** Matches `rust/crypto-engine` default Argon2id params (version 1 on wire). */
+/** Argon2id parameters shared by password KDF wire versions 1 and 2. */
 export const OKKEY_PASSWORD_KDF_PARAMS_V1 = {
   mCost: 19456,
   tCost: 2,
   pCost: 1,
 } as const;
 
-export const OKKEY_PASSWORD_KDF_PARAMS_VERSION = 1 as const;
+/** New password KDF writes. Unlock still accepts stored version 1. */
+export const OKKEY_PASSWORD_KDF_PARAMS_VERSION = 2 as const;
 
 
 function xor32(a: Uint8Array, b: Uint8Array, c: Uint8Array): Uint8Array {

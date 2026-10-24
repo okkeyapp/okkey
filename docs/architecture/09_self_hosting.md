@@ -20,7 +20,7 @@ Full guide, manual compose, TLS notes, and image tags:
 
 **First-run:** on self-hosted installs with an empty `users` table, email login may skip OTP for one exclusive first-admin claim (`bootstrapRequired` on `POST /auth/email/start`) so that admin can register without SMTP. Overlapping empty-catalog starts still require OTP for non-claimants. Once any user exists, normal email OTP applies.
 
-**Crypto policy:** self-host compose defaults to `DEPLOY_ENV=dev` and `CRYPTO_ALLOWED_PROFILE_VERSIONS=1,2` so web registration (`password_kdf_params_version=1`) succeeds. `DEPLOY_ENV=prod` only allows profile `2` and returns `CRYPTO_PROFILE_NOT_ALLOWED`. See [`deploy/docker/README.md`](../../deploy/docker/README.md).
+**Crypto policy:** self-host compose defaults to `DEPLOY_ENV=dev` and `CRYPTO_ALLOWED_PROFILE_VERSIONS=2`. Vault items require profile `v2` for read and write. Profile `v1` is forbidden in every environment, and `CRYPTO_ALLOWED_PROFILE_VERSIONS` can only narrow that allowlist. New registration uses `password_kdf_params_version=2`. See [`deploy/docker/README.md`](../../deploy/docker/README.md).
 
 ---
 

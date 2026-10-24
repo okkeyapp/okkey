@@ -158,7 +158,7 @@ export class SyncService {
     this.users = deps.users;
     this.workspaces = deps.workspaces;
     this.config = {
-      allowedCryptoProfileVersions: [1, 2],
+      allowedCryptoProfileVersions: [2],
       deployEnv: "dev",
       cryptoRolloutMode: "compat",
       cryptoRolloutEnabled: true,

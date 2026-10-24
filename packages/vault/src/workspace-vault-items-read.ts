@@ -19,6 +19,7 @@ import { resolveVaultItemEncryptionKey } from "./resolve-vault-item-key.js";
 const CACHE_DB = "okkey-workspace-vault-items-sync";
 const CACHE_STORE = "materialized_state";
 const ITEM_EVENT_TYPES = new Set(["ITEM_CREATE", "ITEM_UPDATE", "ITEM_DELETE"]);
+/** Plaintext item schema versions. Not the crypto profile (vault items require qday v2). */
 const SUPPORTED_PAYLOAD_SCHEMA_VERSIONS = new Set([1, 2]);
 
 /** Wire activity entry — same shape as web / `@okkey/vault-ui` ItemActivityWireEntry. */
@@ -361,7 +362,7 @@ export function createWorkspaceVaultItemsReadController(input: {
     let state = ensureVaultState(vaultId);
     const vaultKey = await resolveVaultKey(vaultId);
     const decryptWirePayload = async (encryptedPayloadBase64: string) =>
-      decryptVaultItemPayload(vaultKey, base64ToBytes(encryptedPayloadBase64));
+      decryptVaultItemPayload(vaultKey, base64ToBytes(encryptedPayloadBase64), 2);
 
     while (true) {
       const page = await input.core.listVaultEvents(vaultId, state.lastAppliedVersion);

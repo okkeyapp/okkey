@@ -89,9 +89,19 @@ VaultKey
 store encrypted
 ```
 
-### Item plaintext schema (client-only)
+### Item encryption (client-only)
 
 Items are encrypted **only on the client** with **VaultKey** (`@okkey/crypto/vault-item` `encryptVaultItemPayload`) and sent as sync `encryptedPayload`; the server stores opaque bytes and never parses JSON.
+
+### Crypto profile (vault items)
+
+Vault item encrypt and decrypt accept only crypto profile **v2** (`qday_default`). Profile **v1** and any unknown profile are rejected with `CryptoSdkError` `UNSUPPORTED_ALGORITHM` on both the read path and the write path. This applies in `dev`, `stage`, and `prod`. There is no migration of existing profile `v1` vault item payloads. `CRYPTO_ALLOWED_PROFILE_VERSIONS` can only narrow the server allowlist and cannot re-enable profile `v1`.
+
+Profile `v1` deprecation dates are unchanged: announced `2026-03-29`, starts `2026-03-29`, grace ends `2026-09-30`, removal target `2026-12-31`.
+
+### Plaintext schema
+
+Plaintext `schemaVersion` is independent of the crypto profile.
 
 - **v1** (`schemaVersion: 1`): minimal fields — `itemId`, `vaultId`, `title`, `createdAtMs`, `updatedAtMs`, optional `deleted` tombstone. Legacy; new writes use v2.
 - **v2** (`schemaVersion: 2`, `ITEM_PLAINTEXT_SCHEMA_VERSION_LATEST`): adds `categoryId`, `sections[]`, `fields[]` (typed values: text, password, TOTP, URL, note, file placeholder, unknown forward-compat). Preset sections/fields per category are defined in `@okkey/types` (`createPresetItemPlaintextV2`, category registry). Replay normalizes v1 → v2 via `migrateItemPlaintextV1ToV2` / `parseAndNormalizeItemPlaintextUtf8`.

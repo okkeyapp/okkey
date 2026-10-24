@@ -370,7 +370,7 @@ Completes **new user** onboarding after email confirm. Accepts only server-side 
 | `encrypted_private_key` | object (`EncryptedBlob`) | Yes | Versioned encrypted envelope. Required keys: `crypto_version`, `algorithm`, `payload`, `meta`. Min decoded payload length **2473** bytes (XChaCha20-Poly1305 over hybrid identity bundle). |
 | `server_key_share` | string | Yes | Base64 of **32** bytes (share **A**). |
 | `password_kdf_salt` | string | Yes | Base64 of **16** bytes (Argon2id salt). |
-| `password_kdf_params_version` | integer | Yes | Profile version. Core currently validates `1` and `2`; environment policy may restrict writes to `2` only. |
+| `password_kdf_params_version` | integer | Yes | Profile version. New registration writes require `2` under the default allowlist (`CRYPTO_ALLOWED_PROFILE_VERSIONS` can only narrow). Unlock of a stored version `1` still succeeds. Argon2id parameters are the same for versions `1` and `2`. |
 | `device_public_key` | string | Yes | Same rules as `POST /devices/register`. |
 | `device_share` | string | Yes | Base64 of **32** bytes (share **B**). |
 | `device_fingerprint` | string | Yes | Hex 32–128 chars. |

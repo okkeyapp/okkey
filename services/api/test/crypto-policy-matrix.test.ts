@@ -53,7 +53,7 @@ test("crypto policy matrix schema reports invalid deprecation window", () => {
 });
 
 test("crypto policy matrix exposes expected allowed profiles by env", () => {
-  assert.deepEqual(getAllowedCryptoProfileVersionsByEnv("dev"), [1, 2]);
+  assert.deepEqual(getAllowedCryptoProfileVersionsByEnv("dev"), [2]);
   assert.deepEqual(getAllowedCryptoProfileVersionsByEnv("stage"), [2]);
   assert.deepEqual(getAllowedCryptoProfileVersionsByEnv("prod"), [2]);
 });
