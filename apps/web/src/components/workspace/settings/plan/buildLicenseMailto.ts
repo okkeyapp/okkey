@@ -26,6 +26,9 @@ export function buildLicenseMailto(fields: LicenseMailtoFields): string {
   const { subject, body } = buildLicenseRequestEmailCopy(emailLocale, {
     workspaceName: fields.workspaceName,
     workspaceUrl: fields.workspaceUrl,
+    currentPlanTier: fields.currentPlanTier,
+    requestedPlanTier: fields.requestedPlanTier,
+    deploymentMode: fields.deploymentMode,
     memberCount: fields.memberCount,
     region: fields.region,
     locale: fields.locale,

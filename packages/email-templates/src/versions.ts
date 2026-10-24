@@ -10,7 +10,7 @@ export const EMAIL_TEMPLATE_VERSIONS = {
   device_recovery_approval_request: 6,
   contact_recovery_release_request: 5,
   trusted_contact_invite: 4,
-  plan_change_request: 6,
+  plan_change_request: 7,
 } as const;
 
 export type EmailTemplateId = keyof typeof EMAIL_TEMPLATE_VERSIONS;

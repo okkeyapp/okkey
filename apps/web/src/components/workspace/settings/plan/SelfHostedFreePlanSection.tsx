@@ -192,6 +192,10 @@ export default function SelfHostedFreePlanSection({
       salesEmail,
       workspaceName,
       workspaceUrl,
+      // Self-hosted FREE surface: UI is FREE; sales request targets ENTERPRISE.
+      currentPlanTier: "FREE",
+      requestedPlanTier: SELF_HOSTED_SALES_REQUEST_TIER,
+      deploymentMode: "self-hosted",
       memberCount: input.workspaceMemberCount,
       region: input.region ?? profile.region,
       locale: input.locale,
