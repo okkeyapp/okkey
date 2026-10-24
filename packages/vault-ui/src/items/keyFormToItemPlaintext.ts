@@ -4,6 +4,7 @@ import type { EntityId } from "@okkey/types";
 import { normalizePinValue, parseKeyFieldFileValue, serializeKeyFieldSecretRaw } from "@okkey/ui";
 
 import type { KeyFormEditorField, KeyFormEditorSection } from "../key-form/KeyFormEditor.js";
+import { DEFAULT_TOTP_PERIOD_SECONDS } from "../key-form/totpFromSecret.js";
 import { serializeSelectFieldValue } from "./keyFormSelectField.js";
 
 function sectionsForItemPlaintext(sections: readonly KeyFormEditorSection[]): KeyFormEditorSection[] {
@@ -54,8 +55,13 @@ function fieldValueFromForm(field: KeyFormEditorField): ItemFieldV2["value"] {
         url: raw,
         urlAutofillScope: field.urlAutofillScope ?? "entire-site",
       };
-    case "totp":
-      return { kind: "totp", secretBase32: raw, periodSeconds: 30, digits: 6 };
+    case "totp": {
+      const periodSeconds =
+        field.totpPeriodSeconds && field.totpPeriodSeconds > 0
+          ? field.totpPeriodSeconds
+          : DEFAULT_TOTP_PERIOD_SECONDS;
+      return { kind: "totp", secretBase32: raw, periodSeconds, digits: 6 };
+    }
     case "multiline-text": {
       const noteValue: { kind: "note"; note: string; disableClickCopy?: boolean } = { kind: "note", note: raw };
       if (field.disableClickCopy) {
