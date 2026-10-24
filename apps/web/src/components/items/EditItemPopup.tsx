@@ -17,7 +17,11 @@ import {
   buildTemplateUpdatePayload,
   syncTemplateFaviconForSnapshot,
 } from "../../items/itemTemplateHelpers";
-import { keyFieldFileValueFromFaviconId, syncItemFaviconForPlaintext } from "../../items/syncItemFavicon";
+import {
+  keyFieldFileValueFromFaviconId,
+  seedFaviconUrlCacheAfterUpload,
+  syncItemFaviconForPlaintext,
+} from "../../items/syncItemFavicon";
 import { useWorkspaceItemTemplates } from "../../items/useWorkspaceItemTemplates";
 import { useWorkspaceItems } from "../../items/WorkspaceItemsContext";
 import { useWorkspaceVaultProfiles } from "../../items/WorkspaceVaultProfilesContext";
@@ -275,6 +279,12 @@ export default function EditItemPopup({
               );
               updatedItem = faviconSync.item;
               uploadedFavicon = faviconSync.uploadedFavicon;
+              seedFaviconUrlCacheAfterUpload({
+                vaultId: uploadedPayload.vaultId,
+                itemId: uploadedPayload.itemId,
+                uploadedFavicon: faviconSync.uploadedFavicon,
+                uploadedPngBytes: faviconSync.uploadedPngBytes,
+              });
               await updateItem(updatedItem);
             } catch (error) {
               const filesToDelete = uploadedFavicon ? [...uploadedFiles, uploadedFavicon] : uploadedFiles;

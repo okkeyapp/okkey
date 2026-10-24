@@ -13,6 +13,11 @@ function revokeObjectUrl(url: string | null): void {
 export type ItemFormFaviconSyncInput = {
   faviconSource?: ItemFaviconSource;
   manualFaviconPng?: Uint8Array | null;
+  /**
+   * Website favicon PNG already fetched for the form preview.
+   * When set, save skips a second preview GET and uploads these bytes.
+   */
+  websiteFaviconPng?: Uint8Array | null;
   /** Reuse an existing stored favicon (e.g. from template/copy) when no new PNG is pending. */
   reuseFaviconId?: string;
   reuseFaviconItemId?: string;
@@ -84,6 +89,8 @@ export function useItemFormFavicon(input: {
 
   const getSyncInput = useCallback((): ItemFormFaviconSyncInput => {
     const manualFaviconPng = pendingManualPngRef.current ?? pendingManualPng;
+    const websiteFaviconPng =
+      !manualFaviconPng && faviconSource !== "manual" ? websitePreview.previewPngBytes : null;
     const reuseFaviconId =
       !manualFaviconPng && faviconSource === "manual"
         ? initialFaviconIdRef.current?.trim() || undefined
@@ -92,10 +99,11 @@ export function useItemFormFavicon(input: {
     return {
       faviconSource,
       ...(manualFaviconPng && manualFaviconPng.byteLength > 0 ? { manualFaviconPng } : {}),
+      ...(websiteFaviconPng && websiteFaviconPng.byteLength > 0 ? { websiteFaviconPng } : {}),
       ...(reuseFaviconId ? { reuseFaviconId } : {}),
       ...(reuseFaviconItemId ? { reuseFaviconItemId } : {}),
     };
-  }, [faviconSource, pendingManualPng]);
+  }, [faviconSource, pendingManualPng, websitePreview.previewPngBytes]);
 
   return {
     previewImageSrc,
