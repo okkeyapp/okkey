@@ -7,6 +7,7 @@ import {
   readSession,
   resolveApiBaseFromWebBase,
   STORAGE_KEYS,
+  clearSessionAfterLostDeviceTrust,
   wipeAllExtensionData,
   WEB_BASE_URL_REQUIRED_ERROR,
   WEB_BASE_URL_SCHEME_ERROR,
@@ -214,6 +215,30 @@ test("wipeAllExtensionData clears session storage and local vault keys, keeps la
     assert.equal(mocks.local["okkey.vault.devicePrefs.v1.u.u1"], undefined);
     assert.equal(mocks.local["okkey.vault.pinAttempts.v1.u.u1"], undefined);
     assert.equal(Object.keys(mocks.session).length, 0, "session storage must be cleared");
+  } finally {
+    mocks.restore();
+  }
+});
+
+test("clearSessionAfterLostDeviceTrust clears session when prior device id exists", async () => {
+  const mocks = installStorageMocks({
+    local: {},
+    session: {
+      [UNLOCK_SESSION_STORAGE_KEY]: JSON.stringify({
+        v: 1,
+        user_id: "u1",
+        vault_key_b64: "AAAA",
+        password_share_c_b64: "BBBB",
+        last_activity_at: Date.now(),
+        idle_lock_ms: 3_600_000,
+      }),
+    },
+  });
+  try {
+    await clearSessionAfterLostDeviceTrust(null);
+    assert.equal(Object.keys(mocks.session).length, 1, "no prior device → leave session alone");
+    await clearSessionAfterLostDeviceTrust("dev-old");
+    assert.equal(Object.keys(mocks.session).length, 0, "prior device → clear unlock session");
   } finally {
     mocks.restore();
   }

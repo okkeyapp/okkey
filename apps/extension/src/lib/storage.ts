@@ -204,6 +204,21 @@ export async function clearExtensionSessionArea(): Promise<void> {
 }
 
 /**
+ * When a previously known extension device is no longer trusted (revoked,
+ * blocked, or pending re-approval), drop unlock / pending-save session material
+ * so a later re-approval cannot restore vaultKey without master password / PIN.
+ * Account session and local profile are left intact for the pending UX.
+ */
+export async function clearSessionAfterLostDeviceTrust(
+  previousDeviceId: string | null | undefined,
+): Promise<void> {
+  if (typeof previousDeviceId !== "string" || !previousDeviceId.trim()) {
+    return;
+  }
+  await clearExtensionSessionArea();
+}
+
+/**
  * Clear all extension-owned local state except the last-server preference.
  * Also clears chrome.storage.session (unlock session, pending save offers, …)
  * and notifies the service worker to drop in-memory caches.

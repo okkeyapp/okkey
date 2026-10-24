@@ -403,8 +403,20 @@ export function PopupApp() {
         toast.error(message);
         setScreen("error");
       } else if (snapshot.status === "pending" || snapshot.status === "checking") {
+        // Defense in depth: unlock secrets must not survive lost device trust
+        // (e.g. web revoke → re-pending) even if resolve already cleared session.
+        wipeUnlockSecrets(unlockSecretsRef.current);
+        unlockSecretsRef.current = null;
+        setUnlockSecrets(null);
+        setEncryptedPrivateKeyPayload(null);
+        void clearExtensionSessionArea();
         setScreen("pending");
       } else {
+        wipeUnlockSecrets(unlockSecretsRef.current);
+        unlockSecretsRef.current = null;
+        setUnlockSecrets(null);
+        setEncryptedPrivateKeyPayload(null);
+        void clearExtensionSessionArea();
         setScreen("pending");
       }
     },

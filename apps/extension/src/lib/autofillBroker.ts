@@ -533,6 +533,11 @@ async function previewFaviconPng(apiBaseUrl: string, accessToken: string, urls: 
       },
       body: JSON.stringify({ urls }),
     });
+    if (response.status === 401) {
+      await wipeAllExtensionData();
+      await clearAllPendingSaveOffers();
+      return null;
+    }
     if (!response.ok) {
       return null;
     }
@@ -559,7 +564,9 @@ export async function handleAutofillSiteIcon(
   const lookupUrls = [...new Set([...(urls ?? []), websiteUrl].map((u) => u.trim()).filter(Boolean))];
   const png = await previewFaviconPng(profile.apiBaseUrl, session.access_token, lookupUrls);
   if (!png || png.byteLength === 0) {
-    return { status: "missing" };
+    // Favicon 401 wipes local state; surface signed-out instead of "missing".
+    const stillSignedIn = await readSession();
+    return stillSignedIn ? { status: "missing" } : { status: "signed-out" };
   }
   return { status: "ok", iconUrl: pngToDataUrl(png) };
 }
@@ -593,6 +600,11 @@ async function uploadFaviconAttachment(input: {
         body: encrypted.encryptedBody,
       },
     );
+    if (response.status === 401) {
+      await wipeAllExtensionData();
+      await clearAllPendingSaveOffers();
+      return null;
+    }
     if (!response.ok) {
       return null;
     }
