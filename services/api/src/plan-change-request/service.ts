@@ -11,6 +11,9 @@ import type { QueryExecutor } from "../storage/postgres.ts";
 import type { UsersRepository, WorkspacesRepository } from "../storage/repositories.ts";
 import type { EmailTemplateService } from "../email/service.ts";
 
+/** Max successful license / plan-change request emails per workspace per UTC day. */
+export const PLAN_CHANGE_REQUEST_DAILY_LIMIT = 3;
+
 export class PlanChangeRequestServiceError extends Error {
   readonly code:
     | "ACCESS_DENIED"
@@ -18,9 +21,11 @@ export class PlanChangeRequestServiceError extends Error {
     | "INVALID_REQUEST"
     | "PLAN_DOWNGRADE_FORBIDDEN"
     | "ALREADY_SUBMITTED"
+    | "RATE_LIMITED"
     | "EMAIL_NOT_CONFIGURED"
     | "EMAIL_SEND_FAILED";
   readonly status: number;
+  readonly details?: { retryAfterSeconds?: number };
 
   constructor(
     code:
@@ -29,15 +34,18 @@ export class PlanChangeRequestServiceError extends Error {
       | "INVALID_REQUEST"
       | "PLAN_DOWNGRADE_FORBIDDEN"
       | "ALREADY_SUBMITTED"
+      | "RATE_LIMITED"
       | "EMAIL_NOT_CONFIGURED"
       | "EMAIL_SEND_FAILED",
     status: number,
     message: string,
+    details?: { retryAfterSeconds?: number },
   ) {
     super(message);
     this.name = "PlanChangeRequestServiceError";
     this.code = code;
     this.status = status;
+    this.details = details;
   }
 }
 
@@ -60,6 +68,25 @@ export function salesDeploymentLabel(mode: DeploymentMode): "saas" | "self-hoste
   return mode === "saas" ? "saas" : "self-hosted";
 }
 
+/** Seconds until the next UTC midnight (at least 1). */
+export function secondsUntilNextUtcMidnight(now: Date = new Date()): number {
+  const next = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1);
+  return Math.max(1, Math.ceil((next - now.getTime()) / 1000));
+}
+
+export function planChangeRequestDailyRedisKey(
+  workspaceId: string,
+  now: Date = new Date(),
+): string {
+  const day = now.toISOString().slice(0, 10);
+  return `plan-change-request:day:${workspaceId}:${day}`;
+}
+
+type RateLimitRedis = {
+  incr(key: string): Promise<number>;
+  expire(key: string, seconds: number): Promise<boolean>;
+};
+
 export class PlanChangeRequestService {
   private readonly db: QueryExecutor;
   private readonly workspaces: Pick<
@@ -68,10 +95,12 @@ export class PlanChangeRequestService {
   >;
   private readonly users: Pick<UsersRepository, "loadAccountProfile">;
   private readonly emailTemplates: Pick<EmailTemplateService, "sendPlanChangeRequest">;
+  private readonly redis: RateLimitRedis;
   private readonly salesEmail: string;
   private readonly salesEmailDeliverable: boolean;
   private readonly deploymentMode: DeploymentMode;
   private readonly publicAppBaseUrl: string;
+  private readonly now: () => Date;
 
   constructor(deps: {
     db: QueryExecutor;
@@ -81,6 +110,7 @@ export class PlanChangeRequestService {
     >;
     users: Pick<UsersRepository, "loadAccountProfile">;
     emailTemplates: Pick<EmailTemplateService, "sendPlanChangeRequest">;
+    redis: RateLimitRedis;
     salesEmail: string;
     /**
      * When false (`EMAIL_PROVIDER=logger` or incomplete transport config),
@@ -89,15 +119,18 @@ export class PlanChangeRequestService {
     salesEmailDeliverable?: boolean;
     deploymentMode: DeploymentMode;
     publicAppBaseUrl?: string;
+    now?: () => Date;
   }) {
     this.db = deps.db;
     this.workspaces = deps.workspaces;
     this.users = deps.users;
     this.emailTemplates = deps.emailTemplates;
+    this.redis = deps.redis;
     this.salesEmail = deps.salesEmail.trim();
     this.salesEmailDeliverable = deps.salesEmailDeliverable ?? true;
     this.deploymentMode = deps.deploymentMode;
     this.publicAppBaseUrl = (deps.publicAppBaseUrl ?? "").trim().replace(/\/$/, "");
+    this.now = deps.now ?? (() => new Date());
   }
 
   async getStatus(input: {
@@ -145,6 +178,23 @@ export class PlanChangeRequestService {
 
   private isSalesEmailDeliverable(): boolean {
     return Boolean(this.salesEmail) && this.salesEmailDeliverable;
+  }
+
+  private async consumeDailyRateLimit(workspaceId: string): Promise<void> {
+    const now = this.now();
+    const key = planChangeRequestDailyRedisKey(workspaceId, now);
+    const count = await this.redis.incr(key);
+    if (count === 1) {
+      await this.redis.expire(key, secondsUntilNextUtcMidnight(now));
+    }
+    if (count > PLAN_CHANGE_REQUEST_DAILY_LIMIT) {
+      throw new PlanChangeRequestServiceError(
+        "RATE_LIMITED",
+        429,
+        "license request daily limit exceeded",
+        { retryAfterSeconds: secondsUntilNextUtcMidnight(now) },
+      );
+    }
   }
 
   async submit(input: PlanChangeRequestInput): Promise<{ submitted: true }> {
@@ -215,8 +265,8 @@ export class PlanChangeRequestService {
       );
     }
 
-    // Re-send is allowed: each successful submit updates `plan_change_request_sent_at`
-    // so the UI can show the latest datetime and “Send again”.
+    // Re-send is allowed (up to the daily limit): each successful submit updates
+    // `plan_change_request_sent_at` so the UI can show the latest datetime and “Send again”.
 
     const currentPlanTier = normalizePlanTier(workspace.planTier);
     // Self-hosted license purchase is not a SaaS catalog upgrade: Core FREE UI ignores DB
@@ -231,6 +281,8 @@ export class PlanChangeRequestService {
         "requested plan must be higher than the current plan",
       );
     }
+
+    await this.consumeDailyRateLimit(input.workspaceId);
 
     const profile = await this.users.loadAccountProfile(input.actorUserId);
     const regionFromProfile =

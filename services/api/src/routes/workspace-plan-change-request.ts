@@ -121,7 +121,14 @@ export function createWorkspacePlanChangeRequestRoute(
       json(ctx.res, 200, result);
     } catch (error) {
       if (error instanceof PlanChangeRequestServiceError) {
-        json(ctx.res, error.status, errorPayload(error.code, error.message, ctx.requestId));
+        const retryAfter = error.details?.retryAfterSeconds;
+        if (error.code === "RATE_LIMITED" && typeof retryAfter === "number" && retryAfter > 0) {
+          ctx.res.setHeader("Retry-After", String(retryAfter));
+        }
+        json(ctx.res, error.status, {
+          ...errorPayload(error.code, error.message, ctx.requestId),
+          ...(retryAfter != null ? { details: { retryAfterSeconds: retryAfter } } : {}),
+        });
         return;
       }
       throw error;

@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 
 import { useAuthenticatedCoreClient } from "../../../../auth/AuthVaultContext";
 import type { RegionCode } from "../../../../regions/regions";
-import { buildLicenseMailto, DEFAULT_LICENSE_SALES_EMAIL } from "./buildLicenseMailto";
+import { buildLicenseMailto } from "./buildLicenseMailto";
 import {
   formatLicenseRequestSentAt,
   readLicenseRequestSentAt,
@@ -120,7 +120,8 @@ export default function SelfHostedFreePlanSection({
   const [statusReady, setStatusReady] = useState(false);
   /** Prefer mailto until status confirms a real transport (avoids logger fake success). */
   const [salesEmailDeliverable, setSalesEmailDeliverable] = useState(false);
-  const [salesEmail, setSalesEmail] = useState(DEFAULT_LICENSE_SALES_EMAIL);
+  /** From API `sales_email` only — no client-side default inbox. */
+  const [salesEmail, setSalesEmail] = useState("");
 
   const workspaceUrl =
     typeof window !== "undefined" ? window.location.origin.replace(/\/$/, "") : "";
@@ -188,10 +189,17 @@ export default function SelfHostedFreePlanSection({
     region: RegionCode | null;
     workspaceMemberCount: number;
   }) {
+    if (!salesEmail.trim()) {
+      throw new Error(t("web.workspaceSettings.plan.request.errorGeneric"));
+    }
     const href = buildLicenseMailto({
       salesEmail,
       workspaceName,
       workspaceUrl,
+      // Self-hosted FREE surface: UI is FREE; sales request targets ENTERPRISE.
+      currentPlanTier: "FREE",
+      requestedPlanTier: SELF_HOSTED_SALES_REQUEST_TIER,
+      deploymentMode: "self-hosted",
       memberCount: input.workspaceMemberCount,
       region: input.region ?? profile.region,
       locale: input.locale,
@@ -209,10 +217,18 @@ export default function SelfHostedFreePlanSection({
     workspaceMemberCount: number;
   }) {
     if (!salesEmailDeliverable) {
-      openMailto(input);
-      markSubmitted(new Date().toISOString());
-      setPopupOpen(false);
-      setSubmitError(null);
+      try {
+        openMailto(input);
+        markSubmitted(new Date().toISOString());
+        setPopupOpen(false);
+        setSubmitError(null);
+      } catch (error) {
+        setSubmitError(
+          error instanceof Error
+            ? error.message
+            : t("web.workspaceSettings.plan.request.errorGeneric"),
+        );
+      }
       return;
     }
 

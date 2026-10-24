@@ -86,7 +86,7 @@ export interface ApiConfig {
   emailFrom: string;
   /**
    * Sales inbox for workspace plan-change / license purchase requests (manual fulfillment).
-   * Override with `OKKEY_SALES_EMAIL`. Defaults: local/dev → aleksandr-zoryn@ya.ru; else get-license@okkey.io.
+   * Required via `OKKEY_SALES_EMAIL` in every environment (no built-in default).
    */
   salesEmail: string;
   emailProvider: EmailProvider;
@@ -312,16 +312,21 @@ function parseDeploymentMode(value: string | undefined): DeploymentMode {
   throw new Error(`OKKEY_DEPLOYMENT_MODE must be "self_hosted" or "saas", got: ${value}`);
 }
 
-/** Sales inbox for plan-change / license purchase request emails (`OKKEY_SALES_EMAIL`). */
-function resolveSalesEmail(nodeEnv: NodeEnv, raw: string | undefined): string {
-  const trimmed = raw?.trim() ?? "";
-  if (trimmed) {
-    return trimmed;
+/**
+ * Sales inbox for plan-change / license purchase request emails (`OKKEY_SALES_EMAIL`).
+ * Required in production, development, and test — no hardcoded fallback addresses.
+ */
+export function resolveSalesEmail(raw: string | undefined): string {
+  const trimmed = (raw ?? "").trim();
+  if (!trimmed) {
+    throw new Error(
+      "OKKEY_SALES_EMAIL is required (license / plan-change request recipient). Set it explicitly; there is no default address.",
+    );
   }
-  if (nodeEnv === "development" || nodeEnv === "test") {
-    return "aleksandr-zoryn@ya.ru";
+  if (!trimmed.includes("@") || trimmed.length > 320) {
+    throw new Error("OKKEY_SALES_EMAIL must be a valid email address");
   }
-  return "get-license@okkey.io";
+  return trimmed;
 }
 
 export function loadConfig(): ApiConfig {
@@ -467,7 +472,7 @@ export function loadConfig(): ApiConfig {
     defaultEmailLocale: process.env.EMAIL_DEFAULT_LOCALE ?? "en",
     publicAppBaseUrl: (process.env.PUBLIC_APP_URL ?? "").trim(),
     emailFrom: process.env.EMAIL_FROM ?? "no-reply@okkey.local",
-    salesEmail: resolveSalesEmail(nodeEnv, process.env.OKKEY_SALES_EMAIL),
+    salesEmail: resolveSalesEmail(process.env.OKKEY_SALES_EMAIL),
     emailProvider: (process.env.EMAIL_PROVIDER ?? "logger") as EmailProvider,
     emailDeliveryMode: resolveEmailDeliveryMode(nodeEnv, process.env.EMAIL_DELIVERY_MODE),
     emailDeadLetterSealSecret:
