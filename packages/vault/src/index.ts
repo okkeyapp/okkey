@@ -56,7 +56,7 @@ export {
   type ItemUrlMatchInput,
   type UrlAutofillScope,
 } from "./item-url-match.js";
-export { totpCodeFromSecret } from "./item-totp.js";
+export { DEFAULT_TOTP_PERIOD_SECONDS, totpCodeFromSecret } from "./item-totp.js";
 export {
   resolveVaultItemEncryptionKey,
   type VaultIdentityKeys,
