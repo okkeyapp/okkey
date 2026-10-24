@@ -1,8 +1,12 @@
 import type { ItemFaviconSource } from "@okkey/types";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { resizeImageFileToFaviconPngBytes } from "../lib/resizeFaviconImage";
-import { useItemFormFaviconPreview } from "./useItemFormFaviconPreview";
+import {
+  useItemFormFaviconPreview,
+  websiteFaviconPngForCurrentUrls,
+  websiteUrlsLookupKey,
+} from "./useItemFormFaviconPreview";
 
 function revokeObjectUrl(url: string | null): void {
   if (url) {
@@ -13,10 +17,7 @@ function revokeObjectUrl(url: string | null): void {
 export type ItemFormFaviconSyncInput = {
   faviconSource?: ItemFaviconSource;
   manualFaviconPng?: Uint8Array | null;
-  /**
-   * Website favicon PNG already fetched for the form preview.
-   * When set, save skips a second preview GET and uploads these bytes.
-   */
+  /** Website preview PNG already fetched in the form (save must not re-hit /favicon/preview). */
   websiteFaviconPng?: Uint8Array | null;
   /** Reuse an existing stored favicon (e.g. from template/copy) when no new PNG is pending. */
   reuseFaviconId?: string;
@@ -30,6 +31,8 @@ export function useItemFormFavicon(input: {
   initialFaviconId?: string;
   initialFaviconItemId?: string;
   initialFaviconSource?: ItemFaviconSource;
+  /** URL list key at dialog open — used to skip the redundant edit-open preview fetch. */
+  initialUrlsKey?: string | null;
 }) {
   const [faviconSource, setFaviconSource] = useState<ItemFaviconSource | undefined>(input.initialFaviconSource);
   const [manualPreviewUrl, setManualPreviewUrl] = useState<string | undefined>();
@@ -40,13 +43,28 @@ export function useItemFormFavicon(input: {
   const [uploadError, setUploadError] = useState<string | null>(null);
   const manualPreviewUrlRef = useRef<string | null>(null);
 
+  const skipFetchForUrlsKey = useMemo(() => {
+    if (!input.initialFaviconId?.trim()) {
+      return null;
+    }
+    return input.initialUrlsKey ?? null;
+  }, [input.initialFaviconId, input.initialUrlsKey]);
+
   const autoPreviewDisabled = faviconSource === "manual" || pendingManualPng !== null;
   const websitePreview = useItemFormFaviconPreview({
     accessToken: input.accessToken,
     categoryId: input.categoryId,
     urls: input.urls,
     disabled: autoPreviewDisabled,
+    skipFetchForUrlsKey,
   });
+  const websitePreviewPngRef = useRef<Uint8Array | null>(null);
+  const websitePreviewUrlsKeyRef = useRef<string | null>(null);
+  const currentUrlsKey = websiteUrlsLookupKey(input.urls);
+  const currentUrlsKeyRef = useRef(currentUrlsKey);
+  currentUrlsKeyRef.current = currentUrlsKey;
+  websitePreviewPngRef.current = websitePreview.previewPngBytes;
+  websitePreviewUrlsKeyRef.current = websitePreview.previewUrlsKey;
 
   useEffect(
     () => () => {
@@ -90,7 +108,13 @@ export function useItemFormFavicon(input: {
   const getSyncInput = useCallback((): ItemFormFaviconSyncInput => {
     const manualFaviconPng = pendingManualPngRef.current ?? pendingManualPng;
     const websiteFaviconPng =
-      !manualFaviconPng && faviconSource !== "manual" ? websitePreview.previewPngBytes : null;
+      !manualFaviconPng && faviconSource !== "manual"
+        ? websiteFaviconPngForCurrentUrls({
+            currentUrlsKey: currentUrlsKeyRef.current,
+            previewUrlsKey: websitePreviewUrlsKeyRef.current,
+            previewPngBytes: websitePreviewPngRef.current,
+          })
+        : null;
     const reuseFaviconId =
       !manualFaviconPng && faviconSource === "manual"
         ? initialFaviconIdRef.current?.trim() || undefined
@@ -103,7 +127,7 @@ export function useItemFormFavicon(input: {
       ...(reuseFaviconId ? { reuseFaviconId } : {}),
       ...(reuseFaviconItemId ? { reuseFaviconItemId } : {}),
     };
-  }, [faviconSource, pendingManualPng, websitePreview.previewPngBytes]);
+  }, [faviconSource, pendingManualPng]);
 
   return {
     previewImageSrc,
@@ -113,5 +137,6 @@ export function useItemFormFavicon(input: {
     uploadIconFile,
     clearUploadError: () => setUploadError(null),
     getSyncInput,
+    urlsLookupKey: currentUrlsKey,
   };
 }

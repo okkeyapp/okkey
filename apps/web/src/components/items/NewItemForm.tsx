@@ -11,6 +11,7 @@ import { NO_FOLDER_VALUE } from "../../folders/workspaceFolderTree";
 import { collectWebsiteUrlsFromSections, suggestedRecordTitleFromWebsiteUrls } from "../../lib/domainRecordTitle";
 import { keyFormSectionsToItemPlaintext } from "../../items/keyFormToItemPlaintext";
 import { useItemFormFavicon, type ItemFormFaviconSyncInput } from "../../items/useItemFormFavicon";
+import { websiteUrlsLookupKey } from "../../items/useItemFormFaviconPreview";
 import type { ItemTemplateFormSnapshot } from "../../items/itemTemplateHelpers";
 import {
   validateNewItemForm,
@@ -222,7 +223,16 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
     [initialValues?.sections, prefillValues?.sections, category, keyFormMessages],
   );
   const [committedWebsiteUrls, setCommittedWebsiteUrls] = useState<string[]>(() =>
-    prefillValues?.sections ? collectWebsiteUrlsFromSections(prefillValues.sections) : [],
+    collectWebsiteUrlsFromSections(
+      initialValues?.sections ?? prefillValues?.sections ?? [],
+    ),
+  );
+  const initialWebsiteUrlsKey = useMemo(
+    () =>
+      websiteUrlsLookupKey(
+        collectWebsiteUrlsFromSections(initialValues?.sections ?? prefillValues?.sections ?? []),
+      ),
+    [initialValues?.sections, prefillValues?.sections],
   );
   const suggestedRecordName = useMemo(() => {
     if (category?.id === "login") {
@@ -239,18 +249,15 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
   const trimmedRecordName = recordName.trim();
   const recordNameInvalid = showValidation && trimmedRecordName.length === 0;
   const currentSections = formSections ?? initialSections;
-  const liveWebsiteUrls = useMemo(
-    () => collectWebsiteUrlsFromSections(currentSections),
-    [currentSections],
-  );
-  const faviconLookupUrls = liveWebsiteUrls.length > 0 ? liveWebsiteUrls : committedWebsiteUrls;
+  // Favicon preview only on website URL change/focusout (committed list), never on every keystroke.
   const faviconState = useItemFormFavicon({
     accessToken,
     categoryId,
-    urls: faviconLookupUrls,
+    urls: committedWebsiteUrls,
     initialFaviconId: initialValues?.faviconId ?? prefillValues?.faviconId,
     initialFaviconItemId: initialValues?.faviconItemId ?? prefillValues?.faviconItemId ?? initialValues?.itemId,
     initialFaviconSource: initialValues?.faviconSource ?? prefillValues?.faviconSource,
+    initialUrlsKey: initialValues?.faviconId ? initialWebsiteUrlsKey : null,
   });
   const {
     previewImageSrc,

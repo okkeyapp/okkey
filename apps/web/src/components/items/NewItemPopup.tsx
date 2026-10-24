@@ -11,8 +11,10 @@ import { usePopupZoneGate } from "../../auth/usePopupZoneGate";
 import { deleteRemovedKeyFieldFiles } from "../../items/keyFieldFileAttachments";
 import {
   applyFaviconToItem,
+  attachWebsiteFaviconFromNetwork,
   keyFieldFileValueFromFaviconId,
   seedFaviconUrlCacheAfterUpload,
+  shouldAttachWebsiteFaviconInBackground,
   syncItemFaviconForPlaintext,
 } from "../../items/syncItemFavicon";
 import {
@@ -485,6 +487,7 @@ export default function NewItemPopup({ t, workspaceId, workspaceName, vaults, va
           }
           let uploadedFavicon: KeyFieldFileValue | undefined;
           try {
+            // Reuse form preview bytes / skip unchanged URLs — never await /favicon/preview here.
             const faviconSync = await syncItemFaviconForPlaintext(
               accessToken,
               itemVaultKey,
@@ -502,6 +505,21 @@ export default function NewItemPopup({ t, workspaceId, workspaceName, vaults, va
             });
             if (item.faviconId || item.faviconSource) {
               await updateItem(item);
+            } else if (shouldAttachWebsiteFaviconInBackground(item, faviconSyncInput)) {
+              void attachWebsiteFaviconFromNetwork(accessToken, itemVaultKey, item)
+                .then(async (attached) => {
+                  if (!attached?.item.faviconId) {
+                    return;
+                  }
+                  seedFaviconUrlCacheAfterUpload({
+                    vaultId: uploadedPayload.vaultId,
+                    itemId: uploadedPayload.itemId,
+                    uploadedFavicon: attached.uploadedFavicon,
+                    uploadedPngBytes: attached.uploadedPngBytes,
+                  });
+                  await updateItem(attached.item);
+                })
+                .catch(() => undefined);
             }
           } catch (error) {
             if (uploadedFavicon) {
