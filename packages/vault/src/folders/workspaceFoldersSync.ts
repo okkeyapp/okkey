@@ -5,13 +5,20 @@ import {
   wipeBytes,
 } from "@okkey/crypto";
 import { createFolderDeleteTombstoneV2, generateEntityId, parseFolderPlaintextV2Utf8 } from "@okkey/types";
-import type { FolderPlaintextV2, SyncAppendEventRequestDto } from "@okkey/types";
+import type {
+  FolderPlaintextV2,
+  SyncAppendEventRequestDto,
+  WorkspacePersonalEventWireDto,
+} from "@okkey/types";
 import {
+  areContiguousEventVersions,
   buildFolderCreateAppendRequest,
   buildFolderDeleteAppendRequest,
   buildFolderUpdateAppendRequest,
   buildItemFolderAssignAppendRequest,
   buildItemFavoriteSetAppendRequest,
+  eventsListHasMore,
+  latestVersionFromEventsPage,
   replayWorkspaceFolderEvents,
   WorkspacePersonalOutboxClient,
   type WorkspaceFolderReplayState,
@@ -254,9 +261,8 @@ export function createWorkspaceFoldersSyncController(input: {
     let decryptAttempts = 0;
     let decryptFailures = 0;
     let eventsFetched = 0;
-    // Mirror vault-items read: keep paging until the server returns an empty page.
-    // (Personal-events currently returns the full remainder in one response, but
-    // looping stays correct if a limit is introduced later.)
+    // Page until the server says the tail is complete (`hasMore: false`).
+    // Avoids the historical always-empty follow-up GET after a full page.
     // eslint-disable-next-line no-constant-condition
     while (true) {
       const page = await input.core.listWorkspacePersonalEvents(input.workspaceId, cursor);
@@ -290,6 +296,9 @@ export function createWorkspaceFoldersSyncController(input: {
         break;
       }
       cursor = lastVersion;
+      if (!eventsListHasMore(page)) {
+        break;
+      }
     }
     // replayWorkspaceFolderEvents swallows per-event decrypt errors. If every
     // ciphertext failed, surface a hard error so hosts do not render a false
@@ -711,17 +720,93 @@ export function createWorkspaceFoldersSyncController(input: {
     return state;
   }
 
-  async function enqueue(request: SyncAppendEventRequestDto): Promise<void> {
+  /**
+   * One list pass that both applies foreign events and returns the server tip.
+   * Replaces the old replayIncremental + readServerTipVersion pair (two GETs,
+   * often both empty when already caught up).
+   */
+  async function catchUpToServerTip(): Promise<number> {
+    let tip = state.lastAppliedVersion;
+    let cursor = state.lastAppliedVersion;
+    let decryptAttempts = 0;
+    let decryptFailures = 0;
+    let eventsFetched = 0;
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      const page = await input.core.listWorkspacePersonalEvents(input.workspaceId, cursor);
+      if (!page.events.length) {
+        tip = latestVersionFromEventsPage(cursor, page.events, page.latestVersion);
+        break;
+      }
+      eventsFetched += page.events.length;
+      const key = await ensureMetadataKey();
+      const next = await replayWorkspaceFolderEvents(
+        page.events,
+        input.workspaceId,
+        async (b64) => {
+          decryptAttempts += 1;
+          try {
+            return await decryptPersonalVaultMetadataPayload(key, base64ToBytes(b64));
+          } catch (err) {
+            decryptFailures += 1;
+            throw err;
+          }
+        },
+        state.lastAppliedVersion,
+        state,
+      );
+      state = next;
+      tip = latestVersionFromEventsPage(cursor, page.events, page.latestVersion);
+      if (tip <= cursor) {
+        break;
+      }
+      cursor = tip;
+      if (!eventsListHasMore(page)) {
+        break;
+      }
+    }
+    if (
+      decryptAttempts > 0 &&
+      decryptFailures >= decryptAttempts &&
+      state.folders.size === 0
+    ) {
+      throw new Error(
+        `FOLDER_METADATA_DECRYPT_FAILED attempts=${decryptAttempts} failures=${decryptFailures} events=${eventsFetched}`,
+      );
+    }
+    await writeCachedState(input.userId, input.workspaceId, state);
+    return Math.max(tip, state.lastAppliedVersion);
+  }
+
+  async function applyAppendedPersonalEvents(
+    tipBefore: number,
+    appended: WorkspacePersonalEventWireDto[],
+  ): Promise<void> {
+    if (areContiguousEventVersions(appended, tipBefore)) {
+      const key = await ensureMetadataKey();
+      state = await replayWorkspaceFolderEvents(
+        appended,
+        input.workspaceId,
+        async (b64) => decryptPersonalVaultMetadataPayload(key, base64ToBytes(b64)),
+        tipBefore,
+        state,
+      );
+      await writeCachedState(input.userId, input.workspaceId, state);
+      return;
+    }
     await replayIncremental(state.lastAppliedVersion);
-    // Append baseVersion must match server tip; lastAppliedVersion can lag when
-    // undecryptable events were skipped (outbox would 409+retry and spam DevTools).
-    request.baseVersion = await readServerTipVersion(state.lastAppliedVersion);
+  }
+
+  async function enqueue(request: SyncAppendEventRequestDto): Promise<void> {
+    // Single catch-up GET (often empty) sets baseVersion — no second tip probe.
+    request.baseVersion = await catchUpToServerTip();
+    const tipBefore = state.lastAppliedVersion;
     await outbox.enqueue({
       workspaceId: input.workspaceId,
       request,
     });
-    await outbox.drain(input.workspaceId);
-    await replayIncremental(state.lastAppliedVersion);
+    const appended = await outbox.drain(input.workspaceId);
+    await applyAppendedPersonalEvents(tipBefore, appended);
   }
 
   async function readServerTipVersion(afterVersion: number): Promise<number> {
@@ -731,21 +816,25 @@ export function createWorkspaceFoldersSyncController(input: {
     while (true) {
       const page = await input.core.listWorkspacePersonalEvents(input.workspaceId, cursor);
       if (!page.events.length) {
+        tip = latestVersionFromEventsPage(cursor, page.events, page.latestVersion);
         break;
       }
-      tip = page.events[page.events.length - 1]?.version ?? tip;
+      tip = latestVersionFromEventsPage(cursor, page.events, page.latestVersion);
       if (tip <= cursor) {
         break;
       }
       cursor = tip;
+      if (!eventsListHasMore(page)) {
+        break;
+      }
     }
     return tip;
   }
 
   async function applyMutations(mutations: FolderTreeMutation[]): Promise<void> {
     const key = await ensureMetadataKey();
-    await replayIncremental(state.lastAppliedVersion);
-    let version = await readServerTipVersion(state.lastAppliedVersion);
+    let version = await catchUpToServerTip();
+    const tipBefore = state.lastAppliedVersion;
     for (const mutation of mutations) {
       let request: SyncAppendEventRequestDto;
       if (mutation.kind === "create") {
@@ -763,8 +852,8 @@ export function createWorkspaceFoldersSyncController(input: {
       await outbox.enqueue({ workspaceId: input.workspaceId, request });
       version += 1;
     }
-    await outbox.drain(input.workspaceId);
-    await replayIncremental(state.lastAppliedVersion);
+    const appended = await outbox.drain(input.workspaceId);
+    await applyAppendedPersonalEvents(tipBefore, appended);
   }
 
   return {
@@ -861,8 +950,8 @@ export function createWorkspaceFoldersSyncController(input: {
         return;
       }
       const key = await ensureMetadataKey();
-      await replayIncremental(state.lastAppliedVersion);
-      let version = await readServerTipVersion(state.lastAppliedVersion);
+      let version = await catchUpToServerTip();
+      const tipBefore = state.lastAppliedVersion;
       for (const itemId of uniqueIds) {
         const request = await buildItemFavoriteSetAppendRequest(
           key,
@@ -877,8 +966,8 @@ export function createWorkspaceFoldersSyncController(input: {
         await outbox.enqueue({ workspaceId: input.workspaceId, request });
         version += 1;
       }
-      await outbox.drain(input.workspaceId);
-      await replayIncremental(state.lastAppliedVersion);
+      const appended = await outbox.drain(input.workspaceId);
+      await applyAppendedPersonalEvents(tipBefore, appended);
     },
     dispose: () => {
       if (metadataKey) {

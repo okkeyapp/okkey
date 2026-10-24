@@ -72,6 +72,13 @@ export {
   type VersionMismatchDetails,
 } from "./outbox.js";
 
+export {
+  areContiguousEventVersions,
+  eventsListHasMore,
+  latestVersionFromEventsPage,
+  type EventsListPageLike,
+} from "./events-list-page.js";
+
 export { IndexedDbOutboxStore, type IndexedDbOutboxStoreOptions } from "./outbox-store-indexeddb.js";
 export { SqliteOutboxStore, type SqliteDriver, type SqliteOutboxStoreOptions } from "./outbox-store-sqlite.js";
 

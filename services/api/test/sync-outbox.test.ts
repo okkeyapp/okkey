@@ -55,6 +55,21 @@ function mkEvent(vaultId: string, version: number): SyncEventWireDto {
   };
 }
 
+function mkList(
+  vaultId: string,
+  afterVersion: number,
+  events: SyncEventWireDto[],
+  hasMore = false,
+): SyncEventsListResponseDto {
+  return {
+    vaultId,
+    afterVersion,
+    events,
+    latestVersion: events.length > 0 ? (events[events.length - 1]?.version ?? afterVersion) : afterVersion,
+    hasMore,
+  };
+}
+
 test("computeBackoffDelayMs grows exponentially", () => {
   const r = () => 0.5;
   const d1 = computeBackoffDelayMs(1, 100, 10_000, 0, r);
@@ -77,7 +92,7 @@ test("outbox drains FIFO after offline failures", async () => {
       return mkEvent(vaultId, body.baseVersion + 1);
     },
     async listVaultEvents(vId, afterVersion) {
-      return { vaultId: vId, afterVersion, events: [] };
+      return mkList(vId, afterVersion, []);
     },
   };
 
@@ -130,8 +145,8 @@ test("outbox resolves VERSION_MISMATCH via rebase and retry", async () => {
       return mkEvent(vaultId, 8);
     },
     async listVaultEvents(vId, afterVersion): Promise<SyncEventsListResponseDto> {
-      if (afterVersion >= 7) return { vaultId: vId, afterVersion, events: [] };
-      return { vaultId: vId, afterVersion, events: [mkEvent(vId, 4)] };
+      if (afterVersion >= 7) return mkList(vId, afterVersion, []);
+      return mkList(vId, afterVersion, [mkEvent(vId, 4)]);
     },
   };
 
@@ -187,8 +202,8 @@ test("outbox resolves VERSION_MISMATCH for VAULT_KEY_ROTATION without item rebas
       return mkEvent(vaultId, 10);
     },
     async listVaultEvents(vId, afterVersion): Promise<SyncEventsListResponseDto> {
-      if (afterVersion >= 9) return { vaultId: vId, afterVersion, events: [] };
-      return { vaultId: vId, afterVersion, events: [mkEvent(vId, 5)] };
+      if (afterVersion >= 9) return mkList(vId, afterVersion, []);
+      return mkList(vId, afterVersion, [mkEvent(vId, 5)]);
     },
   };
 
@@ -237,7 +252,7 @@ test("outbox survives restart via persisted store", async () => {
       return mkEvent(vaultId, body.baseVersion + 1);
     },
     async listVaultEvents(vId, afterVersion) {
-      return { vaultId: vId, afterVersion, events: [] };
+      return mkList(vId, afterVersion, []);
     },
   };
 
@@ -260,7 +275,7 @@ test("outbox marks entry dead after max attempts and emits stall hook", async ()
       throw new Error("NETWORK_DOWN");
     },
     async listVaultEvents(vId, afterVersion) {
-      return { vaultId: vId, afterVersion, events: [] };
+      return mkList(vId, afterVersion, []);
     },
   };
   const outbox = new SyncOutboxClient(store, transport, {

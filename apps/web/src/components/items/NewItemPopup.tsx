@@ -12,6 +12,7 @@ import { deleteRemovedKeyFieldFiles } from "../../items/keyFieldFileAttachments"
 import {
   applyFaviconToItem,
   keyFieldFileValueFromFaviconId,
+  seedFaviconUrlCacheAfterUpload,
   syncItemFaviconForPlaintext,
 } from "../../items/syncItemFavicon";
 import {
@@ -493,6 +494,12 @@ export default function NewItemPopup({ t, workspaceId, workspaceName, vaults, va
             );
             item = faviconSync.item;
             uploadedFavicon = faviconSync.uploadedFavicon;
+            seedFaviconUrlCacheAfterUpload({
+              vaultId: uploadedPayload.vaultId,
+              itemId: uploadedPayload.itemId,
+              uploadedFavicon: faviconSync.uploadedFavicon,
+              uploadedPngBytes: faviconSync.uploadedPngBytes,
+            });
             if (item.faviconId || item.faviconSource) {
               await updateItem(item);
             }

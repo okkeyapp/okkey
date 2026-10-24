@@ -13,6 +13,8 @@ function revokeBlobUrl(url: string | null): void {
 
 export type ItemFormFaviconPreviewState = {
   previewImageSrc: string | undefined;
+  /** Raw PNG from the last successful website preview (for save without a second preview GET). */
+  previewPngBytes: Uint8Array | null;
   isLoading: boolean;
 };
 
@@ -25,8 +27,10 @@ export function useItemFormFaviconPreview(input: {
 }): ItemFormFaviconPreviewState {
   const urlsKey = input.urls.join("\u0001");
   const [previewImageSrc, setPreviewImageSrc] = useState<string | undefined>();
+  const [previewPngBytes, setPreviewPngBytes] = useState<Uint8Array | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const blobUrlRef = useRef<string | null>(null);
+  const previewPngBytesRef = useRef<Uint8Array | null>(null);
   const requestSeqRef = useRef(0);
 
   useEffect(
@@ -40,7 +44,9 @@ export function useItemFormFaviconPreview(input: {
   useEffect(() => {
     revokeBlobUrl(blobUrlRef.current);
     blobUrlRef.current = null;
+    previewPngBytesRef.current = null;
     setPreviewImageSrc(undefined);
+    setPreviewPngBytes(null);
 
     if (input.disabled || input.categoryId !== ITEM_CATEGORY_LOGIN) {
       setIsLoading(false);
@@ -67,8 +73,11 @@ export function useItemFormFaviconPreview(input: {
           }
 
           if (blob) {
+            const pngBytes = new Uint8Array(await blob.arrayBuffer());
             const objectUrl = URL.createObjectURL(blob);
             blobUrlRef.current = objectUrl;
+            previewPngBytesRef.current = pngBytes;
+            setPreviewPngBytes(pngBytes);
             setPreviewImageSrc(objectUrl);
           }
         } catch {
@@ -84,5 +93,9 @@ export function useItemFormFaviconPreview(input: {
     return () => clearTimeout(timer);
   }, [urlsKey, input.accessToken, input.categoryId, input.urls, input.disabled]);
 
-  return { previewImageSrc, isLoading };
+  return {
+    previewImageSrc,
+    previewPngBytes: previewPngBytesRef.current ?? previewPngBytes,
+    isLoading,
+  };
 }

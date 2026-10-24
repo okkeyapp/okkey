@@ -4,6 +4,7 @@ import {
   ITEM_PLAINTEXT_SCHEMA_VERSION_LATEST,
   parseAndNormalizeItemPlaintextUtf8,
 } from "@okkey/types";
+import { eventsListHasMore } from "./events-list-page.js";
 import { applyItemPlaintextToReplayMap } from "./item-replay-state.js";
 
 type CoreEventType =
@@ -316,6 +317,9 @@ export class SyncReplayEngine {
         return this.getStateSnapshot();
       }
       await this.applyEvents(page.events);
+      if (!eventsListHasMore(page)) {
+        return this.getStateSnapshot();
+      }
     }
   }
 

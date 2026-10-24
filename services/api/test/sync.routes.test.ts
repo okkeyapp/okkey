@@ -113,8 +113,14 @@ test("GET /vaults/:vaultId/events returns events", async () => {
   });
 
   assert.equal(res.statusCode, 200);
-  const payload = JSON.parse(res.body) as { events: Array<{ id: string }> };
+  const payload = JSON.parse(res.body) as {
+    events: Array<{ id: string; version: number }>;
+    latestVersion: number;
+    hasMore: boolean;
+  };
   assert.equal(payload.events[0].id, "e1");
+  assert.equal(payload.hasMore, false);
+  assert.equal(payload.latestVersion, payload.events[0]?.version);
 });
 
 test("POST /vaults/:vaultId/events appends event", async () => {

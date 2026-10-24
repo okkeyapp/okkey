@@ -264,6 +264,8 @@ describe("WorkspaceRoutesLayout", () => {
         userId: "user-1",
         afterVersion: 0,
         events: [],
+        latestVersion: 0,
+        hasMore: false,
       }),
       appendWorkspacePersonalEvent: vi.fn(),
       listDevices: vi.fn().mockResolvedValue({ devices: [], pending: [] }),
