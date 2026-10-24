@@ -2562,6 +2562,7 @@ export interface EventRecord {
   payloadSchemaVersion: number;
   idempotencyKey: string | null;
   clientCreatedAt: string | null;
+  referencedItemId: string | null;
   version: number;
   createdAt: string;
 }
@@ -2610,12 +2611,14 @@ export class EventsRepository {
           payload_schema_version: number;
           idempotency_key: string | null;
           client_created_at: string | null;
+          referenced_item_id: string | null;
           version: number;
           created_at: string;
         }>(
           `
             SELECT id, vault_id, actor_id, event_type, encrypted_payload,
-                   payload_schema_version, idempotency_key, client_created_at, version, created_at
+                   payload_schema_version, idempotency_key, client_created_at,
+                   referenced_item_id::text AS referenced_item_id, version, created_at
             FROM events
             WHERE vault_id = $1 AND idempotency_key = $2::bigint
             FOR UPDATE
@@ -2657,6 +2660,7 @@ export class EventsRepository {
         payload_schema_version: number;
         idempotency_key: string | null;
         client_created_at: string | null;
+        referenced_item_id: string | null;
         version: number;
         created_at: string;
       };
@@ -2665,7 +2669,8 @@ export class EventsRepository {
         tx.query<EventRow>(
           `
             SELECT id, vault_id, actor_id, event_type, encrypted_payload,
-                   payload_schema_version, idempotency_key, client_created_at, version, created_at
+                   payload_schema_version, idempotency_key, client_created_at,
+                   referenced_item_id::text AS referenced_item_id, version, created_at
             FROM events
             WHERE vault_id = $1 AND idempotency_key = $2::bigint
             FOR UPDATE
@@ -2684,7 +2689,8 @@ export class EventsRepository {
           )
           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
           RETURNING id, vault_id, actor_id, event_type, encrypted_payload,
-                    payload_schema_version, idempotency_key, client_created_at, version, created_at
+                    payload_schema_version, idempotency_key, client_created_at,
+                    referenced_item_id::text AS referenced_item_id, version, created_at
         `,
           [
             eventId,
@@ -2756,6 +2762,23 @@ export class EventsRepository {
     return Boolean(rows[0]?.exists);
   }
 
+  /** True when an ITEM_CREATE already exists for this vault + item id. */
+  async hasItemCreateEvent(vaultId: string, referencedItemId: string): Promise<boolean> {
+    const rows = await this.db.query<{ exists: boolean }>(
+      `
+        SELECT EXISTS (
+          SELECT 1
+          FROM events
+          WHERE vault_id = $1
+            AND referenced_item_id = $2::bigint
+            AND event_type = 'ITEM_CREATE'
+        ) AS exists
+      `,
+      [vaultId, referencedItemId],
+    );
+    return Boolean(rows[0]?.exists);
+  }
+
   async listAfterVersion(vaultId: string, afterVersion: number): Promise<EventRecord[]> {
     const rows = await this.db.query<{
       id: string;
@@ -2766,12 +2789,14 @@ export class EventsRepository {
       payload_schema_version: number;
       idempotency_key: string | null;
       client_created_at: string | null;
+      referenced_item_id: string | null;
       version: number;
       created_at: string;
     }>(
       `
         SELECT id, vault_id, actor_id, event_type, encrypted_payload,
-               payload_schema_version, idempotency_key, client_created_at, version, created_at
+               payload_schema_version, idempotency_key, client_created_at,
+               referenced_item_id::text AS referenced_item_id, version, created_at
         FROM events
         WHERE vault_id = $1 AND version > $2
         ORDER BY version ASC
@@ -3213,6 +3238,7 @@ function mapEvent(row: {
   payload_schema_version?: number;
   idempotency_key?: string | null;
   client_created_at?: string | null;
+  referenced_item_id?: string | null;
   version: number;
   created_at: string;
 }): EventRecord {
@@ -3225,6 +3251,7 @@ function mapEvent(row: {
     payloadSchemaVersion: row.payload_schema_version ?? 2,
     idempotencyKey: row.idempotency_key ?? null,
     clientCreatedAt: row.client_created_at ?? null,
+    referencedItemId: row.referenced_item_id ?? null,
     version: row.version,
     createdAt: row.created_at,
   };
