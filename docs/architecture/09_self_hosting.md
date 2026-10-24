@@ -31,6 +31,14 @@ Supported:
 - Docker / Docker Compose (MVP install artifact under `deploy/docker/`)
 - Kubernetes (planned; not in this MVP)
 
+### Requirements (Docker Compose)
+
+- **Docker Engine ≥ 28.0** (and the Compose plugin). Before 28.0, ports published on `127.0.0.1` were still reachable from other hosts on the same L2 segment ([moby#45610](https://github.com/moby/moby/issues/45610)). The production compose file publishes the API port on loopback only and assumes true host loopback isolation.
+
+### API publish (loopback)
+
+`deploy/docker/docker-compose.prod.yml` binds the API host port to `127.0.0.1` only. Same-host health checks work (`http://127.0.0.1:4000/health`). Clients on other machines cannot use `http://<server>:4000` (or a web UI that points at a host-published API URL on that port). Network access requires the reverse proxy under `deploy/docker/proxy` (TLS, `TRUSTED_PROXY_HOPS=1`). Details: [`deploy/docker/README.md`](../../deploy/docker/README.md).
+
 ---
 
 ## Required Services
@@ -125,7 +133,7 @@ GEOIP_AUTO_UPDATE=true
 TRUSTED_PROXY_HOPS=1
 ```
 
-When `TRUSTED_PROXY_HOPS≥1`, keep the API unreachable except via the trusted proxy (self-host `deploy/docker/docker-compose.prod.yml` binds the published API port to `127.0.0.1`; nginx uses Docker DNS `api:4000`).
+When `TRUSTED_PROXY_HOPS≥1`, keep the API unreachable except via the trusted proxy (self-host `deploy/docker/docker-compose.prod.yml` binds the published API port to `127.0.0.1`; nginx uses Docker DNS `api:4000`). Do not re-publish the API on `0.0.0.0`. Off-host clients must use the `deploy/docker/proxy` edge, not the host API port.
 
 The optional `geoip-updater` service (repo-root compose profile `geoip`) downloads DB-IP City Lite into a shared volume.
 The production MVP compose leaves GeoIP off by default (`GEOIP_ENABLED=false`).
