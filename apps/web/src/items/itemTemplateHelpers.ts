@@ -180,6 +180,9 @@ export async function syncTemplateFaviconForSnapshot(
     }
     return { faviconSource: "manual" };
   }
+  if (syncInput?.websiteFaviconPng && syncInput.websiteFaviconPng.byteLength > 0) {
+    return uploadTemplateFavicon(syncInput.websiteFaviconPng, "website");
+  }
   if (snapshot.categoryId === ITEM_CATEGORY_LOGIN) {
     const urls = collectWebsiteUrlsFromSections(snapshot.sections);
     if (urls.length > 0) {
