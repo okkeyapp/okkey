@@ -38,6 +38,8 @@ Optional env:
 | `OKKEY_RAW_BASE` / `OKKEY_REPO_RAW_BASE` | Raw GitHub repo root (default `https://raw.githubusercontent.com/okkeyapp/okkey`) |
 | `OKKEY_INSTALL_DIR` | Install directory (default `~/okkey`). Compose project name = directory basename (containers/volumes are namespaced per install dir). |
 | `OKKEY_SKIP_PULL=1` | Skip `docker compose pull` (local/preloaded images) |
+| `OKKEY_SKIP_COSIGN_VERIFY=1` | Skip cosign keyless signature check (**warning**; off by default — not for prod) |
+| `OKKEY_FORCE_COSIGN_VERIFY=1` | With `OKKEY_SKIP_PULL=1`, still require cosign verify |
 | `OKKEY_RESET_VOLUMES=1` | `docker compose down -v` before start (wipe Postgres/Redis/MinIO data) |
 | `WEB_PORT` / `API_PORT` | Host ports for web/API. **API is published on `127.0.0.1` only** (not `0.0.0.0`) so forged `X-Forwarded-For` cannot reach the API when `TRUSTED_PROXY_HOPS≥1`. On **fresh** installs, written into `.env`; when set without explicit URLs, also derives `PUBLIC_APP_URL` / `OKKEY_API_PUBLIC_URL` / `CORS_ORIGIN` / `WEBAUTHN_ORIGINS`. Without a reverse proxy, other machines cannot call the API on `http://<host>:4000` (or any `API_PORT`) — use the [`proxy/`](./proxy/) overlay (TLS, `TRUSTED_PROXY_HOPS=1`) for network access. |
 | `PUBLIC_APP_URL` / `OKKEY_API_PUBLIC_URL` / `CORS_ORIGIN` / `WEBAUTHN_ORIGINS` | Optional overrides written into `.env` on fresh installs (keep `config.js` and `.env` aligned). |
@@ -61,7 +63,15 @@ This will:
 1. Create `~/okkey` (override with `OKKEY_INSTALL_DIR`)
 2. Download `docker-compose.prod.yml` + `.env.example` from `OKKEY_REF`
 3. Generate `JWT_SECRET`, `SESSION_SECRET`, `EMAIL_DEAD_LETTER_SEAL_KEY`, Postgres and MinIO passwords
-4. `docker compose pull && up -d`
+4. `docker compose pull`, **cosign verify** (keyless GitHub OIDC) for `api` / `worker` / `web`, then `up -d`
+
+### Image signature verify (cosign)
+
+After pull, `install.sh` verifies Sigstore **cosign keyless** signatures produced by `.github/workflows/publish-images.yml` (GitHub OIDC issuer `token.actions.githubusercontent.com`). Verification is **on by default** for both floating `:dev` and pinned SemVer tags.
+
+Requirements: [`cosign`](https://docs.sigstore.dev/cosign/system_config/installation/) on `PATH`, and images pulled from GHCR (so `RepoDigests` resolve).
+
+Emergency bypass: `OKKEY_SKIP_COSIGN_VERIFY=1` — installer prints a warning and continues. Do **not** use for production. Local builds with `OKKEY_SKIP_PULL=1` skip verify unless `OKKEY_FORCE_COSIGN_VERIFY=1`.
 
 Then open **http://localhost:8080** (web) and check **http://127.0.0.1:4000/health** (API; loopback bind — same host only). After `up -d`, `install.sh` prints a large **OKKEY** banner and the web URL (`PUBLIC_APP_URL`, or `http://localhost:$WEB_PORT`).
 
