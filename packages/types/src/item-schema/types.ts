@@ -51,12 +51,17 @@ export interface FieldValuePassword {
   password: string;
 }
 
+/** HMAC hash for RFC 6238 TOTP. Default when omitted: SHA1. */
+export type TotpAlgorithm = "SHA1" | "SHA256" | "SHA512";
+
 export interface FieldValueTotp {
   kind: "totp";
   /** Base32 secret; empty until user configures */
   secretBase32: string;
   periodSeconds?: number;
   digits?: number;
+  /** HMAC algorithm; default SHA1 when omitted (legacy items). */
+  algorithm?: TotpAlgorithm;
 }
 
 /** Autofill / copy-guard scope for a «Вебсайт URL» field. Default when omitted: entire-site. */

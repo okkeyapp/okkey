@@ -46,13 +46,20 @@ export function normalizeFieldValue(type: string, value: unknown): FieldValueV2 
       return { kind: "text", text: typeof value.text === "string" ? value.text : "" };
     case "password":
       return { kind: "password", password: typeof value.password === "string" ? value.password : "" };
-    case "totp":
+    case "totp": {
+      const algorithmRaw = typeof value.algorithm === "string" ? value.algorithm.toUpperCase() : "SHA1";
+      const algorithm =
+        algorithmRaw === "SHA256" || algorithmRaw === "SHA512" || algorithmRaw === "SHA1"
+          ? algorithmRaw
+          : "SHA1";
       return {
         kind: "totp",
         secretBase32: typeof value.secretBase32 === "string" ? value.secretBase32 : "",
         periodSeconds: typeof value.periodSeconds === "number" ? value.periodSeconds : 30,
         digits: typeof value.digits === "number" ? value.digits : 6,
+        algorithm,
       };
+    }
     case "url": {
       const url = typeof value.url === "string" ? value.url : "";
       const urlAutofillScope = parseUrlAutofillScope(value.urlAutofillScope);
