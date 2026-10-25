@@ -422,8 +422,13 @@ export function createWorkspaceVaultItemsReadController(input: {
     // After VERSION_MISMATCH rebase, versions may gap — fall back to incremental replay.
     if (areContiguousEventVersions(appended, tipBefore)) {
       const vaultKey = await resolveVaultKey(vaultId);
-      const decryptWirePayload = async (encryptedPayloadBase64: string) =>
-        decryptVaultItemPayload(vaultKey, base64ToBytes(encryptedPayloadBase64));
+      const decryptWirePayload = async (
+        encryptedPayloadBase64: string,
+        itemId?: string | null,
+      ) =>
+        decryptVaultItemPayload(vaultKey, base64ToBytes(encryptedPayloadBase64), 2, {
+          itemId,
+        });
       const next = await applyVaultItemEvents(stateBefore, appended, decryptWirePayload);
       vaultStates.set(vaultId, next);
     } else {
