@@ -236,7 +236,7 @@ wait_for_api_healthy() {
 }
 
 # Resolve effective GHCR tag for a fresh install.
-# Precedence: OKKEY_IMAGE_TAG env → OKKEY_CHANNEL=prod pin → .env.example default (`dev`).
+# Precedence: OKKEY_IMAGE_TAG env → OKKEY_CHANNEL=prod pin → .env.example default (`1.0.0-beta.2`).
 resolve_image_tag_for_fresh_install() {
   if [[ -n "${OKKEY_IMAGE_TAG:-}" ]]; then
     printf '%s\n' "${OKKEY_IMAGE_TAG}"
@@ -244,21 +244,21 @@ resolve_image_tag_for_fresh_install() {
   fi
   case "${OKKEY_CHANNEL:-}" in
     prod|production)
-      # Guard: GHCR currently publishes :dev / :dev-<sha> only — no SemVer tags yet.
-      # Refuse OKKEY_CHANNEL=prod so install does not pull a missing 1.0.0-beta.2 manifest.
+      # Guard: refuse OKKEY_CHANNEL=prod until SemVer exists in GHCR.
+      # .env.example already pins 1.0.0-beta.2 (never :latest); tag publishes with v1.0.0-beta.2.
       if [[ "${OKKEY_PROD_CHANNEL_FORCE:-}" != "1" ]]; then
         die "OKKEY_CHANNEL=prod is not available yet: no SemVer image tag in GHCR (only :dev).
 Use tracking images:
   OKKEY_IMAGE_TAG=dev
-Or pin an explicit published tag when a release exists:
-  OKKEY_IMAGE_TAG=<semver>
-To force the historical pin ${OKKEY_PROD_IMAGE_TAG} anyway (pull will fail if missing):
+Or pin the prod SemVer when published:
+  OKKEY_IMAGE_TAG=1.0.0-beta.2
+To force the pin ${OKKEY_PROD_IMAGE_TAG} anyway (pull will fail if missing):
   OKKEY_PROD_CHANNEL_FORCE=1 OKKEY_CHANNEL=prod"
       fi
       printf '%s\n' "${OKKEY_PROD_IMAGE_TAG}"
       ;;
     *)
-      # Leave empty → keep .env.example value (dev).
+      # Leave empty → keep .env.example value (1.0.0-beta.2).
       printf '\n'
       ;;
   esac
