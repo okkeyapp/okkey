@@ -6,6 +6,7 @@ import { keyFieldFileValueFromFaviconId as faviconAttachmentValue } from "@okkey
 import { downloadKeyFieldFileAttachmentBytes, uploadEncryptedAttachment } from "../api/key-field-files";
 import { previewItemFavicon } from "../api/item-favicons";
 import type { ItemFormFaviconSyncInput } from "./useItemFormFavicon";
+import { seedItemFaviconAttachmentUrl } from "./useItemFaviconAttachmentUrl";
 
 const FAVICON_ATTACHMENT_NAME = "favicon.png";
 const FAVICON_ATTACHMENT_MIME_TYPE = "image/png";
@@ -39,6 +40,8 @@ export function applyFaviconToItem(
 export type SyncItemFaviconResult = {
   item: ItemPlaintextV2;
   uploadedFavicon?: KeyFieldFileValue;
+  /** PNG bytes uploaded in this call — seed the favicon URL cache to skip a GET. */
+  uploadedPngBytes?: Uint8Array;
 };
 
 async function uploadFaviconAttachment(input: {
@@ -71,16 +74,18 @@ export async function syncItemFaviconForPlaintext(
   const faviconSource = syncInput?.faviconSource ?? item.faviconSource;
 
   if (syncInput?.manualFaviconPng && syncInput.manualFaviconPng.byteLength > 0) {
+    const pngBytes = syncInput.manualFaviconPng;
     const uploadedFavicon = await uploadFaviconAttachment({
       accessToken,
       vaultKey,
       item,
-      pngBytes: syncInput.manualFaviconPng,
+      pngBytes,
     });
     const uploadedSource = syncInput.faviconSource ?? faviconSource ?? "manual";
     return {
       item: applyFaviconToItem(item, uploadedFavicon.attachmentId, uploadedSource),
       uploadedFavicon,
+      uploadedPngBytes: pngBytes,
     };
   }
 
@@ -98,15 +103,17 @@ export async function syncItemFaviconForPlaintext(
         vaultKey,
         file: faviconAttachmentValue(faviconId),
       });
+      const pngBytes = downloaded.plaintext;
       const uploadedFavicon = await uploadFaviconAttachment({
         accessToken,
         vaultKey,
         item,
-        pngBytes: downloaded.plaintext,
+        pngBytes,
       });
       return {
         item: applyFaviconToItem(item, uploadedFavicon.attachmentId, "manual"),
         uploadedFavicon,
+        uploadedPngBytes: pngBytes,
       };
     }
     return { item: applyFaviconToItem(item, faviconId, "manual") };
@@ -122,21 +129,45 @@ export async function syncItemFaviconForPlaintext(
     return { item: applyFaviconToItem(item, undefined, undefined) };
   }
 
-  const previewBlob = await previewItemFavicon(accessToken, urls);
-  if (!previewBlob) {
-    return { item: applyFaviconToItem(item, undefined, undefined) };
+  let pngBytes = syncInput?.websiteFaviconPng ?? null;
+  if (!pngBytes || pngBytes.byteLength === 0) {
+    const previewBlob = await previewItemFavicon(accessToken, urls);
+    if (!previewBlob) {
+      return { item: applyFaviconToItem(item, undefined, undefined) };
+    }
+    pngBytes = new Uint8Array(await previewBlob.arrayBuffer());
   }
 
   const uploadedFavicon = await uploadFaviconAttachment({
     accessToken,
     vaultKey,
     item,
-    pngBytes: new Uint8Array(await previewBlob.arrayBuffer()),
+    pngBytes,
   });
   return {
     item: applyFaviconToItem(item, uploadedFavicon.attachmentId, "website"),
     uploadedFavicon,
+    uploadedPngBytes: pngBytes,
   };
+}
+
+/** Prefer local PNG bytes over an immediate GET /attachments after upload. */
+export function seedFaviconUrlCacheAfterUpload(input: {
+  vaultId: string;
+  itemId: string;
+  uploadedFavicon?: KeyFieldFileValue;
+  uploadedPngBytes?: Uint8Array;
+}): void {
+  const faviconId = input.uploadedFavicon?.attachmentId?.trim();
+  if (!faviconId || !input.uploadedPngBytes || input.uploadedPngBytes.byteLength === 0) {
+    return;
+  }
+  seedItemFaviconAttachmentUrl({
+    vaultId: input.vaultId,
+    itemId: input.itemId,
+    faviconId,
+    pngBytes: input.uploadedPngBytes,
+  });
 }
 
 export { keyFieldFileValueFromFaviconId } from "@okkey/vault";

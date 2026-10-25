@@ -1,5 +1,6 @@
 import type { SyncAppendEventRequestDto, SyncEventWireDto, SyncEventsListResponseDto } from "@okkey/types";
 import { generateEntityId } from "@okkey/id";
+import { eventsListHasMore } from "./events-list-page.js";
 import { replayVaultEvents, type ReplayEngineOptions, type SyncMaterializedState } from "./replay-engine.js";
 
 export type OutboxEntryStatus = "pending" | "sending" | "failed" | "dead";
@@ -242,6 +243,7 @@ export class SyncOutboxClient {
       const next = page.events[page.events.length - 1]?.version ?? cursor;
       if (next <= cursor) break;
       cursor = next;
+      if (!eventsListHasMore(page)) break;
     }
     return out;
   }
@@ -282,8 +284,14 @@ export class SyncOutboxClient {
     this.options.hooks?.onConflictResolved?.(entry);
   }
 
-  async drain(vaultId?: string): Promise<void> {
+  /**
+   * Drain pending appends. Returns successfully appended wire events in order
+   * so callers can materialize local state without a follow-up list GET when
+   * versions are contiguous from the last applied tip.
+   */
+  async drain(vaultId?: string): Promise<SyncEventWireDto[]> {
     await this.ensureLoaded();
+    const appended: SyncEventWireDto[] = [];
 
     // eslint-disable-next-line no-constant-condition
     while (true) {
@@ -294,7 +302,7 @@ export class SyncOutboxClient {
           this.options.hooks?.onQueueStalled?.(stalled.map((e) => ({ ...e, request: { ...e.request } })));
         }
         await this.flush();
-        return;
+        return appended;
       }
 
       entry.status = "sending";
@@ -302,7 +310,8 @@ export class SyncOutboxClient {
       await this.flush();
 
       try {
-        await this.transport.appendVaultEvent(entry.vaultId, entry.request);
+        const created = await this.transport.appendVaultEvent(entry.vaultId, entry.request);
+        appended.push(created);
         this.entries = this.entries.filter((e) => e.id !== entry.id);
         await this.flush();
         continue;

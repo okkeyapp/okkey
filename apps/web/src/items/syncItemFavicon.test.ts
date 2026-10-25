@@ -2,6 +2,7 @@ import type { ItemPlaintextV2 } from "@okkey/types";
 import { ITEM_CATEGORY_LOGIN } from "@okkey/types";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import * as itemFaviconsApi from "../api/item-favicons";
 import * as keyFieldFilesApi from "../api/key-field-files";
 import { applyFaviconToItem, syncItemFaviconForPlaintext } from "./syncItemFavicon";
 
@@ -141,5 +142,38 @@ describe("syncItemFaviconForPlaintext", () => {
     expect(synced.item.faviconId).toBe("1000000000000000010");
     expect(synced.item.faviconSource).toBe("manual");
     expect(synced.uploadedFavicon?.attachmentId).toBe("1000000000000000010");
+  });
+
+  it("uploads websiteFaviconPng without a second preview GET", async () => {
+    const preview = vi.spyOn(itemFaviconsApi, "previewItemFavicon");
+    const png = new Uint8Array([137, 80, 78, 71]);
+    const upload = vi.spyOn(keyFieldFilesApi, "uploadEncryptedAttachment").mockResolvedValue({
+      attachmentId: "1000000000000000011",
+      name: "favicon.png",
+      mimeType: "image/png",
+      sizeBytes: png.byteLength,
+    });
+    const item = baseItem({
+      fields: [
+        {
+          id: "url",
+          sectionId: "s-main",
+          type: "url",
+          label: "URL",
+          order: 0,
+          value: { kind: "url", url: "https://example.com" },
+        },
+      ],
+    });
+
+    const synced = await syncItemFaviconForPlaintext("token", new Uint8Array([1]), item, undefined, {
+      websiteFaviconPng: png,
+    });
+
+    expect(preview).not.toHaveBeenCalled();
+    expect(upload).toHaveBeenCalledOnce();
+    expect(synced.item.faviconId).toBe("1000000000000000011");
+    expect(synced.item.faviconSource).toBe("website");
+    expect(synced.uploadedPngBytes).toEqual(png);
   });
 });

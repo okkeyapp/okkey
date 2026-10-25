@@ -214,15 +214,18 @@ test("SyncReplayEngine quarantines legacy folder events on vault stream", async 
 
 test("SyncReplayEngine supports unknown event quarantine policy and fetch loop", async () => {
   const vaultId = testEntityId();
-  const pages: SyncEventWireDto[][] = [
-    [
-      baseWire({ vaultId, eventType: "UNKNOWN_FUTURE_EVENT", version: 1 }),
-      baseWire({ vaultId, eventType: "VAULT_SHARE", version: 2 }),
-    ],
-    [
-      baseWire({ vaultId, eventType: "DEVICE_ADD", version: 3 }),
-    ],
-    [],
+  const pages: Array<{ events: SyncEventWireDto[]; hasMore: boolean }> = [
+    {
+      events: [
+        baseWire({ vaultId, eventType: "UNKNOWN_FUTURE_EVENT", version: 1 }),
+        baseWire({ vaultId, eventType: "VAULT_SHARE", version: 2 }),
+      ],
+      hasMore: true,
+    },
+    {
+      events: [baseWire({ vaultId, eventType: "DEVICE_ADD", version: 3 })],
+      hasMore: false,
+    },
   ];
   let idx = 0;
 
@@ -233,10 +236,14 @@ test("SyncReplayEngine supports unknown event quarantine policy and fetch loop",
   const state = await engine.replayFromFetcher(async (incomingVaultId, afterVersion) => {
     assert.equal(incomingVaultId, vaultId);
     assert.ok(afterVersion >= 0);
+    const page = pages[idx++] ?? { events: [], hasMore: false };
+    const last = page.events[page.events.length - 1]?.version ?? afterVersion;
     return {
       vaultId,
       afterVersion,
-      events: pages[idx++] ?? [],
+      events: page.events,
+      latestVersion: last,
+      hasMore: page.hasMore,
     };
   });
 
@@ -245,6 +252,7 @@ test("SyncReplayEngine supports unknown event quarantine policy and fetch loop",
   assert.equal(state.quarantined.length, 1);
   assert.equal(state.quarantined[0]?.reason, "UNKNOWN_EVENT_TYPE");
   assert.equal(state.lastAppliedVersion, 3);
+  assert.equal(idx, 2);
 });
 
 test("SyncReplayEngine updates VAULT_* and DEVICE_* lifecycle handlers", async () => {

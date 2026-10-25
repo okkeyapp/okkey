@@ -5,9 +5,11 @@ import { generateEntityId, parseAndNormalizeItemPlaintextUtf8 } from "@okkey/typ
 import {
   IndexedDbOutboxStore,
   SyncOutboxClient,
+  areContiguousEventVersions,
+  eventsListHasMore,
+  applyItemPlaintextToReplayMap,
 } from "@okkey/sync";
 import { buildItemCreateAppendRequest, buildItemSyncMetadataFromPlaintext, buildItemUpdateAppendRequest } from "@okkey/sync/item-sync";
-import { applyItemPlaintextToReplayMap } from "@okkey/sync";
 
 import { base64ToBytes } from "../auth/base64";
 import type { ItemActivityWireEntry } from "./buildItemActivityEntries";
@@ -330,6 +332,10 @@ export function createWorkspaceVaultItemsSyncController(input: {
       }
       state = await applyVaultItemEvents(state, page.events, decryptWirePayload);
       vaultStates.set(vaultId, state);
+      // Stop when the server reports a complete page — avoids the always-empty follow-up GET.
+      if (!eventsListHasMore(page)) {
+        break;
+      }
     }
   }
 
@@ -354,8 +360,20 @@ export function createWorkspaceVaultItemsSyncController(input: {
 
   async function enqueue(request: SyncAppendEventRequestDto, vaultId: string): Promise<void> {
     await outbox.enqueue({ vaultId, request });
-    await outbox.drain(vaultId);
-    await replayVaultIncremental(vaultId);
+    const stateBefore = ensureVaultState(vaultId);
+    const tipBefore = stateBefore.lastAppliedVersion;
+    const appended = await outbox.drain(vaultId);
+    // Clean write: apply POST response locally and skip list GET (incl. empty tail).
+    // After VERSION_MISMATCH rebase, versions may gap — fall back to incremental replay.
+    if (areContiguousEventVersions(appended, tipBefore)) {
+      const vaultKey = await resolveVaultKey(vaultId);
+      const decryptWirePayload = async (encryptedPayloadBase64: string) =>
+        decryptVaultItemPayload(vaultKey, base64ToBytes(encryptedPayloadBase64));
+      const next = await applyVaultItemEvents(stateBefore, appended, decryptWirePayload);
+      vaultStates.set(vaultId, next);
+    } else {
+      await replayVaultIncremental(vaultId);
+    }
     await writeCachedState(input.userId, input.workspaceId, vaultStates);
   }
 

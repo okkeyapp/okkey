@@ -450,7 +450,7 @@ components:
 
     SyncEventsListResponse:
       type: object
-      required: [vaultId, afterVersion, events]
+      required: [vaultId, afterVersion, events, latestVersion, hasMore]
       properties:
         vaultId:
           type: string
@@ -463,6 +463,13 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/SyncEvent"
+        latestVersion:
+          type: integer
+          minimum: 0
+          description: Max event version in this page, or afterVersion when events is empty.
+        hasMore:
+          type: boolean
+          description: False when this page is the full remainder after afterVersion.
 
     SyncAppendRequest:
       type: object

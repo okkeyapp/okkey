@@ -1,6 +1,11 @@
-import { useItemFaviconAttachmentUrl as useItemFaviconAttachmentUrlWithBaseUrl } from "@okkey/vault-ui";
+import {
+  seedItemFaviconAttachmentUrl,
+  useItemFaviconAttachmentUrl as useItemFaviconAttachmentUrlWithBaseUrl,
+} from "@okkey/vault-ui";
 
 import { getApiBaseUrl } from "../api/client";
+
+export { seedItemFaviconAttachmentUrl };
 
 /** Thin wrapper over `@okkey/vault-ui`'s hook, injecting the web app's resolved API base URL. */
 export function useItemFaviconAttachmentUrl(input: {
