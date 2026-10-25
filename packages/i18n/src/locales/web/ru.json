@@ -1151,6 +1151,7 @@
   "web.workspaceSettings.members.invite.submit": "Отправить приглашения ({count})",
   "web.workspaceSettings.members.invite.sending": "Отправка приглашений…",
   "web.workspaceSettings.members.invite.sent": "Приглашения отправлены",
+  "web.workspace.pendingVaultWraps.skippedInvalidKeys": "{count, plural, one {Пропущен # отложенный доступ к сейфу} few {Пропущено # отложенных доступа к сейфу} many {Пропущено # отложенных доступов к сейфу} other {Пропущено # отложенных доступов к сейфу}}: недействительный публичный ключ получателя",
   "web.workspaceSettings.members.invite.revoke": "Отозвать",
   "web.workspaceSettings.members.invite.revoking": "Отзыв приглашения…",
   "web.workspaceSettings.members.invite.revoked": "Приглашение отозвано",

@@ -1151,6 +1151,7 @@
   "web.workspaceSettings.members.invite.submit": "Send invitations ({count})",
   "web.workspaceSettings.members.invite.sending": "Sending invitations…",
   "web.workspaceSettings.members.invite.sent": "Invitations sent",
+  "web.workspace.pendingVaultWraps.skippedInvalidKeys": "Skipped {count, plural, one {# staged vault wrap} other {# staged vault wraps}}: invalid recipient public key",
   "web.workspaceSettings.members.invite.revoke": "Revoke",
   "web.workspaceSettings.members.invite.revoking": "Revoking invitation…",
   "web.workspaceSettings.members.invite.revoked": "Invitation revoked",
