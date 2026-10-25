@@ -457,17 +457,12 @@ export class SyncService {
       clientCreatedAt = new Date(parsed).toISOString();
     }
 
-    // Persist an explicit soft-delete hint for ITEM_UPDATE/ITEM_DELETE so replay
-    // does not have to trust plaintext `deleted` alone. Omitted UPDATE hints default to false.
+    // Always persist an explicit boolean for ITEM_* events (never leave unset on new rows).
+    // Omitted UPDATE/CREATE hints default to false; ITEM_DELETE is always soft-delete.
     let itemSoftDeleted: boolean | null = null;
-    if (input.eventType === "ITEM_DELETE") {
-      itemSoftDeleted = true;
-    } else if (input.eventType === "ITEM_UPDATE") {
-      itemSoftDeleted = input.itemSoftDeleted === true;
-    } else if (input.itemSoftDeleted === true) {
-      itemSoftDeleted = true;
-    } else if (input.itemSoftDeleted === false) {
-      itemSoftDeleted = false;
+    if (itemEventTypes.has(input.eventType)) {
+      itemSoftDeleted =
+        input.eventType === "ITEM_DELETE" ? true : input.itemSoftDeleted === true;
     }
 
     try {

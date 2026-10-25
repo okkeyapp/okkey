@@ -20,6 +20,7 @@ export interface SyncQueue {
 export { replayItemPlaintextEvents, type ItemVaultReplayState } from "./item-replay.js";
 export {
   applyItemPlaintextToReplayMap,
+  isUnmarkedItemSoftDelete,
   shouldApplyItemSoftDelete,
 } from "./item-replay-state.js";
 export { itemPlaintextMatchesReferencedId } from "./item-id-binding.js";

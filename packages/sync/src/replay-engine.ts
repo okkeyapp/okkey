@@ -392,9 +392,10 @@ export class SyncReplayEngine {
       if (
         event.eventType === "ITEM_UPDATE" &&
         Boolean(parsed.deleted) &&
-        event.itemSoftDeleted === false
+        event.itemSoftDeleted !== true
       ) {
-        // Plaintext claims delete but the server did not mark soft-delete.
+        // Plaintext claims delete but the server did not mark soft-delete
+        // (missing/false/legacy-unset — new writes always persist an explicit boolean).
         state.quarantined.push({ event, reason: "ITEM_SOFT_DELETE_UNMARKED" });
         return "quarantined";
       }

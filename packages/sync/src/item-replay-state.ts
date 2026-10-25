@@ -14,8 +14,8 @@ function isItemDeleteTombstone(parsed: ItemPlaintextV2, eventType: string): bool
 
 /**
  * Whether replay should materialize this event as a soft-delete.
- * Prefer the server-persisted `itemSoftDeleted` hint; fall back to plaintext only for
- * legacy events where the hint is unset (null/undefined).
+ * For ITEM_UPDATE, only the server-persisted `itemSoftDeleted === true` hint counts —
+ * plaintext `deleted` alone must not hide/remove items (new writes always set the flag).
  */
 export function shouldApplyItemSoftDelete(
   parsed: Pick<ItemPlaintextV2, "deleted">,
@@ -24,17 +24,22 @@ export function shouldApplyItemSoftDelete(
   if (event.eventType === "ITEM_DELETE") {
     return true;
   }
-  if (event.eventType !== "ITEM_UPDATE") {
-    return Boolean(parsed.deleted);
+  if (event.eventType === "ITEM_UPDATE") {
+    return event.itemSoftDeleted === true;
   }
-  if (event.itemSoftDeleted === true) {
-    return true;
-  }
-  if (event.itemSoftDeleted === false) {
-    return false;
-  }
-  // Legacy events without a persisted hint: trust plaintext.
   return Boolean(parsed.deleted);
+}
+
+/** True when ITEM_UPDATE plaintext claims delete without a server soft-delete mark. */
+export function isUnmarkedItemSoftDelete(
+  parsed: Pick<ItemPlaintextV2, "deleted">,
+  event: Pick<SyncEventWireDto, "eventType" | "itemSoftDeleted">,
+): boolean {
+  return (
+    event.eventType === "ITEM_UPDATE" &&
+    Boolean(parsed.deleted) &&
+    event.itemSoftDeleted !== true
+  );
 }
 
 /** Apply decrypted item plaintext to materialized replay map (soft-delete aware). */

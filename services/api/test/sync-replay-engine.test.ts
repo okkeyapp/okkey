@@ -407,6 +407,57 @@ test("SyncReplayEngine quarantines unmarked soft-delete on ITEM_UPDATE", async (
   assert.equal(state.quarantined[0]?.reason, "ITEM_SOFT_DELETE_UNMARKED");
 });
 
+test("SyncReplayEngine quarantines omitted soft-delete flag on ITEM_UPDATE (put-only attack)", async () => {
+  // PoC: existing item + ITEM_UPDATE with plaintext deleted:true and no itemSoftDeleted.
+  const vaultId = testEntityId();
+  const itemId = testEntityId();
+  const created = {
+    schemaVersion: ITEM_PLAINTEXT_SCHEMA_VERSION_LATEST,
+    itemId,
+    vaultId,
+    title: "colleague-login",
+    categoryId: "login",
+    createdAtMs: 1,
+    updatedAtMs: 1,
+    sections: [{ id: "s-main", title: "Main", order: 0, isPreset: true }],
+    fields: [],
+  };
+  const deletedPlaintext = {
+    ...created,
+    deleted: true,
+    deletedAtMs: 2,
+    updatedAtMs: 2,
+  };
+  const state = await replayVaultEvents(
+    [
+      baseWire({
+        vaultId,
+        eventType: "ITEM_CREATE",
+        version: 1,
+        referencedItemId: itemId,
+        itemSoftDeleted: false,
+        encryptedPayload: opaqueJson(created),
+      }),
+      baseWire({
+        vaultId,
+        eventType: "ITEM_UPDATE",
+        version: 2,
+        referencedItemId: itemId,
+        // Omit itemSoftDeleted entirely (attacker / pre-flag client shape).
+        encryptedPayload: opaqueJson(deletedPlaintext),
+      }),
+    ],
+    {
+      vaultId,
+      decryptItemPayload: async (b64) => Uint8Array.from(Buffer.from(b64, "base64")),
+    },
+  );
+  assert.equal(state.items.get(itemId)?.deleted, false);
+  assert.equal(state.items.get(itemId)?.title, "colleague-login");
+  assert.equal(state.quarantined.length, 1);
+  assert.equal(state.quarantined[0]?.reason, "ITEM_SOFT_DELETE_UNMARKED");
+});
+
 test("SyncReplayEngine applies soft-delete when server marks ITEM_UPDATE", async () => {
   const vaultId = testEntityId();
   const itemId = testEntityId();

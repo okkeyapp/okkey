@@ -383,6 +383,57 @@ test("appendEvent allows ITEM_UPDATE in shared vault without sharedVaults plan",
   assert.equal(event.version, 2);
 });
 
+test("appendEvent persists itemSoftDeleted=false when omitted on ITEM_UPDATE", async () => {
+  let capturedSoft: boolean | null | undefined;
+  const service = new SyncService({
+    vaults: {
+      findById: async () => ({
+        id: "v1",
+        workspaceId: "w1",
+        name: "Vault",
+        isPersonal: true,
+        ownerId: "u1",
+        cryptoVersion: 2,
+        createdAt: "",
+        updatedAt: "",
+      }),
+      canReadVault: async () => true,
+    },
+    events: {
+      listAfterVersion: async () => [],
+      hasItemCreateEvent: async () => true,
+      findByIdempotencyKey: async () => null,
+      append: async (input) => {
+        capturedSoft = input.itemSoftDeleted ?? null;
+        return {
+          id: "e1",
+          vaultId: "v1",
+          actorId: "u1",
+          eventType: "ITEM_UPDATE",
+          encryptedPayload: input.encryptedPayload,
+          payloadSchemaVersion: input.payloadSchemaVersion ?? 2,
+          idempotencyKey: null,
+          clientCreatedAt: null,
+          referencedItemId: input.referencedItemId ?? null,
+          itemSoftDeleted: input.itemSoftDeleted ?? null,
+          version: 2,
+          createdAt: "2026-01-01T00:00:00.000Z",
+        };
+      },
+      deleteByVaultAndReferencedItemId: async () => 0,
+    },
+  });
+
+  const event = await service.appendEvent("v1", "u1", {
+    eventType: "ITEM_UPDATE",
+    encryptedBlob: mkBlob("x"),
+    baseVersion: 1,
+    referencedItemId: TEST_ITEM_ID,
+  });
+  assert.equal(capturedSoft, false);
+  assert.equal(event.itemSoftDeleted, false);
+});
+
 test("appendEvent rejects oversized payload", async () => {
   const service = new SyncService({
     vaults: {

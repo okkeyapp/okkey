@@ -77,7 +77,7 @@ export async function replayItemPlaintextEvents(
     if (
       ev.eventType === "ITEM_UPDATE" &&
       Boolean(parsed.deleted) &&
-      ev.itemSoftDeleted === false
+      ev.itemSoftDeleted !== true
     ) {
       continue;
     }
