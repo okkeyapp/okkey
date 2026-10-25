@@ -78,6 +78,57 @@ is_valid_sales_email() {
   return 0
 }
 
+# Resolve required sales inbox into `sales_email` without writing install files.
+# Prefer process env, then existing ./.env, then interactive prompt; never invent a default.
+# Must run before fetch_file / .env minting so a failed check leaves the install untouched.
+resolve_sales_email() {
+  sales_email="${OKKEY_SALES_EMAIL:-}"
+  if [[ -z "${sales_email}" ]]; then
+    sales_email="$(env_file_value OKKEY_SALES_EMAIL)"
+  fi
+  if [[ -n "${sales_email}" ]] && ! is_valid_sales_email "${sales_email}"; then
+    die "OKKEY_SALES_EMAIL is invalid: ${sales_email}
+Set a real inbox address (must contain @ and a domain)."
+  fi
+  if [[ -n "${sales_email}" ]]; then
+    return 0
+  fi
+  # `curl … | bash` makes stdin a pipe (not a TTY). Prefer a usable /dev/tty when a
+  # controlling terminal is attached; hard-fail with a clear hint when there is none
+  # (CI, cloud-init, setsid, ssh without -t).
+  local prompt_tty=""
+  if tty_usable; then
+    prompt_tty="/dev/tty"
+  elif [[ -t 0 ]]; then
+    prompt_tty=""
+  else
+    die "OKKEY_SALES_EMAIL is required (non-interactive install).
+Pass it on the right of \`|\` or set it in ${OKKEY_INSTALL_DIR}/.env before re-running, e.g.
+  curl -fsSL …/install.sh | OKKEY_SALES_EMAIL=sales@your-company.example bash
+There is no built-in default address."
+  fi
+  log "==> OKKEY_SALES_EMAIL is required (license / plan-change request recipient; no default)."
+  while true; do
+    if [[ -n "${prompt_tty}" ]]; then
+      printf 'OKKEY_SALES_EMAIL: ' >"${prompt_tty}"
+      # shellcheck disable=SC2162
+      read -r sales_email <"${prompt_tty}" || true
+    else
+      printf 'OKKEY_SALES_EMAIL: ' >&2
+      read -r sales_email || true
+    fi
+    sales_email="$(printf '%s' "${sales_email}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+    if is_valid_sales_email "${sales_email}"; then
+      break
+    fi
+    if [[ -n "${prompt_tty}" ]]; then
+      printf '%s\n' "error: enter a valid email address (example: sales@your-company.example)" >"${prompt_tty}"
+    else
+      log "error: enter a valid email address (example: sales@your-company.example)" >&2
+    fi
+  done
+}
+
 need_cmd() {
   command -v "$1" >/dev/null 2>&1 || die "missing required command: $1"
 }
@@ -339,6 +390,12 @@ cd "$OKKEY_INSTALL_DIR"
 
 log "==> Installing Okkey into ${OKKEY_INSTALL_DIR}"
 log "==> Raw base: ${OKKEY_REPO_RAW_BASE}  ref: ${OKKEY_REF}"
+
+# Obtain a valid sales inbox before any install file rewrite (compose / .env.example /
+# secrets). Failed checks must leave an existing install untouched.
+sales_email=""
+resolve_sales_email
+
 fetch_file "$COMPOSE_FILE_NAME" "./${COMPOSE_FILE_NAME}"
 fetch_file "$ENV_EXAMPLE_NAME" "./${ENV_EXAMPLE_NAME}"
 
@@ -420,52 +477,6 @@ else
   fi
 fi
 
-# api + worker require OKKEY_SALES_EMAIL (no default). Prefer process env, then .env,
-# then interactive prompt; never invent a placeholder address.
-sales_email="${OKKEY_SALES_EMAIL:-}"
-if [[ -z "${sales_email}" ]]; then
-  sales_email="$(env_file_value OKKEY_SALES_EMAIL)"
-fi
-if [[ -n "${sales_email}" ]] && ! is_valid_sales_email "${sales_email}"; then
-  die "OKKEY_SALES_EMAIL is invalid: ${sales_email}
-Set a real inbox address (must contain @ and a domain)."
-fi
-if [[ -z "${sales_email}" ]]; then
-  # `curl … | bash` makes stdin a pipe (not a TTY). Prefer a usable /dev/tty when a
-  # controlling terminal is attached; hard-fail with a clear hint when there is none
-  # (CI, cloud-init, setsid, ssh without -t). Do not start/rewrite compose until set.
-  prompt_tty=""
-  if tty_usable; then
-    prompt_tty="/dev/tty"
-  elif [[ -t 0 ]]; then
-    prompt_tty=""
-  else
-    die "OKKEY_SALES_EMAIL is required (non-interactive install).
-Pass it on the right of \`|\` or set it in ${OKKEY_INSTALL_DIR}/.env before re-running, e.g.
-  curl -fsSL …/install.sh | OKKEY_SALES_EMAIL=sales@your-company.example bash
-There is no built-in default address."
-  fi
-  log "==> OKKEY_SALES_EMAIL is required (license / plan-change request recipient; no default)."
-  while true; do
-    if [[ -n "${prompt_tty}" ]]; then
-      printf 'OKKEY_SALES_EMAIL: ' >"${prompt_tty}"
-      # shellcheck disable=SC2162
-      read -r sales_email <"${prompt_tty}" || true
-    else
-      printf 'OKKEY_SALES_EMAIL: ' >&2
-      read -r sales_email || true
-    fi
-    sales_email="$(printf '%s' "${sales_email}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
-    if is_valid_sales_email "${sales_email}"; then
-      break
-    fi
-    if [[ -n "${prompt_tty}" ]]; then
-      printf '%s\n' "error: enter a valid email address (example: sales@your-company.example)" >"${prompt_tty}"
-    else
-      log "error: enter a valid email address (example: sales@your-company.example)" >&2
-    fi
-  done
-fi
 replace_env OKKEY_SALES_EMAIL "${sales_email}"
 log "==> OKKEY_SALES_EMAIL=${sales_email}"
 
