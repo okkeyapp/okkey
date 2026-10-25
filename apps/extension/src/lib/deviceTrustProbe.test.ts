@@ -1,11 +1,43 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import type { CoreApiClient } from "@okkey/api";
-import type { DeviceListItemDto } from "@okkey/types";
-
 import { probeExtensionDeviceTrusted } from "./deviceTrust.ts";
 import { STORAGE_KEYS } from "./storage.ts";
+
+/** Minimal device list row for probe mocks (avoid `@okkey/*` dist at load time). */
+type DeviceListItemDto = {
+  device_id: string;
+  device_name: string;
+  device_fingerprint: string;
+  status: "trusted" | "pending_approval" | "blocked";
+  platform: string;
+  os_name: string;
+  os_version: string;
+  app_version: string;
+  client_type: string;
+  ip_address: string;
+  country: string | null;
+  city: string | null;
+  created_at: string;
+  last_seen_at: string | null;
+  approved_at: string | null;
+  is_current: boolean;
+  approval_expires_at: string | null;
+  blocked_until?: string | null;
+};
+
+type CoreApiClient = {
+  listDevices: (fingerprint?: string) => Promise<{
+    devices: DeviceListItemDto[];
+    pending: DeviceListItemDto[];
+    blocked?: DeviceListItemDto[];
+  }>;
+  registerDevice?: () => Promise<{
+    device_id: string;
+    status: "pending" | "trusted" | "blocked";
+    blocked_until: string | null;
+  }>;
+};
 
 /** Keep in sync with `VAULT_UNLOCK_SESSION_STORAGE_KEY` in `@okkey/vault`. */
 const UNLOCK_SESSION_STORAGE_KEY = "okkey.vault.unlockSession.v1";
