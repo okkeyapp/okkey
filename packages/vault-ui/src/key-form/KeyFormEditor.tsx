@@ -104,7 +104,7 @@ import {
   showSecretLabelKey,
 } from "./keyFormSecretField.js";
 import type { TotpAlgorithm } from "@okkey/types";
-import { createTotp, getTotpTokenState, parseTotpParams } from "./totpFromSecret.js";
+import { createTotp, getTotpTokenState, parseTotpParams, shouldShowTotpCodePreview } from "./totpFromSecret.js";
 import {
   BANK_DETAILS_SECTION_ID,
   CRYPTO_WALLET_WALLET_SECTION_ID,
@@ -1967,6 +1967,7 @@ export function KeyFormEditor({
   const [selectOptionsDraft, setSelectOptionsDraft] = useState<Record<string, string>>({});
   const [openFieldMenuId, setOpenFieldMenuId] = useState<string | null>(null);
   const [activeValueFieldId, setActiveValueFieldId] = useState<string | null>(null);
+  const [editingTotpFieldIds, setEditingTotpFieldIds] = useState<ReadonlySet<string>>(() => new Set());
   const [valueFocusRequest, setValueFocusRequest] = useState(0);
   const [passwordGeneratorFieldId, setPasswordGeneratorFieldId] = useState<string | null>(null);
   const [passwordGeneratorPreferences, setPasswordGeneratorPreferences] = useState<PasswordGeneratorPreferences>(
@@ -2142,6 +2143,9 @@ export function KeyFormEditor({
         section.id === sectionId ? { ...section, fields: [...section.fields, field] } : section,
       ),
     );
+    if (field.type === "totp") {
+      beginEditingTotpField(field.id);
+    }
     focusFieldValue(field.id);
   }
 
@@ -2799,6 +2803,28 @@ export function KeyFormEditor({
     });
   }
 
+  function beginEditingTotpField(fieldId: string) {
+    setEditingTotpFieldIds((current) => {
+      if (current.has(fieldId)) {
+        return current;
+      }
+      const next = new Set(current);
+      next.add(fieldId);
+      return next;
+    });
+  }
+
+  function endEditingTotpField(fieldId: string) {
+    setEditingTotpFieldIds((current) => {
+      if (!current.has(fieldId)) {
+        return current;
+      }
+      const next = new Set(current);
+      next.delete(fieldId);
+      return next;
+    });
+  }
+
   function resetTotpSecret(sectionId: string, fieldId: string) {
     setOpenFieldMenuId(null);
     setSections((current) =>
@@ -2821,6 +2847,7 @@ export function KeyFormEditor({
           : section,
       ),
     );
+    beginEditingTotpField(fieldId);
     setActiveValueFieldId(fieldId);
   }
 
@@ -2974,8 +3001,12 @@ export function KeyFormEditor({
 
     if (field.type === "totp" && typeof field.value === "string") {
       const totpOptions = totpOptionsFromField(field);
-      const tokenState = getTotpTokenState(field.value, Date.now(), totpOptions);
-      if (tokenState) {
+      if (
+        shouldShowTotpCodePreview(field.value, {
+          ...totpOptions,
+          isEditing: editingTotpFieldIds.has(field.id),
+        })
+      ) {
         return (
           <TotpFieldDisplay
             secret={field.value}
@@ -3331,8 +3362,22 @@ export function KeyFormEditor({
           }
           updateFieldValue(section.id, field.id, value);
         }}
-        onValueBlur={isWebsitesSectionUrlField ? notifyWebsiteUrlsBlur : undefined}
-        onValueFocus={shouldOpenGeneratorOnFocus(field) ? () => openPasswordGenerator(field.id) : undefined}
+        onValueBlur={() => {
+          if (field.type === "totp") {
+            endEditingTotpField(field.id);
+          }
+          if (isWebsitesSectionUrlField) {
+            notifyWebsiteUrlsBlur();
+          }
+        }}
+        onValueFocus={() => {
+          if (field.type === "totp") {
+            beginEditingTotpField(field.id);
+          }
+          if (shouldOpenGeneratorOnFocus(field)) {
+            openPasswordGenerator(field.id);
+          }
+        }}
         passwordGeneratorTrigger={isSecretLikeField(field)}
         datePickerLocale={datePickerLocale}
         countryLocale={countryLocale}

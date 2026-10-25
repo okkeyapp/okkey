@@ -209,3 +209,20 @@ export function getTotpTokenState(
     algorithm,
   };
 }
+
+/**
+ * Whether the TOTP field should swap the secret input for a live code preview.
+ * Must stay false while the user is still editing — otherwise character-by-character
+ * input switches to preview as soon as the secret is a valid Base32 string of length
+ * ≥ 16 and truncates the remainder.
+ */
+export function shouldShowTotpCodePreview(
+  value: string,
+  options: TotpCreateOptions & { isEditing?: boolean } = {},
+): boolean {
+  const { isEditing = false, ...totpOptions } = options;
+  if (isEditing) {
+    return false;
+  }
+  return getTotpTokenState(value, Date.now(), totpOptions) !== null;
+}

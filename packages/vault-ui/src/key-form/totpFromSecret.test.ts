@@ -7,10 +7,48 @@ import {
   parseTotpParams,
   resolveTotpFieldFromFormInput,
   resolveTotpPeriodSeconds,
+  shouldShowTotpCodePreview,
 } from "./totpFromSecret.js";
 
 /** RFC 6238 Appendix B — SHA-1, 8 digits, secret "12345678901234567890". */
 const RFC_SECRET_BASE32 = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ";
+
+/** Valid Base32 secrets used for length / input-mode coverage (A–Z2–7 only). */
+const SECRET_LEN_16 = "JBSWY3DPEHPK3PXP";
+const SECRET_LEN_26 = "JBSWY3DPEHPK3PXPJBSWY3DPEH";
+const SECRET_LEN_32 = "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP";
+/** 56 chars (>52); multiple of 8 so Base32 round-trips cleanly through otpauth. */
+const SECRET_LEN_52_PLUS = "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXPJBSWY3DP";
+
+/**
+ * Mirrors the form field: keep accepting keystrokes while editing; only switch to
+ * code preview after blur when the secret parses. Character-by-character input must
+ * not truncate once length reaches the createTotp minimum (16).
+ */
+function applyTotpSecretInput(
+  secret: string,
+  mode: "type" | "paste",
+): { committedSecret: string; showedPreviewWhileEditing: boolean } {
+  let committedSecret = "";
+  let showedPreviewWhileEditing = false;
+  const isEditing = true;
+
+  if (mode === "paste") {
+    committedSecret = secret;
+    showedPreviewWhileEditing = shouldShowTotpCodePreview(committedSecret, { isEditing });
+    return { committedSecret, showedPreviewWhileEditing };
+  }
+
+  for (const character of secret) {
+    committedSecret += character;
+    if (shouldShowTotpCodePreview(committedSecret, { isEditing })) {
+      showedPreviewWhileEditing = true;
+      break;
+    }
+  }
+
+  return { committedSecret, showedPreviewWhileEditing };
+}
 
 describe("resolveTotpPeriodSeconds", () => {
   it("defaults to RFC 30 s when stored period is missing or invalid", () => {
@@ -155,6 +193,73 @@ describe("parseTotpParams / resolveTotpFieldFromFormInput", () => {
       digits: 8,
       algorithm: "SHA256",
     });
+  });
+});
+
+describe("createTotp accepts full Base32 secrets of common lengths", () => {
+  it.each([
+    ["16", SECRET_LEN_16],
+    ["26", SECRET_LEN_26],
+    ["32", SECRET_LEN_32],
+    ["52+", SECRET_LEN_52_PLUS],
+  ] as const)("parses a %s-character bare secret without truncation", (_label, secret) => {
+    expect(secret.length).toBeGreaterThanOrEqual(_label === "52+" ? 52 : Number(_label));
+    const totp = createTotp(secret);
+    expect(totp).not.toBeNull();
+    // Form stores the raw typed/pasted string; createTotp must accept the full length.
+    expect(createTotp(secret.slice(0, 16))).not.toBeNull();
+    const fullToken = getTotpTokenState(secret, 59 * 1000)?.token;
+    const truncatedToken = getTotpTokenState(secret.slice(0, 16), 59 * 1000)?.token;
+    expect(fullToken).toMatch(/^\d{6}$/);
+    if (secret.length > 16) {
+      expect(fullToken).not.toBe(truncatedToken);
+    }
+  });
+});
+
+describe("shouldShowTotpCodePreview", () => {
+  it("hides the code preview while the secret field is being edited", () => {
+    expect(shouldShowTotpCodePreview(SECRET_LEN_32, { isEditing: true })).toBe(false);
+    expect(shouldShowTotpCodePreview(SECRET_LEN_16, { isEditing: true })).toBe(false);
+  });
+
+  it("shows the code preview after editing ends when the secret is valid", () => {
+    expect(shouldShowTotpCodePreview(SECRET_LEN_16, { isEditing: false })).toBe(true);
+    expect(shouldShowTotpCodePreview(SECRET_LEN_52_PLUS, { isEditing: false })).toBe(true);
+  });
+
+  it("does not show a preview for an incomplete secret after blur", () => {
+    expect(shouldShowTotpCodePreview("JBSWY3DP", { isEditing: false })).toBe(false);
+  });
+});
+
+describe("TOTP secret typing and paste preserve full length", () => {
+  it.each([
+    ["16", SECRET_LEN_16],
+    ["26", SECRET_LEN_26],
+    ["32", SECRET_LEN_32],
+    ["52+", SECRET_LEN_52_PLUS],
+  ] as const)("keeps the full %s-character secret when typed character by character", (_label, secret) => {
+    const { committedSecret, showedPreviewWhileEditing } = applyTotpSecretInput(secret, "type");
+    expect(showedPreviewWhileEditing).toBe(false);
+    expect(committedSecret).toBe(secret);
+    expect(committedSecret.length).toBe(secret.length);
+    expect(createTotp(committedSecret)).not.toBeNull();
+    expect(shouldShowTotpCodePreview(committedSecret, { isEditing: false })).toBe(true);
+  });
+
+  it.each([
+    ["16", SECRET_LEN_16],
+    ["26", SECRET_LEN_26],
+    ["32", SECRET_LEN_32],
+    ["52+", SECRET_LEN_52_PLUS],
+  ] as const)("keeps the full %s-character secret when pasted at once", (_label, secret) => {
+    const { committedSecret, showedPreviewWhileEditing } = applyTotpSecretInput(secret, "paste");
+    expect(showedPreviewWhileEditing).toBe(false);
+    expect(committedSecret).toBe(secret);
+    expect(committedSecret.length).toBe(secret.length);
+    expect(createTotp(committedSecret)).not.toBeNull();
+    expect(shouldShowTotpCodePreview(committedSecret, { isEditing: false })).toBe(true);
   });
 });
 
