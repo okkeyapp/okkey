@@ -252,7 +252,9 @@ describe("SelfHostedFreePlanSection", () => {
         workspaceId="ws-1"
         planTier="FREE"
         canRequest
-        t={(key) => key}
+        t={(key, values) =>
+          values?.minutes != null ? `${key}:${String(values.minutes)}` : key
+        }
       />,
     );
 
@@ -276,9 +278,10 @@ describe("SelfHostedFreePlanSection", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText("web.workspaceSettings.plan.request.errorRateLimited"),
+        screen.getByText("web.workspaceSettings.plan.request.errorRateLimited:60"),
       ).toBeInTheDocument();
     });
     expect(screen.queryByText(/RATE_LIMITED/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/tomorrow/i)).not.toBeInTheDocument();
   });
 });

@@ -15,6 +15,9 @@ import {
 import SelfHostedSalesRequestPopup from "./SelfHostedSalesRequestPopup";
 import { usePlanRequestProfile } from "./usePlanRequestProfile";
 
+/** Fallback when API omits Retry-After (matches server rolling window). */
+const PLAN_CHANGE_REQUEST_RETRY_FALLBACK_SECONDS = 86_400;
+
 /** Checkmark-in-circle for FREE current-plan Note alert. */
 function PlanCheckIcon(props: SVGProps<SVGSVGElement>) {
   return (
@@ -256,7 +259,15 @@ export default function SelfHostedFreePlanSection({
         return;
       }
       if (error instanceof ApiRequestError && error.body.error === "RATE_LIMITED") {
-        setSubmitError(t("web.workspaceSettings.plan.request.errorRateLimited"));
+        const retryRaw = error.body.details?.retryAfterSeconds;
+        const retrySeconds =
+          typeof retryRaw === "number" && Number.isFinite(retryRaw) && retryRaw > 0
+            ? retryRaw
+            : PLAN_CHANGE_REQUEST_RETRY_FALLBACK_SECONDS;
+        const minutes = String(Math.max(1, Math.ceil(retrySeconds / 60)));
+        setSubmitError(
+          t("web.workspaceSettings.plan.request.errorRateLimited", { minutes }),
+        );
         return;
       }
       const message =

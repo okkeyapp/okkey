@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import {
   canRequestPlanUpgrade,
   isPlanTier,
@@ -14,7 +16,7 @@ import type { EmailTemplateService } from "../email/service.ts";
 /** Max license / plan-change request attempts per workspace per rolling 24h window. */
 export const PLAN_CHANGE_REQUEST_DAILY_LIMIT = 3;
 
-/** Rolling window length in seconds (Retry-After uses remaining TTL of this window). */
+/** Rolling window length in seconds. Retry-After = time until the oldest attempt ages out. */
 export const PLAN_CHANGE_REQUEST_WINDOW_SECONDS = 86_400;
 
 export class PlanChangeRequestServiceError extends Error {
@@ -76,9 +78,16 @@ export function planChangeRequestWindowRedisKey(workspaceId: string): string {
 }
 
 type RateLimitRedis = {
-  incr(key: string): Promise<number>;
+  zAdd(key: string, score: number, member: string): Promise<number>;
+  zRemRangeByScore(key: string, min: number | string, max: number | string): Promise<number>;
+  zCard(key: string): Promise<number>;
+  zRangeByScoreWithScores(
+    key: string,
+    min: number | string,
+    max: number | string,
+    limit: number,
+  ): Promise<Array<{ value: string; score: number }>>;
   expire(key: string, seconds: number): Promise<boolean>;
-  ttl(key: string): Promise<number>;
 };
 
 export class PlanChangeRequestService {
@@ -94,6 +103,7 @@ export class PlanChangeRequestService {
   private readonly salesEmailDeliverable: boolean;
   private readonly deploymentMode: DeploymentMode;
   private readonly publicAppBaseUrl: string;
+  private readonly nowMs: () => number;
 
   constructor(deps: {
     db: QueryExecutor;
@@ -112,6 +122,8 @@ export class PlanChangeRequestService {
     salesEmailDeliverable?: boolean;
     deploymentMode: DeploymentMode;
     publicAppBaseUrl?: string;
+    /** Injectable clock for rolling-window tests (epoch ms). */
+    nowMs?: () => number;
   }) {
     this.db = deps.db;
     this.workspaces = deps.workspaces;
@@ -122,6 +134,7 @@ export class PlanChangeRequestService {
     this.salesEmailDeliverable = deps.salesEmailDeliverable ?? true;
     this.deploymentMode = deps.deploymentMode;
     this.publicAppBaseUrl = (deps.publicAppBaseUrl ?? "").trim().replace(/\/$/, "");
+    this.nowMs = deps.nowMs ?? (() => Date.now());
   }
 
   async getStatus(input: {
@@ -173,15 +186,24 @@ export class PlanChangeRequestService {
 
   private async consumeDailyRateLimit(workspaceId: string): Promise<void> {
     const key = planChangeRequestWindowRedisKey(workspaceId);
+    const nowMs = this.nowMs();
+    const windowMs = PLAN_CHANGE_REQUEST_WINDOW_SECONDS * 1000;
+    const member = `${nowMs}:${randomUUID()}`;
+
     // Every attempt counts (including rejected 429s after the limit).
-    const count = await this.redis.incr(key);
-    if (count === 1) {
-      await this.redis.expire(key, PLAN_CHANGE_REQUEST_WINDOW_SECONDS);
-    }
+    await this.redis.zAdd(key, nowMs, member);
+    await this.redis.zRemRangeByScore(key, "-inf", nowMs - windowMs);
+    // Keep the key alive while the rolling window can still contain members.
+    await this.redis.expire(key, PLAN_CHANGE_REQUEST_WINDOW_SECONDS);
+
+    const count = await this.redis.zCard(key);
     if (count > PLAN_CHANGE_REQUEST_DAILY_LIMIT) {
-      const ttl = await this.redis.ttl(key);
-      const retryAfterSeconds =
-        ttl > 0 ? ttl : PLAN_CHANGE_REQUEST_WINDOW_SECONDS;
+      const oldest = await this.redis.zRangeByScoreWithScores(key, "-inf", "+inf", 1);
+      const oldestScore = oldest[0]?.score ?? nowMs;
+      const retryAfterSeconds = Math.max(
+        1,
+        Math.ceil((oldestScore + windowMs - nowMs) / 1000),
+      );
       throw new PlanChangeRequestServiceError(
         "RATE_LIMITED",
         429,

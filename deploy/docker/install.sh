@@ -418,23 +418,39 @@ if [[ -n "${sales_email}" ]] && ! is_valid_sales_email "${sales_email}"; then
 Set a real inbox address (must contain @ and a domain)."
 fi
 if [[ -z "${sales_email}" ]]; then
-  if [[ -t 0 ]]; then
-    log "==> OKKEY_SALES_EMAIL is required (license / plan-change request recipient; no default)."
-    while true; do
-      printf 'OKKEY_SALES_EMAIL: ' >&2
-      read -r sales_email || true
-      sales_email="$(printf '%s' "${sales_email}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
-      if is_valid_sales_email "${sales_email}"; then
-        break
-      fi
-      log "error: enter a valid email address (example: sales@your-company.example)" >&2
-    done
+  # `curl … | bash` makes stdin a pipe (not a TTY). Prefer /dev/tty when a real
+  # terminal is attached; only hard-fail when there is no tty at all.
+  prompt_tty=""
+  if [[ -r /dev/tty && -w /dev/tty ]]; then
+    prompt_tty="/dev/tty"
+  elif [[ -t 0 ]]; then
+    prompt_tty=""
   else
     die "OKKEY_SALES_EMAIL is required (non-interactive install).
 Pass it on the right of \`|\` or set it in ${OKKEY_INSTALL_DIR}/.env before re-running, e.g.
   curl -fsSL …/install.sh | OKKEY_SALES_EMAIL=sales@your-company.example bash
 There is no built-in default address."
   fi
+  log "==> OKKEY_SALES_EMAIL is required (license / plan-change request recipient; no default)."
+  while true; do
+    if [[ -n "${prompt_tty}" ]]; then
+      printf 'OKKEY_SALES_EMAIL: ' >"${prompt_tty}"
+      # shellcheck disable=SC2162
+      read -r sales_email <"${prompt_tty}" || true
+    else
+      printf 'OKKEY_SALES_EMAIL: ' >&2
+      read -r sales_email || true
+    fi
+    sales_email="$(printf '%s' "${sales_email}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+    if is_valid_sales_email "${sales_email}"; then
+      break
+    fi
+    if [[ -n "${prompt_tty}" ]]; then
+      printf '%s\n' "error: enter a valid email address (example: sales@your-company.example)" >"${prompt_tty}"
+    else
+      log "error: enter a valid email address (example: sales@your-company.example)" >&2
+    fi
+  done
 fi
 replace_env OKKEY_SALES_EMAIL "${sales_email}"
 log "==> OKKEY_SALES_EMAIL=${sales_email}"

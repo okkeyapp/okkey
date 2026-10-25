@@ -28,6 +28,14 @@ type RedisClientLike = {
     max: number | string,
     options?: { LIMIT?: { offset: number; count: number } },
   ): Promise<string[]>;
+  zRangeByScoreWithScores(
+    key: string,
+    min: number | string,
+    max: number | string,
+    options?: { LIMIT?: { offset: number; count: number } },
+  ): Promise<Array<{ value: string; score: number }>>;
+  zRemRangeByScore(key: string, min: number | string, max: number | string): Promise<number>;
+  zCard(key: string): Promise<number>;
   zRem(key: string, ...members: string[]): Promise<number>;
 };
 
@@ -185,8 +193,8 @@ export class RedisCache {
 
   async zRangeByScore(
     key: string,
-    min: number,
-    max: number,
+    min: number | string,
+    max: number | string,
     limit: number,
   ): Promise<string[]> {
     try {
@@ -195,6 +203,41 @@ export class RedisCache {
       });
     } catch (error) {
       throw new StorageQueryError("redis zRangeByScore failed", error);
+    }
+  }
+
+  async zRangeByScoreWithScores(
+    key: string,
+    min: number | string,
+    max: number | string,
+    limit: number,
+  ): Promise<Array<{ value: string; score: number }>> {
+    try {
+      return await this.client.zRangeByScoreWithScores(key, min, max, {
+        LIMIT: { offset: 0, count: limit },
+      });
+    } catch (error) {
+      throw new StorageQueryError("redis zRangeByScoreWithScores failed", error);
+    }
+  }
+
+  async zRemRangeByScore(
+    key: string,
+    min: number | string,
+    max: number | string,
+  ): Promise<number> {
+    try {
+      return await this.client.zRemRangeByScore(key, min, max);
+    } catch (error) {
+      throw new StorageQueryError("redis zRemRangeByScore failed", error);
+    }
+  }
+
+  async zCard(key: string): Promise<number> {
+    try {
+      return await this.client.zCard(key);
+    } catch (error) {
+      throw new StorageQueryError("redis zCard failed", error);
     }
   }
 
