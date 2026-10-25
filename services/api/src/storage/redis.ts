@@ -13,6 +13,7 @@ type RedisClientLike = {
   del(key: string): Promise<number>;
   incr(key: string): Promise<number>;
   expire(key: string, seconds: number): Promise<boolean>;
+  ttl(key: string): Promise<number>;
   lPush(key: string, ...values: string[]): Promise<number>;
   rPop(key: string): Promise<string | null>;
   lRem(key: string, count: number, element: string): Promise<number>;
@@ -125,6 +126,15 @@ export class RedisCache {
       return await this.client.expire(key, seconds);
     } catch (error) {
       throw new StorageQueryError("redis expire failed", error);
+    }
+  }
+
+  /** Remaining TTL in seconds; `-1` no expiry, `-2` missing key (Redis semantics). */
+  async ttl(key: string): Promise<number> {
+    try {
+      return await this.client.ttl(key);
+    } catch (error) {
+      throw new StorageQueryError("redis ttl failed", error);
     }
   }
 

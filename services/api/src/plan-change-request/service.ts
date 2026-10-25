@@ -11,8 +11,11 @@ import type { QueryExecutor } from "../storage/postgres.ts";
 import type { UsersRepository, WorkspacesRepository } from "../storage/repositories.ts";
 import type { EmailTemplateService } from "../email/service.ts";
 
-/** Max successful license / plan-change request emails per workspace per UTC day. */
+/** Max license / plan-change request attempts per workspace per rolling 24h window. */
 export const PLAN_CHANGE_REQUEST_DAILY_LIMIT = 3;
+
+/** Rolling window length in seconds (Retry-After uses remaining TTL of this window). */
+export const PLAN_CHANGE_REQUEST_WINDOW_SECONDS = 86_400;
 
 export class PlanChangeRequestServiceError extends Error {
   readonly code:
@@ -68,23 +71,14 @@ export function salesDeploymentLabel(mode: DeploymentMode): "saas" | "self-hoste
   return mode === "saas" ? "saas" : "self-hosted";
 }
 
-/** Seconds until the next UTC midnight (at least 1). */
-export function secondsUntilNextUtcMidnight(now: Date = new Date()): number {
-  const next = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1);
-  return Math.max(1, Math.ceil((next - now.getTime()) / 1000));
-}
-
-export function planChangeRequestDailyRedisKey(
-  workspaceId: string,
-  now: Date = new Date(),
-): string {
-  const day = now.toISOString().slice(0, 10);
-  return `plan-change-request:day:${workspaceId}:${day}`;
+export function planChangeRequestWindowRedisKey(workspaceId: string): string {
+  return `plan-change-request:window:${workspaceId}`;
 }
 
 type RateLimitRedis = {
   incr(key: string): Promise<number>;
   expire(key: string, seconds: number): Promise<boolean>;
+  ttl(key: string): Promise<number>;
 };
 
 export class PlanChangeRequestService {
@@ -100,7 +94,6 @@ export class PlanChangeRequestService {
   private readonly salesEmailDeliverable: boolean;
   private readonly deploymentMode: DeploymentMode;
   private readonly publicAppBaseUrl: string;
-  private readonly now: () => Date;
 
   constructor(deps: {
     db: QueryExecutor;
@@ -119,7 +112,6 @@ export class PlanChangeRequestService {
     salesEmailDeliverable?: boolean;
     deploymentMode: DeploymentMode;
     publicAppBaseUrl?: string;
-    now?: () => Date;
   }) {
     this.db = deps.db;
     this.workspaces = deps.workspaces;
@@ -130,7 +122,6 @@ export class PlanChangeRequestService {
     this.salesEmailDeliverable = deps.salesEmailDeliverable ?? true;
     this.deploymentMode = deps.deploymentMode;
     this.publicAppBaseUrl = (deps.publicAppBaseUrl ?? "").trim().replace(/\/$/, "");
-    this.now = deps.now ?? (() => new Date());
   }
 
   async getStatus(input: {
@@ -181,18 +172,21 @@ export class PlanChangeRequestService {
   }
 
   private async consumeDailyRateLimit(workspaceId: string): Promise<void> {
-    const now = this.now();
-    const key = planChangeRequestDailyRedisKey(workspaceId, now);
+    const key = planChangeRequestWindowRedisKey(workspaceId);
+    // Every attempt counts (including rejected 429s after the limit).
     const count = await this.redis.incr(key);
     if (count === 1) {
-      await this.redis.expire(key, secondsUntilNextUtcMidnight(now));
+      await this.redis.expire(key, PLAN_CHANGE_REQUEST_WINDOW_SECONDS);
     }
     if (count > PLAN_CHANGE_REQUEST_DAILY_LIMIT) {
+      const ttl = await this.redis.ttl(key);
+      const retryAfterSeconds =
+        ttl > 0 ? ttl : PLAN_CHANGE_REQUEST_WINDOW_SECONDS;
       throw new PlanChangeRequestServiceError(
         "RATE_LIMITED",
         429,
-        "license request daily limit exceeded",
-        { retryAfterSeconds: secondsUntilNextUtcMidnight(now) },
+        "license request rate limit exceeded",
+        { retryAfterSeconds },
       );
     }
   }

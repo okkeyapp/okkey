@@ -39,6 +39,32 @@ env_file_value() {
   grep -E "^${key}=" .env 2>/dev/null | cut -d= -f2- || true
 }
 
+# Portable in-place sed (GNU/BSD) for KEY=value lines in ./.env.
+replace_env() {
+  local key="$1"
+  local value="$2"
+  if grep -Eq "^${key}=" .env 2>/dev/null; then
+    if sed --version >/dev/null 2>&1; then
+      sed -i "s|^${key}=.*|${key}=${value}|" .env
+    else
+      sed -i '' "s|^${key}=.*|${key}=${value}|" .env
+    fi
+  else
+    printf '%s=%s\n' "${key}" "${value}" >> .env
+  fi
+}
+
+# Loose email check: must contain one @ and a dot in the domain; no spaces.
+is_valid_sales_email() {
+  local email="$1"
+  [[ -n "${email}" ]] || return 1
+  [[ "${email}" != *[[:space:]]* ]] || return 1
+  [[ "${email}" == *@*.* ]] || return 1
+  [[ "${email}" != *@*@* ]] || return 1
+  [[ "${#email}" -le 320 ]] || return 1
+  return 0
+}
+
 need_cmd() {
   command -v "$1" >/dev/null 2>&1 || die "missing required command: $1"
 }
@@ -313,17 +339,6 @@ if [[ ! -f .env ]]; then
   PG_PASS="$(gen_secret)"
   MINIO_PASS="$(gen_secret)"
 
-  # Portable in-place sed (GNU/BSD)
-  replace_env() {
-    local key="$1"
-    local value="$2"
-    if sed --version >/dev/null 2>&1; then
-      sed -i "s|^${key}=.*|${key}=${value}|" .env
-    else
-      sed -i '' "s|^${key}=.*|${key}=${value}|" .env
-    fi
-  }
-
   replace_env JWT_SECRET "$JWT"
   replace_env SESSION_SECRET "$SESSION"
   replace_env EMAIL_DEAD_LETTER_SEAL_KEY "$EMAIL_DEAD_SEAL"
@@ -377,10 +392,6 @@ if [[ ! -f .env ]]; then
     replace_env WEBAUTHN_RP_NAME "${WEBAUTHN_RP_NAME}"
   fi
 
-  if [[ -n "${OKKEY_SALES_EMAIL:-}" ]]; then
-    replace_env OKKEY_SALES_EMAIL "${OKKEY_SALES_EMAIL}"
-  fi
-
   if [[ -n "${WEB_PORT:-}" || -n "${API_PORT:-}" || -n "${PUBLIC_APP_URL:-}" || -n "${OKKEY_API_PUBLIC_URL:-}" ]]; then
     log "==> Wrote custom ports/URLs into .env (WEB_PORT=${WEB_PORT:-}, API_PORT=${API_PORT:-})"
   fi
@@ -394,24 +405,39 @@ else
   if [[ "${OKKEY_RESET_VOLUMES:-}" == "1" ]]; then
     reset_compose_volumes
   fi
-  # Upgrades from older .env files may lack OKKEY_SALES_EMAIL (now required by api/worker).
-  if [[ -n "${OKKEY_SALES_EMAIL:-}" ]] && ! grep -Eq '^OKKEY_SALES_EMAIL=' .env 2>/dev/null; then
-    printf 'OKKEY_SALES_EMAIL=%s\n' "${OKKEY_SALES_EMAIL}" >> .env
-    log "==> Appended OKKEY_SALES_EMAIL from installer environment into .env"
-  fi
 fi
 
-# api + worker call loadConfig(); missing OKKEY_SALES_EMAIL fails startup with no default.
+# api + worker require OKKEY_SALES_EMAIL (no default). Prefer process env, then .env,
+# then interactive prompt; never invent a placeholder address.
 sales_email="${OKKEY_SALES_EMAIL:-}"
 if [[ -z "${sales_email}" ]]; then
   sales_email="$(env_file_value OKKEY_SALES_EMAIL)"
 fi
-if [[ -z "${sales_email}" ]]; then
-  die "OKKEY_SALES_EMAIL is required (license / plan-change request recipient).
-Set it in ${OKKEY_INSTALL_DIR}/.env (see .env.example) or pass OKKEY_SALES_EMAIL=… on the right of \`|\`, e.g.
-  curl -fsSL …/install.sh | OKKEY_SALES_EMAIL=sales@example.com bash
-There is no built-in default address."
+if [[ -n "${sales_email}" ]] && ! is_valid_sales_email "${sales_email}"; then
+  die "OKKEY_SALES_EMAIL is invalid: ${sales_email}
+Set a real inbox address (must contain @ and a domain)."
 fi
+if [[ -z "${sales_email}" ]]; then
+  if [[ -t 0 ]]; then
+    log "==> OKKEY_SALES_EMAIL is required (license / plan-change request recipient; no default)."
+    while true; do
+      printf 'OKKEY_SALES_EMAIL: ' >&2
+      read -r sales_email || true
+      sales_email="$(printf '%s' "${sales_email}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+      if is_valid_sales_email "${sales_email}"; then
+        break
+      fi
+      log "error: enter a valid email address (example: sales@your-company.example)" >&2
+    done
+  else
+    die "OKKEY_SALES_EMAIL is required (non-interactive install).
+Pass it on the right of \`|\` or set it in ${OKKEY_INSTALL_DIR}/.env before re-running, e.g.
+  curl -fsSL …/install.sh | OKKEY_SALES_EMAIL=sales@your-company.example bash
+There is no built-in default address."
+  fi
+fi
+replace_env OKKEY_SALES_EMAIL "${sales_email}"
+log "==> OKKEY_SALES_EMAIL=${sales_email}"
 
 image_tag="$(env_file_value OKKEY_IMAGE_TAG)"
 image_tag="${image_tag:-dev}"

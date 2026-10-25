@@ -3,10 +3,10 @@ import test from "node:test";
 
 import {
   PLAN_CHANGE_REQUEST_DAILY_LIMIT,
+  PLAN_CHANGE_REQUEST_WINDOW_SECONDS,
   PlanChangeRequestService,
   PlanChangeRequestServiceError,
-  planChangeRequestDailyRedisKey,
-  secondsUntilNextUtcMidnight,
+  planChangeRequestWindowRedisKey,
 } from "../src/plan-change-request/service.ts";
 import type { DeploymentMode } from "../src/config.ts";
 
@@ -26,6 +26,12 @@ function makeMemoryRedis() {
         expires.set(key, seconds);
         return true;
       },
+      ttl: async (key: string) => {
+        if (!counts.has(key)) {
+          return -2;
+        }
+        return expires.get(key) ?? -1;
+      },
     },
   };
 }
@@ -41,7 +47,6 @@ function makeService(overrides?: {
   deploymentMode?: DeploymentMode;
   markSent?: () => Promise<boolean>;
   redis?: ReturnType<typeof makeMemoryRedis>["redis"];
-  now?: () => Date;
 }) {
   const sent: unknown[] = [];
   let markCalls = 0;
@@ -52,7 +57,6 @@ function makeService(overrides?: {
     deploymentMode: overrides?.deploymentMode ?? "self_hosted",
     publicAppBaseUrl: overrides?.publicAppBaseUrl ?? "https://vault.example",
     redis: overrides?.redis ?? memory!.redis,
-    now: overrides?.now,
     db: {
       query: async (sql: string) => {
         if (sql.includes("owner_id")) {
@@ -320,9 +324,8 @@ test("PlanChangeRequestService does not mark sent when email fails", async () =>
   assert.equal(getMarkCalls(), 0);
 });
 
-test("PlanChangeRequestService allows three sends per UTC day then rate-limits with Retry-After", async () => {
-  const fixedNow = new Date("2026-10-24T12:00:00.000Z");
-  const { service, sent, memory } = makeService({ now: () => fixedNow });
+test("PlanChangeRequestService allows three sends per rolling 24h then rate-limits with Retry-After", async () => {
+  const { service, sent, memory } = makeService();
   assert.ok(memory);
 
   for (let i = 0; i < PLAN_CHANGE_REQUEST_DAILY_LIMIT; i += 1) {
@@ -331,9 +334,9 @@ test("PlanChangeRequestService allows three sends per UTC day then rate-limits w
   }
   assert.equal(sent.length, PLAN_CHANGE_REQUEST_DAILY_LIMIT);
 
-  const key = planChangeRequestDailyRedisKey("ws_1", fixedNow);
+  const key = planChangeRequestWindowRedisKey("ws_1");
   assert.equal(memory.counts.get(key), PLAN_CHANGE_REQUEST_DAILY_LIMIT);
-  assert.equal(memory.expires.get(key), secondsUntilNextUtcMidnight(fixedNow));
+  assert.equal(memory.expires.get(key), PLAN_CHANGE_REQUEST_WINDOW_SECONDS);
 
   await assert.rejects(
     () => service.submit(baseSubmit),
@@ -341,7 +344,9 @@ test("PlanChangeRequestService allows three sends per UTC day then rate-limits w
       error instanceof PlanChangeRequestServiceError &&
       error.code === "RATE_LIMITED" &&
       error.status === 429 &&
-      error.details?.retryAfterSeconds === secondsUntilNextUtcMidnight(fixedNow),
+      error.details?.retryAfterSeconds === PLAN_CHANGE_REQUEST_WINDOW_SECONDS,
   );
+  // Rejected 429 attempts still increment the counter.
+  assert.equal(memory.counts.get(key), PLAN_CHANGE_REQUEST_DAILY_LIMIT + 1);
   assert.equal(sent.length, PLAN_CHANGE_REQUEST_DAILY_LIMIT);
 });
