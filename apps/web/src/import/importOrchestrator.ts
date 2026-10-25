@@ -292,6 +292,7 @@ async function importDraftItem(params: {
       itemWithoutFavicon,
       undefined,
       faviconSyncInput,
+      { allowNetworkFetch: true },
     );
     item = faviconSync.item;
     if (faviconSync.uploadedFavicon) {
