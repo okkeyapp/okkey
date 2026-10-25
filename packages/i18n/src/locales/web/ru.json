@@ -1700,6 +1700,7 @@
   "web.workspaceSettings.plan.request.invalidEmail": "Укажите корректный email.",
   "web.workspaceSettings.plan.request.errorTitle": "Не удалось отправить",
   "web.workspaceSettings.plan.request.errorGeneric": "Не удалось отправить заявку. Попробуйте позже.",
+  "web.workspaceSettings.plan.request.errorRateLimited": "Достигнут лимит 3 заявки в сутки. Попробуйте завтра.",
   "web.workspaceSettings.plan.request.successTitle": "Заявка отправлена",
   "web.workspaceSettings.plan.request.successBody": "Форма отправлена — ожидайте ответа на указанный email.",
   "web.workspaceSettings.plan.request.successClose": "Закрыть",

@@ -1,3 +1,4 @@
+import { ApiRequestError } from "@okkey/api";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -224,5 +225,60 @@ describe("SelfHostedFreePlanSection", () => {
         }),
       );
     });
+  });
+
+  it("shows localized rate-limit copy instead of raw RATE_LIMITED code", async () => {
+    getStatus.mockResolvedValue({
+      submitted: true,
+      sent_at: "2026-10-22T12:00:00.000Z",
+      sales_email_deliverable: true,
+      sales_email: "sales@example.com",
+    });
+    requestChange.mockRejectedValue(
+      new ApiRequestError(429, {
+        error: "RATE_LIMITED",
+        message: "license request daily limit exceeded",
+        requestId: "req_1",
+        details: { retryAfterSeconds: 3600 },
+      }),
+    );
+    useCore.mockReturnValue({
+      getWorkspacePlanChangeRequestStatus: getStatus,
+      requestWorkspacePlanChange: requestChange,
+    });
+
+    render(
+      <SelfHostedFreePlanSection
+        workspaceId="ws-1"
+        planTier="FREE"
+        canRequest
+        t={(key) => key}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: "web.workspaceSettings.plan.request.sendAgain" }),
+      ).toBeEnabled();
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "web.workspaceSettings.plan.request.sendAgain" }),
+    );
+    fireEvent.change(screen.getByLabelText("web.workspaceSettings.plan.request.emailLabel"), {
+      target: { value: "reply@okkey.local" },
+    });
+    fireEvent.change(screen.getByLabelText("web.workspaceSettings.plan.request.memberCountLabel"), {
+      target: { value: "3" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "web.workspaceSettings.plan.selfHosted.requestSubmit" }),
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("web.workspaceSettings.plan.request.errorRateLimited"),
+      ).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/RATE_LIMITED/)).not.toBeInTheDocument();
   });
 });

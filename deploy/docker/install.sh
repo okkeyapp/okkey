@@ -377,6 +377,10 @@ if [[ ! -f .env ]]; then
     replace_env WEBAUTHN_RP_NAME "${WEBAUTHN_RP_NAME}"
   fi
 
+  if [[ -n "${OKKEY_SALES_EMAIL:-}" ]]; then
+    replace_env OKKEY_SALES_EMAIL "${OKKEY_SALES_EMAIL}"
+  fi
+
   if [[ -n "${WEB_PORT:-}" || -n "${API_PORT:-}" || -n "${PUBLIC_APP_URL:-}" || -n "${OKKEY_API_PUBLIC_URL:-}" ]]; then
     log "==> Wrote custom ports/URLs into .env (WEB_PORT=${WEB_PORT:-}, API_PORT=${API_PORT:-})"
   fi
@@ -390,6 +394,23 @@ else
   if [[ "${OKKEY_RESET_VOLUMES:-}" == "1" ]]; then
     reset_compose_volumes
   fi
+  # Upgrades from older .env files may lack OKKEY_SALES_EMAIL (now required by api/worker).
+  if [[ -n "${OKKEY_SALES_EMAIL:-}" ]] && ! grep -Eq '^OKKEY_SALES_EMAIL=' .env 2>/dev/null; then
+    printf 'OKKEY_SALES_EMAIL=%s\n' "${OKKEY_SALES_EMAIL}" >> .env
+    log "==> Appended OKKEY_SALES_EMAIL from installer environment into .env"
+  fi
+fi
+
+# api + worker call loadConfig(); missing OKKEY_SALES_EMAIL fails startup with no default.
+sales_email="${OKKEY_SALES_EMAIL:-}"
+if [[ -z "${sales_email}" ]]; then
+  sales_email="$(env_file_value OKKEY_SALES_EMAIL)"
+fi
+if [[ -z "${sales_email}" ]]; then
+  die "OKKEY_SALES_EMAIL is required (license / plan-change request recipient).
+Set it in ${OKKEY_INSTALL_DIR}/.env (see .env.example) or pass OKKEY_SALES_EMAIL=… on the right of \`|\`, e.g.
+  curl -fsSL …/install.sh | OKKEY_SALES_EMAIL=sales@example.com bash
+There is no built-in default address."
 fi
 
 image_tag="$(env_file_value OKKEY_IMAGE_TAG)"

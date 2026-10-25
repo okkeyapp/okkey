@@ -255,6 +255,10 @@ export default function SelfHostedFreePlanSection({
         setSubmitError(null);
         return;
       }
+      if (error instanceof ApiRequestError && error.body.error === "RATE_LIMITED") {
+        setSubmitError(t("web.workspaceSettings.plan.request.errorRateLimited"));
+        return;
+      }
       const message =
         error instanceof ApiRequestError
           ? error.message

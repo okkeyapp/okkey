@@ -109,6 +109,8 @@ services:
       CORS_ORIGIN: ${CORS_ORIGIN}
       PUBLIC_APP_URL: ${PUBLIC_APP_URL}
       EMAIL_FROM: ${EMAIL_FROM}
+      # Required: license / plan-change request recipient (no built-in default).
+      OKKEY_SALES_EMAIL: ${OKKEY_SALES_EMAIL}
       EMAIL_PROVIDER: ${EMAIL_PROVIDER:-logger}
       EMAIL_DELIVERY_MODE: ${EMAIL_DELIVERY_MODE:-queue}
       EMAIL_DEFAULT_LOCALE: ${EMAIL_DEFAULT_LOCALE:-en}
@@ -167,6 +169,8 @@ services:
       SESSION_SECRET: ${SESSION_SECRET}
       EMAIL_DEAD_LETTER_SEAL_KEY: ${EMAIL_DEAD_LETTER_SEAL_KEY:-}
       EMAIL_FROM: ${EMAIL_FROM}
+      # Required: same as api (worker loads shared API config).
+      OKKEY_SALES_EMAIL: ${OKKEY_SALES_EMAIL}
       EMAIL_PROVIDER: ${EMAIL_PROVIDER:-logger}
       EMAIL_DELIVERY_MODE: ${EMAIL_DELIVERY_MODE:-queue}
       EMAIL_DEFAULT_LOCALE: ${EMAIL_DEFAULT_LOCALE:-en}
