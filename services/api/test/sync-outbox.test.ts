@@ -3,13 +3,18 @@ import assert from "node:assert/strict";
 import { testEntityId } from "./test-entity-id.ts";
 import {
   InMemoryOutboxStore,
+  ITEM_UPDATE_CONFLICT,
   SyncOutboxClient,
   computeBackoffDelayMs,
   type OutboxTransport,
 } from "../../../packages/sync/dist/index.js";
 import type { SyncAppendEventRequestDto, SyncEventWireDto, SyncEventsListResponseDto } from "../../../packages/types/dist/index.js";
 
-function mkReq(baseVersion: number, eventType = "ITEM_UPDATE"): SyncAppendEventRequestDto {
+function mkReq(
+  baseVersion: number,
+  eventType = "ITEM_UPDATE",
+  referencedItemId?: string,
+): SyncAppendEventRequestDto {
   return {
     eventType,
     encryptedBlob: {
@@ -20,22 +25,28 @@ function mkReq(baseVersion: number, eventType = "ITEM_UPDATE"): SyncAppendEventR
     },
     baseVersion,
     idempotencyKey: testEntityId(),
+    ...(referencedItemId ? { referencedItemId } : {}),
   };
 }
 
-function mkEvent(vaultId: string, version: number): SyncEventWireDto {
+function mkEvent(
+  vaultId: string,
+  version: number,
+  options?: { referencedItemId?: string; eventType?: string },
+): SyncEventWireDto {
+  const itemId = options?.referencedItemId ?? testEntityId();
   return {
     id: testEntityId(),
     vaultId,
     actorId: null,
-    eventType: "ITEM_UPDATE",
+    eventType: options?.eventType ?? "ITEM_UPDATE",
     encryptedBlob: {
       crypto_version: 2,
       algorithm: "opaque",
       payload: Buffer.from(
         JSON.stringify({
           schemaVersion: 2,
-          itemId: testEntityId(),
+          itemId,
           vaultId,
           title: `v${version}`,
           categoryId: "login",
@@ -50,6 +61,7 @@ function mkEvent(vaultId: string, version: number): SyncEventWireDto {
     },
     idempotencyKey: testEntityId(),
     clientCreatedAt: null,
+    referencedItemId: options?.referencedItemId ?? itemId,
     version,
     createdAt: new Date(version * 1000).toISOString(),
   };
@@ -173,6 +185,94 @@ test("outbox resolves VERSION_MISMATCH via rebase and retry", async () => {
   await outbox.enqueue({ vaultId, request: mkReq(3) });
   await outbox.drain(vaultId);
   assert.equal(conflictResolved, 1);
+  assert.equal((await outbox.list()).length, 0);
+});
+
+test("outbox does not overwrite same-item concurrent ITEM_UPDATE after VERSION_MISMATCH", async () => {
+  const vaultId = testEntityId();
+  const itemId = testEntityId();
+  const store = new InMemoryOutboxStore();
+  let appendCalls = 0;
+  const transport: OutboxTransport = {
+    async appendVaultEvent(_vaultId, body) {
+      appendCalls += 1;
+      if (appendCalls === 1) {
+        throw {
+          name: "ApiRequestError",
+          status: 409,
+          message: "VERSION_MISMATCH: baseVersion is stale",
+          body: {
+            error: "VERSION_MISMATCH",
+            message: "baseVersion is stale",
+            requestId: "req-conflict",
+            details: {
+              expectedBaseVersion: body.baseVersion,
+              latestVersion: 4,
+            },
+          },
+        };
+      }
+      throw new Error("must not retry overwrite after same-item conflict");
+    },
+    async listVaultEvents(vId, afterVersion): Promise<SyncEventsListResponseDto> {
+      if (afterVersion >= 4) return mkList(vId, afterVersion, []);
+      return mkList(vId, afterVersion, [
+        mkEvent(vId, afterVersion + 1, { referencedItemId: itemId, eventType: "ITEM_UPDATE" }),
+      ]);
+    },
+  };
+
+  const outbox = new SyncOutboxClient(store, transport, {
+    replayOptions: {
+      decryptItemPayload: async (b64) => Uint8Array.from(Buffer.from(b64, "base64")),
+    },
+  });
+
+  await outbox.enqueue({ vaultId, request: mkReq(2, "ITEM_UPDATE", itemId) });
+  await outbox.drain(vaultId);
+  const left = await outbox.list();
+  assert.equal(appendCalls, 1);
+  assert.equal(left.length, 1);
+  assert.equal(left[0]?.status, "dead");
+  assert.equal(left[0]?.lastErrorCode, ITEM_UPDATE_CONFLICT);
+});
+
+test("outbox rebases ITEM_UPDATE when remote events touch a different item", async () => {
+  const vaultId = testEntityId();
+  const localItemId = testEntityId();
+  const peerItemId = testEntityId();
+  const store = new InMemoryOutboxStore();
+  let appendCalls = 0;
+  const transport: OutboxTransport = {
+    async appendVaultEvent(_vaultId, body) {
+      appendCalls += 1;
+      if (appendCalls === 1) {
+        throw {
+          code: "VERSION_MISMATCH",
+          message: "stale",
+          details: {
+            code: "VERSION_MISMATCH",
+            expectedBaseVersion: body.baseVersion,
+            latestVersion: 6,
+          },
+        };
+      }
+      assert.equal(body.baseVersion, 6);
+      assert.equal(body.referencedItemId, localItemId);
+      return mkEvent(vaultId, 7, { referencedItemId: localItemId });
+    },
+    async listVaultEvents(vId, afterVersion): Promise<SyncEventsListResponseDto> {
+      if (afterVersion >= 6) return mkList(vId, afterVersion, []);
+      return mkList(vId, afterVersion, [
+        mkEvent(vId, afterVersion + 1, { referencedItemId: peerItemId }),
+      ]);
+    },
+  };
+
+  const outbox = new SyncOutboxClient(store, transport);
+  await outbox.enqueue({ vaultId, request: mkReq(3, "ITEM_UPDATE", localItemId) });
+  await outbox.drain(vaultId);
+  assert.equal(appendCalls, 2);
   assert.equal((await outbox.list()).length, 0);
 });
 

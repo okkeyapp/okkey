@@ -61,6 +61,7 @@ export {
 export {
   InMemoryOutboxStore,
   SyncOutboxClient,
+  ITEM_UPDATE_CONFLICT,
   computeBackoffDelayMs,
   type ItemUpdateRebaseContext,
   type OutboxClientOptions,

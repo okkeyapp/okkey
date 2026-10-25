@@ -299,6 +299,14 @@ export function createWorkspaceVaultItemsSyncController(input: {
       appendVaultEvent: (vaultId, body) => input.core.appendVaultEvent(vaultId, body),
       listVaultEvents: (vaultId, afterVersion) => input.core.listVaultEvents(vaultId, afterVersion),
     },
+    {
+      decryptItemPayloadForVault: async (vaultId, encryptedPayloadBase64, itemId) => {
+        const vaultKey = await resolveVaultKey(vaultId);
+        return decryptVaultItemPayload(vaultKey, base64ToBytes(encryptedPayloadBase64), 2, {
+          itemId,
+        });
+      },
+    },
   );
 
   function ensureVaultState(vaultId: string): VaultItemsMaterializedState {
@@ -380,6 +388,13 @@ export function createWorkspaceVaultItemsSyncController(input: {
     const appended = await outbox.drain(vaultId);
     const remaining = (await outbox.list()).find((entry) => entry.id === queued.id);
     if (remaining) {
+      // Pull peer writes into local state even when this append did not commit.
+      try {
+        await replayVaultIncremental(vaultId);
+        await writeCachedState(input.userId, input.workspaceId, vaultStates);
+      } catch {
+        // Best-effort; surface the append failure either way.
+      }
       throw new Error(
         remaining.lastErrorCode
           ? `OUTBOX_ENTRY_NOT_APPENDED:${remaining.lastErrorCode}`

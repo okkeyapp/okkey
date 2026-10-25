@@ -48,6 +48,9 @@ export interface OutboxHooks {
   onQueueStalled?: (entries: OutboxEntry[]) => void;
 }
 
+/** Marked dead when a peer already wrote the same item since our stale baseVersion. */
+export const ITEM_UPDATE_CONFLICT = "ITEM_UPDATE_CONFLICT";
+
 export interface OutboxClientOptions {
   maxAttempts?: number;
   baseDelayMs?: number;
@@ -57,6 +60,15 @@ export interface OutboxClientOptions {
   nowMs?: () => number;
   random?: () => number;
   replayOptions?: Omit<ReplayEngineOptions, "vaultId" | "initialLastAppliedVersion">;
+  /**
+   * Decrypt item ciphertext for a vault during VERSION_MISMATCH replay.
+   * Required to detect same-item concurrent edits (without this, updates may last-writer-wins).
+   */
+  decryptItemPayloadForVault?: (
+    vaultId: string,
+    encryptedPayloadBase64: string,
+    itemId?: string | null,
+  ) => Promise<Uint8Array>;
   rebaseItemUpdate?: (
     context: ItemUpdateRebaseContext,
   ) => Promise<Pick<SyncAppendEventRequestDto, "encryptedBlob">>;
@@ -259,13 +271,47 @@ export class SyncOutboxClient {
     return out;
   }
 
+  private remoteEventsTouchItem(events: SyncEventWireDto[], itemId: string): boolean {
+    const itemTypes = new Set(["ITEM_CREATE", "ITEM_UPDATE", "ITEM_DELETE"]);
+    return events.some(
+      (event) => itemTypes.has(event.eventType) && event.referencedItemId === itemId,
+    );
+  }
+
   private async handleVersionMismatch(entry: OutboxEntry, conflict: VersionMismatchDetails): Promise<void> {
     const remoteEvents = await this.fetchAllAfterVersion(entry.vaultId, conflict.expectedBaseVersion);
+    const decryptItemPayload =
+      this.options.decryptItemPayloadForVault != null
+        ? (encryptedPayloadBase64: string, itemId?: string | null) =>
+            this.options.decryptItemPayloadForVault!(entry.vaultId, encryptedPayloadBase64, itemId)
+        : this.options.replayOptions?.decryptItemPayload;
     const replay = await replayVaultEvents(remoteEvents, {
       vaultId: entry.vaultId,
       initialLastAppliedVersion: conflict.expectedBaseVersion,
       ...this.options.replayOptions,
+      ...(decryptItemPayload ? { decryptItemPayload } : {}),
     });
+
+    const referencedItemId = entry.request.referencedItemId;
+    const isSameItemMutation =
+      (entry.request.eventType === "ITEM_UPDATE" || entry.request.eventType === "ITEM_DELETE") &&
+      typeof referencedItemId === "string" &&
+      referencedItemId.length > 0;
+    // Peer already wrote this item since our baseVersion — do not last-writer-wins overwrite.
+    const touchedViaWire =
+      isSameItemMutation && referencedItemId
+        ? this.remoteEventsTouchItem(remoteEvents, referencedItemId)
+        : false;
+    const touchedViaReplay =
+      isSameItemMutation && referencedItemId ? replay.items.has(referencedItemId) : false;
+    if (touchedViaWire || touchedViaReplay) {
+      entry.status = "dead";
+      entry.lastErrorCode = ITEM_UPDATE_CONFLICT;
+      entry.lastErrorMessage = "item was updated concurrently";
+      entry.nextAttemptAtMs = Number.MAX_SAFE_INTEGER;
+      entry.updatedAtMs = this.nowMs();
+      return;
+    }
 
     if (entry.request.eventType === "ITEM_UPDATE" && this.options.rebaseItemUpdate) {
       const rebased = await this.options.rebaseItemUpdate({

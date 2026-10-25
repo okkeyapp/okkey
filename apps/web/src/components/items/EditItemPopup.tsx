@@ -26,7 +26,7 @@ import { useWorkspaceItemTemplates } from "../../items/useWorkspaceItemTemplates
 import { useWorkspaceItems } from "../../items/WorkspaceItemsContext";
 import { useWorkspaceVaultProfiles } from "../../items/WorkspaceVaultProfilesContext";
 import { useLocale } from "../../locale/LocaleContext";
-import { runSaveWithToast } from "../../lib/saveWithToast";
+import { formatSaveError, runSaveWithToast } from "../../lib/saveWithToast";
 import PopupSaveButton from "../ui/PopupSaveButton";
 import { createKeyFormEditorMessages } from "../key-form/keyFormI18n";
 import {
@@ -258,7 +258,8 @@ export default function EditItemPopup({
         {
           loading: t("web.toast.save.loading"),
           success: t("web.toast.save.success"),
-          error: t("web.editItemPopup.saveErrorGeneric"),
+          error: t("web.toast.save.error"),
+          conflict: t("web.toast.save.conflict"),
         },
         async () => {
           if (itemContentChanged) {
@@ -320,7 +321,9 @@ export default function EditItemPopup({
       closePopup();
       setShowValidation(false);
     } catch (error) {
-      setSaveError(error instanceof Error ? error.message : t("web.editItemPopup.saveErrorGeneric"));
+      setSaveError(
+        formatSaveError(error, t("web.toast.save.error"), t("web.editItemPopup.saveConflict")),
+      );
     } finally {
       setSaving(false);
     }
