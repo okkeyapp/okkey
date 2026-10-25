@@ -12,15 +12,44 @@ function isItemDeleteTombstone(parsed: ItemPlaintextV2, eventType: string): bool
   );
 }
 
+/**
+ * Whether replay should materialize this event as a soft-delete.
+ * Prefer the server-persisted `itemSoftDeleted` hint; fall back to plaintext only for
+ * legacy events where the hint is unset (null/undefined).
+ */
+export function shouldApplyItemSoftDelete(
+  parsed: Pick<ItemPlaintextV2, "deleted">,
+  event: Pick<SyncEventWireDto, "eventType" | "itemSoftDeleted">,
+): boolean {
+  if (event.eventType === "ITEM_DELETE") {
+    return true;
+  }
+  if (event.eventType !== "ITEM_UPDATE") {
+    return Boolean(parsed.deleted);
+  }
+  if (event.itemSoftDeleted === true) {
+    return true;
+  }
+  if (event.itemSoftDeleted === false) {
+    return false;
+  }
+  // Legacy events without a persisted hint: trust plaintext.
+  return Boolean(parsed.deleted);
+}
+
 /** Apply decrypted item plaintext to materialized replay map (soft-delete aware). */
 export function applyItemPlaintextToReplayMap(
   items: Map<string, ItemPlaintextV2>,
   parsed: ItemPlaintextV2,
-  event: Pick<SyncEventWireDto, "eventType" | "createdAt">,
+  event: Pick<SyncEventWireDto, "eventType" | "createdAt" | "itemSoftDeleted">,
 ): void {
-  const isDeleted = Boolean(parsed.deleted) || event.eventType === "ITEM_DELETE";
+  const isDeleted = shouldApplyItemSoftDelete(parsed, event);
   if (!isDeleted) {
-    items.set(parsed.itemId, parsed);
+    items.set(parsed.itemId, {
+      ...parsed,
+      deleted: false,
+      deletedAtMs: undefined,
+    });
     return;
   }
 

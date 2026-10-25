@@ -25,20 +25,38 @@ function opaqueJson(obj: unknown): string {
 }
 
 function baseWire(
-  partial: Partial<SyncEventWireDto> & Pick<SyncEventWireDto, "eventType" | "version">,
+  partial: Partial<SyncEventWireDto> &
+    Pick<SyncEventWireDto, "eventType" | "version"> & {
+      encryptedPayload?: string;
+      payloadSchemaVersion?: number;
+    },
 ): SyncEventWireDto {
   return {
     id: partial.id ?? testEntityId(),
     vaultId: partial.vaultId ?? "1156820912149101",
     actorId: partial.actorId ?? null,
     eventType: partial.eventType,
-    encryptedPayload: partial.encryptedPayload ?? opaqueJson({}),
-    payloadSchemaVersion: partial.payloadSchemaVersion ?? ITEM_PLAINTEXT_SCHEMA_VERSION_LATEST,
+    encryptedBlob: partial.encryptedBlob ?? {
+      crypto_version: partial.payloadSchemaVersion ?? ITEM_PLAINTEXT_SCHEMA_VERSION_LATEST,
+      algorithm: "opaque",
+      payload: partial.encryptedPayload ?? opaqueJson({}),
+      meta: {},
+    },
+    // Legacy test shape still consumed by getEventBlob fallbacks.
+    ...(partial.encryptedPayload
+      ? {
+          encryptedPayload: partial.encryptedPayload,
+          payloadSchemaVersion:
+            partial.payloadSchemaVersion ?? ITEM_PLAINTEXT_SCHEMA_VERSION_LATEST,
+        }
+      : {}),
     idempotencyKey: partial.idempotencyKey ?? null,
     clientCreatedAt: partial.clientCreatedAt ?? null,
+    referencedItemId: partial.referencedItemId,
+    itemSoftDeleted: partial.itemSoftDeleted,
     version: partial.version,
     createdAt: partial.createdAt ?? "2026-01-01T00:00:00.000Z",
-  };
+  } as SyncEventWireDto;
 }
 
 interface FixtureStreamEvent {
@@ -300,6 +318,140 @@ test("SyncReplayEngine converges deterministically for VAULT_SHARE + VAULT_KEY_R
   assert.equal(stateOrdered.vaultLifecycle.latestShareVersion, 2);
   assert.equal(stateOrdered.vaultLifecycle.latestKeyRotationVersion, 3);
   assert.deepEqual(stateShuffled.vaultLifecycle, stateOrdered.vaultLifecycle);
+});
+
+test("SyncReplayEngine quarantines ITEM_UPDATE for unknown item id", async () => {
+  const vaultId = testEntityId();
+  const itemId = testEntityId();
+  const row = {
+    schemaVersion: ITEM_PLAINTEXT_SCHEMA_VERSION_LATEST,
+    itemId,
+    vaultId,
+    title: "orphan-update",
+    categoryId: "login",
+    createdAtMs: 1,
+    updatedAtMs: 1,
+    sections: [{ id: "s-main", title: "Main", order: 0, isPreset: true }],
+    fields: [],
+  };
+  const state = await replayVaultEvents(
+    [
+      baseWire({
+        vaultId,
+        eventType: "ITEM_UPDATE",
+        version: 1,
+        referencedItemId: itemId,
+        itemSoftDeleted: false,
+        encryptedPayload: opaqueJson(row),
+      }),
+    ],
+    {
+      vaultId,
+      decryptItemPayload: async (b64) => Uint8Array.from(Buffer.from(b64, "base64")),
+    },
+  );
+  assert.equal(state.items.size, 0);
+  assert.equal(state.quarantined.length, 1);
+  assert.equal(state.quarantined[0]?.reason, "ITEM_UNKNOWN");
+});
+
+test("SyncReplayEngine quarantines unmarked soft-delete on ITEM_UPDATE", async () => {
+  const vaultId = testEntityId();
+  const itemId = testEntityId();
+  const created = {
+    schemaVersion: ITEM_PLAINTEXT_SCHEMA_VERSION_LATEST,
+    itemId,
+    vaultId,
+    title: "live",
+    categoryId: "login",
+    createdAtMs: 1,
+    updatedAtMs: 1,
+    sections: [{ id: "s-main", title: "Main", order: 0, isPreset: true }],
+    fields: [],
+  };
+  const deletedPlaintext = {
+    ...created,
+    deleted: true,
+    deletedAtMs: 2,
+    updatedAtMs: 2,
+    title: "",
+    sections: [],
+    fields: [],
+  };
+  const state = await replayVaultEvents(
+    [
+      baseWire({
+        vaultId,
+        eventType: "ITEM_CREATE",
+        version: 1,
+        referencedItemId: itemId,
+        encryptedPayload: opaqueJson(created),
+      }),
+      baseWire({
+        vaultId,
+        eventType: "ITEM_UPDATE",
+        version: 2,
+        referencedItemId: itemId,
+        itemSoftDeleted: false,
+        encryptedPayload: opaqueJson(deletedPlaintext),
+      }),
+    ],
+    {
+      vaultId,
+      decryptItemPayload: async (b64) => Uint8Array.from(Buffer.from(b64, "base64")),
+    },
+  );
+  assert.equal(state.items.get(itemId)?.deleted, false);
+  assert.equal(state.items.get(itemId)?.title, "live");
+  assert.equal(state.quarantined.length, 1);
+  assert.equal(state.quarantined[0]?.reason, "ITEM_SOFT_DELETE_UNMARKED");
+});
+
+test("SyncReplayEngine applies soft-delete when server marks ITEM_UPDATE", async () => {
+  const vaultId = testEntityId();
+  const itemId = testEntityId();
+  const created = {
+    schemaVersion: ITEM_PLAINTEXT_SCHEMA_VERSION_LATEST,
+    itemId,
+    vaultId,
+    title: "live",
+    categoryId: "login",
+    createdAtMs: 1,
+    updatedAtMs: 1,
+    sections: [{ id: "s-main", title: "Main", order: 0, isPreset: true }],
+    fields: [],
+  };
+  const deletedPlaintext = {
+    ...created,
+    deleted: true,
+    deletedAtMs: 2,
+    updatedAtMs: 2,
+  };
+  const state = await replayVaultEvents(
+    [
+      baseWire({
+        vaultId,
+        eventType: "ITEM_CREATE",
+        version: 1,
+        referencedItemId: itemId,
+        encryptedPayload: opaqueJson(created),
+      }),
+      baseWire({
+        vaultId,
+        eventType: "ITEM_UPDATE",
+        version: 2,
+        referencedItemId: itemId,
+        itemSoftDeleted: true,
+        encryptedPayload: opaqueJson(deletedPlaintext),
+      }),
+    ],
+    {
+      vaultId,
+      decryptItemPayload: async (b64) => Uint8Array.from(Buffer.from(b64, "base64")),
+    },
+  );
+  assert.equal(state.items.get(itemId)?.deleted, true);
+  assert.equal(state.quarantined.length, 0);
 });
 
 test("SyncReplayEngine supports unknown event ignore policy", async () => {

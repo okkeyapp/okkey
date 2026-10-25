@@ -42,11 +42,12 @@ test("listEvents returns mapped events for readable vault", async () => {
           idempotencyKey: null,
           clientCreatedAt: null,
           referencedItemId: null,
+          itemSoftDeleted: null,
           version: 1,
           createdAt: "2026-01-01T00:00:00.000Z",
         },
       ],
-      hasItemCreateEvent: async () => false,
+      hasItemCreateEvent: async () => true,
       findByIdempotencyKey: async () => null,
       append: async () => {
         throw new Error("not used");
@@ -77,7 +78,7 @@ test("appendEvent validates event type", async () => {
     },
     events: {
       listAfterVersion: async () => [],
-      hasItemCreateEvent: async () => false,
+      hasItemCreateEvent: async () => true,
       findByIdempotencyKey: async () => null,
       append: async () => {
         throw new Error("not used");
@@ -116,7 +117,7 @@ test("appendEvent maps version conflict", async () => {
     },
     events: {
       listAfterVersion: async () => [],
-      hasItemCreateEvent: async () => false,
+      hasItemCreateEvent: async () => true,
       findByIdempotencyKey: async () => null,
       append: async () => {
         throw new VersionConflictError(1, 5);
@@ -158,7 +159,7 @@ test("appendEvent rejects FOLDER_CREATE on vault stream", async () => {
     },
     events: {
       listAfterVersion: async () => [],
-      hasItemCreateEvent: async () => false,
+      hasItemCreateEvent: async () => true,
       findByIdempotencyKey: async () => null,
       append: async () => {
         throw new Error("not used");
@@ -277,6 +278,48 @@ test("appendEvent rejects ITEM_CREATE in shared vault without sharedVaults plan"
   );
 });
 
+test("appendEvent rejects ITEM_UPDATE when ITEM_CREATE is missing", async () => {
+  const service = new SyncService({
+    vaults: {
+      findById: async () => ({
+        id: "v1",
+        workspaceId: "w1",
+        name: "Vault",
+        isPersonal: false,
+        ownerId: "u1",
+        cryptoVersion: 2,
+        createdAt: "",
+        updatedAt: "",
+      }),
+      canReadVault: async () => true,
+    },
+    events: {
+      listAfterVersion: async () => [],
+      hasItemCreateEvent: async () => false,
+      findByIdempotencyKey: async () => null,
+      append: async () => {
+        throw new Error("not used");
+      },
+      deleteByVaultAndReferencedItemId: async () => {},
+    },
+  });
+
+  await assert.rejects(
+    () =>
+      service.appendEvent("v1", "u1", {
+        eventType: "ITEM_UPDATE",
+        encryptedBlob: mkBlob("x"),
+        baseVersion: 1,
+        referencedItemId: TEST_ITEM_ID,
+        itemSoftDeleted: false,
+      }),
+    (error: unknown) =>
+      error instanceof SyncServiceError &&
+      error.code === "SYNC_ITEM_NOT_FOUND" &&
+      error.statusCode === 404,
+  );
+});
+
 test("appendEvent allows ITEM_UPDATE in shared vault without sharedVaults plan", async () => {
   const service = new SyncService({
     vaults: {
@@ -310,7 +353,7 @@ test("appendEvent allows ITEM_UPDATE in shared vault without sharedVaults plan",
     },
     events: {
       listAfterVersion: async () => [],
-      hasItemCreateEvent: async () => false,
+      hasItemCreateEvent: async () => true,
       findByIdempotencyKey: async () => null,
       append: async () => ({
         id: "e1",
@@ -322,6 +365,7 @@ test("appendEvent allows ITEM_UPDATE in shared vault without sharedVaults plan",
         idempotencyKey: null,
         clientCreatedAt: null,
         referencedItemId: null,
+        itemSoftDeleted: null,
         version: 2,
         createdAt: "2026-01-01T00:00:00.000Z",
       }),
@@ -356,7 +400,7 @@ test("appendEvent rejects oversized payload", async () => {
     },
     events: {
       listAfterVersion: async () => [],
-      hasItemCreateEvent: async () => false,
+      hasItemCreateEvent: async () => true,
       findByIdempotencyKey: async () => null,
       append: async () => {
         throw new Error("not used");
@@ -399,7 +443,7 @@ test("appendEvent rejects strip attack: missing crypto_version in encryptedBlob"
     },
     events: {
       listAfterVersion: async () => [],
-      hasItemCreateEvent: async () => false,
+      hasItemCreateEvent: async () => true,
       findByIdempotencyKey: async () => null,
       append: async () => {
         throw new Error("not used");
@@ -444,7 +488,7 @@ test("appendEvent rejects strip attack: legacy encryptedBlob string when legacy 
     },
     events: {
       listAfterVersion: async () => [],
-      hasItemCreateEvent: async () => false,
+      hasItemCreateEvent: async () => true,
       findByIdempotencyKey: async () => null,
       append: async () => {
         throw new Error("not used");
@@ -473,7 +517,7 @@ test("listEvents returns VAULT_NOT_FOUND when vault does not exist", async () =>
     },
     events: {
       listAfterVersion: async () => [],
-      hasItemCreateEvent: async () => false,
+      hasItemCreateEvent: async () => true,
       findByIdempotencyKey: async () => null,
       append: async () => {
         throw new Error("not used");
@@ -505,7 +549,7 @@ test("listEvents returns ACCESS_DENIED when user cannot read vault", async () =>
     },
     events: {
       listAfterVersion: async () => [],
-      hasItemCreateEvent: async () => false,
+      hasItemCreateEvent: async () => true,
       findByIdempotencyKey: async () => null,
       append: async () => {
         throw new Error("not used");
@@ -528,7 +572,7 @@ test("appendEvent returns VAULT_NOT_FOUND when vault does not exist", async () =
     },
     events: {
       listAfterVersion: async () => [],
-      hasItemCreateEvent: async () => false,
+      hasItemCreateEvent: async () => true,
       findByIdempotencyKey: async () => null,
       append: async () => {
         throw new Error("not used");
@@ -566,7 +610,7 @@ test("appendEvent returns ACCESS_DENIED when user cannot read vault", async () =
     },
     events: {
       listAfterVersion: async () => [],
-      hasItemCreateEvent: async () => false,
+      hasItemCreateEvent: async () => true,
       findByIdempotencyKey: async () => null,
       append: async () => {
         throw new Error("not used");
@@ -604,7 +648,7 @@ test("appendEvent maps CryptoDowngradeInvariantError to CRYPTO_DOWNGRADE_NOT_ALL
     },
     events: {
       listAfterVersion: async () => [],
-      hasItemCreateEvent: async () => false,
+      hasItemCreateEvent: async () => true,
       findByIdempotencyKey: async () => null,
       append: async () => {
         throw new CryptoDowngradeInvariantError("v1", 2, 1);
@@ -648,7 +692,7 @@ test("appendEvent rejects disallowed crypto profile by policy", async () => {
     },
     events: {
       listAfterVersion: async () => [],
-      hasItemCreateEvent: async () => false,
+      hasItemCreateEvent: async () => true,
       findByIdempotencyKey: async () => null,
       append: async () => {
         throw new Error("not used");
@@ -690,7 +734,7 @@ test("appendEvent preserves encryptedBlob crypto_version", async () => {
     },
     events: {
       listAfterVersion: async () => [],
-      hasItemCreateEvent: async () => false,
+      hasItemCreateEvent: async () => true,
       findByIdempotencyKey: async () => null,
       append: async (input) => {
         capturedVersion = input.payloadSchemaVersion;
@@ -704,6 +748,7 @@ test("appendEvent preserves encryptedBlob crypto_version", async () => {
           idempotencyKey: input.idempotencyKey ?? null,
           clientCreatedAt: input.clientCreatedAt ?? null,
           referencedItemId: input.referencedItemId ?? null,
+          itemSoftDeleted: null,
           version: 1,
           createdAt: "2026-01-01T00:00:00.000Z",
         };
@@ -751,7 +796,7 @@ test("appendEvent strict mode rejects actor without PQ capability", async () => 
     },
     events: {
       listAfterVersion: async () => [],
-      hasItemCreateEvent: async () => false,
+      hasItemCreateEvent: async () => true,
       findByIdempotencyKey: async () => null,
       append: async () => {
         throw new Error("not used");
@@ -805,7 +850,7 @@ test("appendEvent compat mode allows actor without PQ capability", async () => {
     },
     events: {
       listAfterVersion: async () => [],
-      hasItemCreateEvent: async () => false,
+      hasItemCreateEvent: async () => true,
       findByIdempotencyKey: async () => null,
       append: async (input) => ({
         id: "e1",
@@ -817,6 +862,7 @@ test("appendEvent compat mode allows actor without PQ capability", async () => {
         idempotencyKey: input.idempotencyKey ?? null,
         clientCreatedAt: input.clientCreatedAt ?? null,
         referencedItemId: input.referencedItemId ?? null,
+        itemSoftDeleted: null,
         version: 1,
         createdAt: "2026-01-01T00:00:00.000Z",
       }),
@@ -866,7 +912,7 @@ test("appendEvent strict mode requires signature for VAULT_SHARE", async () => {
     },
     events: {
       listAfterVersion: async () => [],
-      hasItemCreateEvent: async () => false,
+      hasItemCreateEvent: async () => true,
       findByIdempotencyKey: async () => null,
       append: async () => {
         throw new Error("not used");
@@ -920,7 +966,7 @@ test("appendEvent rejects malformed signature envelope when provided", async () 
     },
     events: {
       listAfterVersion: async () => [],
-      hasItemCreateEvent: async () => false,
+      hasItemCreateEvent: async () => true,
       findByIdempotencyKey: async () => null,
       append: async () => {
         throw new Error("not used");
@@ -1009,6 +1055,7 @@ test("appendEvent returns existing ITEM_CREATE on matching idempotency retry", a
     idempotencyKey,
     clientCreatedAt: null,
     referencedItemId: TEST_ITEM_ID,
+    itemSoftDeleted: null,
     version: 1,
     createdAt: "2026-01-01T00:00:00.000Z",
   };

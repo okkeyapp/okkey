@@ -2563,6 +2563,8 @@ export interface EventRecord {
   idempotencyKey: string | null;
   clientCreatedAt: string | null;
   referencedItemId: string | null;
+  /** Per-event soft-delete hint; null for legacy rows written before the column existed. */
+  itemSoftDeleted: boolean | null;
   version: number;
   createdAt: string;
 }
@@ -2590,6 +2592,7 @@ export class EventsRepository {
     idempotencyKey?: string | null;
     clientCreatedAt?: string | null;
     referencedItemId?: string | null;
+    itemSoftDeleted?: boolean | null;
   }): Promise<EventRecord> {
     return this.db.transaction(async (tx) => {
       const vaultRows = await tx.query<{ id: string; crypto_version: number }>(
@@ -2612,13 +2615,14 @@ export class EventsRepository {
           idempotency_key: string | null;
           client_created_at: string | null;
           referenced_item_id: string | null;
+          item_soft_deleted: boolean | null;
           version: number;
           created_at: string;
         }>(
           `
             SELECT id, vault_id, actor_id, event_type, encrypted_payload,
                    payload_schema_version, idempotency_key, client_created_at,
-                   referenced_item_id::text AS referenced_item_id, version, created_at
+                   referenced_item_id::text AS referenced_item_id, item_soft_deleted, version, created_at
             FROM events
             WHERE vault_id = $1 AND idempotency_key = $2::bigint
             FOR UPDATE
@@ -2661,6 +2665,7 @@ export class EventsRepository {
         idempotency_key: string | null;
         client_created_at: string | null;
         referenced_item_id: string | null;
+        item_soft_deleted: boolean | null;
         version: number;
         created_at: string;
       };
@@ -2670,7 +2675,7 @@ export class EventsRepository {
           `
             SELECT id, vault_id, actor_id, event_type, encrypted_payload,
                    payload_schema_version, idempotency_key, client_created_at,
-                   referenced_item_id::text AS referenced_item_id, version, created_at
+                   referenced_item_id::text AS referenced_item_id, item_soft_deleted, version, created_at
             FROM events
             WHERE vault_id = $1 AND idempotency_key = $2::bigint
             FOR UPDATE
@@ -2685,12 +2690,13 @@ export class EventsRepository {
           `
           INSERT INTO events (
             id, vault_id, actor_id, event_type, encrypted_payload, version,
-            payload_schema_version, idempotency_key, client_created_at, referenced_item_id
+            payload_schema_version, idempotency_key, client_created_at, referenced_item_id,
+            item_soft_deleted
           )
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
           RETURNING id, vault_id, actor_id, event_type, encrypted_payload,
                     payload_schema_version, idempotency_key, client_created_at,
-                    referenced_item_id::text AS referenced_item_id, version, created_at
+                    referenced_item_id::text AS referenced_item_id, item_soft_deleted, version, created_at
         `,
           [
             eventId,
@@ -2703,6 +2709,7 @@ export class EventsRepository {
             input.idempotencyKey ?? null,
             input.clientCreatedAt ?? null,
             input.referencedItemId ?? null,
+            input.itemSoftDeleted ?? null,
           ],
         );
       } catch (error) {
@@ -2793,13 +2800,14 @@ export class EventsRepository {
       idempotency_key: string | null;
       client_created_at: string | null;
       referenced_item_id: string | null;
+      item_soft_deleted: boolean | null;
       version: number;
       created_at: string;
     }>(
       `
         SELECT id, vault_id, actor_id, event_type, encrypted_payload,
                payload_schema_version, idempotency_key, client_created_at,
-               referenced_item_id::text AS referenced_item_id, version, created_at
+               referenced_item_id::text AS referenced_item_id, item_soft_deleted, version, created_at
         FROM events
         WHERE vault_id = $1 AND idempotency_key = $2::bigint
         LIMIT 1
@@ -2820,13 +2828,14 @@ export class EventsRepository {
       idempotency_key: string | null;
       client_created_at: string | null;
       referenced_item_id: string | null;
+      item_soft_deleted: boolean | null;
       version: number;
       created_at: string;
     }>(
       `
         SELECT id, vault_id, actor_id, event_type, encrypted_payload,
                payload_schema_version, idempotency_key, client_created_at,
-               referenced_item_id::text AS referenced_item_id, version, created_at
+               referenced_item_id::text AS referenced_item_id, item_soft_deleted, version, created_at
         FROM events
         WHERE vault_id = $1 AND version > $2
         ORDER BY version ASC
@@ -3269,6 +3278,7 @@ function mapEvent(row: {
   idempotency_key?: string | null;
   client_created_at?: string | null;
   referenced_item_id?: string | null;
+  item_soft_deleted?: boolean | null;
   version: number;
   created_at: string;
 }): EventRecord {
@@ -3282,6 +3292,12 @@ function mapEvent(row: {
     idempotencyKey: row.idempotency_key ?? null,
     clientCreatedAt: row.client_created_at ?? null,
     referencedItemId: row.referenced_item_id ?? null,
+    itemSoftDeleted:
+      row.item_soft_deleted === true
+        ? true
+        : row.item_soft_deleted === false
+          ? false
+          : null,
     version: row.version,
     createdAt: row.created_at,
   };
