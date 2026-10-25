@@ -53,6 +53,12 @@ function uploadMocks(input: {
   /** When true, item is soft-deleted (default: not deleted). */
   itemSoftDeleted?: boolean;
   templateExists?: boolean;
+  /** Personal vault owned by USER_ID by default. */
+  vaultIsPersonal?: boolean;
+  vaultOwnerId?: string | null;
+  logoVaultId?: string | null;
+  /** Defaults to true (actor may change branding). */
+  canUpdateWorkspaceBranding?: boolean;
 }) {
   let created: { itemId: string; purpose: string | null } | null = null;
   const deletedStorageKeys: string[] = [];
@@ -132,11 +138,11 @@ function uploadMocks(input: {
       return {
         id: VAULT_ID,
         workspaceId: WORKSPACE_ID,
-        name: "Personal",
+        name: input.vaultIsPersonal === false ? "Shared" : "Personal",
         description: "",
         icon: "",
-        isPersonal: true,
-        ownerId: USER_ID,
+        isPersonal: input.vaultIsPersonal !== false,
+        ownerId: input.vaultOwnerId === undefined ? USER_ID : input.vaultOwnerId,
         cryptoVersion: 2,
         createdAt: "",
         updatedAt: "",
@@ -150,6 +156,7 @@ function uploadMocks(input: {
         planTier: input.planTier ?? "PREMIUM",
         allowedFileExtensions: input.allowedFileExtensions ?? ["pdf", "zip"],
         ...(input.maxFileSizeMb !== undefined ? { maxFileSizeMb: input.maxFileSizeMb } : {}),
+        ...(input.logoVaultId !== undefined ? { logoVaultId: input.logoVaultId } : {}),
       });
     },
   } as unknown as Pick<WorkspacesRepository, "findById">;
@@ -196,6 +203,7 @@ function uploadMocks(input: {
         deploymentMode: input.deploymentMode ?? "saas",
         enterpriseModulesEnabled: input.enterpriseModulesEnabled ?? false,
       }),
+      canUpdateWorkspaceBranding: async () => input.canUpdateWorkspaceBranding !== false,
     }),
     getCreated: () => created,
     getDeletedStorageKeys: () => deletedStorageKeys,
@@ -265,6 +273,7 @@ test("AttachmentService removes uploaded object when metadata insert fails", asy
     workspaces,
     ...emptyEventsAndTemplates(),
     config: createTestApiConfig({ deploymentMode: "saas" }),
+    canUpdateWorkspaceBranding: async () => false,
   });
 
   await assert.rejects(() =>
@@ -312,6 +321,7 @@ test("AttachmentService denies vault access before storage operations", async ()
     workspaces,
     ...emptyEventsAndTemplates(),
     config: createTestApiConfig({ deploymentMode: "saas" }),
+    canUpdateWorkspaceBranding: async () => false,
   });
 
   await assert.rejects(
@@ -407,6 +417,84 @@ test("AttachmentService allows workspace logo upload when files in items are dis
     filesInItemsEnabled: false,
     planTier: "FREE",
     allowedFileExtensions: ["pdf"],
+  });
+
+  const result = await service.upload({
+    vaultId: VAULT_ID,
+    itemId: WORKSPACE_ID,
+    userId: USER_ID,
+    fileName: "logo.webp",
+    mimeType: "image/webp",
+    encryptedBody: Uint8Array.from([1, 2, 3]),
+    encryptedKey: Uint8Array.from([4, 5, 6]),
+    sizeBytes: 123,
+  });
+
+  assert.equal(result.attachmentId, "1000000000000000003");
+  assert.equal(getCreated()?.itemId, WORKSPACE_ID);
+});
+
+test("AttachmentService blocks workspaceId itemId upload on shared vault when files in items are disabled", async () => {
+  const { service } = uploadMocks({
+    filesInItemsEnabled: false,
+    planTier: "PREMIUM",
+    vaultIsPersonal: false,
+    vaultOwnerId: null,
+  });
+
+  await assert.rejects(
+    () =>
+      service.upload({
+        vaultId: VAULT_ID,
+        itemId: WORKSPACE_ID,
+        userId: USER_ID,
+        fileName: "logo.webp",
+        mimeType: "image/webp",
+        encryptedBody: Uint8Array.from([1, 2, 3]),
+        encryptedKey: Uint8Array.from([4, 5, 6]),
+        sizeBytes: 123,
+      }),
+    (error: unknown) =>
+      error instanceof AttachmentServiceError &&
+      error.code === "FILES_IN_ITEMS_DISABLED" &&
+      error.statusCode === 403,
+  );
+});
+
+test("AttachmentService blocks workspace logo upload without branding permission", async () => {
+  const { service } = uploadMocks({
+    filesInItemsEnabled: false,
+    planTier: "PREMIUM",
+    canUpdateWorkspaceBranding: false,
+  });
+
+  await assert.rejects(
+    () =>
+      service.upload({
+        vaultId: VAULT_ID,
+        itemId: WORKSPACE_ID,
+        userId: USER_ID,
+        fileName: "logo.webp",
+        mimeType: "image/webp",
+        encryptedBody: Uint8Array.from([1, 2, 3]),
+        encryptedKey: Uint8Array.from([4, 5, 6]),
+        sizeBytes: 123,
+      }),
+    (error: unknown) =>
+      error instanceof AttachmentServiceError &&
+      error.code === "FILES_IN_ITEMS_DISABLED" &&
+      error.statusCode === 403,
+  );
+});
+
+test("AttachmentService allows logo upload on designated logo vault for branding managers", async () => {
+  const { service, getCreated } = uploadMocks({
+    filesInItemsEnabled: false,
+    planTier: "FREE",
+    allowedFileExtensions: ["pdf"],
+    vaultIsPersonal: false,
+    vaultOwnerId: null,
+    logoVaultId: VAULT_ID,
   });
 
   const result = await service.upload({
@@ -765,6 +853,7 @@ test("AttachmentService purges all item attachment objects", async () => {
     workspaces,
     ...emptyEventsAndTemplates(),
     config: createTestApiConfig({ deploymentMode: "saas" }),
+    canUpdateWorkspaceBranding: async () => false,
   });
 
   await service.purgeForItem("1000000000000000001", "1000000000000000002");
@@ -817,6 +906,7 @@ test("AttachmentService purges all attachment objects by item id", async () => {
     workspaces,
     ...emptyEventsAndTemplates(),
     config: createTestApiConfig({ deploymentMode: "saas" }),
+    canUpdateWorkspaceBranding: async () => false,
   });
 
   await service.purgeForItemId("1000000000000000002");
@@ -888,6 +978,7 @@ test("AttachmentService purges template attachments by scope and referenced ids"
     workspaces,
     ...emptyEventsAndTemplates(),
     config: createTestApiConfig({ deploymentMode: "saas" }),
+    canUpdateWorkspaceBranding: async () => false,
   });
 
   await service.purgeForTemplate("1000000000000000002", ["1000000000000000003", "1000000000000000004"]);
