@@ -27,7 +27,7 @@ import { useWorkspaceItemTemplates } from "../../items/useWorkspaceItemTemplates
 import { useWorkspaceFolders } from "../../folders/WorkspaceFoldersContext";
 import { NO_FOLDER_VALUE } from "../../folders/workspaceFolderTree";
 import { buildItemCopyPrefillValues } from "../../items/buildItemCopyPrefill";
-import { runSaveWithToast } from "../../lib/saveWithToast";
+import { formatSaveError, runSaveWithToast } from "../../lib/saveWithToast";
 import PopupSaveButton from "../ui/PopupSaveButton";
 import { buildItemFromNewItemSavePayload } from "./NewItemForm";
 import { useWorkspaceItems } from "../../items/WorkspaceItemsContext";
@@ -463,7 +463,8 @@ export default function NewItemPopup({ t, workspaceId, workspaceName, vaults, va
         {
           loading: t("web.toast.save.loading"),
           success: t("web.toast.save.success"),
-          error: t("web.newItemPopup.saveErrorGeneric"),
+          error: t("web.toast.save.error"),
+          conflict: t("web.toast.save.conflict"),
         },
         async () => {
           if (!accessToken || !vaultKey) {
@@ -559,7 +560,9 @@ export default function NewItemPopup({ t, workspaceId, workspaceName, vaults, va
       );
       setShowValidation(false);
     } catch (error) {
-      setSaveError(error instanceof Error ? error.message : t("web.newItemPopup.saveErrorGeneric"));
+      setSaveError(
+        formatSaveError(error, t("web.toast.save.error"), t("web.newItemPopup.saveConflict")),
+      );
     } finally {
       setSaving(false);
     }
