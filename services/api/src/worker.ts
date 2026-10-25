@@ -92,6 +92,8 @@ async function main(): Promise<void> {
         softDeletes: storage.repositories.vaultItemSoftDeletes,
         templates: storage.repositories.workspaceItemTemplates,
         config,
+        // Worker only purges attachments; branding checks are unused on this path.
+        canUpdateWorkspaceBranding: async () => false,
       })
     : undefined;
 

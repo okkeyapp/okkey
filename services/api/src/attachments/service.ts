@@ -63,6 +63,8 @@ export interface AttachmentServiceDeps {
   softDeletes: Pick<VaultItemSoftDeletesRepository, "exists">;
   templates: Pick<WorkspaceItemTemplatesRepository, "findById">;
   config: PlanEntitlementRuntimeConfig;
+  /** True when the actor may update workspace branding (logo / tile color). */
+  canUpdateWorkspaceBranding: (workspaceId: string, userId: string) => Promise<boolean>;
 }
 
 const ENCRYPTED_BODY_SIZE_OVERHEAD_BYTES = 1024 * 1024;
@@ -76,6 +78,10 @@ export class AttachmentService {
   private readonly softDeletes: Pick<VaultItemSoftDeletesRepository, "exists">;
   private readonly templates: Pick<WorkspaceItemTemplatesRepository, "findById">;
   private readonly config: PlanEntitlementRuntimeConfig;
+  private readonly canUpdateWorkspaceBranding: (
+    workspaceId: string,
+    userId: string,
+  ) => Promise<boolean>;
 
   constructor(deps: AttachmentServiceDeps) {
     this.storage = deps.storage;
@@ -86,21 +92,22 @@ export class AttachmentService {
     this.softDeletes = deps.softDeletes;
     this.templates = deps.templates;
     this.config = deps.config;
+    this.canUpdateWorkspaceBranding = deps.canUpdateWorkspaceBranding;
   }
 
   async upload(input: AttachmentUploadInput): Promise<AttachmentUploadResult> {
     await this.assertVaultAccess(input.vaultId, input.userId);
 
-    const uploadLimits = await this.resolveUploadLimits(input.vaultId, input.itemId);
+    const uploadLimits = await this.resolveUploadLimits(input.vaultId, input.itemId, input.userId);
     // Record favicons persist on any plan via an explicit purpose header — not file name.
     const isItemFaviconAttachment = input.purpose === ATTACHMENT_PURPOSE_ITEM_FAVICON;
 
-    // Workspace branding logo uses workspaceId as a synthetic item id; that path must
-    // stay available when "files in items" is disabled for regular vault item uploads.
+    // Workspace branding logo uses workspaceId as a synthetic item id on the logo vault;
+    // that path must stay available when "files in items" is disabled for regular uploads.
     // Item favicon purpose uploads are also exempt (website icons are not "files in items").
     if (
       !uploadLimits.filesInItemsEnabled &&
-      !uploadLimits.isWorkspaceSystemAttachment &&
+      !uploadLimits.isWorkspaceLogoAttachment &&
       !isItemFaviconAttachment
     ) {
       throw new AttachmentServiceError(
@@ -291,11 +298,12 @@ export class AttachmentService {
   private async resolveUploadLimits(
     vaultId: string,
     itemId: string,
+    userId: string,
   ): Promise<{
     allowedExtensions: string[];
     maxSizeBytes: number;
     filesInItemsEnabled: boolean;
-    isWorkspaceSystemAttachment: boolean;
+    isWorkspaceLogoAttachment: boolean;
   }> {
     const vault = await this.vaults.findById(vaultId);
     if (!vault) {
@@ -303,12 +311,9 @@ export class AttachmentService {
         allowedExtensions: [],
         maxSizeBytes: maxFileSizeBytesFromMb(DEFAULT_MAX_FILE_SIZE_MB),
         filesInItemsEnabled: true,
-        isWorkspaceSystemAttachment: false,
+        isWorkspaceLogoAttachment: false,
       };
     }
-
-    // Workspace branding logo uses the workspace id as a synthetic item id.
-    const isWorkspaceSystemAttachment = vault.workspaceId === itemId;
 
     const workspace = await this.workspaces.findById(vault.workspaceId);
     if (!workspace) {
@@ -316,20 +321,30 @@ export class AttachmentService {
         allowedExtensions: [],
         maxSizeBytes: maxFileSizeBytesFromMb(DEFAULT_MAX_FILE_SIZE_MB),
         filesInItemsEnabled: true,
-        isWorkspaceSystemAttachment,
+        isWorkspaceLogoAttachment: false,
       };
     }
 
+    // Logo uses a synthetic item id (= workspace id) on the branding vault only:
+    // the actor's personal vault, or the workspace's designated logo vault.
+    // Shared vaults must not inherit this exception from itemId === workspaceId alone.
+    const isActorPersonalVault = vault.isPersonal === true && vault.ownerId === userId;
+    const isDesignatedLogoVault = workspace.logoVaultId === vaultId;
+    const isLogoVaultCandidate =
+      itemId === vault.workspaceId && (isActorPersonalVault || isDesignatedLogoVault);
+    const isWorkspaceLogoAttachment =
+      isLogoVaultCandidate && (await this.canUpdateWorkspaceBranding(vault.workspaceId, userId));
+
     return {
       // Logo upload UI accepts images only; do not bind it to the item-file extension list.
-      allowedExtensions: isWorkspaceSystemAttachment
+      allowedExtensions: isWorkspaceLogoAttachment
         ? [...WORKSPACE_LOGO_ALLOWED_EXTENSIONS]
         : workspace.allowedFileExtensions,
       maxSizeBytes: maxFileSizeBytesFromMb(workspace.maxFileSizeMb),
       filesInItemsEnabled:
         workspace.filesInItemsEnabled &&
         workspaceHasPlanFeature(this.config, workspace, "filesInItems"),
-      isWorkspaceSystemAttachment,
+      isWorkspaceLogoAttachment,
     };
   }
 }
