@@ -44,7 +44,10 @@ export interface ReplayEngineOptions {
   initialLastAppliedVersion?: number;
   unknownEventPolicy?: UnknownEventPolicy;
   unsupportedSchemaPolicy?: UnsupportedSchemaPolicy;
-  decryptItemPayload?: (encryptedPayloadBase64: string) => Promise<Uint8Array>;
+  decryptItemPayload?: (
+    encryptedPayloadBase64: string,
+    itemId?: string | null,
+  ) => Promise<Uint8Array>;
   decryptPersonalMetadataPayload?: (encryptedPayloadBase64: string) => Promise<Uint8Array>;
   /** Integrity verifier for signature envelopes embedded into critical events. */
   verifyEventSignature?: (input: {
@@ -63,6 +66,7 @@ export interface ReplayQuarantineRecord {
     | "UNSUPPORTED_PAYLOAD_SCHEMA_VERSION"
     | "DECRYPT_FAILED"
     | "INVALID_PAYLOAD"
+    | "ITEM_ID_MISMATCH"
     | "STALE_VERSION_NOT_DUPLICATE"
     | "SIGNATURE_REQUIRED"
     | "SIGNATURE_INVALID";
@@ -354,7 +358,10 @@ export class SyncReplayEngine {
 
       let plaintext: Uint8Array;
       try {
-        plaintext = await this.options.decryptItemPayload(blob.payload);
+        plaintext = await this.options.decryptItemPayload(
+          blob.payload,
+          event.referencedItemId,
+        );
       } catch {
         state.quarantined.push({ event, reason: "DECRYPT_FAILED" });
         return "quarantined";
@@ -363,6 +370,13 @@ export class SyncReplayEngine {
       const parsed = parseAndNormalizeItemPlaintextUtf8(plaintext);
       if (!parsed || parsed.vaultId !== this.options.vaultId) {
         state.quarantined.push({ event, reason: "INVALID_PAYLOAD" });
+        return "quarantined";
+      }
+      if (
+        event.referencedItemId &&
+        parsed.itemId !== event.referencedItemId
+      ) {
+        state.quarantined.push({ event, reason: "ITEM_ID_MISMATCH" });
         return "quarantined";
       }
 
