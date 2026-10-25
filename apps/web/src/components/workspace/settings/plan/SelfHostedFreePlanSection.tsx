@@ -264,9 +264,9 @@ export default function SelfHostedFreePlanSection({
           typeof retryRaw === "number" && Number.isFinite(retryRaw) && retryRaw > 0
             ? retryRaw
             : PLAN_CHANGE_REQUEST_RETRY_FALLBACK_SECONDS;
-        const minutes = String(Math.max(1, Math.ceil(retrySeconds / 60)));
+        const hours = String(Math.max(1, Math.ceil(retrySeconds / 3600)));
         setSubmitError(
-          t("web.workspaceSettings.plan.request.errorRateLimited", { minutes }),
+          t("web.workspaceSettings.plan.request.errorRateLimited", { hours }),
         );
         return;
       }

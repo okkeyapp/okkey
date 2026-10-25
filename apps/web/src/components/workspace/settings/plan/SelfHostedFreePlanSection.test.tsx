@@ -253,7 +253,7 @@ describe("SelfHostedFreePlanSection", () => {
         planTier="FREE"
         canRequest
         t={(key, values) =>
-          values?.minutes != null ? `${key}:${String(values.minutes)}` : key
+          values?.hours != null ? `${key}:${String(values.hours)}` : key
         }
       />,
     );
@@ -276,12 +276,14 @@ describe("SelfHostedFreePlanSection", () => {
       screen.getByRole("button", { name: "web.workspaceSettings.plan.selfHosted.requestSubmit" }),
     );
 
+    // retryAfterSeconds: 3600 → ceil to 1 hour (not minutes).
     await waitFor(() => {
       expect(
-        screen.getByText("web.workspaceSettings.plan.request.errorRateLimited:60"),
+        screen.getByText("web.workspaceSettings.plan.request.errorRateLimited:1"),
       ).toBeInTheDocument();
     });
     expect(screen.queryByText(/RATE_LIMITED/)).not.toBeInTheDocument();
     expect(screen.queryByText(/tomorrow/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/min/i)).not.toBeInTheDocument();
   });
 });

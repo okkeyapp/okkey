@@ -198,11 +198,21 @@ export class PlanChangeRequestService {
 
     const count = await this.redis.zCard(key);
     if (count > PLAN_CHANGE_REQUEST_DAILY_LIMIT) {
-      const oldest = await this.redis.zRangeByScoreWithScores(key, "-inf", "+inf", 1);
-      const oldestScore = oldest[0]?.score ?? nowMs;
+      // Retry-After = when enough oldest attempts age out that a *new* attempt
+      // (also recorded) still leaves ≤ LIMIT in-window. That means at most
+      // LIMIT-1 members may remain when the client retries → pivot index
+      // (count - LIMIT) must leave the window first.
+      const pivotIndex = count - PLAN_CHANGE_REQUEST_DAILY_LIMIT;
+      const scored = await this.redis.zRangeByScoreWithScores(
+        key,
+        "-inf",
+        "+inf",
+        pivotIndex + 1,
+      );
+      const pivotScore = scored[pivotIndex]?.score ?? nowMs;
       const retryAfterSeconds = Math.max(
         1,
-        Math.ceil((oldestScore + windowMs - nowMs) / 1000),
+        Math.ceil((pivotScore + windowMs - nowMs) / 1000),
       );
       throw new PlanChangeRequestServiceError(
         "RATE_LIMITED",

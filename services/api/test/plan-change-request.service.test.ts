@@ -433,3 +433,44 @@ test("PlanChangeRequestService rolling window ages out oldest attempts (not fixe
   await service.submit(baseSubmit);
   assert.equal(sent.length, PLAN_CHANGE_REQUEST_DAILY_LIMIT + 1);
 });
+
+test("PlanChangeRequestService Retry-After lets an honest client succeed on the next try", async () => {
+  // Mirrors the QA blocker: t0 / +8h / +16h accepted; +20h 429; wait Retry-After → 200.
+  const t0 = Date.parse("2026-10-25T00:00:00.000Z");
+  const hour = 3_600_000;
+  let nowMs = t0;
+  const { service, sent } = makeService({ nowMs: () => nowMs });
+
+  nowMs = t0;
+  await service.submit(baseSubmit);
+  nowMs = t0 + 8 * hour;
+  await service.submit(baseSubmit);
+  nowMs = t0 + 16 * hour;
+  await service.submit(baseSubmit);
+  assert.equal(sent.length, 3);
+
+  nowMs = t0 + 20 * hour;
+  let retryAfterSeconds = 0;
+  await assert.rejects(
+    () => service.submit(baseSubmit),
+    (error: unknown) => {
+      if (
+        !(error instanceof PlanChangeRequestServiceError) ||
+        error.code !== "RATE_LIMITED" ||
+        typeof error.details?.retryAfterSeconds !== "number"
+      ) {
+        return false;
+      }
+      retryAfterSeconds = error.details.retryAfterSeconds;
+      return retryAfterSeconds > 0;
+    },
+  );
+  assert.equal(sent.length, 3);
+  // Pivot is the 2nd-oldest (t0+8h): room for a new attempt opens at t0+32h → ~12h from +20h.
+  assert.equal(retryAfterSeconds, 12 * 3600);
+
+  nowMs = t0 + 20 * hour + retryAfterSeconds * 1000;
+  const ok = await service.submit(baseSubmit);
+  assert.deepEqual(ok, { submitted: true });
+  assert.equal(sent.length, 4);
+});

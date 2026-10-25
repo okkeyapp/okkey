@@ -39,19 +39,32 @@ env_file_value() {
   grep -E "^${key}=" .env 2>/dev/null | cut -d= -f2- || true
 }
 
-# Portable in-place sed (GNU/BSD) for KEY=value lines in ./.env.
+# Rewrite KEY=value in ./.env without sed (sed treats `&` `\` in the replacement).
+# Safe for RFC-valid emails and other values with metacharacters.
 replace_env() {
   local key="$1"
   local value="$2"
-  if grep -Eq "^${key}=" .env 2>/dev/null; then
-    if sed --version >/dev/null 2>&1; then
-      sed -i "s|^${key}=.*|${key}=${value}|" .env
-    else
-      sed -i '' "s|^${key}=.*|${key}=${value}|" .env
-    fi
+  local tmp
+  if [[ -f .env ]] && grep -Eq "^${key}=" .env 2>/dev/null; then
+    tmp="$(mktemp "${TMPDIR:-/tmp}/okkey-env.XXXXXX")"
+    # Preserve final newline behavior; rewrite matching KEY= lines only.
+    while IFS= read -r line || [[ -n "${line}" ]]; do
+      if [[ "${line}" == "${key}="* ]]; then
+        printf '%s=%s\n' "${key}" "${value}"
+      else
+        printf '%s\n' "${line}"
+      fi
+    done < .env > "${tmp}"
+    mv "${tmp}" .env
   else
     printf '%s=%s\n' "${key}" "${value}" >> .env
   fi
+}
+
+# True when /dev/tty can actually be opened (controlling tty present).
+# `-r/-w /dev/tty` can pass in CI/cloud-init/setsid without a usable ctty.
+tty_usable() {
+  { : </dev/tty; } 2>/dev/null
 }
 
 # Loose email check: must contain one @ and a dot in the domain; no spaces.
@@ -418,10 +431,11 @@ if [[ -n "${sales_email}" ]] && ! is_valid_sales_email "${sales_email}"; then
 Set a real inbox address (must contain @ and a domain)."
 fi
 if [[ -z "${sales_email}" ]]; then
-  # `curl … | bash` makes stdin a pipe (not a TTY). Prefer /dev/tty when a real
-  # terminal is attached; only hard-fail when there is no tty at all.
+  # `curl … | bash` makes stdin a pipe (not a TTY). Prefer a usable /dev/tty when a
+  # controlling terminal is attached; hard-fail with a clear hint when there is none
+  # (CI, cloud-init, setsid, ssh without -t). Do not start/rewrite compose until set.
   prompt_tty=""
-  if [[ -r /dev/tty && -w /dev/tty ]]; then
+  if tty_usable; then
     prompt_tty="/dev/tty"
   elif [[ -t 0 ]]; then
     prompt_tty=""
