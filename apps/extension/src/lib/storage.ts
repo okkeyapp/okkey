@@ -1,3 +1,8 @@
+import { extensionSessionStorage } from "./extensionStorageApi.ts";
+
+/** Broadcast after a full local wipe so the service worker can drop in-memory caches. */
+export const EXTENSION_DATA_WIPED_MSG = "okkey.extension.dataWiped" as const;
+
 /** chrome.storage.local profile + session for the extension (one active profile). */
 
 export const STORAGE_KEYS = {
@@ -73,7 +78,8 @@ export async function readSession(): Promise<ExtensionSession | null> {
   }
   const exp = Date.parse(raw.expires_at);
   if (!Number.isFinite(exp) || Date.now() >= exp) {
-    await clearSession();
+    // Expired account token must not leave unlock / pending-save material behind.
+    await wipeAllExtensionData();
     return null;
   }
   return raw;
@@ -188,7 +194,37 @@ export async function writeLastServer(value: Omit<ExtensionLastServer, "updatedA
   await storageArea().set({ [STORAGE_KEYS.lastServer]: next });
 }
 
-/** Logout + wipe local profile cache (session, PKCE, device keys, vault bundle, device unlock). Keeps lastServer preference. */
+/**
+ * Clear chrome.storage.session (unlock session, pending save offers, …) and
+ * notify the service worker to drop in-memory caches. Local account data stays.
+ */
+export async function clearExtensionSessionArea(): Promise<void> {
+  await clearExtensionSessionStorage();
+  notifyExtensionDataWiped();
+}
+
+/**
+ * When a previously known extension device is no longer trusted (revoked,
+ * blocked, or pending re-approval), drop unlock / pending-save session material
+ * so a later re-approval cannot restore vaultKey without master password / PIN.
+ * Account session and local profile are left intact for the pending UX.
+ */
+export async function clearSessionAfterLostDeviceTrust(
+  previousDeviceId: string | null | undefined,
+): Promise<void> {
+  if (typeof previousDeviceId !== "string" || !previousDeviceId.trim()) {
+    return;
+  }
+  await clearExtensionSessionArea();
+}
+
+/**
+ * Clear all extension-owned local state except the last-server preference.
+ * Also clears chrome.storage.session (unlock session, pending save offers, …)
+ * and notifies the service worker to drop in-memory caches.
+ *
+ * Call this before network logout / revoke when the account session ends.
+ */
 export async function wipeAllExtensionData(): Promise<void> {
   const all = await storageArea().get(null);
   const keysToRemove = Object.keys(all).filter((key) => {
@@ -204,8 +240,39 @@ export async function wipeAllExtensionData(): Promise<void> {
       key === STORAGE_KEYS.pkce
     );
   });
-  if (keysToRemove.length > 0) {
-    await storageArea().remove(keysToRemove);
+  await Promise.all([
+    keysToRemove.length > 0 ? storageArea().remove(keysToRemove) : Promise.resolve(),
+    clearExtensionSessionStorage(),
+  ]);
+  notifyExtensionDataWiped();
+}
+
+async function clearExtensionSessionStorage(): Promise<void> {
+  const area = extensionSessionStorage();
+  if (!area) return;
+  if (typeof area.clear === "function") {
+    await area.clear();
+    return;
+  }
+  // Fallback when clear() is unavailable (tests / partial APIs).
+  const bag = await area.get(null);
+  const keys = Object.keys(bag);
+  if (keys.length > 0) {
+    await area.remove(keys);
+  }
+}
+
+function notifyExtensionDataWiped(): void {
+  try {
+    const runtime = (globalThis as { browser?: { runtime?: { sendMessage?: (msg: unknown) => unknown } } })
+      .browser?.runtime;
+    if (typeof runtime?.sendMessage === "function") {
+      void Promise.resolve(runtime.sendMessage({ type: EXTENSION_DATA_WIPED_MSG })).catch(() => {
+        /* popup / node tests may have no SW listener */
+      });
+    }
+  } catch {
+    /* ignore */
   }
 }
 

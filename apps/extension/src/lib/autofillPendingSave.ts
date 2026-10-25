@@ -21,6 +21,18 @@ export function resetPendingSaveStateForTests(): void {
   pendingSaveHydratePromise = null;
 }
 
+/** Drop all pending save offers (memory + session storage) after logout / wipe. */
+export async function clearAllPendingSaveOffers(): Promise<void> {
+  pendingSaveByTab.clear();
+  pendingSaveSessionHydrated = true;
+  pendingSaveHydratePromise = null;
+  try {
+    await browser.storage.session.remove(PENDING_SAVE_SESSION_KEY);
+  } catch {
+    /* session storage unavailable */
+  }
+}
+
 async function hydratePendingSaveSession(): Promise<void> {
   if (pendingSaveSessionHydrated) {
     return;

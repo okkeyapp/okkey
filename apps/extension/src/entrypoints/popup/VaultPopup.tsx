@@ -1,5 +1,5 @@
 import { forwardRef, useCallback, useEffect, useMemo, useRef, useState, type ForwardedRef } from "react";
-import type { CoreApiClient } from "@okkey/api";
+import { ApiRequestError, type CoreApiClient } from "@okkey/api";
 import { getWebLocaleNativeName, WEB_LOCALES, type WebLocale } from "@okkey/i18n";
 import type { ItemPlaintextV2, MeVaultProfileEntryDto, Vault, Workspace } from "@okkey/types";
 import {
@@ -98,6 +98,8 @@ type VaultPopupProps = {
   onLocaleChange: (locale: WebLocale) => void;
   signOutLabel: string;
   onSignOut: () => void;
+  /** Account token rejected (401) — wipe local session and return to server screen. */
+  onUnauthorized?: () => void;
   onChangeServer: () => void;
   onLock: () => void;
   idleLockMs: number;
@@ -388,6 +390,7 @@ export function VaultPopup(props: VaultPopupProps) {
     onLocaleChange,
     signOutLabel,
     onSignOut,
+    onUnauthorized,
     onChangeServer,
     onLock,
     idleLockMs,
@@ -594,6 +597,10 @@ export function VaultPopup(props: VaultPopupProps) {
         if (gen !== foldersLoadGenRef.current) {
           return;
         }
+        if (err instanceof ApiRequestError && err.status === 401) {
+          onUnauthorized?.();
+          return;
+        }
         const diag = controller.getLastRefreshDiagnostics();
         console.error("[extension] folder sync failed", {
           workspaceId: wsId,
@@ -612,7 +619,7 @@ export function VaultPopup(props: VaultPopupProps) {
         setItemFavoriteByItemId(new Set());
       }
     },
-    [core, secrets.passwordShareC, userId],
+    [core, onUnauthorized, secrets.passwordShareC, userId],
   );
 
   const loadItems = useCallback(
@@ -672,6 +679,10 @@ export function VaultPopup(props: VaultPopupProps) {
         );
         setVaultKeyById(keys);
       } catch (err: unknown) {
+        if (err instanceof ApiRequestError && err.status === 401) {
+          onUnauthorized?.();
+          return;
+        }
         const message = err instanceof Error ? err.message : String(err);
         setError(message);
         setItems([]);
@@ -681,7 +692,7 @@ export function VaultPopup(props: VaultPopupProps) {
         setLoading(false);
       }
     },
-    [core, encryptedPrivateKeyPayload, secrets.vaultKey, userId],
+    [core, encryptedPrivateKeyPayload, onUnauthorized, secrets.vaultKey, userId],
   );
 
   useEffect(() => {
