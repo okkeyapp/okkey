@@ -422,10 +422,22 @@ export interface PendingVaultWrapDto {
   publicPqKey: string | null;
 }
 
+/**
+ * Staged grant that cannot be wrapped because the recipient public key is invalid.
+ * Returned so the client can notify the admin (wraps list omits these rows).
+ */
+export interface PendingVaultWrapSkippedDto {
+  userId: EntityId;
+  vaultId: EntityId;
+  profileId: EntityId;
+}
+
 /** `GET /workspaces/:workspaceId/pending-vault-wraps` success body. */
 export interface PendingVaultWrapsResponseDto {
   workspaceId: EntityId;
   wraps: PendingVaultWrapDto[];
+  /** Recipients skipped server-side due to invalid Ed25519 / ML-KEM public keys. */
+  skippedInvalidKeyRecipients: PendingVaultWrapSkippedDto[];
 }
 
 /** `POST /workspaces/:workspaceId/invitations` body. */

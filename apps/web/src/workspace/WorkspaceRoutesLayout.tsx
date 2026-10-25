@@ -256,7 +256,9 @@ export default function WorkspaceRoutesLayout() {
       .then((result) => {
         if (result.skippedInvalidKeys > 0) {
           toast.warning(
-            `Skipped ${result.skippedInvalidKeys} staged vault wrap(s): invalid recipient public key`,
+            t("web.workspace.pendingVaultWraps.skippedInvalidKeys", {
+              count: result.skippedInvalidKeys,
+            }),
           );
         }
       })
@@ -264,6 +266,7 @@ export default function WorkspaceRoutesLayout() {
   }, [
     core,
     resolvedWorkspaceId,
+    t,
     userId,
     vaultKey,
     vaultUnlocked,

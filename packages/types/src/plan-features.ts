@@ -54,7 +54,7 @@ export type PlanEntitlementOptions = {
   /**
    * Self-hosted:
    * - modules off → FREE matrix (plus {@link SELF_HOSTED_FREE_EXTRA})
-   * - modules on → honor workspace `plan_tier` (FREE stays read-only; ENTERPRISE unlocks)
+   * - modules on → ENTERPRISE matrix (workspace `plan_tier` ignored)
    * SaaS / omitted mode: catalog `plan_tier` as today.
    */
   deploymentMode?: DeploymentMode | null;
@@ -129,7 +129,8 @@ const BUSINESS_PAID = {
  *
  * Mapping notes (APP.md + Figma SaaS cards):
  * - FREE (SaaS catalog): capsules without access settings; no files / monitoring / recovery / shared vaults / seats.
- * - Self-hosted FREE (modules off, or modules on with `plan_tier=FREE`): FREE matrix plus {@link SELF_HOSTED_FREE_EXTRA} (`filesInItems`).
+ * - Self-hosted modules off → FREE matrix plus {@link SELF_HOSTED_FREE_EXTRA} (`filesInItems`).
+ *   Self-hosted modules on → ENTERPRISE matrix (`plan_tier` ignored).
  * - PREMIUM: personal paid (files, monitoring, recovery, capsule access settings).
  * - FAMILY: PREMIUM + seats / shared vaults / custom roles & profiles (multi-user personal).
  * - TEAM / ENTERPRISE: full business matrix (same feature set today; ENTERPRISE reserved for future extras).
@@ -222,15 +223,15 @@ export function sanitizePlanFeatureOverrides(
 
 /**
  * Effective catalog tier used for feature / quota checks.
- * Self-hosted without modules is always FREE. With modules loaded, use DB `plan_tier`
- * (so self-hosted FREE stays FREE / read-only while ENTERPRISE unlocks paid features).
+ * Self-hosted: modules off → FREE; modules on → ENTERPRISE (`plan_tier` ignored).
+ * SaaS / omitted mode: workspace `plan_tier`.
  */
 export function resolveEntitlementPlanTier(
   workspacePlanTier: string | null | undefined,
   options?: Pick<PlanEntitlementOptions, "deploymentMode" | "enterpriseModulesActive">,
 ): PlanTier {
-  if (options?.deploymentMode === "self_hosted" && !options.enterpriseModulesActive) {
-    return "FREE";
+  if (options?.deploymentMode === "self_hosted") {
+    return options.enterpriseModulesActive ? "ENTERPRISE" : "FREE";
   }
   return normalizePlanTier(workspacePlanTier);
 }
@@ -238,8 +239,7 @@ export function resolveEntitlementPlanTier(
 /**
  * Resolve whether a plan grants a feature.
  * When custom override is enabled, explicit featureOverrides win over the catalog matrix.
- * Self-hosted FREE (modules off, or modules on with `plan_tier=FREE`) also applies
- * {@link SELF_HOSTED_FREE_EXTRA}.
+ * Self-hosted modules-off (effective FREE) also applies {@link SELF_HOSTED_FREE_EXTRA}.
  */
 export function hasPlanFeature(
   planTier: string | null | undefined,

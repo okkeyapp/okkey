@@ -30,7 +30,7 @@ export interface ApiConfig {
   deploymentMode: DeploymentMode;
   /**
    * Plan assigned to newly created workspaces (catalog / billing display).
-   * Always FREE — paid create/edit need modules loaded **and** a paid `plan_tier`.
+   * Always FREE. Self-hosted paid features unlock from loaded modules, not this column.
    */
   defaultWorkspacePlanTier: PlanTier;
   port: number;
