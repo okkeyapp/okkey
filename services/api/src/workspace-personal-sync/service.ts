@@ -317,6 +317,7 @@ export class WorkspacePersonalSyncService {
           409,
           "baseVersion is stale",
           {
+            code: "VERSION_MISMATCH",
             expectedBaseVersion: error.expectedVersion,
             latestVersion: error.actualVersion,
           },

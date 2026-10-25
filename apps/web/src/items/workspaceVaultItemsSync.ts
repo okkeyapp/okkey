@@ -374,10 +374,18 @@ export function createWorkspaceVaultItemsSyncController(input: {
   }
 
   async function enqueue(request: SyncAppendEventRequestDto, vaultId: string): Promise<void> {
-    await outbox.enqueue({ vaultId, request });
+    const queued = await outbox.enqueue({ vaultId, request });
     const stateBefore = ensureVaultState(vaultId);
     const tipBefore = stateBefore.lastAppliedVersion;
     const appended = await outbox.drain(vaultId);
+    const remaining = (await outbox.list()).find((entry) => entry.id === queued.id);
+    if (remaining) {
+      throw new Error(
+        remaining.lastErrorCode
+          ? `OUTBOX_ENTRY_NOT_APPENDED:${remaining.lastErrorCode}`
+          : "OUTBOX_ENTRY_NOT_APPENDED",
+      );
+    }
     // Clean write: apply POST response locally and skip list GET (incl. empty tail).
     // After VERSION_MISMATCH rebase, versions may gap — fall back to incremental replay.
     if (areContiguousEventVersions(appended, tipBefore)) {

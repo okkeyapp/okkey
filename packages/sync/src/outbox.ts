@@ -73,45 +73,56 @@ function isObject(v: unknown): v is Record<string, unknown> {
   return !!v && typeof v === "object" && !Array.isArray(v);
 }
 
+function versionMismatchFromDetails(
+  details: Record<string, unknown>,
+): VersionMismatchDetails | undefined {
+  if (
+    typeof details.expectedBaseVersion === "number" &&
+    typeof details.latestVersion === "number"
+  ) {
+    return {
+      code: "VERSION_MISMATCH",
+      expectedBaseVersion: details.expectedBaseVersion,
+      latestVersion: details.latestVersion,
+    };
+  }
+  return undefined;
+}
+
+/**
+ * Recognise Core API 409 VERSION_MISMATCH shapes:
+ * - `{ code, details: { expectedBaseVersion, latestVersion } }` (optionally `details.code`)
+ * - `{ error: "VERSION_MISMATCH", details: { ... } }`
+ * - `ApiRequestError`-like `{ body: { error: "VERSION_MISMATCH", details: { ... } } }`
+ *
+ * Do not require `details.code`; the server puts the code on `error` / top-level `code`.
+ */
 function toOutboxError(err: unknown): { code: string; message: string; versionMismatch?: VersionMismatchDetails } {
   if (isObject(err)) {
     const directCode = typeof err.code === "string" ? err.code : undefined;
     const directMsg = typeof err.message === "string" ? err.message : "unknown error";
+
     if (directCode === "VERSION_MISMATCH" && isObject(err.details)) {
-      const d = err.details;
-      if (
-        d.code === "VERSION_MISMATCH" &&
-        typeof d.expectedBaseVersion === "number" &&
-        typeof d.latestVersion === "number"
-      ) {
-        return {
-          code: "VERSION_MISMATCH",
-          message: directMsg,
-          versionMismatch: {
-            code: "VERSION_MISMATCH",
-            expectedBaseVersion: d.expectedBaseVersion,
-            latestVersion: d.latestVersion,
-          },
-        };
+      const mismatch = versionMismatchFromDetails(err.details);
+      if (mismatch) {
+        return { code: "VERSION_MISMATCH", message: directMsg, versionMismatch: mismatch };
       }
     }
 
-    if (isObject(err.body) && isObject(err.body.details)) {
-      const details = err.body.details;
-      if (
-        details.code === "VERSION_MISMATCH" &&
-        typeof details.expectedBaseVersion === "number" &&
-        typeof details.latestVersion === "number"
-      ) {
-        return {
-          code: "VERSION_MISMATCH",
-          message: directMsg,
-          versionMismatch: {
-            code: "VERSION_MISMATCH",
-            expectedBaseVersion: details.expectedBaseVersion,
-            latestVersion: details.latestVersion,
-          },
-        };
+    if (typeof err.error === "string" && err.error === "VERSION_MISMATCH" && isObject(err.details)) {
+      const mismatch = versionMismatchFromDetails(err.details);
+      if (mismatch) {
+        return { code: "VERSION_MISMATCH", message: directMsg, versionMismatch: mismatch };
+      }
+    }
+
+    if (isObject(err.body) && typeof err.body.error === "string" && err.body.error === "VERSION_MISMATCH") {
+      const details = isObject(err.body.details) ? err.body.details : undefined;
+      if (details) {
+        const mismatch = versionMismatchFromDetails(details);
+        if (mismatch) {
+          return { code: "VERSION_MISMATCH", message: directMsg, versionMismatch: mismatch };
+        }
       }
     }
 

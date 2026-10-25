@@ -134,7 +134,10 @@ test("appendEvent maps version conflict", async () => {
       }),
     (error: unknown) =>
       error instanceof SyncServiceError &&
-      error.code === "VERSION_MISMATCH",
+      error.code === "VERSION_MISMATCH" &&
+      error.details?.code === "VERSION_MISMATCH" &&
+      error.details?.expectedBaseVersion === 1 &&
+      error.details?.latestVersion === 5,
   );
 });
 

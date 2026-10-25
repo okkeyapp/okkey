@@ -481,6 +481,7 @@ export class SyncService {
           409,
           "baseVersion is stale",
           {
+            code: "VERSION_MISMATCH",
             expectedBaseVersion: error.expectedVersion,
             latestVersion: error.actualVersion,
           },

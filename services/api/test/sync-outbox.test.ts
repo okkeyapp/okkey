@@ -176,6 +176,59 @@ test("outbox resolves VERSION_MISMATCH via rebase and retry", async () => {
   assert.equal((await outbox.list()).length, 0);
 });
 
+test("outbox resolves ApiRequestError-shaped 409 VERSION_MISMATCH without details.code", async () => {
+  const vaultId = testEntityId();
+  const store = new InMemoryOutboxStore();
+  let appendCalls = 0;
+  const transport: OutboxTransport = {
+    async appendVaultEvent(_vaultId, body) {
+      appendCalls += 1;
+      if (appendCalls === 1) {
+        // Matches Core API + ApiRequestError: top-level body.error, no details.code.
+        throw {
+          name: "ApiRequestError",
+          status: 409,
+          message: "VERSION_MISMATCH: baseVersion is stale",
+          body: {
+            error: "VERSION_MISMATCH",
+            message: "baseVersion is stale",
+            requestId: "req-test",
+            details: {
+              expectedBaseVersion: body.baseVersion,
+              latestVersion: 7,
+            },
+          },
+        };
+      }
+      assert.equal(body.baseVersion, 7);
+      assert.equal(body.eventType, "ITEM_CREATE");
+      return mkEvent(vaultId, 8);
+    },
+    async listVaultEvents(vId, afterVersion): Promise<SyncEventsListResponseDto> {
+      if (afterVersion >= 7) return { vaultId: vId, afterVersion, events: [] };
+      return { vaultId: vId, afterVersion, events: [mkEvent(vId, afterVersion + 1)] };
+    },
+  };
+
+  let conflictResolved = 0;
+  const outbox = new SyncOutboxClient(store, transport, {
+    replayOptions: {
+      decryptItemPayload: async (b64) => Uint8Array.from(Buffer.from(b64, "base64")),
+    },
+    hooks: {
+      onConflictResolved: () => {
+        conflictResolved += 1;
+      },
+    },
+  });
+
+  await outbox.enqueue({ vaultId, request: mkReq(3, "ITEM_CREATE") });
+  await outbox.drain(vaultId);
+  assert.equal(conflictResolved, 1);
+  assert.equal(appendCalls, 2);
+  assert.equal((await outbox.list()).length, 0);
+});
+
 test("outbox resolves VERSION_MISMATCH for VAULT_KEY_ROTATION without item rebase", async () => {
   const vaultId = testEntityId();
   const store = new InMemoryOutboxStore();
