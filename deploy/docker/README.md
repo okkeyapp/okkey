@@ -11,21 +11,24 @@ Run Okkey Core on your own machine with Docker Compose — **no monorepo clone o
 **Tracking / QA** (floating `:dev` images, published on every push to `dev` after the publish workflow lands):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/okkeyapp/okkey/dev/deploy/docker/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/okkeyapp/okkey/dev/deploy/docker/install.sh \
+  | OKKEY_IMAGE_TAG=dev bash
 ```
 
-**Production** — pin a **published** SemVer image (never floating `:latest`):
+**Production** — pin full SemVer (never floating `:latest`). `.env.example` defaults to `1.0.0-beta.2`:
 
 ```bash
+curl -fsSL https://raw.githubusercontent.com/okkeyapp/okkey/dev/deploy/docker/install.sh | bash
+# or explicitly:
 curl -fsSL https://raw.githubusercontent.com/okkeyapp/okkey/dev/deploy/docker/install.sh \
-  | OKKEY_IMAGE_TAG=<published-semver> bash
+  | OKKEY_IMAGE_TAG=1.0.0-beta.2 bash
 ```
 
-`OKKEY_CHANNEL=prod` is **disabled** until a SemVer tag exists in GHCR (today only `:dev` / `:dev-<sha>` are published). The installer exits with a clear error instead of pulling a missing `1.0.0-beta.2` manifest. After the first release is published, use `OKKEY_IMAGE_TAG=<semver>` (or `OKKEY_PROD_CHANNEL_FORCE=1 OKKEY_CHANNEL=prod` to force the historical pin).
+`:1.0.0-beta.2` is published when git tag `v1.0.0-beta.2` lands. Until then, tracking installs must pass `OKKEY_IMAGE_TAG=dev`. `OKKEY_CHANNEL=prod` stays gated until the SemVer exists in GHCR (or `OKKEY_PROD_CHANNEL_FORCE=1`).
 
 Note: `OKKEY_REF=…` / `OKKEY_IMAGE_TAG=…` / `OKKEY_CHANNEL=…` must be on the **right** of `|` so the installer process sees them — `VAR=x curl | bash` does **not** pass `VAR` into `bash`.
 
-`.env.example` defaults to `OKKEY_IMAGE_TAG=dev` for tracking. Core GHCR packages (`ghcr.io/okkeyapp/{api,web,worker}`) are **public** for anonymous pull. Do not use `:latest` for prod.
+`.env.example` pins `OKKEY_IMAGE_TAG=1.0.0-beta.2` for prod (never `:latest`). Core GHCR packages (`ghcr.io/okkeyapp/{api,web,worker}`) are **public** for anonymous pull.
 
 Optional env:
 
@@ -34,7 +37,7 @@ Optional env:
 | `OKKEY_REF` | Git branch/tag/SHA for raw `deploy/docker/*` downloads (default `dev`). Independent of the container image tag. |
 | `OKKEY_IMAGE_TAG` | On **fresh** installs, overrides the `.env.example` default written into `.env` |
 | `OKKEY_CHANNEL=prod` | Refused until SemVer exists in GHCR; with `OKKEY_PROD_CHANNEL_FORCE=1`, pins `OKKEY_PROD_IMAGE_TAG` |
-| `OKKEY_PROD_IMAGE_TAG` | Historical SemVer pin name (default `1.0.0-beta.2`; never `latest`) — not published yet |
+| `OKKEY_PROD_IMAGE_TAG` | Prod SemVer pin name (default `1.0.0-beta.2`; never `latest`) — published with git tag `v1.0.0-beta.2` |
 | `OKKEY_RAW_BASE` / `OKKEY_REPO_RAW_BASE` | Raw GitHub repo root (default `https://raw.githubusercontent.com/okkeyapp/okkey`) |
 | `OKKEY_INSTALL_DIR` | Install directory (default `~/okkey`). Compose project name = directory basename (containers/volumes are namespaced per install dir). |
 | `OKKEY_SKIP_PULL=1` | Skip `docker compose pull` (local/preloaded images) |
@@ -145,8 +148,8 @@ Installer defaults:
 
 | Channel | `OKKEY_IMAGE_TAG` |
 |---------|-------------------|
-| Tracking / QA (default) | `dev` |
-| Production | pin a **published** SemVer via `OKKEY_IMAGE_TAG=<semver>` — **never** `:latest`; `OKKEY_CHANNEL=prod` gated until SemVer exists |
+| Production (`.env.example` default) | `1.0.0-beta.2` — **never** `:latest` |
+| Tracking / QA | override `OKKEY_IMAGE_TAG=dev`; `OKKEY_CHANNEL=prod` gated until SemVer exists in GHCR |
 
 Multi-arch (`linux/amd64` + `linux/arm64`), OCI labels, SBOM, and build provenance are enabled in CI. Cosign **keyless GitHub OIDC** signing runs on every non-PR publish (no key-based override).
 
@@ -159,8 +162,8 @@ curl -fsSL -O "https://raw.githubusercontent.com/okkeyapp/okkey/${REF}/deploy/do
 curl -fsSL -O "https://raw.githubusercontent.com/okkeyapp/okkey/${REF}/deploy/docker/.env.example"
 cp .env.example .env
 # edit secrets and PUBLIC_APP_URL / OKKEY_API_PUBLIC_URL
-# tracking: keep OKKEY_IMAGE_TAG=dev
-# production: set OKKEY_IMAGE_TAG=<SemVer>
+# production pin (default): OKKEY_IMAGE_TAG=1.0.0-beta.2 — never :latest
+# tracking: set OKKEY_IMAGE_TAG=dev until / alongside tip images
 docker compose -f docker-compose.prod.yml --env-file .env up -d
 ```
 
