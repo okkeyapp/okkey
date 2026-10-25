@@ -7,8 +7,11 @@
 #   push to `dev`          → :dev, :dev-<sha>
 #   tag vX.Y.Z (clean)     → :X.Y.Z, :X.Y, :X   (:latest ONLY via manual dispatch)
 #   tag vX.Y.Z-prerelease  → :X.Y.Z-prerelease  (no rolling / :latest)
+#     e.g. v1.0.0-beta.2   → :1.0.0-beta.2 only (spelling: beta, never betta)
 #   pull_request           → :pr-<n>, :pr-<n>-<head-sha7>  (PR head, not merge commit)
 #   workflow_dispatch      → explicit tag (+ optional :latest when push_latest=true)
+#
+# Tag resolution: scripts/resolve-publish-image-tags.mjs (unit-tested in supply-chain).
 #
 # Retention (scheduled GC — never deletes SemVer / :latest / floating :dev):
 #   pr-*       → delete 14 days AFTER the PR is CLOSED; open-PR tags are never deleted
@@ -100,6 +103,13 @@ jobs:
       image_worker: ${{ steps.prep.outputs.image_worker }}
       image_web: ${{ steps.prep.outputs.image_web }}
     steps:
+      - name: Checkout (tag resolver)
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            scripts/resolve-publish-image-tags.mjs
+          sparse-checkout-cone-mode: false
+
       - name: Resolve platforms, tags, revision
         id: prep
         shell: bash
@@ -115,47 +125,13 @@ jobs:
           DISPATCH_LATEST: ${{ github.event.inputs.push_latest }}
           DISPATCH_PLATFORMS: ${{ github.event.inputs.platforms }}
           PR_IMAGE_PLATFORMS: ${{ vars.PR_IMAGE_PLATFORMS }}
+          REGISTRY: ${{ env.REGISTRY }}
+          OWNER: ${{ env.OWNER }}
         run: |
           set -euo pipefail
           PLATFORMS="${DEFAULT_PLATFORMS}"
-          REVISION="${SHA}"
-
-          short7() { printf '%.7s' "$1"; }
-
-          tags_for() {
-            local IMAGE="$1"
-            local TAGS=""
-            if [[ "${EVENT_NAME}" == "pull_request" ]]; then
-              SHORT="$(short7 "${REVISION}")"
-              TAGS="${IMAGE}:pr-${PR_NUMBER},${IMAGE}:pr-${PR_NUMBER}-${SHORT}"
-            elif [[ "${EVENT_NAME}" == "push" && "${REF}" == "refs/heads/dev" ]]; then
-              SHORT="$(short7 "${REVISION}")"
-              TAGS="${IMAGE}:dev,${IMAGE}:dev-${SHORT}"
-            elif [[ "${REF_TYPE}" == "tag" ]]; then
-              VERSION="${REF_NAME#v}"
-              TAGS="${IMAGE}:${VERSION}"
-              # Clean SemVer vX.Y.Z only → rolling :X.Y / :X.
-              # :latest is NEVER automatic — only workflow_dispatch + push_latest=true.
-              if [[ "${REF_NAME}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-                MAJOR="${VERSION%%.*}"
-                MINOR_MAJOR="${VERSION%.*}" # X.Y
-                TAGS="${TAGS},${IMAGE}:${MINOR_MAJOR},${IMAGE}:${MAJOR}"
-              fi
-            elif [[ "${EVENT_NAME}" == "workflow_dispatch" ]]; then
-              local DT="${DISPATCH_TAG:-dev}"
-              TAGS="${IMAGE}:${DT}"
-              if [[ "${DISPATCH_LATEST}" == "true" && "${DT}" != "latest" ]]; then
-                TAGS="${TAGS},${IMAGE}:latest"
-              fi
-            else
-              echo "Unsupported event for publish: ${EVENT_NAME} ref=${REF}" >&2
-              exit 1
-            fi
-            printf '%s' "${TAGS}"
-          }
 
           if [[ "${EVENT_NAME}" == "pull_request" ]]; then
-            REVISION="${PR_HEAD_SHA}"
             if [[ -n "${PR_IMAGE_PLATFORMS}" ]]; then
               PLATFORMS="${PR_IMAGE_PLATFORMS}"
             fi
@@ -176,45 +152,20 @@ jobs:
             exit 1
           fi
 
-          IMAGE_API="${REGISTRY}/${OWNER}/api"
-          IMAGE_WORKER="${REGISTRY}/${OWNER}/worker"
-          IMAGE_WEB="${REGISTRY}/${OWNER}/web"
+          # Shared resolver (unit-tested): v1.0.0-beta.2 → :1.0.0-beta.2 only
+          # (no :latest / :1 / :1.0). Spelling: beta, never betta.
+          node scripts/resolve-publish-image-tags.mjs
 
-          # OCI org.opencontainers.image.version — SemVer without leading `v`
-          # (matches package.json on release). Channel tags use the channel name.
-          IMAGE_VERSION="dev"
-          if [[ "${EVENT_NAME}" == "pull_request" ]]; then
-            IMAGE_VERSION="pr-${PR_NUMBER}"
-          elif [[ "${REF_TYPE}" == "tag" ]]; then
-            IMAGE_VERSION="${REF_NAME#v}"
-          elif [[ "${EVENT_NAME}" == "workflow_dispatch" ]]; then
-            IMAGE_VERSION="${DISPATCH_TAG:-dev}"
-          elif [[ "${EVENT_NAME}" == "push" && "${REF}" == "refs/heads/dev" ]]; then
-            IMAGE_VERSION="dev"
-          fi
           IMAGE_CREATED="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-
           {
             echo "platforms=${PLATFORMS}"
-            echo "revision=${REVISION}"
-            echo "image_version=${IMAGE_VERSION}"
             echo "image_created=${IMAGE_CREATED}"
             echo "want_amd64=${WANT_AMD64}"
             echo "want_arm64=${WANT_ARM64}"
-            echo "image_api=${IMAGE_API}"
-            echo "image_worker=${IMAGE_WORKER}"
-            echo "image_web=${IMAGE_WEB}"
-            echo "tags_api=$(tags_for "${IMAGE_API}")"
-            echo "tags_worker=$(tags_for "${IMAGE_WORKER}")"
-            echo "tags_web=$(tags_for "${IMAGE_WEB}")"
           } >> "$GITHUB_OUTPUT"
 
-          echo "Revision: ${REVISION}"
-          echo "OCI version: ${IMAGE_VERSION} created: ${IMAGE_CREATED}"
+          echo "OCI created: ${IMAGE_CREATED}"
           echo "Platforms: ${PLATFORMS} (amd64=${WANT_AMD64} arm64=${WANT_ARM64})"
-          echo "api tags: $(tags_for "${IMAGE_API}")"
-          echo "worker tags: $(tags_for "${IMAGE_WORKER}")"
-          echo "web tags: $(tags_for "${IMAGE_WEB}")"
 
   # Native per-arch builds (amd64 on x86 runner, arm64 on ARM runner — no QEMU).
   # Split by arch so job-level `if` can use needs.* (matrix is not allowed there).
