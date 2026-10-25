@@ -1,4 +1,4 @@
-import type { CoreClient } from "@okkey/api";
+import { ApiRequestError, type CoreClient } from "@okkey/api";
 import { decryptVaultItemPayload } from "@okkey/crypto";
 import {
   IndexedDbOutboxStore,
@@ -382,7 +382,12 @@ export function createWorkspaceVaultItemsReadController(input: {
     for (const vault of input.vaults) {
       try {
         await replayVaultIncremental(vault.id);
-      } catch {
+      } catch (error: unknown) {
+        // Auth failures must not be collapsed into VAULT_ITEMS_SYNC_FAILED —
+        // callers wipe unlock session on 401.
+        if (error instanceof ApiRequestError && error.status === 401) {
+          throw error;
+        }
         failures.push(vault.id);
       }
     }

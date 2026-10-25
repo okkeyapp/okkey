@@ -1,8 +1,9 @@
 import type { CoreApiClient } from "@okkey/api";
 import type { DeviceListItemDto, DeviceRegisterResponseDto } from "@okkey/types";
 
-import { isUnauthorizedApiError, randomDevicePublicKeyB64, randomDeviceShareB64 } from "./api.ts";
+import { isUnauthorizedApiError } from "./apiErrors.ts";
 import { parseBrowserEnvironment } from "./browserEnvironment.ts";
+import { randomDevicePublicKeyB64, randomDeviceShareB64 } from "./deviceKeyPlaceholders.ts";
 import {
   clearDeviceDeferred,
   clearExtensionSessionArea,
@@ -233,6 +234,59 @@ export async function retryExtensionDeviceRegistration(
 ): Promise<DeviceTrustSnapshot> {
   await clearDeviceDeferred();
   return resolveExtensionDeviceTrust(core, { forceRegister: true });
+}
+
+/**
+ * Background / autofill trust probe: list devices and confirm this install is still
+ * trusted. Does **not** auto-register (unlike `resolveExtensionDeviceTrust`).
+ *
+ * When the device was revoked in web, the account Bearer often still works (200),
+ * so unlock session would otherwise keep serving autofill until the popup opens.
+ * On untrusted / blocked → clear session storage (vaultKey, pending saves).
+ *
+ * @returns `trusted` | `untrusted` (session cleared) | `error` (transient; leave session)
+ */
+export async function probeExtensionDeviceTrusted(
+  core: CoreApiClient,
+): Promise<"trusted" | "untrusted" | "error"> {
+  const fingerprint = await ensureFingerprint();
+  let listed: {
+    devices: DeviceListItemDto[];
+    pending: DeviceListItemDto[];
+    blocked?: DeviceListItemDto[];
+  };
+  try {
+    listed = await core.listDevices(fingerprint);
+  } catch (error: unknown) {
+    if (isUnauthorizedApiError(error)) {
+      throw error;
+    }
+    return "error";
+  }
+
+  const blockedMatch = (listed.blocked ?? []).find((device) =>
+    fingerprintMatch(device, fingerprint),
+  );
+  if (blockedMatch) {
+    const untilMs =
+      blockedMatch.blocked_until == null ? null : new Date(blockedMatch.blocked_until).getTime();
+    if (untilMs === null || untilMs > Date.now()) {
+      await clearDeviceDeferred();
+      await clearExtensionSessionArea();
+      return "untrusted";
+    }
+  }
+
+  const trustedMatch = listed.devices.find((device) => fingerprintMatch(device, fingerprint));
+  if (trustedMatch) {
+    await writeDeviceId(trustedMatch.device_id);
+    await clearDeviceDeferred();
+    return "trusted";
+  }
+
+  // Revoked / pending / unknown — drop unlock material so autofill cannot continue.
+  await clearExtensionSessionArea();
+  return "untrusted";
 }
 
 export async function pollExtensionDeviceTrust(

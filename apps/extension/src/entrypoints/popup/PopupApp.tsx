@@ -1251,6 +1251,7 @@ export function PopupApp() {
           onLocaleChange={onLocaleChange}
           signOutLabel={t("unlock.signOut")}
           onSignOut={() => void onLogout()}
+          onUnauthorized={() => void wipeLocalAndReset()}
           onChangeServer={() => void onLogout()}
           onLock={lockVault}
           idleLockMs={vaultIdleLockMs}
