@@ -20,7 +20,6 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import * as OTPAuth from "otpauth";
 import {
   Button,
   Checkbox,
@@ -104,6 +103,8 @@ import {
   shouldOpenGeneratorOnFocus,
   showSecretLabelKey,
 } from "./keyFormSecretField.js";
+import type { TotpAlgorithm } from "@okkey/types";
+import { createTotp, getTotpTokenState, parseTotpParams } from "./totpFromSecret.js";
 import {
   BANK_DETAILS_SECTION_ID,
   CRYPTO_WALLET_WALLET_SECTION_ID,
@@ -144,6 +145,13 @@ export type KeyFormEditorField = {
   /** When true, view mode hides click-to-copy for multiline text. */
   disableClickCopy?: boolean;
   selectOptions?: readonly KeyFormSelectOption[];
+  /**
+   * TOTP parameters from the stored item (or last pasted otpauth URI).
+   * Used for code display/copy so the item screen matches autofill.
+   */
+  totpPeriodSeconds?: number;
+  totpDigits?: number;
+  totpAlgorithm?: TotpAlgorithm;
 };
 
 export type KeyFormEditorSection = {
@@ -1225,71 +1233,39 @@ function renderGeneratedPassword(password: string): ReactNode {
   });
 }
 
-type TotpTokenState = {
-  token: string;
-  remainingSeconds: number;
-  period: number;
-};
-
-function createTotp(value: string): OTPAuth.TOTP | null {
-  const secret = value.trim();
-  if (!secret) {
-    return null;
-  }
-
-  try {
-    const parsed = OTPAuth.URI.parse(secret);
-    return parsed instanceof OTPAuth.TOTP ? parsed : null;
-  } catch {
-    try {
-      const normalizedSecret = secret.replace(/\s+/g, "").replace(/=+$/g, "").toUpperCase();
-      if (!/^[A-Z2-7]+$/.test(normalizedSecret) || normalizedSecret.length < 16) {
-        return null;
-      }
-
-      return new OTPAuth.TOTP({
-        secret: OTPAuth.Secret.fromBase32(normalizedSecret),
-        digits: 6,
-        period: 60,
-      });
-    } catch {
-      return null;
-    }
-  }
-}
-
-function getTotpTokenState(value: string, timestamp: number): TotpTokenState | null {
-  const totp = createTotp(value);
-  if (!totp) {
-    return null;
-  }
-
-  const remainingMs = totp.remaining({ timestamp });
-  return {
-    token: totp.generate({ timestamp }).padStart(6, "0"),
-    remainingSeconds: Math.max(0, Math.ceil(remainingMs / 1000) - 1),
-    period: totp.period,
-  };
-}
-
 function renderTotpToken(token: string): ReactNode {
-  const first = token.slice(0, 3);
-  const second = token.slice(3);
+  const splitAt = Math.ceil(token.length / 2);
+  const first = token.slice(0, splitAt);
+  const second = token.slice(splitAt);
 
   return (
     <span className="font-mono text-[15px] tabular-nums">
       {first}
-      <span className="mx-1 text-muted-foreground">•</span>
+      {second ? <span className="mx-1 text-muted-foreground">•</span> : null}
       {second}
     </span>
   );
 }
 
+function totpOptionsFromField(field: Pick<DemoField, "totpPeriodSeconds" | "totpDigits" | "totpAlgorithm">) {
+  return {
+    periodSeconds: field.totpPeriodSeconds,
+    digits: field.totpDigits,
+    algorithm: field.totpAlgorithm,
+  };
+}
+
 function TotpFieldDisplay({
   secret,
+  periodSeconds,
+  digits,
+  algorithm,
   sectionVariant,
 }: {
   secret: string;
+  periodSeconds?: number;
+  digits?: number;
+  algorithm?: TotpAlgorithm;
   sectionVariant: DemoSectionVariant;
 }) {
   const [timestamp, setTimestamp] = useState(() => Date.now());
@@ -1299,7 +1275,7 @@ function TotpFieldDisplay({
     return () => window.clearInterval(intervalId);
   }, []);
 
-  const tokenState = getTotpTokenState(secret, timestamp);
+  const tokenState = getTotpTokenState(secret, timestamp, { periodSeconds, digits, algorithm });
   if (!tokenState) {
     return null;
   }
@@ -2215,7 +2191,7 @@ export function KeyFormEditor({
 
       const isPhoneMaskEnabled = field.type === "phone" && !unmaskedPhoneIds.has(field.id);
       const nextValue = isPhoneMaskEnabled ? normalizePhoneValue(value) : value;
-      return {
+      const nextField: DemoField = {
         ...field,
         value: nextValue,
         copyValue:
@@ -2227,6 +2203,31 @@ export function KeyFormEditor({
                 ? field.copyValue
                 : value,
       };
+
+      if (field.type === "totp") {
+        const trimmed = nextValue.trim();
+        if (!trimmed) {
+          return {
+            ...nextField,
+            totpPeriodSeconds: undefined,
+            totpDigits: undefined,
+            totpAlgorithm: undefined,
+          };
+        }
+        if (/^otpauth:\/\//i.test(trimmed)) {
+          const parsed = parseTotpParams(trimmed);
+          if (parsed) {
+            return {
+              ...nextField,
+              totpPeriodSeconds: parsed.periodSeconds,
+              totpDigits: parsed.digits,
+              totpAlgorithm: parsed.algorithm,
+            };
+          }
+        }
+      }
+
+      return nextField;
     }
 
     setSections((current) =>
@@ -2800,7 +2801,26 @@ export function KeyFormEditor({
 
   function resetTotpSecret(sectionId: string, fieldId: string) {
     setOpenFieldMenuId(null);
-    updateFieldValue(sectionId, fieldId, "");
+    setSections((current) =>
+      current.map((section) =>
+        section.id === sectionId
+          ? {
+              ...section,
+              fields: section.fields.map((field) =>
+                field.id === fieldId && field.type === "totp"
+                  ? {
+                      ...field,
+                      value: "",
+                      totpPeriodSeconds: undefined,
+                      totpDigits: undefined,
+                      totpAlgorithm: undefined,
+                    }
+                  : field,
+              ),
+            }
+          : section,
+      ),
+    );
     setActiveValueFieldId(fieldId);
   }
 
@@ -2953,9 +2973,18 @@ export function KeyFormEditor({
     }
 
     if (field.type === "totp" && typeof field.value === "string") {
-      const tokenState = getTotpTokenState(field.value, Date.now());
+      const totpOptions = totpOptionsFromField(field);
+      const tokenState = getTotpTokenState(field.value, Date.now(), totpOptions);
       if (tokenState) {
-        return <TotpFieldDisplay secret={field.value} sectionVariant={section.variant} />;
+        return (
+          <TotpFieldDisplay
+            secret={field.value}
+            periodSeconds={field.totpPeriodSeconds}
+            digits={field.totpDigits}
+            algorithm={field.totpAlgorithm}
+            sectionVariant={section.variant}
+          />
+        );
       }
     }
 
@@ -2963,7 +2992,12 @@ export function KeyFormEditor({
   }
 
   function isInvalidTotpField(field: DemoField): boolean {
-    return field.type === "totp" && typeof field.value === "string" && field.value.trim().length > 0 && !createTotp(field.value);
+    return (
+      field.type === "totp" &&
+      typeof field.value === "string" &&
+      field.value.trim().length > 0 &&
+      !createTotp(field.value, totpOptionsFromField(field))
+    );
   }
 
   function isInvalidEmailField(field: DemoField): boolean {
@@ -3062,7 +3096,7 @@ export function KeyFormEditor({
 
   function copyValueForField(field: DemoField): string | undefined {
     if (field.type === "totp" && typeof field.value === "string") {
-      return getTotpTokenState(field.value, Date.now())?.token;
+      return getTotpTokenState(field.value, Date.now(), totpOptionsFromField(field))?.token;
     }
 
     if (field.type === "phone" && typeof field.value === "string") {

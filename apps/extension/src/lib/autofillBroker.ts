@@ -514,6 +514,7 @@ export async function handleAutofillFill(
         secretBase32: secrets.totpSecretBase32,
         periodSeconds: secrets.totpPeriodSeconds,
         digits: secrets.totpDigits,
+        algorithm: secrets.totpAlgorithm,
       })) ?? undefined;
   }
 
