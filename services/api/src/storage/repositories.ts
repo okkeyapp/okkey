@@ -2709,7 +2709,8 @@ export class EventsRepository {
             input.idempotencyKey ?? null,
             input.clientCreatedAt ?? null,
             input.referencedItemId ?? null,
-            input.itemSoftDeleted ?? null,
+            // Column is NOT NULL after migration 0042; omit/null → false (DEFAULT).
+            input.itemSoftDeleted ?? false,
           ],
         );
       } catch (error) {
