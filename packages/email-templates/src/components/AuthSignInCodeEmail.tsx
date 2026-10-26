@@ -2,18 +2,28 @@ import { Section, Text } from "@react-email/components";
 import * as React from "react";
 
 import { EMAIL_CANVAS, EMAIL_PRIMARY_TEXT, EMAIL_SECONDARY_TEXT, EmailShell } from "./EmailShell.js";
+import { EmailStandardFooter } from "./EmailStandardFooter.js";
 
 export interface AuthSignInCodeEmailProps {
   beforeCode: string;
   code: string;
   line2: string;
-  /** Variant A: single combined no-reply + ignore line. */
-  footer: string;
+  noReply: string;
+  ignoreIfMistake: string;
 }
 
-export function AuthSignInCodeEmail({ beforeCode, code, line2, footer }: AuthSignInCodeEmailProps) {
+export function AuthSignInCodeEmail({
+  beforeCode,
+  code,
+  line2,
+  noReply,
+  ignoreIfMistake,
+}: AuthSignInCodeEmailProps) {
   return (
-    <EmailShell preview={beforeCode} footer={footer}>
+    <EmailShell
+      preview={beforeCode}
+      footer={<EmailStandardFooter noReply={noReply} ignoreIfMistake={ignoreIfMistake} />}
+    >
       <Text style={leadStyle}>{beforeCode}</Text>
       <Section style={codeWrapStyle}>
         <table

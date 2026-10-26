@@ -11,8 +11,7 @@ export interface TwoFactorNoticeEmailProps {
   securityUrl: string;
   ctaLabel: string;
   noReply: string;
-  /** Empty for security notices (no “ignore if mistake”). */
-  ignoreIfMistake?: string;
+  ignoreIfMistake: string;
 }
 
 export function TwoFactorNoticeEmail({

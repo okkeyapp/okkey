@@ -20,8 +20,7 @@ export interface DeviceApprovalEmailProps {
   noteNoUrl: string;
   noteBlockIfNotYou: string;
   noReply: string;
-  /** Empty for security mail (no “ignore if mistake”). */
-  ignoreIfMistake?: string;
+  ignoreIfMistake: string;
 }
 
 export function DeviceApprovalEmail({

@@ -32,7 +32,6 @@ export { EMAIL_TEMPLATE_VERSIONS, type EmailTemplateId } from "./versions.js";
 export { resolveDeviceDetailName } from "./device-display-name.js";
 export {
   appendStandardFooterPlain,
-  buildEmailSecurityFooterCopy,
   buildEmailStandardFooterCopy,
 } from "./standard-footer.js";
 

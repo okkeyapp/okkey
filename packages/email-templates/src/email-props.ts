@@ -5,10 +5,7 @@ import type { TwoFactorNoticeEmailProps } from "./components/TwoFactorNoticeEmai
 import type { WorkspaceInviteEmailProps } from "./components/WorkspaceInviteEmail.js";
 import { resolveDeviceDetailName } from "./device-display-name.js";
 import { formatUtcWhen } from "./format-utc.js";
-import {
-  buildEmailSecurityFooterCopy,
-  buildEmailStandardFooterCopy,
-} from "./standard-footer.js";
+import { buildEmailStandardFooterCopy } from "./standard-footer.js";
 import type {
   AccountEmailChangedVariables,
   AuthEmailCodeVariables,
@@ -33,11 +30,13 @@ export function buildAuthSignInCodeEmailProps(
 ): AuthSignInCodeEmailProps {
   const minutes = Math.ceil(variables.ttlSeconds / 60);
   const prefix = authEmailCodeMessagePrefix(variables.purpose);
+  const standard = buildEmailStandardFooterCopy(locale);
   return {
     beforeCode: formatEmailMessage(locale, `${prefix}.beforeCode`, {}),
     code: variables.code,
     line2: formatEmailMessage(locale, `${prefix}.line2`, { minutes }),
-    footer: formatEmailMessage(locale, `${prefix}.footer`, {}),
+    noReply: standard.noReply,
+    ignoreIfMistake: standard.ignoreIfMistake,
   };
 }
 
@@ -96,7 +95,7 @@ export function buildDeviceApprovalEmailProps(
     "email.device.approval.noteBlockIfNotYou",
     {},
   );
-  const standard = buildEmailSecurityFooterCopy(locale);
+  const standard = buildEmailStandardFooterCopy(locale);
   return {
     lead,
     deviceLine,
@@ -159,7 +158,7 @@ function buildTwoFactorNoticeEmailProps(
 ): TwoFactorNoticeEmailProps {
   const securityUrl = variables.securitySettingsUrl.trim();
   const whenUtc = formatUtcWhen(locale, variables.occurredAtIso);
-  const standard = buildEmailSecurityFooterCopy(locale);
+  const standard = buildEmailStandardFooterCopy(locale);
   return {
     line1: formatEmailMessage(locale, keys.line1, { whenUtc }),
     line2: formatEmailMessage(locale, keys.line2, {}),
@@ -197,7 +196,7 @@ export function buildAccountEmailChangedEmailProps(
 ): TwoFactorNoticeEmailProps {
   const securityUrl = variables.securitySettingsUrl.trim();
   const whenUtc = formatUtcWhen(locale, variables.occurredAtIso);
-  const standard = buildEmailSecurityFooterCopy(locale);
+  const standard = buildEmailStandardFooterCopy(locale);
   return {
     line1: formatEmailMessage(locale, "email.account.emailChanged.line1", {
       newEmailMasked: variables.newEmailMasked,
@@ -220,7 +219,7 @@ export function buildDeviceRecoveryApprovalEmailProps(
     variables.platform,
     variables.osName,
   );
-  const standard = buildEmailSecurityFooterCopy(locale);
+  const standard = buildEmailStandardFooterCopy(locale);
   return {
     lead: formatEmailMessage(locale, "email.device.recovery.lead", {}),
     deviceLine: formatEmailMessage(locale, "email.device.approval.deviceLine", {
@@ -250,7 +249,7 @@ export function buildContactRecoveryReleaseEmailProps(
   locale: EmailLocale,
   variables: ContactRecoveryReleaseRequestVariables,
 ): RecoveryActionEmailProps {
-  const standard = buildEmailSecurityFooterCopy(locale);
+  const standard = buildEmailStandardFooterCopy(locale);
   return {
     lead: formatEmailMessage(locale, "email.contacts.recovery.lead", {}),
     detailLine: formatEmailMessage(locale, "email.contacts.recovery.accountLine", {

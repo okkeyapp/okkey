@@ -298,10 +298,9 @@ test("integration: after TOTP disable, transport receives two_factor_disabled (r
   assert.equal(BACKUP_CODE_LIKE.test(sent[0].html), false);
   assert.equal(sent[0].text.includes("{{"), false);
   assert.equal(sent[0].html.toLowerCase().includes("totp"), false);
-  assert.equal(
-    sent[0].html.includes(formatEmailMessage("ru", "email.common.ignoreIfMistake", {})),
-    false,
-  );
+  assert.ok(sent[0].text.includes(formatEmailMessage("ru", "email.common.ignoreIfMistake", {})));
+  assert.ok(sent[0].text.includes(formatEmailMessage("ru", "email.common.noReply", {})));
   assert.match(sent[0].html, /администратору/);
+  assert.match(sent[0].html, /проигнорируйте/i);
 
 });
