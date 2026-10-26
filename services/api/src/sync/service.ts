@@ -478,17 +478,22 @@ export class SyncService {
         referencedItemId,
         itemSoftDeleted,
       });
+      // Drive retention index from the *persisted* event (idempotent retries may
+      // return an older row). Never mark soft-delete in the index without a matching
+      // item_soft_deleted / ITEM_DELETE on that event row.
       if (this.softDeletes && referencedItemId) {
-        if (
-          input.eventType === "ITEM_DELETE" ||
-          (input.eventType === "ITEM_UPDATE" && itemSoftDeleted === true)
-        ) {
+        const persistedSoftDelete =
+          created.eventType === "ITEM_DELETE" || created.itemSoftDeleted === true;
+        if (persistedSoftDelete) {
           await this.softDeletes.upsert({
             vaultId,
             itemId: referencedItemId,
             deletedAtMs: Math.trunc(input.itemDeletedAtMs ?? Date.now()),
           });
-        } else if (input.eventType === "ITEM_UPDATE" && itemSoftDeleted === false) {
+        } else if (
+          created.eventType === "ITEM_UPDATE" &&
+          created.itemSoftDeleted === false
+        ) {
           await this.softDeletes.remove(vaultId, referencedItemId);
         }
       }

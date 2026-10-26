@@ -458,6 +458,109 @@ test("SyncReplayEngine quarantines omitted soft-delete flag on ITEM_UPDATE (put-
   assert.equal(state.quarantined[0]?.reason, "ITEM_SOFT_DELETE_UNMARKED");
 });
 
+test("SyncReplayEngine hides shared-vault item after owner ITEM_UPDATE soft-delete mark", async () => {
+  const vaultId = testEntityId();
+  const itemId = testEntityId();
+  const created = {
+    schemaVersion: ITEM_PLAINTEXT_SCHEMA_VERSION_LATEST,
+    itemId,
+    vaultId,
+    title: "shared-secret",
+    categoryId: "login",
+    createdAtMs: 1,
+    updatedAtMs: 1,
+    sections: [{ id: "s-main", title: "Main", order: 0, isPreset: true }],
+    fields: [],
+  };
+  const deletedPlaintext = {
+    ...created,
+    deleted: true,
+    deletedAtMs: 9,
+    updatedAtMs: 9,
+  };
+  const state = await replayVaultEvents(
+    [
+      baseWire({
+        vaultId,
+        actorId: "owner",
+        eventType: "ITEM_CREATE",
+        version: 1,
+        referencedItemId: itemId,
+        itemSoftDeleted: false,
+        encryptedPayload: opaqueJson(created),
+      }),
+      baseWire({
+        vaultId,
+        actorId: "owner",
+        eventType: "ITEM_UPDATE",
+        version: 2,
+        referencedItemId: itemId,
+        itemSoftDeleted: true,
+        encryptedPayload: opaqueJson(deletedPlaintext),
+      }),
+    ],
+    {
+      vaultId,
+      decryptItemPayload: async (b64) => Uint8Array.from(Buffer.from(b64, "base64")),
+    },
+  );
+  assert.equal(state.items.get(itemId)?.deleted, true);
+  assert.equal(state.quarantined.length, 0);
+});
+
+test("SyncReplayEngine hides shared-vault item after Extended ITEM_DELETE", async () => {
+  const vaultId = testEntityId();
+  const itemId = testEntityId();
+  const created = {
+    schemaVersion: ITEM_PLAINTEXT_SCHEMA_VERSION_LATEST,
+    itemId,
+    vaultId,
+    title: "shared-secret",
+    categoryId: "login",
+    createdAtMs: 1,
+    updatedAtMs: 1,
+    sections: [{ id: "s-main", title: "Main", order: 0, isPreset: true }],
+    fields: [],
+  };
+  const tombstone = {
+    ...created,
+    title: "",
+    deleted: true,
+    deletedAtMs: 9,
+    updatedAtMs: 9,
+    sections: [],
+    fields: [],
+  };
+  const state = await replayVaultEvents(
+    [
+      baseWire({
+        vaultId,
+        actorId: "owner",
+        eventType: "ITEM_CREATE",
+        version: 1,
+        referencedItemId: itemId,
+        itemSoftDeleted: false,
+        encryptedPayload: opaqueJson(created),
+      }),
+      baseWire({
+        vaultId,
+        actorId: "extended-member",
+        eventType: "ITEM_DELETE",
+        version: 2,
+        referencedItemId: itemId,
+        itemSoftDeleted: true,
+        encryptedPayload: opaqueJson(tombstone),
+      }),
+    ],
+    {
+      vaultId,
+      decryptItemPayload: async (b64) => Uint8Array.from(Buffer.from(b64, "base64")),
+    },
+  );
+  assert.equal(state.items.get(itemId)?.deleted, true);
+  assert.equal(state.quarantined.length, 0);
+});
+
 test("SyncReplayEngine applies soft-delete when server marks ITEM_UPDATE", async () => {
   const vaultId = testEntityId();
   const itemId = testEntityId();
