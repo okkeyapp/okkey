@@ -551,7 +551,7 @@ components:
           $ref: "#/components/schemas/EncryptedBlob"
           description: >
             Recipient wrapped vault key.
-            In production hybrid-by-default path, must use `crypto_version >= 2`
+            Hybrid-by-default in every DEPLOY_ENV, must use `crypto_version >= 2`
             and include `meta.key_wrap_scheme = "hybrid_ecc_pq_v1"`.
         encryptedPayload:
           $ref: "#/components/schemas/EncryptedBlob"
@@ -595,7 +595,7 @@ components:
                 $ref: "#/components/schemas/EncryptedBlob"
                 description: >
                   Rotated recipient wrapped vault key.
-                  In production hybrid-by-default path, must use `crypto_version >= 2`
+                  Hybrid-by-default in every DEPLOY_ENV, must use `crypto_version >= 2`
                   and include `meta.key_wrap_scheme = "hybrid_ecc_pq_v1"`.
         encryptedPayload:
           $ref: "#/components/schemas/EncryptedBlob"
@@ -645,7 +645,7 @@ components:
                 $ref: "#/components/schemas/EncryptedBlob"
                 description: >
                   Re-wrapped vault key for this recipient.
-                  In production hybrid-by-default path must use `crypto_version >= 2`
+                  Hybrid-by-default in every DEPLOY_ENV must use `crypto_version >= 2`
                   and `meta.key_wrap_scheme = "hybrid_ecc_pq_v1"`.
         encryptedPayload:
           $ref: "#/components/schemas/EncryptedBlob"
@@ -690,7 +690,7 @@ components:
                 $ref: "#/components/schemas/EncryptedBlob"
                 description: >
                   Re-wrapped vault key for this recipient.
-                  Must follow the hybrid-by-default contract in production.
+                  Must follow the hybrid-by-default contract in every DEPLOY_ENV.
         encryptedPayload:
           $ref: "#/components/schemas/EncryptedBlob"
         signature:

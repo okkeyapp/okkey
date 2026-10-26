@@ -84,7 +84,7 @@ test("integration: share + revoke vault access with key rotation", async (t) => 
 
   await sharing.shareVault(vaultId, userA.userId, {
     recipientUserId: userB.userId,
-    encryptedVaultKey: mkBlob("wrapped-key-b"),
+    encryptedVaultKey: mkHybridWrapBlob("wrapped-key-b"),
     encryptedPayload: mkBlob("vault-share-event"),
     baseVersion: 0,
   });
@@ -103,7 +103,7 @@ test("integration: share + revoke vault access with key rotation", async (t) => 
     rotatedVaultKeys: [
       {
         userId: userA.userId,
-        encryptedVaultKey: mkBlob("wrapped-key-a-rotated"),
+        encryptedVaultKey: mkHybridWrapBlob("wrapped-key-a-rotated"),
       },
     ],
     encryptedPayload: mkBlob("vault-key-rotation-event"),
@@ -179,7 +179,7 @@ test("integration: sharing rejects crypto profile blocked by policy", async (t) 
         baseVersion: 0,
       }),
     (err: unknown) =>
-      err instanceof VaultSharingServiceError && err.code === "CRYPTO_DOWNGRADE_NOT_ALLOWED",
+      err instanceof VaultSharingServiceError && err.code === "VAULT_KEY_WRAP_INVALID",
   );
 });
 
@@ -243,7 +243,7 @@ test("integration: sharing rejects crypto downgrade below vault event stream max
 
   await sharing.shareVault(vaultId, userA.userId, {
     recipientUserId: userB.userId,
-    encryptedVaultKey: mkBlob("wrapped-key-b", 2),
+    encryptedVaultKey: mkHybridWrapBlob("wrapped-key-b", 2),
     encryptedPayload: mkBlob("vault-share-event-v2", 2),
     baseVersion: 0,
   });
@@ -252,7 +252,7 @@ test("integration: sharing rejects crypto downgrade below vault event stream max
     () =>
       sharing.shareVault(vaultId, userA.userId, {
         recipientUserId: userC.userId,
-        encryptedVaultKey: mkBlob("wrapped-key-c", 2),
+        encryptedVaultKey: mkHybridWrapBlob("wrapped-key-c", 2),
         encryptedPayload: mkBlob("vault-share-event-v1", 1),
         baseVersion: 1,
       }),
@@ -261,7 +261,7 @@ test("integration: sharing rejects crypto downgrade below vault event stream max
   );
 });
 
-test("integration: prod sharing requires recipient PQ key", async (t) => {
+test("integration: sharing requires recipient PQ key (any deployEnv)", async (t) => {
   const baseConfig = loadConfig();
   const storage = await createIntegrationStorage(t, baseConfig);
   if (!storage) {
@@ -329,7 +329,7 @@ test("integration: prod sharing requires recipient PQ key", async (t) => {
   );
 });
 
-test("integration: strict rollout blocks share for recipient without PQ key", async (t) => {
+test("integration: hybrid wrap policy rejects share for recipient without PQ key (any rollout mode)", async (t) => {
   const baseConfig = loadConfig();
   const storage = await createIntegrationStorage(t, baseConfig);
   if (!storage) {
@@ -394,11 +394,11 @@ test("integration: strict rollout blocks share for recipient without PQ key", as
       }),
     (err: unknown) =>
       err instanceof VaultSharingServiceError &&
-      err.code === "CRYPTO_CAPABILITY_REQUIRED",
+      err.code === "VAULT_SHARE_RECIPIENT_PQ_REQUIRED",
   );
 });
 
-test("integration: compat rollout allows share for recipient without PQ key", async (t) => {
+test("integration: compat rollout cannot weaken hybrid wrap PQ requirement", async (t) => {
   const baseConfig = loadConfig();
   const storage = await createIntegrationStorage(t, baseConfig);
   if (!storage) {
@@ -453,15 +453,21 @@ test("integration: compat rollout allows share for recipient without PQ key", as
     },
   });
 
-  await sharing.shareVault(vaultId, userA.userId, {
-    recipientUserId: userB.userId,
-    encryptedVaultKey: mkBlob("wrapped-key-b", 2),
-    encryptedPayload: mkBlob("vault-share-event", 2),
-    baseVersion: 0,
-  });
+  await assert.rejects(
+    () =>
+      sharing.shareVault(vaultId, userA.userId, {
+        recipientUserId: userB.userId,
+        encryptedVaultKey: mkHybridWrapBlob("wrapped-key-b", 2),
+        encryptedPayload: mkBlob("vault-share-event", 2),
+        baseVersion: 0,
+      }),
+    (err: unknown) =>
+      err instanceof VaultSharingServiceError &&
+      err.code === "VAULT_SHARE_RECIPIENT_PQ_REQUIRED",
+  );
 });
 
-test("integration: prod sharing requires hybrid key_wrap_scheme metadata", async (t) => {
+test("integration: sharing requires hybrid key_wrap_scheme metadata (any deployEnv)", async (t) => {
   const baseConfig = loadConfig();
   const storage = await createIntegrationStorage(t, baseConfig);
   if (!storage) {
@@ -528,7 +534,7 @@ test("integration: prod sharing requires hybrid key_wrap_scheme metadata", async
   );
 });
 
-test("integration: prod sharing overwrites client-spoofed recipient_user_id in wrap meta", async (t) => {
+test("integration: sharing overwrites client-spoofed recipient_user_id in wrap meta", async (t) => {
   const baseConfig = loadConfig();
   const storage = await createIntegrationStorage(t, baseConfig);
   if (!storage) {
@@ -724,15 +730,15 @@ test("integration: rotateVaultKey (standalone manual rotation)", async (t) => {
 
   await sharing.shareVault(vaultId, userA.userId, {
     recipientUserId: userB.userId,
-    encryptedVaultKey: mkBlob("wrapped-key-b-v1"),
+    encryptedVaultKey: mkHybridWrapBlob("wrapped-key-b-v1"),
     encryptedPayload: mkBlob("vault-share-event"),
     baseVersion: 0,
   });
 
   await sharing.rotateVaultKey(vaultId, userA.userId, {
     rotatedVaultKeys: [
-      { userId: userA.userId, encryptedVaultKey: mkBlob("wrapped-key-a-rotated") },
-      { userId: userB.userId, encryptedVaultKey: mkBlob("wrapped-key-b-rotated") },
+      { userId: userA.userId, encryptedVaultKey: mkHybridWrapBlob("wrapped-key-a-rotated") },
+      { userId: userB.userId, encryptedVaultKey: mkHybridWrapBlob("wrapped-key-b-rotated") },
     ],
     encryptedPayload: mkBlob("rotation-event"),
     baseVersion: 1,
@@ -807,7 +813,7 @@ test("integration: rotateVaultKey rejects missing recipient in rotatedVaultKeys"
 
   await sharing.shareVault(vaultId, userA.userId, {
     recipientUserId: userB.userId,
-    encryptedVaultKey: mkBlob("wrapped-key-b-v1"),
+    encryptedVaultKey: mkHybridWrapBlob("wrapped-key-b-v1"),
     encryptedPayload: mkBlob("vault-share-event"),
     baseVersion: 0,
   });
@@ -816,7 +822,7 @@ test("integration: rotateVaultKey rejects missing recipient in rotatedVaultKeys"
     () =>
       sharing.rotateVaultKey(vaultId, userA.userId, {
         rotatedVaultKeys: [
-          { userId: userA.userId, encryptedVaultKey: mkBlob("wrapped-key-a-rotated") },
+          { userId: userA.userId, encryptedVaultKey: mkHybridWrapBlob("wrapped-key-a-rotated") },
         ],
         encryptedPayload: mkBlob("rotation-event"),
         baseVersion: 1,
@@ -868,8 +874,8 @@ test("integration: rotateVaultKey rejects unknown recipient in rotatedVaultKeys"
     () =>
       sharing.rotateVaultKey(vaultId, userA.userId, {
         rotatedVaultKeys: [
-          { userId: userA.userId, encryptedVaultKey: mkBlob("wrapped-key-a-rotated") },
-          { userId: testEntityId(), encryptedVaultKey: mkBlob("wrapped-key-unknown") },
+          { userId: userA.userId, encryptedVaultKey: mkHybridWrapBlob("wrapped-key-a-rotated") },
+          { userId: testEntityId(), encryptedVaultKey: mkHybridWrapBlob("wrapped-key-unknown") },
         ],
         encryptedPayload: mkBlob("rotation-event"),
         baseVersion: 0,
@@ -929,7 +935,7 @@ test("integration: updateVaultMemberRole changes role and rotates keys", async (
 
   await sharing.shareVault(vaultId, userA.userId, {
     recipientUserId: userB.userId,
-    encryptedVaultKey: mkBlob("wrapped-key-b-v1"),
+    encryptedVaultKey: mkHybridWrapBlob("wrapped-key-b-v1"),
     encryptedPayload: mkBlob("vault-share-event"),
     baseVersion: 0,
     role: "member",
@@ -939,8 +945,8 @@ test("integration: updateVaultMemberRole changes role and rotates keys", async (
     memberId: userB.userId,
     newRole: "admin",
     rotatedVaultKeys: [
-      { userId: userA.userId, encryptedVaultKey: mkBlob("wrapped-key-a-after-role-change") },
-      { userId: userB.userId, encryptedVaultKey: mkBlob("wrapped-key-b-after-role-change") },
+      { userId: userA.userId, encryptedVaultKey: mkHybridWrapBlob("wrapped-key-a-after-role-change") },
+      { userId: userB.userId, encryptedVaultKey: mkHybridWrapBlob("wrapped-key-b-after-role-change") },
     ],
     encryptedPayload: mkBlob("role-rotation-event"),
     baseVersion: 1,
@@ -1013,7 +1019,7 @@ test("integration: updateVaultMemberRole rejects non-member", async (t) => {
         memberId: testEntityId(),
         newRole: "admin",
         rotatedVaultKeys: [
-          { userId: userA.userId, encryptedVaultKey: mkBlob("wrapped-key-a") },
+          { userId: userA.userId, encryptedVaultKey: mkHybridWrapBlob("wrapped-key-a") },
         ],
         encryptedPayload: mkBlob("role-rotation-event"),
         baseVersion: 0,
@@ -1073,7 +1079,7 @@ test("security: revoked user cannot read vault key after subsequent rotateVaultK
 
   await sharing.shareVault(vaultId, userA.userId, {
     recipientUserId: userB.userId,
-    encryptedVaultKey: mkBlob("wrapped-key-b"),
+    encryptedVaultKey: mkHybridWrapBlob("wrapped-key-b"),
     encryptedPayload: mkBlob("share-event"),
     baseVersion: 0,
   });
@@ -1081,7 +1087,7 @@ test("security: revoked user cannot read vault key after subsequent rotateVaultK
   await sharing.revokeVaultAccess(vaultId, userA.userId, {
     recipientUserId: userB.userId,
     rotatedVaultKeys: [
-      { userId: userA.userId, encryptedVaultKey: mkBlob("wrapped-key-a-rotated") },
+      { userId: userA.userId, encryptedVaultKey: mkHybridWrapBlob("wrapped-key-a-rotated") },
     ],
     encryptedPayload: mkBlob("revoke-event"),
     baseVersion: 1,
@@ -1089,7 +1095,7 @@ test("security: revoked user cannot read vault key after subsequent rotateVaultK
 
   await sharing.rotateVaultKey(vaultId, userA.userId, {
     rotatedVaultKeys: [
-      { userId: userA.userId, encryptedVaultKey: mkBlob("wrapped-key-a-incident") },
+      { userId: userA.userId, encryptedVaultKey: mkHybridWrapBlob("wrapped-key-a-incident") },
     ],
     encryptedPayload: mkBlob("incident-rotation-event"),
     baseVersion: 2,
@@ -1160,15 +1166,15 @@ test("security: rotateVaultKey does not leave stale wrapped keys in vault_keys",
 
   await sharing.shareVault(vaultId, userA.userId, {
     recipientUserId: userB.userId,
-    encryptedVaultKey: mkBlob("wrapped-b-old"),
+    encryptedVaultKey: mkHybridWrapBlob("wrapped-b-old"),
     encryptedPayload: mkBlob("share-event"),
     baseVersion: 0,
   });
 
   await sharing.rotateVaultKey(vaultId, userA.userId, {
     rotatedVaultKeys: [
-      { userId: userA.userId, encryptedVaultKey: mkBlob("wrapped-a-new") },
-      { userId: userB.userId, encryptedVaultKey: mkBlob("wrapped-b-new") },
+      { userId: userA.userId, encryptedVaultKey: mkHybridWrapBlob("wrapped-a-new") },
+      { userId: userB.userId, encryptedVaultKey: mkHybridWrapBlob("wrapped-b-new") },
     ],
     encryptedPayload: mkBlob("rotation-event"),
     baseVersion: 1,
@@ -1233,14 +1239,14 @@ test("concurrency: parallel rotateVaultKey calls with same baseVersion → secon
   const results = await Promise.allSettled([
     sharing.rotateVaultKey(vaultId, userA.userId, {
       rotatedVaultKeys: [
-        { userId: userA.userId, encryptedVaultKey: mkBlob(`wrapped-a-${testEntityId()}`) },
+        { userId: userA.userId, encryptedVaultKey: mkHybridWrapBlob(`wrapped-a-${testEntityId()}`) },
       ],
       encryptedPayload: mkBlob("rotation-event-1"),
       baseVersion: 0,
     }),
     sharing.rotateVaultKey(vaultId, userA.userId, {
       rotatedVaultKeys: [
-        { userId: userA.userId, encryptedVaultKey: mkBlob(`wrapped-a-${testEntityId()}`) },
+        { userId: userA.userId, encryptedVaultKey: mkHybridWrapBlob(`wrapped-a-${testEntityId()}`) },
       ],
       encryptedPayload: mkBlob("rotation-event-2"),
       baseVersion: 0,
@@ -1310,7 +1316,7 @@ test("integration: rotateVaultKey idempotent retry is no-op and keeps event log 
 
   await sharing.shareVault(vaultId, userA.userId, {
     recipientUserId: userB.userId,
-    encryptedVaultKey: mkBlob("wrapped-key-b-v1"),
+    encryptedVaultKey: mkHybridWrapBlob("wrapped-key-b-v1"),
     encryptedPayload: mkBlob("share-event"),
     baseVersion: 0,
   });
@@ -1318,8 +1324,8 @@ test("integration: rotateVaultKey idempotent retry is no-op and keeps event log 
   const idempotencyKey = testEntityId();
   const rotateInput = {
     rotatedVaultKeys: [
-      { userId: userA.userId, encryptedVaultKey: mkBlob("wrapped-key-a-v2") },
-      { userId: userB.userId, encryptedVaultKey: mkBlob("wrapped-key-b-v2") },
+      { userId: userA.userId, encryptedVaultKey: mkHybridWrapBlob("wrapped-key-a-v2") },
+      { userId: userB.userId, encryptedVaultKey: mkHybridWrapBlob("wrapped-key-b-v2") },
     ],
     encryptedPayload: mkBlob("rotation-event"),
     baseVersion: 1,
@@ -1389,7 +1395,7 @@ test("integration: rotateVaultKey rejects conflicting reuse of idempotencyKey", 
 
   await sharing.shareVault(vaultId, userA.userId, {
     recipientUserId: userB.userId,
-    encryptedVaultKey: mkBlob("wrapped-key-b-v1"),
+    encryptedVaultKey: mkHybridWrapBlob("wrapped-key-b-v1"),
     encryptedPayload: mkBlob("share-event"),
     baseVersion: 0,
   });
@@ -1397,8 +1403,8 @@ test("integration: rotateVaultKey rejects conflicting reuse of idempotencyKey", 
   const idempotencyKey = testEntityId();
   await sharing.rotateVaultKey(vaultId, userA.userId, {
     rotatedVaultKeys: [
-      { userId: userA.userId, encryptedVaultKey: mkBlob("wrapped-key-a-v2") },
-      { userId: userB.userId, encryptedVaultKey: mkBlob("wrapped-key-b-v2") },
+      { userId: userA.userId, encryptedVaultKey: mkHybridWrapBlob("wrapped-key-a-v2") },
+      { userId: userB.userId, encryptedVaultKey: mkHybridWrapBlob("wrapped-key-b-v2") },
     ],
     encryptedPayload: mkBlob("rotation-event-v2"),
     baseVersion: 1,
@@ -1409,8 +1415,8 @@ test("integration: rotateVaultKey rejects conflicting reuse of idempotencyKey", 
     () =>
       sharing.rotateVaultKey(vaultId, userA.userId, {
         rotatedVaultKeys: [
-          { userId: userA.userId, encryptedVaultKey: mkBlob("wrapped-key-a-v3") },
-          { userId: userB.userId, encryptedVaultKey: mkBlob("wrapped-key-b-v3") },
+          { userId: userA.userId, encryptedVaultKey: mkHybridWrapBlob("wrapped-key-a-v3") },
+          { userId: userB.userId, encryptedVaultKey: mkHybridWrapBlob("wrapped-key-b-v3") },
         ],
         encryptedPayload: mkBlob("rotation-event-v3"),
         baseVersion: 2,
@@ -1479,7 +1485,7 @@ test("integration: revokeVaultAccess idempotent retry is no-op and keeps event l
 
   await sharing.shareVault(vaultId, userA.userId, {
     recipientUserId: userB.userId,
-    encryptedVaultKey: mkBlob("wrapped-key-b-v1"),
+    encryptedVaultKey: mkHybridWrapBlob("wrapped-key-b-v1"),
     encryptedPayload: mkBlob("share-event"),
     baseVersion: 0,
   });
@@ -1488,7 +1494,7 @@ test("integration: revokeVaultAccess idempotent retry is no-op and keeps event l
   const revokeInput = {
     recipientUserId: userB.userId,
     rotatedVaultKeys: [
-      { userId: userA.userId, encryptedVaultKey: mkBlob("wrapped-key-a-after-revoke") },
+      { userId: userA.userId, encryptedVaultKey: mkHybridWrapBlob("wrapped-key-a-after-revoke") },
     ],
     encryptedPayload: mkBlob("revoke-rotation-event"),
     baseVersion: 1,
@@ -1565,7 +1571,7 @@ test("integration: updateVaultMemberRole rejects conflicting reuse of idempotenc
 
   await sharing.shareVault(vaultId, userA.userId, {
     recipientUserId: userB.userId,
-    encryptedVaultKey: mkBlob("wrapped-key-b-v1"),
+    encryptedVaultKey: mkHybridWrapBlob("wrapped-key-b-v1"),
     encryptedPayload: mkBlob("share-event"),
     baseVersion: 0,
     role: "member",
@@ -1576,8 +1582,8 @@ test("integration: updateVaultMemberRole rejects conflicting reuse of idempotenc
     memberId: userB.userId,
     newRole: "admin",
     rotatedVaultKeys: [
-      { userId: userA.userId, encryptedVaultKey: mkBlob("wrapped-key-a-v2") },
-      { userId: userB.userId, encryptedVaultKey: mkBlob("wrapped-key-b-v2") },
+      { userId: userA.userId, encryptedVaultKey: mkHybridWrapBlob("wrapped-key-a-v2") },
+      { userId: userB.userId, encryptedVaultKey: mkHybridWrapBlob("wrapped-key-b-v2") },
     ],
     encryptedPayload: mkBlob("role-rotation-event-v2"),
     baseVersion: 1,
@@ -1590,8 +1596,8 @@ test("integration: updateVaultMemberRole rejects conflicting reuse of idempotenc
         memberId: userB.userId,
         newRole: "member",
         rotatedVaultKeys: [
-          { userId: userA.userId, encryptedVaultKey: mkBlob("wrapped-key-a-v3") },
-          { userId: userB.userId, encryptedVaultKey: mkBlob("wrapped-key-b-v3") },
+          { userId: userA.userId, encryptedVaultKey: mkHybridWrapBlob("wrapped-key-a-v3") },
+          { userId: userB.userId, encryptedVaultKey: mkHybridWrapBlob("wrapped-key-b-v3") },
         ],
         encryptedPayload: mkBlob("role-rotation-event-v3"),
         baseVersion: 2,
@@ -1667,7 +1673,7 @@ test("integration: failed rotation validation leaves keys and events unchanged",
 
   await sharing.shareVault(vaultId, userA.userId, {
     recipientUserId: userB.userId,
-    encryptedVaultKey: mkBlob("wrapped-key-b-v1"),
+    encryptedVaultKey: mkHybridWrapBlob("wrapped-key-b-v1"),
     encryptedPayload: mkBlob("share-event"),
     baseVersion: 0,
   });
@@ -1676,7 +1682,7 @@ test("integration: failed rotation validation leaves keys and events unchanged",
     () =>
       sharing.rotateVaultKey(vaultId, userA.userId, {
         rotatedVaultKeys: [
-          { userId: userA.userId, encryptedVaultKey: mkBlob("wrapped-key-a-v2") },
+          { userId: userA.userId, encryptedVaultKey: mkHybridWrapBlob("wrapped-key-a-v2") },
         ],
         encryptedPayload: mkBlob("rotation-event-invalid"),
         baseVersion: 1,
@@ -1693,7 +1699,7 @@ test("integration: failed rotation validation leaves keys and events unchanged",
   assert.equal(events[0]?.eventType, "VAULT_SHARE");
 });
 
-test("integration: prod rotateVaultKey rejects wrap without hybrid scheme", async (t) => {
+test("integration: rotateVaultKey rejects wrap without hybrid scheme (any deployEnv)", async (t) => {
   const baseConfig = loadConfig();
   const storage = await createIntegrationStorage(t, baseConfig);
   if (!storage) {
@@ -1732,7 +1738,7 @@ test("integration: prod rotateVaultKey rejects wrap without hybrid scheme", asyn
     config: { allowedCryptoProfileVersions: [2], deployEnv: "prod" },
   });
 
-  // Plain blob without hybrid scheme — must be rejected in prod
+  // Plain blob without hybrid scheme — must be rejected in every deployEnv
   await assert.rejects(
     () =>
       sharing.rotateVaultKey(vaultId, userA.userId, {
@@ -1747,7 +1753,7 @@ test("integration: prod rotateVaultKey rejects wrap without hybrid scheme", asyn
   );
 });
 
-test("integration: prod rotateVaultKey rejects wrap without recipient PQ key", async (t) => {
+test("integration: rotateVaultKey rejects wrap without recipient PQ key (any deployEnv)", async (t) => {
   const baseConfig = loadConfig();
   const storage = await createIntegrationStorage(t, baseConfig);
   if (!storage) {
@@ -1804,7 +1810,7 @@ test("integration: prod rotateVaultKey rejects wrap without recipient PQ key", a
   );
 });
 
-test("integration: prod updateVaultMemberRole rejects wrap without hybrid scheme", async (t) => {
+test("integration: updateVaultMemberRole rejects wrap without hybrid scheme (any deployEnv)", async (t) => {
   const baseConfig = loadConfig();
   const storage = await createIntegrationStorage(t, baseConfig);
   if (!storage) {
@@ -1853,20 +1859,20 @@ test("integration: prod updateVaultMemberRole rejects wrap without hybrid scheme
     config: { allowedCryptoProfileVersions: [2], deployEnv: "prod" },
   });
 
-  // First share B without prod policy (dev mode) to set up the member
-  const devSharing = new VaultSharingService({
+  // Set up member with a valid hybrid wrap (policy is env-agnostic)
+  const setupSharing = new VaultSharingService({
     db: storage.postgres,
     vaults: storage.repositories.vaults,
     config: { allowedCryptoProfileVersions: [2], deployEnv: "dev" },
   });
-  await devSharing.shareVault(vaultId, userA.userId, {
+  await setupSharing.shareVault(vaultId, userA.userId, {
     recipientUserId: userB.userId,
-    encryptedVaultKey: mkBlob("wrapped-b"),
+    encryptedVaultKey: mkHybridWrapBlob("wrapped-b"),
     encryptedPayload: mkBlob("share-event"),
     baseVersion: 0,
   });
 
-  // Now attempt role update in prod mode with plain (non-hybrid) wraps
+  // Role update with plain (non-hybrid) wraps must be rejected in every deployEnv
   await assert.rejects(
     () =>
       sharing.updateVaultMemberRole(vaultId, userA.userId, {
@@ -1878,6 +1884,126 @@ test("integration: prod updateVaultMemberRole rejects wrap without hybrid scheme
         ],
         encryptedPayload: mkBlob("role-rotation-event"),
         baseVersion: 1,
+      }),
+    (err: unknown) =>
+      err instanceof VaultSharingServiceError && err.code === "VAULT_KEY_WRAP_INVALID",
+  );
+});
+
+test("integration: stage share rejects classical (non-hybrid) vault key wrap", async (t) => {
+  const baseConfig = loadConfig();
+  const storage = await createIntegrationStorage(t, baseConfig);
+  if (!storage) {
+    return;
+  }
+  await applyMigrations(storage);
+
+  const suffix = testEntityId();
+  const emailA = `vault-share-stage-wrap-a-${suffix}@okkey.local`;
+  const emailB = `vault-share-stage-wrap-b-${suffix}@okkey.local`;
+
+  t.after(async () => {
+    try {
+      await cleanupUserData(storage, emailB);
+      await cleanupUserData(storage, emailA);
+    } finally {
+      await storage.close();
+    }
+  });
+
+  const userA = await registerUser(storage, baseConfig, emailA);
+  const userB = await registerUser(storage, baseConfig, emailB);
+
+  const workspaceRows = await storage.postgres.query<{ id: string }>(
+    "SELECT id FROM workspaces WHERE owner_id = $1 LIMIT 1",
+    [userA.userId],
+  );
+  const workspaceId = workspaceRows[0]?.id;
+  assert.ok(workspaceId);
+  const vaultRows = await storage.postgres.query<{ id: string }>(
+    "SELECT id FROM vaults WHERE workspace_id = $1 LIMIT 1",
+    [workspaceId],
+  );
+  const vaultId = vaultRows[0]?.id;
+  assert.ok(vaultId);
+  await storage.postgres.query(
+    `
+      INSERT INTO workspace_members (id, workspace_id, user_id) VALUES ($1, $2, $3)
+      ON CONFLICT (workspace_id, user_id) DO NOTHING
+    `,
+    [testEntityId(), workspaceId, userB.userId],
+  );
+
+  const sharing = new VaultSharingService({
+    db: storage.postgres,
+    vaults: storage.repositories.vaults,
+    config: {
+      allowedCryptoProfileVersions: [2],
+      deployEnv: "stage",
+    },
+  });
+
+  await assert.rejects(
+    () =>
+      sharing.shareVault(vaultId, userA.userId, {
+        recipientUserId: userB.userId,
+        encryptedVaultKey: mkBlob("wrapped-key-b", 2),
+        encryptedPayload: mkBlob("vault-share-event", 2),
+        baseVersion: 0,
+      }),
+    (err: unknown) =>
+      err instanceof VaultSharingServiceError &&
+      err.code === "VAULT_KEY_WRAP_INVALID",
+  );
+});
+
+test("integration: stage rotateVaultKey rejects non-hybrid key_wrap_scheme", async (t) => {
+  const baseConfig = loadConfig();
+  const storage = await createIntegrationStorage(t, baseConfig);
+  if (!storage) {
+    return;
+  }
+  await applyMigrations(storage);
+
+  const suffix = testEntityId();
+  const email = `stage-rotate-scheme-${suffix}@okkey.local`;
+
+  t.after(async () => {
+    try {
+      await cleanupUserData(storage, email);
+    } finally {
+      await storage.close();
+    }
+  });
+
+  const userA = await registerUser(storage, baseConfig, email);
+  const workspaceRows = await storage.postgres.query<{ id: string }>(
+    "SELECT id FROM workspaces WHERE owner_id = $1 LIMIT 1",
+    [userA.userId],
+  );
+  const workspaceId = workspaceRows[0]?.id;
+  assert.ok(workspaceId);
+  const vaultRows = await storage.postgres.query<{ id: string }>(
+    "SELECT id FROM vaults WHERE workspace_id = $1 LIMIT 1",
+    [workspaceId],
+  );
+  const vaultId = vaultRows[0]?.id;
+  assert.ok(vaultId);
+
+  const sharing = new VaultSharingService({
+    db: storage.postgres,
+    vaults: storage.repositories.vaults,
+    config: { allowedCryptoProfileVersions: [2], deployEnv: "stage" },
+  });
+
+  await assert.rejects(
+    () =>
+      sharing.rotateVaultKey(vaultId, userA.userId, {
+        rotatedVaultKeys: [
+          { userId: userA.userId, encryptedVaultKey: mkBlob("wrapped-a", 2) },
+        ],
+        encryptedPayload: mkBlob("rotation-event"),
+        baseVersion: 0,
       }),
     (err: unknown) =>
       err instanceof VaultSharingServiceError && err.code === "VAULT_KEY_WRAP_INVALID",

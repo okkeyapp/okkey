@@ -1460,21 +1460,20 @@ export class VaultSharingService {
     recipientUserId: string,
     recipientPublicPqKey: string | null,
   ): void {
-    if (this.config.deployEnv !== "prod") {
-      return;
-    }
+    // Hybrid vault-key wrap is mandatory in every DEPLOY_ENV (dev/stage/prod/self-host).
+    // No compat mode and no operator flag may weaken this gate.
     if (!recipientPublicPqKey) {
       throw new VaultSharingServiceError(
         "VAULT_SHARE_RECIPIENT_PQ_REQUIRED",
         400,
-        "recipient must have ML-KEM public key in production",
+        "recipient must have ML-KEM public key",
       );
     }
     if (wrappedKeyBlob.crypto_version < 2) {
       throw new VaultSharingServiceError(
         "VAULT_KEY_WRAP_INVALID",
         400,
-        "vault key wrap must use crypto_version >= 2 in production",
+        "vault key wrap must use crypto_version >= 2",
       );
     }
     const wrapScheme = wrappedKeyBlob.meta?.["key_wrap_scheme"];
@@ -1482,7 +1481,7 @@ export class VaultSharingService {
       throw new VaultSharingServiceError(
         "VAULT_KEY_WRAP_INVALID",
         400,
-        `vault key wrap must declare meta.key_wrap_scheme=${HYBRID_VAULT_KEY_WRAP_SCHEME} in production`,
+        `vault key wrap must declare meta.key_wrap_scheme=${HYBRID_VAULT_KEY_WRAP_SCHEME}`,
         { recipientUserId, requiredKeyWrapScheme: HYBRID_VAULT_KEY_WRAP_SCHEME },
       );
     }

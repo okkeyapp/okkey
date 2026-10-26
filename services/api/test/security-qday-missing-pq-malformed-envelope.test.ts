@@ -70,7 +70,7 @@ function mkHybridWrapBlob(input: string, recipientUserId: string) {
   };
 }
 
-test("security: prod share rejects recipient without PQ key", async (t) => {
+test("security: share rejects recipient without PQ key in any deployEnv", async (t) => {
   const baseConfig = loadConfig();
   const storage = await createIntegrationStorage(t, baseConfig);
   if (!storage) {
@@ -145,7 +145,7 @@ test("security: prod share rejects recipient without PQ key", async (t) => {
       encryptedPayload: mkBlob("share-event", 2),
       baseVersion: 0,
     });
-    assert.fail("expected shareVault to reject when recipient has no PQ key in prod");
+    assert.fail("expected shareVault to reject when recipient has no PQ key");
   } catch (error) {
     assert.strictEqual(
       errorChainCode(error),
@@ -155,7 +155,87 @@ test("security: prod share rejects recipient without PQ key", async (t) => {
   }
 });
 
-test("security: prod rotate rejects non-hybrid key_wrap_scheme even with valid base64 payload", async (t) => {
+test("security: stage share rejects recipient without PQ key", async (t) => {
+  const baseConfig = loadConfig();
+  const storage = await createIntegrationStorage(t, baseConfig);
+  if (!storage) {
+    return;
+  }
+  await applyMigrations(storage);
+
+  const suffix = testEntityId();
+  const emailA = `sec-pq-stage-owner-${suffix}@okkey.local`;
+  const emailB = `sec-pq-stage-recipient-${suffix}@okkey.local`;
+
+  t.after(async () => {
+    try {
+      await cleanupUserData(storage, emailB);
+      await cleanupUserData(storage, emailA);
+    } finally {
+      await storage.close();
+    }
+  });
+
+  await registerUser(storage, baseConfig, emailA);
+  await registerUser(storage, baseConfig, emailB);
+  const ownerId = await userIdByEmail(storage, emailA);
+  const recipientId = await userIdByEmail(storage, emailB);
+  await storage.postgres.query(
+    "UPDATE users SET public_pq_key = NULL WHERE id = $1::bigint",
+    [recipientId],
+  );
+
+  const workspaceRows = await storage.postgres.query<{ id: string }>(
+    "SELECT id FROM workspaces WHERE owner_id = $1::bigint LIMIT 1",
+    [ownerId],
+  );
+  const workspaceId = workspaceRows[0]?.id;
+  assert.ok(workspaceId);
+
+  const wsId = pgWireEntityId(workspaceId);
+  const vaultRows = await storage.postgres.query<{ id: unknown }>(
+    "SELECT id FROM vaults WHERE workspace_id = $1::bigint LIMIT 1",
+    [wsId],
+  );
+  const vaultId = vaultRows[0]?.id;
+  assert.ok(vaultId);
+
+  await storage.postgres.query(
+    `
+      INSERT INTO workspace_members (id, workspace_id, user_id)
+      VALUES ($1, $2, $3)
+      ON CONFLICT (workspace_id, user_id) DO NOTHING
+    `,
+    [testEntityId(), wsId, recipientId],
+  );
+
+  const sharing = new VaultSharingService({
+    db: storage.postgres,
+    vaults: storage.repositories.vaults,
+    config: {
+      allowedCryptoProfileVersions: [2],
+      deployEnv: "stage",
+    },
+  });
+
+  try {
+    await sharing.shareVault(pgWireEntityId(vaultId), ownerId, {
+      recipientUserId: recipientId,
+      encryptedVaultKey: mkHybridWrapBlob("wrapped-key", recipientId),
+      encryptedPayload: mkBlob("share-event", 2),
+      baseVersion: 0,
+    });
+    assert.fail("expected shareVault to reject when recipient has no PQ key in stage");
+  } catch (error) {
+    assert.strictEqual(
+      errorChainCode(error),
+      "VAULT_SHARE_RECIPIENT_PQ_REQUIRED",
+      `unexpected rejection: ${error instanceof Error ? error.stack ?? error.message : String(error)}`,
+    );
+  }
+});
+
+test("security: rotate rejects non-hybrid key_wrap_scheme even with valid base64 payload", async (t) => {
   const baseConfig = loadConfig();
   const storage = await createIntegrationStorage(t, baseConfig);
   if (!storage) {
@@ -219,7 +299,7 @@ test("security: prod rotate rejects non-hybrid key_wrap_scheme even with valid b
       encryptedPayload: mkBlob("rotation-event"),
       baseVersion: 0,
     });
-    assert.fail("expected rotateVaultKey to reject non-hybrid key_wrap_scheme in prod");
+    assert.fail("expected rotateVaultKey to reject non-hybrid key_wrap_scheme");
   } catch (error) {
     assert.strictEqual(
       errorChainCode(error),
@@ -236,7 +316,80 @@ test("security: prod rotate rejects non-hybrid key_wrap_scheme even with valid b
   }
 });
 
-test("security: strict rollout rejects share without recipient PQ capability (no silent fallback)", async (t) => {
+test("security: stage rotate rejects non-hybrid key_wrap_scheme", async (t) => {
+  const baseConfig = loadConfig();
+  const storage = await createIntegrationStorage(t, baseConfig);
+  if (!storage) {
+    return;
+  }
+  await applyMigrations(storage);
+
+  const suffix = testEntityId();
+  const email = `sec-malformed-wrap-stage-${suffix}@okkey.local`;
+
+  t.after(async () => {
+    try {
+      await cleanupUserData(storage, email);
+    } finally {
+      await storage.close();
+    }
+  });
+
+  await registerUser(storage, baseConfig, email);
+  const ownerId = await userIdByEmail(storage, email);
+  const workspaceRows = await storage.postgres.query<{ id: string }>(
+    "SELECT id FROM workspaces WHERE owner_id = $1::bigint LIMIT 1",
+    [ownerId],
+  );
+  const workspaceId = workspaceRows[0]?.id;
+  assert.ok(workspaceId);
+
+  const wsId = pgWireEntityId(workspaceId);
+  const vaultRows = await storage.postgres.query<{ id: unknown }>(
+    "SELECT id FROM vaults WHERE workspace_id = $1::bigint LIMIT 1",
+    [wsId],
+  );
+  const vaultId = vaultRows[0]?.id;
+  assert.ok(vaultId);
+
+  const sharing = new VaultSharingService({
+    db: storage.postgres,
+    vaults: storage.repositories.vaults,
+    config: {
+      allowedCryptoProfileVersions: [2],
+      deployEnv: "stage",
+    },
+  });
+
+  try {
+    await sharing.rotateVaultKey(pgWireEntityId(vaultId), ownerId, {
+      rotatedVaultKeys: [
+        {
+          userId: ownerId,
+          encryptedVaultKey: {
+            crypto_version: 2,
+            algorithm: "opaque",
+            payload: Buffer.from("opaque-wrap", "utf8").toString("base64"),
+            meta: {
+              key_wrap_scheme: "ecc_legacy_v0",
+            },
+          },
+        },
+      ],
+      encryptedPayload: mkBlob("rotation-event"),
+      baseVersion: 0,
+    });
+    assert.fail("expected rotateVaultKey to reject non-hybrid key_wrap_scheme in stage");
+  } catch (error) {
+    assert.strictEqual(
+      errorChainCode(error),
+      "VAULT_KEY_WRAP_INVALID",
+      `unexpected rejection: ${error instanceof Error ? error.stack ?? error.message : String(error)}`,
+    );
+  }
+});
+
+test("security: hybrid wrap policy rejects share without recipient PQ (no silent fallback)", async (t) => {
   const baseConfig = loadConfig();
   const storage = await createIntegrationStorage(t, baseConfig);
   if (!storage) {
@@ -298,15 +451,15 @@ test("security: strict rollout rejects share without recipient PQ capability (no
   try {
     await sharing.shareVault(vaultId, ownerId, {
       recipientUserId: recipientId,
-      encryptedVaultKey: mkBlob("wrapped-key", 2),
+      encryptedVaultKey: mkHybridWrapBlob("wrapped-key", recipientId),
       encryptedPayload: mkBlob("share-event", 2),
       baseVersion: 0,
     });
-    assert.fail("expected strict rollout capability rejection");
+    assert.fail("expected hybrid wrap PQ rejection");
   } catch (error) {
     assert.strictEqual(
       errorChainCode(error),
-      "CRYPTO_CAPABILITY_REQUIRED",
+      "VAULT_SHARE_RECIPIENT_PQ_REQUIRED",
       `unexpected rejection: ${error instanceof Error ? error.stack ?? error.message : String(error)}`,
     );
   }
