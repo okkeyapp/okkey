@@ -24,6 +24,10 @@ import {
   getCryptoWritePolicyViolation,
 } from "../crypto/policy.ts";
 import {
+  assertHybridVaultKeyWrapPolicy as assertHybridVaultKeyWrapPolicyShared,
+  VaultKeyWrapPolicyError,
+} from "../crypto/vault-key-wrap-policy.ts";
+import {
   incrementCryptoMetric,
   recordCapabilityDecision,
   recordCryptoOperationOutcome,
@@ -144,7 +148,6 @@ function normalizeWireUserId(raw: string): string {
 }
 
 const SHARE_MANAGER_ROLES = new Set(["owner", "admin"]);
-const HYBRID_VAULT_KEY_WRAP_SCHEME = "hybrid_ecc_pq_v1";
 const ROTATION_REQUEST_FINGERPRINT_META_KEY = "rotation_request_fingerprint";
 
 export class VaultSharingService {
@@ -1460,41 +1463,22 @@ export class VaultSharingService {
     recipientUserId: string,
     recipientPublicPqKey: string | null,
   ): void {
-    // Hybrid vault-key wrap is mandatory in every DEPLOY_ENV (dev/stage/prod/self-host).
-    // No compat mode and no operator flag may weaken this gate.
-    if (!recipientPublicPqKey) {
-      throw new VaultSharingServiceError(
-        "VAULT_SHARE_RECIPIENT_PQ_REQUIRED",
-        400,
-        "recipient must have ML-KEM public key",
-      );
-    }
-    if (wrappedKeyBlob.crypto_version < 2) {
-      throw new VaultSharingServiceError(
-        "VAULT_KEY_WRAP_INVALID",
-        400,
-        "vault key wrap must use crypto_version >= 2",
-      );
-    }
-    const wrapScheme = wrappedKeyBlob.meta?.["key_wrap_scheme"];
-    if (wrapScheme !== HYBRID_VAULT_KEY_WRAP_SCHEME) {
-      throw new VaultSharingServiceError(
-        "VAULT_KEY_WRAP_INVALID",
-        400,
-        `vault key wrap must declare meta.key_wrap_scheme=${HYBRID_VAULT_KEY_WRAP_SCHEME}`,
-        { recipientUserId, requiredKeyWrapScheme: HYBRID_VAULT_KEY_WRAP_SCHEME },
-      );
-    }
-    const metaRecipientRaw = wrappedKeyBlob.meta?.["recipient_user_id"];
-    const metaRecipientUserId =
-      typeof metaRecipientRaw === "string" ? normalizeWireUserId(metaRecipientRaw) : null;
-    if (metaRecipientUserId !== normalizeWireUserId(recipientUserId)) {
-      throw new VaultSharingServiceError(
-        "VAULT_KEY_WRAP_INVALID",
-        400,
-        "vault key wrap recipient mismatch",
-        { recipientUserId, metaRecipientUserId: metaRecipientRaw },
-      );
+    try {
+      assertHybridVaultKeyWrapPolicyShared({
+        wrappedKeyBlob,
+        recipientUserId,
+        recipientPublicPqKey,
+      });
+    } catch (error) {
+      if (error instanceof VaultKeyWrapPolicyError) {
+        throw new VaultSharingServiceError(
+          error.code,
+          error.statusCode,
+          error.message,
+          error.details,
+        );
+      }
+      throw error;
     }
   }
 
