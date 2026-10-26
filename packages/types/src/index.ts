@@ -1143,6 +1143,12 @@ export interface SyncEventWireDto {
    * Clients must ignore ITEM_* events whose decrypted plaintext.itemId differs.
    */
   referencedItemId?: EntityId | null;
+  /**
+   * Server-persisted soft-delete hint for ITEM_* events.
+   * Clients must apply plaintext `deleted` on ITEM_UPDATE only when this is true
+   * (or when unset on legacy events). `false` means the update is not a soft-delete.
+   */
+  itemSoftDeleted?: boolean | null;
   version: number;
   createdAt: string;
 }

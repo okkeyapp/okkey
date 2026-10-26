@@ -69,6 +69,18 @@ export async function replayItemPlaintextEvents(
     if (!itemPlaintextMatchesReferencedId(parsed, ev)) {
       continue;
     }
+    const itemId = ev.referencedItemId ?? parsed.itemId;
+    if (ev.eventType === "ITEM_UPDATE" && !items.has(itemId)) {
+      // Mirror SyncReplayEngine: do not materialize UPDATE for unknown ids.
+      continue;
+    }
+    if (
+      ev.eventType === "ITEM_UPDATE" &&
+      Boolean(parsed.deleted) &&
+      ev.itemSoftDeleted !== true
+    ) {
+      continue;
+    }
     applyItemPlaintextToReplayMap(items, parsed, ev);
   }
   return { items };

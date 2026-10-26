@@ -67,6 +67,8 @@ export interface ReplayQuarantineRecord {
     | "DECRYPT_FAILED"
     | "INVALID_PAYLOAD"
     | "ITEM_ID_MISMATCH"
+    | "ITEM_UNKNOWN"
+    | "ITEM_SOFT_DELETE_UNMARKED"
     | "STALE_VERSION_NOT_DUPLICATE"
     | "SIGNATURE_REQUIRED"
     | "SIGNATURE_INVALID";
@@ -377,6 +379,24 @@ export class SyncReplayEngine {
         parsed.itemId !== event.referencedItemId
       ) {
         state.quarantined.push({ event, reason: "ITEM_ID_MISMATCH" });
+        return "quarantined";
+      }
+
+      const itemId = event.referencedItemId ?? parsed.itemId;
+      if (event.eventType === "ITEM_UPDATE" && !state.items.has(itemId)) {
+        // UPDATE without a prior CREATE in the replayed stream — do not materialize.
+        state.quarantined.push({ event, reason: "ITEM_UNKNOWN" });
+        return "quarantined";
+      }
+
+      if (
+        event.eventType === "ITEM_UPDATE" &&
+        Boolean(parsed.deleted) &&
+        event.itemSoftDeleted !== true
+      ) {
+        // Plaintext claims delete but the server did not mark soft-delete
+        // (missing/false/legacy-unset — new writes always persist an explicit boolean).
+        state.quarantined.push({ event, reason: "ITEM_SOFT_DELETE_UNMARKED" });
         return "quarantined";
       }
 

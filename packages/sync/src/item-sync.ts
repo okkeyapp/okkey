@@ -156,6 +156,7 @@ export async function buildItemDeleteAppendRequest(
     encrypted = await encryptVaultItemPayload(vaultKey, plaintext, 2, {
       itemId,
     });
+    const deletedAtMs = tombstone.deletedAtMs ?? tombstone.updatedAtMs;
     return {
       eventType: "ITEM_DELETE",
       encryptedBlob: toEncryptedBlob(
@@ -163,6 +164,9 @@ export async function buildItemDeleteAppendRequest(
         ITEM_PLAINTEXT_SCHEMA_VERSION_LATEST,
       ),
       baseVersion,
+      referencedItemId: itemId,
+      itemSoftDeleted: true,
+      itemDeletedAtMs: deletedAtMs,
       ...(idempotencyKey ? { idempotencyKey } : {}),
       clientCreatedAt,
     };

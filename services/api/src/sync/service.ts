@@ -124,6 +124,7 @@ export interface SyncEventResponse {
   idempotencyKey: string | null;
   clientCreatedAt: string | null;
   referencedItemId?: string | null;
+  itemSoftDeleted?: boolean | null;
   version: number;
   createdAt: string;
 }
@@ -414,6 +415,21 @@ export class SyncService {
       }
     }
 
+    if (
+      (input.eventType === "ITEM_UPDATE" || input.eventType === "ITEM_DELETE") &&
+      referencedItemId
+    ) {
+      const hasCreate = await this.events.hasItemCreateEvent(vaultId, referencedItemId);
+      if (!hasCreate) {
+        throw new SyncServiceError(
+          "SYNC_ITEM_NOT_FOUND",
+          404,
+          "ITEM_UPDATE/ITEM_DELETE require an existing ITEM_CREATE for this item id",
+          { referencedItemId },
+        );
+      }
+    }
+
     if (input.itemSoftDeleted === true) {
       if (
         input.itemDeletedAtMs === undefined ||
@@ -441,6 +457,14 @@ export class SyncService {
       clientCreatedAt = new Date(parsed).toISOString();
     }
 
+    // Always persist an explicit boolean for ITEM_* events (never leave unset on new rows).
+    // Omitted UPDATE/CREATE hints default to false; ITEM_DELETE is always soft-delete.
+    let itemSoftDeleted: boolean | null = null;
+    if (itemEventTypes.has(input.eventType)) {
+      itemSoftDeleted =
+        input.eventType === "ITEM_DELETE" ? true : input.itemSoftDeleted === true;
+    }
+
     try {
       const created = await this.events.append({
         vaultId,
@@ -452,18 +476,24 @@ export class SyncService {
         idempotencyKey: input.idempotencyKey,
         clientCreatedAt: clientCreatedAt ?? undefined,
         referencedItemId,
+        itemSoftDeleted,
       });
+      // Drive retention index from the *persisted* event (idempotent retries may
+      // return an older row). Never mark soft-delete in the index without a matching
+      // item_soft_deleted / ITEM_DELETE on that event row.
       if (this.softDeletes && referencedItemId) {
-        if (
-          input.eventType === "ITEM_DELETE" ||
-          (input.eventType === "ITEM_UPDATE" && input.itemSoftDeleted === true)
-        ) {
+        const persistedSoftDelete =
+          created.eventType === "ITEM_DELETE" || created.itemSoftDeleted === true;
+        if (persistedSoftDelete) {
           await this.softDeletes.upsert({
             vaultId,
             itemId: referencedItemId,
             deletedAtMs: Math.trunc(input.itemDeletedAtMs ?? Date.now()),
           });
-        } else if (input.eventType === "ITEM_UPDATE" && input.itemSoftDeleted === false) {
+        } else if (
+          created.eventType === "ITEM_UPDATE" &&
+          created.itemSoftDeleted === false
+        ) {
           await this.softDeletes.remove(vaultId, referencedItemId);
         }
       }
@@ -628,6 +658,7 @@ function mapEventToResponse(event: EventRecord): SyncEventResponse {
     idempotencyKey: event.idempotencyKey,
     clientCreatedAt: event.clientCreatedAt,
     referencedItemId: event.referencedItemId,
+    itemSoftDeleted: event.itemSoftDeleted,
     version: event.version,
     createdAt: event.createdAt,
   } as SyncEventResponse;
