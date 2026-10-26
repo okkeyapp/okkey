@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import {
   canRequestPlanUpgrade,
   isPlanTier,
@@ -11,6 +13,12 @@ import type { QueryExecutor } from "../storage/postgres.ts";
 import type { UsersRepository, WorkspacesRepository } from "../storage/repositories.ts";
 import type { EmailTemplateService } from "../email/service.ts";
 
+/** Max license / plan-change request attempts per workspace per rolling 24h window. */
+export const PLAN_CHANGE_REQUEST_DAILY_LIMIT = 3;
+
+/** Rolling window length in seconds. Retry-After = time until the oldest attempt ages out. */
+export const PLAN_CHANGE_REQUEST_WINDOW_SECONDS = 86_400;
+
 export class PlanChangeRequestServiceError extends Error {
   readonly code:
     | "ACCESS_DENIED"
@@ -18,9 +26,11 @@ export class PlanChangeRequestServiceError extends Error {
     | "INVALID_REQUEST"
     | "PLAN_DOWNGRADE_FORBIDDEN"
     | "ALREADY_SUBMITTED"
+    | "RATE_LIMITED"
     | "EMAIL_NOT_CONFIGURED"
     | "EMAIL_SEND_FAILED";
   readonly status: number;
+  readonly details?: { retryAfterSeconds?: number };
 
   constructor(
     code:
@@ -29,15 +39,18 @@ export class PlanChangeRequestServiceError extends Error {
       | "INVALID_REQUEST"
       | "PLAN_DOWNGRADE_FORBIDDEN"
       | "ALREADY_SUBMITTED"
+      | "RATE_LIMITED"
       | "EMAIL_NOT_CONFIGURED"
       | "EMAIL_SEND_FAILED",
     status: number,
     message: string,
+    details?: { retryAfterSeconds?: number },
   ) {
     super(message);
     this.name = "PlanChangeRequestServiceError";
     this.code = code;
     this.status = status;
+    this.details = details;
   }
 }
 
@@ -60,6 +73,23 @@ export function salesDeploymentLabel(mode: DeploymentMode): "saas" | "self-hoste
   return mode === "saas" ? "saas" : "self-hosted";
 }
 
+export function planChangeRequestWindowRedisKey(workspaceId: string): string {
+  return `plan-change-request:window:${workspaceId}`;
+}
+
+type RateLimitRedis = {
+  zAdd(key: string, score: number, member: string): Promise<number>;
+  zRemRangeByScore(key: string, min: number | string, max: number | string): Promise<number>;
+  zCard(key: string): Promise<number>;
+  zRangeByScoreWithScores(
+    key: string,
+    min: number | string,
+    max: number | string,
+    limit: number,
+  ): Promise<Array<{ value: string; score: number }>>;
+  expire(key: string, seconds: number): Promise<boolean>;
+};
+
 export class PlanChangeRequestService {
   private readonly db: QueryExecutor;
   private readonly workspaces: Pick<
@@ -68,10 +98,12 @@ export class PlanChangeRequestService {
   >;
   private readonly users: Pick<UsersRepository, "loadAccountProfile">;
   private readonly emailTemplates: Pick<EmailTemplateService, "sendPlanChangeRequest">;
+  private readonly redis: RateLimitRedis;
   private readonly salesEmail: string;
   private readonly salesEmailDeliverable: boolean;
   private readonly deploymentMode: DeploymentMode;
   private readonly publicAppBaseUrl: string;
+  private readonly nowMs: () => number;
 
   constructor(deps: {
     db: QueryExecutor;
@@ -81,6 +113,7 @@ export class PlanChangeRequestService {
     >;
     users: Pick<UsersRepository, "loadAccountProfile">;
     emailTemplates: Pick<EmailTemplateService, "sendPlanChangeRequest">;
+    redis: RateLimitRedis;
     salesEmail: string;
     /**
      * When false (`EMAIL_PROVIDER=logger` or incomplete transport config),
@@ -89,15 +122,19 @@ export class PlanChangeRequestService {
     salesEmailDeliverable?: boolean;
     deploymentMode: DeploymentMode;
     publicAppBaseUrl?: string;
+    /** Injectable clock for rolling-window tests (epoch ms). */
+    nowMs?: () => number;
   }) {
     this.db = deps.db;
     this.workspaces = deps.workspaces;
     this.users = deps.users;
     this.emailTemplates = deps.emailTemplates;
+    this.redis = deps.redis;
     this.salesEmail = deps.salesEmail.trim();
     this.salesEmailDeliverable = deps.salesEmailDeliverable ?? true;
     this.deploymentMode = deps.deploymentMode;
     this.publicAppBaseUrl = (deps.publicAppBaseUrl ?? "").trim().replace(/\/$/, "");
+    this.nowMs = deps.nowMs ?? (() => Date.now());
   }
 
   async getStatus(input: {
@@ -145,6 +182,45 @@ export class PlanChangeRequestService {
 
   private isSalesEmailDeliverable(): boolean {
     return Boolean(this.salesEmail) && this.salesEmailDeliverable;
+  }
+
+  private async consumeDailyRateLimit(workspaceId: string): Promise<void> {
+    const key = planChangeRequestWindowRedisKey(workspaceId);
+    const nowMs = this.nowMs();
+    const windowMs = PLAN_CHANGE_REQUEST_WINDOW_SECONDS * 1000;
+    const member = `${nowMs}:${randomUUID()}`;
+
+    // Every attempt counts (including rejected 429s after the limit).
+    await this.redis.zAdd(key, nowMs, member);
+    await this.redis.zRemRangeByScore(key, "-inf", nowMs - windowMs);
+    // Keep the key alive while the rolling window can still contain members.
+    await this.redis.expire(key, PLAN_CHANGE_REQUEST_WINDOW_SECONDS);
+
+    const count = await this.redis.zCard(key);
+    if (count > PLAN_CHANGE_REQUEST_DAILY_LIMIT) {
+      // Retry-After = when enough oldest attempts age out that a *new* attempt
+      // (also recorded) still leaves ≤ LIMIT in-window. That means at most
+      // LIMIT-1 members may remain when the client retries → pivot index
+      // (count - LIMIT) must leave the window first.
+      const pivotIndex = count - PLAN_CHANGE_REQUEST_DAILY_LIMIT;
+      const scored = await this.redis.zRangeByScoreWithScores(
+        key,
+        "-inf",
+        "+inf",
+        pivotIndex + 1,
+      );
+      const pivotScore = scored[pivotIndex]?.score ?? nowMs;
+      const retryAfterSeconds = Math.max(
+        1,
+        Math.ceil((pivotScore + windowMs - nowMs) / 1000),
+      );
+      throw new PlanChangeRequestServiceError(
+        "RATE_LIMITED",
+        429,
+        "license request rate limit exceeded",
+        { retryAfterSeconds },
+      );
+    }
   }
 
   async submit(input: PlanChangeRequestInput): Promise<{ submitted: true }> {
@@ -215,8 +291,8 @@ export class PlanChangeRequestService {
       );
     }
 
-    // Re-send is allowed: each successful submit updates `plan_change_request_sent_at`
-    // so the UI can show the latest datetime and “Send again”.
+    // Re-send is allowed (up to the daily limit): each successful submit updates
+    // `plan_change_request_sent_at` so the UI can show the latest datetime and “Send again”.
 
     const currentPlanTier = normalizePlanTier(workspace.planTier);
     // Self-hosted license purchase is not a SaaS catalog upgrade: Core FREE UI ignores DB
@@ -231,6 +307,8 @@ export class PlanChangeRequestService {
         "requested plan must be higher than the current plan",
       );
     }
+
+    await this.consumeDailyRateLimit(input.workspaceId);
 
     const profile = await this.users.loadAccountProfile(input.actorUserId);
     const regionFromProfile =

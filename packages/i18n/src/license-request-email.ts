@@ -5,6 +5,11 @@ import { formatEmailMessage } from "./email-format.js";
 export type LicenseRequestEmailFields = {
   workspaceName: string;
   workspaceUrl: string;
+  /** Catalog / request tier labels as stored (e.g. FREE, ENTERPRISE). */
+  currentPlanTier: string;
+  requestedPlanTier: string;
+  /** Sales-facing deployment label: `saas` or `self-hosted`. */
+  deploymentMode: string;
   /** Expected seats; empty Members line when null/undefined/invalid. */
   memberCount?: number | null;
   region: string | null;
@@ -16,6 +21,8 @@ export type LicenseRequestEmailFields = {
 
 export type LicenseRequestEmailCopy = {
   subject: string;
+  /** Short lead above the field list (SMTP HTML + plain / mailto body). */
+  lead: string;
   /** Plain field lines joined with `\n` — identical for SMTP text and mailto body. */
   body: string;
   lines: readonly string[];
@@ -40,9 +47,12 @@ export function buildLicenseRequestEmailCopy(
 ): LicenseRequestEmailCopy {
   const locale = resolveEmailLocale(emailLocale);
   const workspaceLabel = fields.workspaceName.trim() || "workspace";
+  const requestedPlan = dash(fields.requestedPlanTier);
   const subject = formatEmailMessage(locale, "email.planChangeRequest.subject", {
+    plan: requestedPlan,
     workspaceName: workspaceLabel,
   });
+  const lead = formatEmailMessage(locale, "email.planChangeRequest.lead", {});
 
   const memberValue =
     typeof fields.memberCount === "number" &&
@@ -59,6 +69,15 @@ export function buildLicenseRequestEmailCopy(
     }),
     formatEmailMessage(locale, "email.planChangeRequest.workspaceUrl", {
       value: dash(fields.workspaceUrl),
+    }),
+    formatEmailMessage(locale, "email.planChangeRequest.requestedPlan", {
+      value: requestedPlan,
+    }),
+    formatEmailMessage(locale, "email.planChangeRequest.currentPlan", {
+      value: dash(fields.currentPlanTier),
+    }),
+    formatEmailMessage(locale, "email.planChangeRequest.deploymentMode", {
+      value: dash(fields.deploymentMode),
     }),
     formatEmailMessage(locale, "email.planChangeRequest.members", {
       value: memberValue,
@@ -82,5 +101,5 @@ export function buildLicenseRequestEmailCopy(
     );
   }
 
-  return { subject, lines, body: lines.join("\n") };
+  return { subject, lead, lines, body: [lead, ...lines].join("\n") };
 }

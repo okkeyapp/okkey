@@ -1700,6 +1700,7 @@
   "web.workspaceSettings.plan.request.invalidEmail": "Enter a valid email.",
   "web.workspaceSettings.plan.request.errorTitle": "Could not send",
   "web.workspaceSettings.plan.request.errorGeneric": "Could not send the request. Try again later.",
+  "web.workspaceSettings.plan.request.errorRateLimited": "Limit of 3 license requests in 24 hours reached. Try again in {hours} h.",
   "web.workspaceSettings.plan.request.successTitle": "Request sent",
   "web.workspaceSettings.plan.request.successBody": "The form was submitted — wait for a reply at the email you provided.",
   "web.workspaceSettings.plan.request.successClose": "Close",

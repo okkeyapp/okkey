@@ -39,6 +39,96 @@ env_file_value() {
   grep -E "^${key}=" .env 2>/dev/null | cut -d= -f2- || true
 }
 
+# Rewrite KEY=value in ./.env without sed (sed treats `&` `\` in the replacement).
+# Safe for RFC-valid emails and other values with metacharacters.
+replace_env() {
+  local key="$1"
+  local value="$2"
+  local tmp
+  if [[ -f .env ]] && grep -Eq "^${key}=" .env 2>/dev/null; then
+    tmp="$(mktemp "${TMPDIR:-/tmp}/okkey-env.XXXXXX")"
+    # Preserve final newline behavior; rewrite matching KEY= lines only.
+    while IFS= read -r line || [[ -n "${line}" ]]; do
+      if [[ "${line}" == "${key}="* ]]; then
+        printf '%s=%s\n' "${key}" "${value}"
+      else
+        printf '%s\n' "${line}"
+      fi
+    done < .env > "${tmp}"
+    mv "${tmp}" .env
+  else
+    printf '%s=%s\n' "${key}" "${value}" >> .env
+  fi
+}
+
+# True when /dev/tty can actually be opened (controlling tty present).
+# `-r/-w /dev/tty` can pass in CI/cloud-init/setsid without a usable ctty.
+tty_usable() {
+  { : </dev/tty; } 2>/dev/null
+}
+
+# Loose email check: must contain one @ and a dot in the domain; no spaces.
+is_valid_sales_email() {
+  local email="$1"
+  [[ -n "${email}" ]] || return 1
+  [[ "${email}" != *[[:space:]]* ]] || return 1
+  [[ "${email}" == *@*.* ]] || return 1
+  [[ "${email}" != *@*@* ]] || return 1
+  [[ "${#email}" -le 320 ]] || return 1
+  return 0
+}
+
+# Resolve required sales inbox into `sales_email` without writing install files.
+# Prefer process env, then existing ./.env, then interactive prompt; never invent a default.
+# Must run before fetch_file / .env minting so a failed check leaves the install untouched.
+resolve_sales_email() {
+  sales_email="${OKKEY_SALES_EMAIL:-}"
+  if [[ -z "${sales_email}" ]]; then
+    sales_email="$(env_file_value OKKEY_SALES_EMAIL)"
+  fi
+  if [[ -n "${sales_email}" ]] && ! is_valid_sales_email "${sales_email}"; then
+    die "OKKEY_SALES_EMAIL is invalid: ${sales_email}
+Set a real inbox address (must contain @ and a domain)."
+  fi
+  if [[ -n "${sales_email}" ]]; then
+    return 0
+  fi
+  # `curl … | bash` makes stdin a pipe (not a TTY). Prefer a usable /dev/tty when a
+  # controlling terminal is attached; hard-fail with a clear hint when there is none
+  # (CI, cloud-init, setsid, ssh without -t).
+  local prompt_tty=""
+  if tty_usable; then
+    prompt_tty="/dev/tty"
+  elif [[ -t 0 ]]; then
+    prompt_tty=""
+  else
+    die "OKKEY_SALES_EMAIL is required (non-interactive install).
+Pass it on the right of \`|\` or set it in ${OKKEY_INSTALL_DIR}/.env before re-running, e.g.
+  curl -fsSL …/install.sh | OKKEY_SALES_EMAIL=sales@your-company.example bash
+There is no built-in default address."
+  fi
+  log "==> OKKEY_SALES_EMAIL is required (license / plan-change request recipient; no default)."
+  while true; do
+    if [[ -n "${prompt_tty}" ]]; then
+      printf 'OKKEY_SALES_EMAIL: ' >"${prompt_tty}"
+      # shellcheck disable=SC2162
+      read -r sales_email <"${prompt_tty}" || true
+    else
+      printf 'OKKEY_SALES_EMAIL: ' >&2
+      read -r sales_email || true
+    fi
+    sales_email="$(printf '%s' "${sales_email}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+    if is_valid_sales_email "${sales_email}"; then
+      break
+    fi
+    if [[ -n "${prompt_tty}" ]]; then
+      printf '%s\n' "error: enter a valid email address (example: sales@your-company.example)" >"${prompt_tty}"
+    else
+      log "error: enter a valid email address (example: sales@your-company.example)" >&2
+    fi
+  done
+}
+
 need_cmd() {
   command -v "$1" >/dev/null 2>&1 || die "missing required command: $1"
 }
@@ -300,6 +390,12 @@ cd "$OKKEY_INSTALL_DIR"
 
 log "==> Installing Okkey into ${OKKEY_INSTALL_DIR}"
 log "==> Raw base: ${OKKEY_REPO_RAW_BASE}  ref: ${OKKEY_REF}"
+
+# Obtain a valid sales inbox before any install file rewrite (compose / .env.example /
+# secrets). Failed checks must leave an existing install untouched.
+sales_email=""
+resolve_sales_email
+
 fetch_file "$COMPOSE_FILE_NAME" "./${COMPOSE_FILE_NAME}"
 fetch_file "$ENV_EXAMPLE_NAME" "./${ENV_EXAMPLE_NAME}"
 
@@ -312,17 +408,6 @@ if [[ ! -f .env ]]; then
   EMAIL_DEAD_SEAL="$(gen_secret)"
   PG_PASS="$(gen_secret)"
   MINIO_PASS="$(gen_secret)"
-
-  # Portable in-place sed (GNU/BSD)
-  replace_env() {
-    local key="$1"
-    local value="$2"
-    if sed --version >/dev/null 2>&1; then
-      sed -i "s|^${key}=.*|${key}=${value}|" .env
-    else
-      sed -i '' "s|^${key}=.*|${key}=${value}|" .env
-    fi
-  }
 
   replace_env JWT_SECRET "$JWT"
   replace_env SESSION_SECRET "$SESSION"
@@ -391,6 +476,9 @@ else
     reset_compose_volumes
   fi
 fi
+
+replace_env OKKEY_SALES_EMAIL "${sales_email}"
+log "==> OKKEY_SALES_EMAIL=${sales_email}"
 
 image_tag="$(env_file_value OKKEY_IMAGE_TAG)"
 image_tag="${image_tag:-dev}"

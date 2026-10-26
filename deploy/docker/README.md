@@ -46,6 +46,7 @@ Optional env:
 | `OKKEY_RESET_VOLUMES=1` | `docker compose down -v` before start (wipe Postgres/Redis/MinIO data) |
 | `WEB_PORT` / `API_PORT` | Host ports for web/API. **API is published on `127.0.0.1` only** (not `0.0.0.0`) so forged `X-Forwarded-For` cannot reach the API when `TRUSTED_PROXY_HOPS≥1`. On **fresh** installs, written into `.env`; when set without explicit URLs, also derives `PUBLIC_APP_URL` / `OKKEY_API_PUBLIC_URL` / `CORS_ORIGIN` / `WEBAUTHN_ORIGINS`. Without a reverse proxy, other machines cannot call the API on `http://<host>:4000` (or any `API_PORT`) — use the [`proxy/`](./proxy/) overlay (TLS, `TRUSTED_PROXY_HOPS=1`) for network access. |
 | `PUBLIC_APP_URL` / `OKKEY_API_PUBLIC_URL` / `CORS_ORIGIN` / `WEBAUTHN_ORIGINS` | Optional overrides written into `.env` on fresh installs (keep `config.js` and `.env` aligned). |
+| `OKKEY_SALES_EMAIL` | **Required** sales inbox for license / plan-change requests (passed to `api` and `worker`). No built-in default. Resolved **before** any compose/`.env` rewrite — failed checks leave an existing install untouched. When a terminal is available (including `curl … \| bash` via `/dev/tty`), install prompts for it; true non-interactive installs must set it on the right of `\|` or in `.env`. |
 
 ### Reinstall / password mismatch
 
