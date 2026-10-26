@@ -5,32 +5,27 @@ import { EMAIL_CANVAS, EMAIL_PRIMARY_TEXT, EMAIL_SECONDARY_TEXT, EmailShell } fr
 import { EmailStandardFooter } from "./EmailStandardFooter.js";
 
 export interface AuthSignInCodeEmailProps {
+  lang: string;
   beforeCode: string;
   code: string;
   line2: string;
-  ignore: string;
   noReply: string;
   ignoreIfMistake: string;
 }
 
 export function AuthSignInCodeEmail({
+  lang,
   beforeCode,
   code,
   line2,
-  ignore,
   noReply,
   ignoreIfMistake,
 }: AuthSignInCodeEmailProps) {
   return (
     <EmailShell
+      lang={lang}
       preview={beforeCode}
-      footer={
-        <EmailStandardFooter
-          footnotes={<Text style={footnoteStyle}>{ignore}</Text>}
-          noReply={noReply}
-          ignoreIfMistake={ignoreIfMistake}
-        />
-      }
+      footer={<EmailStandardFooter noReply={noReply} ignoreIfMistake={ignoreIfMistake} />}
     >
       <Text style={leadStyle}>{beforeCode}</Text>
       <Section style={codeWrapStyle}>
@@ -89,13 +84,6 @@ const codeStyle: React.CSSProperties = {
 const noteStyle: React.CSSProperties = {
   fontSize: "14px",
   lineHeight: "22px",
-  color: EMAIL_SECONDARY_TEXT,
-  margin: "0 0 8px",
-};
-
-const footnoteStyle: React.CSSProperties = {
-  fontSize: "13px",
-  lineHeight: "20px",
   color: EMAIL_SECONDARY_TEXT,
   margin: "0 0 8px",
 };

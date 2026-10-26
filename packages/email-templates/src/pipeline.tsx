@@ -89,18 +89,16 @@ export async function renderAuthEmailCode(
   const props = buildAuthSignInCodeEmailProps(locale, variables);
   const standard = buildEmailStandardFooterCopy(locale);
   const plainText = appendStandardFooterPlain(
-    [
-      formatEmailMessage(locale, `${messagePrefix}.plain`, {
-        code: variables.code,
-        minutes,
-      }),
-      props.ignore,
-    ].join("\n"),
+    formatEmailMessage(locale, `${messagePrefix}.plain`, {
+      code: variables.code,
+      minutes,
+    }),
     standard,
   );
   const element = <AuthSignInCodeEmail {...props} />;
   const html = renderEmailHtml(element);
-  return { subject, html, text: plainText };
+  const text = renderEmailPlainText(element);
+  return { subject, html, text: text.trim().length > 0 ? text : plainText };
 }
 
 export async function renderDeviceApprovalRequest(
@@ -124,10 +122,11 @@ export async function renderDeviceApprovalRequest(
   const {
     lead,
     deviceLine,
-    platformLine,
     whenLine,
+    expiresLine,
     ipLine,
     locationLine,
+    noteConfirmWhere,
     noteNoUrl,
     noteBlockIfNotYou,
   } = props;
@@ -139,10 +138,11 @@ export async function renderDeviceApprovalRequest(
     formatEmailMessage(locale, "email.device.approval.plain", {
       lead,
       deviceLine,
-      platformLine,
       whenLine: whenLine || "",
+      expiresLine: expiresLine || "",
       ipLine,
       locationLine: locationLine || "",
+      noteConfirmWhere,
       footer,
       noteBlockIfNotYou,
     }),
@@ -338,14 +338,13 @@ export async function renderDeviceRecoveryApprovalRequest(
   const {
     lead,
     deviceLine,
-    platformLine,
     whenLine,
     expiresLine,
     ipLine,
     locationLine,
+    noteConfirmWhere,
     noteNoUrl,
     noteBlockIfNotYou,
-    noteIgnoreIfMistake,
   } = props;
   const footer = helpUrl
     ? formatEmailMessage(locale, "email.device.recovery.textFooterWithUrl", { helpUrl })
@@ -355,14 +354,13 @@ export async function renderDeviceRecoveryApprovalRequest(
     formatEmailMessage(locale, "email.device.recovery.plain", {
       lead,
       deviceLine,
-      platformLine,
       whenLine: whenLine || "",
       expiresLine: expiresLine || "",
       ipLine,
       locationLine: locationLine || "",
+      noteConfirmWhere,
       footer,
       noteBlockIfNotYou,
-      noteIgnoreIfMistake: noteIgnoreIfMistake || "",
     }),
     standard,
   );
@@ -479,11 +477,21 @@ export async function renderPlanChangeRequest(
     senderEmail: variables.accountEmail,
     replyEmail: variables.contactEmail,
   });
+  const standard = buildEmailStandardFooterCopy(locale);
   const element = (
-    <PlanChangeRequestEmail locale={locale} lead={copy.lead} lines={copy.lines} />
+    <PlanChangeRequestEmail
+      lang={locale}
+      lead={copy.lead}
+      lines={copy.lines}
+      noReply={standard.noReply}
+      ignoreIfMistake={standard.ignoreIfMistake}
+    />
   );
   const html = renderEmailHtml(element);
-  return { subject: copy.subject, html, text: copy.body };
+  // SMTP text includes chrome + shared two-line footer; mailto body stays field-list only.
+  const plainText = appendStandardFooterPlain(copy.body, standard);
+  const text = renderEmailPlainText(element);
+  return { subject: copy.subject, html, text: text.trim().length > 0 ? text : plainText };
 }
 
 export async function renderEmailTemplate<Id extends EmailTemplateId>(

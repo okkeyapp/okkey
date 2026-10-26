@@ -29,6 +29,12 @@ export type {
   WorkspaceInviteVariables,
 } from "./variables.js";
 export { EMAIL_TEMPLATE_VERSIONS, type EmailTemplateId } from "./versions.js";
+export { resolveDeviceDetailName } from "./device-display-name.js";
+export {
+  appendStandardFooterPlain,
+  buildEmailStandardFooterCopy,
+} from "./standard-footer.js";
+
 export {
   OKKEY_MARK_CID,
   OKKEY_MARK_CONTENT_TYPE,

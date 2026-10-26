@@ -234,6 +234,10 @@ test("registerDevice sends device_approval_request when pending and email deps c
     /^https:\/\/app\.test\/items\?popup=settings\|devices$/,
   );
   assert.ok(typeof sends[0].variables.requestedAtIso === "string");
+  assert.ok(typeof sends[0].variables.expiresAtIso === "string");
+  const requestedMs = Date.parse(sends[0].variables.requestedAtIso!);
+  const expiresMs = Date.parse(sends[0].variables.expiresAtIso!);
+  assert.equal(expiresMs - requestedMs, 60_000);
 });
 
 test("registerDevice approval email maps desktop_app clientType to Desktop · App", async () => {
