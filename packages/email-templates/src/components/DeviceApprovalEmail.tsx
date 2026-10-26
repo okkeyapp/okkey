@@ -6,6 +6,7 @@ import { EMAIL_PRIMARY_TEXT, EMAIL_SECONDARY_TEXT, EmailShell } from "./EmailShe
 import { EmailStandardFooter } from "./EmailStandardFooter.js";
 
 export interface DeviceApprovalEmailProps {
+  lang: string;
   lead: string;
   deviceLine: string;
   whenLine: string;
@@ -18,12 +19,14 @@ export interface DeviceApprovalEmailProps {
   /** Always shown: where to confirm on a trusted device. */
   noteConfirmWhere: string;
   noteNoUrl: string;
+  /** Body warning at the bottom, above the shared footer separator. */
   noteBlockIfNotYou: string;
   noReply: string;
   ignoreIfMistake: string;
 }
 
 export function DeviceApprovalEmail({
+  lang,
   lead,
   deviceLine,
   whenLine,
@@ -41,14 +44,9 @@ export function DeviceApprovalEmail({
   const hasUrl = helpUrl.trim().length > 0;
   return (
     <EmailShell
+      lang={lang}
       preview={lead}
-      footer={
-        <EmailStandardFooter
-          footnotes={<Text style={footnoteStyle}>{noteBlockIfNotYou}</Text>}
-          noReply={noReply}
-          ignoreIfMistake={ignoreIfMistake}
-        />
-      }
+      footer={<EmailStandardFooter noReply={noReply} ignoreIfMistake={ignoreIfMistake} />}
     >
       <Text style={leadStyle}>{lead}</Text>
       <Section style={listStyle}>
@@ -68,7 +66,7 @@ export function DeviceApprovalEmail({
       ) : (
         <Text style={noteStyle}>{noteNoUrl}</Text>
       )}
-
+      <Text style={warningStyle}>{noteBlockIfNotYou}</Text>
     </EmailShell>
   );
 }
@@ -100,12 +98,12 @@ const noteStyle: React.CSSProperties = {
 
 const ctaWrapStyle: React.CSSProperties = {
   marginTop: "4px",
-  marginBottom: 0,
+  marginBottom: "16px",
 };
 
-const footnoteStyle: React.CSSProperties = {
-  fontSize: "13px",
-  lineHeight: "20px",
+const warningStyle: React.CSSProperties = {
+  fontSize: "14px",
+  lineHeight: "22px",
   color: EMAIL_SECONDARY_TEXT,
-  margin: "0 0 8px",
+  margin: 0,
 };

@@ -97,7 +97,8 @@ export async function renderAuthEmailCode(
   );
   const element = <AuthSignInCodeEmail {...props} />;
   const html = renderEmailHtml(element);
-  return { subject, html, text: plainText };
+  const text = renderEmailPlainText(element);
+  return { subject, html, text: text.trim().length > 0 ? text : plainText };
 }
 
 export async function renderDeviceApprovalRequest(
@@ -479,6 +480,7 @@ export async function renderPlanChangeRequest(
   const standard = buildEmailStandardFooterCopy(locale);
   const element = (
     <PlanChangeRequestEmail
+      lang={locale}
       lead={copy.lead}
       lines={copy.lines}
       noReply={standard.noReply}
@@ -486,9 +488,10 @@ export async function renderPlanChangeRequest(
     />
   );
   const html = renderEmailHtml(element);
-  // SMTP text includes the shared two-line footer; mailto body stays field-list only.
+  // SMTP text includes chrome + shared two-line footer; mailto body stays field-list only.
   const plainText = appendStandardFooterPlain(copy.body, standard);
-  return { subject: copy.subject, html, text: plainText };
+  const text = renderEmailPlainText(element);
+  return { subject: copy.subject, html, text: text.trim().length > 0 ? text : plainText };
 }
 
 export async function renderEmailTemplate<Id extends EmailTemplateId>(

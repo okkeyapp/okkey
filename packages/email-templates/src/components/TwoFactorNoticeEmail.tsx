@@ -6,6 +6,7 @@ import { EMAIL_PRIMARY_TEXT, EMAIL_SECONDARY_TEXT, EmailShell } from "./EmailShe
 import { EmailStandardFooter } from "./EmailStandardFooter.js";
 
 export interface TwoFactorNoticeEmailProps {
+  lang: string;
   line1: string;
   line2: string;
   securityUrl: string;
@@ -15,6 +16,7 @@ export interface TwoFactorNoticeEmailProps {
 }
 
 export function TwoFactorNoticeEmail({
+  lang,
   line1,
   line2,
   securityUrl,
@@ -25,6 +27,7 @@ export function TwoFactorNoticeEmail({
   const hasUrl = securityUrl.trim().length > 0;
   return (
     <EmailShell
+      lang={lang}
       preview={line1}
       footer={<EmailStandardFooter noReply={noReply} ignoreIfMistake={ignoreIfMistake} />}
     >

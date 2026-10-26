@@ -32,6 +32,7 @@ export function buildAuthSignInCodeEmailProps(
   const prefix = authEmailCodeMessagePrefix(variables.purpose);
   const standard = buildEmailStandardFooterCopy(locale);
   return {
+    lang: locale,
     beforeCode: formatEmailMessage(locale, `${prefix}.beforeCode`, {}),
     code: variables.code,
     line2: formatEmailMessage(locale, `${prefix}.line2`, { minutes }),
@@ -97,6 +98,7 @@ export function buildDeviceApprovalEmailProps(
   );
   const standard = buildEmailStandardFooterCopy(locale);
   return {
+    lang: locale,
     lead,
     deviceLine,
     whenLine,
@@ -125,6 +127,7 @@ export function buildWorkspaceInviteEmailProps(
   const ctaLabel = formatEmailMessage(locale, "email.workspaceInvite.ctaAccept", {});
   const standard = buildEmailStandardFooterCopy(locale);
   return {
+    lang: locale,
     intro,
     ctaLabel,
     inviteUrl,
@@ -160,6 +163,7 @@ function buildTwoFactorNoticeEmailProps(
   const whenUtc = formatUtcWhen(locale, variables.occurredAtIso);
   const standard = buildEmailStandardFooterCopy(locale);
   return {
+    lang: locale,
     line1: formatEmailMessage(locale, keys.line1, { whenUtc }),
     line2: formatEmailMessage(locale, keys.line2, {}),
     securityUrl,
@@ -198,6 +202,7 @@ export function buildAccountEmailChangedEmailProps(
   const whenUtc = formatUtcWhen(locale, variables.occurredAtIso);
   const standard = buildEmailStandardFooterCopy(locale);
   return {
+    lang: locale,
     line1: formatEmailMessage(locale, "email.account.emailChanged.line1", {
       newEmailMasked: variables.newEmailMasked,
       whenUtc,
@@ -221,6 +226,7 @@ export function buildDeviceRecoveryApprovalEmailProps(
   );
   const standard = buildEmailStandardFooterCopy(locale);
   return {
+    lang: locale,
     lead: formatEmailMessage(locale, "email.device.recovery.lead", {}),
     deviceLine: formatEmailMessage(locale, "email.device.approval.deviceLine", {
       deviceName: deviceDetail,
@@ -251,6 +257,7 @@ export function buildContactRecoveryReleaseEmailProps(
 ): RecoveryActionEmailProps {
   const standard = buildEmailStandardFooterCopy(locale);
   return {
+    lang: locale,
     lead: formatEmailMessage(locale, "email.contacts.recovery.lead", {}),
     detailLine: formatEmailMessage(locale, "email.contacts.recovery.accountLine", {
       ownerEmail: variables.ownerEmail,
@@ -276,6 +283,7 @@ export function buildTrustedContactInviteEmailProps(
 ): RecoveryActionEmailProps {
   const standard = buildEmailStandardFooterCopy(locale);
   return {
+    lang: locale,
     lead: formatEmailMessage(locale, "email.contacts.invite.lead", {
       inviter: variables.inviterDisplayName,
     }),

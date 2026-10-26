@@ -13,23 +13,22 @@ export const EMAIL_PRIMARY = "#3B82F6";
 export const EMAIL_PRIMARY_FOREGROUND = "#ffffff";
 
 type EmailShellProps = {
+  /** BCP-47 language for `<html lang>` — must match the email locale. */
+  lang?: string;
   preview: string;
-  /**
-   * Footnotes below the separator (auth verification-code pattern).
-   * Pass a string or multiple Text nodes — never put footnotes in the body above the rule.
-   */
+  /** Shared two-line footer below the separator (no per-email footnotes). */
   footer?: React.ReactNode;
   children: React.ReactNode;
 };
 
 /** Shared transactional chrome: canvas, white card, logo header, rule, then body. */
-export function EmailShell({ preview, footer, children }: EmailShellProps) {
+export function EmailShell({ lang = "en", preview, footer, children }: EmailShellProps) {
   const hasFooter =
     footer !== undefined &&
     footer !== null &&
     !(typeof footer === "string" && footer.trim().length === 0);
   return (
-    <Html>
+    <Html lang={lang} dir="ltr">
       <Head />
       <Preview>{preview}</Preview>
       <Body style={bodyStyle}>

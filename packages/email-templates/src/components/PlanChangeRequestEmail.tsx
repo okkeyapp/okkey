@@ -5,6 +5,7 @@ import { EMAIL_PRIMARY_TEXT, EMAIL_SECONDARY_TEXT, EmailShell } from "./EmailShe
 import { EmailStandardFooter } from "./EmailStandardFooter.js";
 
 export interface PlanChangeRequestEmailProps {
+  lang: string;
   lead: string;
   lines: readonly string[];
   noReply: string;
@@ -13,6 +14,7 @@ export interface PlanChangeRequestEmailProps {
 
 /** License / plan-change sales mail: shared shell + two-line footer. */
 export function PlanChangeRequestEmail({
+  lang,
   lead,
   lines,
   noReply,
@@ -20,6 +22,7 @@ export function PlanChangeRequestEmail({
 }: PlanChangeRequestEmailProps) {
   return (
     <EmailShell
+      lang={lang}
       preview={lead}
       footer={<EmailStandardFooter noReply={noReply} ignoreIfMistake={ignoreIfMistake} />}
     >

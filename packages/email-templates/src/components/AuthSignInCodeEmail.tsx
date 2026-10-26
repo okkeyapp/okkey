@@ -5,6 +5,7 @@ import { EMAIL_CANVAS, EMAIL_PRIMARY_TEXT, EMAIL_SECONDARY_TEXT, EmailShell } fr
 import { EmailStandardFooter } from "./EmailStandardFooter.js";
 
 export interface AuthSignInCodeEmailProps {
+  lang: string;
   beforeCode: string;
   code: string;
   line2: string;
@@ -13,6 +14,7 @@ export interface AuthSignInCodeEmailProps {
 }
 
 export function AuthSignInCodeEmail({
+  lang,
   beforeCode,
   code,
   line2,
@@ -21,6 +23,7 @@ export function AuthSignInCodeEmail({
 }: AuthSignInCodeEmailProps) {
   return (
     <EmailShell
+      lang={lang}
       preview={beforeCode}
       footer={<EmailStandardFooter noReply={noReply} ignoreIfMistake={ignoreIfMistake} />}
     >

@@ -76,9 +76,11 @@ test("renderEmailTemplate auth_email_code en and ru", async () => {
   assert.match(en.html, /123456/);
   assert.equal(en.html.includes("123 456"), false);
   assert.match(en.html, /Okkey/);
+  assert.match(en.html, /lang="en"/);
   assert.match(en.html, /cid:okkey-mark/);
   assert.equal(en.html.includes("data:image"), false);
   assert.match(en.html, /#f1f5f9/i);
+  assert.match(en.text, /^Okkey\b/m);
   assertSharedEmailFooter("en", en);
   assert.equal(
     en.text.includes("If you didn't request this code"),
@@ -101,6 +103,8 @@ test("renderEmailTemplate auth_email_code en and ru", async () => {
   assert.match(ru.text, /654321/);
   assert.match(ru.html, /654321/);
   assert.equal(ru.html.includes("654 321"), false);
+  assert.match(ru.html, /lang="ru"/);
+  assert.match(ru.text, /^Okkey\b/m);
   assertSharedEmailFooter("ru", ru);
   assert.equal(ru.text.includes("Если вы не запрашивали код"), false);
   assertNoMustachePlaceholders(ru.text);
@@ -592,12 +596,21 @@ test("EmailTemplateService sendTrustedContactInvite renders inviter details", as
   assertSharedEmailFooter("ru", sent[0]);
 });
 
-test("device approval footnotes render below EmailShell separator", async () => {
+test("device approval warning renders in body above EmailShell footer separator", async () => {
   const en = await renderEmailTemplate("device_approval_request", "en", deviceVars);
   const block = formatEmailMessage("en", "email.device.approval.noteBlockIfNotYou", {});
   const blockIdx = en.html.indexOf(block);
   const lastHr = en.html.lastIndexOf("<hr");
-  assert.ok(blockIdx > lastHr && lastHr > 0, "device approval footnote must be below separator");
+  assert.ok(
+    blockIdx > 0 && lastHr > blockIdx,
+    "device approval warning must be above footer separator",
+  );
+  assert.ok(en.text.includes(block), "plain must keep the body warning");
+  const noReply = formatEmailMessage("en", "email.common.noReply", {});
+  assert.ok(
+    en.text.indexOf(block) < en.text.indexOf(noReply),
+    "plain warning must sit above the shared footer",
+  );
   assertSharedEmailFooter("en", en);
 });
 
@@ -634,12 +647,16 @@ test("plan_change_request uses EmailShell and shared footer", async () => {
   assert.match(en.subject, /License request/i);
   assert.match(en.html, /cid:okkey-mark/);
   assert.match(en.html, /#f1f5f9/i);
+  assert.match(en.html, /lang="en"/);
+  assert.match(en.text, /^Okkey\b/m);
   assertSharedEmailFooter("en", en);
   assert.match(en.text, /Requested plan: ENTERPRISE/);
   const ru = await renderEmailTemplate("plan_change_request", "ru", {
     ...vars,
     locale: "ru",
   });
+  assert.match(ru.html, /lang="ru"/);
+  assert.match(ru.text, /^Okkey\b/m);
   assertSharedEmailFooter("ru", ru);
 });
 

@@ -6,6 +6,7 @@ import { EMAIL_PRIMARY_TEXT, EMAIL_SECONDARY_TEXT, EmailShell } from "./EmailShe
 import { EmailStandardFooter } from "./EmailStandardFooter.js";
 
 export interface RecoveryActionEmailProps {
+  lang: string;
   lead: string;
   detailLine: string;
   /** Optional second meta line (e.g. contact recovery "Requested: …"). */
@@ -14,13 +15,15 @@ export interface RecoveryActionEmailProps {
   helpUrl: string;
   ctaLabel: string;
   noteNoUrl: string;
+  /** Body warning at the bottom, above the shared footer separator. */
   noteIgnore: string;
   noReply: string;
   ignoreIfMistake: string;
 }
 
-/** Shared layout for enterprise recovery notify emails (device approve / contact release / invite). */
+/** Shared layout for enterprise recovery notify emails (contact release / invite). */
 export function RecoveryActionEmail({
+  lang,
   lead,
   detailLine,
   requestLine,
@@ -35,14 +38,9 @@ export function RecoveryActionEmail({
   const hasUrl = helpUrl.trim().length > 0;
   return (
     <EmailShell
+      lang={lang}
       preview={lead}
-      footer={
-        <EmailStandardFooter
-          footnotes={<Text style={footnoteStyle}>{noteIgnore}</Text>}
-          noReply={noReply}
-          ignoreIfMistake={ignoreIfMistake}
-        />
-      }
+      footer={<EmailStandardFooter noReply={noReply} ignoreIfMistake={ignoreIfMistake} />}
     >
       <Text style={leadStyle}>{lead}</Text>
       <Section style={listStyle}>
@@ -57,6 +55,7 @@ export function RecoveryActionEmail({
       ) : (
         <Text style={noteStyle}>{noteNoUrl}</Text>
       )}
+      <Text style={warningStyle}>{noteIgnore}</Text>
     </EmailShell>
   );
 }
@@ -83,17 +82,17 @@ const noteStyle: React.CSSProperties = {
   fontSize: "14px",
   lineHeight: "22px",
   color: EMAIL_SECONDARY_TEXT,
-  margin: 0,
+  margin: "0 0 16px",
 };
 
 const ctaWrapStyle: React.CSSProperties = {
   marginTop: "4px",
-  marginBottom: 0,
+  marginBottom: "16px",
 };
 
-const footnoteStyle: React.CSSProperties = {
-  fontSize: "13px",
-  lineHeight: "20px",
+const warningStyle: React.CSSProperties = {
+  fontSize: "14px",
+  lineHeight: "22px",
   color: EMAIL_SECONDARY_TEXT,
-  margin: "0 0 8px",
+  margin: 0,
 };
