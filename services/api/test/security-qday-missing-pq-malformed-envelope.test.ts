@@ -288,10 +288,11 @@ test("security: rotate rejects non-hybrid key_wrap_scheme even with valid base64
           encryptedVaultKey: {
             crypto_version: 2,
             algorithm: "opaque",
-            // valid base64 payload; server binds recipient_user_id — client cannot spoof mismatch
+            // valid base64 payload; non-hybrid scheme rejected before storage stamp
             payload: Buffer.from("opaque-wrap", "utf8").toString("base64"),
             meta: {
               key_wrap_scheme: "ecc_legacy_v0",
+              recipient_user_id: ownerId,
             },
           },
         },
@@ -372,6 +373,7 @@ test("security: stage rotate rejects non-hybrid key_wrap_scheme", async (t) => {
             payload: Buffer.from("opaque-wrap", "utf8").toString("base64"),
             meta: {
               key_wrap_scheme: "ecc_legacy_v0",
+              recipient_user_id: ownerId,
             },
           },
         },

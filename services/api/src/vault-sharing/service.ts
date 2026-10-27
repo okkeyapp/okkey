@@ -281,14 +281,6 @@ export class VaultSharingService {
       input.encryptedVaultKey,
       "encryptedVaultKey",
     );
-    const normalizedWrappedKeyBlob = mergeEncryptedBlobMeta(wrappedKeyBlob, {
-      entity: "vault_key_wrap",
-      recipient_user_id: recipientUserId,
-    });
-    normalizedWrappedKeyBlob.meta = {
-      ...normalizedWrappedKeyBlob.meta,
-      recipient_user_id: recipientUserId,
-    };
     const payloadBlob = parseBlobOrThrow(
       input.encryptedPayload,
       "encryptedPayload",
@@ -342,10 +334,15 @@ export class VaultSharingService {
     }
     await this.ensureRecipientInWorkspace(acl.workspaceId, recipientUserId);
     const recipientPqKey = await this.getUserPublicPqKey(recipientUserId);
+    // Assert client-declared wrap meta before stamping recipient_user_id for storage.
     this.assertHybridVaultKeyWrapPolicy(
-      normalizedWrappedKeyBlob,
+      wrappedKeyBlob,
       recipientUserId,
       recipientPqKey,
+    );
+    const normalizedWrappedKeyBlob = this.stampVaultKeyWrapRecipient(
+      wrappedKeyBlob,
+      recipientUserId,
     );
     this.assertRecipientCapabilityForWrite(recipientUserId, recipientPqKey, "vault.share");
 
@@ -439,31 +436,8 @@ export class VaultSharingService {
         event_type: "VAULT_KEY_ROTATION",
       },
     );
-    const rotatedMap = new Map<string, EncryptedBlob>();
-    const normalizedRotatedVaultKeys: Array<{ userId: string; encryptedVaultKey: EncryptedBlob }> = [];
-    for (const keyEntry of input.rotatedVaultKeys) {
-      const uid = normalizeWireUserId(keyEntry.userId);
-      if (!isEntityId(uid)) {
-        throw new VaultSharingServiceError(
-          "VAULT_SHARE_INVALID_RECIPIENT",
-          400,
-          "rotatedVaultKeys.userId must be entity id",
-        );
-      }
-      const merged = mergeEncryptedBlobMeta(
-        parseBlobOrThrow(keyEntry.encryptedVaultKey, "rotatedVaultKeys[].encryptedVaultKey"),
-        {
-          entity: "vault_key_wrap",
-          recipient_user_id: uid,
-        },
-      );
-      merged.meta = { ...merged.meta, recipient_user_id: uid };
-      rotatedMap.set(uid, merged);
-      normalizedRotatedVaultKeys.push({
-        userId: uid,
-        encryptedVaultKey: merged,
-      });
-    }
+    const { rotatedMap, normalizedRotatedVaultKeys } =
+      await this.parseAssertAndStampRotatedVaultKeys(input.rotatedVaultKeys);
     if (input.signature) {
       const actorKeys = await this.getUserSigningKeys(actorId);
       let signatureEnvelope;
@@ -580,11 +554,7 @@ export class VaultSharingService {
           activeRecipientPqKeys.get(userId) ?? null,
           "vault.rotate",
         );
-        this.assertHybridVaultKeyWrapPolicy(
-          rotatedMap.get(userId)!,
-          userId,
-          activeRecipientPqKeys.get(userId) ?? null,
-        );
+        // Hybrid wrap already asserted on the raw client blob before stamp.
         await tx.query(
           `
             INSERT INTO vault_keys (id, vault_id, user_id, encrypted_vault_key)
@@ -664,31 +634,8 @@ export class VaultSharingService {
         event_type: "VAULT_KEY_ROTATION",
       },
     );
-    const rotatedMap = new Map<string, EncryptedBlob>();
-    const normalizedRotatedVaultKeys: Array<{ userId: string; encryptedVaultKey: EncryptedBlob }> = [];
-    for (const keyEntry of input.rotatedVaultKeys) {
-      const uid = normalizeWireUserId(keyEntry.userId);
-      if (!isEntityId(uid)) {
-        throw new VaultSharingServiceError(
-          "VAULT_SHARE_INVALID_RECIPIENT",
-          400,
-          "rotatedVaultKeys.userId must be entity id",
-        );
-      }
-      const merged = mergeEncryptedBlobMeta(
-        parseBlobOrThrow(keyEntry.encryptedVaultKey, "rotatedVaultKeys[].encryptedVaultKey"),
-        {
-          entity: "vault_key_wrap",
-          recipient_user_id: uid,
-        },
-      );
-      merged.meta = { ...merged.meta, recipient_user_id: uid };
-      rotatedMap.set(uid, merged);
-      normalizedRotatedVaultKeys.push({
-        userId: uid,
-        encryptedVaultKey: merged,
-      });
-    }
+    const { rotatedMap, normalizedRotatedVaultKeys } =
+      await this.parseAssertAndStampRotatedVaultKeys(input.rotatedVaultKeys);
     if (input.signature) {
       const actorKeys = await this.getUserSigningKeys(actorId);
       let signatureEnvelope;
@@ -789,11 +736,7 @@ export class VaultSharingService {
           activeRecipientPqKeys.get(userId) ?? null,
           "vault.rotate",
         );
-        this.assertHybridVaultKeyWrapPolicy(
-          rotatedMap.get(userId)!,
-          userId,
-          activeRecipientPqKeys.get(userId) ?? null,
-        );
+        // Hybrid wrap already asserted on the raw client blob before stamp.
         await tx.query(
           `
             INSERT INTO vault_keys (id, vault_id, user_id, encrypted_vault_key)
@@ -891,31 +834,8 @@ export class VaultSharingService {
         event_type: "VAULT_KEY_ROTATION",
       },
     );
-    const rotatedMap = new Map<string, EncryptedBlob>();
-    const normalizedRotatedVaultKeys: Array<{ userId: string; encryptedVaultKey: EncryptedBlob }> = [];
-    for (const keyEntry of input.rotatedVaultKeys) {
-      const uid = normalizeWireUserId(keyEntry.userId);
-      if (!isEntityId(uid)) {
-        throw new VaultSharingServiceError(
-          "VAULT_SHARE_INVALID_RECIPIENT",
-          400,
-          "rotatedVaultKeys.userId must be entity id",
-        );
-      }
-      const merged = mergeEncryptedBlobMeta(
-        parseBlobOrThrow(keyEntry.encryptedVaultKey, "rotatedVaultKeys[].encryptedVaultKey"),
-        {
-          entity: "vault_key_wrap",
-          recipient_user_id: uid,
-        },
-      );
-      merged.meta = { ...merged.meta, recipient_user_id: uid };
-      rotatedMap.set(uid, merged);
-      normalizedRotatedVaultKeys.push({
-        userId: uid,
-        encryptedVaultKey: merged,
-      });
-    }
+    const { rotatedMap, normalizedRotatedVaultKeys } =
+      await this.parseAssertAndStampRotatedVaultKeys(input.rotatedVaultKeys);
     if (input.signature) {
       const actorKeys = await this.getUserSigningKeys(actorId);
       let signatureEnvelope;
@@ -1034,11 +954,7 @@ export class VaultSharingService {
           activeRecipientPqKeys.get(userId) ?? null,
           "vault.rotate",
         );
-        this.assertHybridVaultKeyWrapPolicy(
-          rotatedMap.get(userId)!,
-          userId,
-          activeRecipientPqKeys.get(userId) ?? null,
-        );
+        // Hybrid wrap already asserted on the raw client blob before stamp.
         await tx.query(
           `
             INSERT INTO vault_keys (id, vault_id, user_id, encrypted_vault_key)
@@ -1480,6 +1396,63 @@ export class VaultSharingService {
       }
       throw error;
     }
+  }
+
+  /** Stamp server-bound wrap meta only after hybrid policy accepted the raw client blob. */
+  private stampVaultKeyWrapRecipient(
+    raw: EncryptedBlob,
+    recipientUserId: string,
+  ): EncryptedBlob {
+    const stamped = mergeEncryptedBlobMeta(raw, {
+      entity: "vault_key_wrap",
+      recipient_user_id: recipientUserId,
+    });
+    stamped.meta = {
+      ...stamped.meta,
+      recipient_user_id: recipientUserId,
+    };
+    return stamped;
+  }
+
+  /**
+   * Parse rotated wraps, assert hybrid policy on each **raw** client blob, then stamp
+   * `recipient_user_id` for storage. Assert-before-stamp matches enterprise shared-vaults.
+   */
+  private async parseAssertAndStampRotatedVaultKeys(
+    entries: Array<{ userId: string; encryptedVaultKey: unknown }>,
+  ): Promise<{
+    rotatedMap: Map<string, EncryptedBlob>;
+    normalizedRotatedVaultKeys: Array<{ userId: string; encryptedVaultKey: EncryptedBlob }>;
+  }> {
+    const rawByUid = new Map<string, EncryptedBlob>();
+    for (const keyEntry of entries) {
+      const uid = normalizeWireUserId(keyEntry.userId);
+      if (!isEntityId(uid)) {
+        throw new VaultSharingServiceError(
+          "VAULT_SHARE_INVALID_RECIPIENT",
+          400,
+          "rotatedVaultKeys.userId must be entity id",
+        );
+      }
+      rawByUid.set(
+        uid,
+        parseBlobOrThrow(keyEntry.encryptedVaultKey, "rotatedVaultKeys[].encryptedVaultKey"),
+      );
+    }
+    const pqKeys = await this.getUserPublicPqKeys([...rawByUid.keys()]);
+    const rotatedMap = new Map<string, EncryptedBlob>();
+    const normalizedRotatedVaultKeys: Array<{ userId: string; encryptedVaultKey: EncryptedBlob }> =
+      [];
+    for (const [uid, raw] of rawByUid) {
+      this.assertHybridVaultKeyWrapPolicy(raw, uid, pqKeys.get(uid) ?? null);
+      const stamped = this.stampVaultKeyWrapRecipient(raw, uid);
+      rotatedMap.set(uid, stamped);
+      normalizedRotatedVaultKeys.push({
+        userId: uid,
+        encryptedVaultKey: stamped,
+      });
+    }
+    return { rotatedMap, normalizedRotatedVaultKeys };
   }
 
   private assertRecipientCapabilityForWrite(
