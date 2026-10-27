@@ -66,12 +66,14 @@ jobs:
           make -j"$(nproc)"
           make install
 
-      - name: Run smoke-handshake.sh
+      - name: Run smoke-handshake.sh (local-prefix — test what we built)
         working-directory: deploy/docker/proxy
         env:
+          # finding 7: force local so CI does not silently switch to docker image
+          OKKEY_PQ_SMOKE_MODE: local
           OKKEY_PQ_SMOKE_PREFIX: ${{ runner.temp }}/okkey-pq-smoke
           PATH: ${{ runner.temp }}/okkey-pq-smoke/prefix/bin:/usr/bin:/bin
           LD_LIBRARY_PATH: ${{ runner.temp }}/okkey-pq-smoke/prefix/lib64:${{ runner.temp }}/okkey-pq-smoke/prefix/lib
         run: |
-          chmod +x ./smoke-handshake.sh ./policy-compat.sh ./scripts/gen-self-signed.sh
+          chmod +x ./smoke-handshake.sh ./policy-compat.sh ./scripts/gen-self-signed.sh ./verify-compat.sh ./verify-tls.sh
           ./smoke-handshake.sh

@@ -12,8 +12,10 @@
 #   certs/compat-fullchain.pem + certs/compat-privkey.pem
 #   SAN: OKKEY_COMPAT_WEB_HOST, OKKEY_COMPAT_API_HOST
 #
-# N7: refuses to overwrite existing PEMs unless --force; refuses partial compat
-# host sets (exactly one of WEB/API set without the other).
+# N7 / retest#3 finding 6:
+#   - lowercase + strip trailing dots before any comparison or write
+#   - collision check BEFORE writing any PEM
+#   - refuses overwrite unless --force; refuses partial compat host sets
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -25,6 +27,11 @@ COMPAT_API_HOST="${OKKEY_COMPAT_API_HOST:-}"
 DAYS="${OKKEY_PROXY_CERT_DAYS:-825}"
 WITH_COMPAT=0
 FORCE=0
+
+normalize_host() {
+  # lowercase + strip trailing dots (Vasya finding 6)
+  printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | sed 's/\.*$//'
+}
 
 usage() {
   cat <<'EOF'
@@ -43,6 +50,9 @@ Usage: gen-self-signed.sh [--with-compat] [--force]
 
   Compat certs are also written automatically when OKKEY_COMPAT_WEB_HOST and
   OKKEY_COMPAT_API_HOST are both set in the environment.
+
+  Hostnames are normalized (lowercase, no trailing dot) before collision
+  checks and before any file is written.
 EOF
 }
 
@@ -54,6 +64,15 @@ while [[ $# -gt 0 ]]; do
     *) echo "Unknown arg: $1" >&2; usage >&2; exit 1 ;;
   esac
 done
+
+WEB_HOST="$(normalize_host "${WEB_HOST}")"
+API_HOST="$(normalize_host "${API_HOST}")"
+if [[ -n "${COMPAT_WEB_HOST}" ]]; then
+  COMPAT_WEB_HOST="$(normalize_host "${COMPAT_WEB_HOST}")"
+fi
+if [[ -n "${COMPAT_API_HOST}" ]]; then
+  COMPAT_API_HOST="$(normalize_host "${COMPAT_API_HOST}")"
+fi
 
 # N7: partial compat host set is always an error (with or without --with-compat).
 if [[ -n "${COMPAT_WEB_HOST}" && -z "${COMPAT_API_HOST}" ]] \
@@ -68,11 +87,26 @@ if [[ -n "${COMPAT_WEB_HOST}" && -n "${COMPAT_API_HOST}" ]]; then
 fi
 
 if [[ "${WITH_COMPAT}" -eq 1 ]]; then
-  COMPAT_WEB_HOST="${COMPAT_WEB_HOST:-compat-app.example.com}"
-  COMPAT_API_HOST="${COMPAT_API_HOST:-compat-api.example.com}"
+  COMPAT_WEB_HOST="$(normalize_host "${COMPAT_WEB_HOST:-compat-app.example.com}")"
+  COMPAT_API_HOST="$(normalize_host "${COMPAT_API_HOST:-compat-api.example.com}")"
 fi
 
-mkdir -p "$CERT_DIR"
+# Collision + overwrite checks BEFORE any write (finding 6 / N7).
+if [[ "${WITH_COMPAT}" -eq 1 ]]; then
+  if [[ "${COMPAT_WEB_HOST}" = "${WEB_HOST}" ]] \
+    || [[ "${COMPAT_API_HOST}" = "${API_HOST}" ]] \
+    || [[ "${COMPAT_WEB_HOST}" = "${API_HOST}" ]] \
+    || [[ "${COMPAT_API_HOST}" = "${WEB_HOST}" ]]; then
+    echo "ERROR: compat hosts must differ from strict hosts (after normalize)" >&2
+    echo "ERROR: strict web=${WEB_HOST} api=${API_HOST}" >&2
+    echo "ERROR: compat  web=${COMPAT_WEB_HOST} api=${COMPAT_API_HOST}" >&2
+    exit 1
+  fi
+  if [[ "${COMPAT_WEB_HOST}" = "${COMPAT_API_HOST}" ]]; then
+    echo "ERROR: OKKEY_COMPAT_WEB_HOST and OKKEY_COMPAT_API_HOST must differ" >&2
+    exit 1
+  fi
+fi
 
 refuse_overwrite() {
   local f
@@ -84,6 +118,14 @@ refuse_overwrite() {
   done
 }
 
+TARGETS=("${CERT_DIR}/fullchain.pem" "${CERT_DIR}/privkey.pem")
+if [[ "${WITH_COMPAT}" -eq 1 ]]; then
+  TARGETS+=("${CERT_DIR}/compat-fullchain.pem" "${CERT_DIR}/compat-privkey.pem")
+fi
+refuse_overwrite "${TARGETS[@]}"
+
+mkdir -p "$CERT_DIR"
+
 gen_cert() {
   local out_chain="$1"
   local out_key="$2"
@@ -91,7 +133,6 @@ gen_cert() {
   shift 3
   local sans=("$@")
   local tmp i
-  refuse_overwrite "${out_chain}" "${out_key}"
   tmp="$(mktemp)"
   {
     cat <<EOF
@@ -131,17 +172,6 @@ gen_cert "${CERT_DIR}/fullchain.pem" "${CERT_DIR}/privkey.pem" \
 echo "Wrote ${CERT_DIR}/fullchain.pem and ${CERT_DIR}/privkey.pem (SAN: ${WEB_HOST}, ${API_HOST})"
 
 if [[ "${WITH_COMPAT}" -eq 1 ]]; then
-  if [[ "${COMPAT_WEB_HOST}" = "${WEB_HOST}" ]] \
-    || [[ "${COMPAT_API_HOST}" = "${API_HOST}" ]] \
-    || [[ "${COMPAT_WEB_HOST}" = "${API_HOST}" ]] \
-    || [[ "${COMPAT_API_HOST}" = "${WEB_HOST}" ]]; then
-    echo "ERROR: compat hosts must differ from strict hosts" >&2
-    exit 1
-  fi
-  if [[ "${COMPAT_WEB_HOST}" = "${COMPAT_API_HOST}" ]]; then
-    echo "ERROR: OKKEY_COMPAT_WEB_HOST and OKKEY_COMPAT_API_HOST must differ" >&2
-    exit 1
-  fi
   gen_cert "${CERT_DIR}/compat-fullchain.pem" "${CERT_DIR}/compat-privkey.pem" \
     "${COMPAT_WEB_HOST}" "${COMPAT_WEB_HOST}" "${COMPAT_API_HOST}"
   echo "Wrote ${CERT_DIR}/compat-fullchain.pem and ${CERT_DIR}/compat-privkey.pem (SAN: ${COMPAT_WEB_HOST}, ${COMPAT_API_HOST})"

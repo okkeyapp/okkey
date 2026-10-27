@@ -53,25 +53,16 @@ if echo "${CLASSICAL_OUT}" | grep -Eqi 'Cipher is TLS_'; then
 fi
 echo "classical-only rejected (expected)."
 
-echo "==> TLS ≤ 1.2 must fail on the default (strict) listener (N4 — openssl, not curl alone)"
+echo "==> TLS ≤ 1.2 must fail on the default (strict) listener (N4 — openssl; catch static RSA AES too)"
 TLS12_OUT="$(openssl s_client \
   -connect "${HOST}:${PORT}" \
   -servername "${HOST}" \
   -tls1_2 \
   </dev/null 2>&1 || true)"
 echo "${TLS12_OUT}" | grep -E 'Protocol|Cipher|error|alert|VERIFY' || true
-if echo "${TLS12_OUT}" | grep -Eqi 'Cipher is (ECDHE|TLS_|AES|CHACHA)' \
+# Any completed cipher (TLS_ / ECDHE- / AES… / CHACHA) that is not NONE/0000 = FAIL
+if echo "${TLS12_OUT}" | grep -Eqi 'Cipher is (TLS_|ECDHE-|AES|CHACHA)' \
   && ! echo "${TLS12_OUT}" | grep -Eqi 'Cipher is \(NONE\)|Cipher[[:space:]]*:[[:space:]]*0000'; then
-  # Completed TLS 1.2 with a real cipher = fail
-  if echo "${TLS12_OUT}" | grep -Eqi 'Protocol[[:space:]]*:[[:space:]]*TLSv1\.2' \
-    && echo "${TLS12_OUT}" | grep -Eqi 'Cipher is ECDHE|Cipher is TLS_|Cipher[[:space:]]*:[[:space:]]*ECDHE'; then
-    echo "ERROR: TLS 1.2 unexpectedly succeeded on default listener" >&2
-    exit 1
-  fi
-fi
-# Must not show a negotiated non-0000 cipher under TLS 1.2
-if echo "${TLS12_OUT}" | grep -Eqi 'Protocol[[:space:]]*:[[:space:]]*TLSv1\.2' \
-  && echo "${TLS12_OUT}" | grep -Eqi 'Cipher is ECDHE-RSA-|Cipher is ECDHE-ECDSA-|Cipher is AES'; then
   echo "ERROR: TLS 1.2 handshake completed on strict listener" >&2
   exit 1
 fi

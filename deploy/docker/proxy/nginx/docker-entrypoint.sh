@@ -1,12 +1,20 @@
 #!/bin/sh
 set -eu
 
+# Normalize hostnames: lowercase + strip trailing dots (Vasya retest#3 finding 6).
+normalize_host() {
+  printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | sed 's/\.*$//'
+}
+
 : "${OKKEY_WEB_HOST:=app.example.com}"
 : "${OKKEY_API_HOST:=api.example.com}"
 : "${OKKEY_WEB_UPSTREAM:=web:80}"
 : "${OKKEY_API_UPSTREAM:=api:4000}"
 : "${OKKEY_COMPAT_ENABLED:=0}"
 : "${OKKEY_COMPAT_HTTPS_PORT:=8443}"
+
+OKKEY_WEB_HOST="$(normalize_host "${OKKEY_WEB_HOST}")"
+OKKEY_API_HOST="$(normalize_host "${OKKEY_API_HOST}")"
 
 export OKKEY_WEB_HOST OKKEY_API_HOST OKKEY_WEB_UPSTREAM OKKEY_API_UPSTREAM
 
@@ -26,6 +34,9 @@ case "${OKKEY_COMPAT_ENABLED}" in
     : "${OKKEY_COMPAT_SUNSET:?OKKEY_COMPAT_ENABLED requires OKKEY_COMPAT_SUNSET (YYYY-MM-DD)}"
     : "${OKKEY_COMPAT_OWNER:?OKKEY_COMPAT_ENABLED requires OKKEY_COMPAT_OWNER}"
 
+    OKKEY_COMPAT_WEB_HOST="$(normalize_host "${OKKEY_COMPAT_WEB_HOST}")"
+    OKKEY_COMPAT_API_HOST="$(normalize_host "${OKKEY_COMPAT_API_HOST}")"
+
     case "${OKKEY_COMPAT_SUNSET}" in
       [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]) ;;
       *)
@@ -37,6 +48,14 @@ case "${OKKEY_COMPAT_ENABLED}" in
     TODAY="$(date -u +%Y-%m-%d)"
     if [ "${OKKEY_COMPAT_SUNSET}" '<' "${TODAY}" ]; then
       echo "okkey-proxy: compat sunset ${OKKEY_COMPAT_SUNSET} is in the past (today ${TODAY} UTC) — refuse enable" >&2
+      exit 1
+    fi
+    # Upper bound ~1 year (portable: YYYY+1 same MM-DD; retest#3 minor / finding 5).
+    Y="$(date -u +%Y)"
+    MD="$(date -u +%m-%d)"
+    MAX_SUNSET="$((Y + 1))-${MD}"
+    if [ "${OKKEY_COMPAT_SUNSET}" '>' "${MAX_SUNSET}" ]; then
+      echo "okkey-proxy: compat sunset ${OKKEY_COMPAT_SUNSET} exceeds max time-box ${MAX_SUNSET} UTC — refuse enable" >&2
       exit 1
     fi
 
@@ -61,11 +80,19 @@ case "${OKKEY_COMPAT_ENABLED}" in
         echo "okkey-proxy: use a dedicated port (default 8443) or a separate IP — see README" >&2
         exit 1
         ;;
+      80)
+        echo "okkey-proxy: OKKEY_COMPAT_HTTPS_PORT must not be 80 (HTTP port; compat requires TLS on a dedicated HTTPS port, default 8443)" >&2
+        exit 1
+        ;;
       ''|*[!0-9]*)
         echo "okkey-proxy: OKKEY_COMPAT_HTTPS_PORT must be numeric (got: ${OKKEY_COMPAT_HTTPS_PORT})" >&2
         exit 1
         ;;
     esac
+    if [ "${OKKEY_COMPAT_HTTPS_PORT}" -lt 1 ] || [ "${OKKEY_COMPAT_HTTPS_PORT}" -gt 65535 ]; then
+      echo "okkey-proxy: OKKEY_COMPAT_HTTPS_PORT out of range 1..65535 (got: ${OKKEY_COMPAT_HTTPS_PORT})" >&2
+      exit 1
+    fi
 
     # Separate cert files are mandatory: even on a dedicated port, keep SSL_CTX
     # ownership obvious and SANs scoped to compat hosts.

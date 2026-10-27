@@ -1,25 +1,54 @@
 #!/usr/bin/env bash
 # Static review: classical-only compat listeners are explicit / isolated / time-boxed,
 # and the default route stays hybrid-only (no silent downgrade).
+# Retest#3/#4: catch-all classical TLS params + 421; cipher whitelist; per-block 421;
+# entrypoint sunset/normalize/port-80; gen-self-signed collision-before-write.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 STRICT="${ROOT}/nginx/conf.d/okkey.conf.template"
 COMPAT="${ROOT}/nginx/conf.d/okkey-compat.conf.template"
 ENTRY="${ROOT}/nginx/docker-entrypoint.sh"
+GENSS="${ROOT}/scripts/gen-self-signed.sh"
 COMPAT_ENV="${ROOT}/compat.env.example"
 COMPOSE="${ROOT}/docker-compose.proxy.yml"
 COMPOSE_COMPAT="${ROOT}/docker-compose.compat.yml"
 EDGE_COMPOSE="${ROOT}/../../saas/edge/docker-compose.edge.yml"
 EDGE_COMPAT="${ROOT}/../../saas/edge/docker-compose.compat.yml"
 
+CIPHER_CANON='ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305'
+
 fail() { echo "ERROR: $*" >&2; exit 1; }
+
+# Extract the server { … } block that contains default_server.
+extract_catchall() {
+  awk '
+    /^[[:space:]]*server[[:space:]]*\{/ {
+      if (inblk && buf ~ /default_server/) { printf "%s", buf; exit }
+      inblk=1; depth=0; buf=""
+    }
+    inblk {
+      buf = buf $0 "\n"
+      line=$0
+      for (i=1; i<=length(line); i++) {
+        c=substr(line,i,1)
+        if (c=="{") depth++
+        if (c=="}") {
+          depth--
+          if (depth==0) {
+            if (buf ~ /default_server/) { printf "%s", buf; exit }
+            inblk=0; buf=""
+          }
+        }
+      }
+    }
+  ' "$1"
+}
 
 echo "==> default (strict) template: ${STRICT}"
 [[ -f "${STRICT}" ]] || fail "missing strict template"
 grep -q 'ssl_protocols TLSv1.3;' "${STRICT}" \
   || fail "strict template must set ssl_protocols TLSv1.3 only"
-# N5: every active ssl_ecdh_curve (web + API) must be hybrid-only
 while IFS= read -r CURVE_LINE; do
   echo "${CURVE_LINE}" | grep -Eq 'ssl_ecdh_curve[[:space:]]+X25519MLKEM768[[:space:]]*;' \
     || fail "strict ssl_ecdh_curve is not hybrid-only: ${CURVE_LINE}"
@@ -33,7 +62,34 @@ fi
 
 echo "==> compat template: ${COMPAT}"
 [[ -f "${COMPAT}" ]] || fail "missing compat template"
-# N5: every active compat ssl_ecdh_curve must be classical X25519 only
+
+SERVER_COUNT="$(grep -cE '^[[:space:]]*server[[:space:]]*\{' "${COMPAT}" || true)"
+[[ "${SERVER_COUNT}" -ge 3 ]] \
+  || fail "compat template must have ≥3 server blocks (catch-all + web + api); found ${SERVER_COUNT}"
+
+CATCHALL="$(extract_catchall "${COMPAT}")"
+[[ -n "${CATCHALL}" ]] || fail "compat template missing default_server catch-all block"
+
+echo "${CATCHALL}" | grep -Eq 'ssl_protocols[[:space:]]+TLSv1\.2[[:space:]]+TLSv1\.3;' \
+  || fail "catch-all default_server must set ssl_protocols TLSv1.2 TLSv1.3 (finding 1)"
+echo "${CATCHALL}" | grep -Eq 'ssl_ecdh_curve[[:space:]]+X25519[[:space:]]*;' \
+  || fail "catch-all default_server must set ssl_ecdh_curve X25519 (finding 1)"
+echo "${CATCHALL}" | grep -Eq 'ssl_ciphers[[:space:]]+.*ECDHE-' \
+  || fail "catch-all default_server must set ssl_ciphers ECDHE+AEAD (finding 1)"
+echo "${CATCHALL}" | grep -q 'ssl_reject_handshake on;' \
+  || fail "catch-all must ssl_reject_handshake on (N1)"
+echo "${CATCHALL}" | grep -Eq 'return[[:space:]]+421' \
+  || fail "catch-all must return 421 (finding 2; no html root)"
+if echo "${CATCHALL}" | grep -Eqi '^[[:space:]]*root[[:space:]]+'; then
+  fail "catch-all must not set html root (finding 2)"
+fi
+echo "${CATCHALL}" | grep -q 'ssl_session_cache off;' \
+  || fail "catch-all must ssl_session_cache off (finding 3)"
+echo "${CATCHALL}" | grep -q 'ssl_session_tickets off;' \
+  || fail "catch-all must ssl_session_tickets off (finding 3)"
+echo "${CATCHALL}" | grep -q 'ssl_prefer_server_ciphers on;' \
+  || fail "catch-all must ssl_prefer_server_ciphers on"
+
 while IFS= read -r CURVE_LINE; do
   echo "${CURVE_LINE}" | grep -Eq 'ssl_ecdh_curve[[:space:]]+X25519[[:space:]]*;' \
     || fail "compat ssl_ecdh_curve is not classical-only X25519: ${CURVE_LINE}"
@@ -41,16 +97,41 @@ while IFS= read -r CURVE_LINE; do
     && fail "compat ssl_ecdh_curve must not list hybrid/P-curve: ${CURVE_LINE}"
 done < <(grep -E '^[[:space:]]*ssl_ecdh_curve' "${COMPAT}")
 COMPAT_CURVE_COUNT="$(grep -cE '^[[:space:]]*ssl_ecdh_curve' "${COMPAT}" || true)"
-[[ "${COMPAT_CURVE_COUNT}" -ge 2 ]] \
-  || fail "compat template must set ssl_ecdh_curve on both web and API blocks"
-grep -Eq 'ssl_protocols[[:space:]]+TLSv1\.2[[:space:]]+TLSv1\.3;' "${COMPAT}" \
-  || fail "compat template should allow TLSv1.2 TLSv1.3 for classical clients"
-# N2: ECDHE AEAD ciphers required
-grep -Eq '^[[:space:]]*ssl_ciphers[[:space:]]+.*ECDHE-.*GCM' "${COMPAT}" \
-  || fail "compat template must set ssl_ciphers ECDHE+AEAD for TLS 1.2 (N2)"
-if grep -E '^[[:space:]]*ssl_ciphers' "${COMPAT}" | grep -Eqi 'SHA1|:RC4|:DES|AES128-SHA[^2]|AES256-SHA[^2]'; then
-  fail "compat ssl_ciphers must not include static RSA / CBC-SHA1 suites"
+[[ "${COMPAT_CURVE_COUNT}" -ge 3 ]] \
+  || fail "compat must set ssl_ecdh_curve on catch-all + web + API (found ${COMPAT_CURVE_COUNT})"
+
+CIPHER_LINES="$(grep -E '^[[:space:]]*ssl_ciphers' "${COMPAT}" || true)"
+[[ -n "${CIPHER_LINES}" ]] || fail "compat template missing ssl_ciphers"
+CIPHER_COUNT="$(echo "${CIPHER_LINES}" | wc -l | tr -d ' ')"
+[[ "${CIPHER_COUNT}" -ge 3 ]] \
+  || fail "compat must set ssl_ciphers on catch-all + web + API (found ${CIPHER_COUNT})"
+while IFS= read -r CL; do
+  echo "${CL}" | grep -Fq "${CIPHER_CANON}" \
+    || fail "compat ssl_ciphers must be ECDHE+AEAD whitelist (got: ${CL})"
+  # Reject static RSA / CBC-SHA1 / HIGH:!aNULL if present anywhere in the list
+  if echo "${CL}" | grep -Eqi '(^|[ :])AES(128|256)-GCM-SHA(256|384)([ :]|$)|AES128-SHA([^2]|$)|AES256-SHA([^2]|$)|SHA1|:RC4|:DES|HIGH:!aNULL'; then
+    fail "compat ssl_ciphers must not include static RSA / CBC / HIGH:!aNULL: ${CL}"
+  fi
+done <<< "${CIPHER_LINES}"
+
+PREF_COUNT="$(grep -cE '^[[:space:]]*ssl_prefer_server_ciphers[[:space:]]+on;' "${COMPAT}" || true)"
+[[ "${PREF_COUNT}" -ge 3 ]] || fail "ssl_prefer_server_ciphers on required in all compat servers"
+SESS_COUNT="$(grep -cE '^[[:space:]]*ssl_session_cache[[:space:]]+off;' "${COMPAT}" || true)"
+[[ "${SESS_COUNT}" -ge 3 ]] || fail "ssl_session_cache off required in all compat servers"
+TICK_COUNT="$(grep -cE '^[[:space:]]*ssl_session_tickets[[:space:]]+off;' "${COMPAT}" || true)"
+[[ "${TICK_COUNT}" -ge 3 ]] || fail "ssl_session_tickets off required in all compat servers"
+
+RETURN_421_COUNT="$(grep -cE 'return[[:space:]]+421' "${COMPAT}" || true)"
+[[ "${RETURN_421_COUNT}" -ge 3 ]] \
+  || fail "compat must return 421 in catch-all + web + API (found ${RETURN_421_COUNT})"
+
+IF_NE_COUNT="$(grep -cE 'if \(\$host != "' "${COMPAT}" || true)"
+[[ "${IF_NE_COUNT}" -ge 2 ]] \
+  || fail "compat named servers must use if (\$host != \"...\") return 421 (found ${IF_NE_COUNT})"
+if grep -E 'if \(\$host = "' "${COMPAT}" >/dev/null 2>&1; then
+  fail "compat must not neutralize Host check with if (\$host = ...)"
 fi
+
 grep -q 'OKKEY_COMPAT_WEB_HOST' "${COMPAT}" \
   || fail "compat template must use OKKEY_COMPAT_WEB_HOST (isolation)"
 grep -q 'OKKEY_COMPAT_API_HOST' "${COMPAT}" \
@@ -70,13 +151,8 @@ grep -q 'OKKEY_COMPAT_HTTPS_PORT' "${COMPAT}" \
 if grep -E '^[[:space:]]*listen' "${COMPAT}" | grep -Eq '[[:space:]]443[[:space:]]'; then
   fail "compat template must not listen on 443 (shares default SSL_CTX / key_share)"
 fi
-# N1: catch-all default_server + ssl_reject_handshake on compat port
 grep -Eq 'listen[[:space:]]+\$\{OKKEY_COMPAT_HTTPS_PORT\}[[:space:]]+ssl[[:space:]]+default_server' "${COMPAT}" \
   || fail "compat template must mark default_server on compat port (N1 catch-all)"
-grep -q 'ssl_reject_handshake on;' "${COMPAT}" \
-  || fail "compat template must ssl_reject_handshake on catch-all (N1)"
-grep -q 'return 421' "${COMPAT}" \
-  || fail "compat template must return 421 for foreign Host (N1)"
 
 echo "==> strict template marks default_server on :443"
 grep -Eq 'listen[[:space:]]+443[[:space:]]+ssl[[:space:]]+default_server' "${STRICT}" \
@@ -95,6 +171,25 @@ grep -q 'OKKEY_COMPAT_HTTPS_PORT' "${ENTRY}" \
   || fail "entrypoint must set/validate OKKEY_COMPAT_HTTPS_PORT"
 grep -q 'must not be 443' "${ENTRY}" \
   || fail "entrypoint must refuse compat listen port 443"
+grep -q 'must not be 80' "${ENTRY}" \
+  || fail "entrypoint must refuse compat listen port 80 with clear error"
+grep -q 'normalize_host' "${ENTRY}" \
+  || fail "entrypoint must normalize_host (lowercase / trailing-dot; finding 6)"
+grep -Eq 'in the past|sunset.*past' "${ENTRY}" \
+  || fail "entrypoint must refuse past sunset"
+grep -Eq 'exceeds max time-box|MAX_SUNSET' "${ENTRY}" \
+  || fail "entrypoint must enforce sunset upper time-box"
+
+echo "==> gen-self-signed N7 / finding 6: ${GENSS}"
+[[ -x "${GENSS}" ]] || fail "gen-self-signed.sh missing or not executable"
+grep -q 'normalize_host' "${GENSS}" \
+  || fail "gen-self-signed must normalize_host"
+COLLISION_LINE="$(grep -n 'compat hosts must differ' "${GENSS}" | head -1 | cut -d: -f1)"
+WRITE_LINE="$(grep -n 'openssl req' "${GENSS}" | head -1 | cut -d: -f1)"
+[[ -n "${COLLISION_LINE}" && -n "${WRITE_LINE}" ]] \
+  || fail "gen-self-signed must check collision and write certs"
+[[ "${COLLISION_LINE}" -lt "${WRITE_LINE}" ]] \
+  || fail "gen-self-signed must check host collision BEFORE writing PEMs (finding 6)"
 
 echo "==> compose defaults compat off; N8 no 8443 on base overlay"
 grep -q 'OKKEY_COMPAT_ENABLED: \${OKKEY_COMPAT_ENABLED:-0}' "${COMPOSE}" \

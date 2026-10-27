@@ -115,11 +115,13 @@ Confirm with `nginx -V` / `openssl version` that the linked OpenSSL is ≥ 3.5 a
 | Explicit | `OKKEY_COMPAT_ENABLED=1` (compose defaults to `0`) |
 | Isolated hosts | `OKKEY_COMPAT_WEB_HOST` / `OKKEY_COMPAT_API_HOST` must differ from strict hosts |
 | Isolated port | `OKKEY_COMPAT_HTTPS_PORT` default `8443` — **must not be 443** (entrypoint refuses). nginx/OpenSSL TLS 1.3 selects `key_share` from the default SSL_CTX on a listen socket, so different `ssl_ecdh_curve` / `ssl_protocols` cannot share `:443` with the hybrid default without bleeding or breaking one profile. |
-| Catch-all (N1) | Compat port `default_server` + `ssl_reject_handshake on`; foreign SNI rejected; forged `Host` → **421** |
+| Catch-all (N1) | Compat port `default_server` carries the same classical `ssl_protocols` / `ssl_ecdh_curve` / `ssl_ciphers` as named servers (owns default SSL_CTX); `ssl_reject_handshake on`; `location / { return 421; }` (no html root). Foreign SNI → handshake reject; HTTP/1.1 forged `Host` rematch → **421** |
+| Sessions | `ssl_session_cache off` + `ssl_session_tickets off` on all compat servers (no TLS1.2 resume bypass of reject) |
 | Isolated certs | `compat-fullchain.pem` / `compat-privkey.pem` (never reuse strict `fullchain.pem`) |
-| Time-boxed | `OKKEY_COMPAT_SUNSET=YYYY-MM-DD` + `OKKEY_COMPAT_OWNER` required; past sunset → refuse start |
-| Classical-only | `ssl_protocols TLSv1.2 TLSv1.3;` + `ssl_ecdh_curve X25519;` + ECDHE+AEAD `ssl_ciphers` (no static RSA / CBC-SHA1) |
-| Port publish (N8) | Base `docker-compose.proxy.yml` does **not** map 8443; use `docker-compose.compat.yml` only when ENABLED=1 |
+| Time-boxed | `OKKEY_COMPAT_SUNSET=YYYY-MM-DD` + `OKKEY_COMPAT_OWNER` required; past sunset or >~1 year out → refuse start |
+| Classical-only | `ssl_protocols TLSv1.2 TLSv1.3;` + `ssl_ecdh_curve X25519;` + ECDHE+AEAD `ssl_ciphers` + `ssl_prefer_server_ciphers on` (no static RSA / CBC-SHA1). Hybrid/P-256 clients rejected. |
+| Hosts | Entrypoint + `gen-self-signed.sh` lowercase hosts and strip trailing dots before collision checks / writes |
+| Port publish (N8) | Base `docker-compose.proxy.yml` does **not** map 8443; use `docker-compose.compat.yml` only when ENABLED=1 (overlay + ENABLED=0 publishes a dead port — keep them paired) |
 | Optional allowlist | `OKKEY_COMPAT_ALLOW_CIDRS=10.0.0.0/8,…` → nginx `allow`/`deny all` |
 
 **Technical choice (Vasya QA rework):** dedicated **port + cert + SNI + reject catch-all**, not a second `server` on `:443`. Separate IP left open for Саша (product question); port is the working isolation without claiming IP policy.
@@ -134,7 +136,10 @@ Confirm with `nginx -V` / `openssl version` that the linked OpenSSL is ≥ 3.5 a
 # Static policy (no live edge required):
 ./proxy/policy-compat.sh
 
-# Local handshake smoke (no auto GHA until 1 Nov 2026; workflow_dispatch only):
+# Local handshake smoke (no auto GHA until 1 Nov 2026; workflow_dispatch only).
+# CI forces OKKEY_PQ_SMOKE_MODE=local against the built prefix:
+OKKEY_PQ_SMOKE_MODE=local OKKEY_PQ_SMOKE_PREFIX=/tmp/okkey-pq-smoke ./proxy/smoke-handshake.sh
+# Or auto (docker if present):
 ./proxy/smoke-handshake.sh
 
 # Live: strict must reject classical-only; pass compat host+port when enabled:
