@@ -30,6 +30,8 @@ services:
     ports:
       - "${OKKEY_PROXY_HTTP_PORT:-80}:80"
       - "${OKKEY_PROXY_HTTPS_PORT:-443}:443"
+      # Compat classical listeners use a dedicated port (not 443) — see compat.env.example.
+      - "${OKKEY_COMPAT_HTTPS_PORT:-8443}:${OKKEY_COMPAT_HTTPS_PORT:-8443}"
     environment:
       OKKEY_WEB_HOST: ${OKKEY_WEB_HOST:-app.example.com}
       OKKEY_API_HOST: ${OKKEY_API_HOST:-api.example.com}
@@ -42,5 +44,6 @@ services:
       OKKEY_COMPAT_SUNSET: ${OKKEY_COMPAT_SUNSET:-}
       OKKEY_COMPAT_OWNER: ${OKKEY_COMPAT_OWNER:-}
       OKKEY_COMPAT_ALLOW_CIDRS: ${OKKEY_COMPAT_ALLOW_CIDRS:-}
+      OKKEY_COMPAT_HTTPS_PORT: ${OKKEY_COMPAT_HTTPS_PORT:-8443}
     volumes:
       - ./proxy/certs:/etc/nginx/certs:ro

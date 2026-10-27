@@ -78,6 +78,7 @@ RUN chmod +x /docker-entrypoint.sh \
   && /usr/local/openssl/bin/openssl version \
   && nginx -V
 
-EXPOSE 80 443
+# 8443 = default OKKEY_COMPAT_HTTPS_PORT (classical compat; not used when compat off).
+EXPOSE 80 443 8443
 ENTRYPOINT ["/docker-entrypoint.sh"]
 CMD ["nginx", "-g", "daemon off;"]

@@ -8,7 +8,7 @@
 | Note only | Caddy ≥ 2.10 | `x25519mlkem768` (set `curves` hybrid-only for strict) |
 | Note only | Traefik ≥ 3.5 | `X25519MLKEM768` |
 
-Classical-only clients are **not** on the default route. Optional **compat listeners** (q3-4) use separate hostnames, classical `X25519` only, and require an explicit sunset — see [Compat listeners](#compat-listeners-classical-only).
+Classical-only clients are **not** on the default route. Optional **compat listeners** (q3-4) use separate hostnames, a **dedicated listen port** (default `8443`, never `443`), dedicated certs, classical `X25519` only, and require an explicit sunset — see [Compat listeners](#compat-listeners-classical-only).
 
 ## Layout
 
@@ -17,12 +17,13 @@ Classical-only clients are **not** on the default route. Optional **compat liste
 | `docker-compose.proxy.yml` | Optional compose overlay (`proxy` service) |
 | `nginx/Dockerfile` | Builds nginx against OpenSSL 3.5.x |
 | `nginx/conf.d/okkey.conf.template` | Strict TLS + reverse proxy to `web` / `api` |
-| `nginx/conf.d/okkey-compat.conf.template` | Optional classical-only listeners (separate hosts) |
+| `nginx/conf.d/okkey-compat.conf.template` | Optional classical-only listeners (separate hosts + port) |
 | `compat.env.example` | Opt-in env knobs (disabled by default) |
 | `policy-compat.sh` | Static review: strict hybrid-only + compat isolation/sunset gates |
-| `scripts/gen-self-signed.sh` | Local smoke certs (not for production) |
+| `scripts/gen-self-signed.sh` | Local smoke certs — `--with-compat` writes dedicated compat SANs |
 | `verify-tls.sh` | `s_client` + TLS 1.2 rejection check |
-| `verify-compat.sh` | Strict rejects classical-only; optional compat host accepts classical |
+| `verify-compat.sh` | Strict rejects classical-only; compat host:port accepts classical + TLS 1.2 |
+| `smoke-handshake.sh` | Local handshake smoke (Docker or local OpenSSL≥3.5 nginx; no GHA) |
 | `rollback-drill.sh` | Exercise 6.19 rollback checklist once (compat enable → restore hybrid default) |
 
 ## Quick start (overlay on existing install)
@@ -111,27 +112,40 @@ Confirm with `nginx -V` / `openssl version` that the linked OpenSSL is ≥ 3.5 a
 | Rule | Enforcement |
 |------|-------------|
 | Explicit | `OKKEY_COMPAT_ENABLED=1` (compose defaults to `0`) |
-| Isolated | `OKKEY_COMPAT_WEB_HOST` / `OKKEY_COMPAT_API_HOST` must differ from strict hosts (entrypoint refuses collisions) |
-| Time-boxed | `OKKEY_COMPAT_SUNSET=YYYY-MM-DD` + `OKKEY_COMPAT_OWNER` required; past sunset → container refuses to start |
-| Classical-only | compat template: `ssl_protocols TLSv1.2 TLSv1.3;` + `ssl_ecdh_curve X25519;` (no `X25519MLKEM768`) |
+| Isolated hosts | `OKKEY_COMPAT_WEB_HOST` / `OKKEY_COMPAT_API_HOST` must differ from strict hosts |
+| Isolated port | `OKKEY_COMPAT_HTTPS_PORT` default `8443` — **must not be 443** (entrypoint refuses). nginx/OpenSSL TLS 1.3 selects `key_share` from the default SSL_CTX on a listen socket, so different `ssl_ecdh_curve` / `ssl_protocols` cannot share `:443` with the hybrid default without bleeding or breaking one profile. |
+| Isolated certs | `compat-fullchain.pem` / `compat-privkey.pem` (never reuse strict `fullchain.pem`) |
+| Time-boxed | `OKKEY_COMPAT_SUNSET=YYYY-MM-DD` + `OKKEY_COMPAT_OWNER` required; past sunset → refuse start |
+| Classical-only | `ssl_protocols TLSv1.2 TLSv1.3;` + `ssl_ecdh_curve X25519;` (TLS 1.2 required for compat purpose) |
 | Optional allowlist | `OKKEY_COMPAT_ALLOW_CIDRS=10.0.0.0/8,…` → nginx `allow`/`deny all` |
+
+**Technical choice (Vasya QA rework):** dedicated **port + cert + SNI**, not a second `server` on `:443`. Separate IP left open for Саша (product question); port is the working isolation without claiming IP policy.
 
 ```bash
 # Static policy (no live edge required):
 ./proxy/policy-compat.sh
 
-# Live: strict must reject classical-only; pass compat host only when enabled:
+# Local handshake smoke (no GitHub Actions):
+./proxy/smoke-handshake.sh
+
+# Live: strict must reject classical-only; pass compat host+port when enabled:
 ./proxy/verify-compat.sh app.example.com 443
-./proxy/verify-compat.sh app.example.com 443 compat-app.example.com 443
+./proxy/verify-compat.sh app.example.com 443 compat-app.example.com 8443
 ```
 
-Enable (example — also ensure cert SANs cover the compat hostnames):
+Enable (example):
 
 ```bash
+# Certs with dedicated compat SANs:
+OKKEY_COMPAT_WEB_HOST=compat-app.example.com \
+OKKEY_COMPAT_API_HOST=compat-api.example.com \
+  ./proxy/scripts/gen-self-signed.sh --with-compat
+
 # In install .env (see compat.env.example):
 OKKEY_COMPAT_ENABLED=1
 OKKEY_COMPAT_WEB_HOST=compat-app.example.com
 OKKEY_COMPAT_API_HOST=compat-api.example.com
+OKKEY_COMPAT_HTTPS_PORT=8443
 OKKEY_COMPAT_SUNSET=2026-12-31
 OKKEY_COMPAT_OWNER=sre-oncall@example.com
 # OKKEY_COMPAT_ALLOW_CIDRS=10.0.0.0/8

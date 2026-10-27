@@ -3,28 +3,35 @@
 #
 # Policy (runbook 6.19):
 #   - explicit opt-in (disabled by default)
-#   - isolated: separate server_name hosts (never the default app/api hosts)
+#   - isolated hostnames (never the default app/api hosts)
+#   - isolated listen port (default ${OKKEY_COMPAT_HTTPS_PORT} / 8443) —
+#     nginx + OpenSSL TLS 1.3 select key_share from the *default* SSL_CTX on a
+#     listen socket, so different ssl_ecdh_curve / ssl_protocols cannot share :443
+#     with the hybrid default without bleeding or breaking one of the profiles.
+#     Separate port is an implementation detail (flag for Саша vs separate IP).
+#   - isolated SSL_CTX: dedicated compat-*.pem cert files (never reuse fullchain.pem)
 #   - time-boxed: OKKEY_COMPAT_SUNSET (YYYY-MM-DD) required; entrypoint refuses past dates
-#   - classical curves only (X25519) — hybrid group never listed here; no merge onto default route
+#   - classical curves only (X25519) — hybrid group never listed here
 #
 # Substituted at container start.
 
 # --- Compat web (classical) ---
 server {
-  listen 443 ssl;
-  listen [::]:443 ssl;
+  listen ${OKKEY_COMPAT_HTTPS_PORT} ssl;
+  listen [::]:${OKKEY_COMPAT_HTTPS_PORT} ssl;
   http2 on;
   server_name ${OKKEY_COMPAT_WEB_HOST};
 
-  ssl_certificate     /etc/nginx/certs/fullchain.pem;
-  ssl_certificate_key /etc/nginx/certs/privkey.pem;
+  # Dedicated cert → dedicated SSL_CTX (do not reuse /etc/nginx/certs/fullchain.pem).
+  ssl_certificate     /etc/nginx/certs/compat-fullchain.pem;
+  ssl_certificate_key /etc/nginx/certs/compat-privkey.pem;
 
-  # Classical-only profile (legacy clients). Not hybrid.
+  # Classical-only profile (legacy clients). Not hybrid. TLS 1.2 required for compat purpose.
   ssl_protocols TLSv1.2 TLSv1.3;
   ssl_ecdh_curve X25519;
   ssl_prefer_server_ciphers off;
   ssl_session_timeout 1d;
-  ssl_session_cache shared:SSL:10m;
+  ssl_session_cache shared:COMPATSSL:10m;
 
   include /etc/nginx/conf.d/compat-allow.inc;
 
@@ -44,19 +51,19 @@ server {
 
 # --- Compat API (classical) ---
 server {
-  listen 443 ssl;
-  listen [::]:443 ssl;
+  listen ${OKKEY_COMPAT_HTTPS_PORT} ssl;
+  listen [::]:${OKKEY_COMPAT_HTTPS_PORT} ssl;
   http2 on;
   server_name ${OKKEY_COMPAT_API_HOST};
 
-  ssl_certificate     /etc/nginx/certs/fullchain.pem;
-  ssl_certificate_key /etc/nginx/certs/privkey.pem;
+  ssl_certificate     /etc/nginx/certs/compat-fullchain.pem;
+  ssl_certificate_key /etc/nginx/certs/compat-privkey.pem;
 
   ssl_protocols TLSv1.2 TLSv1.3;
   ssl_ecdh_curve X25519;
   ssl_prefer_server_ciphers off;
   ssl_session_timeout 1d;
-  ssl_session_cache shared:SSL:10m;
+  ssl_session_cache shared:COMPATSSL:10m;
 
   include /etc/nginx/conf.d/compat-allow.inc;
 

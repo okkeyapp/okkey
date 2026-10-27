@@ -1,26 +1,79 @@
 #!/usr/bin/env bash
-# Generate a local self-signed cert for proxy smoke tests (not for production).
+# Generate local self-signed certs for proxy smoke tests (not for production).
 # Requires openssl on the host (any recent 3.x is fine for cert gen).
+#
+# Always writes the strict (default-route) cert:
+#   certs/fullchain.pem + certs/privkey.pem
+#   SAN: OKKEY_WEB_HOST, OKKEY_API_HOST
+#
+# When compat hostnames are set (or --with-compat), also writes a *separate*
+# compat cert so nginx gets an independent SSL_CTX (shared cert would bleed
+# classical ssl_ecdh_curve onto the default domain — Vasya QA blocker):
+#   certs/compat-fullchain.pem + certs/compat-privkey.pem
+#   SAN: OKKEY_COMPAT_WEB_HOST, OKKEY_COMPAT_API_HOST
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 CERT_DIR="${OKKEY_PROXY_CERT_DIR:-$ROOT/certs}"
 WEB_HOST="${OKKEY_WEB_HOST:-app.example.com}"
 API_HOST="${OKKEY_API_HOST:-api.example.com}"
+COMPAT_WEB_HOST="${OKKEY_COMPAT_WEB_HOST:-}"
+COMPAT_API_HOST="${OKKEY_COMPAT_API_HOST:-}"
 DAYS="${OKKEY_PROXY_CERT_DAYS:-825}"
+WITH_COMPAT=0
+
+usage() {
+  cat <<'EOF'
+Usage: gen-self-signed.sh [--with-compat]
+
+  Writes certs/fullchain.pem + privkey.pem for OKKEY_WEB_HOST / OKKEY_API_HOST.
+
+  --with-compat
+      Also write certs/compat-{fullchain,privkey}.pem for
+      OKKEY_COMPAT_WEB_HOST / OKKEY_COMPAT_API_HOST
+      (defaults: compat-app.example.com / compat-api.example.com).
+
+  Compat certs are also written automatically when OKKEY_COMPAT_WEB_HOST and
+  OKKEY_COMPAT_API_HOST are both set in the environment.
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --with-compat) WITH_COMPAT=1; shift ;;
+    -h|--help) usage; exit 0 ;;
+    *) echo "Unknown arg: $1" >&2; usage >&2; exit 1 ;;
+  esac
+done
+
+if [[ -n "${COMPAT_WEB_HOST}" && -n "${COMPAT_API_HOST}" ]]; then
+  WITH_COMPAT=1
+fi
+
+if [[ "${WITH_COMPAT}" -eq 1 ]]; then
+  COMPAT_WEB_HOST="${COMPAT_WEB_HOST:-compat-app.example.com}"
+  COMPAT_API_HOST="${COMPAT_API_HOST:-compat-api.example.com}"
+fi
 
 mkdir -p "$CERT_DIR"
-TMP="$(mktemp)"
-trap 'rm -f "$TMP"' EXIT
 
-cat >"$TMP" <<EOF
+gen_cert() {
+  local out_chain="$1"
+  local out_key="$2"
+  local cn="$3"
+  shift 3
+  local sans=("$@")
+  local tmp i
+  tmp="$(mktemp)"
+  {
+    cat <<EOF
 [req]
 distinguished_name = req_distinguished_name
 x509_extensions = v3_req
 prompt = no
 
 [req_distinguished_name]
-CN = ${WEB_HOST}
+CN = ${cn}
 
 [v3_req]
 keyUsage = critical, digitalSignature, keyEncipherment
@@ -28,15 +81,41 @@ extendedKeyUsage = serverAuth
 subjectAltName = @alt_names
 
 [alt_names]
-DNS.1 = ${WEB_HOST}
-DNS.2 = ${API_HOST}
 EOF
+    i=1
+    for san in "${sans[@]}"; do
+      echo "DNS.${i} = ${san}"
+      i=$((i + 1))
+    done
+  } >"$tmp"
 
-openssl req -x509 -nodes -newkey rsa:2048 \
-  -keyout "${CERT_DIR}/privkey.pem" \
-  -out "${CERT_DIR}/fullchain.pem" \
-  -days "${DAYS}" \
-  -config "$TMP"
+  openssl req -x509 -nodes -newkey rsa:2048 \
+    -keyout "${out_key}" \
+    -out "${out_chain}" \
+    -days "${DAYS}" \
+    -config "$tmp"
+  rm -f "$tmp"
+  chmod 600 "${out_key}"
+}
 
-chmod 600 "${CERT_DIR}/privkey.pem"
+gen_cert "${CERT_DIR}/fullchain.pem" "${CERT_DIR}/privkey.pem" \
+  "${WEB_HOST}" "${WEB_HOST}" "${API_HOST}"
 echo "Wrote ${CERT_DIR}/fullchain.pem and ${CERT_DIR}/privkey.pem (SAN: ${WEB_HOST}, ${API_HOST})"
+
+if [[ "${WITH_COMPAT}" -eq 1 ]]; then
+  if [[ "${COMPAT_WEB_HOST}" = "${WEB_HOST}" ]] \
+    || [[ "${COMPAT_API_HOST}" = "${API_HOST}" ]] \
+    || [[ "${COMPAT_WEB_HOST}" = "${API_HOST}" ]] \
+    || [[ "${COMPAT_API_HOST}" = "${WEB_HOST}" ]]; then
+    echo "ERROR: compat hosts must differ from strict hosts" >&2
+    exit 1
+  fi
+  if [[ "${COMPAT_WEB_HOST}" = "${COMPAT_API_HOST}" ]]; then
+    echo "ERROR: OKKEY_COMPAT_WEB_HOST and OKKEY_COMPAT_API_HOST must differ" >&2
+    exit 1
+  fi
+  gen_cert "${CERT_DIR}/compat-fullchain.pem" "${CERT_DIR}/compat-privkey.pem" \
+    "${COMPAT_WEB_HOST}" "${COMPAT_WEB_HOST}" "${COMPAT_API_HOST}"
+  echo "Wrote ${CERT_DIR}/compat-fullchain.pem and ${CERT_DIR}/compat-privkey.pem (SAN: ${COMPAT_WEB_HOST}, ${COMPAT_API_HOST})"
+  echo "NOTE: compat uses a separate cert so nginx SSL_CTX (and ssl_ecdh_curve) stay isolated from the default domain."
+fi

@@ -22,6 +22,7 @@ services:
     ports:
       - "${OKKEY_PROXY_HTTP_PORT:-80}:80"
       - "${OKKEY_PROXY_HTTPS_PORT:-443}:443"
+      - "${OKKEY_COMPAT_HTTPS_PORT:-8443}:${OKKEY_COMPAT_HTTPS_PORT:-8443}"
     environment:
       OKKEY_WEB_HOST: ${OKKEY_WEB_HOST:?set OKKEY_WEB_HOST in overlay env}
       OKKEY_API_HOST: ${OKKEY_API_HOST:?set OKKEY_API_HOST in overlay env}
@@ -34,6 +35,7 @@ services:
       OKKEY_COMPAT_SUNSET: ${OKKEY_COMPAT_SUNSET:-}
       OKKEY_COMPAT_OWNER: ${OKKEY_COMPAT_OWNER:-}
       OKKEY_COMPAT_ALLOW_CIDRS: ${OKKEY_COMPAT_ALLOW_CIDRS:-}
+      OKKEY_COMPAT_HTTPS_PORT: ${OKKEY_COMPAT_HTTPS_PORT:-8443}
     volumes:
       - ./certs:/etc/nginx/certs:ro
     # Default TLS policy is compiled into the image template (ssl_protocols TLSv1.3;
