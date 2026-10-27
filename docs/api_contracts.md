@@ -626,7 +626,7 @@ Grants or updates explicit shared access for a workspace member, stores recipien
 | Field | Type | Required | Notes |
 |--------|------|----------|--------|
 | `recipientUserId` | uuid | Yes | Must already have workspace access. |
-| `encryptedVaultKey` | object (`EncryptedBlob`) | Yes | Wrapped key for recipient in canonical envelope. In production hybrid-by-default path: `crypto_version >= 2` and `meta.key_wrap_scheme = \"hybrid_ecc_pq_v1\"`. |
+| `encryptedVaultKey` | object (`EncryptedBlob`) | Yes | Wrapped key for recipient in canonical envelope. Hybrid-by-default in every `DEPLOY_ENV`: `crypto_version >= 2` and `meta.key_wrap_scheme = \"hybrid_ecc_pq_v1\"`. |
 | `encryptedPayload` | object (`EncryptedBlob`) | Yes | Opaque sync ciphertext for `VAULT_SHARE`. |
 | `signature` | object (`HybridSignatureEnvelope`) | Yes | Hybrid integrity signature (`context = vault.share`). |
 | `baseVersion` | integer | Yes | Expected event-log head version. |
@@ -647,7 +647,7 @@ Revokes explicit member access, applies key rotation wraps for all remaining act
 | Field | Type | Required | Notes |
 |--------|------|----------|--------|
 | `recipientUserId` | uuid | Yes | Member to revoke. |
-| `rotatedVaultKeys` | array | Yes | Non-empty full recipient set after revoke (`{ userId, encryptedVaultKey: EncryptedBlob }[]`), each wrap follows the same hybrid-by-default contract in production. |
+| `rotatedVaultKeys` | array | Yes | Non-empty full recipient set after revoke (`{ userId, encryptedVaultKey: EncryptedBlob }[]`), each wrap follows the same hybrid-by-default contract in every `DEPLOY_ENV`. |
 | `encryptedPayload` | object (`EncryptedBlob`) | Yes | Opaque sync ciphertext for `VAULT_KEY_ROTATION`. |
 | `signature` | object (`HybridSignatureEnvelope`) | Yes | Hybrid integrity signature (`context = vault.revoke`). |
 | `baseVersion` | integer | Yes | Expected event-log head version. |
@@ -674,7 +674,7 @@ Standalone key rotation trigger (security incident or manual rotation). The clie
 
 | Field | Type | Required | Notes |
 |--------|------|----------|--------|
-| `rotatedVaultKeys` | array | Yes | Non-empty; **must cover every active recipient** (`{ userId, encryptedVaultKey: EncryptedBlob }[]`). Each wrap must follow the hybrid-by-default contract in production (`crypto_version >= 2`, `meta.key_wrap_scheme = "hybrid_ecc_pq_v1"`, `meta.recipient_user_id` matches). |
+| `rotatedVaultKeys` | array | Yes | Non-empty; **must cover every active recipient** (`{ userId, encryptedVaultKey: EncryptedBlob }[]`). Each wrap must follow the hybrid-by-default contract in every `DEPLOY_ENV` (`crypto_version >= 2`, `meta.key_wrap_scheme = "hybrid_ecc_pq_v1"`, `meta.recipient_user_id` matches). |
 | `encryptedPayload` | object (`EncryptedBlob`) | Yes | Opaque sync ciphertext for `VAULT_KEY_ROTATION` event. |
 | `signature` | object (`HybridSignatureEnvelope`) | Yes | Hybrid integrity signature (`context = vault.rotate`). |
 | `baseVersion` | integer | Yes | Expected event-log head version. |

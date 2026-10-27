@@ -1317,7 +1317,7 @@ export interface VaultShareUpsertRequestDto {
   recipientUserId: EntityId;
   /**
    * Recipient wrapped vault key.
-   * Production hybrid-by-default contract expects:
+   * Hybrid-by-default contract (every `DEPLOY_ENV`) expects:
    * - `crypto_version >= 2`
    * - `meta.key_wrap_scheme = "hybrid_ecc_pq_v1"`
    */
