@@ -15,7 +15,8 @@ Classical-only clients are **not** on the default route. Optional **compat liste
 | Path | Purpose |
 |------|---------|
 | `docker-compose.proxy.yml` | Optional compose overlay (`proxy` service) |
-| `nginx/Dockerfile` | Builds nginx against OpenSSL 3.5.x |
+| `nginx/Dockerfile` | Builds nginx against OpenSSL **3.5.9** (override via `OKKEY_PROXY_OPENSSL_VERSION`) |
+| `docker-compose.compat.yml` | Publishes compat port only when ENABLED=1 (N8) |
 | `nginx/conf.d/okkey.conf.template` | Strict TLS + reverse proxy to `web` / `api` |
 | `nginx/conf.d/okkey-compat.conf.template` | Optional classical-only listeners (separate hosts + port) |
 | `compat.env.example` | Opt-in env knobs (disabled by default) |
@@ -114,18 +115,26 @@ Confirm with `nginx -V` / `openssl version` that the linked OpenSSL is ≥ 3.5 a
 | Explicit | `OKKEY_COMPAT_ENABLED=1` (compose defaults to `0`) |
 | Isolated hosts | `OKKEY_COMPAT_WEB_HOST` / `OKKEY_COMPAT_API_HOST` must differ from strict hosts |
 | Isolated port | `OKKEY_COMPAT_HTTPS_PORT` default `8443` — **must not be 443** (entrypoint refuses). nginx/OpenSSL TLS 1.3 selects `key_share` from the default SSL_CTX on a listen socket, so different `ssl_ecdh_curve` / `ssl_protocols` cannot share `:443` with the hybrid default without bleeding or breaking one profile. |
+| Catch-all (N1) | Compat port `default_server` + `ssl_reject_handshake on`; foreign SNI rejected; forged `Host` → **421** |
 | Isolated certs | `compat-fullchain.pem` / `compat-privkey.pem` (never reuse strict `fullchain.pem`) |
 | Time-boxed | `OKKEY_COMPAT_SUNSET=YYYY-MM-DD` + `OKKEY_COMPAT_OWNER` required; past sunset → refuse start |
-| Classical-only | `ssl_protocols TLSv1.2 TLSv1.3;` + `ssl_ecdh_curve X25519;` (TLS 1.2 required for compat purpose) |
+| Classical-only | `ssl_protocols TLSv1.2 TLSv1.3;` + `ssl_ecdh_curve X25519;` + ECDHE+AEAD `ssl_ciphers` (no static RSA / CBC-SHA1) |
+| Port publish (N8) | Base `docker-compose.proxy.yml` does **not** map 8443; use `docker-compose.compat.yml` only when ENABLED=1 |
 | Optional allowlist | `OKKEY_COMPAT_ALLOW_CIDRS=10.0.0.0/8,…` → nginx `allow`/`deny all` |
 
-**Technical choice (Vasya QA rework):** dedicated **port + cert + SNI**, not a second `server` on `:443`. Separate IP left open for Саша (product question); port is the working isolation without claiming IP policy.
+**Technical choice (Vasya QA rework):** dedicated **port + cert + SNI + reject catch-all**, not a second `server` on `:443`. Separate IP left open for Саша (product question); port is the working isolation without claiming IP policy.
+
+**Local DNS:** map example hosts in `/etc/hosts` (or use `openssl -connect 127.0.0.1:PORT -servername …` / curl `--resolve`) when smoke-testing without real DNS:
+
+```text
+127.0.0.1 app.example.com api.example.com compat-app.example.com compat-api.example.com
+```
 
 ```bash
 # Static policy (no live edge required):
 ./proxy/policy-compat.sh
 
-# Local handshake smoke (no GitHub Actions):
+# Local handshake smoke (no auto GHA until 1 Nov 2026; workflow_dispatch only):
 ./proxy/smoke-handshake.sh
 
 # Live: strict must reject classical-only; pass compat host+port when enabled:
@@ -149,6 +158,12 @@ OKKEY_COMPAT_HTTPS_PORT=8443
 OKKEY_COMPAT_SUNSET=2026-12-31
 OKKEY_COMPAT_OWNER=sre-oncall@example.com
 # OKKEY_COMPAT_ALLOW_CIDRS=10.0.0.0/8
+
+# Bring up with compat port overlay (N8):
+docker compose -f docker-compose.prod.yml \
+  -f proxy/docker-compose.proxy.yml \
+  -f proxy/docker-compose.compat.yml \
+  --env-file .env up -d --build proxy
 ```
 
 ## Rollback drill (6.19)

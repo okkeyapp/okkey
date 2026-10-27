@@ -9,11 +9,24 @@
 #     listen socket, so different ssl_ecdh_curve / ssl_protocols cannot share :443
 #     with the hybrid default without bleeding or breaking one of the profiles.
 #     Separate port is an implementation detail (flag for Саша vs separate IP).
+#   - catch-all on compat port: default_server + ssl_reject_handshake on —
+#     foreign / missing SNI must NOT complete classical handshake or proxy to
+#     main app/api upstreams (Vasya retest#2 N1).
+#   - Host header must match the compat server_name (else 421 Misdirected Request).
 #   - isolated SSL_CTX: dedicated compat-*.pem cert files (never reuse fullchain.pem)
 #   - time-boxed: OKKEY_COMPAT_SUNSET (YYYY-MM-DD) required; entrypoint refuses past dates
 #   - classical curves only (X25519) — hybrid group never listed here
+#   - TLS 1.2 ciphers: ECDHE + AEAD only (no static RSA / CBC-SHA1)
 #
 # Substituted at container start.
+
+# --- Compat port catch-all: reject unknown / missing SNI (N1) ---
+server {
+  listen ${OKKEY_COMPAT_HTTPS_PORT} ssl default_server;
+  listen [::]:${OKKEY_COMPAT_HTTPS_PORT} ssl default_server;
+  server_name _;
+  ssl_reject_handshake on;
+}
 
 # --- Compat web (classical) ---
 server {
@@ -29,11 +42,18 @@ server {
   # Classical-only profile (legacy clients). Not hybrid. TLS 1.2 required for compat purpose.
   ssl_protocols TLSv1.2 TLSv1.3;
   ssl_ecdh_curve X25519;
+  # N2: ECDHE + AEAD only for TLS 1.2 (no static RSA, no CBC-SHA1).
+  ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305;
   ssl_prefer_server_ciphers off;
   ssl_session_timeout 1d;
   ssl_session_cache shared:COMPATSSL:10m;
 
   include /etc/nginx/conf.d/compat-allow.inc;
+
+  # N1: SNI may match, but forged Host must not reach main upstream identity.
+  if ($host != "${OKKEY_COMPAT_WEB_HOST}") {
+    return 421;
+  }
 
   add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
   add_header X-Okkey-Tls-Profile "compat-classical" always;
@@ -61,11 +81,16 @@ server {
 
   ssl_protocols TLSv1.2 TLSv1.3;
   ssl_ecdh_curve X25519;
+  ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305;
   ssl_prefer_server_ciphers off;
   ssl_session_timeout 1d;
   ssl_session_cache shared:COMPATSSL:10m;
 
   include /etc/nginx/conf.d/compat-allow.inc;
+
+  if ($host != "${OKKEY_COMPAT_API_HOST}") {
+    return 421;
+  }
 
   add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
   add_header X-Okkey-Tls-Profile "compat-classical" always;

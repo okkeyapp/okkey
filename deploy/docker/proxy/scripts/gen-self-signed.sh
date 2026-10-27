@@ -11,6 +11,9 @@
 # classical ssl_ecdh_curve onto the default domain — Vasya QA blocker):
 #   certs/compat-fullchain.pem + certs/compat-privkey.pem
 #   SAN: OKKEY_COMPAT_WEB_HOST, OKKEY_COMPAT_API_HOST
+#
+# N7: refuses to overwrite existing PEMs unless --force; refuses partial compat
+# host sets (exactly one of WEB/API set without the other).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -21,10 +24,11 @@ COMPAT_WEB_HOST="${OKKEY_COMPAT_WEB_HOST:-}"
 COMPAT_API_HOST="${OKKEY_COMPAT_API_HOST:-}"
 DAYS="${OKKEY_PROXY_CERT_DAYS:-825}"
 WITH_COMPAT=0
+FORCE=0
 
 usage() {
   cat <<'EOF'
-Usage: gen-self-signed.sh [--with-compat]
+Usage: gen-self-signed.sh [--with-compat] [--force]
 
   Writes certs/fullchain.pem + privkey.pem for OKKEY_WEB_HOST / OKKEY_API_HOST.
 
@@ -32,6 +36,10 @@ Usage: gen-self-signed.sh [--with-compat]
       Also write certs/compat-{fullchain,privkey}.pem for
       OKKEY_COMPAT_WEB_HOST / OKKEY_COMPAT_API_HOST
       (defaults: compat-app.example.com / compat-api.example.com).
+      Both compat hosts are required (setting only one is an error).
+
+  --force
+      Overwrite existing PEM files. Without --force, refuse if targets exist (N7).
 
   Compat certs are also written automatically when OKKEY_COMPAT_WEB_HOST and
   OKKEY_COMPAT_API_HOST are both set in the environment.
@@ -41,10 +49,19 @@ EOF
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --with-compat) WITH_COMPAT=1; shift ;;
+    --force) FORCE=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown arg: $1" >&2; usage >&2; exit 1 ;;
   esac
 done
+
+# N7: partial compat host set is always an error (with or without --with-compat).
+if [[ -n "${COMPAT_WEB_HOST}" && -z "${COMPAT_API_HOST}" ]] \
+  || [[ -z "${COMPAT_WEB_HOST}" && -n "${COMPAT_API_HOST}" ]]; then
+  echo "ERROR: set both OKKEY_COMPAT_WEB_HOST and OKKEY_COMPAT_API_HOST (or neither)" >&2
+  echo "ERROR: got WEB='${COMPAT_WEB_HOST}' API='${COMPAT_API_HOST}'" >&2
+  exit 1
+fi
 
 if [[ -n "${COMPAT_WEB_HOST}" && -n "${COMPAT_API_HOST}" ]]; then
   WITH_COMPAT=1
@@ -57,6 +74,16 @@ fi
 
 mkdir -p "$CERT_DIR"
 
+refuse_overwrite() {
+  local f
+  for f in "$@"; do
+    if [[ -e "${f}" && "${FORCE}" -ne 1 ]]; then
+      echo "ERROR: refusing to overwrite existing ${f} (pass --force)" >&2
+      exit 1
+    fi
+  done
+}
+
 gen_cert() {
   local out_chain="$1"
   local out_key="$2"
@@ -64,6 +91,7 @@ gen_cert() {
   shift 3
   local sans=("$@")
   local tmp i
+  refuse_overwrite "${out_chain}" "${out_key}"
   tmp="$(mktemp)"
   {
     cat <<EOF

@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Local PQ TLS handshake smoke (no GitHub Actions).
-# Exercises fix items: hybrid on default, classical reject on default (with
-# compat ON), classical + TLS 1.2 on compat, dedicated compat cert + port isolation.
+# Local PQ TLS handshake smoke (no GitHub Actions auto-trigger).
+# Exercises: hybrid on default, classical reject on default (with compat ON),
+# classical + TLS 1.2 on compat (real cipher), foreign SNI reject on compat port,
+# dedicated compat cert + port isolation.
 #
 # Prefers Docker (okkey-edge image). Falls back to a local OpenSSL≥3.5 + nginx
 # prefix built under /tmp/okkey-pq-smoke (or $OKKEY_PQ_SMOKE_PREFIX).
@@ -34,7 +35,6 @@ cleanup() {
   if [[ -n "${DOCKER_CID}" ]]; then
     docker rm -f "${DOCKER_CID}" >/dev/null 2>&1 || true
   fi
-  # Local nginx may daemonize — kill by pid file if still present.
   if [[ -f "${RUN_DIR}/nginx.pid" ]]; then
     kill "$(cat "${RUN_DIR}/nginx.pid")" 2>/dev/null || true
   fi
@@ -51,6 +51,7 @@ have_openssl35() {
 }
 
 ensure_client_openssl() {
+  command -v openssl >/dev/null 2>&1 || fail "openssl not found (required; missing tool = FAIL)"
   if have_openssl35; then
     echo "client openssl: $(openssl version) ($(command -v openssl))"
     return 0
@@ -61,6 +62,12 @@ ensure_client_openssl() {
   fi
   have_openssl35 || fail "need OpenSSL ≥ 3.5 client (build under ${SMOKE_PREFIX}/prefix or install)"
   echo "client openssl: $(openssl version) ($(command -v openssl))"
+}
+
+handshake_completed() {
+  local out="$1"
+  echo "${out}" | grep -Eqi 'Cipher is TLS_|Cipher is ECDHE-' \
+    && ! echo "${out}" | grep -Eqi 'Cipher is \(NONE\)|Cipher[[:space:]]*:[[:space:]]*0000'
 }
 
 subst_vars() {
@@ -144,31 +151,34 @@ gen_certs() {
   OKKEY_API_HOST="${API_HOST}" \
   OKKEY_COMPAT_WEB_HOST="${COMPAT_WEB}" \
   OKKEY_COMPAT_API_HOST="${COMPAT_API}" \
-    "${ROOT}/scripts/gen-self-signed.sh" --with-compat
+    "${ROOT}/scripts/gen-self-signed.sh" --with-compat --force
 }
 
 run_verify() {
-  step "strict hybrid (compat ON)"
+  step "1/6 strict hybrid (compat ON)"
   OUT="$(openssl s_client -connect "127.0.0.1:${PORT}" -servername "${STRICT_HOST}" \
     -tls1_3 -groups X25519MLKEM768 </dev/null 2>&1 || true)"
   echo "${OUT}" | grep -Ei 'Protocol|Negotiated|Cipher|VERIFY return' || true
   echo "${OUT}" | grep -Eqi 'Negotiated TLS1\.3 group:[[:space:]]*X25519MLKEM768' \
     || fail "strict did not negotiate X25519MLKEM768"
+  handshake_completed "${OUT}" || fail "strict hybrid handshake incomplete"
 
-  step "strict classical reject (compat ON) — negative"
+  step "2/6 strict classical reject (compat ON) — negative"
   OUT="$(openssl s_client -connect "127.0.0.1:${PORT}" -servername "${STRICT_HOST}" \
     -tls1_3 -groups X25519 </dev/null 2>&1 || true)"
-  # OpenSSL may still print "Negotiated TLS1.3 group: <NULL>" on failed handshakes —
-  # only a real classical X25519 (not hybrid, not NULL) is a failure.
   if echo "${OUT}" | grep -Eqi 'Negotiated TLS1\.3 group:[[:space:]]*X25519[[:space:]]*$'; then
-    fail "strict accepted classical while compat ON: $(echo "${OUT}" | grep -Ei 'Negotiated' | head -1)"
+    fail "strict accepted classical while compat ON"
   fi
-  if echo "${OUT}" | grep -Eqi 'Cipher is TLS_'; then
-    fail "strict completed classical handshake while compat ON"
-  fi
+  handshake_completed "${OUT}" && fail "strict completed classical handshake while compat ON"
   echo "classical rejected on strict (PASS)"
 
-  step "compat classical TLS1.3 on :${COMPAT_PORT}"
+  step "3/6 strict TLS 1.2 reject (openssl — N4; missing curl must not skip)"
+  OUT="$(openssl s_client -connect "127.0.0.1:${PORT}" -servername "${STRICT_HOST}" \
+    -tls1_2 </dev/null 2>&1 || true)"
+  handshake_completed "${OUT}" && fail "TLS 1.2 succeeded on strict"
+  echo "TLS 1.2 rejected on strict (PASS)"
+
+  step "4/6 compat classical TLS1.3 on :${COMPAT_PORT}"
   OUT="$(openssl s_client -connect "127.0.0.1:${COMPAT_PORT}" -servername "${COMPAT_WEB}" \
     -tls1_3 -groups X25519 </dev/null 2>&1 || true)"
   echo "${OUT}" | grep -Ei 'Protocol|Negotiated|Cipher|VERIFY return|Peer Temp Key' || true
@@ -176,25 +186,34 @@ run_verify() {
   if echo "${OUT}" | grep -Eqi 'Negotiated TLS1\.3 group:[[:space:]]*X25519[[:space:]]*$'; then
     :
   elif echo "${OUT}" | grep -Eqi 'Peer Temp Key:[[:space:]]*X25519[[:space:]]*,' \
-    && echo "${OUT}" | grep -Eqi 'Cipher is TLS_'; then
+    && handshake_completed "${OUT}"; then
     :
   else
     fail "compat did not negotiate classical X25519"
   fi
+  handshake_completed "${OUT}" || fail "compat TLS1.3 handshake incomplete"
 
-  step "compat TLS 1.2 on :${COMPAT_PORT}"
+  step "5/6 compat TLS 1.2 on :${COMPAT_PORT} (N3 — real cipher required)"
   OUT="$(openssl s_client -connect "127.0.0.1:${COMPAT_PORT}" -servername "${COMPAT_WEB}" \
     -tls1_2 -groups X25519 </dev/null 2>&1 || true)"
   echo "${OUT}" | grep -Ei 'Protocol|Cipher|VERIFY return|error|alert' || true
   echo "${OUT}" | grep -Eqi 'Protocol[[:space:]]*:[[:space:]]*TLSv1\.2' \
-    || fail "compat TLS 1.2 handshake failed"
-
-  step "strict TLS 1.2 reject"
-  if curl -fsSk --resolve "${STRICT_HOST}:${PORT}:127.0.0.1" --tls-max 1.2 \
-    --connect-timeout 5 "https://${STRICT_HOST}:${PORT}/" >/dev/null 2>&1; then
-    fail "TLS 1.2 succeeded on strict"
+    || fail "compat TLS 1.2 handshake failed (no Protocol TLSv1.2)"
+  if echo "${OUT}" | grep -Eqi 'Cipher is \(NONE\)|Cipher[[:space:]]*:[[:space:]]*0000'; then
+    fail "compat TLS 1.2 false green: Protocol TLSv1.2 but Cipher 0000/NONE"
   fi
-  echo "TLS 1.2 rejected on strict (PASS)"
+  echo "${OUT}" | grep -Eqi 'Cipher is ECDHE-|Cipher[[:space:]]*:[[:space:]]*ECDHE-' \
+    || fail "compat TLS 1.2 missing ECDHE AEAD cipher (mutant: compat w/o usable TLS1.2)"
+  echo "compat TLS 1.2 + ECDHE cipher (PASS)"
+
+  step "6/6 N1 foreign SNI / no-SNI on compat port must reject"
+  OUT="$(openssl s_client -connect "127.0.0.1:${COMPAT_PORT}" -servername "${STRICT_HOST}" \
+    -tls1_3 -groups X25519 </dev/null 2>&1 || true)"
+  handshake_completed "${OUT}" && fail "compat port accepted foreign SNI ${STRICT_HOST}"
+  OUT="$(openssl s_client -connect "127.0.0.1:${COMPAT_PORT}" \
+    -tls1_3 -groups X25519 </dev/null 2>&1 || true)"
+  handshake_completed "${OUT}" && fail "compat port accepted handshake without matching SNI"
+  echo "foreign/missing SNI rejected on compat port (PASS)"
 }
 
 run_local_nginx() {
@@ -222,11 +241,10 @@ run_docker() {
     step "building ${image}"
     docker build \
       -t "${image}" \
-      --build-arg OPENSSL_VERSION="${OKKEY_PROXY_OPENSSL_VERSION:-3.5.0}" \
+      --build-arg OPENSSL_VERSION="${OKKEY_PROXY_OPENSSL_VERSION:-3.5.9}" \
       --build-arg NGINX_VERSION="${OKKEY_PROXY_NGINX_VERSION:-1.28.0}" \
       "${ROOT}/nginx"
   fi
-  # Map host PORT->443 and COMPAT_PORT->8443 inside the image default.
   local cport_inside="${OKKEY_COMPAT_LISTEN_INSIDE:-8443}"
   DOCKER_CID="$(docker run -d --rm \
     -p "127.0.0.1:${PORT}:443" \
@@ -244,13 +262,18 @@ run_docker() {
     -e OKKEY_COMPAT_OWNER="${OWNER}" \
     -e OKKEY_COMPAT_HTTPS_PORT="${cport_inside}" \
     "${image}")"
+  # N9: wait loop must FAIL on timeout (not silently continue).
+  local ready=0
   for _ in $(seq 1 30); do
     if openssl s_client -connect "127.0.0.1:${PORT}" -servername "${STRICT_HOST}" \
-      -tls1_3 -groups X25519MLKEM768 </dev/null >/dev/null 2>&1; then
+      -tls1_3 -groups X25519MLKEM768 </dev/null 2>/dev/null \
+      | grep -Eqi 'Negotiated TLS1\.3 group:[[:space:]]*X25519MLKEM768'; then
+      ready=1
       break
     fi
     sleep 0.5
   done
+  [[ "${ready}" -eq 1 ]] || fail "docker proxy did not become ready within timeout (N9)"
   run_verify
 }
 
@@ -266,7 +289,7 @@ else
 fi
 
 echo
-echo "PASS: smoke-handshake (hybrid default + classical reject with compat ON + compat X25519/TLS1.2 on :${COMPAT_PORT})"
+echo "PASS: smoke-handshake (hybrid + classical reject + compat X25519/TLS1.2 + foreign SNI reject)"
 echo "PASTE_FOR_EVIDENCE_BEGIN"
 openssl s_client -connect "127.0.0.1:${PORT}" -servername "${STRICT_HOST}" \
   -tls1_3 -groups X25519MLKEM768 </dev/null 2>&1 \
@@ -278,5 +301,9 @@ openssl s_client -connect "127.0.0.1:${PORT}" -servername "${STRICT_HOST}" \
 echo "--- compat classical ---"
 openssl s_client -connect "127.0.0.1:${COMPAT_PORT}" -servername "${COMPAT_WEB}" \
   -tls1_3 -groups X25519 </dev/null 2>&1 \
-  | grep -Ei 'Protocol|Negotiated TLS1\.3 group|Cipher|VERIFY return' || true
+  | grep -Ei 'Protocol|Negotiated TLS1\.3 group|Cipher|VERIFY return|Peer Temp' || true
+echo "--- foreign SNI on compat ---"
+openssl s_client -connect "127.0.0.1:${COMPAT_PORT}" -servername "${STRICT_HOST}" \
+  -tls1_3 -groups X25519 </dev/null 2>&1 \
+  | grep -Ei 'Protocol|Cipher|alert|error:' | head -5 || true
 echo "PASTE_FOR_EVIDENCE_END"

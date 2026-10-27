@@ -65,6 +65,7 @@ OKKEY_COMPAT_API_HOST=compat-api.example.com
 OKKEY_COMPAT_HTTPS_PORT=8443
 OKKEY_COMPAT_SUNSET=${SUNSET_DRILL}
 OKKEY_COMPAT_OWNER=${OWNER}
+# N8: also include proxy/docker-compose.compat.yml (or saas edge equivalent) to publish 8443
 EOF
 
 cat > "${RESTORE_ENV}" <<EOF

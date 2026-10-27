@@ -1,0 +1,77 @@
+# Q-Day #3 PQ TLS local smoke — workflow present for post-freeze use.
+# N10: workflow_dispatch ONLY — do NOT trigger until GitHub Actions minutes
+# reset (1 Nov 2026). No push/pull_request triggers on purpose.
+name: PQ TLS smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_gha_available:
+        description: "Type YES only when Actions minutes are available (after 1 Nov 2026)"
+        required: true
+        default: "NO"
+
+jobs:
+  smoke:
+    name: proxy smoke-handshake
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    if: ${{ github.event.inputs.confirm_gha_available == 'YES' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install build deps
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq build-essential libpcre3-dev zlib1g-dev curl gettext-base
+
+      - name: Build OpenSSL 3.5.9 + nginx prefix
+        working-directory: deploy/docker/proxy
+        env:
+          OKKEY_PQ_SMOKE_PREFIX: ${{ runner.temp }}/okkey-pq-smoke
+          OPENSSL_VERSION: "3.5.9"
+          NGINX_VERSION: "1.28.0"
+        run: |
+          set -euo pipefail
+          mkdir -p "$OKKEY_PQ_SMOKE_PREFIX/src" "$OKKEY_PQ_SMOKE_PREFIX/prefix"
+          cd "$OKKEY_PQ_SMOKE_PREFIX/src"
+          curl -fsSL "https://github.com/openssl/openssl/releases/download/openssl-${OPENSSL_VERSION}/openssl-${OPENSSL_VERSION}.tar.gz" | tar xz
+          curl -fsSL "https://nginx.org/download/nginx-${NGINX_VERSION}.tar.gz" | tar xz
+          cd "openssl-${OPENSSL_VERSION}"
+          ./Configure --prefix="$OKKEY_PQ_SMOKE_PREFIX/prefix" --openssldir="$OKKEY_PQ_SMOKE_PREFIX/prefix/ssl" \
+            shared zlib no-docs -Wl,-rpath,"$OKKEY_PQ_SMOKE_PREFIX/prefix/lib"
+          make -j"$(nproc)"
+          make install_sw
+          mkdir -p "$OKKEY_PQ_SMOKE_PREFIX/prefix/lib"
+          if [[ -d "$OKKEY_PQ_SMOKE_PREFIX/prefix/lib64" ]]; then
+            ln -sfn ../lib64/libssl.so.3 "$OKKEY_PQ_SMOKE_PREFIX/prefix/lib/libssl.so.3" || true
+            ln -sfn ../lib64/libcrypto.so.3 "$OKKEY_PQ_SMOKE_PREFIX/prefix/lib/libcrypto.so.3" || true
+          fi
+          cd "$OKKEY_PQ_SMOKE_PREFIX/src/nginx-${NGINX_VERSION}"
+          ./configure \
+            --prefix="$OKKEY_PQ_SMOKE_PREFIX/prefix/nginx" \
+            --sbin-path="$OKKEY_PQ_SMOKE_PREFIX/prefix/sbin/nginx" \
+            --conf-path="$OKKEY_PQ_SMOKE_PREFIX/prefix/nginx/conf/nginx.conf" \
+            --error-log-path="$OKKEY_PQ_SMOKE_PREFIX/run/error.log" \
+            --http-log-path="$OKKEY_PQ_SMOKE_PREFIX/run/access.log" \
+            --pid-path="$OKKEY_PQ_SMOKE_PREFIX/run/nginx.pid" \
+            --with-cc-opt="-I$OKKEY_PQ_SMOKE_PREFIX/prefix/include" \
+            --with-ld-opt="-L$OKKEY_PQ_SMOKE_PREFIX/prefix/lib -Wl,-rpath,$OKKEY_PQ_SMOKE_PREFIX/prefix/lib" \
+            --with-openssl="$OKKEY_PQ_SMOKE_PREFIX/src/openssl-${OPENSSL_VERSION}" \
+            --with-http_ssl_module \
+            --with-http_v2_module \
+            --without-http_autoindex_module \
+            --without-http_ssi_module
+          make -j"$(nproc)"
+          make install
+
+      - name: Run smoke-handshake.sh
+        working-directory: deploy/docker/proxy
+        env:
+          OKKEY_PQ_SMOKE_PREFIX: ${{ runner.temp }}/okkey-pq-smoke
+          PATH: ${{ runner.temp }}/okkey-pq-smoke/prefix/bin:/usr/bin:/bin
+          LD_LIBRARY_PATH: ${{ runner.temp }}/okkey-pq-smoke/prefix/lib64:${{ runner.temp }}/okkey-pq-smoke/prefix/lib
+        run: |
+          chmod +x ./smoke-handshake.sh ./policy-compat.sh ./scripts/gen-self-signed.sh
+          ./smoke-handshake.sh

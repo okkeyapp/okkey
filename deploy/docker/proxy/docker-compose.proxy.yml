@@ -7,6 +7,9 @@
 #   docker compose -f docker-compose.prod.yml -f proxy/docker-compose.proxy.yml \
 #     --env-file .env up -d --build proxy
 #
+# Compat classical port (N8): do NOT publish 8443 here. When OKKEY_COMPAT_ENABLED=1,
+# also include proxy/docker-compose.compat.yml (see compat.env.example / README).
+#
 # Bind/build paths below are relative to the Compose project directory (the dir
 # of docker-compose.prod.yml), NOT to this overlay file — so they use ./proxy/…
 # (no symlinks under deploy/docker/ needed).
@@ -20,7 +23,7 @@ services:
       context: ./proxy/nginx
       dockerfile: Dockerfile
       args:
-        OPENSSL_VERSION: ${OKKEY_PROXY_OPENSSL_VERSION:-3.5.0}
+        OPENSSL_VERSION: ${OKKEY_PROXY_OPENSSL_VERSION:-3.5.9}
         NGINX_VERSION: ${OKKEY_PROXY_NGINX_VERSION:-1.28.0}
     image: ${OKKEY_PROXY_IMAGE:-okkey-edge-nginx:openssl35}
     restart: unless-stopped
@@ -30,14 +33,13 @@ services:
     ports:
       - "${OKKEY_PROXY_HTTP_PORT:-80}:80"
       - "${OKKEY_PROXY_HTTPS_PORT:-443}:443"
-      # Compat classical listeners use a dedicated port (not 443) — see compat.env.example.
-      - "${OKKEY_COMPAT_HTTPS_PORT:-8443}:${OKKEY_COMPAT_HTTPS_PORT:-8443}"
     environment:
       OKKEY_WEB_HOST: ${OKKEY_WEB_HOST:-app.example.com}
       OKKEY_API_HOST: ${OKKEY_API_HOST:-api.example.com}
       OKKEY_WEB_UPSTREAM: ${OKKEY_WEB_UPSTREAM:-web:80}
       OKKEY_API_UPSTREAM: ${OKKEY_API_UPSTREAM:-api:4000}
       # Compat classical listeners (q3-4): off by default. See compat.env.example.
+      # Publish compat port only via docker-compose.compat.yml when ENABLED=1 (N8).
       OKKEY_COMPAT_ENABLED: ${OKKEY_COMPAT_ENABLED:-0}
       OKKEY_COMPAT_WEB_HOST: ${OKKEY_COMPAT_WEB_HOST:-}
       OKKEY_COMPAT_API_HOST: ${OKKEY_COMPAT_API_HOST:-}

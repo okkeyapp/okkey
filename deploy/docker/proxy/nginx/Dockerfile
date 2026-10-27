@@ -3,7 +3,7 @@
 
 FROM debian:bookworm-slim AS build
 
-ARG OPENSSL_VERSION=3.5.0
+ARG OPENSSL_VERSION=3.5.9
 ARG NGINX_VERSION=1.28.0
 
 RUN apt-get update \
