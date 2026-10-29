@@ -9,12 +9,7 @@ import {
   type ReactNode,
 } from "react";
 
-import {
-  applyLocaleToDocument,
-  readLocaleFromSearch,
-  readStoredLocale,
-  writeStoredLocale,
-} from "./localeStorage";
+import { applyLocaleToDocument, readStoredLocale, writeStoredLocale } from "./localeStorage";
 
 type LocaleContextValue = {
   locale: WebLocale;
@@ -24,17 +19,9 @@ type LocaleContextValue = {
 
 const LocaleContext = createContext<LocaleContextValue | null>(null);
 
-function initialWebLocale(): WebLocale {
-  const fromUrl = typeof window !== "undefined" ? readLocaleFromSearch(window.location.search) : null;
-  if (fromUrl) {
-    writeStoredLocale(fromUrl);
-    return fromUrl;
-  }
-  return readStoredLocale();
-}
-
 export function LocaleProvider({ children }: { children: ReactNode }) {
-  const [locale, setLocaleState] = useState<WebLocale>(() => initialWebLocale());
+  // `main.tsx` already consumed `lng` (persisted + stripped) before React mounts.
+  const [locale, setLocaleState] = useState<WebLocale>(() => readStoredLocale());
 
   useEffect(() => {
     applyLocaleToDocument(locale);
