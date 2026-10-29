@@ -4,6 +4,7 @@ import type { DeviceListItemDto, DeviceRegisterResponseDto } from "@okkey/types"
 import { isUnauthorizedApiError } from "./apiErrors.ts";
 import { parseBrowserEnvironment } from "./browserEnvironment.ts";
 import { randomDevicePublicKeyB64, randomDeviceShareB64 } from "./deviceKeyPlaceholders.ts";
+import { loadExtensionLocale } from "./locale.ts";
 import {
   clearDeviceDeferred,
   clearExtensionSessionArea,
@@ -66,6 +67,7 @@ export async function registerExtensionDevice(
     await writeDevicePublicKey(devicePublicKeyB64);
   }
 
+  const locale = await loadExtensionLocale();
   const result = await core.registerDevice({
     device_public_key: devicePublicKeyB64,
     device_share: randomDeviceShareB64(),
@@ -77,6 +79,8 @@ export async function registerExtensionDevice(
     app_version: "extension",
     client_type: env.clientType,
     user_agent: env.userAgent,
+    // Explicit body locale: browsers ignore Accept-Language set via fetch.
+    locale,
     metadata: {
       crypto_capable: true,
     },
