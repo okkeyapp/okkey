@@ -7,6 +7,7 @@ import { EmailStandardFooter } from "./EmailStandardFooter.js";
 
 export interface DeviceApprovalEmailProps {
   lang: string;
+  title: string;
   lead: string;
   deviceLine: string;
   whenLine: string;
@@ -27,6 +28,7 @@ export interface DeviceApprovalEmailProps {
 
 export function DeviceApprovalEmail({
   lang,
+  title,
   lead,
   deviceLine,
   whenLine,
@@ -45,6 +47,7 @@ export function DeviceApprovalEmail({
   return (
     <EmailShell
       lang={lang}
+      title={title}
       preview={lead}
       footer={<EmailStandardFooter noReply={noReply} ignoreIfMistake={ignoreIfMistake} />}
     >

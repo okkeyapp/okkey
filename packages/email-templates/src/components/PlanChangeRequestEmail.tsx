@@ -6,6 +6,7 @@ import { EmailStandardFooter } from "./EmailStandardFooter.js";
 
 export interface PlanChangeRequestEmailProps {
   lang: string;
+  title: string;
   lead: string;
   lines: readonly string[];
   noReply: string;
@@ -15,6 +16,7 @@ export interface PlanChangeRequestEmailProps {
 /** License / plan-change sales mail: shared shell + two-line footer. */
 export function PlanChangeRequestEmail({
   lang,
+  title,
   lead,
   lines,
   noReply,
@@ -23,6 +25,7 @@ export function PlanChangeRequestEmail({
   return (
     <EmailShell
       lang={lang}
+      title={title}
       preview={lead}
       footer={<EmailStandardFooter noReply={noReply} ignoreIfMistake={ignoreIfMistake} />}
     >

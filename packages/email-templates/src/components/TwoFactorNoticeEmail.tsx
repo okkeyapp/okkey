@@ -7,6 +7,7 @@ import { EmailStandardFooter } from "./EmailStandardFooter.js";
 
 export interface TwoFactorNoticeEmailProps {
   lang: string;
+  title: string;
   line1: string;
   line2: string;
   securityUrl: string;
@@ -17,6 +18,7 @@ export interface TwoFactorNoticeEmailProps {
 
 export function TwoFactorNoticeEmail({
   lang,
+  title,
   line1,
   line2,
   securityUrl,
@@ -28,6 +30,7 @@ export function TwoFactorNoticeEmail({
   return (
     <EmailShell
       lang={lang}
+      title={title}
       preview={line1}
       footer={<EmailStandardFooter noReply={noReply} ignoreIfMistake={ignoreIfMistake} />}
     >

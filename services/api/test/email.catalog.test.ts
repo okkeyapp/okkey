@@ -61,6 +61,26 @@ function assertSharedEmailFooter(
   assert.ok(ignore.endsWith("."), `${locale} ignoreIfMistake must end with a period`);
 }
 
+/** `<html lang>`, document title, viewport, and color-scheme on every template. */
+function assertHtmlDocumentMeta(
+  locale: "en" | "ru",
+  rendered: { subject: string; html: string },
+): void {
+  assert.match(rendered.html, new RegExp(`lang="${locale}"`));
+  assert.match(rendered.html, /<meta\s+name="viewport"\s+content="width=device-width,\s*initial-scale=1\.0"\s*\/?>/i);
+  assert.match(rendered.html, /<meta\s+name="color-scheme"\s+content="light"\s*\/?>/i);
+  const titleMatch = rendered.html.match(/<title>([^<]*)<\/title>/i);
+  assert.ok(titleMatch, `${locale} html must include <title>`);
+  const decodedTitle = titleMatch[1]
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#x27;/g, "'")
+    .replace(/&#39;/g, "'");
+  assert.equal(decodedTitle, rendered.subject, `${locale} <title> must match subject`);
+}
+
 test("renderEmailTemplate auth_email_code en and ru", async () => {
   const en = await renderEmailTemplate("auth_email_code", "en", {
     code: "123456",
@@ -76,7 +96,7 @@ test("renderEmailTemplate auth_email_code en and ru", async () => {
   assert.match(en.html, /123456/);
   assert.equal(en.html.includes("123 456"), false);
   assert.match(en.html, /Okkey/);
-  assert.match(en.html, /lang="en"/);
+  assertHtmlDocumentMeta("en", en);
   assert.match(en.html, /cid:okkey-mark/);
   assert.equal(en.html.includes("data:image"), false);
   assert.match(en.html, /#f1f5f9/i);
@@ -103,7 +123,7 @@ test("renderEmailTemplate auth_email_code en and ru", async () => {
   assert.match(ru.text, /654321/);
   assert.match(ru.html, /654321/);
   assert.equal(ru.html.includes("654 321"), false);
-  assert.match(ru.html, /lang="ru"/);
+  assertHtmlDocumentMeta("ru", ru);
   assert.match(ru.text, /^Okkey\b/m);
   assertSharedEmailFooter("ru", ru);
   assert.equal(ru.text.includes("Если вы не запрашивали код"), false);
@@ -626,6 +646,10 @@ test("all templates share the same two-line footer", async () => {
   assertSharedEmailFooter("ru", twoFactor);
   assertSharedEmailFooter("en", twoFactorDisabled);
   assertSharedEmailFooter("en", otp);
+  assertHtmlDocumentMeta("en", invite);
+  assertHtmlDocumentMeta("ru", twoFactor);
+  assertHtmlDocumentMeta("en", twoFactorDisabled);
+  assertHtmlDocumentMeta("en", otp);
 });
 
 test("plan_change_request uses EmailShell and shared footer", async () => {
@@ -647,7 +671,7 @@ test("plan_change_request uses EmailShell and shared footer", async () => {
   assert.match(en.subject, /License request/i);
   assert.match(en.html, /cid:okkey-mark/);
   assert.match(en.html, /#f1f5f9/i);
-  assert.match(en.html, /lang="en"/);
+  assertHtmlDocumentMeta("en", en);
   assert.match(en.text, /^Okkey\b/m);
   assertSharedEmailFooter("en", en);
   assert.match(en.text, /Requested plan: ENTERPRISE/);
@@ -655,7 +679,7 @@ test("plan_change_request uses EmailShell and shared footer", async () => {
     ...vars,
     locale: "ru",
   });
-  assert.match(ru.html, /lang="ru"/);
+  assertHtmlDocumentMeta("ru", ru);
   assert.match(ru.text, /^Okkey\b/m);
   assertSharedEmailFooter("ru", ru);
 });

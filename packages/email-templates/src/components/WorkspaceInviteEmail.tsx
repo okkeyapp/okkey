@@ -7,6 +7,7 @@ import { EmailStandardFooter } from "./EmailStandardFooter.js";
 
 export interface WorkspaceInviteEmailProps {
   lang: string;
+  title: string;
   intro: string;
   ctaLabel: string;
   inviteUrl: string;
@@ -16,6 +17,7 @@ export interface WorkspaceInviteEmailProps {
 
 export function WorkspaceInviteEmail({
   lang,
+  title,
   intro,
   ctaLabel,
   inviteUrl,
@@ -25,6 +27,7 @@ export function WorkspaceInviteEmail({
   return (
     <EmailShell
       lang={lang}
+      title={title}
       preview={intro}
       footer={<EmailStandardFooter noReply={noReply} ignoreIfMistake={ignoreIfMistake} />}
     >
