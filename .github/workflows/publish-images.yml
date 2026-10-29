@@ -3,19 +3,27 @@
 # Scope: api / worker / web only. Browser extension is not published here
 # (out of the first image-backed release slice: 1.0.0-beta.2).
 #
-# Tag scheme (aligned with okkey-internal release-and-images + enterprise#53):
-#   push to `dev`          → :dev, :dev-<sha>
+# Image builds and signing run on:
+#   push to release/** and hotfix/**
+#   push of version tags (v*)
+#   workflow_dispatch — the only way to publish the floating :dev image
+# The daily schedule is GHCR TTL cleanup only (no image build).
+#
+# Tag scheme:
+#   release/<version> or hotfix/<version>
+#                          → :<version>-candidate, :<version>-<sha7>
+#                            (no :latest, no rolling :X / :X.Y)
 #   tag vX.Y.Z (clean)     → :X.Y.Z, :X.Y, :X   (:latest ONLY via manual dispatch)
 #   tag vX.Y.Z-prerelease  → :X.Y.Z-prerelease  (no rolling / :latest)
 #     e.g. v1.0.0-beta.2   → :1.0.0-beta.2 only (spelling: beta, never betta)
-#   pull_request           → :pr-<n>, :pr-<n>-<head-sha7>  (PR head, not merge commit)
-#   workflow_dispatch      → explicit tag (+ optional :latest when push_latest=true)
+#   workflow_dispatch      → explicit tag (default dev; + :latest when push_latest=true)
 #
 # Tag resolution: scripts/resolve-publish-image-tags.mjs (unit-tested in supply-chain).
 #
 # Retention (scheduled GC — never deletes SemVer / :latest / floating :dev):
 #   pr-*       → delete 14 days AFTER the PR is CLOSED; open-PR tags are never deleted
 #   dev-<sha>  → keep if age ≤ 30 days OR among the newest 20; else delete
+#   :<version>-candidate and :<version>-<sha7> match the SemVer keeper (not deleted)
 #
 # Multi-arch: linux/amd64 + linux/arm64 via native runners (no QEMU), then
 # manifest-list merge. BuildKit yarn/cargo cache mounts + GHA buildx cache.
@@ -26,18 +34,17 @@ name: Publish container images
 on:
   push:
     branches:
-      - dev
+      - "release/**"
+      - "hotfix/**"
     tags:
       - "v*"
-  pull_request:
-    types: [opened, synchronize, reopened, closed]
   schedule:
-    # Daily GHCR TTL cleanup (pr-* / dev-<sha>).
+    # Daily GHCR TTL cleanup (pr-* / dev-<sha>). Does not build or sign images.
     - cron: "17 3 * * *"
   workflow_dispatch:
     inputs:
       tag:
-        description: "Image tag to push (default: dev)"
+        description: "Image tag to push (default: dev). This is the only way to publish :dev."
         required: false
         default: "dev"
       push_latest:
@@ -83,10 +90,7 @@ jobs:
     if: >
       (github.event_name == 'workflow_dispatch' &&
        github.event.inputs.run_gc_only != 'true') ||
-      github.event_name == 'push' ||
-      (github.event_name == 'pull_request' &&
-       github.event.action != 'closed' &&
-       github.event.pull_request.head.repo.full_name == github.repository)
+      github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
