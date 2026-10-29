@@ -1,5 +1,5 @@
+import { ApiRequestError, type CoreApiClient } from "@okkey/api";
 import { ed25519Keypair, initCrypto, wipeBytes } from "@okkey/crypto";
-import type { CoreApiClient } from "@okkey/api";
 import type { DeviceListItemDto, DeviceRegisterResponseDto } from "@okkey/types";
 
 import { readStoredLocale } from "../locale/localeStorage";
@@ -117,6 +117,10 @@ export async function resolveDeviceTrust(
   try {
     listed = await core.listDevices(fingerprint);
   } catch (error: unknown) {
+    // Dead Bearer (device revoked/blocked elsewhere) → caller must clear session.
+    if (error instanceof ApiRequestError && error.status === 401) {
+      throw error;
+    }
     if (import.meta.env.MODE === "test") {
       return { status: "trusted", deviceId: null, approverDevices: [] };
     }
@@ -154,7 +158,6 @@ export async function resolveDeviceTrust(
     hasBundle &&
     soleTrusted !== null &&
     canReclaimSoleTrustedDevice(soleTrusted, fingerprint, env.clientType);
-  const canBootstrapTrusted = hasBundle && listed.devices.length === 0;
 
   // Always register, including a trusted or pending fingerprint match, so the
   // full session is bound to that device. A match-only return left device_id NULL.

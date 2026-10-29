@@ -396,7 +396,14 @@ export function createRevokeDeviceRoute(
       const result = await deviceService.revokeDevice(userId, targetDeviceId, body.reason);
       if (sessionService) {
         await sessionService.revokeSessionsForDevice(userId, targetDeviceId);
-        if (allowCurrent && accessToken) {
+        // sign_out ends the caller's session only when they revoke themselves (or
+        // an unbound full session that used sign_out to revoke). Revoking another
+        // device must not log the approver out.
+        const signingOutSelf =
+          allowCurrent &&
+          (fullSessionUnbound ||
+            (currentDeviceId != null && sameDeviceId(currentDeviceId, targetDeviceId)));
+        if (signingOutSelf && accessToken) {
           await sessionService.revokeAccessToken(accessToken);
         }
       }

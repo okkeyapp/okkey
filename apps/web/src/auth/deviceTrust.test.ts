@@ -1,3 +1,4 @@
+import { ApiRequestError } from "@okkey/api";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const listDevices = vi.fn();
@@ -103,6 +104,18 @@ describe("resolveDeviceTrust", () => {
     expect(registerDevice).toHaveBeenCalledOnce();
     expect(snapshot.status).toBe("trusted");
     expect(snapshot.deviceId).toBe("d-me");
+  });
+
+  it("rethrows 401 from listDevices so the session can clear to sign-in", async () => {
+    listDevices.mockRejectedValue(
+      new ApiRequestError(401, { error: "AUTH_REQUIRED", message: "auth required" }),
+    );
+
+    await expect(resolveDeviceTrust(coreClient(), "u1")).rejects.toMatchObject({
+      name: "ApiRequestError",
+      status: 401,
+    });
+    expect(registerDevice).not.toHaveBeenCalled();
   });
 
   it("prefers active blocked over trusted for the same fingerprint", async () => {

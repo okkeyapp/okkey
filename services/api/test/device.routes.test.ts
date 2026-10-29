@@ -584,6 +584,38 @@ test("POST /devices/:id/revoke of another device ends that device sessions", asy
   assert.deepEqual(revokedSessionDevices, [DEVICE_B]);
 });
 
+test("POST /devices/:id/revoke with sign_out on another device keeps the caller session", async () => {
+  const revokedSessionDevices: string[] = [];
+  const revokedTokens: string[] = [];
+  const res = await dispatch({
+    method: "POST",
+    url: `/devices/${DEVICE_B}/revoke`,
+    headers: { authorization: "Bearer tok-approver" },
+    body: { sign_out: true, reason: "not now" },
+    deviceService: createDeviceServiceStub({
+      revokeDevice: async () => ({ deviceId: DEVICE_B, status: "revoked" }),
+    }),
+    sessionService: createSessionServiceStub({
+      resolveAccessToken: async () => ({
+        userId: "u1",
+        deviceId: DEVICE_A,
+        scope: null,
+        tokenHash: "hash:tok-approver",
+      }),
+      revokeSessionsForDevice: async (_userId, deviceId) => {
+        revokedSessionDevices.push(deviceId);
+      },
+      revokeAccessToken: async (token) => {
+        revokedTokens.push(token);
+        return true;
+      },
+    }),
+  });
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(revokedSessionDevices, [DEVICE_B]);
+  assert.deepEqual(revokedTokens, []);
+});
+
 test("POST /devices/:id/revoke still revokes a different device when caller header is set", async () => {
   const res = await dispatch({
     method: "POST",

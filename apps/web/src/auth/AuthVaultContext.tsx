@@ -1,4 +1,5 @@
 import type { AccessTokenResponseDto, DeviceListItemDto } from "@okkey/types";
+import { ApiRequestError } from "@okkey/api";
 import { AuthClient } from "@okkey/auth";
 import {
   createContext,
@@ -356,6 +357,8 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
   const currentDeviceIdRef = useRef<string | null>(null);
   /** Sticky forever-block so poll cannot bounce back to unlock/restore. */
   const foreverBlockedRef = useRef(false);
+  /** Filled after `logout` is defined; used by earlier effects that clear a dead session. */
+  const logoutRef = useRef<() => void>(() => {});
 
   useEffect(() => {
     vaultUnlockedRef.current = vaultUnlocked;
@@ -419,31 +422,44 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
     setDeviceTrustStatus("checking");
     void (async () => {
-      const client = createAuthenticatedCoreClient(accessToken);
-      const snapshot = await resolveDeviceTrust(client, userId);
-      if (cancelled) {
-        return;
+      try {
+        const client = createAuthenticatedCoreClient(accessToken);
+        const snapshot = await resolveDeviceTrust(client, userId);
+        if (cancelled) {
+          return;
+        }
+        if (snapshot.status === "blocked" && snapshot.blockedUntil == null) {
+          foreverBlockedRef.current = true;
+        } else {
+          foreverBlockedRef.current = false;
+        }
+        pendingDeviceIdRef.current =
+          snapshot.status === "pending" ||
+          snapshot.status === "rejected" ||
+          snapshot.status === "blocked"
+            ? snapshot.deviceId
+            : snapshot.status === "trusted"
+              ? null
+              : pendingDeviceIdRef.current;
+        setDeviceTrustStatus(snapshot.status);
+        setDeviceBlockedUntil(
+          snapshot.status === "blocked" ? (snapshot.blockedUntil ?? null) : null,
+        );
+        setCurrentDeviceId(snapshot.deviceId);
+        currentDeviceIdRef.current = snapshot.deviceId;
+        setDeviceApprovers(snapshot.approverDevices);
+      } catch (error: unknown) {
+        if (cancelled) {
+          return;
+        }
+        // Session ended by remote revoke/reject/block — go to sign-in, not the
+        // pending "Request approval again" screen (retry would also 401).
+        if (error instanceof ApiRequestError && error.status === 401) {
+          logoutRef.current();
+          return;
+        }
+        setDeviceTrustStatus("error");
       }
-      if (snapshot.status === "blocked" && snapshot.blockedUntil == null) {
-        foreverBlockedRef.current = true;
-      } else {
-        foreverBlockedRef.current = false;
-      }
-      pendingDeviceIdRef.current =
-        snapshot.status === "pending" ||
-        snapshot.status === "rejected" ||
-        snapshot.status === "blocked"
-          ? snapshot.deviceId
-          : snapshot.status === "trusted"
-            ? null
-            : pendingDeviceIdRef.current;
-      setDeviceTrustStatus(snapshot.status);
-      setDeviceBlockedUntil(
-        snapshot.status === "blocked" ? (snapshot.blockedUntil ?? null) : null,
-      );
-      setCurrentDeviceId(snapshot.deviceId);
-      currentDeviceIdRef.current = snapshot.deviceId;
-      setDeviceApprovers(snapshot.approverDevices);
     })();
 
     return () => {
@@ -638,6 +654,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
     foreverBlockedRef.current = false;
     clearSettingsPopupCache();
   }, [clearPasswordShareSecrets, clearVaultKeySecret]);
+  logoutRef.current = logout;
 
   const lockVault = useCallback(() => {
     clearVaultUnlockSession();
@@ -988,10 +1005,14 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       if (snapshot.status !== "trusted" && vaultUnlockedRef.current) {
         lockVault();
       }
-    } catch {
+    } catch (error: unknown) {
+      if (error instanceof ApiRequestError && error.status === 401) {
+        logout();
+        return;
+      }
       // Best-effort; keep last known trust status on transient network errors.
     }
-  }, [accessToken, lockVault, userId]);
+  }, [accessToken, lockVault, logout, userId]);
 
   const markDeviceBlockedForever = useCallback(() => {
     foreverBlockedRef.current = true;
@@ -1043,10 +1064,14 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       setCurrentDeviceId(registered.device_id);
       const listed = await client.listDevices(getOrCreateDeviceFingerprint()).catch(() => null);
       setDeviceApprovers(listed?.devices ?? []);
-    } catch {
+    } catch (error: unknown) {
+      if (error instanceof ApiRequestError && error.status === 401) {
+        logout();
+        return;
+      }
       setDeviceTrustStatus("error");
     }
-  }, [accessToken, userId]);
+  }, [accessToken, logout, userId]);
 
   const hasVaultBundle = readVaultBundle(userId) !== null;
 
