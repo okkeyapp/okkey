@@ -6,6 +6,18 @@ normalize_host() {
   printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | sed 's/\.*$//'
 }
 
+# Strict single DNS hostname (RFC1123 labels + ≥1 dot). Rejects spaces/tabs,
+# multi-name lists, wildcards, leading dots — retest#4 finding 1 / retest#5.
+require_hostname() {
+  _rh_label="$1"
+  _rh_host="$2"
+  if ! printf '%s' "${_rh_host}" | grep -Eq '^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$'; then
+    echo "okkey-proxy: ${_rh_label} must be a single strict DNS hostname (got: '${_rh_host}')" >&2
+    echo "okkey-proxy: no spaces, wildcards, leading dots, or multiple names" >&2
+    exit 1
+  fi
+}
+
 : "${OKKEY_WEB_HOST:=app.example.com}"
 : "${OKKEY_API_HOST:=api.example.com}"
 : "${OKKEY_WEB_UPSTREAM:=web:80}"
@@ -15,6 +27,8 @@ normalize_host() {
 
 OKKEY_WEB_HOST="$(normalize_host "${OKKEY_WEB_HOST}")"
 OKKEY_API_HOST="$(normalize_host "${OKKEY_API_HOST}")"
+require_hostname OKKEY_WEB_HOST "${OKKEY_WEB_HOST}"
+require_hostname OKKEY_API_HOST "${OKKEY_API_HOST}"
 
 export OKKEY_WEB_HOST OKKEY_API_HOST OKKEY_WEB_UPSTREAM OKKEY_API_UPSTREAM
 
@@ -36,6 +50,8 @@ case "${OKKEY_COMPAT_ENABLED}" in
 
     OKKEY_COMPAT_WEB_HOST="$(normalize_host "${OKKEY_COMPAT_WEB_HOST}")"
     OKKEY_COMPAT_API_HOST="$(normalize_host "${OKKEY_COMPAT_API_HOST}")"
+    require_hostname OKKEY_COMPAT_WEB_HOST "${OKKEY_COMPAT_WEB_HOST}"
+    require_hostname OKKEY_COMPAT_API_HOST "${OKKEY_COMPAT_API_HOST}"
 
     case "${OKKEY_COMPAT_SUNSET}" in
       [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]) ;;
@@ -44,6 +60,12 @@ case "${OKKEY_COMPAT_ENABLED}" in
         exit 1
         ;;
     esac
+    # Calendar-valid date (retest#4 finding 2): regex alone accepts 2026-13-45.
+    SUNSET_PARSED="$(date -u -d "${OKKEY_COMPAT_SUNSET}" +%F 2>/dev/null || true)"
+    if [ "${SUNSET_PARSED}" != "${OKKEY_COMPAT_SUNSET}" ]; then
+      echo "okkey-proxy: OKKEY_COMPAT_SUNSET is not a valid calendar date (got: ${OKKEY_COMPAT_SUNSET})" >&2
+      exit 1
+    fi
 
     TODAY="$(date -u +%Y-%m-%d)"
     if [ "${OKKEY_COMPAT_SUNSET}" '<' "${TODAY}" ]; then
@@ -86,6 +108,11 @@ case "${OKKEY_COMPAT_ENABLED}" in
         ;;
       ''|*[!0-9]*)
         echo "okkey-proxy: OKKEY_COMPAT_HTTPS_PORT must be numeric (got: ${OKKEY_COMPAT_HTTPS_PORT})" >&2
+        exit 1
+        ;;
+      0*)
+        # nginx coerces 0443→443; refuse leading zeros (retest#4 finding 3).
+        echo "okkey-proxy: OKKEY_COMPAT_HTTPS_PORT must not have leading zeros (got: ${OKKEY_COMPAT_HTTPS_PORT})" >&2
         exit 1
         ;;
     esac

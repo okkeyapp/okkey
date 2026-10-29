@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Static review: classical-only compat listeners are explicit / isolated / time-boxed,
 # and the default route stays hybrid-only (no silent downgrade).
-# Retest#3/#4: catch-all classical TLS params + 421; cipher whitelist; per-block 421;
-# entrypoint sunset/normalize/port-80; gen-self-signed collision-before-write.
+# Retest#3/#4/#5: catch-all classical TLS params + 421; cipher whitelist; per-block 421;
+# entrypoint sunset/normalize/port-80; RFC1123 host gate; gen-self-signed collision-before-write;
+# ban ssl_conf_command; ssl_protocols on every compat server block.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
@@ -89,6 +90,19 @@ echo "${CATCHALL}" | grep -q 'ssl_session_tickets off;' \
   || fail "catch-all must ssl_session_tickets off (finding 3)"
 echo "${CATCHALL}" | grep -q 'ssl_prefer_server_ciphers on;' \
   || fail "catch-all must ssl_prefer_server_ciphers on"
+# Catch-all server_name must stay the reject sentinel "_" (no alias / multi-name).
+echo "${CATCHALL}" | grep -Eq '^[[:space:]]*server_name[[:space:]]+_[[:space:]]*;' \
+  || fail "catch-all must use server_name _ only (no alias; retest#4 finding 5)"
+
+PROTO_COUNT="$(grep -cE '^[[:space:]]*ssl_protocols[[:space:]]+TLSv1\.2[[:space:]]+TLSv1\.3[[:space:]]*;' "${COMPAT}" || true)"
+[[ "${PROTO_COUNT}" -ge 3 ]] \
+  || fail "compat must set ssl_protocols TLSv1.2 TLSv1.3 on catch-all + web + API (found ${PROTO_COUNT})"
+if grep -Eiq '^[[:space:]]*ssl_protocols[[:space:]]+.*TLSv1\.[01]' "${COMPAT}"; then
+  fail "compat must not enable TLS ≤ 1.1 (comment-trick / regress)"
+fi
+if grep -Eiq 'ssl_conf_command' "${COMPAT}" "${STRICT}"; then
+  fail "templates must not use ssl_conf_command (bypasses cipher/group policy; retest#4 finding 5)"
+fi
 
 while IFS= read -r CURVE_LINE; do
   echo "${CURVE_LINE}" | grep -Eq 'ssl_ecdh_curve[[:space:]]+X25519[[:space:]]*;' \
@@ -173,21 +187,36 @@ grep -q 'must not be 80' "${ENTRY}" \
   || fail "entrypoint must refuse compat listen port 80 with clear error"
 grep -q 'normalize_host' "${ENTRY}" \
   || fail "entrypoint must normalize_host (lowercase / trailing-dot; finding 6)"
+grep -q 'require_hostname' "${ENTRY}" \
+  || fail "entrypoint must require_hostname (strict RFC1123; retest#4 finding 1)"
+grep -Eq 'single strict DNS hostname' "${ENTRY}" \
+  || fail "entrypoint must refuse non-hostname compat/strict hosts"
+grep -Eq 'date -u -d|date -d' "${ENTRY}" \
+  || fail "entrypoint must calendar-parse sunset via date -d (retest#4 finding 2)"
+grep -Eq 'valid calendar date' "${ENTRY}" \
+  || fail "entrypoint must refuse invalid sunset calendar dates"
+grep -Eq 'leading zeros' "${ENTRY}" \
+  || fail "entrypoint must refuse leading-zero compat ports (retest#4 finding 3)"
 grep -Eq 'in the past|sunset.*past' "${ENTRY}" \
   || fail "entrypoint must refuse past sunset"
 grep -Eq 'exceeds max time-box|MAX_SUNSET' "${ENTRY}" \
   || fail "entrypoint must enforce sunset upper time-box"
 
-echo "==> gen-self-signed N7 / finding 6: ${GENSS}"
+echo "==> gen-self-signed N7 / finding 6 + RFC1123: ${GENSS}"
 [[ -x "${GENSS}" ]] || fail "gen-self-signed.sh missing or not executable"
 grep -q 'normalize_host' "${GENSS}" \
   || fail "gen-self-signed must normalize_host"
+grep -q 'require_hostname' "${GENSS}" \
+  || fail "gen-self-signed must require_hostname (retest#4 finding 1)"
 COLLISION_LINE="$(grep -n 'compat hosts must differ' "${GENSS}" | head -1 | cut -d: -f1)"
 WRITE_LINE="$(grep -n 'openssl req' "${GENSS}" | head -1 | cut -d: -f1)"
+HOST_GATE_LINE="$(grep -n 'require_hostname' "${GENSS}" | head -1 | cut -d: -f1)"
 [[ -n "${COLLISION_LINE}" && -n "${WRITE_LINE}" ]] \
   || fail "gen-self-signed must check collision and write certs"
 [[ "${COLLISION_LINE}" -lt "${WRITE_LINE}" ]] \
   || fail "gen-self-signed must check host collision BEFORE writing PEMs (finding 6)"
+[[ -n "${HOST_GATE_LINE}" && "${HOST_GATE_LINE}" -lt "${WRITE_LINE}" ]] \
+  || fail "gen-self-signed must validate hostname BEFORE writing PEMs"
 
 echo "==> compose defaults compat off; N8 no 8443 on base overlay"
 grep -q 'OKKEY_COMPAT_ENABLED: \${OKKEY_COMPAT_ENABLED:-0}' "${COMPOSE}" \

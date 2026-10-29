@@ -300,7 +300,8 @@ run_docker() {
       "${ROOT}/nginx"
   fi
   local cport_inside="${OKKEY_COMPAT_LISTEN_INSIDE:-8443}"
-  DOCKER_CID="$(docker run -d --rm \
+  # No --rm: keep the container so docker logs survive entrypoint refusal (N9 / retest#4 finding 4).
+  DOCKER_CID="$(docker run -d \
     -p "127.0.0.1:${PORT}:443" \
     -p "127.0.0.1:${HTTP_PORT}:80" \
     -p "127.0.0.1:${COMPAT_PORT}:${cport_inside}" \
@@ -330,7 +331,9 @@ run_docker() {
     sleep 0.5
   done
   if [[ "${ready}" -ne 1 ]]; then
-    fail "docker proxy did not become ready within timeout (N9). Often: cert bind-mount missing/mismatched PEMs under ${RUN_DIR}/certs, entrypoint refused env, or image OpenSSL < 3.5. Last container logs:\n${last_err}"
+    last_err="$(docker logs "${DOCKER_CID}" 2>&1 | tail -40 || printf '%s' "${last_err}")"
+    fail "docker proxy did not become ready within timeout (N9). Often: cert bind-mount missing/mismatched PEMs under ${RUN_DIR}/certs, entrypoint refused env, or image OpenSSL < 3.5. Last container logs:
+${last_err}"
   fi
   run_verify
 }

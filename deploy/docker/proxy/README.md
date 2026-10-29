@@ -16,7 +16,7 @@ Classical-only clients are **not** on the default route. Optional **compat liste
 |------|---------|
 | `docker-compose.proxy.yml` | Optional compose overlay (`proxy` service) |
 | `nginx/Dockerfile` | Builds nginx against OpenSSL **3.5.9** (override via `OKKEY_PROXY_OPENSSL_VERSION`) |
-| `docker-compose.compat.yml` | Publishes compat port only when ENABLED=1 (N8) |
+| `docker-compose.compat.yml` | Publishes 8443; pair only with ENABLED=1 (N8) |
 | `nginx/conf.d/okkey.conf.template` | Strict TLS + reverse proxy to `web` / `api` |
 | `nginx/conf.d/okkey-compat.conf.template` | Optional classical-only listeners (separate hosts + port) |
 | `compat.env.example` | Opt-in env knobs (disabled by default) |

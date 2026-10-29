@@ -33,6 +33,16 @@ normalize_host() {
   printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | sed 's/\.*$//'
 }
 
+# Strict single DNS hostname (RFC1123 + ≥1 dot). Retest#4 finding 1 / retest#5.
+require_hostname() {
+  local label="$1" host="$2"
+  if ! printf '%s' "${host}" | grep -Eq '^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$'; then
+    echo "ERROR: ${label} must be a single strict DNS hostname (got: '${host}')" >&2
+    echo "ERROR: no spaces, wildcards, leading dots, or multiple names" >&2
+    exit 1
+  fi
+}
+
 usage() {
   cat <<'EOF'
 Usage: gen-self-signed.sh [--with-compat] [--force]
@@ -51,8 +61,9 @@ Usage: gen-self-signed.sh [--with-compat] [--force]
   Compat certs are also written automatically when OKKEY_COMPAT_WEB_HOST and
   OKKEY_COMPAT_API_HOST are both set in the environment.
 
-  Hostnames are normalized (lowercase, no trailing dot) before collision
-  checks and before any file is written.
+  Hostnames are normalized (lowercase, no trailing dot) and must be a
+  single strict DNS name (no spaces/wildcards) before collision checks
+  and before any file is written.
 EOF
 }
 
@@ -67,6 +78,8 @@ done
 
 WEB_HOST="$(normalize_host "${WEB_HOST}")"
 API_HOST="$(normalize_host "${API_HOST}")"
+require_hostname OKKEY_WEB_HOST "${WEB_HOST}"
+require_hostname OKKEY_API_HOST "${API_HOST}"
 if [[ -n "${COMPAT_WEB_HOST}" ]]; then
   COMPAT_WEB_HOST="$(normalize_host "${COMPAT_WEB_HOST}")"
 fi
@@ -89,6 +102,8 @@ fi
 if [[ "${WITH_COMPAT}" -eq 1 ]]; then
   COMPAT_WEB_HOST="$(normalize_host "${COMPAT_WEB_HOST:-compat-app.example.com}")"
   COMPAT_API_HOST="$(normalize_host "${COMPAT_API_HOST:-compat-api.example.com}")"
+  require_hostname OKKEY_COMPAT_WEB_HOST "${COMPAT_WEB_HOST}"
+  require_hostname OKKEY_COMPAT_API_HOST "${COMPAT_API_HOST}"
 fi
 
 # Collision + overwrite checks BEFORE any write (finding 6 / N7).
