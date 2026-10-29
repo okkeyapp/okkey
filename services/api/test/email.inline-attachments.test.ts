@@ -7,6 +7,8 @@ import {
   encodeRfc2047,
   encodeRfc2047Words,
   encodeUnstructuredHeader,
+  formatAsciiHeaderField,
+  formatMailboxHeader,
   formatUnstructuredHeader,
   unquoteDisplayName,
   withOkkeyMarkInlineAttachment,
@@ -85,6 +87,64 @@ test("encodeUnstructuredHeader leaves ASCII subjects untouched", () => {
   assert.equal(encodeUnstructuredHeader("Hello Okkey"), "Hello Okkey");
 });
 
+test("encodeUnstructuredHeader encodes ASCII that looks like an encoded-word", () => {
+  const fake = "=?UTF-8?B?SGVsbG8=?=";
+  const encoded = encodeUnstructuredHeader(fake);
+  assert.match(encoded, /^=\?UTF-8\?B\?[A-Za-z0-9+/=]+\?=/);
+  assert.equal(encodedWordsIn(encoded).map(decodeEncodedWord).join(""), fake);
+});
+
+test("formatUnstructuredHeader encodes ASCII that looks like an encoded-word", () => {
+  const fake = "=?UTF-8?B?SGVsbG8=?=";
+  const field = formatUnstructuredHeader("Subject", fake);
+  assert.match(field, /^Subject: =\?UTF-8\?B\?/);
+  assert.equal(encodedWordsIn(field).map(decodeEncodedWord).join(""), fake);
+});
+
+test("formatAsciiHeaderField folds long ASCII on whitespace", () => {
+  const words = Array.from({ length: 20 }, (_, i) => `word${i}`);
+  const value = words.join(" ");
+  const field = formatAsciiHeaderField("Subject", value);
+  assert.match(field, /\r\n /);
+  for (const line of field.split("\r\n")) {
+    assert.ok(line.length <= 76, `soft-wrapped line ${line.length}: ${line}`);
+  }
+  assert.equal(field.replace(/\r\n /g, " ").slice("Subject: ".length), value);
+});
+
+test("formatAsciiHeaderField allows unsplittable ASCII up to 998", () => {
+  const addr = `${"a".repeat(80)}@example.com`;
+  assert.ok(addr.length > 75);
+  const field = formatAsciiHeaderField("To", addr);
+  assert.equal(field, `To: ${addr}`);
+  assert.ok(field.length <= 998);
+  assert.doesNotMatch(field, /\r\n/);
+});
+
+test("formatMailboxHeader accepts long bare To addresses without throwing", () => {
+  const addr = `${"user".repeat(20)}@very-long-domain-name.example.com`;
+  assert.ok(addr.length > 75);
+  const field = formatMailboxHeader("To", addr);
+  assert.equal(field, `To: ${addr}`);
+});
+
+test("formatMailboxHeader accepts long ASCII From without throwing", () => {
+  const from = `${"n".repeat(70)}@okkey.example`;
+  assert.ok(from.length > 75);
+  const field = formatMailboxHeader("From", from);
+  assert.equal(field, `From: ${from}`);
+});
+
+test("formatUnstructuredHeader accepts long ASCII subjects without throwing", () => {
+  const subject = `Okkey notice ${"x".repeat(80)}`;
+  assert.ok(subject.length > 75);
+  const field = formatUnstructuredHeader("Subject", subject);
+  assert.match(field, /^Subject: /);
+  assert.ok(!field.includes("header continuation exceeds"));
+  const unfolded = field.replace(/\r\n /g, " ");
+  assert.equal(unfolded, `Subject: ${subject}`);
+});
+
 test("encodeUnstructuredHeader uses RFC 2047 for non-ASCII subjects", () => {
   const subject = "819281 — код входа в Okkey";
   const encoded = encodeUnstructuredHeader(subject);
@@ -132,11 +192,22 @@ test("unquoteDisplayName only strips wrapping quotes", () => {
   assert.equal(unquoteDisplayName('"Okkey"'), "Okkey");
   assert.equal(unquoteDisplayName('Okkey, Inc. "QA"'), 'Okkey, Inc. "QA"');
   assert.equal(unquoteDisplayName('"Okkey, Inc. \\"QA\\""'), 'Okkey, Inc. "QA"');
+  assert.equal(unquoteDisplayName('"QA" Okkey "Team"'), '"QA" Okkey "Team"');
 });
 
 test("encodeMailboxHeader preserves trailing quote inside display-name", () => {
   const encoded = encodeMailboxHeader('Okkey, Inc. "QA" <no-reply@okkey.local>');
   assert.equal(encoded, `"Okkey, Inc. \\"QA\\"" <no-reply@okkey.local>`);
+});
+
+test("encodeMailboxHeader preserves outer quotes around multi-quote display-name", () => {
+  const encoded = encodeMailboxHeader('"QA" Okkey "Team" <no-reply@okkey.local>');
+  assert.equal(encoded, `"\\"QA\\" Okkey \\"Team\\"" <no-reply@okkey.local>`);
+});
+
+test("formatMailboxHeader preserves multi-quote display-name", () => {
+  const field = formatMailboxHeader("From", '"QA" Okkey "Team" <no-reply@okkey.local>');
+  assert.equal(field, `From: "\\"QA\\" Okkey \\"Team\\"" <no-reply@okkey.local>`);
 });
 
 test("encodeMailboxHeader RFC 2047-encodes non-ASCII display names", () => {
@@ -166,6 +237,88 @@ test("buildRawMimeEmail embeds CID image part", () => {
   assert.match(raw, /Content-ID: <okkey-mark>/);
   assert.match(raw, /image\/png/);
   assert.ok(raw.includes(OKKEY_MARK_PNG_BASE64.slice(0, 32)));
+});
+
+test("buildRawMimeEmail folds multipart/related Content-Type to ≤76", () => {
+  const raw = buildRawMimeEmail(baseMessage, {
+    now: fixedNow,
+    messageId: fixedMessageId,
+  }).toString("utf8");
+  const header = raw.split(/\r\n\r\n/)[0]!;
+  const ctLines = header.split("\r\n").filter((line, i, all) => {
+    if (line.startsWith("Content-Type:")) {
+      return true;
+    }
+    // Continuations belonging to Content-Type
+    if (/^\s/.test(line)) {
+      const prev = all[i - 1]!;
+      return prev.startsWith("Content-Type:") || /^\s/.test(prev);
+    }
+    return false;
+  });
+  // First Content-Type in a related message is multipart/related
+  assert.match(ctLines[0]!, /^Content-Type: multipart\/related;/);
+  for (const line of ctLines) {
+    if (line.includes("multipart/related") || line.includes('type="multipart/alternative"')
+      || line.includes("okkey_related_")) {
+      assert.ok(line.length <= 76, `Content-Type line ${line.length}: ${line}`);
+    }
+  }
+  assert.match(header, /Content-Type: multipart\/related;[\s\S]*type="multipart\/alternative"/);
+});
+
+test("buildRawMimeEmail sends long ASCII To/From/Subject without throwing", () => {
+  const longTo = `${"a".repeat(80)}@example.com`;
+  const longFrom = `${"b".repeat(82)}@okkey.example`;
+  const longSubject = `Notice ${"z".repeat(80)}`;
+  assert.ok(longTo.length > 75 && longFrom.length > 75 && longSubject.length > 75);
+  const raw = buildRawMimeEmail(
+    {
+      ...baseMessage,
+      to: longTo,
+      from: longFrom,
+      subject: longSubject,
+      html: "<p>no logo</p>",
+    },
+    { now: fixedNow, messageId: fixedMessageId },
+  ).toString("utf8");
+  assert.match(raw, new RegExp(`^To: ${longTo.replace(/\./g, "\\.")}\\r\\n`, "m"));
+  assert.match(raw, new RegExp(`^From: ${longFrom.replace(/\./g, "\\.")}\\r\\n`, "m"));
+  const subjectField = raw.match(/^Subject:[\s\S]*?(?=\r\n(?:Date|Message-ID|MIME-Version|Content-Type):)/m)?.[0];
+  assert.ok(subjectField, "Subject header missing");
+  assert.equal(subjectField.replace(/\r\n /g, " "), `Subject: ${longSubject}`);
+  const oversize = raw.split(/\r\n/).filter((line) => line.length > 998);
+  assert.deepEqual(oversize, []);
+});
+
+test("buildRawMimeEmail encodes subject that looks like an encoded-word", () => {
+  const fake = "=?UTF-8?B?SGVsbG8=?=";
+  const raw = buildRawMimeEmail(
+    {
+      ...baseMessage,
+      subject: fake,
+      html: "<p>no logo</p>",
+    },
+    { now: fixedNow, messageId: fixedMessageId },
+  ).toString("utf8");
+  const header = raw.split(/\r\n\r\n/)[0]!;
+  assert.match(header, /^Subject: =\?UTF-8\?B\?/m);
+  assert.equal(encodedWordsIn(header).map(decodeEncodedWord).join(""), fake);
+});
+
+test("buildRawMimeEmail preserves multi-quote From display-name", () => {
+  const raw = buildRawMimeEmail(
+    {
+      ...baseMessage,
+      from: '"QA" Okkey "Team" <no-reply@okkey.local>',
+      html: "<p>no logo</p>",
+    },
+    { now: fixedNow, messageId: fixedMessageId },
+  ).toString("utf8");
+  assert.match(
+    raw,
+    /^From: "\\"QA\\" Okkey \\"Team\\"" <no-reply@okkey\.local>\r\n/m,
+  );
 });
 
 test("buildRawMimeEmail encodes UTF-8 subject, folds headers, wraps base64", () => {

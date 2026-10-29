@@ -14,6 +14,13 @@ const BASE64_LINE_LENGTH = 76;
 /** RFC 2047 §2: each encoded-word ≤75; each header line with encoded-words ≤76. */
 const ENCODED_WORD_MAX = 75;
 const HEADER_LINE_MAX = 76;
+/** RFC 5322 §2.1.1 hard limit per physical line (excluding CRLF). */
+const HEADER_LINE_HARD_MAX = 998;
+
+/** True when ASCII text looks like an RFC 2047 encoded-word (must not be sent raw). */
+function looksLikeEncodedWord(value: string): boolean {
+  return /=\?[^?\s]*\?[bBqQ]\?[^?]*\?=/.test(value);
+}
 
 export function messageReferencesOkkeyMarkCid(html: string): boolean {
   return html.includes(`cid:${OKKEY_MARK_CID}`);
@@ -57,18 +64,30 @@ function isAsciiPrintable(value: string): boolean {
 }
 
 /**
- * Unwrap a quoted display-name only when the whole token is quoted.
- * Do not strip a trailing `"` that is part of the name (e.g. `Inc. "QA"`).
+ * Unwrap a quoted display-name only when the whole token is one quoted-string.
+ * Do not strip wrapping quotes when unescaped `"` appear inside
+ * (e.g. `"QA" Okkey "Team"` or a trailing `Inc. "QA"`).
  */
 export function unquoteDisplayName(raw: string): string {
   const trimmed = raw.trim();
-  if (trimmed.length >= 2 && trimmed.startsWith('"') && trimmed.endsWith('"')) {
-    return trimmed
-      .slice(1, -1)
-      .replace(/\\"/g, '"')
-      .replace(/\\\\/g, "\\");
+  if (trimmed.length < 2 || !trimmed.startsWith('"') || !trimmed.endsWith('"')) {
+    return trimmed;
   }
-  return trimmed;
+  // Walk the interior: an unescaped " before the final quote means this is not
+  // a single wrapping quoted-string.
+  for (let i = 1; i < trimmed.length - 1; i += 1) {
+    if (trimmed[i] === "\\") {
+      i += 1; // skip escaped octet
+      continue;
+    }
+    if (trimmed[i] === '"') {
+      return trimmed;
+    }
+  }
+  return trimmed
+    .slice(1, -1)
+    .replace(/\\"/g, '"')
+    .replace(/\\\\/g, "\\");
 }
 
 function encodeRfc2047Word(text: string): string {
@@ -161,27 +180,31 @@ export function encodeRfc2047(value: string): string {
 }
 
 /**
- * Fold a header field so each physical line is ≤76 octets.
+ * Fold a header field so each physical line is ≤ `lineMax` octets (default 76).
  * Encoded-words are separated by CRLF SPACE (RFC 2047 §2).
  * Returns the full `Name: …` field (may contain CRLF).
  */
-export function formatHeaderField(name: string, valueParts: string[]): string {
+export function formatHeaderField(
+  name: string,
+  valueParts: string[],
+  lineMax: number = HEADER_LINE_MAX,
+): string {
   if (valueParts.length === 0) {
     return `${name}:`;
   }
   const physical: string[] = [];
   let line = `${name}:`;
   for (const part of valueParts) {
-    const separator = line.endsWith(":") ? " " : " ";
-    if (line.length + separator.length + part.length <= HEADER_LINE_MAX) {
+    const separator = " ";
+    if (line.length + separator.length + part.length <= lineMax) {
       line += separator + part;
       continue;
     }
     physical.push(line);
     line = ` ${part}`;
-    if (line.length > HEADER_LINE_MAX) {
+    if (line.length > lineMax) {
       throw new Error(
-        `header continuation exceeds ${HEADER_LINE_MAX} octets (${name}: ${part.length})`,
+        `header continuation exceeds ${lineMax} octets (${name}: ${part.length})`,
       );
     }
   }
@@ -189,14 +212,55 @@ export function formatHeaderField(name: string, valueParts: string[]): string {
   return physical.join("\r\n");
 }
 
-/** Unstructured header (Subject): ASCII raw, else RFC 2047 with folding. */
+/**
+ * Fold an ASCII header value on whitespace (RFC 5322 §2.2.3), preferring ≤76
+ * octets per line. A single token with no break opportunity may use the full
+ * 998-octet hard limit instead of throwing.
+ */
+export function formatAsciiHeaderField(name: string, value: string): string {
+  const tokens = value.length === 0 ? [] : value.split(/ +/).filter((t) => t.length > 0);
+  if (tokens.length === 0) {
+    return `${name}:`;
+  }
+  const physical: string[] = [];
+  let line = `${name}:`;
+  for (const token of tokens) {
+    const separator = " ";
+    const candidate = `${line}${separator}${token}`;
+    if (candidate.length <= HEADER_LINE_MAX) {
+      line = candidate;
+      continue;
+    }
+    if (line !== `${name}:`) {
+      physical.push(line);
+      line = `${separator}${token}`;
+    } else {
+      // First token has no soft-wrap opportunity — keep on the name line.
+      line = candidate;
+    }
+    if (line.length > HEADER_LINE_HARD_MAX) {
+      throw new Error(
+        `header line exceeds ${HEADER_LINE_HARD_MAX} octets (${name}: ${line.length})`,
+      );
+    }
+  }
+  physical.push(line);
+  return physical.join("\r\n");
+}
+
+/** Unstructured header (Subject): ASCII raw (folded), else RFC 2047 with folding. */
 export function formatUnstructuredHeader(name: string, value: string): string {
   const cleaned = sanitizeHeaderText(value);
   if (cleaned.length === 0) {
     return `${name}:`;
   }
   if (isAsciiPrintable(cleaned)) {
-    return formatHeaderField(name, [cleaned]);
+    // Literal text that looks like an encoded-word must itself be encoded,
+    // otherwise MUAs decode it as RFC 2047.
+    if (looksLikeEncodedWord(cleaned)) {
+      return formatHeaderField(name, encodeRfc2047WordsForField(name, cleaned));
+    }
+    return formatAsciiHeaderField(name, cleaned);
   }
   return formatHeaderField(name, encodeRfc2047WordsForField(name, cleaned));
 }
@@ -204,7 +268,10 @@ export function formatUnstructuredHeader(name: string, value: string): string {
 /** @deprecated Prefer formatUnstructuredHeader — kept for tests of word encoding. */
 export function encodeUnstructuredHeader(value: string): string {
   const cleaned = sanitizeHeaderText(value);
-  if (cleaned.length === 0 || isAsciiPrintable(cleaned)) {
+  if (cleaned.length === 0) {
+    return cleaned;
+  }
+  if (isAsciiPrintable(cleaned) && !looksLikeEncodedWord(cleaned)) {
     return cleaned;
   }
   return encodeRfc2047(cleaned);
@@ -218,13 +285,14 @@ export function formatMailboxHeader(name: string, value: string): string {
   const cleaned = sanitizeHeaderText(value);
   const angled = cleaned.match(/^(.*?)<([^<>]+)>\s*$/);
   if (!angled) {
-    return formatHeaderField(name, [cleaned]);
+    // Bare addr / unstructured mailbox — fold on whitespace, allow ≤998.
+    return formatAsciiHeaderField(name, cleaned);
   }
 
   const display = unquoteDisplayName(angled[1]);
   const addr = angled[2].trim();
   if (!display) {
-    return formatHeaderField(name, [`<${addr}>`]);
+    return formatAsciiHeaderField(name, `<${addr}>`);
   }
 
   if (!isAsciiPrintable(display)) {
@@ -237,17 +305,22 @@ export function formatMailboxHeader(name: string, value: string): string {
     const withAddr = `${last} ${addrPart}`;
     if (withAddr.length <= HEADER_LINE_MAX) {
       lines[lines.length - 1] = withAddr;
-    } else {
+    } else if (` ${addrPart}`.length <= HEADER_LINE_HARD_MAX) {
       lines.push(` ${addrPart}`);
+    } else {
+      throw new Error(
+        `header continuation exceeds ${HEADER_LINE_HARD_MAX} octets (${name}: ${addrPart.length})`,
+      );
     }
     return lines.join("\r\n");
   }
 
   if (/[^A-Za-z0-9!#$%&'*+\-/=?^_`{|}~ ]/.test(display)) {
     const quoted = `"${display.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
-    return formatHeaderField(name, [`${quoted} <${addr}>`]);
+    // Do not split inside the quoted-string; allow the hard 998 limit.
+    return formatHeaderField(name, [`${quoted} <${addr}>`], HEADER_LINE_HARD_MAX);
   }
-  return formatHeaderField(name, [`${display} <${addr}>`]);
+  return formatAsciiHeaderField(name, `${display} <${addr}>`);
 }
 
 /** Value-only mailbox encode for unit tests (no field name / folding). */
@@ -315,7 +388,8 @@ export type BuildRawMimeEmailOptions = {
  * Inline attachments are referenced from HTML via `cid:` Content-IDs.
  *
  * Headers follow RFC 2047 for non-ASCII Subject/display-name (character-boundary
- * splits, folded ≤76); Base64 bodies wrap at 76 (RFC 2045).
+ * splits, folded ≤76); ASCII headers fold on whitespace or stay ≤998 (RFC 5322);
+ * Base64 bodies wrap at 76 (RFC 2045).
  */
 export function buildRawMimeEmail(
   message: EmailMessage,
@@ -339,7 +413,12 @@ export function buildRawMimeEmail(
   lines.push("MIME-Version: 1.0");
 
   if (attachments.length === 0) {
-    lines.push(`Content-Type: multipart/alternative; boundary="${altBoundary}"`);
+    lines.push(
+      formatHeaderField("Content-Type", [
+        "multipart/alternative;",
+        `boundary="${altBoundary}"`,
+      ]),
+    );
     lines.push("");
     lines.push(`--${altBoundary}`);
     lines.push('Content-Type: text/plain; charset="UTF-8"');
@@ -357,7 +436,11 @@ export function buildRawMimeEmail(
   }
 
   lines.push(
-    `Content-Type: multipart/related; boundary="${relatedBoundary}"; type="multipart/alternative"`,
+    formatHeaderField("Content-Type", [
+      "multipart/related;",
+      `boundary="${relatedBoundary}";`,
+      'type="multipart/alternative"',
+    ]),
   );
   lines.push("");
   lines.push(`--${relatedBoundary}`);
