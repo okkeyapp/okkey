@@ -66,6 +66,30 @@ function assertEmailDarkModeSupport(html: string): void {
   assert.match(html, /okkey-card/);
   assert.match(html, /#0f172a/i);
   assert.match(html, /#1e293b/i);
+  // react-email Body copies `style` onto an inner wrapper <td> without className.
+  // That wrapper must not carry the light canvas fill (would frame the card in dark mode).
+  // Preview may sit between <body> and the wrapper <table> (first child of Body).
+  const bodyOpen = html.search(/<body\b[^>]*class="[^"]*\bokkey-canvas\b[^"]*"/i);
+  assert.ok(bodyOpen >= 0, "body must carry okkey-canvas");
+  const bodyWrapper = html.slice(bodyOpen).match(
+    /<table\b[^>]*>\s*<tbody>\s*<tr>\s*<td\b([^>]*)>/i,
+  );
+  assert.ok(bodyWrapper, "expected react-email Body wrapper <td>");
+  assert.equal(
+    /#f1f5f9/i.test(bodyWrapper[1] ?? ""),
+    false,
+    "Body wrapper <td> must not inline light canvas background",
+  );
+  // Every td that still carries the light canvas fill must also have okkey-canvas.
+  for (const match of html.matchAll(/<td\b([^>]*)>/gi)) {
+    const attrs = match[1] ?? "";
+    if (!/#f1f5f9/i.test(attrs)) continue;
+    assert.match(
+      attrs,
+      /class=(["'])[^"']*\bokkey-canvas\b[^"']*\1/i,
+      `canvas-colored <td> must include okkey-canvas; got: <td${attrs}>`,
+    );
+  }
 }
 
 /** Shared two-line footer required on every transactional template. */
@@ -237,7 +261,7 @@ test("renderEmailTemplate device_approval_request en and ru", async () => {
   assert.match(en.text, /Settings → Devices/);
   assert.match(en.html, /Mobile · App · Android/);
   assert.match(en.html, /Okkey/);
-  assert.match(en.html, /#3B82F6/i);
+  assert.match(en.html, /#2563EB/i);
   assert.match(en.html, /Oct 16, 2026, 7:09 AM UTC/);
   assertPreviewInsideBody(en.html, formatEmailMessage("en", "email.device.approval.lead", {}));
   assertSharedEmailFooter("en", en);
@@ -265,7 +289,7 @@ test("renderEmailTemplate workspace_invite en and ru", async () => {
   assert.match(en.subject, /Invitation|workspace/i);
   assert.match(en.html, /token-abc/);
   assert.match(en.html, /Sam/);
-  assert.match(en.html, /#3B82F6/i);
+  assert.match(en.html, /#2563EB/i);
   assertNoMustachePlaceholders(en.text);
 
   const ru = await renderEmailTemplate("workspace_invite", "ru", workspaceVars);

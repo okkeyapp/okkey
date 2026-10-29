@@ -12,7 +12,11 @@ export const EMAIL_CARD = "#ffffff";
 export const EMAIL_PRIMARY_TEXT = "#0A0A0A";
 export const EMAIL_SECONDARY_TEXT = "#64748b";
 export const EMAIL_RULE = "#e5e7eb";
-export const EMAIL_PRIMARY = "#3B82F6";
+/**
+ * CTA blue chosen for WCAG AA normal-text contrast with white (≥4.5:1).
+ * `#3B82F6` (web primary) is only ~3.68:1 on white — too low for email CTAs.
+ */
+export const EMAIL_PRIMARY = "#2563EB";
 export const EMAIL_PRIMARY_FOREGROUND = "#ffffff";
 
 /** Dark palette for clients that honour prefers-color-scheme (off-black / off-white). */
@@ -33,12 +37,17 @@ export const EMAIL_CLASS_SURFACE = "okkey-surface";
 /**
  * Head CSS: declare dual color-scheme and override class colors in dark mode.
  * `!important` beats react-email inline styles; `[data-ogsb]/[data-ogsc]` help Outlook apps.
+ *
+ * Do not use `>` child combinators here — react-email HTML-escapes them to `&gt;` inside
+ * `<style>`, which breaks the selector. Canvas fill lives on classed elements only;
+ * Body `style` must not carry backgroundColor (copied onto an unclassed wrapper td).
  */
 const EMAIL_COLOR_SCHEME_CSS = `
 :root {
   color-scheme: light dark;
   supported-color-schemes: light dark;
 }
+.${EMAIL_CLASS_CANVAS} { background-color: ${EMAIL_CANVAS} !important; }
 @media (prefers-color-scheme: dark) {
   .${EMAIL_CLASS_CANVAS} { background-color: ${EMAIL_CANVAS_DARK} !important; }
   .${EMAIL_CLASS_CARD} { background-color: ${EMAIL_CARD_DARK} !important; }
@@ -81,51 +90,91 @@ export function EmailShell({ lang = "en", title, preview, footer, children }: Em
         <meta name="supported-color-schemes" content="light dark" />
         <style type="text/css">{EMAIL_COLOR_SCHEME_CSS}</style>
       </Head>
-      <Body className={EMAIL_CLASS_CANVAS} style={bodyStyle}>
-        {/* Preview must live inside <body> so inbox clients pick up the preheader. */}
+      {/*
+        Do not put backgroundColor/padding on Body `style`: react-email copies the full
+        style object onto an inner wrapper <td> without className, which leaves a light
+        frame in dark mode. Padding + canvas fill live on our classed wrapper table/td.
+        `bgcolor` is an HTML attribute (not copied onto the wrapper td) for clients that
+        strip <style>; cast because @react-email/body typings omit the legacy attr.
+        Preview must be the first child of Body so inbox clients pick up the preheader.
+      */}
+      <Body
+        className={EMAIL_CLASS_CANVAS}
+        style={bodyStyle}
+        {...({ bgcolor: EMAIL_CANVAS } as Record<string, string>)}
+      >
         <Preview>{preview}</Preview>
-        <Container className={EMAIL_CLASS_CARD} style={containerStyle}>
-          <Section style={headerStyle}>
-            <table cellPadding={0} cellSpacing={0} role="presentation">
-              <tr>
-                <td style={logoCellStyle}>
-                  <Img
-                    src={`cid:${OKKEY_MARK_CID}`}
-                    width={32}
-                    height={32}
-                    alt="Okkey"
-                    style={logoImgStyle}
-                  />
-                </td>
-                <td style={wordmarkCellStyle}>
-                  <span className={EMAIL_CLASS_INK} style={wordmarkStyle}>
-                    Okkey
-                  </span>
-                </td>
-              </tr>
-            </table>
-          </Section>
-          <hr className={EMAIL_CLASS_RULE} style={ruleStyle} />
-          {children}
-          {hasFooter ? (
-            <>
-              <hr className={EMAIL_CLASS_RULE} style={ruleStyle} />
-              {typeof footer === "string" ? (
-                <Text className={EMAIL_CLASS_MUTED} style={footerStyle}>
-                  {footer.trim()}
-                </Text>
-              ) : (
-                footer
-              )}
-            </>
-          ) : null}
-        </Container>
+        <table
+          border={0}
+          width="100%"
+          cellPadding={0}
+          cellSpacing={0}
+          role="presentation"
+          align="center"
+          className={EMAIL_CLASS_CANVAS}
+          style={canvasTableStyle}
+        >
+          <tbody>
+            <tr>
+              <td className={EMAIL_CLASS_CANVAS} style={canvasCellStyle}>
+                <Container className={EMAIL_CLASS_CARD} style={containerStyle}>
+                  <Section style={headerStyle}>
+                    <table cellPadding={0} cellSpacing={0} role="presentation">
+                      <tr>
+                        <td style={logoCellStyle}>
+                          <Img
+                            src={`cid:${OKKEY_MARK_CID}`}
+                            width={32}
+                            height={32}
+                            alt="Okkey"
+                            style={logoImgStyle}
+                          />
+                        </td>
+                        <td style={wordmarkCellStyle}>
+                          <span className={EMAIL_CLASS_INK} style={wordmarkStyle}>
+                            Okkey
+                          </span>
+                        </td>
+                      </tr>
+                    </table>
+                  </Section>
+                  <hr className={EMAIL_CLASS_RULE} style={ruleStyle} />
+                  {children}
+                  {hasFooter ? (
+                    <>
+                      <hr className={EMAIL_CLASS_RULE} style={ruleStyle} />
+                      {typeof footer === "string" ? (
+                        <Text className={EMAIL_CLASS_MUTED} style={footerStyle}>
+                          {footer.trim()}
+                        </Text>
+                      ) : (
+                        footer
+                      )}
+                    </>
+                  ) : null}
+                </Container>
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </Body>
     </Html>
   );
 }
 
+/** Margin/padding only — never backgroundColor (see Body note above). */
 const bodyStyle: React.CSSProperties = {
+  margin: 0,
+  padding: 0,
+};
+
+const canvasTableStyle: React.CSSProperties = {
+  width: "100%",
+  backgroundColor: EMAIL_CANVAS,
+  borderCollapse: "collapse",
+};
+
+const canvasCellStyle: React.CSSProperties = {
   fontFamily: EMAIL_FONT_FAMILY,
   backgroundColor: EMAIL_CANVAS,
   margin: 0,
