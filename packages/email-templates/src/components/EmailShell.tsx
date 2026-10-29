@@ -36,8 +36,9 @@ export function EmailShell({ lang = "en", title, preview, footer, children }: Em
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <meta name="color-scheme" content="light" />
       </Head>
-      <Preview>{preview}</Preview>
       <Body style={bodyStyle}>
+        {/* Preview must live inside <body> so inbox clients pick up the preheader. */}
+        <Preview>{preview}</Preview>
         <Container style={containerStyle}>
           <Section style={headerStyle}>
             <table cellPadding={0} cellSpacing={0} role="presentation">

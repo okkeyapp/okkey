@@ -34,6 +34,7 @@ export function buildAuthSignInCodeEmailProps(
   return {
     lang: locale,
     title: formatEmailMessage(locale, `${prefix}.subject`, { code: variables.code }),
+    preview: formatEmailMessage(locale, `${prefix}.preview`, { minutes }),
     beforeCode: formatEmailMessage(locale, `${prefix}.beforeCode`, {}),
     code: variables.code,
     line2: formatEmailMessage(locale, `${prefix}.line2`, { minutes }),

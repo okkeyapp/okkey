@@ -7,6 +7,8 @@ import { EmailStandardFooter } from "./EmailStandardFooter.js";
 export interface AuthSignInCodeEmailProps {
   lang: string;
   title: string;
+  /** Inbox preheader — useful without repeating or revealing the code. */
+  preview: string;
   beforeCode: string;
   code: string;
   line2: string;
@@ -17,6 +19,7 @@ export interface AuthSignInCodeEmailProps {
 export function AuthSignInCodeEmail({
   lang,
   title,
+  preview,
   beforeCode,
   code,
   line2,
@@ -27,7 +30,7 @@ export function AuthSignInCodeEmail({
     <EmailShell
       lang={lang}
       title={title}
-      preview={beforeCode}
+      preview={preview}
       footer={<EmailStandardFooter noReply={noReply} ignoreIfMistake={ignoreIfMistake} />}
     >
       <Text style={leadStyle}>{beforeCode}</Text>

@@ -40,6 +40,23 @@ function assertNoNulBytes(s: string): void {
   assert.equal(s.includes("\0"), false, "email body must not contain U+0000");
 }
 
+/** React Email Preview must sit inside <body>, not between </head> and <body>. */
+function assertPreviewInsideBody(html: string, previewText: string): void {
+  const bodyOpen = html.search(/<body\b/i);
+  assert.ok(bodyOpen >= 0, "html must include <body>");
+  const previewMarker = html.indexOf('data-skip-in-text="true"');
+  assert.ok(previewMarker >= 0, "html must include Preview marker");
+  assert.ok(
+    previewMarker > bodyOpen,
+    "Preview (preheader) must be inside <body>, not before it",
+  );
+  const previewSlice = html.slice(previewMarker, previewMarker + 400);
+  assert.ok(
+    previewSlice.includes(previewText),
+    `preheader must include useful copy: ${previewText}`,
+  );
+}
+
 /** Shared two-line footer required on every transactional template. */
 function assertSharedEmailFooter(
   locale: "en" | "ru",
@@ -101,6 +118,19 @@ test("renderEmailTemplate auth_email_code en and ru", async () => {
   assert.equal(en.html.includes("data:image"), false);
   assert.match(en.html, /#f1f5f9/i);
   assert.match(en.text, /^Okkey\b/m);
+  const enPreview = formatEmailMessage("en", "email.auth.signInCode.preview", { minutes: 2 });
+  assert.equal(enPreview, "Valid for 2 minutes. Never share this code.");
+  assertPreviewInsideBody(en.html, enPreview);
+  assert.equal(
+    en.html.includes("Your Okkey verification code is:"),
+    true,
+    "body lead still uses beforeCode",
+  );
+  assert.equal(
+    en.html.indexOf(enPreview) < en.html.indexOf("Your Okkey verification code is:"),
+    true,
+  );
+  assert.equal(en.text.includes(enPreview), false, "plain text must not include preheader");
   assertSharedEmailFooter("en", en);
   assert.equal(
     en.text.includes("If you didn't request this code"),
@@ -125,6 +155,10 @@ test("renderEmailTemplate auth_email_code en and ru", async () => {
   assert.equal(ru.html.includes("654 321"), false);
   assertHtmlDocumentMeta("ru", ru);
   assert.match(ru.text, /^Okkey\b/m);
+  const ruPreview = formatEmailMessage("ru", "email.auth.signInCode.preview", { minutes: 1 });
+  assert.equal(ruPreview, "Код действует 1 минуту. Никому его не сообщайте.");
+  assertPreviewInsideBody(ru.html, ruPreview);
+  assert.equal(ru.text.includes(ruPreview), false, "plain text must not include preheader");
   assertSharedEmailFooter("ru", ru);
   assert.equal(ru.text.includes("Если вы не запрашивали код"), false);
   assertNoMustachePlaceholders(ru.text);
@@ -149,6 +183,10 @@ test("renderEmailTemplate auth_email_code email_change purpose uses dedicated co
   assert.equal(/sign-in/i.test(en.html), false);
   assert.match(en.html, /146805/);
   assert.equal(en.html.includes("146 805"), false);
+  assertPreviewInsideBody(
+    en.html,
+    formatEmailMessage("en", "email.auth.emailChangeCode.preview", { minutes: 2 }),
+  );
   assertSharedEmailFooter("en", en);
   assertNoMustachePlaceholders(en.text);
 
@@ -168,6 +206,10 @@ test("renderEmailTemplate auth_email_code email_change purpose uses dedicated co
   assert.equal(/код входа/i.test(ru.html), false);
   assert.match(ru.html, /109836/);
   assert.equal(ru.html.includes("109 836"), false);
+  assertPreviewInsideBody(
+    ru.html,
+    formatEmailMessage("ru", "email.auth.emailChangeCode.preview", { minutes: 1 }),
+  );
   assertNoMustachePlaceholders(ru.text);
 });
 
@@ -184,6 +226,7 @@ test("renderEmailTemplate device_approval_request en and ru", async () => {
   assert.match(en.html, /Okkey/);
   assert.match(en.html, /#3B82F6/i);
   assert.match(en.html, /Oct 16, 2026, 7:09 AM UTC/);
+  assertPreviewInsideBody(en.html, formatEmailMessage("en", "email.device.approval.lead", {}));
   assertSharedEmailFooter("en", en);
   assertNoMustachePlaceholders(en.text);
 
@@ -650,6 +693,14 @@ test("all templates share the same two-line footer", async () => {
   assertHtmlDocumentMeta("ru", twoFactor);
   assertHtmlDocumentMeta("en", twoFactorDisabled);
   assertHtmlDocumentMeta("en", otp);
+  assertPreviewInsideBody(invite.html, formatEmailMessage("en", "email.workspaceInvite.intro", {
+    inviter: workspaceVars.inviterDisplayName,
+    workspaceName: workspaceVars.workspaceName,
+  }));
+  assertPreviewInsideBody(
+    otp.html,
+    formatEmailMessage("en", "email.auth.signInCode.preview", { minutes: 2 }),
+  );
 });
 
 test("plan_change_request uses EmailShell and shared footer", async () => {
