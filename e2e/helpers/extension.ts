@@ -90,7 +90,7 @@ async function trustPendingDevicesUntilExtensionUnlock(
   popup: Page,
 ): Promise<void> {
   const unlockHeading = popup.getByRole("heading", {
-    name: /vault is locked|хранилище заблокировано/i,
+    name: /vault is locked|хранилище закрыто/i,
   });
   const deadline = Date.now() + 90_000;
 
@@ -162,7 +162,7 @@ export async function extensionPkceSignInUnlockAndSeeItem(input: {
     await continueBtn.click();
 
     const unlockHeading = popup.getByRole("heading", {
-      name: /vault is locked|хранилище заблокировано/i,
+      name: /vault is locked|хранилище закрыто/i,
     });
     const pendingTitle = popup.getByRole("heading", {
       name: /confirm this device|подтвердите это устройство/i,
