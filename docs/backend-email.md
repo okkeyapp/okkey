@@ -22,6 +22,8 @@ See `services/api/.env.example` for SMTP, SES, and HTTP API variables and commen
 
 **Transports are protocols, not vendors.** Personal mailboxes and Unisender Go / Postmark / Resend / OVH all use `smtp`. AWS SES and SES-compatible APIs (including Yandex Cloud Postbox) use `ses` with a replaceable `EMAIL_SES_ENDPOINT`. Do not put a vendor mailbox password in production SaaS env; prefer transactional SMTP or SES.
 
+For `EMAIL_PROVIDER=ses`, the API builds a Raw MIME message (`buildRawMimeEmail`): non-ASCII `Subject` / display-name use RFC 2047 (`=?UTF-8?B?…?=`), Base64 body and inline attachment lines are wrapped at 76 characters, and `Date` / `Message-ID` are set explicitly. SMTP relies on nodemailer for the same rules.
+
 Personal SMTP risks: provider rate limits, spam folders, account blocks, mailbox password in `.env`. Fine for a single self-hosted user; not for a team product.
 
 ## Delivery: sync vs Redis queue
