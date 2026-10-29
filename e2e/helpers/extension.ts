@@ -2,9 +2,10 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { chromium, type BrowserContext } from "@playwright/test";
+import { chromium, expect, type BrowserContext, type Page } from "@playwright/test";
 
-import { extensionOutputDir } from "./env";
+import { completeEmailOtpOnPage } from "./auth";
+import { E2E_BASE_URL, extensionOutputDir } from "./env";
 
 export function extensionBuildReady(): boolean {
   const dir = extensionOutputDir();
@@ -41,4 +42,102 @@ export async function launchExtensionContext(): Promise<{
   }
   const extensionId = new URL(serviceWorker.url()).host;
   return { context, extensionId, userDataDir };
+}
+
+async function openExtensionPopup(
+  context: BrowserContext,
+  extensionId: string,
+): Promise<Page> {
+  const popup = await context.newPage();
+  await popup.goto(`chrome-extension://${extensionId}/popup.html`).catch(async () => {
+    await popup.goto(`chrome-extension://${extensionId}/`);
+  });
+  await expect(popup).toHaveURL(/chrome-extension:\/\//);
+  return popup;
+}
+
+/**
+ * Click Trust device on the primary web session until the extension leaves pending.
+ * May need more than one click if the PKCE auth tab also registered a web device.
+ */
+async function trustPendingDevicesUntilExtensionUnlock(
+  trustPage: Page,
+  popup: Page,
+): Promise<void> {
+  const unlockHeading = popup.getByRole("heading", { name: /vault is locked/i });
+  const deadline = Date.now() + 90_000;
+
+  while (Date.now() < deadline) {
+    if (await unlockHeading.isVisible().catch(() => false)) {
+      return;
+    }
+    const trust = trustPage.getByRole("button", { name: /^trust device$/i });
+    if (await trust.isVisible().catch(() => false)) {
+      await trust.click();
+    }
+    await popup.waitForTimeout(1_500);
+  }
+
+  await expect(unlockHeading).toBeVisible({ timeout: 5_000 });
+}
+
+/**
+ * Real extension scenario: Server URL → PKCE email OTP → device trust → unlock → item visible.
+ * `trustPage` must be the already-signed-in primary web device (unlocked on /items).
+ */
+export async function extensionPkceSignInUnlockAndSeeItem(input: {
+  trustPage: Page;
+  email: string;
+  masterPassword: string;
+  itemTitle: string;
+  webBaseUrl?: string;
+}): Promise<void> {
+  const webBaseUrl = input.webBaseUrl ?? E2E_BASE_URL;
+  const { context, extensionId, userDataDir } = await launchExtensionContext();
+
+  try {
+    const popup = await openExtensionPopup(context, extensionId);
+
+    await expect(popup.getByRole("heading", { name: /welcome to okkey/i })).toBeVisible({
+      timeout: 30_000,
+    });
+    await popup.locator("#base-url").fill(webBaseUrl);
+
+    const authPagePromise = context.waitForEvent("page", { timeout: 60_000 });
+    await popup.getByRole("button", { name: /^sign in$/i }).click();
+    const authPage = await authPagePromise;
+
+    await expect(authPage).toHaveURL(/\/auth\//, { timeout: 60_000 });
+    await completeEmailOtpOnPage(authPage, input.email);
+
+    // Handoff redirects to the extension callback (no vault unlock on web).
+    await expect(authPage).toHaveURL(/chrome-extension:\/\/.*auth-callback/, {
+      timeout: 90_000,
+    });
+    await expect(authPage.getByText(/signed in/i)).toBeVisible({ timeout: 60_000 });
+
+    // Popup stays on "signing-in" until Continue reads chrome.storage session.
+    const continueBtn = popup.getByRole("button", { name: /^continue$/i });
+    await expect(continueBtn).toBeVisible({ timeout: 30_000 });
+    await continueBtn.click();
+
+    const unlockHeading = popup.getByRole("heading", { name: /vault is locked/i });
+    const pendingTitle = popup.getByRole("heading", { name: /confirm this device/i });
+    await expect(unlockHeading.or(pendingTitle)).toBeVisible({ timeout: 60_000 });
+
+    if (await pendingTitle.isVisible().catch(() => false)) {
+      await trustPendingDevicesUntilExtensionUnlock(input.trustPage, popup);
+    }
+
+    await expect(unlockHeading).toBeVisible({ timeout: 60_000 });
+    await popup.locator("#unlock-master-password").fill(input.masterPassword);
+    await popup.getByRole("button", { name: /^unlock$/i }).click();
+
+    await expect(popup.getByText(input.itemTitle, { exact: false }).first()).toBeVisible({
+      timeout: 90_000,
+    });
+  } finally {
+    await context.close();
+    fs.rmSync(userDataDir, { recursive: true, force: true });
+  }
 }

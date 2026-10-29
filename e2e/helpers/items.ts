@@ -1,14 +1,14 @@
 import { expect, type Page } from "@playwright/test";
 
 /**
- * If `#editItem` is open (e.g. personal-data bootstrap on a non-e2e build),
- * dismiss via Cancel → leave-without-saving Continue. CI builds set
- * VITE_E2E_DISABLE_PERSONAL_DATA_BOOTSTRAP=1 so this is usually a no-op.
+ * If `#editItem` is open (e.g. personal-data bootstrap after first unlock),
+ * dismiss via Cancel → leave-without-saving Continue so Login create is not raced.
  */
 export async function dismissOpenItemDialog(page: Page): Promise<void> {
   const editItem = page.locator("#editItem");
+  // Bootstrap can take a few seconds after unlock; wait long enough for CI.
   const appeared = await editItem
-    .waitFor({ state: "visible", timeout: 5_000 })
+    .waitFor({ state: "visible", timeout: 15_000 })
     .then(() => true)
     .catch(() => false);
   if (!appeared) {

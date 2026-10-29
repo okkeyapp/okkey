@@ -89,11 +89,6 @@ interface ImportMetaEnv {
   readonly VITE_DOMAIN_CAPABILITIES_BRANCH?: string;
   readonly VITE_DOMAIN_CAPABILITIES_MANIFEST_URL?: string;
   readonly VITE_DOMAIN_CAPABILITIES_CATALOG_URL?: string;
-  /**
-   * Browser e2e only: skip personal-data bootstrap edit popup so smoke can
-   * create Login items without racing `#editItem`.
-   */
-  readonly VITE_E2E_DISABLE_PERSONAL_DATA_BOOTSTRAP?: string;
 }
 
 interface ImportMeta {
