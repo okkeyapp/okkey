@@ -263,7 +263,7 @@ export class DeviceService {
         status: record.status === "trusted" ? "trusted" : "pending_approval",
       };
 
-      if (result.status === "pending_approval") {
+      if (result.status === "pending_approval" && record.sendApprovalEmail !== false) {
         try {
           await this.notifyDeviceApprovalEmail(userId, requestIp, input);
         } catch (error: unknown) {

@@ -990,6 +990,17 @@ export interface DeviceApprovalState {
   device: DeviceRecord | null;
 }
 
+async function deleteSessionsForDevices(
+  db: Pick<QueryExecutor, "query">,
+  deviceIds: string[],
+): Promise<void> {
+  const ids = [...new Set(deviceIds.filter((id) => id.length > 0))];
+  if (ids.length === 0) {
+    return;
+  }
+  await db.query(`DELETE FROM sessions WHERE device_id = ANY($1::bigint[])`, [ids]);
+}
+
 export class DevicesRepository {
   private readonly db: QueryExecutor & {
     transaction<T>(fn: (tx: QueryExecutor) => Promise<T>): Promise<T>;
@@ -1152,7 +1163,7 @@ export class DevicesRepository {
     now: string;
   }): Promise<DeviceRecord> {
     return this.db.transaction(async (tx) => {
-      await tx.query(
+      const revokedDevices = await tx.query<{ id: string }>(
         `
           UPDATE devices
           SET
@@ -1161,8 +1172,13 @@ export class DevicesRepository {
           WHERE user_id = $1::bigint
             AND status = 'trusted'
             AND device_fingerprint <> $3
+          RETURNING id
         `,
         [input.userId, input.now, input.deviceFingerprint],
+      );
+      await deleteSessionsForDevices(
+        tx,
+        revokedDevices.map((row) => row.id),
       );
 
       await tx.query(
@@ -1329,11 +1345,16 @@ export class DevicesRepository {
     userAgent: string;
     requestIp: string;
     now: string;
-  }): Promise<DeviceRecord> {
+  }): Promise<DeviceRecord & { sendApprovalEmail: boolean }> {
     try {
+      return await this.db.transaction(async (tx) => {
+      // Serialize parallel registers of the same fingerprint so only one approval email is sent.
+      await tx.query(`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, [
+        `okkey-device-register:${input.userId}:${input.deviceFingerprint}`,
+      ]);
       // Prefer upsert by fingerprint so the same browser (structured id) does not spawn
       // a second row when the local device public key was regenerated.
-      const existingByFingerprint = await this.db.query<{
+      const existingByFingerprint = await tx.query<{
         id: string;
         user_id: string;
         device_fingerprint: string;
@@ -1399,17 +1420,17 @@ export class DevicesRepository {
         const current = existingByFingerprint[0];
         if (current.status === "blocked") {
           if (current.blocked_until === null) {
-            return mapDevice(current);
+            return { ...mapDevice(current), sendApprovalEmail: false };
           }
           const blockedUntilMs =
             current.blocked_until instanceof Date
               ? current.blocked_until.getTime()
               : new Date(current.blocked_until).getTime();
           if (blockedUntilMs > new Date(input.now).getTime()) {
-            return mapDevice(current);
+            return { ...mapDevice(current), sendApprovalEmail: false };
           }
         }
-        const hasOtherTrusted = await this.db.query<{ n: string }>(
+        const hasOtherTrusted = await tx.query<{ n: string }>(
           `
             SELECT COUNT(*)::text AS n
             FROM devices
@@ -1423,7 +1444,7 @@ export class DevicesRepository {
         const nextStatus =
           current.status === "trusted" ? "trusted" : otherTrusted ? "pending" : "trusted";
 
-        const updated = await this.db.query<{
+        const updated = await tx.query<{
           id: string;
           user_id: string;
           device_fingerprint: string;
@@ -1522,11 +1543,16 @@ export class DevicesRepository {
             input.requestIp,
           ],
         );
-        return mapDevice(updated[0]);
+        const updatedDevice = mapDevice(updated[0]);
+        return {
+          ...updatedDevice,
+          sendApprovalEmail:
+            updatedDevice.status === "pending" && current.status !== "pending",
+        };
       }
 
       const id = generateEntityId();
-      const rows = await this.db.query<{
+      const rows = await tx.query<{
         id: string;
         user_id: string;
         device_fingerprint: string;
@@ -1714,7 +1740,12 @@ export class DevicesRepository {
         ],
       );
 
-      return mapDevice(rows[0]);
+      const inserted = mapDevice(rows[0]);
+      return {
+        ...inserted,
+        sendApprovalEmail: inserted.status === "pending",
+      };
+      });
     } catch (error) {
       throw toUniqueError(error);
     }
@@ -1912,6 +1943,7 @@ export class DevicesRepository {
           `,
           [input.deviceId, input.now],
         );
+        await deleteSessionsForDevices(tx, [input.deviceId]);
         return { kind: "expired", device: mapDevice(expiredRows[0]) };
       }
 
@@ -2049,6 +2081,7 @@ export class DevicesRepository {
         `,
         [input.deviceId, input.now, input.rejectReason ?? "rejected by user"],
       );
+      await deleteSessionsForDevices(tx, [input.deviceId]);
       return { kind: "rejected", device: mapDevice(rejectedRows[0]) };
     });
   }
@@ -2257,7 +2290,11 @@ export class DevicesRepository {
       `,
       [input.deviceId, input.userId, input.now, input.reason ?? ""],
     );
-    return rows[0] ? mapDevice(rows[0]) : null;
+    if (!rows[0]) {
+      return null;
+    }
+    await deleteSessionsForDevices(this.db, [input.deviceId]);
+    return mapDevice(rows[0]);
   }
 
   async blockPending(input: {
@@ -2343,7 +2380,11 @@ export class DevicesRepository {
         input.approverDeviceId,
       ],
     );
-    return rows[0] ? mapDevice(rows[0]) : null;
+    if (!rows[0]) {
+      return null;
+    }
+    await deleteSessionsForDevices(this.db, [input.deviceId]);
+    return mapDevice(rows[0]);
   }
 
   async unblockDevice(input: {
@@ -3112,6 +3153,7 @@ export class SessionsRepository {
         WHERE token_hash = $1
           AND user_id = $2
           AND expires_at > now()
+          AND (device_id IS NULL OR device_id = $3)
         RETURNING id
       `,
       [input.tokenHash, input.userId, input.deviceId],

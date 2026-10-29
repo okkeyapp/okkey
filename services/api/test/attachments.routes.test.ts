@@ -41,7 +41,9 @@ function loggerStub() {
 function createSessionServiceStub(): SessionService {
   return {
     async resolveAccessToken(token: string) {
-      return token.trim() === "test-access-token" ? { userId: "1000000000000000009" } : null;
+      return token.trim() === "test-access-token"
+        ? { userId: "1000000000000000009", deviceId: "1000000000000000008", scope: null, tokenHash: "hash" }
+        : null;
     },
   } as unknown as SessionService;
 }

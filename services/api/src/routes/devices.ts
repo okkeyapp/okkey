@@ -9,6 +9,7 @@ import type { ApiConfig } from "../config.ts";
 import { isEntityId } from "../entity-id.ts";
 import { getHeader, json, readJsonBody, type RouteHandler } from "../http.ts";
 import type { SessionService } from "../session/service.ts";
+import { isFullSessionScope } from "../session/scopes.ts";
 
 /** PostgreSQL `bigint` max (signed). Reject larger snowflake strings before querying. */
 const MAX_PG_BIGINT = 9223372036854775807n;
@@ -32,7 +33,29 @@ function isValidDeviceIdParam(value: string): boolean {
     return false;
   }
   try {
-    return BigInt(value) <= MAX_PG_BIGINT;
+    return BigInt(value) > 0n && BigInt(value) <= MAX_PG_BIGINT;
+  } catch {
+    return false;
+  }
+}
+
+/** Decimal form without leading zeros. Snowflake ids compare equal as integers. */
+function canonicalDeviceId(value: string): string | null {
+  if (!isValidDeviceIdParam(value)) {
+    return null;
+  }
+  return BigInt(value).toString();
+}
+
+function sameDeviceId(left: string, right: string): boolean {
+  if (left === right) {
+    return true;
+  }
+  if (!/^\d+$/.test(left) || !/^\d+$/.test(right)) {
+    return false;
+  }
+  try {
+    return BigInt(left) === BigInt(right);
   } catch {
     return false;
   }
@@ -317,7 +340,8 @@ export function createRevokeDeviceRoute(
       );
       return;
     }
-    if (!isValidDeviceIdParam(deviceId)) {
+    const targetDeviceId = canonicalDeviceId(deviceId);
+    if (!targetDeviceId) {
       json(
         ctx.res,
         400,
@@ -342,23 +366,36 @@ export function createRevokeDeviceRoute(
       }
       const accessToken = getBearerToken(ctx.req);
       let sessionDeviceId: string | null = null;
+      let fullSessionUnbound = false;
       if (accessToken && sessionService) {
         const resolved = await sessionService.resolveAccessToken(accessToken);
         sessionDeviceId = resolved?.deviceId ?? null;
+        fullSessionUnbound = Boolean(
+          resolved &&
+            isFullSessionScope(resolved.scope) &&
+            (sessionDeviceId == null || sessionDeviceId === ""),
+        );
       }
-      // Prefer session binding; fall back to X-Device-Id (header-auth / unbound session).
+      // Prefer session binding; fall back to X-Device-Id (header-auth only).
       const currentDeviceId = sessionDeviceId ?? getHeader(ctx.req, "x-device-id") ?? null;
       const allowCurrent = body.sign_out === true;
-      if (currentDeviceId && currentDeviceId === deviceId && !allowCurrent) {
+      if (fullSessionUnbound && !allowCurrent) {
         throw new DeviceServiceError(
           "DEVICE_REVOKE_CURRENT_FORBIDDEN",
           403,
           "cannot revoke the current device",
         );
       }
-      const result = await deviceService.revokeDevice(userId, deviceId, body.reason);
+      if (currentDeviceId && sameDeviceId(currentDeviceId, targetDeviceId) && !allowCurrent) {
+        throw new DeviceServiceError(
+          "DEVICE_REVOKE_CURRENT_FORBIDDEN",
+          403,
+          "cannot revoke the current device",
+        );
+      }
+      const result = await deviceService.revokeDevice(userId, targetDeviceId, body.reason);
       if (sessionService) {
-        await sessionService.revokeSessionsForDevice(userId, deviceId);
+        await sessionService.revokeSessionsForDevice(userId, targetDeviceId);
         if (allowCurrent && accessToken) {
           await sessionService.revokeAccessToken(accessToken);
         }
@@ -409,6 +446,7 @@ export function createApproveDeviceRoute(
 export function createRejectDeviceRoute(
   deviceService: DeviceService,
   resolveUserId: (req: IncomingMessage) => Promise<string | null>,
+  sessionService?: Pick<SessionDeviceBinding, "revokeSessionsForDevice">,
 ): RouteHandler {
   return async (ctx) => {
     const deviceId = ctx.params.deviceId;
@@ -442,6 +480,12 @@ export function createRejectDeviceRoute(
         deviceId,
         body.reason,
       );
+      if (sessionService) {
+        await sessionService.revokeSessionsForDevice(
+          userId,
+          canonicalDeviceId(deviceId) ?? result.deviceId,
+        );
+      }
       json(ctx.res, 200, {
         device_id: result.deviceId,
         status: result.status,
@@ -457,6 +501,7 @@ const BLOCK_DURATIONS = new Set(["1h", "1d", "1w", "forever"]);
 export function createBlockDeviceRoute(
   deviceService: DeviceService,
   resolveUserId: (req: IncomingMessage) => Promise<string | null>,
+  sessionService?: Pick<SessionDeviceBinding, "revokeSessionsForDevice">,
 ): RouteHandler {
   return async (ctx) => {
     const deviceId = ctx.params.deviceId;
@@ -505,6 +550,12 @@ export function createBlockDeviceRoute(
         duration as "1h" | "1d" | "1w" | "forever",
         body.reason,
       );
+      if (sessionService) {
+        await sessionService.revokeSessionsForDevice(
+          userId,
+          canonicalDeviceId(deviceId) ?? result.deviceId,
+        );
+      }
       json(ctx.res, 200, {
         device_id: result.deviceId,
         status: result.status,

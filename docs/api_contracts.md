@@ -1116,7 +1116,7 @@ Renames a trusted or pending device owned by the user.
 
 Revokes a trusted or pending device owned by the authenticated user (settings dismiss / revoke). Does **not** require `X-Device-Id`. Approval-flow reject with a trusted approver remains `POST …/reject`.
 
-The **current device** is the session’s `device_id` (set after register). If the session is unbound, Core falls back to `X-Device-Id`. Revoking the current device is rejected unless `sign_out: true` (explicit logout). On success, Core deletes server sessions bound to that device; with `sign_out: true` it also deletes the caller’s access-token session.
+The **current device** is the session’s `device_id`. Ids compare as integers, so a leading-zero form of the same id is still the current device. A full Bearer session with no `device_id` cannot revoke devices unless `sign_out: true`, and cannot call vault or workspace routes until `POST /devices/register` binds it. Header-auth may still send `X-Device-Id`. Revoking the current device is rejected unless `sign_out: true`. On success, and on reject, block, or any other transition to revoked or blocked, Core deletes server sessions bound to that device. A session already bound to a device is not moved to another device by a later register. With `sign_out: true`, Core also deletes the caller’s access-token session.
 
 **Auth:** Bearer (or allowed `X-User-Id`).
 

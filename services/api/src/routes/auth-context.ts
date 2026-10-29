@@ -19,10 +19,23 @@ export type ResolveAuthenticatedSession = (
  * Resolve Bearer to a session (scope + device). Optional X-User-Id only when enabled
  * and no Bearer was presented — treated as a full unbound session for local tooling.
  */
+export type AuthenticatedSessionOptions = {
+  /**
+   * When false (default), a full Bearer session with no device_id is not usable.
+   * List/register stay open so the client can bind. Header-user auth is unchanged.
+   */
+  allowUnboundDevice?: boolean;
+};
+
+function fullSessionIsBound(resolved: ResolvedAccessToken): boolean {
+  return resolved.deviceId != null && resolved.deviceId !== "";
+}
+
 export function createResolveAuthenticatedSession(
   config: Pick<ApiConfig, "allowHeaderUserIdAuth">,
   sessionService: SessionService,
   allowedScopes: ReadonlyArray<string | null> = [SESSION_SCOPE_FULL],
+  options: AuthenticatedSessionOptions = {},
 ): ResolveAuthenticatedSession {
   return async (req: IncomingMessage): Promise<ResolvedAccessToken | null> => {
     const auth = getHeader(req, "authorization");
@@ -40,6 +53,13 @@ export function createResolveAuthenticatedSession(
         if (
           resolved.scope === SESSION_SCOPE_REGISTRATION_RECOVERY &&
           (resolved.deviceId == null || resolved.deviceId === "")
+        ) {
+          return null;
+        }
+        if (
+          !options.allowUnboundDevice &&
+          isFullSessionScope(resolved.scope) &&
+          !fullSessionIsBound(resolved)
         ) {
           return null;
         }
@@ -70,11 +90,13 @@ export function createResolveAuthenticatedUserId(
   config: Pick<ApiConfig, "allowHeaderUserIdAuth">,
   sessionService: SessionService,
   allowedScopes: ReadonlyArray<string | null> = [SESSION_SCOPE_FULL],
+  options: AuthenticatedSessionOptions = {},
 ): ResolveAuthenticatedUserId {
   const resolveSession = createResolveAuthenticatedSession(
     config,
     sessionService,
     allowedScopes,
+    options,
   );
   return async (req: IncomingMessage): Promise<string | null> => {
     const session = await resolveSession(req);

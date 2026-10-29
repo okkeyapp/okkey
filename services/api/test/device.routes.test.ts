@@ -629,3 +629,103 @@ test("POST /devices/register binds the access-token session to the device", asyn
   assert.equal(res.statusCode, 200);
   assert.deepEqual(bound, [{ token: "tok-register", userId: "u1", deviceId: DEVICE_A }]);
 });
+
+test("POST /devices/:id/revoke treats a leading-zero id as the current device", async () => {
+  let revoked = false;
+  const res = await dispatch({
+    method: "POST",
+    url: `/devices/0${DEVICE_A}/revoke`,
+    headers: { authorization: "Bearer tok-1" },
+    body: {},
+    deviceService: createDeviceServiceStub({
+      revokeDevice: async () => {
+        revoked = true;
+        return { deviceId: DEVICE_A, status: "revoked" };
+      },
+    }),
+    sessionService: createSessionServiceStub({
+      resolveAccessToken: async () => ({
+        userId: "u1",
+        deviceId: DEVICE_A,
+        scope: null,
+        tokenHash: "hash:tok-1",
+      }),
+    }),
+  });
+  assert.equal(res.statusCode, 403);
+  const payload = JSON.parse(res.body) as { error: string };
+  assert.equal(payload.error, "DEVICE_REVOKE_CURRENT_FORBIDDEN");
+  assert.equal(revoked, false);
+});
+
+test("POST /devices/:id/revoke rejects an unbound full session", async () => {
+  let revoked = false;
+  const res = await dispatch({
+    method: "POST",
+    url: `/devices/${DEVICE_A}/revoke`,
+    headers: { authorization: "Bearer tok-unbound" },
+    body: {},
+    deviceService: createDeviceServiceStub({
+      revokeDevice: async () => {
+        revoked = true;
+        return { deviceId: DEVICE_A, status: "revoked" };
+      },
+    }),
+    sessionService: createSessionServiceStub({
+      resolveAccessToken: async () => ({
+        userId: "u1",
+        deviceId: null,
+        scope: null,
+        tokenHash: "hash:tok-unbound",
+      }),
+    }),
+  });
+  assert.equal(res.statusCode, 403);
+  const payload = JSON.parse(res.body) as { error: string };
+  assert.equal(payload.error, "DEVICE_REVOKE_CURRENT_FORBIDDEN");
+  assert.equal(revoked, false);
+});
+
+test("POST /devices/:id/reject ends sessions bound to the pending device", async () => {
+  const ended: string[] = [];
+  const res = await dispatch({
+    method: "POST",
+    url: `/devices/${DEVICE_B}/reject`,
+    headers: { "x-user-id": "u1", "x-device-id": DEVICE_A },
+    body: { reason: "no" },
+    deviceService: createDeviceServiceStub({
+      rejectDevice: async () => ({ deviceId: DEVICE_B, status: "revoked" }),
+    }),
+    sessionService: createSessionServiceStub({
+      revokeSessionsForDevice: async (_userId, deviceId) => {
+        ended.push(deviceId);
+      },
+    }),
+  });
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(ended, [DEVICE_B]);
+});
+
+test("POST /devices/:id/block ends sessions bound to the pending device", async () => {
+  const ended: string[] = [];
+  const res = await dispatch({
+    method: "POST",
+    url: `/devices/${DEVICE_B}/block`,
+    headers: { "x-user-id": "u1", "x-device-id": DEVICE_A },
+    body: { duration: "forever" },
+    deviceService: createDeviceServiceStub({
+      blockDevice: async () => ({
+        deviceId: DEVICE_B,
+        status: "blocked",
+        blockedUntil: null,
+      }),
+    }),
+    sessionService: createSessionServiceStub({
+      revokeSessionsForDevice: async (_userId, deviceId) => {
+        ended.push(deviceId);
+      },
+    }),
+  });
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(ended, [DEVICE_B]);
+});

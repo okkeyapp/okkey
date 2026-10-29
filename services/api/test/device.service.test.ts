@@ -177,6 +177,54 @@ test("registerDevice claimAfterRecovery becomes sole trusted without pending", a
   assert.equal(result.deviceId, "d-fresh");
 });
 
+test("registerDevice skips a second approval email for an existing pending device", async () => {
+  let sends = 0;
+  const service = new DeviceService({
+    devices: {
+      registerOrUpdate: async () => ({
+        ...createDeviceRecord(),
+        sendApprovalEmail: false,
+      }),
+      reclaimSoleTrusted: async () => null,
+      claimTrustedAfterRecovery: async () => createDeviceRecord({ status: "trusted" }),
+      isTrustedDevice: async () => true,
+      resolveApproval: async () => ({
+        kind: "approved",
+        device: createDeviceRecord({ status: "trusted" }),
+      }),
+      listByUser: async () => [],
+      renameDevice: async () => null,
+      revokeOwned: async () => null,
+      blockPending: async () => null,
+      unblockDevice: async () => null,
+      clearExpiredBlocks: async () => undefined,
+    },
+    config: {
+      deviceApprovalTtlSeconds: 60,
+      publicAppBaseUrl: "https://app.test",
+    },
+    users: {
+      findById: async () => ({
+        id: "u1",
+        email: "owner@test.local",
+        publicKey: "pk",
+        locale: "en",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      }),
+    },
+    emailTemplates: {
+      sendDeviceApprovalRequest: async () => {
+        sends += 1;
+      },
+    },
+  });
+
+  const result = await service.registerDevice("u1", "127.0.0.1", createInput());
+  assert.equal(result.status, "pending_approval");
+  assert.equal(sends, 0);
+});
+
 test("registerDevice sends device_approval_request when pending and email deps configured", async () => {
   const sends: Array<Parameters<EmailTemplateService["sendDeviceApprovalRequest"]>[0]> = [];
   const service = new DeviceService({

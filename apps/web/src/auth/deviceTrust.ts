@@ -148,15 +148,6 @@ export async function resolveDeviceTrust(
     }
   }
 
-  const trustedMatch = listed.devices.find((device) => fingerprintMatch(device, fingerprint));
-  if (trustedMatch) {
-    return {
-      status: "trusted",
-      deviceId: trustedMatch.device_id,
-      approverDevices: listed.devices,
-    };
-  }
-
   const pendingMatch = listed.pending.find((device) => fingerprintMatch(device, fingerprint));
   const soleTrusted = listed.devices.length === 1 ? listed.devices[0] : null;
   const canReclaimSole =
@@ -165,18 +156,8 @@ export async function resolveDeviceTrust(
     canReclaimSoleTrustedDevice(soleTrusted, fingerprint, env.clientType);
   const canBootstrapTrusted = hasBundle && listed.devices.length === 0;
 
-  // Local vault proves this browser already owns unlock material — do not stay stuck on pending.
-  if (pendingMatch && !canReclaimSole && !canBootstrapTrusted) {
-    return {
-      status: "pending",
-      deviceId: pendingMatch.device_id,
-      approverDevices: listed.devices,
-    };
-  }
-
-  if (!pendingMatch && !canReclaimSole && !canBootstrapTrusted) {
-    // New browser without local vault → register as pending (or trusted if server has none).
-  }
+  // Always register, including a trusted or pending fingerprint match, so the
+  // full session is bound to that device. A match-only return left device_id NULL.
 
   try {
     const registered = await registerCurrentBrowserDevice(core, fingerprint, {

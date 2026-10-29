@@ -258,6 +258,13 @@ export function createApiApp(
           const header = getHeader(req, "x-user-id");
           return header?.trim() ?? null;
         };
+  /** Device list/register and the revoke guard must see an unbound Bearer so it can bind or return 403. */
+  const resolveUserIdAllowUnboundDevice: (req: IncomingMessage) => Promise<string | null> =
+    deps.sessionService !== undefined
+      ? createResolveAuthenticatedUserId(config, deps.sessionService, undefined, {
+          allowUnboundDevice: true,
+        })
+      : resolveUserId;
   /** Full session or post-register recovery bootstrap (enroll + ack-export only). */
   const resolveUserIdForRegistrationRecovery: (req: IncomingMessage) => Promise<string | null> =
     deps.sessionService !== undefined
@@ -719,14 +726,14 @@ export function createApiApp(
     app.route(
       "GET",
       "/devices",
-      createListDevicesRoute(deps.deviceService, resolveUserId),
+      createListDevicesRoute(deps.deviceService, resolveUserIdAllowUnboundDevice),
     );
     app.route(
       "POST",
       "/devices/register",
       createRegisterDeviceRoute(
         deps.deviceService,
-        resolveUserId,
+        resolveUserIdAllowUnboundDevice,
         config.trustedProxyHops,
         deps.sessionService,
       ),
@@ -739,7 +746,11 @@ export function createApiApp(
     app.route(
       "POST",
       "/devices/:deviceId/revoke",
-      createRevokeDeviceRoute(deps.deviceService, resolveUserId, deps.sessionService),
+      createRevokeDeviceRoute(
+        deps.deviceService,
+        resolveUserIdAllowUnboundDevice,
+        deps.sessionService,
+      ),
     );
     app.route(
       "POST",
@@ -749,12 +760,12 @@ export function createApiApp(
     app.route(
       "POST",
       "/devices/:deviceId/reject",
-      createRejectDeviceRoute(deps.deviceService, resolveUserId),
+      createRejectDeviceRoute(deps.deviceService, resolveUserId, deps.sessionService),
     );
     app.route(
       "POST",
       "/devices/:deviceId/block",
-      createBlockDeviceRoute(deps.deviceService, resolveUserId),
+      createBlockDeviceRoute(deps.deviceService, resolveUserId, deps.sessionService),
     );
     app.route(
       "POST",
