@@ -106,12 +106,10 @@ CIPHER_COUNT="$(echo "${CIPHER_LINES}" | wc -l | tr -d ' ')"
 [[ "${CIPHER_COUNT}" -ge 3 ]] \
   || fail "compat must set ssl_ciphers on catch-all + web + API (found ${CIPHER_COUNT})"
 while IFS= read -r CL; do
-  echo "${CL}" | grep -Fq "${CIPHER_CANON}" \
-    || fail "compat ssl_ciphers must be ECDHE+AEAD whitelist (got: ${CL})"
-  # Reject static RSA / CBC-SHA1 / HIGH:!aNULL if present anywhere in the list
-  if echo "${CL}" | grep -Eqi '(^|[ :])AES(128|256)-GCM-SHA(256|384)([ :]|$)|AES128-SHA([^2]|$)|AES256-SHA([^2]|$)|SHA1|:RC4|:DES|HIGH:!aNULL'; then
-    fail "compat ssl_ciphers must not include static RSA / CBC / HIGH:!aNULL: ${CL}"
-  fi
+  # Exact whitelist (finding 4/5): substring/contains lets "…:AES256-GCM-SHA384" append slip through.
+  CIPHER_VAL="$(echo "${CL}" | sed -E 's/^[[:space:]]*ssl_ciphers[[:space:]]+//; s/[[:space:]]*;[[:space:]]*$//; s/[[:space:]]+$//')"
+  [[ "${CIPHER_VAL}" = "${CIPHER_CANON}" ]] \
+    || fail "compat ssl_ciphers must equal ECDHE+AEAD whitelist exactly (got: ${CL})"
 done <<< "${CIPHER_LINES}"
 
 PREF_COUNT="$(grep -cE '^[[:space:]]*ssl_prefer_server_ciphers[[:space:]]+on;' "${COMPAT}" || true)"
