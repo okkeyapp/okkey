@@ -65,13 +65,104 @@ test("clean SemVer gets rolling :X.Y / :X but never auto :latest", () => {
   assert.ok(!tags.includes(`${IMAGE}:latest`));
 });
 
-test("dev push → :dev + :dev-<sha7>", () => {
+test("dev push does not publish :dev (manual dispatch only)", () => {
+  assert.throws(
+    () =>
+      tagsForImage(IMAGE, {
+        eventName: "push",
+        ref: "refs/heads/dev",
+        refName: "dev",
+        sha: "deadbeefcafebabe",
+      }),
+    /workflow_dispatch/,
+  );
+  assert.throws(
+    () =>
+      resolveImageVersion({
+        eventName: "push",
+        ref: "refs/heads/dev",
+        refName: "dev",
+      }),
+    /workflow_dispatch/,
+  );
+});
+
+test("release branch → candidate + sha, never :latest or the final pin", () => {
   const tags = tagsForImage(IMAGE, {
     eventName: "push",
-    ref: "refs/heads/dev",
+    ref: "refs/heads/release/1.0.0-beta.2",
+    refType: "branch",
+    refName: "release/1.0.0-beta.2",
     sha: "deadbeefcafebabe",
   });
-  assert.deepEqual(tags, [`${IMAGE}:dev`, `${IMAGE}:dev-deadbee`]);
+  assert.deepEqual(tags, [
+    `${IMAGE}:1.0.0-beta.2-candidate`,
+    `${IMAGE}:1.0.0-beta.2-deadbee`,
+  ]);
+  for (const forbidden of [
+    `${IMAGE}:latest`,
+    `${IMAGE}:1`,
+    `${IMAGE}:1.0`,
+    `${IMAGE}:1.0.0`,
+    `${IMAGE}:1.0.0-beta.2`,
+    `${IMAGE}:dev`,
+  ]) {
+    assert.ok(!tags.includes(forbidden), forbidden);
+  }
+  assert.equal(
+    resolveImageVersion({
+      eventName: "push",
+      ref: "refs/heads/release/1.0.0-beta.2",
+      refType: "branch",
+      refName: "release/1.0.0-beta.2",
+      sha: "deadbeefcafebabe",
+    }),
+    "1.0.0-beta.2-candidate",
+  );
+});
+
+test("hotfix branch → candidate + sha, no rolling majors", () => {
+  const tags = tagsForImage(IMAGE, {
+    eventName: "push",
+    ref: "refs/heads/hotfix/1.2.3",
+    refType: "branch",
+    refName: "hotfix/1.2.3",
+    sha: "abc1234567890",
+  });
+  assert.deepEqual(tags, [
+    `${IMAGE}:1.2.3-candidate`,
+    `${IMAGE}:1.2.3-abc1234`,
+  ]);
+  assert.ok(!tags.includes(`${IMAGE}:latest`));
+  assert.ok(!tags.includes(`${IMAGE}:1.2`));
+  assert.ok(!tags.includes(`${IMAGE}:1`));
+  assert.ok(!tags.includes(`${IMAGE}:1.2.3`));
+});
+
+test("release/v<semver> strips the leading v", () => {
+  const tags = tagsForImage(IMAGE, {
+    eventName: "push",
+    ref: "refs/heads/release/v1.0.0-beta.2",
+    refName: "release/v1.0.0-beta.2",
+    sha: "deadbeefcafebabe",
+  });
+  assert.deepEqual(tags, [
+    `${IMAGE}:1.0.0-beta.2-candidate`,
+    `${IMAGE}:1.0.0-beta.2-deadbee`,
+  ]);
+});
+
+test("release branch with a non-semver name is rejected", () => {
+  assert.throws(
+    () =>
+      tagsForImage(IMAGE, {
+        eventName: "push",
+        ref: "refs/heads/release/not-a-version",
+        refName: "release/not-a-version",
+        sha: "abc1234567890",
+      }),
+    /release\/<semver>/,
+  );
 });
 
 test("workflow_dispatch :latest only when push_latest=true", () => {

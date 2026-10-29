@@ -2,13 +2,17 @@
 /**
  * Resolve GHCR image tags for Publish container images (img2).
  *
- * Tag scheme (release-and-images.md §3.2 / §3.4):
- *   push to `dev`          → :dev, :dev-<sha7>
+ * Tag scheme:
+ *   release/<version> or hotfix/<version>
+ *                          → :<version>-candidate, :<version>-<sha7>
+ *                            (no :latest, no rolling :X / :X.Y)
  *   tag vX.Y.Z (clean)     → :X.Y.Z, :X.Y, :X   (:latest ONLY via manual dispatch)
  *   tag vX.Y.Z-prerelease  → :X.Y.Z-prerelease  (no rolling / :latest)
  *     e.g. v1.0.0-beta.2   → :1.0.0-beta.2 only
- *   pull_request           → :pr-<n>, :pr-<n>-<head-sha7>
- *   workflow_dispatch      → explicit tag (+ optional :latest when push_latest=true)
+ *   workflow_dispatch      → explicit tag (default dev; + :latest when push_latest=true)
+ *
+ * Push to `dev` does not publish. The floating :dev image is workflow_dispatch only.
+ * Pull-request tag shapes remain for callers, but the publish workflow does not run on PRs.
  *
  * Spelling: SemVer pre-release uses **beta** (never "betta").
  */
@@ -33,6 +37,8 @@ import { resolve } from "node:path";
  */
 
 const CLEAN_SEMVER_TAG = /^v[0-9]+\.[0-9]+\.[0-9]+$/;
+const RELEASE_BRANCH =
+  /^(?:release|hotfix)\/v?(\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?)$/;
 
 /**
  * @param {string} sha
@@ -40,6 +46,16 @@ const CLEAN_SEMVER_TAG = /^v[0-9]+\.[0-9]+\.[0-9]+$/;
  */
 export function short7(sha) {
   return String(sha || "").slice(0, 7);
+}
+
+/**
+ * SemVer from `release/<version>` or `hotfix/<version>` (optional leading `v`).
+ * @param {string} refName
+ * @returns {string|null}
+ */
+export function releaseBranchVersion(refName) {
+  const match = RELEASE_BRANCH.exec(refName || "");
+  return match ? match[1] : null;
 }
 
 /**
@@ -61,8 +77,24 @@ export function tagsForImage(image, ctx) {
   }
 
   if (eventName === "push" && ref === "refs/heads/dev") {
+    throw new Error(
+      "push to dev does not publish images; run workflow_dispatch to build the :dev tag",
+    );
+  }
+
+  if (eventName === "push" && /^(?:release|hotfix)\//.test(refName)) {
+    const version = releaseBranchVersion(refName);
+    if (!version) {
+      throw new Error(
+        `release/hotfix branch must be named release/<semver> or hotfix/<semver> (got ${refName})`,
+      );
+    }
     const short = short7(ctx.sha || "");
-    return [`${image}:dev`, `${image}:dev-${short}`];
+    if (!short) {
+      throw new Error("release/hotfix publish requires a commit sha");
+    }
+    // Moving candidate + immutable sha. The final SemVer pin is the git tag only.
+    return [`${image}:${version}-candidate`, `${image}:${version}-${short}`];
   }
 
   if (refType === "tag") {
@@ -111,7 +143,13 @@ export function resolveImageVersion(ctx) {
     return ctx.dispatchTag || "dev";
   }
   if (ctx.eventName === "push" && ctx.ref === "refs/heads/dev") {
-    return "dev";
+    throw new Error(
+      "push to dev does not publish images; run workflow_dispatch to build the :dev tag",
+    );
+  }
+  const branchVersion = releaseBranchVersion(ctx.refName || "");
+  if (ctx.eventName === "push" && branchVersion) {
+    return `${branchVersion}-candidate`;
   }
   return "dev";
 }
