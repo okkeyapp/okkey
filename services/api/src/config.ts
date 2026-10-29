@@ -15,11 +15,18 @@ import {
   loadEnterpriseBackendEnv,
 } from "./enterpriseEnv.ts";
 import { resolveEmailDeliveryMode, type EmailDeliveryMode } from "./email/queue.ts";
+import {
+  isSafeEmailLogoUrl,
+  parseEmailHttpApiInlineMode,
+  type EmailHttpApiInlineMode,
+} from "./email/http-api-payload.ts";
 import { parseFaviconProvider, type FaviconProvider } from "./favicon/fetch-remote.ts";
 
 type NodeEnv = "development" | "test" | "production";
 type EmailProvider = "logger" | "smtp" | "http-api" | "ses";
 type CryptoRolloutState = "resume" | "stop";
+
+export type { EmailHttpApiInlineMode };
 
 export type DeploymentMode = "self_hosted" | "saas";
 
@@ -109,6 +116,17 @@ export interface ApiConfig {
   emailApiEndpoint: string;
   emailApiKey: string;
   emailApiTimeoutMs: number;
+  /**
+   * `EMAIL_HTTP_API_INLINE` for `EMAIL_PROVIDER=http-api`:
+   * how the Okkey mark is represented when HTML uses `cid:okkey-mark`.
+   * Default `cid` — include `inlineAttachments` in the JSON body.
+   */
+  emailHttpApiInlineMode: EmailHttpApiInlineMode;
+  /**
+   * Absolute https URL for the Okkey mark when `emailHttpApiInlineMode` is `url`
+   * (`EMAIL_LOGO_URL`). Ignored for other modes.
+   */
+  emailLogoUrl: string;
   /** AWS SES / SES-compatible (Yandex Postbox) region for SigV4. */
   sesRegion: string;
   sesAccessKeyId: string;
@@ -329,6 +347,23 @@ export function resolveSalesEmail(raw: string | undefined): string {
   return trimmed;
 }
 
+/**
+ * Optional public https URL for the email logo (`EMAIL_LOGO_URL`).
+ * Empty is allowed until `EMAIL_HTTP_API_INLINE=url` is selected (validated in transport assert).
+ */
+export function resolveEmailLogoUrl(raw: string | undefined): string {
+  const trimmed = (raw ?? "").trim();
+  if (!trimmed) {
+    return "";
+  }
+  if (!isSafeEmailLogoUrl(trimmed)) {
+    throw new Error(
+      "EMAIL_LOGO_URL must be an absolute https URL without credentials (e.g. https://cdn.example.com/okkey-mark.png)",
+    );
+  }
+  return trimmed;
+}
+
 export function loadConfig(): ApiConfig {
   loadEnvFile(".env");
   loadEnvFile(".env.local");
@@ -485,6 +520,8 @@ export function loadConfig(): ApiConfig {
     emailApiEndpoint: process.env.EMAIL_API_ENDPOINT ?? "",
     emailApiKey: process.env.EMAIL_API_KEY ?? "",
     emailApiTimeoutMs: parsePositiveInt(process.env.EMAIL_API_TIMEOUT_MS, 10000),
+    emailHttpApiInlineMode: parseEmailHttpApiInlineMode(process.env.EMAIL_HTTP_API_INLINE),
+    emailLogoUrl: resolveEmailLogoUrl(process.env.EMAIL_LOGO_URL),
     sesRegion: process.env.EMAIL_SES_REGION ?? "",
     sesAccessKeyId: process.env.EMAIL_SES_ACCESS_KEY_ID ?? "",
     sesSecretAccessKey: process.env.EMAIL_SES_SECRET_ACCESS_KEY ?? "",

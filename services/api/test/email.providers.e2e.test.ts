@@ -233,9 +233,18 @@ test("e2e: http-api provider posts email payload to external api", async (t) => 
   assert.equal(response.status, 200);
   assert.equal(providerAuthHeader, "Bearer test-api-key");
   assert.match(providerRequestBody, /"to":"user@example.com"/);
-  const parsed = JSON.parse(providerRequestBody) as { subject?: string };
+  const parsed = JSON.parse(providerRequestBody) as {
+    subject?: string;
+    html?: string;
+    inlineAttachments?: Array<{ cid: string; contentType: string; contentBase64: string }>;
+  };
   assert.equal(
     parsed.subject,
     formatEmailMessage("ru", "email.auth.signInCode.subject", { code: "123456" }),
   );
+  assert.match(parsed.html ?? "", /cid:okkey-mark/);
+  assert.equal(parsed.inlineAttachments?.length, 1);
+  assert.equal(parsed.inlineAttachments?.[0]?.cid, "okkey-mark");
+  assert.equal(parsed.inlineAttachments?.[0]?.contentType, "image/png");
+  assert.ok((parsed.inlineAttachments?.[0]?.contentBase64 ?? "").length > 32);
 });
