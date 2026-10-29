@@ -4,13 +4,26 @@ import { BrowserRouter } from "react-router-dom";
 import { initCrypto } from "@okkey/crypto";
 import "./index.css";
 import App from "./App.tsx";
-import { applyLocaleToDocument, readStoredLocale } from "./locale/localeStorage";
+import {
+  applyLocaleToDocument,
+  readLocaleFromSearch,
+  readStoredLocale,
+  writeStoredLocale,
+} from "./locale/localeStorage";
 import { applyStoredTheme } from "./theme/applyTheme";
 import { captureCapsuleFragmentKey } from "./capsules/fragmentKey";
 import { syncBackendEnterpriseModules } from "./workspace/syncBackendEnterpriseModules";
 
 applyStoredTheme();
-applyLocaleToDocument(readStoredLocale());
+{
+  const fromUrl = readLocaleFromSearch(window.location.search);
+  if (fromUrl) {
+    writeStoredLocale(fromUrl);
+    applyLocaleToDocument(fromUrl);
+  } else {
+    applyLocaleToDocument(readStoredLocale());
+  }
+}
 
 const capsulePathMatch = window.location.pathname.match(/^\/capsule\/([^/]+)\/?$/u);
 if (capsulePathMatch?.[1]) {
