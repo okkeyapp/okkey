@@ -19,7 +19,7 @@ import {
   isSafeEmailLogoUrl,
   parseEmailHttpApiInlineMode,
   type EmailHttpApiInlineMode,
-} from "./email/http-api-payload.ts";
+} from "./email/http-api-inline-mode.ts";
 import { parseFaviconProvider, type FaviconProvider } from "./favicon/fetch-remote.ts";
 
 type NodeEnv = "development" | "test" | "production";

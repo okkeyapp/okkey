@@ -5,6 +5,17 @@ import {
 } from "@okkey/email-templates";
 
 import { withOkkeyMarkInlineAttachment } from "./inline-attachments.ts";
+import type { EmailHttpApiInlineMode } from "./http-api-inline-mode.ts";
+import { isSafeEmailLogoUrl } from "./http-api-inline-mode.ts";
+
+export type {
+  EmailHttpApiInlineMode,
+} from "./http-api-inline-mode.ts";
+export {
+  EMAIL_HTTP_API_INLINE_MODES,
+  isSafeEmailLogoUrl,
+  parseEmailHttpApiInlineMode,
+} from "./http-api-inline-mode.ts";
 
 /** Structural email payload (avoids importing `service.ts` and creating a cycle). */
 export type HttpApiEmailMessage = {
@@ -20,24 +31,6 @@ export type HttpApiEmailMessage = {
     contentBase64: string;
   }>;
 };
-
-/**
- * How `EMAIL_PROVIDER=http-api` embeds the Okkey mark when HTML references `cid:okkey-mark`.
- *
- * - `cid` (default) — keep `cid:` in HTML and send `inlineAttachments` (remote must honor them).
- * - `data` — rewrite logo `src` to a `data:image/png;base64,…` URI; omit `inlineAttachments`.
- *   Many webmail clients block `data:` images; use only when the webhook consumer needs it.
- * - `none` — strip the logo `<img>` (wordmark text remains); omit `inlineAttachments`.
- * - `url` — rewrite logo `src` to `EMAIL_LOGO_URL` (https); omit `inlineAttachments`.
- */
-export type EmailHttpApiInlineMode = "cid" | "data" | "none" | "url";
-
-export const EMAIL_HTTP_API_INLINE_MODES: readonly EmailHttpApiInlineMode[] = [
-  "cid",
-  "data",
-  "none",
-  "url",
-] as const;
 
 export type PrepareHttpApiEmailPayloadOptions = {
   inlineMode: EmailHttpApiInlineMode;
@@ -55,48 +48,6 @@ const OKKEY_MARK_CID_SRC_RE = new RegExp(
   `src=(["'])cid:${OKKEY_MARK_CID}\\1`,
   "gi",
 );
-
-/**
- * Accept only absolute https logo URLs (no `javascript:`, `data:`, relative paths).
- * Rejects credentials in the URL and non-http(s) schemes.
- */
-export function isSafeEmailLogoUrl(raw: string): boolean {
-  const trimmed = raw.trim();
-  if (!trimmed) {
-    return false;
-  }
-  let parsed: URL;
-  try {
-    parsed = new URL(trimmed);
-  } catch {
-    return false;
-  }
-  if (parsed.protocol !== "https:") {
-    return false;
-  }
-  if (parsed.username || parsed.password) {
-    return false;
-  }
-  if (!parsed.hostname) {
-    return false;
-  }
-  return true;
-}
-
-export function parseEmailHttpApiInlineMode(
-  raw: string | undefined,
-): EmailHttpApiInlineMode {
-  const normalized = (raw ?? "").trim().toLowerCase();
-  if (!normalized) {
-    return "cid";
-  }
-  if ((EMAIL_HTTP_API_INLINE_MODES as readonly string[]).includes(normalized)) {
-    return normalized as EmailHttpApiInlineMode;
-  }
-  throw new Error(
-    `EMAIL_HTTP_API_INLINE must be one of ${EMAIL_HTTP_API_INLINE_MODES.join("|")} (got ${JSON.stringify(raw)})`,
-  );
-}
 
 function stripInlineAttachments(message: HttpApiEmailMessage): HttpApiEmailMessage {
   const { inlineAttachments: _omit, ...rest } = message;

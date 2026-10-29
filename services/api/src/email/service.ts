@@ -19,13 +19,11 @@ import {
   type EmailQueueRedis,
 } from "./queue.ts";
 import { withOkkeyMarkInlineAttachment } from "./inline-attachments.ts";
-import {
-  prepareHttpApiEmailPayload,
-  type EmailHttpApiInlineMode,
-} from "./http-api-payload.ts";
+import type { EmailHttpApiInlineMode } from "./http-api-inline-mode.ts";
+import { prepareHttpApiEmailPayload } from "./http-api-payload.ts";
 import { SesEmailSender } from "./ses-sender.ts";
 
-export type { EmailHttpApiInlineMode } from "./http-api-payload.ts";
+export type { EmailHttpApiInlineMode } from "./http-api-inline-mode.ts";
 
 /** Inline (CID) attachment referenced from HTML as `cid:<cid>`. */
 export interface EmailInlineAttachment {

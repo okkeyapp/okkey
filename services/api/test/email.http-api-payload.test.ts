@@ -8,8 +8,8 @@ import {
 import {
   isSafeEmailLogoUrl,
   parseEmailHttpApiInlineMode,
-  prepareHttpApiEmailPayload,
-} from "../src/email/http-api-payload.ts";
+} from "../src/email/http-api-inline-mode.ts";
+import { prepareHttpApiEmailPayload } from "../src/email/http-api-payload.ts";
 import { HttpApiEmailSender } from "../src/email/service.ts";
 import type { EmailMessage } from "../src/email/service.ts";
 import { assertEmailTransportConfig } from "../src/email/service.ts";
