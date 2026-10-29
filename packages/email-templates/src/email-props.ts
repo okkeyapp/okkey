@@ -20,8 +20,10 @@ import type { RecoveryActionEmailProps } from "./components/RecoveryActionEmail.
 
 function authEmailCodeMessagePrefix(
   purpose: AuthEmailCodeVariables["purpose"],
-): "email.auth.signInCode" | "email.auth.emailChangeCode" {
-  return purpose === "email_change" ? "email.auth.emailChangeCode" : "email.auth.signInCode";
+): "email.auth.signInCode" | "email.auth.registrationCode" | "email.auth.emailChangeCode" {
+  if (purpose === "email_change") return "email.auth.emailChangeCode";
+  if (purpose === "registration") return "email.auth.registrationCode";
+  return "email.auth.signInCode";
 }
 
 export function buildAuthSignInCodeEmailProps(

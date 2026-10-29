@@ -143,6 +143,8 @@ test("renderEmailTemplate auth_email_code en and ru", async () => {
     formatEmailMessage("en", "email.auth.signInCode.subject", { code: "123456" }),
   );
   assert.match(en.subject, /^123456\b/);
+  assert.match(en.subject, /verification code/i);
+  assert.equal(/sign-in/i.test(en.subject), false);
   assert.equal(en.subject.includes("123 456"), false);
   assert.match(en.text, /123456/);
   assert.match(en.html, /123456/);
@@ -154,6 +156,7 @@ test("renderEmailTemplate auth_email_code en and ru", async () => {
   assert.match(en.html, /#f1f5f9/i);
   assertEmailDarkModeSupport(en.html);
   assert.match(en.text, /^Okkey\b/m);
+  assert.match(en.text, /verification code/i);
   const enPreview = formatEmailMessage("en", "email.auth.signInCode.preview", { minutes: 2 });
   assert.equal(enPreview, "Valid for 2 minutes. Never share this code.");
   assertPreviewInsideBody(en.html, enPreview);
@@ -186,12 +189,15 @@ test("renderEmailTemplate auth_email_code en and ru", async () => {
     formatEmailMessage("ru", "email.auth.signInCode.subject", { code: "654321" }),
   );
   assert.match(ru.subject, /^654321\b/);
+  assert.match(ru.subject, /код подтверждения/i);
+  assert.equal(/код входа/i.test(ru.subject), false);
   assert.match(ru.text, /654321/);
   assert.match(ru.html, /654321/);
   assert.equal(ru.html.includes("654 321"), false);
   assertHtmlDocumentMeta("ru", ru);
   assertEmailDarkModeSupport(ru.html);
   assert.match(ru.text, /^Okkey\b/m);
+  assert.match(ru.text, /код подтверждения/i);
   const ruPreview = formatEmailMessage("ru", "email.auth.signInCode.preview", { minutes: 1 });
   assert.equal(ruPreview, "Код действует 1 минуту. Никому его не сообщайте.");
   assertPreviewInsideBody(ru.html, ruPreview);
@@ -201,6 +207,39 @@ test("renderEmailTemplate auth_email_code en and ru", async () => {
   assertNoMustachePlaceholders(ru.text);
   assertNoNulBytes(ru.html);
   assertNoNulBytes(ru.text);
+});
+
+test("renderEmailTemplate auth_email_code registration purpose uses dedicated subject", async () => {
+  const en = await renderEmailTemplate("auth_email_code", "en", {
+    code: "246801",
+    ttlSeconds: 120,
+    purpose: "registration",
+  });
+  assert.equal(
+    en.subject,
+    formatEmailMessage("en", "email.auth.registrationCode.subject", { code: "246801" }),
+  );
+  assert.match(en.subject, /^246801\b/);
+  assert.match(en.subject, /registration verification code/i);
+  assert.equal(/sign-in/i.test(en.subject), false);
+  assert.match(en.html, /verification code/i);
+  assertSharedEmailFooter("en", en);
+  assertNoMustachePlaceholders(en.text);
+
+  const ru = await renderEmailTemplate("auth_email_code", "ru", {
+    code: "135790",
+    ttlSeconds: 60,
+    purpose: "registration",
+  });
+  assert.equal(
+    ru.subject,
+    formatEmailMessage("ru", "email.auth.registrationCode.subject", { code: "135790" }),
+  );
+  assert.match(ru.subject, /^135790\b/);
+  assert.match(ru.subject, /код подтверждения регистрации/i);
+  assert.equal(/код входа/i.test(ru.subject), false);
+  assert.match(ru.html, /код подтверждения/i);
+  assertNoMustachePlaceholders(ru.text);
 });
 
 test("renderEmailTemplate auth_email_code email_change purpose uses dedicated copy", async () => {
@@ -214,9 +253,9 @@ test("renderEmailTemplate auth_email_code email_change purpose uses dedicated co
     formatEmailMessage("en", "email.auth.emailChangeCode.subject", { code: "146805" }),
   );
   assert.match(en.subject, /^146805\b/);
-  assert.match(en.subject, /email change/i);
+  assert.match(en.subject, /new email verification/i);
   assert.equal(/sign-in/i.test(en.subject), false);
-  assert.match(en.html, /email change/i);
+  assert.match(en.html, /new email verification/i);
   assert.equal(/sign-in/i.test(en.html), false);
   assert.match(en.html, /146805/);
   assert.equal(en.html.includes("146 805"), false);
@@ -656,6 +695,8 @@ test("EmailTemplateService device and contact recovery request emails render CTA
   assert.match(sent[1].text, /Аккаунт: owner@example.com/);
   assert.match(sent[1].text, /Запрос:/);
   assert.match(sent[1].text, /Истекает:/);
+  assert.match(sent[1].text, /подтвердить помощь в восстановлении/);
+  assert.equal(/выдать долю/i.test(sent[1].text), false);
   assert.match(sent[1].html, /https:\/\/app\.example\/items/);
   assert.equal(sent[1].html.includes("popup=settings"), false);
   assert.equal(sent[1].text.includes("{{"), false);
@@ -685,6 +726,8 @@ test("EmailTemplateService sendTrustedContactInvite renders inviter details", as
   assert.equal(sent.length, 1);
   assert.equal(sent[0].subject, formatEmailMessage("ru", "email.contacts.invite.subject", {}));
   assert.match(sent[0].text, /Alex Okkey/);
+  assert.match(sent[0].text, /приглашает вас стать доверенным контактом/);
+  assert.equal(/пригласил вас/i.test(sent[0].text), false);
   assert.match(sent[0].text, /alex@example.com/);
   assert.match(sent[0].html, /popup=settings\|recovery/);
   assert.equal(sent[0].text.includes("{{"), false);

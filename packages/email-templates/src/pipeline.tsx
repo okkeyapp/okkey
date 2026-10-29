@@ -82,7 +82,9 @@ export async function renderAuthEmailCode(
   const messagePrefix =
     variables.purpose === "email_change"
       ? "email.auth.emailChangeCode"
-      : "email.auth.signInCode";
+      : variables.purpose === "registration"
+        ? "email.auth.registrationCode"
+        : "email.auth.signInCode";
   const subject = formatEmailMessage(locale, `${messagePrefix}.subject`, {
     code: variables.code,
   });

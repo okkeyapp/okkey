@@ -260,6 +260,7 @@ export class AuthService {
       variables: {
         code,
         ttlSeconds: this.config.authCodeTtlSeconds,
+        purpose: account ? "sign_in" : "registration",
       },
     });
 
@@ -326,6 +327,7 @@ export class AuthService {
       variables: {
         code,
         ttlSeconds: this.config.authCodeTtlSeconds,
+        purpose: account ? "sign_in" : "registration",
       },
     });
 
