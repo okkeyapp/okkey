@@ -6,11 +6,54 @@ import { OKKEY_MARK_CID } from "../assets/okkey-mark.js";
 export const EMAIL_FONT_FAMILY =
   'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
 
+/** Light canvas (body) behind the white card. */
 export const EMAIL_CANVAS = "#f1f5f9";
+export const EMAIL_CARD = "#ffffff";
 export const EMAIL_PRIMARY_TEXT = "#0A0A0A";
 export const EMAIL_SECONDARY_TEXT = "#64748b";
+export const EMAIL_RULE = "#e5e7eb";
 export const EMAIL_PRIMARY = "#3B82F6";
 export const EMAIL_PRIMARY_FOREGROUND = "#ffffff";
+
+/** Dark palette for clients that honour prefers-color-scheme (off-black / off-white). */
+export const EMAIL_CANVAS_DARK = "#0f172a";
+export const EMAIL_CARD_DARK = "#1e293b";
+export const EMAIL_PRIMARY_TEXT_DARK = "#f8fafc";
+export const EMAIL_SECONDARY_TEXT_DARK = "#94a3b8";
+export const EMAIL_RULE_DARK = "#334155";
+
+/** Stable class hooks for light + dark styles (inline colors remain the light fallback). */
+export const EMAIL_CLASS_CANVAS = "okkey-canvas";
+export const EMAIL_CLASS_CARD = "okkey-card";
+export const EMAIL_CLASS_INK = "okkey-ink";
+export const EMAIL_CLASS_MUTED = "okkey-muted";
+export const EMAIL_CLASS_RULE = "okkey-rule";
+export const EMAIL_CLASS_SURFACE = "okkey-surface";
+
+/**
+ * Head CSS: declare dual color-scheme and override class colors in dark mode.
+ * `!important` beats react-email inline styles; `[data-ogsb]/[data-ogsc]` help Outlook apps.
+ */
+const EMAIL_COLOR_SCHEME_CSS = `
+:root {
+  color-scheme: light dark;
+  supported-color-schemes: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  .${EMAIL_CLASS_CANVAS} { background-color: ${EMAIL_CANVAS_DARK} !important; }
+  .${EMAIL_CLASS_CARD} { background-color: ${EMAIL_CARD_DARK} !important; }
+  .${EMAIL_CLASS_SURFACE} { background-color: ${EMAIL_CANVAS_DARK} !important; }
+  .${EMAIL_CLASS_INK} { color: ${EMAIL_PRIMARY_TEXT_DARK} !important; }
+  .${EMAIL_CLASS_MUTED} { color: ${EMAIL_SECONDARY_TEXT_DARK} !important; }
+  .${EMAIL_CLASS_RULE} { border-top-color: ${EMAIL_RULE_DARK} !important; }
+}
+[data-ogsb] .${EMAIL_CLASS_CANVAS} { background-color: ${EMAIL_CANVAS_DARK} !important; }
+[data-ogsb] .${EMAIL_CLASS_CARD} { background-color: ${EMAIL_CARD_DARK} !important; }
+[data-ogsb] .${EMAIL_CLASS_SURFACE} { background-color: ${EMAIL_CANVAS_DARK} !important; }
+[data-ogsc] .${EMAIL_CLASS_INK} { color: ${EMAIL_PRIMARY_TEXT_DARK} !important; }
+[data-ogsc] .${EMAIL_CLASS_MUTED} { color: ${EMAIL_SECONDARY_TEXT_DARK} !important; }
+[data-ogsb] .${EMAIL_CLASS_RULE} { border-top-color: ${EMAIL_RULE_DARK} !important; }
+`.trim();
 
 type EmailShellProps = {
   /** BCP-47 language for `<html lang>` — must match the email locale. */
@@ -34,12 +77,14 @@ export function EmailShell({ lang = "en", title, preview, footer, children }: Em
       <Head>
         <title>{title}</title>
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <meta name="color-scheme" content="light" />
+        <meta name="color-scheme" content="light dark" />
+        <meta name="supported-color-schemes" content="light dark" />
+        <style type="text/css">{EMAIL_COLOR_SCHEME_CSS}</style>
       </Head>
-      <Body style={bodyStyle}>
+      <Body className={EMAIL_CLASS_CANVAS} style={bodyStyle}>
         {/* Preview must live inside <body> so inbox clients pick up the preheader. */}
         <Preview>{preview}</Preview>
-        <Container style={containerStyle}>
+        <Container className={EMAIL_CLASS_CARD} style={containerStyle}>
           <Section style={headerStyle}>
             <table cellPadding={0} cellSpacing={0} role="presentation">
               <tr>
@@ -53,18 +98,22 @@ export function EmailShell({ lang = "en", title, preview, footer, children }: Em
                   />
                 </td>
                 <td style={wordmarkCellStyle}>
-                  <span style={wordmarkStyle}>Okkey</span>
+                  <span className={EMAIL_CLASS_INK} style={wordmarkStyle}>
+                    Okkey
+                  </span>
                 </td>
               </tr>
             </table>
           </Section>
-          <hr style={ruleStyle} />
+          <hr className={EMAIL_CLASS_RULE} style={ruleStyle} />
           {children}
           {hasFooter ? (
             <>
-              <hr style={ruleStyle} />
+              <hr className={EMAIL_CLASS_RULE} style={ruleStyle} />
               {typeof footer === "string" ? (
-                <Text style={footerStyle}>{footer.trim()}</Text>
+                <Text className={EMAIL_CLASS_MUTED} style={footerStyle}>
+                  {footer.trim()}
+                </Text>
               ) : (
                 footer
               )}
@@ -86,7 +135,7 @@ const bodyStyle: React.CSSProperties = {
 const containerStyle: React.CSSProperties = {
   maxWidth: "520px",
   margin: "0 auto",
-  backgroundColor: "#ffffff",
+  backgroundColor: EMAIL_CARD,
   padding: "32px 36px",
   borderRadius: "8px",
 };
@@ -122,7 +171,7 @@ const wordmarkStyle: React.CSSProperties = {
 
 const ruleStyle: React.CSSProperties = {
   border: "none",
-  borderTop: "1px solid #e5e7eb",
+  borderTop: `1px solid ${EMAIL_RULE}`,
   margin: "20px 0",
 };
 

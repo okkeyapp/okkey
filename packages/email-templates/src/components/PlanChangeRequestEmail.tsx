@@ -1,7 +1,13 @@
 import { Text } from "@react-email/components";
 import * as React from "react";
 
-import { EMAIL_PRIMARY_TEXT, EMAIL_SECONDARY_TEXT, EmailShell } from "./EmailShell.js";
+import {
+  EMAIL_CLASS_INK,
+  EMAIL_CLASS_MUTED,
+  EMAIL_PRIMARY_TEXT,
+  EMAIL_SECONDARY_TEXT,
+  EmailShell,
+} from "./EmailShell.js";
 import { EmailStandardFooter } from "./EmailStandardFooter.js";
 
 export interface PlanChangeRequestEmailProps {
@@ -29,9 +35,11 @@ export function PlanChangeRequestEmail({
       preview={lead}
       footer={<EmailStandardFooter noReply={noReply} ignoreIfMistake={ignoreIfMistake} />}
     >
-      <Text style={leadStyle}>{lead}</Text>
+      <Text className={EMAIL_CLASS_INK} style={leadStyle}>
+        {lead}
+      </Text>
       {lines.map((line) => (
-        <Text key={line} style={lineStyle}>
+        <Text key={line} className={EMAIL_CLASS_MUTED} style={lineStyle}>
           {line}
         </Text>
       ))}

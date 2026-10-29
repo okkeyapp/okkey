@@ -57,6 +57,17 @@ function assertPreviewInsideBody(html: string, previewText: string): void {
   );
 }
 
+/** Dual color-scheme + dark media styles on every shell-backed template. */
+function assertEmailDarkModeSupport(html: string): void {
+  assert.match(html, /<meta\s+name="color-scheme"\s+content="light dark"\s*\/?>/i);
+  assert.match(html, /<meta\s+name="supported-color-schemes"\s+content="light dark"\s*\/?>/i);
+  assert.match(html, /prefers-color-scheme:\s*dark/i);
+  assert.match(html, /okkey-canvas/);
+  assert.match(html, /okkey-card/);
+  assert.match(html, /#0f172a/i);
+  assert.match(html, /#1e293b/i);
+}
+
 /** Shared two-line footer required on every transactional template. */
 function assertSharedEmailFooter(
   locale: "en" | "ru",
@@ -85,7 +96,7 @@ function assertHtmlDocumentMeta(
 ): void {
   assert.match(rendered.html, new RegExp(`lang="${locale}"`));
   assert.match(rendered.html, /<meta\s+name="viewport"\s+content="width=device-width,\s*initial-scale=1\.0"\s*\/?>/i);
-  assert.match(rendered.html, /<meta\s+name="color-scheme"\s+content="light"\s*\/?>/i);
+  assert.match(rendered.html, /<meta\s+name="color-scheme"\s+content="light dark"\s*\/?>/i);
   const titleMatch = rendered.html.match(/<title>([^<]*)<\/title>/i);
   assert.ok(titleMatch, `${locale} html must include <title>`);
   const decodedTitle = titleMatch[1]
@@ -117,6 +128,7 @@ test("renderEmailTemplate auth_email_code en and ru", async () => {
   assert.match(en.html, /cid:okkey-mark/);
   assert.equal(en.html.includes("data:image"), false);
   assert.match(en.html, /#f1f5f9/i);
+  assertEmailDarkModeSupport(en.html);
   assert.match(en.text, /^Okkey\b/m);
   const enPreview = formatEmailMessage("en", "email.auth.signInCode.preview", { minutes: 2 });
   assert.equal(enPreview, "Valid for 2 minutes. Never share this code.");
@@ -154,6 +166,7 @@ test("renderEmailTemplate auth_email_code en and ru", async () => {
   assert.match(ru.html, /654321/);
   assert.equal(ru.html.includes("654 321"), false);
   assertHtmlDocumentMeta("ru", ru);
+  assertEmailDarkModeSupport(ru.html);
   assert.match(ru.text, /^Okkey\b/m);
   const ruPreview = formatEmailMessage("ru", "email.auth.signInCode.preview", { minutes: 1 });
   assert.equal(ruPreview, "Код действует 1 минуту. Никому его не сообщайте.");
@@ -723,6 +736,7 @@ test("plan_change_request uses EmailShell and shared footer", async () => {
   assert.match(en.html, /cid:okkey-mark/);
   assert.match(en.html, /#f1f5f9/i);
   assertHtmlDocumentMeta("en", en);
+  assertEmailDarkModeSupport(en.html);
   assert.match(en.text, /^Okkey\b/m);
   assertSharedEmailFooter("en", en);
   assert.match(en.text, /Requested plan: ENTERPRISE/);
@@ -731,6 +745,7 @@ test("plan_change_request uses EmailShell and shared footer", async () => {
     locale: "ru",
   });
   assertHtmlDocumentMeta("ru", ru);
+  assertEmailDarkModeSupport(ru.html);
   assert.match(ru.text, /^Okkey\b/m);
   assertSharedEmailFooter("ru", ru);
 });
