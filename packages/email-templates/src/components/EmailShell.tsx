@@ -15,6 +15,8 @@ export const EMAIL_PRIMARY_FOREGROUND = "#ffffff";
 type EmailShellProps = {
   /** BCP-47 language for `<html lang>` — must match the email locale. */
   lang?: string;
+  /** Document title — same string as the email subject. */
+  title: string;
   preview: string;
   /** Shared two-line footer below the separator (no per-email footnotes). */
   footer?: React.ReactNode;
@@ -22,14 +24,18 @@ type EmailShellProps = {
 };
 
 /** Shared transactional chrome: canvas, white card, logo header, rule, then body. */
-export function EmailShell({ lang = "en", preview, footer, children }: EmailShellProps) {
+export function EmailShell({ lang = "en", title, preview, footer, children }: EmailShellProps) {
   const hasFooter =
     footer !== undefined &&
     footer !== null &&
     !(typeof footer === "string" && footer.trim().length === 0);
   return (
     <Html lang={lang} dir="ltr">
-      <Head />
+      <Head>
+        <title>{title}</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="color-scheme" content="light" />
+      </Head>
       <Preview>{preview}</Preview>
       <Body style={bodyStyle}>
         <Container style={containerStyle}>

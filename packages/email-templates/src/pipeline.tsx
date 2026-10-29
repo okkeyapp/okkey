@@ -481,6 +481,7 @@ export async function renderPlanChangeRequest(
   const element = (
     <PlanChangeRequestEmail
       lang={locale}
+      title={copy.subject}
       lead={copy.lead}
       lines={copy.lines}
       noReply={standard.noReply}

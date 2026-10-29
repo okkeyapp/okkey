@@ -7,6 +7,7 @@ import { EmailStandardFooter } from "./EmailStandardFooter.js";
 
 export interface RecoveryActionEmailProps {
   lang: string;
+  title: string;
   lead: string;
   detailLine: string;
   /** Optional second meta line (e.g. contact recovery "Requested: …"). */
@@ -24,6 +25,7 @@ export interface RecoveryActionEmailProps {
 /** Shared layout for enterprise recovery notify emails (contact release / invite). */
 export function RecoveryActionEmail({
   lang,
+  title,
   lead,
   detailLine,
   requestLine,
@@ -39,6 +41,7 @@ export function RecoveryActionEmail({
   return (
     <EmailShell
       lang={lang}
+      title={title}
       preview={lead}
       footer={<EmailStandardFooter noReply={noReply} ignoreIfMistake={ignoreIfMistake} />}
     >
