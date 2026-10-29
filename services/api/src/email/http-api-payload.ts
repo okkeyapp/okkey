@@ -6,14 +6,19 @@ import {
 
 import { withOkkeyMarkInlineAttachment } from "./inline-attachments.ts";
 import type { EmailHttpApiInlineMode } from "./http-api-inline-mode.ts";
-import { isSafeEmailLogoUrl } from "./http-api-inline-mode.ts";
+import {
+  escapeHtmlAttribute,
+  normalizeEmailLogoUrl,
+} from "./http-api-inline-mode.ts";
 
 export type {
   EmailHttpApiInlineMode,
 } from "./http-api-inline-mode.ts";
 export {
   EMAIL_HTTP_API_INLINE_MODES,
+  escapeHtmlAttribute,
   isSafeEmailLogoUrl,
+  normalizeEmailLogoUrl,
   parseEmailHttpApiInlineMode,
 } from "./http-api-inline-mode.ts";
 
@@ -38,7 +43,13 @@ export type PrepareHttpApiEmailPayloadOptions = {
   logoUrl?: string;
 };
 
-/** Match `<img … src="cid:okkey-mark" …>` (single- or double-quoted src). */
+/** Match logo `<td>…<img src="cid:okkey-mark" …></td>` (react-email shell). */
+const OKKEY_MARK_LOGO_CELL_RE = new RegExp(
+  `<td\\b[^>]*>\\s*<img\\b[^>]*\\bsrc=(["'])cid:${OKKEY_MARK_CID}\\1[^>]*(?:\\/\\s*>|>)\\s*<\\/td>`,
+  "gi",
+);
+
+/** Fallback: match bare `<img … src="cid:okkey-mark" …>`. */
 const OKKEY_MARK_IMG_RE = new RegExp(
   `<img\\b[^>]*\\bsrc=(["'])cid:${OKKEY_MARK_CID}\\1[^>]*(?:\\/\\s*>|>)`,
   "gi",
@@ -55,6 +66,17 @@ function stripInlineAttachments(message: HttpApiEmailMessage): HttpApiEmailMessa
   return rest;
 }
 
+function rewriteCidSrc(
+  html: string,
+  replacementSrc: string,
+): string {
+  const escaped = escapeHtmlAttribute(replacementSrc);
+  return html.replace(
+    OKKEY_MARK_CID_SRC_RE,
+    (_match, quote: string) => `src=${quote}${escaped}${quote}`,
+  );
+}
+
 /**
  * Shape the JSON body for `HttpApiEmailSender` according to `EMAIL_HTTP_API_INLINE`.
  * SMTP/SES keep CID MIME attachments; only the generic HTTP webhook adapts.
@@ -68,28 +90,29 @@ export function prepareHttpApiEmailPayload(
       return withOkkeyMarkInlineAttachment(message);
     case "data": {
       const dataSrc = `data:${OKKEY_MARK_CONTENT_TYPE};base64,${OKKEY_MARK_PNG_BASE64}`;
-      const rewritten = message.html.replace(
-        OKKEY_MARK_CID_SRC_RE,
-        (_match, quote: string) => `src=${quote}${dataSrc}${quote}`,
-      );
-      return stripInlineAttachments({ ...message, html: rewritten });
+      return stripInlineAttachments({
+        ...message,
+        html: rewriteCidSrc(message.html, dataSrc),
+      });
     }
     case "none": {
-      const rewritten = message.html.replace(OKKEY_MARK_IMG_RE, "");
+      let rewritten = message.html.replace(OKKEY_MARK_LOGO_CELL_RE, "");
+      if (rewritten === message.html) {
+        rewritten = message.html.replace(OKKEY_MARK_IMG_RE, "");
+      }
       return stripInlineAttachments({ ...message, html: rewritten });
     }
     case "url": {
-      const logoUrl = (options.logoUrl ?? "").trim();
-      if (!isSafeEmailLogoUrl(logoUrl)) {
+      const normalized = normalizeEmailLogoUrl(options.logoUrl ?? "");
+      if (!normalized) {
         throw new Error(
           "EMAIL_LOGO_URL must be an absolute https URL when EMAIL_HTTP_API_INLINE=url",
         );
       }
-      const rewritten = message.html.replace(
-        OKKEY_MARK_CID_SRC_RE,
-        (_match, quote: string) => `src=${quote}${logoUrl}${quote}`,
-      );
-      return stripInlineAttachments({ ...message, html: rewritten });
+      return stripInlineAttachments({
+        ...message,
+        html: rewriteCidSrc(message.html, normalized),
+      });
     }
     default: {
       const _exhaustive: never = options.inlineMode;

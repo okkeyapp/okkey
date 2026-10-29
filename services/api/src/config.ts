@@ -16,7 +16,7 @@ import {
 } from "./enterpriseEnv.ts";
 import { resolveEmailDeliveryMode, type EmailDeliveryMode } from "./email/queue.ts";
 import {
-  isSafeEmailLogoUrl,
+  normalizeEmailLogoUrl,
   parseEmailHttpApiInlineMode,
   type EmailHttpApiInlineMode,
 } from "./email/http-api-inline-mode.ts";
@@ -349,19 +349,22 @@ export function resolveSalesEmail(raw: string | undefined): string {
 
 /**
  * Optional public https URL for the email logo (`EMAIL_LOGO_URL`).
- * Empty is allowed until `EMAIL_HTTP_API_INLINE=url` is selected (validated in transport assert).
+ * Empty is allowed at load time; `EMAIL_HTTP_API_INLINE=url` still requires a non-empty
+ * value (validated in transport assert). When set, the value is validated for any
+ * `EMAIL_PROVIDER` (fail-closed) and stored as the normalized `URL.href`.
  */
 export function resolveEmailLogoUrl(raw: string | undefined): string {
   const trimmed = (raw ?? "").trim();
   if (!trimmed) {
     return "";
   }
-  if (!isSafeEmailLogoUrl(trimmed)) {
+  const normalized = normalizeEmailLogoUrl(trimmed);
+  if (!normalized) {
     throw new Error(
-      "EMAIL_LOGO_URL must be an absolute https URL without credentials (e.g. https://cdn.example.com/okkey-mark.png)",
+      "EMAIL_LOGO_URL must be an absolute public https URL without credentials or loopback hosts (e.g. https://cdn.example.com/okkey-mark.png)",
     );
   }
-  return trimmed;
+  return normalized;
 }
 
 export function loadConfig(): ApiConfig {

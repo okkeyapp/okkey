@@ -6,7 +6,9 @@ import {
   OKKEY_MARK_PNG_BASE64,
 } from "@okkey/email-templates";
 import {
+  escapeHtmlAttribute,
   isSafeEmailLogoUrl,
+  normalizeEmailLogoUrl,
   parseEmailHttpApiInlineMode,
 } from "../src/email/http-api-inline-mode.ts";
 import { prepareHttpApiEmailPayload } from "../src/email/http-api-payload.ts";
@@ -24,6 +26,16 @@ const baseMessage: EmailMessage = {
   html: `<p><img src="cid:${OKKEY_MARK_CID}" width="32" height="32" alt="Okkey" /></p><span>Okkey</span>`,
 };
 
+/** Mirrors EmailShell header markup (logo cell + wordmark). */
+const shellLikeMessage: EmailMessage = {
+  ...baseMessage,
+  html:
+    `<table><tr>` +
+    `<td style="padding-right:10px;width:32px"><img src="cid:${OKKEY_MARK_CID}" width="32" height="32" alt="Okkey" /></td>` +
+    `<td><span>Okkey</span></td>` +
+    `</tr></table>`,
+};
+
 test("parseEmailHttpApiInlineMode defaults to cid", () => {
   assert.equal(parseEmailHttpApiInlineMode(undefined), "cid");
   assert.equal(parseEmailHttpApiInlineMode(""), "cid");
@@ -34,16 +46,38 @@ test("parseEmailHttpApiInlineMode rejects unknown values", () => {
   assert.throws(() => parseEmailHttpApiInlineMode("attach"), /EMAIL_HTTP_API_INLINE/);
 });
 
-test("isSafeEmailLogoUrl accepts https only", () => {
+test("normalizeEmailLogoUrl accepts public https and rejects unsafe values", () => {
+  assert.equal(
+    normalizeEmailLogoUrl("https://cdn.example.com/okkey-mark.png"),
+    "https://cdn.example.com/okkey-mark.png",
+  );
+  assert.equal(normalizeEmailLogoUrl("http://cdn.example.com/okkey-mark.png"), null);
+  assert.equal(normalizeEmailLogoUrl("javascript:alert(1)"), null);
+  assert.equal(normalizeEmailLogoUrl("data:image/png;base64,aaa"), null);
+  assert.equal(normalizeEmailLogoUrl("https://user:pass@cdn.example.com/x.png"), null);
+  assert.equal(normalizeEmailLogoUrl("/relative.png"), null);
+  assert.equal(normalizeEmailLogoUrl("https://localhost/okkey-mark.png"), null);
+  assert.equal(normalizeEmailLogoUrl("https://127.0.0.1/okkey-mark.png"), null);
+  assert.equal(normalizeEmailLogoUrl("https://[::1]/okkey-mark.png"), null);
+  // Attribute-break / injection attempts must fail closed (not percent-encode into path).
+  assert.equal(
+    normalizeEmailLogoUrl('https://cdn.example.com/x.png" onerror="alert(1)'),
+    null,
+  );
+  assert.equal(normalizeEmailLogoUrl('https://cdn.example.com/x.png"><script>'), null);
+  assert.equal(normalizeEmailLogoUrl("https://cdn.example.com/x.png'"), null);
+  assert.equal(normalizeEmailLogoUrl("https://cdn.example.com/x.png\nalert"), null);
+  assert.equal(normalizeEmailLogoUrl("https://cdn.example.com/x.png alert"), null);
+  assert.equal(normalizeEmailLogoUrl("https://cdn.example.com/<x>.png"), null);
   assert.equal(isSafeEmailLogoUrl("https://cdn.example.com/okkey-mark.png"), true);
-  assert.equal(isSafeEmailLogoUrl("http://cdn.example.com/okkey-mark.png"), false);
-  assert.equal(isSafeEmailLogoUrl("javascript:alert(1)"), false);
-  assert.equal(isSafeEmailLogoUrl("data:image/png;base64,aaa"), false);
-  assert.equal(isSafeEmailLogoUrl("https://user:pass@cdn.example.com/x.png"), false);
-  assert.equal(isSafeEmailLogoUrl("/relative.png"), false);
+  assert.equal(isSafeEmailLogoUrl("https://127.0.0.1/x.png"), false);
 });
 
-test("resolveEmailLogoUrl allows empty and rejects unsafe values", () => {
+test("escapeHtmlAttribute escapes attribute breakers", () => {
+  assert.equal(escapeHtmlAttribute(`a&b"c'd<e>f`), "a&amp;b&quot;c&#39;d&lt;e&gt;f");
+});
+
+test("resolveEmailLogoUrl allows empty, normalizes href, rejects unsafe values", () => {
   assert.equal(resolveEmailLogoUrl(undefined), "");
   assert.equal(resolveEmailLogoUrl("  "), "");
   assert.equal(
@@ -51,6 +85,11 @@ test("resolveEmailLogoUrl allows empty and rejects unsafe values", () => {
     "https://cdn.example.com/okkey-mark.png",
   );
   assert.throws(() => resolveEmailLogoUrl("http://cdn.example.com/x.png"), /EMAIL_LOGO_URL/);
+  assert.throws(
+    () => resolveEmailLogoUrl('https://cdn.example.com/x.png" onerror="alert(1)'),
+    /EMAIL_LOGO_URL/,
+  );
+  assert.throws(() => resolveEmailLogoUrl("https://localhost/x.png"), /EMAIL_LOGO_URL/);
 });
 
 test("prepareHttpApiEmailPayload cid mode includes inlineAttachments", () => {
@@ -69,14 +108,15 @@ test("prepareHttpApiEmailPayload data mode embeds data URI and omits attachments
   assert.equal("inlineAttachments" in prepared, false);
 });
 
-test("prepareHttpApiEmailPayload none mode strips logo img and keeps wordmark", () => {
-  const prepared = prepareHttpApiEmailPayload(baseMessage, { inlineMode: "none" });
+test("prepareHttpApiEmailPayload none mode strips logo cell and keeps wordmark", () => {
+  const prepared = prepareHttpApiEmailPayload(shellLikeMessage, { inlineMode: "none" });
   assert.equal(prepared.html.includes("<img"), false);
+  assert.equal(prepared.html.includes("padding-right:10px"), false);
   assert.match(prepared.html, /Okkey/);
   assert.equal("inlineAttachments" in prepared, false);
 });
 
-test("prepareHttpApiEmailPayload url mode rewrites src and omits attachments", () => {
+test("prepareHttpApiEmailPayload url mode uses normalized href and escapes attribute", () => {
   const logoUrl = "https://cdn.example.com/okkey-mark.png";
   const prepared = prepareHttpApiEmailPayload(baseMessage, {
     inlineMode: "url",
@@ -87,12 +127,28 @@ test("prepareHttpApiEmailPayload url mode rewrites src and omits attachments", (
   assert.equal("inlineAttachments" in prepared, false);
 });
 
-test("prepareHttpApiEmailPayload url mode rejects unsafe logo URL", () => {
+test("prepareHttpApiEmailPayload url mode rejects attribute-injection logo URLs", () => {
+  assert.throws(
+    () =>
+      prepareHttpApiEmailPayload(baseMessage, {
+        inlineMode: "url",
+        logoUrl: 'https://cdn.example.com/x.png" onerror="alert(1)',
+      }),
+    /EMAIL_LOGO_URL/,
+  );
   assert.throws(
     () =>
       prepareHttpApiEmailPayload(baseMessage, {
         inlineMode: "url",
         logoUrl: "http://insecure.example/x.png",
+      }),
+    /EMAIL_LOGO_URL/,
+  );
+  assert.throws(
+    () =>
+      prepareHttpApiEmailPayload(baseMessage, {
+        inlineMode: "url",
+        logoUrl: "https://127.0.0.1/okkey-mark.png",
       }),
     /EMAIL_LOGO_URL/,
   );
@@ -148,12 +204,13 @@ test("HttpApiEmailSender none mode posts HTML without logo img or attachments", 
     const sender = new HttpApiEmailSender("https://email.example/send", "api-key", 1000, {
       inlineMode: "none",
     });
-    await sender.send(baseMessage);
+    await sender.send(shellLikeMessage);
     const parsed = JSON.parse(bodies[0] ?? "{}") as {
       html?: string;
       inlineAttachments?: unknown;
     };
     assert.equal((parsed.html ?? "").includes("<img"), false);
+    assert.equal((parsed.html ?? "").includes("padding-right:10px"), false);
     assert.equal(parsed.inlineAttachments, undefined);
   } finally {
     globalThis.fetch = originalFetch;

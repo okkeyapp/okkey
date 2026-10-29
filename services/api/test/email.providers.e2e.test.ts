@@ -179,7 +179,13 @@ test("e2e: smtp provider sends auth email via SMTP server", async (t) => {
   assert.match(smtpRaw, /123456/);
 });
 
-test("e2e: http-api provider posts email payload to external api", async (t) => {
+async function startHttpApiCapture(t: {
+  after: (fn: () => Promise<void> | void) => void;
+}): Promise<{
+  endpoint: string;
+  getBody: () => string;
+  getAuth: () => string;
+}> {
   let providerRequestBody = "";
   let providerAuthHeader = "";
   const provider = createServer((req, res) => {
@@ -207,11 +213,21 @@ test("e2e: http-api provider posts email payload to external api", async (t) => 
     throw new Error("failed to start http provider");
   }
 
+  return {
+    endpoint: `http://127.0.0.1:${providerAddress.port}/send`,
+    getBody: () => providerRequestBody,
+    getAuth: () => providerAuthHeader,
+  };
+}
+
+test("e2e: http-api provider posts email payload to external api", async (t) => {
+  const capture = await startHttpApiCapture(t);
   const api = await startApiForEmailProvider(
     testConfig({
       emailProvider: "http-api",
-      emailApiEndpoint: `http://127.0.0.1:${providerAddress.port}/send`,
+      emailApiEndpoint: capture.endpoint,
       emailApiKey: "test-api-key",
+      emailHttpApiInlineMode: "cid",
     }),
   );
   t.after(async () => {
@@ -231,9 +247,9 @@ test("e2e: http-api provider posts email payload to external api", async (t) => 
   });
 
   assert.equal(response.status, 200);
-  assert.equal(providerAuthHeader, "Bearer test-api-key");
-  assert.match(providerRequestBody, /"to":"user@example.com"/);
-  const parsed = JSON.parse(providerRequestBody) as {
+  assert.equal(capture.getAuth(), "Bearer test-api-key");
+  assert.match(capture.getBody(), /"to":"user@example.com"/);
+  const parsed = JSON.parse(capture.getBody()) as {
     subject?: string;
     html?: string;
     inlineAttachments?: Array<{ cid: string; contentType: string; contentBase64: string }>;
@@ -247,4 +263,102 @@ test("e2e: http-api provider posts email payload to external api", async (t) => 
   assert.equal(parsed.inlineAttachments?.[0]?.cid, "okkey-mark");
   assert.equal(parsed.inlineAttachments?.[0]?.contentType, "image/png");
   assert.ok((parsed.inlineAttachments?.[0]?.contentBase64 ?? "").length > 32);
+});
+
+test("e2e: http-api none mode omits logo img and inlineAttachments", async (t) => {
+  const capture = await startHttpApiCapture(t);
+  const api = await startApiForEmailProvider(
+    testConfig({
+      emailProvider: "http-api",
+      emailApiEndpoint: capture.endpoint,
+      emailApiKey: "test-api-key",
+      emailHttpApiInlineMode: "none",
+    }),
+  );
+  t.after(async () => {
+    await api.close();
+  });
+
+  const response = await fetch(`${api.url}/auth/email/start`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-forwarded-for": "127.0.0.1",
+    },
+    body: JSON.stringify({ email: "none@example.com", locale: "en" }),
+  });
+  assert.equal(response.status, 200);
+  const parsed = JSON.parse(capture.getBody()) as {
+    html?: string;
+    inlineAttachments?: unknown;
+  };
+  assert.equal((parsed.html ?? "").includes("<img"), false);
+  assert.match(parsed.html ?? "", /Okkey/);
+  assert.equal(parsed.inlineAttachments, undefined);
+});
+
+test("e2e: http-api url mode rewrites logo src and omits inlineAttachments", async (t) => {
+  const capture = await startHttpApiCapture(t);
+  const logoUrl = "https://cdn.example.com/okkey-mark.png";
+  const api = await startApiForEmailProvider(
+    testConfig({
+      emailProvider: "http-api",
+      emailApiEndpoint: capture.endpoint,
+      emailApiKey: "test-api-key",
+      emailHttpApiInlineMode: "url",
+      emailLogoUrl: logoUrl,
+    }),
+  );
+  t.after(async () => {
+    await api.close();
+  });
+
+  const response = await fetch(`${api.url}/auth/email/start`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-forwarded-for": "127.0.0.1",
+    },
+    body: JSON.stringify({ email: "url@example.com", locale: "en" }),
+  });
+  assert.equal(response.status, 200);
+  const parsed = JSON.parse(capture.getBody()) as {
+    html?: string;
+    inlineAttachments?: unknown;
+  };
+  assert.match(parsed.html ?? "", /src="https:\/\/cdn\.example\.com\/okkey-mark\.png"/);
+  assert.equal((parsed.html ?? "").includes("cid:okkey-mark"), false);
+  assert.equal(parsed.inlineAttachments, undefined);
+});
+
+test("e2e: http-api data mode embeds data URI and omits inlineAttachments", async (t) => {
+  const capture = await startHttpApiCapture(t);
+  const api = await startApiForEmailProvider(
+    testConfig({
+      emailProvider: "http-api",
+      emailApiEndpoint: capture.endpoint,
+      emailApiKey: "test-api-key",
+      emailHttpApiInlineMode: "data",
+    }),
+  );
+  t.after(async () => {
+    await api.close();
+  });
+
+  const response = await fetch(`${api.url}/auth/email/start`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-forwarded-for": "127.0.0.1",
+    },
+    body: JSON.stringify({ email: "data@example.com", locale: "en" }),
+  });
+  assert.equal(response.status, 200);
+  const parsed = JSON.parse(capture.getBody()) as {
+    html?: string;
+    inlineAttachments?: unknown;
+  };
+  assert.match(parsed.html ?? "", /src="data:image\/png;base64,/);
+  assert.equal((parsed.html ?? "").includes("cid:okkey-mark"), false);
+  assert.equal(parsed.inlineAttachments, undefined);
 });

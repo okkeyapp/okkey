@@ -10,7 +10,7 @@
  * - `cid` (default) — keep `cid:` in HTML and send `inlineAttachments` (remote must honor them).
  * - `data` — rewrite logo `src` to a `data:image/png;base64,…` URI; omit `inlineAttachments`.
  *   Many webmail clients block `data:` images; use only when the webhook consumer needs it.
- * - `none` — strip the logo `<img>` (wordmark text remains); omit `inlineAttachments`.
+ * - `none` — strip the logo `<img>` and its table cell (wordmark text remains); omit `inlineAttachments`.
  * - `url` — rewrite logo `src` to `EMAIL_LOGO_URL` (https); omit `inlineAttachments`.
  */
 export type EmailHttpApiInlineMode = "cid" | "data" | "none" | "url";
@@ -22,31 +22,80 @@ export const EMAIL_HTTP_API_INLINE_MODES: readonly EmailHttpApiInlineMode[] = [
   "url",
 ] as const;
 
+/** Characters that must not appear in a logo URL before parsing (attribute-break / injection). */
+const UNSAFE_LOGO_URL_CHARS_RE = /[\s"'<>\\\r\n\0]/;
+
+function isLoopbackOrLocalHostname(hostname: string): boolean {
+  const host = hostname.trim().toLowerCase().replace(/^\[|\]$/g, "");
+  if (host === "localhost" || host === "127.0.0.1" || host === "::1" || host === "0.0.0.0") {
+    return true;
+  }
+  // IPv4-mapped IPv6 loopback
+  if (host === "::ffff:127.0.0.1") {
+    return true;
+  }
+  return false;
+}
+
 /**
- * Accept only absolute https logo URLs (no `javascript:`, `data:`, relative paths).
- * Rejects credentials in the URL and non-http(s) schemes.
+ * Normalize and validate `EMAIL_LOGO_URL`.
+ * Returns canonical `URL.href` on success, otherwise `null`.
+ *
+ * Rejects non-https, credentials, loopback hosts, and raw strings that contain
+ * whitespace or HTML-attribute-breaking characters (even if `new URL` would accept them).
  */
-export function isSafeEmailLogoUrl(raw: string): boolean {
+export function normalizeEmailLogoUrl(raw: string): string | null {
   const trimmed = raw.trim();
   if (!trimmed) {
-    return false;
+    return null;
+  }
+  // Fail closed on raw characters that can break out of an HTML attribute even
+  // when WHATWG URL parsing would percent-encode them into the path.
+  if (UNSAFE_LOGO_URL_CHARS_RE.test(trimmed)) {
+    return null;
   }
   let parsed: URL;
   try {
     parsed = new URL(trimmed);
   } catch {
-    return false;
+    return null;
   }
   if (parsed.protocol !== "https:") {
-    return false;
+    return null;
   }
   if (parsed.username || parsed.password) {
-    return false;
+    return null;
   }
   if (!parsed.hostname) {
-    return false;
+    return null;
   }
-  return true;
+  if (isLoopbackOrLocalHostname(parsed.hostname)) {
+    return null;
+  }
+  // Prefer the serializer's href so callers never re-emit the untrusted raw string.
+  const href = parsed.href;
+  if (!href.startsWith("https://") || UNSAFE_LOGO_URL_CHARS_RE.test(href)) {
+    return null;
+  }
+  return href;
+}
+
+/**
+ * Accept only absolute public https logo URLs (no `javascript:`, `data:`, relative paths,
+ * credentials, or loopback hosts).
+ */
+export function isSafeEmailLogoUrl(raw: string): boolean {
+  return normalizeEmailLogoUrl(raw) !== null;
+}
+
+/** Escape a value for use inside a double- or single-quoted HTML attribute. */
+export function escapeHtmlAttribute(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
 }
 
 export function parseEmailHttpApiInlineMode(
