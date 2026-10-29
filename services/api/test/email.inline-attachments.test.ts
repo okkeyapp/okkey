@@ -5,7 +5,10 @@ import {
   buildRawMimeEmail,
   encodeMailboxHeader,
   encodeRfc2047,
+  encodeRfc2047Words,
   encodeUnstructuredHeader,
+  formatUnstructuredHeader,
+  unquoteDisplayName,
   withOkkeyMarkInlineAttachment,
   wrapBase64,
 } from "../src/email/inline-attachments.ts";
@@ -22,6 +25,46 @@ const baseMessage: EmailMessage = {
 
 const fixedNow = new Date("2026-10-23T12:00:00.000Z");
 const fixedMessageId = "<test-message-id@okkey.local>";
+
+const RU_DEVICE_APPROVAL_SUBJECT =
+  "Новый вход с устройства — требуется подтверждение";
+
+const RU_CATALOG_SUBJECTS = [
+  RU_DEVICE_APPROVAL_SUBJECT,
+  "Восстановление через устройство — нужно подтверждение",
+  "Приглашение в пространство «Design»",
+  "Резервные коды Okkey перевыпущены",
+  "Адрес email аккаунта Okkey изменён",
+  "819281 — код входа в Okkey",
+  "В Okkey включена двухфакторная аутентификация",
+  "Заявка на лицензию: Pro — Workspace42",
+];
+
+function encodedWordsIn(text: string): string[] {
+  return [...text.matchAll(/=\?UTF-8\?[Bb]\?[A-Za-z0-9+/=]+\?=/g)].map((m) => m[0]!);
+}
+
+function decodeEncodedWord(word: string): string {
+  const match = /^=\?UTF-8\?[Bb]\?([A-Za-z0-9+/=]+)\?=$/.exec(word);
+  assert.ok(match, `not an encoded-word: ${word}`);
+  const buf = Buffer.from(match[1]!, "base64");
+  // Must be well-formed UTF-8 on its own (RFC 2047 §5).
+  const decoded = buf.toString("utf8");
+  assert.equal(Buffer.from(decoded, "utf8").compare(buf), 0, `invalid UTF-8 in ${word}`);
+  return decoded;
+}
+
+function assertHeaderLinesWithEncodedWordsAtMost76(raw: string): void {
+  for (const line of raw.split(/\r\n/)) {
+    if (!line.includes("=?")) {
+      continue;
+    }
+    assert.ok(
+      line.length <= 76,
+      `header line with encoded-word is ${line.length} (>76): ${line.slice(0, 90)}`,
+    );
+  }
+}
 
 test("withOkkeyMarkInlineAttachment injects PNG when HTML references CID", () => {
   const prepared = withOkkeyMarkInlineAttachment(baseMessage);
@@ -47,8 +90,53 @@ test("encodeUnstructuredHeader uses RFC 2047 for non-ASCII subjects", () => {
   const encoded = encodeUnstructuredHeader(subject);
   assert.match(encoded, /^=\?UTF-8\?B\?[A-Za-z0-9+/=]+\?=/);
   assert.ok(!encoded.includes("код"));
-  const payload = encoded.replace(/^=\?UTF-8\?B\?/, "").replace(/\?=$/, "");
-  assert.equal(Buffer.from(payload, "base64").toString("utf8"), subject);
+  const joined = encodedWordsIn(encoded).map(decodeEncodedWord).join("");
+  assert.equal(joined, subject);
+});
+
+test("encodeRfc2047Words never splits a multibyte UTF-8 character", () => {
+  for (const subject of RU_CATALOG_SUBJECTS) {
+    const words = encodeRfc2047Words(subject);
+    assert.ok(words.length >= 1, subject);
+    let rebuilt = "";
+    for (const word of words) {
+      assert.ok(word.length <= 75, `${word.length} in ${subject}`);
+      rebuilt += decodeEncodedWord(word);
+    }
+    assert.equal(rebuilt, subject);
+  }
+});
+
+test("encodeRfc2047Words keeps each word valid UTF-8 for long Cyrillic", () => {
+  const long = "я".repeat(80);
+  const words = encodeRfc2047Words(long);
+  assert.ok(words.length > 1);
+  for (const word of words) {
+    assert.ok(word.length <= 75);
+    const piece = decodeEncodedWord(word);
+    assert.match(piece, /^я+$/);
+  }
+  assert.equal(words.map(decodeEncodedWord).join(""), long);
+});
+
+test("formatUnstructuredHeader folds encoded-words so each line is ≤76", () => {
+  const field = formatUnstructuredHeader("Subject", RU_DEVICE_APPROVAL_SUBJECT);
+  assertHeaderLinesWithEncodedWordsAtMost76(field);
+  const words = encodedWordsIn(field);
+  assert.ok(words.length >= 2, "device approval subject should need multiple words");
+  assert.equal(words.map(decodeEncodedWord).join(""), RU_DEVICE_APPROVAL_SUBJECT);
+  assert.match(field, /\r\n /);
+});
+
+test("unquoteDisplayName only strips wrapping quotes", () => {
+  assert.equal(unquoteDisplayName('"Okkey"'), "Okkey");
+  assert.equal(unquoteDisplayName('Okkey, Inc. "QA"'), 'Okkey, Inc. "QA"');
+  assert.equal(unquoteDisplayName('"Okkey, Inc. \\"QA\\""'), 'Okkey, Inc. "QA"');
+});
+
+test("encodeMailboxHeader preserves trailing quote inside display-name", () => {
+  const encoded = encodeMailboxHeader('Okkey, Inc. "QA" <no-reply@okkey.local>');
+  assert.equal(encoded, `"Okkey, Inc. \\"QA\\"" <no-reply@okkey.local>`);
 });
 
 test("encodeMailboxHeader RFC 2047-encodes non-ASCII display names", () => {
@@ -56,15 +144,6 @@ test("encodeMailboxHeader RFC 2047-encodes non-ASCII display names", () => {
   assert.match(encoded, /^=\?UTF-8\?B\?[A-Za-z0-9+/=]+\?= <no-reply@okkey\.local>$/);
   assert.equal(encodeMailboxHeader("Okkey <no-reply@okkey.local>"), "Okkey <no-reply@okkey.local>");
   assert.equal(encodeMailboxHeader("no-reply@okkey.local"), "no-reply@okkey.local");
-});
-
-test("encodeRfc2047 splits long values into ≤75-octet encoded-words", () => {
-  const long = "я".repeat(80);
-  const encoded = encodeRfc2047(long);
-  for (const word of encoded.split(" ")) {
-    assert.ok(word.length <= 75, `encoded-word length ${word.length}`);
-    assert.match(word, /^=\?UTF-8\?B\?[A-Za-z0-9+/=]+\?=$/);
-  }
 });
 
 test("wrapBase64 folds at 76 characters without whitespace inside chunks", () => {
@@ -89,13 +168,13 @@ test("buildRawMimeEmail embeds CID image part", () => {
   assert.ok(raw.includes(OKKEY_MARK_PNG_BASE64.slice(0, 32)));
 });
 
-test("buildRawMimeEmail encodes UTF-8 subject and wraps base64 bodies", () => {
+test("buildRawMimeEmail encodes UTF-8 subject, folds headers, wraps base64", () => {
   const longHtml = `<p>${"x".repeat(2000)}</p><img src="cid:${OKKEY_MARK_CID}" alt="Okkey" />`;
   const raw = buildRawMimeEmail(
     {
       ...baseMessage,
       from: "Okkey <no-reply@okkey.local>",
-      subject: "819281 — код входа в Okkey",
+      subject: RU_DEVICE_APPROVAL_SUBJECT,
       text: "plain ".repeat(400),
       html: longHtml,
     },
@@ -103,10 +182,17 @@ test("buildRawMimeEmail encodes UTF-8 subject and wraps base64 bodies", () => {
   ).toString("utf8");
 
   assert.match(raw, /^From: Okkey <no-reply@okkey\.local>\r\n/m);
-  assert.match(raw, /^Subject: =\?UTF-8\?B\?[A-Za-z0-9+/=]+\?=\r\n/m);
-  assert.doesNotMatch(raw, /^Subject:.*код/m);
+  assert.match(raw, /^Subject: =\?UTF-8\?B\?[A-Za-z0-9+/=]+\?=/m);
+  assert.doesNotMatch(raw, /^Subject:.*[^\x00-\x7F]/m);
   assert.match(raw, /^Date: Fri, 23 Oct 2026 12:00:00 \+0000\r\n/m);
   assert.match(raw, /^Message-ID: <test-message-id@okkey\.local>\r\n/m);
+
+  assertHeaderLinesWithEncodedWordsAtMost76(raw);
+  const headerBlock = raw.split(/\r\n\r\n/)[0]!;
+  assert.equal(
+    encodedWordsIn(headerBlock).map(decodeEncodedWord).join(""),
+    RU_DEVICE_APPROVAL_SUBJECT,
+  );
 
   const oversize = raw.split(/\r\n/).filter((line) => line.length > 998);
   assert.deepEqual(oversize, [], `lines longer than 998: ${oversize.map((l) => l.length)}`);
@@ -116,6 +202,35 @@ test("buildRawMimeEmail encodes UTF-8 subject and wraps base64 bodies", () => {
   for (const line of bodyLines) {
     assert.ok(line.length <= 76, `base64 line length ${line.length}`);
   }
+});
+
+test("buildRawMimeEmail keeps each Subject encoded-word valid UTF-8 alone", () => {
+  for (const subject of RU_CATALOG_SUBJECTS) {
+    const raw = buildRawMimeEmail(
+      {
+        ...baseMessage,
+        subject,
+        html: "<p>no logo</p>",
+      },
+      { now: fixedNow, messageId: fixedMessageId },
+    ).toString("utf8");
+    assertHeaderLinesWithEncodedWordsAtMost76(raw);
+    const header = raw.split(/\r\n\r\n/)[0]!;
+    const words = encodedWordsIn(header);
+    assert.equal(words.map(decodeEncodedWord).join(""), subject, subject);
+  }
+});
+
+test("buildRawMimeEmail preserves quoted display-name ending with quote", () => {
+  const raw = buildRawMimeEmail(
+    {
+      ...baseMessage,
+      from: 'Okkey, Inc. "QA" <no-reply@okkey.local>',
+      html: "<p>no logo</p>",
+    },
+    { now: fixedNow, messageId: fixedMessageId },
+  ).toString("utf8");
+  assert.match(raw, /^From: "Okkey, Inc\. \\"QA\\"" <no-reply@okkey\.local>\r\n/m);
 });
 
 test("buildRawMimeEmail strips CR/LF from subject to prevent header injection", () => {
@@ -149,8 +264,17 @@ test("SmtpEmailSender passes inline CID attachment to nodemailer", async () => {
   });
   await sender.send(baseMessage);
   assert.equal(calls.length, 1);
-  assert.match(calls[0].html, /cid:okkey-mark/);
-  assert.equal(calls[0].attachments?.length, 1);
-  assert.equal(calls[0].attachments?.[0]?.cid, OKKEY_MARK_CID);
-  assert.equal(calls[0].attachments?.[0]?.contentDisposition, "inline");
+  assert.match(calls[0]!.html, /cid:okkey-mark/);
+  assert.equal(calls[0]!.attachments?.length, 1);
+  assert.equal(calls[0]!.attachments?.[0]?.cid, OKKEY_MARK_CID);
+  assert.equal(calls[0]!.attachments?.[0]?.contentDisposition, "inline");
+});
+
+// Keep encodeRfc2047 import used for intentional smoke.
+test("encodeRfc2047 joins character-safe words with spaces", () => {
+  const encoded = encodeRfc2047(RU_DEVICE_APPROVAL_SUBJECT);
+  assert.equal(
+    encodedWordsIn(encoded).map(decodeEncodedWord).join(""),
+    RU_DEVICE_APPROVAL_SUBJECT,
+  );
 });

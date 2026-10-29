@@ -11,6 +11,10 @@ import type { EmailInlineAttachment, EmailMessage } from "./service.ts";
 /** RFC 2045 base64 line length (soft wrap). Hard limit elsewhere is 998. */
 const BASE64_LINE_LENGTH = 76;
 
+/** RFC 2047 §2: each encoded-word ≤75; each header line with encoded-words ≤76. */
+const ENCODED_WORD_MAX = 75;
+const HEADER_LINE_MAX = 76;
+
 export function messageReferencesOkkeyMarkCid(html: string): boolean {
   return html.includes(`cid:${OKKEY_MARK_CID}`);
 }
@@ -53,25 +57,151 @@ function isAsciiPrintable(value: string): boolean {
 }
 
 /**
- * RFC 2047 encoded-word(s) using UTF-8 Base64.
- * Each encoded-word is ≤75 octets; words are space-separated.
+ * Unwrap a quoted display-name only when the whole token is quoted.
+ * Do not strip a trailing `"` that is part of the name (e.g. `Inc. "QA"`).
  */
-export function encodeRfc2047(value: string): string {
-  const charset = "UTF-8";
-  const prefix = `=?${charset}?B?`;
-  const suffix = "?=";
-  // Leave room for prefix/suffix; keep chunk length a multiple of 4.
-  const maxPayload = 75 - prefix.length - suffix.length;
-  const chunkSize = Math.max(4, Math.floor(maxPayload / 4) * 4);
-  const b64 = Buffer.from(value, "utf8").toString("base64");
-  const words: string[] = [];
-  for (let i = 0; i < b64.length; i += chunkSize) {
-    words.push(`${prefix}${b64.slice(i, i + chunkSize)}${suffix}`);
+export function unquoteDisplayName(raw: string): string {
+  const trimmed = raw.trim();
+  if (trimmed.length >= 2 && trimmed.startsWith('"') && trimmed.endsWith('"')) {
+    return trimmed
+      .slice(1, -1)
+      .replace(/\\"/g, '"')
+      .replace(/\\\\/g, "\\");
   }
-  return words.join(" ");
+  return trimmed;
 }
 
-/** Unstructured header field (Subject): ASCII stays raw; otherwise RFC 2047. */
+function encodeRfc2047Word(text: string): string {
+  return `=?UTF-8?B?${Buffer.from(text, "utf8").toString("base64")}?=`;
+}
+
+/**
+ * RFC 2047 encoded-words (UTF-8 Base64).
+ * Splits only on Unicode code-point boundaries so each word alone is valid UTF-8
+ * (RFC 2047 §5). Each word is ≤ `maxWordLen` octets (default 75).
+ */
+export function encodeRfc2047Words(
+  value: string,
+  maxWordLen: number = ENCODED_WORD_MAX,
+): string[] {
+  const prefixLen = "=?UTF-8?B?".length + "?=".length;
+  const maxPayload = Math.max(4, Math.floor((maxWordLen - prefixLen) / 4) * 4);
+  const words: string[] = [];
+  let chunk = "";
+
+  for (const char of value) {
+    const candidate = chunk + char;
+    const payload = Buffer.from(candidate, "utf8").toString("base64");
+    if (payload.length <= maxPayload) {
+      chunk = candidate;
+      continue;
+    }
+    if (chunk.length > 0) {
+      words.push(encodeRfc2047Word(chunk));
+      chunk = char;
+      const nextPayload = Buffer.from(chunk, "utf8").toString("base64");
+      if (nextPayload.length > maxPayload) {
+        // Extremely wide single code point — emit alone.
+        words.push(encodeRfc2047Word(chunk));
+        chunk = "";
+      }
+      continue;
+    }
+    words.push(encodeRfc2047Word(char));
+    chunk = "";
+  }
+
+  if (chunk.length > 0) {
+    words.push(encodeRfc2047Word(chunk));
+  }
+  return words;
+}
+
+/**
+ * Pack encoded-words so the first fits on `Name: …` (≤76) and the rest are ≤75.
+ */
+export function encodeRfc2047WordsForField(fieldName: string, value: string): string[] {
+  const firstBudget = HEADER_LINE_MAX - `${fieldName}: `.length;
+  const firstMax = Math.min(ENCODED_WORD_MAX, Math.max(prefixMinWordLen(), firstBudget));
+  if (value.length === 0) {
+    return [];
+  }
+  // Take as many code points as fit in the first-word budget, then pack the rest at 75.
+  let firstChunk = "";
+  let index = 0;
+  const chars = [...value];
+  while (index < chars.length) {
+    const candidate = firstChunk + chars[index]!;
+    if (encodeRfc2047Word(candidate).length <= firstMax) {
+      firstChunk = candidate;
+      index += 1;
+      continue;
+    }
+    break;
+  }
+  if (firstChunk.length === 0) {
+    // Single code point exceeds first-line budget — fold immediately (word ≤75).
+    return encodeRfc2047Words(value, ENCODED_WORD_MAX);
+  }
+  const rest = chars.slice(index).join("");
+  return [
+    encodeRfc2047Word(firstChunk),
+    ...encodeRfc2047Words(rest, ENCODED_WORD_MAX),
+  ];
+}
+
+function prefixMinWordLen(): number {
+  // Shortest possible encoded-word for one byte: =?UTF-8?B?AA==?=
+  return encodeRfc2047Word("\0").length;
+}
+
+/** Join encoded-words with SPACE (no folding). Prefer formatHeaderField for headers. */
+export function encodeRfc2047(value: string): string {
+  return encodeRfc2047Words(value).join(" ");
+}
+
+/**
+ * Fold a header field so each physical line is ≤76 octets.
+ * Encoded-words are separated by CRLF SPACE (RFC 2047 §2).
+ * Returns the full `Name: …` field (may contain CRLF).
+ */
+export function formatHeaderField(name: string, valueParts: string[]): string {
+  if (valueParts.length === 0) {
+    return `${name}:`;
+  }
+  const physical: string[] = [];
+  let line = `${name}:`;
+  for (const part of valueParts) {
+    const separator = line.endsWith(":") ? " " : " ";
+    if (line.length + separator.length + part.length <= HEADER_LINE_MAX) {
+      line += separator + part;
+      continue;
+    }
+    physical.push(line);
+    line = ` ${part}`;
+    if (line.length > HEADER_LINE_MAX) {
+      throw new Error(
+        `header continuation exceeds ${HEADER_LINE_MAX} octets (${name}: ${part.length})`,
+      );
+    }
+  }
+  physical.push(line);
+  return physical.join("\r\n");
+}
+
+/** Unstructured header (Subject): ASCII raw, else RFC 2047 with folding. */
+export function formatUnstructuredHeader(name: string, value: string): string {
+  const cleaned = sanitizeHeaderText(value);
+  if (cleaned.length === 0) {
+    return `${name}:`;
+  }
+  if (isAsciiPrintable(cleaned)) {
+    return formatHeaderField(name, [cleaned]);
+  }
+  return formatHeaderField(name, encodeRfc2047WordsForField(name, cleaned));
+}
+
+/** @deprecated Prefer formatUnstructuredHeader — kept for tests of word encoding. */
 export function encodeUnstructuredHeader(value: string): string {
   const cleaned = sanitizeHeaderText(value);
   if (cleaned.length === 0 || isAsciiPrintable(cleaned)) {
@@ -82,26 +212,63 @@ export function encodeUnstructuredHeader(value: string): string {
 
 /**
  * Mailbox header (From / To): encode display-name with RFC 2047 when needed;
- * keep the angle-addr / bare addr as ASCII.
+ * keep the angle-addr / bare addr as ASCII. Returns full folded `Name: …`.
  */
+export function formatMailboxHeader(name: string, value: string): string {
+  const cleaned = sanitizeHeaderText(value);
+  const angled = cleaned.match(/^(.*?)<([^<>]+)>\s*$/);
+  if (!angled) {
+    return formatHeaderField(name, [cleaned]);
+  }
+
+  const display = unquoteDisplayName(angled[1]);
+  const addr = angled[2].trim();
+  if (!display) {
+    return formatHeaderField(name, [`<${addr}>`]);
+  }
+
+  if (!isAsciiPrintable(display)) {
+    const words = encodeRfc2047WordsForField(name, display);
+    const addrPart = `<${addr}>`;
+    // Try to keep ` <addr>` on the last encoded-word line; else fold it.
+    const folded = formatHeaderField(name, words);
+    const lines = folded.split("\r\n");
+    const last = lines[lines.length - 1]!;
+    const withAddr = `${last} ${addrPart}`;
+    if (withAddr.length <= HEADER_LINE_MAX) {
+      lines[lines.length - 1] = withAddr;
+    } else {
+      lines.push(` ${addrPart}`);
+    }
+    return lines.join("\r\n");
+  }
+
+  if (/[^A-Za-z0-9!#$%&'*+\-/=?^_`{|}~ ]/.test(display)) {
+    const quoted = `"${display.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+    return formatHeaderField(name, [`${quoted} <${addr}>`]);
+  }
+  return formatHeaderField(name, [`${display} <${addr}>`]);
+}
+
+/** Value-only mailbox encode for unit tests (no field name / folding). */
 export function encodeMailboxHeader(value: string): string {
   const cleaned = sanitizeHeaderText(value);
   const angled = cleaned.match(/^(.*?)<([^<>]+)>\s*$/);
-  if (angled) {
-    const display = angled[1].trim().replace(/^"|"$/g, "");
-    const addr = angled[2].trim();
-    if (!display) {
-      return `<${addr}>`;
-    }
-    if (!isAsciiPrintable(display)) {
-      return `${encodeRfc2047(display)} <${addr}>`;
-    }
-    if (/[^A-Za-z0-9!#$%&'*+\-/=?^_`{|}~ ]/.test(display)) {
-      return `"${display.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}" <${addr}>`;
-    }
-    return `${display} <${addr}>`;
+  if (!angled) {
+    return cleaned;
   }
-  return cleaned;
+  const display = unquoteDisplayName(angled[1]);
+  const addr = angled[2].trim();
+  if (!display) {
+    return `<${addr}>`;
+  }
+  if (!isAsciiPrintable(display)) {
+    return `${encodeRfc2047(display)} <${addr}>`;
+  }
+  if (/[^A-Za-z0-9!#$%&'*+\-/=?^_`{|}~ ]/.test(display)) {
+    return `"${display.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}" <${addr}>`;
+  }
+  return `${display} <${addr}>`;
 }
 
 /** Fold Base64 into CRLF-separated lines of at most 76 characters. */
@@ -147,8 +314,8 @@ export type BuildRawMimeEmailOptions = {
  * Build a multipart/related MIME message suitable for SES Raw and similar APIs.
  * Inline attachments are referenced from HTML via `cid:` Content-IDs.
  *
- * Headers follow RFC 2047 for non-ASCII Subject/display-name; Base64 bodies are
- * wrapped at 76 characters (RFC 2045) so no line exceeds the RFC 5322 998 limit.
+ * Headers follow RFC 2047 for non-ASCII Subject/display-name (character-boundary
+ * splits, folded ≤76); Base64 bodies wrap at 76 (RFC 2045).
  */
 export function buildRawMimeEmail(
   message: EmailMessage,
@@ -164,9 +331,9 @@ export function buildRawMimeEmail(
     `<${randomBytes(16).toString("hex")}@${domainFromMailbox(prepared.from)}>`;
 
   const lines: string[] = [];
-  lines.push(`From: ${encodeMailboxHeader(prepared.from)}`);
-  lines.push(`To: ${encodeMailboxHeader(prepared.to)}`);
-  lines.push(`Subject: ${encodeUnstructuredHeader(prepared.subject)}`);
+  lines.push(formatMailboxHeader("From", prepared.from));
+  lines.push(formatMailboxHeader("To", prepared.to));
+  lines.push(formatUnstructuredHeader("Subject", prepared.subject));
   lines.push(`Date: ${formatRfc5322Date(now)}`);
   lines.push(`Message-ID: ${messageId}`);
   lines.push("MIME-Version: 1.0");
