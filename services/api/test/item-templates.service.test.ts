@@ -368,6 +368,120 @@ test("ItemTemplatesService.create rejects non-numeric vault_id", async () => {
   );
 });
 
+test("ItemTemplatesService.create rejects vault_id outside signed int64 range", async () => {
+  const service = new ItemTemplatesService({
+    templates: {
+      listByWorkspace: async () => [],
+      create: async () => {
+        throw new Error("should not be called");
+      },
+    } as never,
+    workspaces: workspacesStub(),
+    vaults: vaultsStub(),
+  });
+
+  await assert.rejects(
+    () =>
+      service.create("ws-1", "user-1", {
+        id: "1000000000000000001",
+        name: "My template",
+        category_id: "login",
+        payload: {
+          record_name: "",
+          vault_id: "12345678901234567890",
+          folder_id: "__none__",
+          sections: [],
+          tags: [],
+        },
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof ItemTemplatesServiceError);
+      assert.equal(error.code, "INVALID_VAULT_ID");
+      assert.equal(error.statusCode, 400);
+      return true;
+    },
+  );
+});
+
+test("ItemTemplatesService.create rejects template id outside signed int64 range", async () => {
+  const service = new ItemTemplatesService({
+    templates: {
+      listByWorkspace: async () => [],
+      create: async () => {
+        throw new Error("should not be called");
+      },
+    } as never,
+    workspaces: workspacesStub(),
+    vaults: vaultsStub({
+      readableVaultIds: ["1000000000000000002"],
+      vaultWorkspaceById: { "1000000000000000002": "ws-1" },
+    }),
+  });
+
+  await assert.rejects(
+    () =>
+      service.create("ws-1", "user-1", {
+        id: "12345678901234567890",
+        name: "My template",
+        category_id: "login",
+        payload: {
+          record_name: "",
+          vault_id: "1000000000000000002",
+          folder_id: "__none__",
+          sections: [],
+          tags: [],
+        },
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof ItemTemplatesServiceError);
+      assert.equal(error.code, "INVALID_TEMPLATE_ID");
+      assert.equal(error.statusCode, 400);
+      return true;
+    },
+  );
+});
+
+test("ItemTemplatesService.update rejects template id outside signed int64 range", async () => {
+  const service = new ItemTemplatesService({
+    templates: {
+      listByWorkspace: async () => [],
+      findById: async () => {
+        throw new Error("should not be called");
+      },
+      create: async () => {
+        throw new Error("should not be called");
+      },
+      update: async () => {
+        throw new Error("should not be called");
+      },
+      delete: async () => false,
+    } as never,
+    workspaces: workspacesStub(),
+    vaults: vaultsStub(),
+  });
+
+  await assert.rejects(
+    () =>
+      service.update("ws-1", "user-1", "12345678901234567890", {
+        name: "Updated",
+        category_id: "login",
+        payload: {
+          record_name: "",
+          vault_id: "1000000000000000002",
+          folder_id: "__none__",
+          sections: [],
+          tags: [],
+        },
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof ItemTemplatesServiceError);
+      assert.equal(error.code, "INVALID_TEMPLATE_ID");
+      assert.equal(error.statusCode, 400);
+      return true;
+    },
+  );
+});
+
 test("ItemTemplatesService.create rejects vault outside workspace or without read access", async () => {
   const service = new ItemTemplatesService({
     templates: {
@@ -508,7 +622,7 @@ test("ItemTemplatesService.update rejects missing template", async () => {
 
   await assert.rejects(
     () =>
-      service.update("ws-1", "user-1", "missing-template", {
+      service.update("ws-1", "user-1", "1000000000000000999", {
         name: "Updated",
         category_id: "login",
         payload: {
@@ -730,7 +844,7 @@ test("ItemTemplatesService.delete rejects missing template", async () => {
   });
 
   await assert.rejects(
-    () => service.delete("ws-1", "user-1", "missing-template"),
+    () => service.delete("ws-1", "user-1", "1000000000000000999"),
     (error: unknown) => {
       assert.ok(error instanceof ItemTemplatesServiceError);
       assert.equal(error.code, "TEMPLATE_NOT_FOUND");

@@ -134,7 +134,7 @@ export class ItemTemplatesService {
   ) {
     await this.assertWorkspaceAccess(workspaceId, userId);
     const normalizedTemplateId = templateId.trim();
-    if (!normalizedTemplateId) {
+    if (!isEntityId(normalizedTemplateId)) {
       throw new ItemTemplatesServiceError("INVALID_TEMPLATE_ID", 400, "template id is required");
     }
     const existing = await this.templates.findById(workspaceId, normalizedTemplateId);
@@ -169,7 +169,7 @@ export class ItemTemplatesService {
   async delete(workspaceId: string, userId: string, templateId: string): Promise<void> {
     await this.assertWorkspaceAccess(workspaceId, userId);
     const normalizedTemplateId = templateId.trim();
-    if (!normalizedTemplateId) {
+    if (!isEntityId(normalizedTemplateId)) {
       throw new ItemTemplatesServiceError("INVALID_TEMPLATE_ID", 400, "template id is required");
     }
     const existing = await this.templates.findById(workspaceId, normalizedTemplateId);
