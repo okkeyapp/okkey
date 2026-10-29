@@ -174,7 +174,8 @@ Images:
 
 Tag scheme (see [`deploy/docker/README.md`](../../deploy/docker/README.md) and `.github/workflows/publish-images.yml`):
 
-- push to `dev` → `:dev`, `:dev-<sha>` (installer tracking default; published on every push to `dev`)
+- `workflow_dispatch` → floating `:dev` (installer tracking default; not published on push to `dev`)
+- push to `release/<version>` or `hotfix/<version>` → `:<version>-candidate`, `:<version>-<sha7>` (no `:latest`, no final SemVer pin)
 - pre-release tag e.g. `v1.0.0-beta.2` → `:1.0.0-beta.2` only (first image-backed release pin)
 - clean SemVer tag `vX.Y.Z` on `main` → `:X.Y.Z`, `:X.Y`, `:X` (`:latest` only via manual `workflow_dispatch` + `push_latest=true`)
 - production installs must **pin** a SemVer (default prod pin `1.0.0-beta.2`; never floating `:latest`)

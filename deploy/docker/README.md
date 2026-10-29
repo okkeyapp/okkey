@@ -8,7 +8,7 @@ Run Okkey Core on your own machine with Docker Compose — **no monorepo clone o
 
 ## One-command install
 
-**Tracking / QA** (floating `:dev` images, published on every push to `dev` after the publish workflow lands):
+**Tracking / QA** (floating `:dev` images, published only by a manual run of the publish workflow):
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/okkeyapp/okkey/dev/deploy/docker/install.sh \
@@ -24,7 +24,7 @@ curl -fsSL https://raw.githubusercontent.com/okkeyapp/okkey/dev/deploy/docker/in
   | OKKEY_IMAGE_TAG=1.0.0-beta.2 bash
 ```
 
-`:1.0.0-beta.2` is published when git tag `v1.0.0-beta.2` lands. Until then, tracking installs must pass `OKKEY_IMAGE_TAG=dev`. `OKKEY_CHANNEL=prod` stays gated until the SemVer exists in GHCR (or `OKKEY_PROD_CHANNEL_FORCE=1`).
+`:1.0.0-beta.2` is published when git tag `v1.0.0-beta.2` lands. Until then, tracking installs must pass `OKKEY_IMAGE_TAG=dev`. Pushes to `release/1.0.0-beta.2` publish `:1.0.0-beta.2-candidate` and `:1.0.0-beta.2-<sha>` and do not move that pin or `:latest`. `OKKEY_CHANNEL=prod` stays gated until the SemVer exists in GHCR (or `OKKEY_PROD_CHANNEL_FORCE=1`).
 
 Note: `OKKEY_REF=…` / `OKKEY_IMAGE_TAG=…` / `OKKEY_CHANNEL=…` must be on the **right** of `|` so the installer process sees them — `VAR=x curl | bash` does **not** pass `VAR` into `bash`.
 
@@ -129,11 +129,10 @@ Published by [`.github/workflows/publish-images.yml`](../../.github/workflows/pu
 
 | Event | Tags |
 |-------|------|
-| Push to `dev` | `:dev`, `:dev-<sha>` (intended immediately after this workflow merges to `dev`) |
+| Push to `release/<version>` or `hotfix/<version>` | `:<version>-candidate`, `:<version>-<sha7>` (no `:latest`, no rolling `:X` / `:X.Y`, no final SemVer pin) |
 | Git tag `vX.Y.Z` (clean SemVer on `main`) | `:X.Y.Z`, `:X.Y`, `:X` (**not** `:latest`) |
 | Git tag `vX.Y.Z-…` (pre-release, e.g. `v1.0.0-beta.2`) | `:X.Y.Z-…` only (no `:latest` / rolling) |
-| Pull request | `:pr-<n>`, `:pr-<n>-<head-sha7>` (PR head commit, not the merge commit) |
-| `workflow_dispatch` | explicit tag; `:latest` only when `push_latest=true` (manual/approved) |
+| `workflow_dispatch` | explicit tag (default `:dev`, the only way to publish `:dev`); `:latest` only when `push_latest=true` |
 
 Retention (scheduled GC; release SemVer tags and floating `:dev` are never deleted):
 
@@ -141,7 +140,7 @@ Retention (scheduled GC; release SemVer tags and floating `:dev` are never delet
 |-----------|--------|
 | `pr-*` | Deleted **14 days after the PR is closed**; tags of **open** PRs are never deleted |
 | `dev-<sha>` | Keep if age ≤ 30 days **or** among the newest 20 |
-| SemVer / `:latest` / `:dev` | Never deleted by GC |
+| SemVer / `:latest` / `:dev` | Never deleted by GC. Includes `:<version>-candidate` and `:<version>-<sha7>` |
 
 Ephemeral `pr-*` versions are deleted only by CI (`GITHUB_TOKEN` + `packages:write`), not by hand. Prod never uses floating `:latest`.
 
