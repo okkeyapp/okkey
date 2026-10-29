@@ -12,9 +12,11 @@
 #   certs/compat-fullchain.pem + certs/compat-privkey.pem
 #   SAN: OKKEY_COMPAT_WEB_HOST, OKKEY_COMPAT_API_HOST
 #
-# N7 / retest#3 finding 6:
+# N7 / retest#3 finding 6 / retest#6:
 #   - lowercase + strip trailing dots before any comparison or write
+#   - whole-value hostname gate (no newline / IP / oversize) before write
 #   - collision check BEFORE writing any PEM
+#   - atomic staging: openssl writes to mktemp -d, then mv (no partial PEMs)
 #   - refuses overwrite unless --force; refuses partial compat host sets
 set -euo pipefail
 
@@ -33,14 +35,51 @@ normalize_host() {
   printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | sed 's/\.*$//'
 }
 
-# Strict single DNS hostname (RFC1123 + ≥1 dot). Retest#4 finding 1 / retest#5.
+# Whole-value DNS hostname gate (retest#5 HIGH / retest#6). Same rules as
+# docker-entrypoint.sh: charset allowlist (rejects \n/\r), label≤63, name≤253,
+# alpha TLD, no IP. Must not rely on line-oriented grep as the primary check.
 require_hostname() {
-  local label="$1" host="$2"
-  if ! printf '%s' "${host}" | grep -Eq '^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$'; then
+  local label="$1" host="$2" rest lab tld labels=0
+  _rh_fail() {
     echo "ERROR: ${label} must be a single strict DNS hostname (got: '${host}')" >&2
-    echo "ERROR: no spaces, wildcards, leading dots, or multiple names" >&2
+    echo "ERROR: charset [a-z0-9.-] only (no newlines/controls); label≤63; name≤253; alpha TLD; no IP literals" >&2
     exit 1
+  }
+
+  case "${host}" in
+    ''|*[!a-z0-9.-]*) _rh_fail ;;
+  esac
+
+  if [[ "${#host}" -gt 253 ]]; then
+    _rh_fail
   fi
+
+  rest="${host}"
+  tld=""
+  while [[ -n "${rest}" ]]; do
+    lab="${rest%%.*}"
+    if [[ "${lab}" = "${rest}" ]]; then
+      tld="${lab}"
+      rest=""
+    else
+      rest="${rest#*.}"
+    fi
+    labels=$((labels + 1))
+    if [[ -z "${lab}" || "${#lab}" -gt 63 ]]; then
+      _rh_fail
+    fi
+    case "${lab}" in
+      -*|*-) _rh_fail ;;
+    esac
+  done
+
+  if [[ "${labels}" -lt 2 ]]; then
+    _rh_fail
+  fi
+  case "${tld}" in
+    *[a-z]*) ;;
+    *) _rh_fail ;;
+  esac
 }
 
 usage() {
@@ -62,8 +101,9 @@ Usage: gen-self-signed.sh [--with-compat] [--force]
   OKKEY_COMPAT_API_HOST are both set in the environment.
 
   Hostnames are normalized (lowercase, no trailing dot) and must be a
-  single strict DNS name (no spaces/wildcards) before collision checks
-  and before any file is written.
+  single strict DNS name (charset allowlist, label≤63, name≤253, alpha TLD)
+  before collision checks and before any file is written. PEMs are staged
+  atomically (no partial write on openssl failure).
 EOF
 }
 
@@ -141,14 +181,21 @@ refuse_overwrite "${TARGETS[@]}"
 
 mkdir -p "$CERT_DIR"
 
-gen_cert() {
-  local out_chain="$1"
-  local out_key="$2"
+# Atomic staging: openssl only touches STAGE; CERT_DIR gets mv only after all succeed.
+STAGE="$(mktemp -d "${CERT_DIR}/.staging.XXXXXX")"
+cleanup_stage() { rm -rf "${STAGE}"; }
+trap cleanup_stage EXIT
+
+gen_cert_staged() {
+  local out_chain_name="$1"
+  local out_key_name="$2"
   local cn="$3"
   shift 3
   local sans=("$@")
-  local tmp i
-  tmp="$(mktemp)"
+  local tmp i stage_chain stage_key
+  tmp="$(mktemp "${STAGE}/openssl.XXXXXX")"
+  stage_chain="${STAGE}/${out_chain_name}"
+  stage_key="${STAGE}/${out_key_name}"
   {
     cat <<EOF
 [req]
@@ -174,21 +221,38 @@ EOF
   } >"$tmp"
 
   openssl req -x509 -nodes -newkey rsa:2048 \
-    -keyout "${out_key}" \
-    -out "${out_chain}" \
+    -keyout "${stage_key}" \
+    -out "${stage_chain}" \
     -days "${DAYS}" \
     -config "$tmp"
   rm -f "$tmp"
-  chmod 600 "${out_key}"
+  chmod 600 "${stage_key}"
 }
 
-gen_cert "${CERT_DIR}/fullchain.pem" "${CERT_DIR}/privkey.pem" \
-  "${WEB_HOST}" "${WEB_HOST}" "${API_HOST}"
-echo "Wrote ${CERT_DIR}/fullchain.pem and ${CERT_DIR}/privkey.pem (SAN: ${WEB_HOST}, ${API_HOST})"
+commit_staged() {
+  local f
+  for f in "$@"; do
+    mv -f "${STAGE}/${f}" "${CERT_DIR}/${f}"
+  done
+}
+
+# CN maxsize=64 in OpenSSL; put real hostnames only in SAN so label≤63 FQDNs work.
+STAGED_NAMES=(fullchain.pem privkey.pem)
+gen_cert_staged fullchain.pem privkey.pem \
+  "okkey-strict" "${WEB_HOST}" "${API_HOST}"
 
 if [[ "${WITH_COMPAT}" -eq 1 ]]; then
-  gen_cert "${CERT_DIR}/compat-fullchain.pem" "${CERT_DIR}/compat-privkey.pem" \
-    "${COMPAT_WEB_HOST}" "${COMPAT_WEB_HOST}" "${COMPAT_API_HOST}"
+  STAGED_NAMES+=(compat-fullchain.pem compat-privkey.pem)
+  gen_cert_staged compat-fullchain.pem compat-privkey.pem \
+    "okkey-compat" "${COMPAT_WEB_HOST}" "${COMPAT_API_HOST}"
+fi
+
+commit_staged "${STAGED_NAMES[@]}"
+trap - EXIT
+cleanup_stage
+
+echo "Wrote ${CERT_DIR}/fullchain.pem and ${CERT_DIR}/privkey.pem (SAN: ${WEB_HOST}, ${API_HOST})"
+if [[ "${WITH_COMPAT}" -eq 1 ]]; then
   echo "Wrote ${CERT_DIR}/compat-fullchain.pem and ${CERT_DIR}/compat-privkey.pem (SAN: ${COMPAT_WEB_HOST}, ${COMPAT_API_HOST})"
   echo "NOTE: compat uses a separate cert so nginx SSL_CTX (and ssl_ecdh_curve) stay isolated from the default domain."
 fi

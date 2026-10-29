@@ -6,16 +6,58 @@ normalize_host() {
   printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | sed 's/\.*$//'
 }
 
-# Strict single DNS hostname (RFC1123 labels + ≥1 dot). Rejects spaces/tabs,
-# multi-name lists, wildcards, leading dots — retest#4 finding 1 / retest#5.
+# Whole-value DNS hostname gate (retest#5 HIGH / retest#6).
+# Must NOT use line-oriented grep as the primary check: a newline in the value
+# lets one valid line pass while the rest injects into envsubst → nginx.
+# Charset allowlist rejects \n/\r/space/control; label≤63; name≤253; alpha TLD; no IP.
+# POSIX sh only (dash-safe; top-level helper, no nested functions).
+_hostname_gate_fail() {
+  echo "okkey-proxy: $1 must be a single strict DNS hostname (got: '$2')" >&2
+  echo "okkey-proxy: charset [a-z0-9.-] only (no newlines/controls); label≤63; name≤253; alpha TLD; no IP literals" >&2
+  exit 1
+}
+
 require_hostname() {
   _rh_label="$1"
   _rh_host="$2"
-  if ! printf '%s' "${_rh_host}" | grep -Eq '^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$'; then
-    echo "okkey-proxy: ${_rh_label} must be a single strict DNS hostname (got: '${_rh_host}')" >&2
-    echo "okkey-proxy: no spaces, wildcards, leading dots, or multiple names" >&2
-    exit 1
+
+  # Whole-value charset allowlist — newline/CR/space/tab/wildcard fail here.
+  case "${_rh_host}" in
+    ''|*[!a-z0-9.-]*) _hostname_gate_fail "${_rh_label}" "${_rh_host}" ;;
+  esac
+
+  if [ "${#_rh_host}" -gt 253 ]; then
+    _hostname_gate_fail "${_rh_label}" "${_rh_host}"
   fi
+
+  _rh_rest="${_rh_host}"
+  _rh_labels=0
+  _rh_tld=""
+  while [ -n "${_rh_rest}" ]; do
+    _rh_lab="${_rh_rest%%.*}"
+    if [ "${_rh_lab}" = "${_rh_rest}" ]; then
+      _rh_tld="${_rh_lab}"
+      _rh_rest=""
+    else
+      _rh_rest="${_rh_rest#*.}"
+    fi
+    _rh_labels=$((_rh_labels + 1))
+    if [ -z "${_rh_lab}" ] || [ "${#_rh_lab}" -gt 63 ]; then
+      _hostname_gate_fail "${_rh_label}" "${_rh_host}"
+    fi
+    case "${_rh_lab}" in
+      -*|*-) _hostname_gate_fail "${_rh_label}" "${_rh_host}" ;;
+    esac
+  done
+
+  # ≥1 dot (FQDN); TLD must contain a letter (rejects IPv4 and numeric TLD).
+  if [ "${_rh_labels}" -lt 2 ]; then
+    _hostname_gate_fail "${_rh_label}" "${_rh_host}"
+  fi
+  case "${_rh_tld}" in
+    *[a-z]*) ;;
+    *) _hostname_gate_fail "${_rh_label}" "${_rh_host}" ;;
+  esac
 }
 
 : "${OKKEY_WEB_HOST:=app.example.com}"

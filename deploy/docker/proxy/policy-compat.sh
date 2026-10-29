@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Static review: classical-only compat listeners are explicit / isolated / time-boxed,
 # and the default route stays hybrid-only (no silent downgrade).
-# Retest#3/#4/#5: catch-all classical TLS params + 421; cipher whitelist; per-block 421;
-# entrypoint sunset/normalize/port-80; RFC1123 host gate; gen-self-signed collision-before-write;
-# ban ssl_conf_command; ssl_protocols on every compat server block.
+# Retest#3/#4/#5/#6: catch-all classical TLS params + 421; cipher whitelist; per-block 421;
+# entrypoint sunset/normalize/port-80; whole-value hostname gate (no line-grep bypass);
+# gen-self-signed collision-before-write + atomic PEM staging; ban ssl_conf_command;
+# ssl_protocols on every compat server block; catch-all single server_name.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
@@ -93,12 +94,29 @@ echo "${CATCHALL}" | grep -q 'ssl_prefer_server_ciphers on;' \
 # Catch-all server_name must stay the reject sentinel "_" (no alias / multi-name).
 echo "${CATCHALL}" | grep -Eq '^[[:space:]]*server_name[[:space:]]+_[[:space:]]*;' \
   || fail "catch-all must use server_name _ only (no alias; retest#4 finding 5)"
+CATCHALL_SN_COUNT="$(echo "${CATCHALL}" | grep -cE '^[[:space:]]*server_name[[:space:]]+' || true)"
+[[ "${CATCHALL_SN_COUNT}" -eq 1 ]] \
+  || fail "catch-all must have exactly one server_name directive (found ${CATCHALL_SN_COUNT}; retest#5 finding 6)"
 
 PROTO_COUNT="$(grep -cE '^[[:space:]]*ssl_protocols[[:space:]]+TLSv1\.2[[:space:]]+TLSv1\.3[[:space:]]*;' "${COMPAT}" || true)"
 [[ "${PROTO_COUNT}" -ge 3 ]] \
   || fail "compat must set ssl_protocols TLSv1.2 TLSv1.3 on catch-all + web + API (found ${PROTO_COUNT})"
+# Every server block must carry its own ssl_protocols (count lines vs server blocks).
+[[ "${PROTO_COUNT}" -eq "${SERVER_COUNT}" ]] \
+  || fail "compat ssl_protocols count (${PROTO_COUNT}) must equal server block count (${SERVER_COUNT}); no missing/extra blocks (retest#5 finding 6)"
 if grep -Eiq '^[[:space:]]*ssl_protocols[[:space:]]+.*TLSv1\.[01]' "${COMPAT}"; then
   fail "compat must not enable TLS ≤ 1.1 (comment-trick / regress)"
+fi
+# Comment-trick: "ssl_reject_handshake on;" / "return 421" only inside active (non-comment) lines.
+if echo "${CATCHALL}" | grep -Eq '^[[:space:]]*#.*ssl_reject_handshake[[:space:]]+on'; then
+  if ! echo "${CATCHALL}" | grep -Eq '^[[:space:]]*ssl_reject_handshake[[:space:]]+on[[:space:]]*;'; then
+    fail "catch-all ssl_reject_handshake on must be active, not only in a comment (retest#5 finding 6)"
+  fi
+fi
+if echo "${CATCHALL}" | grep -Eq '^[[:space:]]*#.*return[[:space:]]+421'; then
+  if ! echo "${CATCHALL}" | grep -Eq '^[[:space:]]*return[[:space:]]+421'; then
+    fail "catch-all return 421 must be active, not only in a comment (retest#5 finding 6)"
+  fi
 fi
 if grep -Eiq 'ssl_conf_command' "${COMPAT}" "${STRICT}"; then
   fail "templates must not use ssl_conf_command (bypasses cipher/group policy; retest#4 finding 5)"
@@ -191,6 +209,15 @@ grep -q 'require_hostname' "${ENTRY}" \
   || fail "entrypoint must require_hostname (strict RFC1123; retest#4 finding 1)"
 grep -Eq 'single strict DNS hostname' "${ENTRY}" \
   || fail "entrypoint must refuse non-hostname compat/strict hosts"
+# Retest#5 HIGH: primary check must be whole-value charset allowlist, not line-grep.
+grep -Fq '*[!a-z0-9.-]*' "${ENTRY}" \
+  || fail "entrypoint require_hostname must charset-allowlist (rejects newline; retest#5 HIGH)"
+grep -Eq 'label≤63|label<=63' "${ENTRY}" \
+  || fail "entrypoint must document/enforce label≤63 (retest#5 finding 5)"
+grep -Eq 'name≤253|name<=253|253' "${ENTRY}" \
+  || fail "entrypoint must enforce name≤253 (retest#5 finding 5)"
+grep -Eq 'alpha TLD|no IP' "${ENTRY}" \
+  || fail "entrypoint must refuse IP / numeric TLD (retest#5 finding 4)"
 grep -Eq 'date -u -d|date -d' "${ENTRY}" \
   || fail "entrypoint must calendar-parse sunset via date -d (retest#4 finding 2)"
 grep -Eq 'valid calendar date' "${ENTRY}" \
@@ -201,13 +228,24 @@ grep -Eq 'in the past|sunset.*past' "${ENTRY}" \
   || fail "entrypoint must refuse past sunset"
 grep -Eq 'exceeds max time-box|MAX_SUNSET' "${ENTRY}" \
   || fail "entrypoint must enforce sunset upper time-box"
+# Gate call sites must still invoke require_hostname for ALL hosts (WEB/API/COMPAT).
+for _gate_var in OKKEY_WEB_HOST OKKEY_API_HOST OKKEY_COMPAT_WEB_HOST OKKEY_COMPAT_API_HOST; do
+  grep -Eq "require_hostname[[:space:]]+${_gate_var}" "${ENTRY}" \
+    || fail "entrypoint must require_hostname ${_gate_var} (retest#6 validate ALL hosts)"
+done
 
-echo "==> gen-self-signed N7 / finding 6 + RFC1123: ${GENSS}"
+echo "==> gen-self-signed N7 / finding 6 + whole-value gate + atomic PEM: ${GENSS}"
 [[ -x "${GENSS}" ]] || fail "gen-self-signed.sh missing or not executable"
 grep -q 'normalize_host' "${GENSS}" \
   || fail "gen-self-signed must normalize_host"
 grep -q 'require_hostname' "${GENSS}" \
   || fail "gen-self-signed must require_hostname (retest#4 finding 1)"
+grep -Fq '*[!a-z0-9.-]*' "${GENSS}" \
+  || fail "gen-self-signed require_hostname must charset-allowlist (rejects newline; retest#5 HIGH)"
+grep -Eq 'mktemp -d' "${GENSS}" \
+  || fail "gen-self-signed must stage PEMs in mktemp -d (atomic; retest#5 finding 3)"
+grep -Eq 'commit_staged|mv -f' "${GENSS}" \
+  || fail "gen-self-signed must mv staged PEMs only after success (atomic)"
 COLLISION_LINE="$(grep -n 'compat hosts must differ' "${GENSS}" | head -1 | cut -d: -f1)"
 WRITE_LINE="$(grep -n 'openssl req' "${GENSS}" | head -1 | cut -d: -f1)"
 HOST_GATE_LINE="$(grep -n 'require_hostname' "${GENSS}" | head -1 | cut -d: -f1)"
@@ -217,6 +255,16 @@ HOST_GATE_LINE="$(grep -n 'require_hostname' "${GENSS}" | head -1 | cut -d: -f1)
   || fail "gen-self-signed must check host collision BEFORE writing PEMs (finding 6)"
 [[ -n "${HOST_GATE_LINE}" && "${HOST_GATE_LINE}" -lt "${WRITE_LINE}" ]] \
   || fail "gen-self-signed must validate hostname BEFORE writing PEMs"
+for _gate_var in OKKEY_WEB_HOST OKKEY_API_HOST OKKEY_COMPAT_WEB_HOST OKKEY_COMPAT_API_HOST; do
+  grep -Eq "require_hostname[[:space:]]+${_gate_var}" "${GENSS}" \
+    || fail "gen-self-signed must require_hostname ${_gate_var}"
+done
+
+NGINX_MAIN="${ROOT}/nginx/nginx.conf"
+if [[ -f "${NGINX_MAIN}" ]]; then
+  grep -Eq 'server_names_hash_bucket_size[[:space:]]+128' "${NGINX_MAIN}" \
+    || fail "nginx.conf must set server_names_hash_bucket_size 128 (63-char labels; retest#5 finding 5)"
+fi
 
 echo "==> compose defaults compat off; N8 no 8443 on base overlay"
 grep -q 'OKKEY_COMPAT_ENABLED: \${OKKEY_COMPAT_ENABLED:-0}' "${COMPOSE}" \

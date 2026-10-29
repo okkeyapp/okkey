@@ -160,6 +160,159 @@ gen_certs() {
     "${ROOT}/scripts/gen-self-signed.sh" --with-compat --force
 }
 
+# Live hostname-gate negatives (retest#5 HIGH / retest#6). Policy string checks
+# alone missed the newline bypass; these must refuse before any PEM lands.
+test_hostname_gates() {
+  step "hostname gate negatives (retest#6)"
+  local td pems rc label64 name254
+  td="$(mktemp -d "${TMPDIR:-/tmp}/okkey-hostgate.XXXXXX")"
+
+  expect_reject() {
+    local why="$1"
+    shift
+    rm -rf "${td}/bad"
+    mkdir -p "${td}/bad"
+    rc=0
+    env "$@" "${ROOT}/scripts/gen-self-signed.sh" --with-compat --force \
+      >"${td}/out.txt" 2>&1 || rc=$?
+    if [[ "${rc}" -eq 0 ]]; then
+      echo "---- gen-self-signed unexpectedly succeeded (${why}) ----" >&2
+      cat "${td}/out.txt" >&2 || true
+      fail "hostname gate must reject: ${why}"
+    fi
+    pems="$(find "${td}/bad" -type f \( -name '*.pem' -o -name '*.key' \) 2>/dev/null | wc -l | tr -d ' ')"
+    [[ "${pems}" = "0" ]] || fail "partial PEMs written for ${why} (count=${pems})"
+    echo "  reject ${why} (PASS, rc=${rc}, 0 PEMs)"
+  }
+
+  # Valid control — proves the harness still writes on good input.
+  rm -rf "${td}/ok"
+  mkdir -p "${td}/ok"
+  OKKEY_PROXY_CERT_DIR="${td}/ok" \
+  OKKEY_WEB_HOST=app.example.com \
+  OKKEY_API_HOST=api.example.com \
+  OKKEY_COMPAT_WEB_HOST=compat-app.example.com \
+  OKKEY_COMPAT_API_HOST=compat-api.example.com \
+    "${ROOT}/scripts/gen-self-signed.sh" --with-compat --force \
+    >"${td}/ok-out.txt" 2>&1 \
+    || fail "valid control gen-self-signed failed: $(cat "${td}/ok-out.txt")"
+  [[ -f "${td}/ok/fullchain.pem" && -f "${td}/ok/compat-fullchain.pem" ]] \
+    || fail "valid control did not write strict+compat PEMs"
+
+  expect_reject "compat newline foreign-SNI" \
+    OKKEY_PROXY_CERT_DIR="${td}/bad" \
+    OKKEY_WEB_HOST=app.example.com \
+    OKKEY_API_HOST=api.example.com \
+    OKKEY_COMPAT_WEB_HOST=$'compat-app.example.com\napp.example.com' \
+    OKKEY_COMPAT_API_HOST=compat-api.example.com
+
+  expect_reject "compat newline directive inject" \
+    OKKEY_PROXY_CERT_DIR="${td}/bad" \
+    OKKEY_WEB_HOST=app.example.com \
+    OKKEY_API_HOST=api.example.com \
+    OKKEY_COMPAT_WEB_HOST=$'compat-app.example.com\napp.example.com;\nreturn 200 QA-INJECTED-RETURN;\n#' \
+    OKKEY_COMPAT_API_HOST=compat-api.example.com
+
+  expect_reject "compat newline server-block inject" \
+    OKKEY_PROXY_CERT_DIR="${td}/bad" \
+    OKKEY_WEB_HOST=app.example.com \
+    OKKEY_API_HOST=api.example.com \
+    OKKEY_COMPAT_WEB_HOST=$'compat-app.example.com\n}\nserver{listen 8443 ssl;server_name app.example.com;\n#' \
+    OKKEY_COMPAT_API_HOST=compat-api.example.com
+
+  expect_reject "strict WEB newline" \
+    OKKEY_PROXY_CERT_DIR="${td}/bad" \
+    OKKEY_WEB_HOST=$'app.example.com\nevil.example.com' \
+    OKKEY_API_HOST=api.example.com \
+    OKKEY_COMPAT_WEB_HOST=compat-app.example.com \
+    OKKEY_COMPAT_API_HOST=compat-api.example.com
+
+  expect_reject "compat IPv4 literal" \
+    OKKEY_PROXY_CERT_DIR="${td}/bad" \
+    OKKEY_WEB_HOST=app.example.com \
+    OKKEY_API_HOST=api.example.com \
+    OKKEY_COMPAT_WEB_HOST=127.0.0.1 \
+    OKKEY_COMPAT_API_HOST=compat-api.example.com
+
+  expect_reject "compat numeric TLD" \
+    OKKEY_PROXY_CERT_DIR="${td}/bad" \
+    OKKEY_WEB_HOST=app.example.com \
+    OKKEY_API_HOST=api.example.com \
+    OKKEY_COMPAT_WEB_HOST=compat.123 \
+    OKKEY_COMPAT_API_HOST=compat-api.example.com
+
+  label64="$(printf 'a%.0s' {1..64}).example.com"
+  expect_reject "label>63" \
+    OKKEY_PROXY_CERT_DIR="${td}/bad" \
+    OKKEY_WEB_HOST=app.example.com \
+    OKKEY_API_HOST=api.example.com \
+    OKKEY_COMPAT_WEB_HOST="${label64}" \
+    OKKEY_COMPAT_API_HOST=compat-api.example.com
+
+  # >253-char name: many short labels (2*127+3 = 257).
+  name254="$(python3 -c 'print("a."*127+"com")' 2>/dev/null || true)"
+  if [[ -z "${name254}" || "${#name254}" -le 253 ]]; then
+    name254="$(awk 'BEGIN{s=""; for(i=0;i<127;i++) s=s "a."; print s "com"}')"
+  fi
+  [[ "${#name254}" -gt 253 ]] || fail "test harness failed to build name>253 (len=${#name254})"
+  expect_reject "name>253" \
+    OKKEY_PROXY_CERT_DIR="${td}/bad" \
+    OKKEY_WEB_HOST=app.example.com \
+    OKKEY_API_HOST=api.example.com \
+    OKKEY_COMPAT_WEB_HOST="${name254}" \
+    OKKEY_COMPAT_API_HOST=compat-api.example.com
+
+  # Entrypoint gate must match (brace-aware extract; do not run the rest of entrypoint).
+  local entry_fns entry_rc
+  entry_fns="$(awk '
+    /^normalize_host\(\)|^_hostname_gate_fail\(\)|^require_hostname\(\)/ { grab=1 }
+    grab {
+      print
+      line=$0
+      for (i=1; i<=length(line); i++) {
+        c=substr(line,i,1)
+        if (c=="{") depth++
+        if (c=="}") {
+          depth--
+          if (depth==0) { grab=0; print ""; }
+        }
+      }
+    }
+  ' "${ROOT}/nginx/docker-entrypoint.sh")"
+  [[ -n "${entry_fns}" ]] || fail "failed to extract hostname gate helpers from entrypoint"
+  echo "${entry_fns}" | grep -q '_hostname_gate_fail' \
+    || fail "entrypoint extract missing _hostname_gate_fail"
+
+  entry_rc=0
+  sh -c '
+    set -eu
+    eval "$1"
+    if ( require_hostname OKKEY_COMPAT_WEB_HOST "$(printf "compat-app.example.com\napp.example.com")" ) 2>/dev/null; then
+      exit 99
+    fi
+    exit 0
+  ' _ "${entry_fns}" || entry_rc=$?
+  [[ "${entry_rc}" -eq 0 ]] || fail "entrypoint require_hostname did not reject newline (rc=${entry_rc})"
+  echo "  entrypoint newline reject (PASS)"
+
+  entry_rc=0
+  sh -c '
+    set -eu
+    eval "$1"
+    if ( require_hostname OKKEY_WEB_HOST "127.0.0.1" ) 2>/dev/null; then exit 99; fi
+    if ( require_hostname OKKEY_COMPAT_WEB_HOST "compat.123" ) 2>/dev/null; then exit 99; fi
+    if ( require_hostname OKKEY_WEB_HOST "$(printf "app.example.com\nevil.example.com")" ) 2>/dev/null; then exit 99; fi
+    require_hostname OKKEY_WEB_HOST "app.example.com"
+    require_hostname OKKEY_COMPAT_WEB_HOST "compat-app.example.com"
+    exit 0
+  ' _ "${entry_fns}" || entry_rc=$?
+  [[ "${entry_rc}" -eq 0 ]] || fail "entrypoint require_hostname IP/numeric/newline/valid checks failed (rc=${entry_rc})"
+  echo "  entrypoint IP/numeric/newline/valid (PASS)"
+
+  rm -rf "${td}"
+  echo "hostname gate negatives (PASS)"
+}
+
 run_verify() {
   step "1/10 strict hybrid (compat ON)"
   OUT="$(openssl s_client -connect "127.0.0.1:${PORT}" -servername "${STRICT_HOST}" \
@@ -340,6 +493,8 @@ ${last_err}"
 
 step "static policy (always)"
 "${ROOT}/policy-compat.sh"
+
+test_hostname_gates
 
 step "handshake smoke (mode=${SMOKE_MODE})"
 case "${SMOKE_MODE}" in
