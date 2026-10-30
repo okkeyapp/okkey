@@ -37,6 +37,7 @@ vi.mock("./deviceSigningKey", () => ({
 
 vi.mock("@okkey/crypto", () => ({
   initCrypto: vi.fn(async () => undefined),
+  deviceBindShareProof: () => new Uint8Array([9, 9, 9, 9]),
   wipeBytes: vi.fn(),
 }));
 
@@ -191,6 +192,40 @@ describe("resolveDeviceTrust", () => {
     expect(registerDevice).not.toHaveBeenCalled();
     expect(snapshot.status).toBe("pending");
     expect(snapshot.deviceId).toBe("d-me");
+  });
+
+  it("binds a sole trusted browser that still has the vault share and no seed", async () => {
+    hasDeviceSigningKey.mockResolvedValue(false);
+    readVaultBundle.mockReturnValue(vaultBundle());
+    rotateDeviceSigningKey.mockResolvedValue(btoa("new-pub-key-32-bytes-pad!!!!"));
+    listDevices.mockResolvedValue({
+      devices: [
+        {
+          device_id: "d-me",
+          device_fingerprint: fingerprint,
+          status: "trusted",
+        },
+      ],
+      pending: [],
+    });
+
+    const snapshot = await resolveDeviceTrust(coreClient(), "u1");
+
+    expect(registerDevice).not.toHaveBeenCalled();
+    expect(requestDeviceKeyRebind).not.toHaveBeenCalled();
+    expect(rotateDeviceSigningKey).toHaveBeenCalledOnce();
+    expect(bindDeviceSession).toHaveBeenCalledWith(
+      "d-me",
+      expect.objectContaining({
+        challenge_id: "ch-1",
+        share_proof: btoa("\t\t\t\t"),
+        new_device_public_key: btoa("new-pub-key-32-bytes-pad!!!!"),
+      }),
+    );
+    expect(bindDeviceSession.mock.calls[0]?.[1]?.signature).toBeUndefined();
+    expect(snapshot.status).toBe("trusted");
+    expect(snapshot.deviceId).toBe("d-me");
+    expect(snapshot.needsRecovery).toBeUndefined();
   });
 
   it("requires recovery when sole trusted device has no local seed", async () => {

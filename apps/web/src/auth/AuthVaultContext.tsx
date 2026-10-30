@@ -993,7 +993,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       const client = createAuthenticatedCoreClient(accessToken);
       const fingerprint = getOrCreateDeviceFingerprint();
       const knownDeviceId = pendingDeviceIdRef.current ?? currentDeviceIdRef.current;
-      const snapshot = await pollDeviceTrust(client, fingerprint, knownDeviceId);
+      const snapshot = await pollDeviceTrust(client, fingerprint, knownDeviceId, userId);
       // Sticky forever-block is optimistic only; clear when server is no longer blocked
       // (Settings unblock / re-trust must leave /account/device-pending without reload).
       if (snapshot.status === "blocked" && snapshot.blockedUntil == null) {

@@ -1,5 +1,5 @@
 import { ApiRequestError, type CoreApiClient } from "@okkey/api";
-import { initCrypto, wipeBytes } from "@okkey/crypto";
+import { deviceBindShareProof, initCrypto, wipeBytes } from "@okkey/crypto";
 import type { DeviceListItemDto, DeviceRegisterResponseDto } from "@okkey/types";
 
 import { readStoredLocale } from "../locale/localeStorage";
@@ -57,6 +57,51 @@ function fingerprintMatch(device: DeviceListItemDto, fingerprint: string): boole
   return device.device_fingerprint.trim().toLowerCase() === fingerprint.trim().toLowerCase();
 }
 
+function browserBindMetadata() {
+  const env = parseBrowserEnvironment(
+    typeof navigator !== "undefined" ? navigator.userAgent : "",
+  );
+  return {
+    device_name: env.deviceName,
+    platform: env.platform,
+    os_name: env.osName,
+    os_version: env.osVersion,
+    app_version: "web",
+    client_type: env.clientType,
+    user_agent: env.userAgent,
+  };
+}
+
+/**
+ * Same browser, seed never stored: prove the vault device share and install a
+ * signing key. Does not call register, so a trusted fingerprint cannot 409.
+ */
+async function bindDeviceWithShareProof(
+  core: CoreApiClient,
+  deviceId: string,
+  shareB64: string,
+): Promise<void> {
+  await initCrypto();
+  const publicKeyB64 = await rotateDeviceSigningKey();
+  try {
+    const challenge = await core.createDeviceBindChallenge(deviceId);
+    const message = Uint8Array.from(atob(challenge.challenge), (c) => c.charCodeAt(0));
+    const share = Uint8Array.from(atob(shareB64), (c) => c.charCodeAt(0));
+    const proof = deviceBindShareProof(share, message);
+    wipeBytes(share);
+    await core.bindDeviceSession(deviceId, {
+      challenge_id: challenge.challenge_id,
+      share_proof: bytesToBase64(proof),
+      new_device_public_key: publicKeyB64,
+      ...browserBindMetadata(),
+    });
+    boundSessionDeviceId = deviceId;
+  } catch (error) {
+    await clearDeviceSigningKey();
+    throw error;
+  }
+}
+
 async function bindDeviceWithProof(
   core: CoreApiClient,
   deviceId: string,
@@ -65,9 +110,6 @@ async function bindDeviceWithProof(
     throw new Error("device private key is missing");
   }
   await initCrypto();
-  const env = parseBrowserEnvironment(
-    typeof navigator !== "undefined" ? navigator.userAgent : "",
-  );
   const challenge = await core.createDeviceBindChallenge(deviceId);
   const message = Uint8Array.from(
     atob(challenge.challenge),
@@ -77,13 +119,7 @@ async function bindDeviceWithProof(
   await core.bindDeviceSession(deviceId, {
     challenge_id: challenge.challenge_id,
     signature: bytesToBase64(signature),
-    device_name: env.deviceName,
-    platform: env.platform,
-    os_name: env.osName,
-    os_version: env.osVersion,
-    app_version: "web",
-    client_type: env.clientType,
-    user_agent: env.userAgent,
+    ...browserBindMetadata(),
   });
   boundSessionDeviceId = deviceId;
 }
@@ -225,8 +261,26 @@ export async function resolveDeviceTrust(
   // without minting new keys. Register would replace the trusted device share.
   if (trustedMatch && !canReclaimSole) {
     if (!(await hasDeviceSigningKey())) {
-      // Pre-upgrade installs (and W1 bug) have no seed. Never silent-trust:
-      // another device must approve a key rebind, or the user uses recovery.
+      const shareB64 = bundle?.device_share_b64?.trim() ?? "";
+      if (shareB64) {
+        try {
+          await bindDeviceWithShareProof(core, trustedMatch.device_id, shareB64);
+          return {
+            status: "trusted",
+            deviceId: trustedMatch.device_id,
+            approverDevices: listed.devices,
+          };
+        } catch (error: unknown) {
+          return {
+            status: "error",
+            deviceId: trustedMatch.device_id,
+            approverDevices: listed.devices,
+            errorMessage: error instanceof Error ? error.message : String(error),
+          };
+        }
+      }
+      // Pre-upgrade installs (and W1 bug) have no seed and no vault share.
+      // Another device must approve a key rebind, or the user uses recovery.
       if (otherTrustedCount < 1) {
         return {
           status: "error",
@@ -418,6 +472,7 @@ export async function pollDeviceTrust(
   core: CoreApiClient,
   fingerprint: string,
   pendingDeviceId: string | null,
+  userId?: string,
 ): Promise<DeviceTrustSnapshot> {
   const listed = await core.listDevices(fingerprint);
 
@@ -473,6 +528,25 @@ export async function pollDeviceTrust(
       };
     }
     if (!(await hasDeviceSigningKey())) {
+      const shareB64 =
+        (userId ? readVaultBundle(userId)?.device_share_b64?.trim() : "") ?? "";
+      if (shareB64) {
+        try {
+          await bindDeviceWithShareProof(core, trustedMatch.device_id, shareB64);
+          return {
+            status: "trusted",
+            deviceId: trustedMatch.device_id,
+            approverDevices: listed.devices,
+          };
+        } catch (error: unknown) {
+          return {
+            status: "error",
+            deviceId: trustedMatch.device_id,
+            approverDevices: listed.devices,
+            errorMessage: error instanceof Error ? error.message : String(error),
+          };
+        }
+      }
       return {
         status: "error",
         deviceId: trustedMatch.device_id,

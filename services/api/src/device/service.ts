@@ -17,6 +17,7 @@ import {
   deviceBindChallengeKey,
   issueDeviceBindChallenge,
   MemoryDeviceBindChallengeStore,
+  verifyDeviceBindShareProof,
   verifyDeviceBindSignature,
   type DeviceBindChallengeStore,
 } from "./bind-proof.ts";
@@ -55,6 +56,7 @@ export interface DeviceServiceDeps {
     | "clearExpiredBlocks"
     | "findOwnedDeviceAuth"
     | "updateActiveDeviceMetadata"
+    | "rotateActiveDevicePublicKey"
     | "requestKeyRebind"
   >;
   config: Pick<ApiConfig, "deviceApprovalTtlSeconds" | "publicAppBaseUrl">;
@@ -721,7 +723,9 @@ export class DeviceService {
     deviceId: string;
     tokenHash: string;
     challengeId: string;
-    signatureB64: string;
+    signatureB64?: string;
+    shareProofB64?: string;
+    newDevicePublicKeyB64?: string;
   }): Promise<{ deviceId: string; status: "trusted" | "pending_approval" }> {
     const device = await this.requireActiveDevice(input.userId, input.deviceId);
     const raw = await this.bindChallenges.take(
@@ -757,18 +761,61 @@ export class DeviceService {
         "device bind challenge is invalid or expired",
       );
     }
-    const message = Buffer.from(record.messageB64, "base64");
-    const ok = this.verifyDeviceSignature(
-      device.devicePublicKey,
-      new Uint8Array(message),
-      input.signatureB64,
-    );
-    if (!ok) {
+    const message = new Uint8Array(Buffer.from(record.messageB64, "base64"));
+    const signature = input.signatureB64?.trim() ?? "";
+    if (signature) {
+      const ok = this.verifyDeviceSignature(device.devicePublicKey, message, signature);
+      if (!ok) {
+        throw new DeviceServiceError(
+          "DEVICE_BIND_PROOF_INVALID",
+          403,
+          "device key signature is invalid",
+        );
+      }
+      return {
+        deviceId: device.id,
+        status: device.status === "pending" ? "pending_approval" : "trusted",
+      };
+    }
+
+    const shareProof = input.shareProofB64?.trim() ?? "";
+    const nextPublicKey = input.newDevicePublicKeyB64?.trim() ?? "";
+    if (!shareProof || !nextPublicKey) {
+      throw new DeviceServiceError(
+        "DEVICE_BAD_REQUEST",
+        400,
+        "challenge_id and a device proof are required",
+      );
+    }
+    const publicKeyBytes = Buffer.from(nextPublicKey, "base64");
+    if (
+      publicKeyBytes.length !== 32 ||
+      publicKeyBytes.toString("base64").replace(/=+$/, "") !== nextPublicKey.replace(/=+$/, "")
+    ) {
+      throw new DeviceServiceError(
+        "DEVICE_BAD_REQUEST",
+        400,
+        "new_device_public_key is invalid",
+      );
+    }
+    if (!verifyDeviceBindShareProof(device.deviceShare, message, shareProof)) {
       throw new DeviceServiceError(
         "DEVICE_BIND_PROOF_INVALID",
         403,
-        "device key signature is invalid",
+        "device share proof is invalid",
       );
+    }
+    if (!this.devices.rotateActiveDevicePublicKey) {
+      throw new DeviceServiceError("DEVICE_NOT_FOUND", 404, "device not found");
+    }
+    const rotated = await this.devices.rotateActiveDevicePublicKey({
+      userId: input.userId,
+      deviceId: device.id,
+      devicePublicKey: nextPublicKey,
+      now: this.now().toISOString(),
+    });
+    if (!rotated) {
+      throw new DeviceServiceError("DEVICE_NOT_ACTIVE", 409, "device is not active");
     }
     return {
       deviceId: device.id,

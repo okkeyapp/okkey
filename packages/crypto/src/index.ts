@@ -124,6 +124,16 @@ export function sha256Digest(data: Uint8Array): Uint8Array {
   return sha256(data);
 }
 
+/** SHA-256 proof that the caller holds the vault device share for a bind challenge. */
+export function deviceBindShareProof(deviceShare: Uint8Array, message: Uint8Array): Uint8Array {
+  const prefix = new TextEncoder().encode("okkey-device-bind-share-v1\n");
+  const payload = new Uint8Array(prefix.length + deviceShare.length + message.length);
+  payload.set(prefix, 0);
+  payload.set(deviceShare, prefix.length);
+  payload.set(message, prefix.length + deviceShare.length);
+  return sha256Digest(payload);
+}
+
 export function generatePQKeys(): Uint8Array {
   return withWasmError("generatePQKeys", () => generate_pq_keys());
 }

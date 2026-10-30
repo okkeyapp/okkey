@@ -2128,14 +2128,20 @@ export class DevicesRepository {
   async findOwnedDeviceAuth(
     userId: string,
     deviceId: string,
-  ): Promise<{ id: string; status: string; devicePublicKey: string } | null> {
+  ): Promise<{
+    id: string;
+    status: string;
+    devicePublicKey: string;
+    deviceShare: Uint8Array;
+  } | null> {
     const rows = await this.db.query<{
       id: string;
       status: string;
       device_public_key: string;
+      device_share: Buffer;
     }>(
       `
-        SELECT id, status, device_public_key
+        SELECT id, status, device_public_key, device_share
         FROM devices
         WHERE id = $1 AND user_id = $2
         LIMIT 1
@@ -2150,7 +2156,64 @@ export class DevicesRepository {
       id: row.id,
       status: row.status,
       devicePublicKey: row.device_public_key,
+      deviceShare: Uint8Array.from(row.device_share),
     };
+  }
+
+  /**
+   * Replace only the signing public key after a device-share proof.
+   * The vault device share stays on the row. Status stays trusted or pending.
+   */
+  async rotateActiveDevicePublicKey(input: {
+    userId: string;
+    deviceId: string;
+    devicePublicKey: string;
+    now: string;
+  }): Promise<DeviceRecord | null> {
+    return withUserDeviceLock(input.userId, () => this.db.transaction(async (tx) => {
+      await lockUserDevices(tx, input.userId);
+      const rows = await tx.query<{
+        id: string;
+        user_id: string;
+        device_fingerprint: string;
+        device_name: string;
+        device_public_key: string;
+        device_share: Buffer;
+        platform: string;
+        os_name: string;
+        os_version: string;
+        app_version: string;
+        client_type: string;
+        user_agent: string;
+        ip_first: string;
+        ip_last: string;
+        status: "trusted" | "pending" | "revoked" | "blocked";
+        created_at: string | Date;
+        last_seen_at: string | Date | null;
+        approved_by: string | null;
+        approved_at: string | Date | null;
+        rejected_at: string | Date | null;
+        rejection_reason: string | null;
+        revoked_at: string | Date | null;
+        blocked_until: string | Date | null;
+      }>(
+        `
+          UPDATE devices
+          SET device_public_key = $3,
+              last_seen_at = $4::timestamptz
+          WHERE id = $1
+            AND user_id = $2
+            AND status IN ('trusted', 'pending')
+          RETURNING
+            id, user_id, device_fingerprint, device_name, device_public_key, device_share,
+            platform, os_name, os_version, app_version, client_type, user_agent,
+            ip_first, ip_last, status, created_at, last_seen_at, approved_by, approved_at,
+            rejected_at, rejection_reason, revoked_at, blocked_until
+        `,
+        [input.deviceId, input.userId, input.devicePublicKey, input.now],
+      );
+      return rows[0] ? mapDevice(rows[0]) : null;
+    }));
   }
 
   /**

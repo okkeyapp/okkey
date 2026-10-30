@@ -5,8 +5,9 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { initSync } from "@okkey/crypto-wasm";
-import { ed25519Keypair, ed25519Sign } from "@okkey/crypto";
+import { deviceBindShareProof, ed25519Keypair, ed25519Sign } from "@okkey/crypto";
 import { createApiApp } from "../src/app.ts";
+import { deviceShareBindProof } from "../src/device/bind-proof.ts";
 import { DeviceService } from "../src/device/service.ts";
 import type { SessionService } from "../src/session/service.ts";
 import { createTestApiConfig } from "./test-api-config.ts";
@@ -182,4 +183,103 @@ test("bind-session requires a device-key signature and rejects reuse, expiry, an
   });
   assert.equal(expired.status, 401);
   assert.equal(expired.body.error, "DEVICE_BIND_CHALLENGE_INVALID");
+});
+
+test("bind-session accepts a legacy device-share proof and rotates only the signing key", async () => {
+  ensureWasm();
+  const share = new Uint8Array(32).fill(4);
+  const sample = Buffer.from("challenge-bytes");
+  assert.deepEqual(Buffer.from(deviceBindShareProof(share, sample)), deviceShareBindProof(share, sample));
+
+  const keys = deviceKeys();
+  const storedPublicKey = b64(keys.publicKey);
+  let publicKey = storedPublicKey;
+  let bound = false;
+  const deviceService = new DeviceService({
+    devices: {
+      findOwnedDeviceAuth: async () => ({
+        id: DEVICE_ID,
+        status: "trusted",
+        devicePublicKey: publicKey,
+        deviceShare: share,
+      }),
+      rotateActiveDevicePublicKey: async (input: { devicePublicKey: string }) => {
+        publicKey = input.devicePublicKey;
+        return { id: DEVICE_ID };
+      },
+      updateActiveDeviceMetadata: async () => null,
+    } as never,
+    config: { deviceApprovalTtlSeconds: 60, publicAppBaseUrl: "https://app.test" },
+    now: () => new Date("2026-01-01T00:00:00.000Z"),
+  });
+  const sessionService = {
+    hashAccessToken: (token: string) => `hash:${token}`,
+    bindAccessTokenDevice: async () => {
+      bound = true;
+      return true;
+    },
+    resolveAccessToken: async () => ({
+      userId: "u1",
+      deviceId: null,
+      scope: null,
+      tokenHash: "hash:tok",
+    }),
+  } as unknown as SessionService;
+
+  async function call(method: string, url: string, body?: unknown) {
+    const app = createApiApp(createTestApiConfig(), loggerStub(), {
+      deviceService,
+      sessionService,
+    });
+    const req = {
+      method,
+      url,
+      headers: { authorization: "Bearer tok" },
+      body,
+    } as IncomingMessage;
+    const res = new MockResponse();
+    await app.handler()(req, res as unknown as ServerResponse);
+    return { status: res.statusCode, body: res.body ? JSON.parse(res.body) : null };
+  }
+
+  const issued = await call("POST", `/devices/${DEVICE_ID}/bind-challenge`, {});
+  const challenge = issued.body as { challenge_id: string; challenge: string };
+  const message = Buffer.from(challenge.challenge, "base64");
+  const nextPublic = b64(deviceKeys().publicKey);
+
+  const badSig = await call("POST", `/devices/${DEVICE_ID}/bind-session`, {
+    challenge_id: challenge.challenge_id,
+    signature: b64(ed25519Sign(deviceKeys().secret, message)),
+    share_proof: b64(deviceBindShareProof(share, message)),
+    new_device_public_key: nextPublic,
+  });
+  assert.equal(badSig.status, 403);
+  assert.equal(badSig.body.error, "DEVICE_BIND_PROOF_INVALID");
+  assert.equal(bound, false);
+  assert.equal(publicKey, storedPublicKey);
+
+  const again = await call("POST", `/devices/${DEVICE_ID}/bind-challenge`, {});
+  const fresh = again.body as { challenge_id: string; challenge: string };
+  const freshMessage = Buffer.from(fresh.challenge, "base64");
+  const wrongShare = await call("POST", `/devices/${DEVICE_ID}/bind-session`, {
+    challenge_id: fresh.challenge_id,
+    share_proof: b64(deviceBindShareProof(new Uint8Array(32).fill(1), freshMessage)),
+    new_device_public_key: nextPublic,
+  });
+  assert.equal(wrongShare.status, 403);
+  assert.equal(bound, false);
+  assert.equal(publicKey, storedPublicKey);
+
+  const third = await call("POST", `/devices/${DEVICE_ID}/bind-challenge`, {});
+  const okChallenge = third.body as { challenge_id: string; challenge: string };
+  const okMessage = Buffer.from(okChallenge.challenge, "base64");
+  const proved = await call("POST", `/devices/${DEVICE_ID}/bind-session`, {
+    challenge_id: okChallenge.challenge_id,
+    share_proof: b64(deviceBindShareProof(share, okMessage)),
+    new_device_public_key: nextPublic,
+  });
+  assert.equal(proved.status, 200);
+  assert.equal(bound, true);
+  assert.equal(publicKey, nextPublic);
+  assert.notEqual(publicKey, storedPublicKey);
 });

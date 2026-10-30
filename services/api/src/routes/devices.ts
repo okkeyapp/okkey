@@ -257,6 +257,8 @@ export function createRegisterDeviceRoute(
 interface BindDeviceSessionBody {
   challenge_id?: string;
   signature?: string;
+  share_proof?: string;
+  new_device_public_key?: string;
   device_name?: string;
   platform?: string;
   os_name?: string;
@@ -395,19 +397,34 @@ export function createBindDeviceSessionRoute(
       json(ctx.res, 400, errorPayload("DEVICE_BAD_REQUEST", "invalid json", ctx.requestId));
       return;
     }
-    if (typeof body.challenge_id !== "string" || typeof body.signature !== "string") {
+    if (typeof body.challenge_id !== "string") {
       json(
         ctx.res,
         400,
-        errorPayload("DEVICE_BAD_REQUEST", "challenge_id and signature must be strings", ctx.requestId),
+        errorPayload("DEVICE_BAD_REQUEST", "challenge_id must be a string", ctx.requestId),
       );
       return;
     }
-    if (!body.challenge_id.trim() || !body.signature.trim()) {
+    if (body.signature != null && typeof body.signature !== "string") {
       json(
         ctx.res,
         400,
-        errorPayload("DEVICE_BAD_REQUEST", "challenge_id and signature are required", ctx.requestId),
+        errorPayload("DEVICE_BAD_REQUEST", "signature must be a string", ctx.requestId),
+      );
+      return;
+    }
+    const signature = body.signature?.trim() ?? "";
+    const shareProof = body.share_proof?.trim() ?? "";
+    const nextPublicKey = body.new_device_public_key?.trim() ?? "";
+    if (!body.challenge_id.trim() || (!signature && !(shareProof && nextPublicKey))) {
+      json(
+        ctx.res,
+        400,
+        errorPayload(
+          "DEVICE_BAD_REQUEST",
+          "challenge_id and a device proof are required",
+          ctx.requestId,
+        ),
       );
       return;
     }
@@ -423,7 +440,9 @@ export function createBindDeviceSessionRoute(
         deviceId,
         tokenHash: sessionService.hashAccessToken(accessToken),
         challengeId: body.challenge_id.trim(),
-        signatureB64: body.signature.trim(),
+        signatureB64: signature,
+        shareProofB64: shareProof,
+        newDevicePublicKeyB64: nextPublicKey,
       });
       const bound = await sessionService.bindAccessTokenDevice(accessToken, userId, deviceId);
       if (!bound) {

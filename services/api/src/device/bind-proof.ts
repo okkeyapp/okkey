@@ -1,4 +1,10 @@
-import { createPublicKey, randomBytes, verify as verifyEd25519 } from "node:crypto";
+import {
+  createHash,
+  createPublicKey,
+  randomBytes,
+  timingSafeEqual,
+  verify as verifyEd25519,
+} from "node:crypto";
 
 export const DEVICE_BIND_CHALLENGE_TTL_SECONDS = 120;
 const BIND_DOMAIN = "okkey-device-bind-v1";
@@ -65,6 +71,30 @@ export function issueDeviceBindChallenge(input: {
       expiresAtMs,
     },
   };
+}
+
+const SHARE_PROOF_PREFIX = Buffer.from("okkey-device-bind-share-v1\n", "utf8");
+
+/** SHA-256(prefix || device_share || challenge). Must match `@okkey/crypto` `deviceBindShareProof`. */
+export function deviceShareBindProof(deviceShare: Uint8Array, message: Uint8Array): Buffer {
+  return createHash("sha256")
+    .update(SHARE_PROOF_PREFIX)
+    .update(deviceShare)
+    .update(message)
+    .digest();
+}
+
+export function verifyDeviceBindShareProof(
+  deviceShare: Uint8Array,
+  message: Uint8Array,
+  proofB64: string,
+): boolean {
+  const proof = decodeBase64(proofB64);
+  if (!proof || proof.length !== 32 || deviceShare.length === 0) {
+    return false;
+  }
+  const expected = deviceShareBindProof(deviceShare, message);
+  return timingSafeEqual(Buffer.from(proof), expected);
 }
 
 function decodeBase64(value: string): Uint8Array | null {

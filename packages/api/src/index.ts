@@ -853,7 +853,7 @@ export class CoreApiClient {
     );
   }
 
-  /** Attach the current session after a device-key signature. Does not replace device keys. */
+  /** Attach the current session after a device-key signature or a legacy share proof. */
   bindDeviceSession(
     deviceId: string,
     body: DeviceBindSessionRequestDto,
