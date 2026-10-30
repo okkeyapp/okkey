@@ -56,6 +56,8 @@ helper dismisses that dialog — there is no production build flag to skip it.
 
 ## CI
 
-Workflow `.github/workflows/browser-e2e.yml` runs on `push`, schedule, and
-`workflow_dispatch` (no `pull_request`). Web is built like `apps/web/Dockerfile`;
+Workflow `.github/workflows/browser-e2e.yml` runs on pull requests targeting
+`dev`, `release/**`, `hotfix/**`, and `main`, on pushes to `release/**` and
+`hotfix/**`, a weekly schedule, and `workflow_dispatch`. Pushes to `dev` and
+feature branches do not start it. Web is built like `apps/web/Dockerfile`;
 extension is built and exercised under `xvfb-run`.

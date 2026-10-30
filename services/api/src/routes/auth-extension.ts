@@ -44,7 +44,8 @@ function handleExtensionAuthError(
 
 /**
  * Authenticated: mint a short-lived auth_code for the extension PKCE flow.
- * Vault unlock is not required — Bearer session only.
+ * A full session that has not bound a device yet is enough — vault unlock and
+ * device bind happen after the extension receives its own session.
  */
 export function createExtensionAuthIssueCodeRoute(
   extensionAuthService: ExtensionAuthService,
