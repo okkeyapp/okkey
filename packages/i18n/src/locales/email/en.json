@@ -77,7 +77,6 @@
   "email.contacts.recovery.cta": "Open Okkey",
   "email.contacts.recovery.noteNoUrl": "Open Okkey and unlock your vault — a popup will ask you to confirm help with recovery.",
   "email.contacts.recovery.noteIgnore": "If you do not recognize this request, do not confirm help with recovery.",
-  "email.contacts.recovery.textFooterWithUrl": "Confirm recovery help: {helpUrl}",
   "email.contacts.recovery.plain": "{lead}\n{detailLine}\n{requestLine}\n{expiresLine}\n{noteIgnore}\n{footer}",
   "email.contacts.invite.subject": "Invitation to be a trusted contact on Okkey",
   "email.contacts.invite.lead": "{inviter} invites you to be their trusted contact on Okkey.",

@@ -76,7 +76,6 @@
   "email.contacts.recovery.cta": "Открыть Okkey",
   "email.contacts.recovery.noteNoUrl": "Откройте Okkey и разблокируйте хранилище — появится попап с запросом подтвердить помощь в восстановлении.",
   "email.contacts.recovery.noteIgnore": "Если запрос вам незнаком — не подтверждайте помощь в восстановлении.",
-  "email.contacts.recovery.textFooterWithUrl": "Подтвердить помощь: {helpUrl}",
   "email.contacts.recovery.plain": "{lead}\n{detailLine}\n{requestLine}\n{expiresLine}\n{noteIgnore}\n{footer}",
   "email.contacts.invite.subject": "Приглашение стать доверенным контактом Okkey",
   "email.contacts.invite.lead": "{inviter} приглашает вас стать доверенным контактом в Okkey.",

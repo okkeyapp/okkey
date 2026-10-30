@@ -223,6 +223,12 @@ test("renderEmailTemplate auth_email_code registration purpose uses dedicated su
   assert.match(en.subject, /registration verification code/i);
   assert.equal(/sign-in/i.test(en.subject), false);
   assert.match(en.html, /verification code/i);
+  const enPreview = formatEmailMessage("en", "email.auth.registrationCode.preview", {
+    minutes: 2,
+  });
+  assert.equal(enPreview, "Valid for 2 minutes. Never share this code.");
+  assertPreviewInsideBody(en.html, enPreview);
+  assert.equal(en.text.includes(enPreview), false, "plain text must not include preheader");
   assertSharedEmailFooter("en", en);
   assertNoMustachePlaceholders(en.text);
 
@@ -239,6 +245,12 @@ test("renderEmailTemplate auth_email_code registration purpose uses dedicated su
   assert.match(ru.subject, /код подтверждения регистрации/i);
   assert.equal(/код входа/i.test(ru.subject), false);
   assert.match(ru.html, /код подтверждения/i);
+  const ruPreview = formatEmailMessage("ru", "email.auth.registrationCode.preview", {
+    minutes: 1,
+  });
+  assert.equal(ruPreview, "Код действует 1 минуту. Никому его не сообщайте.");
+  assertPreviewInsideBody(ru.html, ruPreview);
+  assert.equal(ru.text.includes(ruPreview), false, "plain text must not include preheader");
   assertNoMustachePlaceholders(ru.text);
 });
 
@@ -697,6 +709,7 @@ test("EmailTemplateService device and contact recovery request emails render CTA
   assert.match(sent[1].text, /Истекает:/);
   assert.match(sent[1].text, /подтвердить помощь в восстановлении/);
   assert.equal(/выдать долю/i.test(sent[1].text), false);
+  assert.equal(/долю восстановления/i.test(sent[1].text), false);
   assert.match(sent[1].html, /https:\/\/app\.example\/items/);
   assert.equal(sent[1].html.includes("popup=settings"), false);
   assert.equal(sent[1].text.includes("{{"), false);
