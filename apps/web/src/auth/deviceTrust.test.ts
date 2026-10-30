@@ -79,6 +79,7 @@ describe("resolveDeviceTrust", () => {
 
     expect(registerDevice).toHaveBeenCalledOnce();
     expect(registerDevice.mock.calls[0]?.[0]?.metadata?.reclaim_sole_trusted).toBe(false);
+    expect(registerDevice.mock.calls[0]?.[0]?.locale).toBe("en");
     expect(snapshot.status).toBe("pending");
     expect(snapshot.deviceId).toBe("d-new");
     expect(snapshot.approverDevices).toHaveLength(1);

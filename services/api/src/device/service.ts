@@ -64,7 +64,9 @@ export interface RegisterDeviceInput {
   appVersion: string;
   clientType: string;
   userAgent: string;
-  /** For email template locale resolution */
+  /** Explicit UI locale from JSON body (preferred over Accept-Language). */
+  locale?: string;
+  /** For email template locale resolution (often ignored by browsers — use `locale`). */
   acceptLanguage?: string;
   /** Rebind sole trusted device instead of creating pending (local vault reclaim). */
   reclaimSoleTrusted?: boolean;
@@ -385,6 +387,7 @@ export class DeviceService {
       to: user.email,
       localeHints: {
         userLocale: user.locale,
+        explicitLocale: input.locale,
         acceptLanguage: input.acceptLanguage,
       },
       variables: {

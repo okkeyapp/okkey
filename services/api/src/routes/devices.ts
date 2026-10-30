@@ -23,6 +23,8 @@ interface RegisterDeviceBody extends RegisterDeviceMetadataBody {
   device_share?: string;
   device_fingerprint?: string;
   device_name?: string;
+  /** UI locale for approval email templates (`en` | `ru`). */
+  locale?: string;
   metadata?: RegisterDeviceMetadataBody;
 }
 
@@ -163,6 +165,7 @@ export function createRegisterDeviceRoute(
         appVersion: metadata.app_version ?? "unknown",
         clientType: metadata.client_type ?? "unknown",
         userAgent: metadata.user_agent ?? getHeader(ctx.req, "user-agent") ?? "unknown",
+        locale: typeof body.locale === "string" ? body.locale : undefined,
         acceptLanguage: getHeader(ctx.req, "accept-language"),
         reclaimSoleTrusted,
         claimAfterRecovery,

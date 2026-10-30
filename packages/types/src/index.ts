@@ -1418,6 +1418,11 @@ export interface DeviceRegisterRequestDto {
   app_version?: string;
   client_type?: string;
   user_agent?: string;
+  /**
+   * UI locale (`en` | `ru`), same pattern as auth email codes.
+   * Prefer this over `Accept-Language` — browsers forbid overriding that header from fetch.
+   */
+  locale?: string;
   metadata?: RegisterCompleteMetadataDto;
 }
 

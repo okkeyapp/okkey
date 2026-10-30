@@ -2,6 +2,7 @@ import { ed25519Keypair, initCrypto, wipeBytes } from "@okkey/crypto";
 import type { CoreApiClient } from "@okkey/api";
 import type { DeviceListItemDto, DeviceRegisterResponseDto } from "@okkey/types";
 
+import { readStoredLocale } from "../locale/localeStorage";
 import { base64ToBytes, bytesToBase64 } from "./base64";
 import { parseBrowserEnvironment } from "./browserEnvironment";
 import {
@@ -361,6 +362,8 @@ export async function registerCurrentBrowserDevice(
       app_version: "web",
       client_type: env.clientType,
       user_agent: env.userAgent,
+      // Explicit body locale: browsers ignore Accept-Language set via fetch.
+      locale: readStoredLocale(),
       metadata: {
         crypto_capable: true,
         reclaim_sole_trusted: options?.reclaimSoleTrusted === true,

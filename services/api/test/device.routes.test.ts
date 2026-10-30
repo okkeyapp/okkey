@@ -169,6 +169,29 @@ test("POST /devices/register returns pending_approval", async () => {
   assert.equal(payload.device_id, "d2");
 });
 
+test("POST /devices/register forwards body locale for approval email", async () => {
+  let capturedLocale: string | undefined;
+  const res = await dispatch({
+    method: "POST",
+    url: "/devices/register",
+    headers: {
+      "x-user-id": "u1",
+      "x-forwarded-for": "10.0.0.1",
+      "accept-language": "ru-RU",
+    },
+    body: { ...registerBody(), locale: "en" },
+    deviceService: createDeviceServiceStub({
+      registerDevice: async (_userId, _ip, input) => {
+        capturedLocale = input.locale;
+        return { deviceId: "d3", status: "pending_approval" };
+      },
+    }),
+  });
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(capturedLocale, "en");
+});
+
 test("POST /devices/register maps service error codes", async () => {
   const res = await dispatch({
     method: "POST",
