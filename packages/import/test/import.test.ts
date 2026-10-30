@@ -133,6 +133,9 @@ describe("okkey mapper", () => {
     });
     expect(login?.fields.find((field) => field.id === "totp")?.value).toMatchObject({
       kind: "totp",
+      secretBase32: "JBSWY3DPEHPK3PXP",
+      periodSeconds: 30,
+      digits: 6,
     });
     expect(login?.sections.some((section) => section.id === "additional")).toBe(true);
     expect(login?.sections.find((section) => section.id === "additional")?.title).toBe("");
