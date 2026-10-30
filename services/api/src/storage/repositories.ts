@@ -1824,6 +1824,35 @@ export class DevicesRepository {
     return rows[0] ? Uint8Array.from(rows[0].device_share) : null;
   }
 
+  /** Share of one trusted device row. Does not search by fingerprint. */
+  async findTrustedDeviceShareById(
+    userId: string,
+    deviceId: string,
+  ): Promise<{ deviceShare: Uint8Array; deviceFingerprint: string } | null> {
+    const rows = await this.db.query<{
+      device_share: Buffer;
+      device_fingerprint: string;
+    }>(
+      `
+        SELECT device_share, device_fingerprint
+        FROM devices
+        WHERE id = $1
+          AND user_id = $2::bigint
+          AND status = 'trusted'
+        LIMIT 1
+      `,
+      [deviceId, userId],
+    );
+    const row = rows[0];
+    if (!row) {
+      return null;
+    }
+    return {
+      deviceShare: Uint8Array.from(row.device_share),
+      deviceFingerprint: row.device_fingerprint,
+    };
+  }
+
   async isTrustedDevice(userId: string, deviceId: string): Promise<boolean> {
     const rows = await this.db.query<{ is_trusted: boolean }>(
       `
@@ -3502,15 +3531,22 @@ export class SessionsRepository {
   async findValidByTokenHash(
     tokenHash: string,
     nowIso: string,
-  ): Promise<{ id: string; userId: string; deviceId: string | null; scope: string | null } | null> {
+  ): Promise<{
+    id: string;
+    userId: string;
+    deviceId: string | null;
+    scope: string | null;
+    expiresAt: string;
+  } | null> {
     const rows = await this.db.query<{
       id: string;
       user_id: string;
       device_id: string | null;
       scope: string | null;
+      expires_at: string | Date;
     }>(
       `
-        SELECT id, user_id, device_id, scope
+        SELECT id, user_id, device_id, scope, expires_at
         FROM sessions
         WHERE token_hash = $1 AND expires_at > $2::timestamptz
         LIMIT 1
@@ -3518,14 +3554,20 @@ export class SessionsRepository {
       [tokenHash, nowIso],
     );
     const row = rows[0];
-    return row
-      ? {
-          id: row.id,
-          userId: row.user_id,
-          deviceId: row.device_id,
-          scope: row.scope,
-        }
-      : null;
+    if (!row) {
+      return null;
+    }
+    const expiresAt =
+      row.expires_at instanceof Date
+        ? row.expires_at.toISOString()
+        : new Date(row.expires_at).toISOString();
+    return {
+      id: row.id,
+      userId: row.user_id,
+      deviceId: row.device_id,
+      scope: row.scope,
+      expiresAt,
+    };
   }
 
   async bindDevice(input: {

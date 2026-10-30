@@ -27,7 +27,7 @@ export interface VaultUnlockBootstrapWire {
 
 export interface VaultUnlockBootstrapDeps {
   users: Pick<UsersRepository, "loadVaultUnlockRow">;
-  devices: Pick<DevicesRepository, "findTrustedDeviceShareForUnlock">;
+  devices: Pick<DevicesRepository, "findTrustedDeviceShareById">;
 }
 
 /**
@@ -53,14 +53,22 @@ export class VaultUnlockBootstrapService {
     this.devices = deps.devices;
   }
 
-  async getForUser(userId: string, deviceFingerprint: string | undefined): Promise<VaultUnlockBootstrapWire> {
-    const row = await this.users.loadVaultUnlockRow(userId);
+  /**
+   * Key material for the device bound to the current session.
+   * A query fingerprint may only confirm that device; it never selects another row.
+   */
+  async getForBoundDevice(input: {
+    userId: string;
+    deviceId: string;
+    queryFingerprint?: string;
+  }): Promise<VaultUnlockBootstrapWire> {
+    const row = await this.users.loadVaultUnlockRow(input.userId);
     if (!row) {
       throw new VaultUnlockBootstrapError("USER_NOT_FOUND", 404, "user not found");
     }
 
-    const fp = deviceFingerprint?.trim();
-    if (!fp || !isUnlockBootstrapFingerprint(fp)) {
+    const queryFingerprint = input.queryFingerprint?.trim();
+    if (queryFingerprint && !isUnlockBootstrapFingerprint(queryFingerprint)) {
       throw new VaultUnlockBootstrapError(
         "VAULT_UNLOCK_INVALID_FINGERPRINT",
         400,
@@ -68,11 +76,18 @@ export class VaultUnlockBootstrapService {
       );
     }
 
-    const deviceShare = await this.devices.findTrustedDeviceShareForUnlock(
-      userId,
-      fp.toLowerCase(),
-    );
-    if (!deviceShare) {
+    const device = await this.devices.findTrustedDeviceShareById(input.userId, input.deviceId);
+    if (!device) {
+      throw new VaultUnlockBootstrapError(
+        "VAULT_UNLOCK_DEVICE_NOT_FOUND",
+        404,
+        "no trusted device match for unlock bootstrap",
+      );
+    }
+    if (
+      queryFingerprint &&
+      queryFingerprint.toLowerCase() !== device.deviceFingerprint.trim().toLowerCase()
+    ) {
       throw new VaultUnlockBootstrapError(
         "VAULT_UNLOCK_DEVICE_NOT_FOUND",
         404,
@@ -84,7 +99,7 @@ export class VaultUnlockBootstrapService {
 
     return {
       server_key_share: Buffer.from(row.serverKeyShare).toString("base64"),
-      device_share: Buffer.from(deviceShare).toString("base64"),
+      device_share: Buffer.from(device.deviceShare).toString("base64"),
       password_kdf_salt: Buffer.from(row.passwordKdfSalt).toString("base64"),
       password_kdf_params_version: row.passwordKdfParamsVersion,
       encrypted_private_key: {

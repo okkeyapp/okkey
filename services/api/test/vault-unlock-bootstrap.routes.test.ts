@@ -62,7 +62,7 @@ function createSessionServiceStub(): SessionService {
 
 function createBootstrapOkStub(): VaultUnlockBootstrapService {
   return {
-    async getForUser() {
+    async getForBoundDevice() {
       return {
         server_key_share: Buffer.alloc(32, 1).toString("base64"),
         device_share: Buffer.alloc(32, 2).toString("base64"),
@@ -81,7 +81,7 @@ function createBootstrapOkStub(): VaultUnlockBootstrapService {
 
 function createBootstrapNotFoundStub(): VaultUnlockBootstrapService {
   return {
-    async getForUser() {
+    async getForBoundDevice() {
       throw new VaultUnlockBootstrapError(
         "VAULT_UNLOCK_DEVICE_NOT_FOUND",
         404,

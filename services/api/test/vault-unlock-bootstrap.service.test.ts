@@ -13,8 +13,9 @@ test("isUnlockBootstrapFingerprint accepts structured and legacy hex", () => {
   assert.equal(isUnlockBootstrapFingerprint("not-a-fingerprint"), false);
 });
 
-test("getForUser accepts structured fingerprint used by web clients", async () => {
+test("getForBoundDevice returns the session device share and ignores a different fingerprint", async () => {
   const share = Uint8Array.from({ length: 32 }, (_, i) => i + 1);
+  const otherShare = Uint8Array.from({ length: 32 }, () => 9);
   const identityBlob = Uint8Array.from(
     Buffer.from(
       JSON.stringify({
@@ -26,6 +27,7 @@ test("getForUser accepts structured fingerprint used by web clients", async () =
       "utf8",
     ),
   );
+  let lookedUpId: string | null = null;
   const service = new VaultUnlockBootstrapService({
     users: {
       loadVaultUnlockRow: async () => ({
@@ -36,19 +38,38 @@ test("getForUser accepts structured fingerprint used by web clients", async () =
       }),
     },
     devices: {
-      findTrustedDeviceShareForUnlock: async (_userId, fingerprint) => {
-        assert.equal(fingerprint, "web_app-chrome-macos-14.5");
-        return share;
+      findTrustedDeviceShareById: async (_userId, deviceId) => {
+        lookedUpId = deviceId;
+        if (deviceId !== "d-session") {
+          return null;
+        }
+        return { deviceShare: share, deviceFingerprint: "web_app-chrome-macos-14.5" };
       },
     },
   });
 
-  const result = await service.getForUser("u1", "web_app-chrome-macos-14.5");
+  const result = await service.getForBoundDevice({
+    userId: "u1",
+    deviceId: "d-session",
+    queryFingerprint: "web_app-chrome-macos-14.5",
+  });
+  assert.equal(lookedUpId, "d-session");
   assert.equal(result.device_share, Buffer.from(share).toString("base64"));
-  assert.equal(result.password_kdf_params_version, 2);
+  assert.notEqual(result.device_share, Buffer.from(otherShare).toString("base64"));
+
+  await assert.rejects(
+    () =>
+      service.getForBoundDevice({
+        userId: "u1",
+        deviceId: "d-session",
+        queryFingerprint: "web_app-firefox-linux-6.1",
+      }),
+    (err: unknown) =>
+      err instanceof VaultUnlockBootstrapError && err.code === "VAULT_UNLOCK_DEVICE_NOT_FOUND",
+  );
 });
 
-test("getForUser rejects obsolete 64-hex-only gate for structured ids", async () => {
+test("getForBoundDevice rejects an invalid query fingerprint", async () => {
   const service = new VaultUnlockBootstrapService({
     users: {
       loadVaultUnlockRow: async () => ({
@@ -59,14 +80,19 @@ test("getForUser rejects obsolete 64-hex-only gate for structured ids", async ()
       }),
     },
     devices: {
-      findTrustedDeviceShareForUnlock: async () => {
+      findTrustedDeviceShareById: async () => {
         throw new Error("should not be called for invalid fp");
       },
     },
   });
 
   await assert.rejects(
-    () => service.getForUser("u1", "bad"),
+    () =>
+      service.getForBoundDevice({
+        userId: "u1",
+        deviceId: "d-session",
+        queryFingerprint: "bad",
+      }),
     (err: unknown) =>
       err instanceof VaultUnlockBootstrapError && err.code === "VAULT_UNLOCK_INVALID_FINGERPRINT",
   );
