@@ -164,7 +164,7 @@ test("GET /capsules/:capsuleId/owner returns owner detail", async () => {
 test("POST /workspaces/:workspaceId/capsules requires auth", async () => {
   const res = await dispatch({
     method: "POST",
-    url: "/workspaces/w1/capsules",
+    url: `/workspaces/${testEntityId()}/capsules`,
     body: { type: "item", encryptedPayload: mkBlob("x") },
   });
   assert.equal(res.statusCode, 401);

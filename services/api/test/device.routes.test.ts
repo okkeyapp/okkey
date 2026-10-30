@@ -217,7 +217,7 @@ test("POST /devices/register maps service error codes", async () => {
 test("POST /devices/:id/approve requires trusted approver headers", async () => {
   const res = await dispatch({
     method: "POST",
-    url: "/devices/d-pending/approve",
+    url: "/devices/1000000000000000001/approve",
     headers: { "x-user-id": "u1" },
   });
 
@@ -229,7 +229,7 @@ test("POST /devices/:id/approve requires trusted approver headers", async () => 
 test("POST /devices/:id/approve returns trusted status", async () => {
   const res = await dispatch({
     method: "POST",
-    url: "/devices/d-pending/approve",
+    url: "/devices/1000000000000000001/approve",
     headers: { "x-user-id": "u1", "x-device-id": "d-trusted" },
     deviceService: createDeviceServiceStub({
       approveDevice: async () => ({ deviceId: "d-pending", status: "trusted" }),
@@ -245,7 +245,7 @@ test("POST /devices/:id/approve returns trusted status", async () => {
 test("POST /devices/:id/reject returns revoked status", async () => {
   const res = await dispatch({
     method: "POST",
-    url: "/devices/d-pending/reject",
+    url: "/devices/1000000000000000001/reject",
     headers: { "x-user-id": "u1", "x-device-id": "d-trusted" },
     body: { reason: "unknown login" },
     deviceService: createDeviceServiceStub({
@@ -262,7 +262,7 @@ test("POST /devices/:id/reject returns revoked status", async () => {
 test("device approval routes map DEVICE_APPROVAL_EXPIRED", async () => {
   const res = await dispatch({
     method: "POST",
-    url: "/devices/d-pending/approve",
+    url: "/devices/1000000000000000001/approve",
     headers: { "x-user-id": "u1", "x-device-id": "d-trusted" },
     deviceService: createDeviceServiceStub({
       approveDevice: async () => {
@@ -385,7 +385,7 @@ test("GET /devices accepts device_fingerprint query when header is absent", asyn
 test("PATCH /devices/:id renames device", async () => {
   const res = await dispatch({
     method: "PATCH",
-    url: "/devices/d1",
+    url: "/devices/1000000000000000002",
     headers: { "x-user-id": "u1" },
     body: { device_name: "Office laptop" },
     deviceService: createDeviceServiceStub({
@@ -400,7 +400,7 @@ test("PATCH /devices/:id renames device", async () => {
 test("POST /devices/:id/revoke revokes owned device", async () => {
   const res = await dispatch({
     method: "POST",
-    url: "/devices/d1/revoke",
+    url: "/devices/1000000000000000002/revoke",
     headers: { "x-user-id": "u1" },
     body: { reason: "not now" },
     deviceService: createDeviceServiceStub({

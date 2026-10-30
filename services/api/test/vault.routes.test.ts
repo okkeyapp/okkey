@@ -142,7 +142,7 @@ test("GET /workspaces requires auth", async () => {
 test("GET /workspaces/:workspaceId/vaults returns vault list", async () => {
   const res = await dispatch({
     method: "GET",
-    url: "/workspaces/w1/vaults",
+    url: "/workspaces/1000000000000000001/vaults",
     headers: { "x-user-id": "u1" },
   });
 
@@ -155,7 +155,7 @@ test("GET /workspaces/:workspaceId/vaults returns vault list", async () => {
 test("GET /workspaces/:workspaceId/vaults accepts Authorization Bearer", async () => {
   const res = await dispatch({
     method: "GET",
-    url: "/workspaces/w1/vaults",
+    url: "/workspaces/1000000000000000001/vaults",
     headers: { authorization: "Bearer test-access-token" },
     sessionService: createSessionServiceStub(),
   });
@@ -169,7 +169,7 @@ test("GET /workspaces/:workspaceId/vaults accepts Authorization Bearer", async (
 test("GET /vaults/:vaultId returns vault", async () => {
   const res = await dispatch({
     method: "GET",
-    url: "/vaults/v1",
+    url: "/vaults/1000000000000000002",
     headers: { "x-user-id": "u1" },
   });
 
@@ -182,7 +182,7 @@ test("GET /vaults/:vaultId returns vault", async () => {
 test("vault routes require auth", async () => {
   const res = await dispatch({
     method: "GET",
-    url: "/vaults/v1",
+    url: "/vaults/1000000000000000002",
   });
 
   assert.equal(res.statusCode, 401);
@@ -193,7 +193,7 @@ test("vault routes require auth", async () => {
 test("vault routes map access errors", async () => {
   const res = await dispatch({
     method: "GET",
-    url: "/vaults/v1",
+    url: "/vaults/1000000000000000002",
     headers: { "x-user-id": "u2" },
     vaultService: createVaultServiceStub({
       getVault: async () => {
