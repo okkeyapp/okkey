@@ -32,6 +32,7 @@ import { base64ToBytes, bytesToBase64 } from "./base64";
 import { getOrCreateDeviceFingerprint } from "./deviceFingerprint";
 import { clearDeviceSigningKey } from "./deviceSigningKey";
 import {
+  clearBoundDeviceSession,
   pollDeviceTrust,
   resolveDeviceTrust,
   type DeviceTrustStatus,
@@ -457,6 +458,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
         setDeviceApprovers(snapshot.approverDevices);
         setDeviceNeedsRecovery(snapshot.needsRecovery === true);
         if (snapshot.status === "blocked" || snapshot.status === "rejected") {
+          clearBoundDeviceSession();
           void clearDeviceSigningKey();
         }
       } catch (error: unknown) {
@@ -466,6 +468,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
         // Session ended by remote revoke/reject/block — go to sign-in, not the
         // pending "Request approval again" screen (retry would also 401).
         if (error instanceof ApiRequestError && error.status === 401) {
+          clearBoundDeviceSession();
           void clearDeviceSigningKey();
           logoutRef.current();
           return;
@@ -644,6 +647,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
     clearSessionLocalProfile();
     clearVaultBundleSessionMirror();
     clearPendingVaultBundle();
+    clearBoundDeviceSession();
     setAccessToken(null);
     setUserId(null);
     vaultUnlockedRef.current = false;
@@ -1020,10 +1024,12 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
         lockVault();
       }
       if (snapshot.status === "blocked" || snapshot.status === "rejected") {
+        clearBoundDeviceSession();
         void clearDeviceSigningKey();
       }
     } catch (error: unknown) {
       if (error instanceof ApiRequestError && error.status === 401) {
+        clearBoundDeviceSession();
         void clearDeviceSigningKey();
         logout();
         return;
@@ -1086,10 +1092,12 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       setDeviceApprovers(snapshot.approverDevices);
       setDeviceNeedsRecovery(snapshot.needsRecovery === true);
       if (snapshot.status === "blocked" || snapshot.status === "rejected") {
+        clearBoundDeviceSession();
         void clearDeviceSigningKey();
       }
     } catch (error: unknown) {
       if (error instanceof ApiRequestError && error.status === 401) {
+        clearBoundDeviceSession();
         void clearDeviceSigningKey();
         logout();
         return;

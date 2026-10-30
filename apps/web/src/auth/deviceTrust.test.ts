@@ -40,7 +40,7 @@ vi.mock("@okkey/crypto", () => ({
   wipeBytes: vi.fn(),
 }));
 
-import { resolveDeviceTrust } from "./deviceTrust";
+import { clearBoundDeviceSession, pollDeviceTrust, resolveDeviceTrust } from "./deviceTrust";
 
 function coreClient(extra?: Record<string, unknown>) {
   return {
@@ -66,6 +66,7 @@ function vaultBundle() {
 describe("resolveDeviceTrust", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    clearBoundDeviceSession();
     readVaultBundle.mockReturnValue(null);
     hasDeviceSigningKey.mockResolvedValue(true);
     ensureDeviceSigningPublicKey.mockResolvedValue(btoa("pub-key-32-bytes-pad!!!!!!"));
@@ -332,5 +333,58 @@ describe("resolveDeviceTrust", () => {
     expect(registerDevice.mock.calls[0]?.[0]?.metadata?.reclaim_sole_trusted).toBe(false);
     expect(snapshot.status).toBe("trusted");
     expect(snapshot.deviceId).toBe("d-pending");
+  });
+});
+
+describe("pollDeviceTrust", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    clearBoundDeviceSession();
+    hasDeviceSigningKey.mockResolvedValue(true);
+    createDeviceBindChallenge.mockResolvedValue({
+      challenge_id: "ch-1",
+      challenge: btoa("bind-message"),
+      expires_at: "2026-01-01T00:02:00.000Z",
+    });
+    bindDeviceSession.mockResolvedValue({ device_id: "d-me", status: "trusted" });
+  });
+
+  it("binds an unbound trusted fingerprint instead of reporting trusted", async () => {
+    listDevices.mockResolvedValue({
+      devices: [
+        {
+          device_id: "d-me",
+          device_fingerprint: fingerprint,
+          status: "trusted",
+        },
+      ],
+      pending: [],
+    });
+
+    const snapshot = await pollDeviceTrust(coreClient(), fingerprint, null);
+
+    expect(createDeviceBindChallenge).toHaveBeenCalledWith("d-me");
+    expect(bindDeviceSession).toHaveBeenCalled();
+    expect(snapshot.status).toBe("trusted");
+    expect(snapshot.deviceId).toBe("d-me");
+  });
+
+  it("keeps error when bind proof fails so recovery gate cannot open unbound", async () => {
+    listDevices.mockResolvedValue({
+      devices: [
+        {
+          device_id: "d-me",
+          device_fingerprint: fingerprint,
+          status: "trusted",
+        },
+      ],
+      pending: [],
+    });
+    bindDeviceSession.mockRejectedValue(new Error("DEVICE_BIND_PROOF_INVALID"));
+
+    const snapshot = await pollDeviceTrust(coreClient(), fingerprint, null);
+
+    expect(snapshot.status).toBe("error");
+    expect(snapshot.deviceId).toBe("d-me");
   });
 });

@@ -1,23 +1,26 @@
 /**
  * Extension device signing key for bind-session proofs.
- * Private key is a non-extractable Ed25519 CryptoKey in IndexedDB.
- * Legacy base64 seeds in chrome.storage.local are migrated once.
+ *
+ * Source of truth is a 32-byte Ed25519 seed in IndexedDB (not chrome.storage).
+ * A non-extractable WebCrypto CryptoKey mirror is stored alongside when possible.
+ * Signing never silently mints a new key.
  */
 
-import {
-  STORAGE_KEYS,
-} from "./storage.ts";
+import { ed25519Keypair, ed25519Sign, initCrypto, wipeBytes } from "@okkey/crypto";
+
+import { STORAGE_KEYS } from "./storage.ts";
 
 const DB_NAME = "okkey.extension.device.signing";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const STORE = "keys";
 const RECORD_ID = "current";
 
 type StoredDeviceSigningKey = {
   id: typeof RECORD_ID;
-  privateKey: CryptoKey;
-  publicKey: CryptoKey;
+  seed: ArrayBuffer;
   publicKeyB64: string;
+  privateKey?: CryptoKey;
+  publicKey?: CryptoKey;
 };
 
 function storageArea(): typeof browser.storage.local {
@@ -45,6 +48,10 @@ function base64UrlFromBytes(bytes: Uint8Array): string {
   return bytesToBase64(bytes).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
 }
 
+function copySeed(seed: ArrayBuffer): Uint8Array {
+  return new Uint8Array(seed.slice(0));
+}
+
 function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     if (typeof indexedDB === "undefined") {
@@ -63,6 +70,20 @@ function openDb(): Promise<IDBDatabase> {
   });
 }
 
+function isValidRecord(row: unknown): row is StoredDeviceSigningKey {
+  if (!row || typeof row !== "object") {
+    return false;
+  }
+  const record = row as StoredDeviceSigningKey;
+  return (
+    record.id === RECORD_ID &&
+    typeof record.publicKeyB64 === "string" &&
+    record.publicKeyB64.length > 0 &&
+    record.seed instanceof ArrayBuffer &&
+    record.seed.byteLength === 32
+  );
+}
+
 async function idbGet(): Promise<StoredDeviceSigningKey | null> {
   const db = await openDb();
   try {
@@ -70,8 +91,8 @@ async function idbGet(): Promise<StoredDeviceSigningKey | null> {
       const tx = db.transaction(STORE, "readonly");
       const req = tx.objectStore(STORE).get(RECORD_ID);
       req.onsuccess = () => {
-        const row = req.result as StoredDeviceSigningKey | undefined;
-        resolve(row?.privateKey && row.publicKey && row.publicKeyB64 ? row : null);
+        const row = req.result;
+        resolve(isValidRecord(row) ? row : null);
       };
       req.onerror = () => reject(req.error ?? new Error("indexedDB get failed"));
     });
@@ -143,6 +164,58 @@ async function clearLegacySeed(): Promise<void> {
   }
 }
 
+async function importCryptoMirror(
+  seed: Uint8Array,
+  publicKeyBytes: Uint8Array,
+): Promise<{ privateKey: CryptoKey; publicKey: CryptoKey } | null> {
+  try {
+    const jwk: JsonWebKey = {
+      kty: "OKP",
+      crv: "Ed25519",
+      d: base64UrlFromBytes(seed),
+      x: base64UrlFromBytes(publicKeyBytes),
+      ext: true,
+      key_ops: ["sign"],
+    };
+    const privateKey = await crypto.subtle.importKey("jwk", jwk, { name: "Ed25519" }, false, [
+      "sign",
+    ]);
+    const publicKey = await crypto.subtle.importKey(
+      "raw",
+      publicKeyBytes as BufferSource,
+      { name: "Ed25519" },
+      true,
+      ["verify"],
+    );
+    return { privateKey, publicKey };
+  } catch {
+    return null;
+  }
+}
+
+async function persistRecord(
+  seed: Uint8Array,
+  publicKeyBytes: Uint8Array,
+): Promise<StoredDeviceSigningKey> {
+  const seedCopy = new Uint8Array(32);
+  seedCopy.set(seed.subarray(0, 32));
+  const mirror = await importCryptoMirror(seedCopy, publicKeyBytes);
+  const record: StoredDeviceSigningKey = {
+    id: RECORD_ID,
+    seed: seedCopy.buffer,
+    publicKeyB64: bytesToBase64(publicKeyBytes),
+    privateKey: mirror?.privateKey,
+    publicKey: mirror?.publicKey,
+  };
+  await idbPut(record);
+  await clearLegacySeed();
+  const stored = await idbGet();
+  if (!stored || stored.publicKeyB64 !== record.publicKeyB64) {
+    throw new Error("device signing key failed to persist");
+  }
+  return stored;
+}
+
 async function importFromLegacySeed(
   secretB64: string,
   publicB64: string,
@@ -152,64 +225,45 @@ async function importFromLegacySeed(
   if (secret.length !== 32 || publicKeyBytes.length !== 32) {
     throw new Error("legacy device key lengths invalid");
   }
-  const jwk: JsonWebKey = {
-    kty: "OKP",
-    crv: "Ed25519",
-    d: base64UrlFromBytes(secret),
-    x: base64UrlFromBytes(publicKeyBytes),
-    ext: true,
-    key_ops: ["sign"],
-  };
-  const privateKey = await crypto.subtle.importKey("jwk", jwk, { name: "Ed25519" }, false, [
-    "sign",
-  ]);
-  const publicKey = await crypto.subtle.importKey(
-    "raw",
-    publicKeyBytes as BufferSource,
-    { name: "Ed25519" },
-    true,
-    ["verify"],
-  );
-  const record: StoredDeviceSigningKey = {
-    id: RECORD_ID,
-    privateKey,
-    publicKey,
-    publicKeyB64: bytesToBase64(publicKeyBytes),
-  };
-  await idbPut(record);
-  await clearLegacySeed();
-  return record;
+  try {
+    return await persistRecord(secret, publicKeyBytes);
+  } finally {
+    wipeBytes(secret);
+  }
 }
 
 async function generateAndStore(): Promise<StoredDeviceSigningKey> {
-  const pair = (await crypto.subtle.generateKey({ name: "Ed25519" }, false, [
-    "sign",
-    "verify",
-  ])) as CryptoKeyPair;
-  const rawPub = new Uint8Array(await crypto.subtle.exportKey("raw", pair.publicKey));
-  const record: StoredDeviceSigningKey = {
-    id: RECORD_ID,
-    privateKey: pair.privateKey,
-    publicKey: pair.publicKey,
-    publicKeyB64: bytesToBase64(rawPub),
-  };
-  await idbPut(record);
-  await clearLegacySeed();
-  return record;
+  await initCrypto();
+  const pair = ed25519Keypair();
+  try {
+    const seed = pair.slice(0, 32);
+    const publicKeyBytes = pair.slice(32, 64);
+    return await persistRecord(seed, publicKeyBytes);
+  } finally {
+    wipeBytes(pair);
+  }
 }
 
-async function loadOrCreate(): Promise<StoredDeviceSigningKey> {
+async function loadExisting(): Promise<StoredDeviceSigningKey | null> {
   const existing = await idbGet();
   if (existing) {
     return existing;
   }
   const legacy = await readLegacySeed();
-  if (legacy?.publicB64) {
+  if (legacy?.secretB64 && legacy.publicB64) {
     try {
       return await importFromLegacySeed(legacy.secretB64, legacy.publicB64);
     } catch {
-      /* mint new */
+      return null;
     }
+  }
+  return null;
+}
+
+async function loadOrCreate(): Promise<StoredDeviceSigningKey> {
+  const existing = await loadExisting();
+  if (existing) {
+    return existing;
   }
   return generateAndStore();
 }
@@ -234,13 +288,41 @@ export async function ensureExtensionDeviceSigningPublicKey(): Promise<string> {
 export async function signExtensionDeviceBindChallenge(
   message: Uint8Array,
 ): Promise<Uint8Array> {
-  const record = await loadOrCreate();
-  const signature = await crypto.subtle.sign(
-    "Ed25519",
-    record.privateKey,
-    message as BufferSource,
-  );
-  return new Uint8Array(signature);
+  const record = await loadExisting();
+  if (!record) {
+    throw new Error("device private key is missing");
+  }
+  const msg =
+    message.byteOffset === 0 && message.byteLength === message.buffer.byteLength
+      ? message
+      : message.slice();
+
+  if (record.privateKey && record.publicKey) {
+    try {
+      const signature = new Uint8Array(
+        await crypto.subtle.sign("Ed25519", record.privateKey, msg as BufferSource),
+      );
+      const ok = await crypto.subtle.verify(
+        "Ed25519",
+        record.publicKey,
+        signature,
+        msg as BufferSource,
+      );
+      if (ok) {
+        return signature;
+      }
+    } catch {
+      /* fall through */
+    }
+  }
+
+  await initCrypto();
+  const seed = copySeed(record.seed);
+  try {
+    return ed25519Sign(seed, msg);
+  } finally {
+    wipeBytes(seed);
+  }
 }
 
 export async function rotateExtensionDeviceSigningKey(): Promise<string> {

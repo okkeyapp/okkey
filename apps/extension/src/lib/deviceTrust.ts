@@ -57,6 +57,7 @@ async function bindExtensionDeviceWithProof(
   if (!(await hasExtensionDeviceSigningKey())) {
     throw new Error("device private key is missing");
   }
+  await initCrypto();
   const env = parseBrowserEnvironment(
     typeof navigator !== "undefined" ? navigator.userAgent : "",
     { channel: "Extension" },

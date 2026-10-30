@@ -2,6 +2,23 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { DEVICE_PRIVATE_KEY_KEY, DEVICE_PUBLIC_KEY_KEY } from "./storageKeys";
 
+const seed = new Uint8Array(32).fill(7);
+const publicKey = new Uint8Array(32).fill(9);
+const pair = new Uint8Array(64);
+pair.set(seed, 0);
+pair.set(publicKey, 32);
+
+vi.mock("@okkey/crypto", () => ({
+  initCrypto: vi.fn(async () => undefined),
+  ed25519Keypair: vi.fn(() => pair.slice()),
+  ed25519Sign: vi.fn((_secret: Uint8Array, message: Uint8Array) => {
+    const sig = new Uint8Array(64);
+    sig.set(message.slice(0, Math.min(32, message.length)), 0);
+    return sig;
+  }),
+  wipeBytes: vi.fn((bytes: Uint8Array) => bytes.fill(0)),
+}));
+
 describe("deviceSigningKey", () => {
   const memory = new Map<string, unknown>();
 
@@ -83,7 +100,7 @@ describe("deviceSigningKey", () => {
     vi.unstubAllGlobals();
   });
 
-  it("mints a non-extractable key and can sign", async () => {
+  it("mints a durable seed in IndexedDB and can sign without reminting", async () => {
     const mod = await import("./deviceSigningKey");
     const pub = await mod.ensureDeviceSigningPublicKey();
     expect(pub.length).toBeGreaterThan(10);
@@ -92,29 +109,26 @@ describe("deviceSigningKey", () => {
     expect(sig.byteLength).toBe(64);
     const local = (globalThis as { __local?: Map<string, string> }).__local!;
     expect(local.get(DEVICE_PRIVATE_KEY_KEY)).toBeUndefined();
+    const stored = memory.get("current") as { seed?: ArrayBuffer };
+    expect(stored.seed?.byteLength).toBe(32);
+  });
+
+  it("does not mint a new key when signing without stored material", async () => {
+    const mod = await import("./deviceSigningKey");
+    await expect(mod.signDeviceBindChallenge(new TextEncoder().encode("hello"))).rejects.toThrow(
+      /device private key is missing/i,
+    );
   });
 
   it("migrates legacy localStorage seed into IndexedDB and clears it", async () => {
-    const pair = (await crypto.subtle.generateKey({ name: "Ed25519" }, true, [
-      "sign",
-      "verify",
-    ])) as CryptoKeyPair;
-    const jwk = (await crypto.subtle.exportKey("jwk", pair.privateKey)) as JsonWebKey;
-    const rawPub = new Uint8Array(await crypto.subtle.exportKey("raw", pair.publicKey));
-    const b64 = (bytes: Uint8Array) =>
-      btoa(String.fromCharCode(...bytes));
-    const b64urlToBytes = (value: string) => {
-      const pad = value.length % 4 === 0 ? "" : "=".repeat(4 - (value.length % 4));
-      const b64std = (value + pad).replace(/-/g, "+").replace(/_/g, "/");
-      return Uint8Array.from(atob(b64std), (c) => c.charCodeAt(0));
-    };
+    const b64 = (bytes: Uint8Array) => btoa(String.fromCharCode(...bytes));
     const local = (globalThis as { __local?: Map<string, string> }).__local!;
-    local.set(DEVICE_PRIVATE_KEY_KEY, b64(b64urlToBytes(jwk.d!)));
-    local.set(DEVICE_PUBLIC_KEY_KEY, b64(rawPub));
+    local.set(DEVICE_PRIVATE_KEY_KEY, b64(seed));
+    local.set(DEVICE_PUBLIC_KEY_KEY, b64(publicKey));
 
     const mod = await import("./deviceSigningKey");
     const pub = await mod.ensureDeviceSigningPublicKey();
-    expect(pub).toBe(b64(rawPub));
+    expect(pub).toBe(b64(publicKey));
     expect(local.get(DEVICE_PRIVATE_KEY_KEY)).toBeUndefined();
     expect(local.get(DEVICE_PUBLIC_KEY_KEY)).toBeUndefined();
     await mod.clearDeviceSigningKey();

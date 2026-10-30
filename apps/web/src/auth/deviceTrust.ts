@@ -40,6 +40,13 @@ export type DeviceTrustSnapshot = {
 
 const PLACEHOLDER_SHARE_LEN = 32;
 
+/** Device id whose bind-session proof succeeded for this tab session. */
+let boundSessionDeviceId: string | null = null;
+
+export function clearBoundDeviceSession(): void {
+  boundSessionDeviceId = null;
+}
+
 function randomPlaceholderShare(): Uint8Array {
   const bytes = new Uint8Array(PLACEHOLDER_SHARE_LEN);
   crypto.getRandomValues(bytes);
@@ -57,6 +64,7 @@ async function bindDeviceWithProof(
   if (!(await hasDeviceSigningKey())) {
     throw new Error("device private key is missing");
   }
+  await initCrypto();
   const env = parseBrowserEnvironment(
     typeof navigator !== "undefined" ? navigator.userAgent : "",
   );
@@ -77,6 +85,7 @@ async function bindDeviceWithProof(
     client_type: env.clientType,
     user_agent: env.userAgent,
   });
+  boundSessionDeviceId = deviceId;
 }
 
 async function requestKeyRebindForLostSeed(
@@ -331,6 +340,8 @@ export async function resolveDeviceTrust(
       reclaimSoleTrusted: canReclaimSole,
     });
     if (registered.status === "trusted") {
+      // POST /devices still binds the Bearer when it creates a trusted row.
+      boundSessionDeviceId = registered.device_id;
       const after = await core.listDevices(fingerprint).catch(() => listed);
       return {
         status: "trusted",
@@ -452,11 +463,39 @@ export async function pollDeviceTrust(
 
   const trustedMatch = listed.devices.find((device) => fingerprintMatch(device, fingerprint));
   if (trustedMatch) {
-    return {
-      status: "trusted",
-      deviceId: trustedMatch.device_id,
-      approverDevices: listed.devices,
-    };
+    // Never report trusted for an unbound Bearer — that unlocked the vault UI while
+    // /account/recovery and vault-unlock stayed 401 after a failed bind-session proof.
+    if (boundSessionDeviceId === trustedMatch.device_id) {
+      return {
+        status: "trusted",
+        deviceId: trustedMatch.device_id,
+        approverDevices: listed.devices,
+      };
+    }
+    if (!(await hasDeviceSigningKey())) {
+      return {
+        status: "error",
+        deviceId: trustedMatch.device_id,
+        approverDevices: listed.devices,
+        needsRecovery: listed.devices.length <= 1,
+        errorMessage: "DEVICE_REBIND_REQUIRES_RECOVERY",
+      };
+    }
+    try {
+      await bindDeviceWithProof(core, trustedMatch.device_id);
+      return {
+        status: "trusted",
+        deviceId: trustedMatch.device_id,
+        approverDevices: listed.devices,
+      };
+    } catch (error: unknown) {
+      return {
+        status: "error",
+        deviceId: trustedMatch.device_id,
+        approverDevices: listed.devices,
+        errorMessage: error instanceof Error ? error.message : String(error),
+      };
+    }
   }
 
   const pendingMatch =

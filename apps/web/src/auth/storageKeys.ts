@@ -24,7 +24,7 @@ export const PROFILE_STORAGE_KEY = "okkey.profile.local";
 export const DEVICE_FINGERPRINT_KEY = "okkey.device.fingerprint";
 /**
  * Legacy localStorage: base64 device public key.
- * Prefer IndexedDB non-extractable CryptoKey via `deviceSigningKey.ts`.
+ * Prefer IndexedDB seed (+ optional CryptoKey mirror) via `deviceSigningKey.ts`.
  */
 export const DEVICE_PUBLIC_KEY_KEY = "okkey.device.public_key";
 /**
