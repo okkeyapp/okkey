@@ -1,5 +1,6 @@
 import type { IncomingMessage } from "node:http";
 import { json, readJsonBody, type RouteHandler } from "../http.ts";
+import { parseOptionalEntityId } from "../http-params.ts";
 import {
   parseAllowedFileExtensionsPayload,
   parseCapsulePoliciesPayload,
@@ -232,13 +233,29 @@ export function createWorkspaceSettingsRoute(
       if (tileColor !== undefined) {
         patch.tileColor = tileColor;
       }
-      const logoVaultId = parseOptionalStringPayload(body.logo_vault_id);
-      if (logoVaultId !== undefined) {
-        patch.logoVaultId = logoVaultId;
+      const logoVaultId = parseOptionalEntityId(body.logo_vault_id);
+      if (logoVaultId.kind === "invalid") {
+        json(ctx.res, 400, errorPayload("INVALID_LOGO_VAULT_ID", "logo_vault_id must be a snowflake entity id", ctx.requestId));
+        return;
       }
-      const logoAttachmentId = parseOptionalStringPayload(body.logo_attachment_id);
-      if (logoAttachmentId !== undefined) {
-        patch.logoAttachmentId = logoAttachmentId;
+      if (logoVaultId.kind === "clear") {
+        patch.logoVaultId = null;
+      } else if (logoVaultId.kind === "value") {
+        patch.logoVaultId = logoVaultId.id;
+      }
+      const logoAttachmentId = parseOptionalEntityId(body.logo_attachment_id);
+      if (logoAttachmentId.kind === "invalid") {
+        json(
+          ctx.res,
+          400,
+          errorPayload("INVALID_LOGO_ATTACHMENT_ID", "logo_attachment_id must be a snowflake entity id", ctx.requestId),
+        );
+        return;
+      }
+      if (logoAttachmentId.kind === "clear") {
+        patch.logoAttachmentId = null;
+      } else if (logoAttachmentId.kind === "value") {
+        patch.logoAttachmentId = logoAttachmentId.id;
       }
 
       const updated = await service.updateSettings(workspaceId, userId, patch);

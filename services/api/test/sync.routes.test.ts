@@ -108,7 +108,7 @@ async function dispatch(input: {
 test("GET /vaults/:vaultId/events returns events", async () => {
   const res = await dispatch({
     method: "GET",
-    url: "/vaults/v1/events?afterVersion=0",
+    url: "/vaults/1000000000000000001/events?afterVersion=0",
     headers: { "x-user-id": "u1" },
   });
 
@@ -126,7 +126,7 @@ test("GET /vaults/:vaultId/events returns events", async () => {
 test("POST /vaults/:vaultId/events appends event", async () => {
   const res = await dispatch({
     method: "POST",
-    url: "/vaults/v1/events",
+    url: "/vaults/1000000000000000001/events",
     headers: { "x-user-id": "u1" },
     body: {
       eventType: "ITEM_UPDATE",
@@ -144,7 +144,7 @@ test("POST /vaults/:vaultId/events appends event", async () => {
 test("sync routes require x-user-id", async () => {
   const res = await dispatch({
     method: "GET",
-    url: "/vaults/v1/events?afterVersion=0",
+    url: "/vaults/1000000000000000001/events?afterVersion=0",
   });
 
   assert.equal(res.statusCode, 401);
@@ -155,7 +155,7 @@ test("sync routes require x-user-id", async () => {
 test("POST /vaults/:vaultId/events validates required fields", async () => {
   const res = await dispatch({
     method: "POST",
-    url: "/vaults/v1/events",
+    url: "/vaults/1000000000000000001/events",
     headers: { "x-user-id": "u1" },
     body: { eventType: "ITEM_UPDATE" },
   });
@@ -168,7 +168,7 @@ test("POST /vaults/:vaultId/events validates required fields", async () => {
 test("sync routes map VERSION_MISMATCH", async () => {
   const res = await dispatch({
     method: "POST",
-    url: "/vaults/v1/events",
+    url: "/vaults/1000000000000000001/events",
     headers: { "x-user-id": "u1" },
     body: {
       eventType: "ITEM_UPDATE",
@@ -190,7 +190,7 @@ test("sync routes map VERSION_MISMATCH", async () => {
 test("GET /vaults/:vaultId/events maps ACCESS_DENIED", async () => {
   const res = await dispatch({
     method: "GET",
-    url: "/vaults/v1/events?afterVersion=0",
+    url: "/vaults/1000000000000000001/events?afterVersion=0",
     headers: { "x-user-id": "u1" },
     syncService: createSyncServiceStub({
       listEvents: async () => {
@@ -207,7 +207,7 @@ test("GET /vaults/:vaultId/events maps ACCESS_DENIED", async () => {
 test("GET /vaults/:vaultId/events maps VAULT_NOT_FOUND", async () => {
   const res = await dispatch({
     method: "GET",
-    url: "/vaults/v1/events?afterVersion=0",
+    url: "/vaults/1000000000000000001/events?afterVersion=0",
     headers: { "x-user-id": "u1" },
     syncService: createSyncServiceStub({
       listEvents: async () => {
@@ -224,7 +224,7 @@ test("GET /vaults/:vaultId/events maps VAULT_NOT_FOUND", async () => {
 test("POST /vaults/:vaultId/events maps ACCESS_DENIED", async () => {
   const res = await dispatch({
     method: "POST",
-    url: "/vaults/v1/events",
+    url: "/vaults/1000000000000000001/events",
     headers: { "x-user-id": "u1" },
     body: {
       eventType: "ITEM_UPDATE",
@@ -246,7 +246,7 @@ test("POST /vaults/:vaultId/events maps ACCESS_DENIED", async () => {
 test("POST /vaults/:vaultId/events maps PAYLOAD_TOO_LARGE", async () => {
   const res = await dispatch({
     method: "POST",
-    url: "/vaults/v1/events",
+    url: "/vaults/1000000000000000001/events",
     headers: { "x-user-id": "u1" },
     body: {
       eventType: "ITEM_UPDATE",
@@ -268,7 +268,7 @@ test("POST /vaults/:vaultId/events maps PAYLOAD_TOO_LARGE", async () => {
 test("POST /vaults/:vaultId/events maps CRYPTO_DOWNGRADE_NOT_ALLOWED", async () => {
   const res = await dispatch({
     method: "POST",
-    url: "/vaults/v1/events",
+    url: "/vaults/1000000000000000001/events",
     headers: { "x-user-id": "u1" },
     body: {
       eventType: "ITEM_UPDATE",
@@ -296,7 +296,7 @@ test("POST /vaults/:vaultId/events maps CRYPTO_DOWNGRADE_NOT_ALLOWED", async () 
 test("POST /vaults/:vaultId/events requires signature for VAULT_SHARE", async () => {
   const res = await dispatch({
     method: "POST",
-    url: "/vaults/v1/events",
+    url: "/vaults/1000000000000000001/events",
     headers: { "x-user-id": "u1" },
     body: {
       eventType: "VAULT_SHARE",
@@ -313,7 +313,7 @@ test("POST /vaults/:vaultId/events requires signature for VAULT_SHARE", async ()
 test("POST /vaults/:vaultId/events accepts signature for VAULT_KEY_ROTATION", async () => {
   const res = await dispatch({
     method: "POST",
-    url: "/vaults/v1/events",
+    url: "/vaults/1000000000000000001/events",
     headers: { "x-user-id": "u1" },
     body: {
       eventType: "VAULT_KEY_ROTATION",

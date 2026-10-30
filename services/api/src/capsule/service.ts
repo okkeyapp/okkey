@@ -18,7 +18,7 @@ import {
   type WorkspaceCapsulePolicies,
   type WorkspaceCapsulePoliciesDto,
 } from "@okkey/types";
-import { generateEntityId } from "../entity-id.ts";
+import { generateEntityId, isEntityId } from "../entity-id.ts";
 import type { ApiConfig } from "../config.ts";
 import { workspaceHasPlanFeature } from "../plan-entitlements.ts";
 import {
@@ -237,6 +237,9 @@ export class CapsuleService {
     creatorId: string,
     input: CreateCapsuleInput,
   ): Promise<CapsuleMetadataResponse> {
+    if (!isEntityId(workspaceId.trim())) {
+      throw new CapsuleServiceError("INVALID_WORKSPACE_ID", 400, "workspaceId must be a snowflake entity id");
+    }
     const operation = "capsule.create";
     const stopTimer = startCryptoOperationTimer(this.log, {
       operation,

@@ -85,14 +85,28 @@ for (const url of invalidUrls) {
 test("HttpApp decodes valid percent-encoded path params", async () => {
   const app = new HttpApp();
   let capturedId: string | undefined;
+  // Use a non-entity-id param name so this asserts decoding, not isEntityId.
+  app.route("GET", "/labels/:label", async (ctx) => {
+    capturedId = ctx.params.label;
+    json(ctx.res, 200, { ok: true });
+  });
+
+  const res = await dispatch(app, "GET", "/labels/hello%20world");
+  assert.equal(res.statusCode, 200);
+  assert.equal(capturedId, "hello world");
+});
+
+test("HttpApp accepts percent-encoded valid entity ids on vault routes", async () => {
+  const app = new HttpApp();
+  let capturedId: string | undefined;
   app.route("GET", "/vaults/:vaultId", async (ctx) => {
     capturedId = ctx.params.vaultId;
     json(ctx.res, 200, { ok: true });
   });
 
-  const res = await dispatch(app, "GET", "/vaults/hello%20world");
+  const res = await dispatch(app, "GET", "/vaults/1000000000%31");
   assert.equal(res.statusCode, 200);
-  assert.equal(capturedId, "hello world");
+  assert.equal(capturedId, "10000000001");
 });
 
 test("HttpApp top-level guard returns 500 without crashing when handler throws", async () => {

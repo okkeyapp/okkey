@@ -1,5 +1,10 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { generateEntityId } from "./entity-id.ts";
+import {
+  findInvalidEntityIdPathParam,
+  invalidEntityIdErrorCode,
+  normalizeEntityIdPathParams,
+} from "./http-params.ts";
 
 export interface RequestContext {
   requestId: string;
@@ -97,6 +102,18 @@ export class HttpApp {
         });
         return;
       }
+
+      const invalidId = findInvalidEntityIdPathParam(innerCtx.params);
+      if (invalidId) {
+        json(innerCtx.res, 400, {
+          error: invalidEntityIdErrorCode(invalidId.name),
+          message: `${invalidId.name} must be a snowflake entity id`,
+          requestId: innerCtx.requestId,
+        });
+        return;
+      }
+      // Pass trimmed entity ids to handlers so whitespace cannot bypass validation.
+      innerCtx.params = normalizeEntityIdPathParams(innerCtx.params);
 
       await route.handler(innerCtx);
     });

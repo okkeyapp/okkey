@@ -71,7 +71,7 @@ async function dispatch(input: {
 test("GET /vaults/:vaultId/key returns encrypted key", async () => {
   const res = await dispatch({
     method: "GET",
-    url: "/vaults/v1/key",
+    url: "/vaults/1000000000000000001/key",
     headers: { "x-user-id": "u1" },
   });
   assert.equal(res.statusCode, 200);

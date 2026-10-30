@@ -72,7 +72,7 @@ async function dispatch(input: {
   await handler({
     req,
     res: res as unknown as ServerResponse,
-    params: { workspaceId: input.workspaceId ?? "w1" },
+    params: { workspaceId: input.workspaceId ?? "1000000000000000001" },
     requestId: "req-1",
   });
   return res;

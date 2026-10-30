@@ -176,17 +176,25 @@ test("hasExportedRecoveryKey requires export acknowledgement", async () => {
 });
 
 test("vault and item routes reject an account without an exported recovery key", async () => {
-  const vault = await dispatch({ method: "GET", url: "/vaults/v1", exported: false });
+  const vault = await dispatch({
+    method: "GET",
+    url: "/vaults/1000000000000000001",
+    exported: false,
+  });
   assert.equal(vault.statusCode, 403);
   assert.equal(JSON.parse(vault.body).error, "RECOVERY_KEY_REQUIRED");
 
-  const events = await dispatch({ method: "GET", url: "/vaults/v1/events", exported: false });
+  const events = await dispatch({
+    method: "GET",
+    url: "/vaults/1000000000000000001/events",
+    exported: false,
+  });
   assert.equal(events.statusCode, 403);
   assert.equal(JSON.parse(events.body).error, "RECOVERY_KEY_REQUIRED");
 
   const list = await dispatch({
     method: "GET",
-    url: "/workspaces/w1/vaults",
+    url: "/workspaces/1000000000000000002/vaults",
     exported: false,
   });
   assert.equal(list.statusCode, 403);
@@ -194,7 +202,7 @@ test("vault and item routes reject an account without an exported recovery key",
 
   const personal = await dispatch({
     method: "GET",
-    url: "/workspaces/w1/personal-events",
+    url: "/workspaces/1000000000000000002/personal-events",
     exported: false,
   });
   assert.equal(personal.statusCode, 403);
@@ -204,7 +212,7 @@ test("vault and item routes reject an account without an exported recovery key",
 test("capsule routes reject an account without an exported recovery key", async () => {
   const list = await dispatch({
     method: "GET",
-    url: "/workspaces/w1/capsules",
+    url: "/workspaces/1000000000000000002/capsules",
     exported: false,
     includeCapsules: true,
   });
@@ -213,7 +221,7 @@ test("capsule routes reject an account without an exported recovery key", async 
 
   const owner = await dispatch({
     method: "GET",
-    url: "/capsules/c1/owner",
+    url: "/capsules/1000000000000000003/owner",
     exported: false,
     includeCapsules: true,
   });
@@ -233,7 +241,7 @@ test("capsule routes reject an account without an exported recovery key", async 
 test("guest capsule metadata stays available without a recovery key", async () => {
   const meta = await dispatch({
     method: "GET",
-    url: "/capsules/c1",
+    url: "/capsules/1000000000000000003",
     exported: false,
     includeCapsules: true,
     headers: {},
@@ -243,7 +251,11 @@ test("guest capsule metadata stays available without a recovery key", async () =
 });
 
 test("vault routes proceed after a recovery key is exported", async () => {
-  const vault = await dispatch({ method: "GET", url: "/vaults/v1", exported: true });
+  const vault = await dispatch({
+    method: "GET",
+    url: "/vaults/1000000000000000001",
+    exported: true,
+  });
   assert.equal(vault.statusCode, 200);
   assert.equal(JSON.parse(vault.body).id, "v1");
 });
@@ -251,7 +263,7 @@ test("vault routes proceed after a recovery key is exported", async () => {
 test("capsule routes proceed after a recovery key is exported", async () => {
   const list = await dispatch({
     method: "GET",
-    url: "/workspaces/w1/capsules",
+    url: "/workspaces/1000000000000000002/capsules",
     exported: true,
     includeCapsules: true,
   });
@@ -276,7 +288,7 @@ test("missing user id is not reported as a missing recovery key", async () => {
   });
   const req = {
     method: "GET",
-    url: "/vaults/v1",
+    url: "/vaults/1000000000000000001",
     headers: {},
   } as IncomingMessage;
   const res = new MockResponse();
