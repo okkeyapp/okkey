@@ -57,6 +57,41 @@ function assertPreviewInsideBody(html: string, previewText: string): void {
   );
 }
 
+/** Dual color-scheme + dark media styles on every shell-backed template. */
+function assertEmailDarkModeSupport(html: string): void {
+  assert.match(html, /<meta\s+name="color-scheme"\s+content="light dark"\s*\/?>/i);
+  assert.match(html, /<meta\s+name="supported-color-schemes"\s+content="light dark"\s*\/?>/i);
+  assert.match(html, /prefers-color-scheme:\s*dark/i);
+  assert.match(html, /okkey-canvas/);
+  assert.match(html, /okkey-card/);
+  assert.match(html, /#0f172a/i);
+  assert.match(html, /#1e293b/i);
+  // react-email Body copies `style` onto an inner wrapper <td> without className.
+  // That wrapper must not carry the light canvas fill (would frame the card in dark mode).
+  // Preview may sit between <body> and the wrapper <table> (first child of Body).
+  const bodyOpen = html.search(/<body\b[^>]*class="[^"]*\bokkey-canvas\b[^"]*"/i);
+  assert.ok(bodyOpen >= 0, "body must carry okkey-canvas");
+  const bodyWrapper = html.slice(bodyOpen).match(
+    /<table\b[^>]*>\s*<tbody>\s*<tr>\s*<td\b([^>]*)>/i,
+  );
+  assert.ok(bodyWrapper, "expected react-email Body wrapper <td>");
+  assert.equal(
+    /#f1f5f9/i.test(bodyWrapper[1] ?? ""),
+    false,
+    "Body wrapper <td> must not inline light canvas background",
+  );
+  // Every td that still carries the light canvas fill must also have okkey-canvas.
+  for (const match of html.matchAll(/<td\b([^>]*)>/gi)) {
+    const attrs = match[1] ?? "";
+    if (!/#f1f5f9/i.test(attrs)) continue;
+    assert.match(
+      attrs,
+      /class=(["'])[^"']*\bokkey-canvas\b[^"']*\1/i,
+      `canvas-colored <td> must include okkey-canvas; got: <td${attrs}>`,
+    );
+  }
+}
+
 /** Shared two-line footer required on every transactional template. */
 function assertSharedEmailFooter(
   locale: "en" | "ru",
@@ -85,7 +120,7 @@ function assertHtmlDocumentMeta(
 ): void {
   assert.match(rendered.html, new RegExp(`lang="${locale}"`));
   assert.match(rendered.html, /<meta\s+name="viewport"\s+content="width=device-width,\s*initial-scale=1\.0"\s*\/?>/i);
-  assert.match(rendered.html, /<meta\s+name="color-scheme"\s+content="light"\s*\/?>/i);
+  assert.match(rendered.html, /<meta\s+name="color-scheme"\s+content="light dark"\s*\/?>/i);
   const titleMatch = rendered.html.match(/<title>([^<]*)<\/title>/i);
   assert.ok(titleMatch, `${locale} html must include <title>`);
   const decodedTitle = titleMatch[1]
@@ -117,6 +152,7 @@ test("renderEmailTemplate auth_email_code en and ru", async () => {
   assert.match(en.html, /cid:okkey-mark/);
   assert.equal(en.html.includes("data:image"), false);
   assert.match(en.html, /#f1f5f9/i);
+  assertEmailDarkModeSupport(en.html);
   assert.match(en.text, /^Okkey\b/m);
   const enPreview = formatEmailMessage("en", "email.auth.signInCode.preview", { minutes: 2 });
   assert.equal(enPreview, "Valid for 2 minutes. Never share this code.");
@@ -154,6 +190,7 @@ test("renderEmailTemplate auth_email_code en and ru", async () => {
   assert.match(ru.html, /654321/);
   assert.equal(ru.html.includes("654 321"), false);
   assertHtmlDocumentMeta("ru", ru);
+  assertEmailDarkModeSupport(ru.html);
   assert.match(ru.text, /^Okkey\b/m);
   const ruPreview = formatEmailMessage("ru", "email.auth.signInCode.preview", { minutes: 1 });
   assert.equal(ruPreview, "Код действует 1 минуту. Никому его не сообщайте.");
@@ -224,7 +261,7 @@ test("renderEmailTemplate device_approval_request en and ru", async () => {
   assert.match(en.text, /Settings → Devices/);
   assert.match(en.html, /Mobile · App · Android/);
   assert.match(en.html, /Okkey/);
-  assert.match(en.html, /#3B82F6/i);
+  assert.match(en.html, /#2563EB/i);
   assert.match(en.html, /Oct 16, 2026, 7:09 AM UTC/);
   assertPreviewInsideBody(en.html, formatEmailMessage("en", "email.device.approval.lead", {}));
   assertSharedEmailFooter("en", en);
@@ -252,7 +289,7 @@ test("renderEmailTemplate workspace_invite en and ru", async () => {
   assert.match(en.subject, /Invitation|workspace/i);
   assert.match(en.html, /token-abc/);
   assert.match(en.html, /Sam/);
-  assert.match(en.html, /#3B82F6/i);
+  assert.match(en.html, /#2563EB/i);
   assertNoMustachePlaceholders(en.text);
 
   const ru = await renderEmailTemplate("workspace_invite", "ru", workspaceVars);
@@ -723,6 +760,7 @@ test("plan_change_request uses EmailShell and shared footer", async () => {
   assert.match(en.html, /cid:okkey-mark/);
   assert.match(en.html, /#f1f5f9/i);
   assertHtmlDocumentMeta("en", en);
+  assertEmailDarkModeSupport(en.html);
   assert.match(en.text, /^Okkey\b/m);
   assertSharedEmailFooter("en", en);
   assert.match(en.text, /Requested plan: ENTERPRISE/);
@@ -731,6 +769,7 @@ test("plan_change_request uses EmailShell and shared footer", async () => {
     locale: "ru",
   });
   assertHtmlDocumentMeta("ru", ru);
+  assertEmailDarkModeSupport(ru.html);
   assert.match(ru.text, /^Okkey\b/m);
   assertSharedEmailFooter("ru", ru);
 });

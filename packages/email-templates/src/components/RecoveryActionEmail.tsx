@@ -2,7 +2,13 @@ import { Section, Text } from "@react-email/components";
 import * as React from "react";
 
 import { EmailPrimaryButton } from "./EmailPrimaryButton.js";
-import { EMAIL_PRIMARY_TEXT, EMAIL_SECONDARY_TEXT, EmailShell } from "./EmailShell.js";
+import {
+  EMAIL_CLASS_INK,
+  EMAIL_CLASS_MUTED,
+  EMAIL_PRIMARY_TEXT,
+  EMAIL_SECONDARY_TEXT,
+  EmailShell,
+} from "./EmailShell.js";
 import { EmailStandardFooter } from "./EmailStandardFooter.js";
 
 export interface RecoveryActionEmailProps {
@@ -45,20 +51,36 @@ export function RecoveryActionEmail({
       preview={lead}
       footer={<EmailStandardFooter noReply={noReply} ignoreIfMistake={ignoreIfMistake} />}
     >
-      <Text style={leadStyle}>{lead}</Text>
+      <Text className={EMAIL_CLASS_INK} style={leadStyle}>
+        {lead}
+      </Text>
       <Section style={listStyle}>
-        <Text style={metaStyle}>{detailLine}</Text>
-        {requestLine ? <Text style={metaStyle}>{requestLine}</Text> : null}
-        {expiresLine ? <Text style={metaStyle}>{expiresLine}</Text> : null}
+        <Text className={EMAIL_CLASS_MUTED} style={metaStyle}>
+          {detailLine}
+        </Text>
+        {requestLine ? (
+          <Text className={EMAIL_CLASS_MUTED} style={metaStyle}>
+            {requestLine}
+          </Text>
+        ) : null}
+        {expiresLine ? (
+          <Text className={EMAIL_CLASS_MUTED} style={metaStyle}>
+            {expiresLine}
+          </Text>
+        ) : null}
       </Section>
       {hasUrl ? (
         <Section style={ctaWrapStyle}>
           <EmailPrimaryButton href={helpUrl}>{ctaLabel}</EmailPrimaryButton>
         </Section>
       ) : (
-        <Text style={noteStyle}>{noteNoUrl}</Text>
+        <Text className={EMAIL_CLASS_MUTED} style={noteStyle}>
+          {noteNoUrl}
+        </Text>
       )}
-      <Text style={warningStyle}>{noteIgnore}</Text>
+      <Text className={EMAIL_CLASS_MUTED} style={warningStyle}>
+        {noteIgnore}
+      </Text>
     </EmailShell>
   );
 }

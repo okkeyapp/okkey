@@ -1,7 +1,7 @@
 import { Text } from "@react-email/components";
 import * as React from "react";
 
-import { EMAIL_SECONDARY_TEXT } from "./EmailShell.js";
+import { EMAIL_CLASS_MUTED, EMAIL_SECONDARY_TEXT } from "./EmailShell.js";
 
 export interface EmailStandardFooterProps {
   noReply: string;
@@ -12,8 +12,12 @@ export interface EmailStandardFooterProps {
 export function EmailStandardFooter({ noReply, ignoreIfMistake }: EmailStandardFooterProps) {
   return (
     <>
-      <Text style={footnoteStyleFirst}>{noReply}</Text>
-      <Text style={footnoteStyleLast}>{ignoreIfMistake}</Text>
+      <Text className={EMAIL_CLASS_MUTED} style={footnoteStyleFirst}>
+        {noReply}
+      </Text>
+      <Text className={EMAIL_CLASS_MUTED} style={footnoteStyleLast}>
+        {ignoreIfMistake}
+      </Text>
     </>
   );
 }
