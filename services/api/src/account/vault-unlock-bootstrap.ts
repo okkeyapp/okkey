@@ -27,21 +27,7 @@ export interface VaultUnlockBootstrapWire {
 
 export interface VaultUnlockBootstrapDeps {
   users: Pick<UsersRepository, "loadVaultUnlockRow">;
-  devices: Pick<DevicesRepository, "findTrustedDeviceShareForUnlock">;
-}
-
-/**
- * Same fingerprint rules as device register / findTrustedDeviceShareForUnlock:
- * legacy hex (32–128) or structured `web_app-chrome-macos-14.5`.
- */
-export function isUnlockBootstrapFingerprint(value: string): boolean {
-  const trimmed = value.trim();
-  if (/^[0-9a-f]{32,128}$/i.test(trimmed)) {
-    return true;
-  }
-  return /^(web_app|mobile_app|desktop_app|extension)-[a-z0-9]+-[a-z0-9]+-[a-z0-9.]+$/i.test(
-    trimmed,
-  );
+  devices: Pick<DevicesRepository, "findTrustedDeviceShareById">;
 }
 
 export class VaultUnlockBootstrapService {
@@ -53,24 +39,22 @@ export class VaultUnlockBootstrapService {
     this.devices = deps.devices;
   }
 
-  async getForUser(userId: string, deviceFingerprint: string | undefined): Promise<VaultUnlockBootstrapWire> {
-    const row = await this.users.loadVaultUnlockRow(userId);
+  /**
+   * Key material for the trusted device bound to the current session.
+   * The caller does not choose a device by fingerprint.
+   */
+  async getForBoundDevice(input: {
+    userId: string;
+    deviceId: string;
+  }): Promise<VaultUnlockBootstrapWire> {
+    const row = await this.users.loadVaultUnlockRow(input.userId);
     if (!row) {
       throw new VaultUnlockBootstrapError("USER_NOT_FOUND", 404, "user not found");
     }
 
-    const fp = deviceFingerprint?.trim();
-    if (!fp || !isUnlockBootstrapFingerprint(fp)) {
-      throw new VaultUnlockBootstrapError(
-        "VAULT_UNLOCK_INVALID_FINGERPRINT",
-        400,
-        "device_fingerprint must be hex (32–128) or structured web_app-… id",
-      );
-    }
-
-    const deviceShare = await this.devices.findTrustedDeviceShareForUnlock(
-      userId,
-      fp.toLowerCase(),
+    const deviceShare = await this.devices.findTrustedDeviceShareById(
+      input.userId,
+      input.deviceId,
     );
     if (!deviceShare) {
       throw new VaultUnlockBootstrapError(

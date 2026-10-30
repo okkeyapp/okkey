@@ -34,6 +34,8 @@ export interface ResolvedAccessToken {
   scope: string | null;
   /** Present so callers can revoke the exact session (e.g. after recovery ack). */
   tokenHash: string;
+  /** Absolute expiry of this access token. Null for header-user auth. */
+  expiresAt: string | null;
 }
 
 export interface SessionServiceDeps {
@@ -106,6 +108,7 @@ export class SessionService {
       deviceId: row.deviceId,
       scope: isFullSessionScope(row.scope) ? null : row.scope,
       tokenHash: this.hashAccessToken(trimmed),
+      expiresAt: row.expiresAt,
     };
   }
 

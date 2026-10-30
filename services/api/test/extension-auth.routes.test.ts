@@ -69,6 +69,7 @@ test("POST /auth/extension/code accepts an unbound full session from email login
         deviceId: null,
         scope: null,
         tokenHash: "hash:tok-unbound",
+        expiresAt: "2099-01-01T00:00:00.000Z",
       };
     },
   } as unknown as SessionService;

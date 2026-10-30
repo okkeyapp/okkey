@@ -74,6 +74,7 @@ export function createResolveAuthenticatedSession(
           deviceId: null,
           scope: null,
           tokenHash: "",
+          expiresAt: null,
         };
       }
     }
