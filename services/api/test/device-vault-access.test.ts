@@ -99,6 +99,20 @@ test("vault routes reject pending, revoked, and blocked devices and keep device 
       hasExportedRecoveryKey: async () => true,
       getKeyWrap: async () => ({ ok: true }),
     } as unknown as AccountRecoveryService,
+    usersRepository: {
+      loadAccountProfile: async () => ({
+        email: "a@b.c",
+        firstName: "A",
+        lastName: "B",
+        locale: "en",
+        billingRegion: null,
+        vaultIdleLockSeconds: 900,
+        masterPasswordChangedAt: "2026-01-01T00:00:00.000Z",
+      }),
+      updateAccountProfile: async () => {
+        throw new Error("profile patch must not run before the device is trusted");
+      },
+    } as never,
   });
 
   const paths: Array<{ method: string; url: string; body?: unknown }> = [
@@ -139,6 +153,10 @@ test("vault routes reject pending, revoked, and blocked devices and keep device 
     }
     const devices = await call("GET", "/devices");
     assert.equal(devices, 200, `${status} GET /devices`);
+    const profile = await call("GET", "/account/profile");
+    assert.equal(profile, 200, `${status} GET /account/profile`);
+    const profilePatch = await call("PATCH", "/account/profile");
+    assert.equal(profilePatch, 401, `${status} PATCH /account/profile`);
   }
 
   deviceStatus = "trusted";
