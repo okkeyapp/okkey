@@ -1,8 +1,10 @@
-import { randomBytes } from "node:crypto";
-import { ed25519Verify } from "@okkey/crypto";
+import { createPublicKey, randomBytes, verify as verifyEd25519 } from "node:crypto";
 
 export const DEVICE_BIND_CHALLENGE_TTL_SECONDS = 120;
 const BIND_DOMAIN = "okkey-device-bind-v1";
+
+/** SPKI DER prefix for a raw 32-byte Ed25519 public key (RFC 8410). */
+const ED25519_SPKI_PREFIX = Buffer.from("302a300506032b6570032100", "hex");
 
 export type DeviceBindChallengeRecord = {
   messageB64: string;
@@ -77,6 +79,13 @@ function decodeBase64(value: string): Uint8Array | null {
   return new Uint8Array(bytes);
 }
 
+/**
+ * Verify an Ed25519 bind-session proof.
+ *
+ * Uses Node's crypto (not `@okkey/crypto` WASM): the API process does not always
+ * have WASM initialized, and a thrown WASM error was previously swallowed as
+ * DEVICE_BIND_PROOF_INVALID for otherwise-valid client signatures.
+ */
 export function verifyDeviceBindSignature(
   publicKeyB64: string,
   message: Uint8Array,
@@ -88,7 +97,12 @@ export function verifyDeviceBindSignature(
     return false;
   }
   try {
-    return ed25519Verify(publicKey, message, signature);
+    const keyObject = createPublicKey({
+      key: Buffer.concat([ED25519_SPKI_PREFIX, Buffer.from(publicKey)]),
+      format: "der",
+      type: "spki",
+    });
+    return verifyEd25519(null, Buffer.from(message), keyObject, Buffer.from(signature));
   } catch {
     return false;
   }
