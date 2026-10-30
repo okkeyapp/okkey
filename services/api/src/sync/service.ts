@@ -185,6 +185,9 @@ export class SyncService {
     userId: string,
     afterVersion: number,
   ): Promise<SyncEventResponse[]> {
+    if (!isEntityId(vaultId.trim())) {
+      throw new SyncServiceError("INVALID_VAULT_ID", 400, "vaultId must be a snowflake entity id");
+    }
     if (!Number.isInteger(afterVersion) || afterVersion < 0) {
       throw new SyncServiceError(
         "SYNC_BAD_REQUEST",
@@ -203,6 +206,9 @@ export class SyncService {
     userId: string,
     input: SyncAppendEventInput,
   ): Promise<SyncEventResponse> {
+    if (!isEntityId(vaultId.trim())) {
+      throw new SyncServiceError("INVALID_VAULT_ID", 400, "vaultId must be a snowflake entity id");
+    }
     const operation = "sync.append";
     const stopTimer = startCryptoOperationTimer(this.log, {
       operation,

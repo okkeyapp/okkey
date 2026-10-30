@@ -10,6 +10,7 @@ import {
   workspaceHasPlanFeature,
   type PlanEntitlementRuntimeConfig,
 } from "../plan-entitlements.ts";
+import { isEntityId } from "../entity-id.ts";
 
 export class VaultServiceError extends Error {
   readonly code: string;
@@ -70,6 +71,9 @@ export class VaultService {
     workspaceId: string,
     userId: string,
   ): Promise<VaultRecord[]> {
+    if (!isEntityId(workspaceId.trim())) {
+      throw new VaultServiceError("INVALID_WORKSPACE_ID", 400, "workspaceId must be a snowflake entity id");
+    }
     const workspace = await this.requireWorkspaceAccess(workspaceId, userId);
     const canManageSettings = await this.canManageWorkspaceVaultSettings(workspace, userId);
     if (canManageSettings) {
@@ -81,6 +85,9 @@ export class VaultService {
   }
 
   async getVault(vaultId: string, userId: string): Promise<VaultRecord> {
+    if (!isEntityId(vaultId.trim())) {
+      throw new VaultServiceError("INVALID_VAULT_ID", 400, "vaultId must be a snowflake entity id");
+    }
     const vault = await this.vaults.findById(vaultId);
     if (!vault) {
       throw new VaultServiceError("VAULT_NOT_FOUND", 404, "vault not found");
@@ -99,6 +106,9 @@ export class VaultService {
     actorId: string,
     input: VaultUpdateInput,
   ): Promise<VaultRecord> {
+    if (!isEntityId(vaultId.trim())) {
+      throw new VaultServiceError("INVALID_VAULT_ID", 400, "vaultId must be a snowflake entity id");
+    }
     const vault = await this.vaults.findById(vaultId);
     if (!vault) {
       throw new VaultServiceError("VAULT_NOT_FOUND", 404, "vault not found");
@@ -139,6 +149,9 @@ export class VaultService {
   }
 
   async deleteVault(vaultId: string, actorId: string): Promise<void> {
+    if (!isEntityId(vaultId.trim())) {
+      throw new VaultServiceError("INVALID_VAULT_ID", 400, "vaultId must be a snowflake entity id");
+    }
     const vault = await this.vaults.findById(vaultId);
     if (!vault) {
       throw new VaultServiceError("VAULT_NOT_FOUND", 404, "vault not found");
