@@ -30,20 +30,6 @@ export interface VaultUnlockBootstrapDeps {
   devices: Pick<DevicesRepository, "findTrustedDeviceShareById">;
 }
 
-/**
- * Same fingerprint rules as device register / findTrustedDeviceShareForUnlock:
- * legacy hex (32–128) or structured `web_app-chrome-macos-14.5`.
- */
-export function isUnlockBootstrapFingerprint(value: string): boolean {
-  const trimmed = value.trim();
-  if (/^[0-9a-f]{32,128}$/i.test(trimmed)) {
-    return true;
-  }
-  return /^(web_app|mobile_app|desktop_app|extension)-[a-z0-9]+-[a-z0-9]+-[a-z0-9.]+$/i.test(
-    trimmed,
-  );
-}
-
 export class VaultUnlockBootstrapService {
   private readonly users: VaultUnlockBootstrapDeps["users"];
   private readonly devices: VaultUnlockBootstrapDeps["devices"];
@@ -54,40 +40,23 @@ export class VaultUnlockBootstrapService {
   }
 
   /**
-   * Key material for the device bound to the current session.
-   * A query fingerprint may only confirm that device; it never selects another row.
+   * Key material for the trusted device bound to the current session.
+   * The caller does not choose a device by fingerprint.
    */
   async getForBoundDevice(input: {
     userId: string;
     deviceId: string;
-    queryFingerprint?: string;
   }): Promise<VaultUnlockBootstrapWire> {
     const row = await this.users.loadVaultUnlockRow(input.userId);
     if (!row) {
       throw new VaultUnlockBootstrapError("USER_NOT_FOUND", 404, "user not found");
     }
 
-    const queryFingerprint = input.queryFingerprint?.trim();
-    if (queryFingerprint && !isUnlockBootstrapFingerprint(queryFingerprint)) {
-      throw new VaultUnlockBootstrapError(
-        "VAULT_UNLOCK_INVALID_FINGERPRINT",
-        400,
-        "device_fingerprint must be hex (32–128) or structured web_app-… id",
-      );
-    }
-
-    const device = await this.devices.findTrustedDeviceShareById(input.userId, input.deviceId);
-    if (!device) {
-      throw new VaultUnlockBootstrapError(
-        "VAULT_UNLOCK_DEVICE_NOT_FOUND",
-        404,
-        "no trusted device match for unlock bootstrap",
-      );
-    }
-    if (
-      queryFingerprint &&
-      queryFingerprint.toLowerCase() !== device.deviceFingerprint.trim().toLowerCase()
-    ) {
+    const deviceShare = await this.devices.findTrustedDeviceShareById(
+      input.userId,
+      input.deviceId,
+    );
+    if (!deviceShare) {
       throw new VaultUnlockBootstrapError(
         "VAULT_UNLOCK_DEVICE_NOT_FOUND",
         404,
@@ -99,7 +68,7 @@ export class VaultUnlockBootstrapService {
 
     return {
       server_key_share: Buffer.from(row.serverKeyShare).toString("base64"),
-      device_share: Buffer.from(device.deviceShare).toString("base64"),
+      device_share: Buffer.from(deviceShare).toString("base64"),
       password_kdf_salt: Buffer.from(row.passwordKdfSalt).toString("base64"),
       password_kdf_params_version: row.passwordKdfParamsVersion,
       encrypted_private_key: {

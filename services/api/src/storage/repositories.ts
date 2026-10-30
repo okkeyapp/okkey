@@ -1789,52 +1789,14 @@ export class DevicesRepository {
     }
   }
 
-  /**
-   * Trusted device_share (B) for unlock bootstrap.
-   * Only returns a share when `fingerprint` matches a trusted device row.
-   * No sole-device fallback — a new browser fingerprint must register and be approved first.
-   */
-  async findTrustedDeviceShareForUnlock(
-    userId: string,
-    fingerprint: string | null,
-  ): Promise<Uint8Array | null> {
-    const norm = fingerprint?.trim().toLowerCase() ?? null;
-    if (
-      !norm ||
-      !(
-        /^[0-9a-f]{32,128}$/i.test(norm) ||
-        /^(web_app|mobile_app|desktop_app|extension)-[a-z0-9]+-[a-z0-9]+-[a-z0-9.]+$/i.test(norm)
-      )
-    ) {
-      return null;
-    }
-
-    const rows = await this.db.query<{ device_share: Buffer }>(
-      `
-        SELECT device_share
-        FROM devices
-        WHERE user_id = $1::bigint
-          AND device_fingerprint = $2
-          AND status = 'trusted'
-        ORDER BY last_seen_at DESC NULLS LAST, created_at DESC
-        LIMIT 1
-      `,
-      [userId, norm],
-    );
-    return rows[0] ? Uint8Array.from(rows[0].device_share) : null;
-  }
-
-  /** Share of one trusted device row. Does not search by fingerprint. */
+  /** Share of the trusted device bound to the session. Does not search by fingerprint. */
   async findTrustedDeviceShareById(
     userId: string,
     deviceId: string,
-  ): Promise<{ deviceShare: Uint8Array; deviceFingerprint: string } | null> {
-    const rows = await this.db.query<{
-      device_share: Buffer;
-      device_fingerprint: string;
-    }>(
+  ): Promise<Uint8Array | null> {
+    const rows = await this.db.query<{ device_share: Buffer }>(
       `
-        SELECT device_share, device_fingerprint
+        SELECT device_share
         FROM devices
         WHERE id = $1
           AND user_id = $2::bigint
@@ -1844,13 +1806,7 @@ export class DevicesRepository {
       [deviceId, userId],
     );
     const row = rows[0];
-    if (!row) {
-      return null;
-    }
-    return {
-      deviceShare: Uint8Array.from(row.device_share),
-      deviceFingerprint: row.device_fingerprint,
-    };
+    return row ? Uint8Array.from(row.device_share) : null;
   }
 
   async isTrustedDevice(userId: string, deviceId: string): Promise<boolean> {
