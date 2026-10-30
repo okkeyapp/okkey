@@ -120,6 +120,18 @@ export function buildDeviceApprovalEmailProps(
   };
 }
 
+function resolveWorkspaceInviteRoleName(
+  locale: EmailLocale,
+  variables: WorkspaceInviteVariables,
+): string {
+  const builtin = variables.roleBuiltinKey;
+  if (builtin === "owner" || builtin === "admin" || builtin === "user") {
+    return formatEmailMessage(locale, `email.workspaceInvite.roles.${builtin}`, {});
+  }
+  const custom = typeof variables.roleName === "string" ? variables.roleName.trim() : "";
+  return custom;
+}
+
 export function buildWorkspaceInviteEmailProps(
   locale: EmailLocale,
   variables: WorkspaceInviteVariables,
@@ -129,6 +141,26 @@ export function buildWorkspaceInviteEmailProps(
     inviter: variables.inviterDisplayName,
     workspaceName: variables.workspaceName,
   });
+  const roleDisplayName = resolveWorkspaceInviteRoleName(locale, variables);
+  const roleLine = roleDisplayName
+    ? formatEmailMessage(locale, "email.workspaceInvite.roleLine", {
+        roleName: roleDisplayName,
+      })
+    : "";
+  const inviterEmail =
+    typeof variables.inviterEmail === "string" ? variables.inviterEmail.trim() : "";
+  const inviterEmailLine = inviterEmail
+    ? formatEmailMessage(locale, "email.workspaceInvite.inviterEmailLine", {
+        inviterEmail,
+      })
+    : "";
+  const expiresAtIso =
+    typeof variables.expiresAtIso === "string" ? variables.expiresAtIso.trim() : "";
+  const expiresLine = expiresAtIso
+    ? formatEmailMessage(locale, "email.workspaceInvite.expiresLine", {
+        when: formatUtcWhen(locale, expiresAtIso),
+      })
+    : "";
   const ctaLabel = formatEmailMessage(locale, "email.workspaceInvite.ctaAccept", {});
   const standard = buildEmailStandardFooterCopy(locale);
   return {
@@ -137,6 +169,9 @@ export function buildWorkspaceInviteEmailProps(
       workspaceName: variables.workspaceName,
     }),
     intro,
+    roleLine,
+    inviterEmailLine,
+    expiresLine,
     ctaLabel,
     inviteUrl,
     noReply: standard.noReply,
@@ -336,7 +371,11 @@ export const previewSampleDeviceApproval: DeviceApprovalRequestVariables = {
 
 export const previewSampleWorkspaceInvite: WorkspaceInviteVariables = {
   inviterDisplayName: "Alex",
+  inviterEmail: "alex@example.com",
   workspaceName: "Design",
+  roleBuiltinKey: "admin",
+  roleName: "Admin",
+  expiresAtIso: "2026-01-29T10:00:00.000Z",
   inviteUrl: "https://app.okkey.local/invite/sample-token",
 };
 

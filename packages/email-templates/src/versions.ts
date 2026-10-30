@@ -2,7 +2,7 @@
 export const EMAIL_TEMPLATE_VERSIONS = {
   auth_email_code: 14,
   device_approval_request: 15,
-  workspace_invite: 10,
+  workspace_invite: 12,
   two_factor_enabled: 12,
   two_factor_disabled: 9,
   two_factor_backup_codes_regenerated: 12,
