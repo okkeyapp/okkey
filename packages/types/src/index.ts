@@ -1213,6 +1213,24 @@ export interface SyncAppendEventRequestDto {
   itemDeletedAtMs?: number;
 }
 
+/**
+ * Max events accepted by `POST /vaults/:vaultId/events/batch`.
+ * 300 imported records → 3 HTTP requests at this size.
+ */
+export const SYNC_EVENTS_BATCH_MAX = 100;
+
+/** `POST /vaults/:vaultId/events/batch` request body. */
+export interface SyncAppendEventsBatchRequestDto {
+  events: SyncAppendEventRequestDto[];
+}
+
+/** `POST /vaults/:vaultId/events/batch` success body. */
+export interface SyncAppendEventsBatchResponseDto {
+  vaultId: EntityId;
+  events: SyncEventWireDto[];
+  latestVersion: number;
+}
+
 /** `GET /workspaces/:workspaceId/settings` success body. */
 export interface WorkspaceSettingsResponseDto {
   name: string;

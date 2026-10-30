@@ -1,7 +1,7 @@
 import type { CoreClient } from "@okkey/api";
 import { decryptVaultItemPayload } from "@okkey/crypto";
 import type { ItemPlaintextV2, SyncAppendEventRequestDto, SyncEventWireDto, Vault } from "@okkey/types";
-import { generateEntityId, parseAndNormalizeItemPlaintextUtf8 } from "@okkey/types";
+import { SYNC_EVENTS_BATCH_MAX, generateEntityId, parseAndNormalizeItemPlaintextUtf8 } from "@okkey/types";
 import {
   IndexedDbOutboxStore,
   SyncOutboxClient,
@@ -271,6 +271,11 @@ export type WorkspaceVaultItemsSyncController = {
   refresh: () => Promise<void>;
   drainOutbox: () => Promise<void>;
   createItem: (item: ItemPlaintextV2) => Promise<string>;
+  /**
+   * Enqueue many ITEM_CREATE events with contiguous baseVersions, drain once
+   * (batched HTTP when supported), and write the vault cache once.
+   */
+  createItems: (items: ItemPlaintextV2[]) => Promise<string[]>;
   updateItem: (item: ItemPlaintextV2) => Promise<string>;
   resolveVaultEncryptionKey: (vaultId: string) => Promise<Uint8Array>;
   getItemsByVault: (vaultId: string) => ItemPlaintextV2[];
@@ -297,6 +302,7 @@ export function createWorkspaceVaultItemsSyncController(input: {
     }),
     {
       appendVaultEvent: (vaultId, body) => input.core.appendVaultEvent(vaultId, body),
+      appendVaultEventsBatch: (vaultId, body) => input.core.appendVaultEventsBatch(vaultId, body),
       listVaultEvents: (vaultId, afterVersion) => input.core.listVaultEvents(vaultId, afterVersion),
     },
     {
@@ -381,6 +387,31 @@ export function createWorkspaceVaultItemsSyncController(input: {
     }
   }
 
+  async function materializeAfterDrain(
+    vaultId: string,
+    stateBefore: VaultItemsMaterializedState,
+    tipBefore: number,
+    appended: SyncEventWireDto[],
+  ): Promise<void> {
+    // Clean write: apply POST/batch response locally and skip list GET (incl. empty tail).
+    // After VERSION_MISMATCH rebase, versions may gap — fall back to incremental replay.
+    if (areContiguousEventVersions(appended, tipBefore)) {
+      const vaultKey = await resolveVaultKey(vaultId);
+      const decryptWirePayload = async (
+        encryptedPayloadBase64: string,
+        itemId?: string | null,
+      ) =>
+        decryptVaultItemPayload(vaultKey, base64ToBytes(encryptedPayloadBase64), 2, {
+          itemId,
+        });
+      const next = await applyVaultItemEvents(stateBefore, appended, decryptWirePayload);
+      vaultStates.set(vaultId, next);
+    } else {
+      await replayVaultIncremental(vaultId);
+    }
+    await writeCachedState(input.userId, input.workspaceId, vaultStates);
+  }
+
   async function enqueue(request: SyncAppendEventRequestDto, vaultId: string): Promise<void> {
     const queued = await outbox.enqueue({ vaultId, request });
     const stateBefore = ensureVaultState(vaultId);
@@ -401,23 +432,41 @@ export function createWorkspaceVaultItemsSyncController(input: {
           : "OUTBOX_ENTRY_NOT_APPENDED",
       );
     }
-    // Clean write: apply POST response locally and skip list GET (incl. empty tail).
-    // After VERSION_MISMATCH rebase, versions may gap — fall back to incremental replay.
-    if (areContiguousEventVersions(appended, tipBefore)) {
-      const vaultKey = await resolveVaultKey(vaultId);
-      const decryptWirePayload = async (
-        encryptedPayloadBase64: string,
-        itemId?: string | null,
-      ) =>
-        decryptVaultItemPayload(vaultKey, base64ToBytes(encryptedPayloadBase64), 2, {
-          itemId,
-        });
-      const next = await applyVaultItemEvents(stateBefore, appended, decryptWirePayload);
-      vaultStates.set(vaultId, next);
-    } else {
-      await replayVaultIncremental(vaultId);
+    await materializeAfterDrain(vaultId, stateBefore, tipBefore, appended);
+  }
+
+  async function enqueueMany(requests: SyncAppendEventRequestDto[], vaultId: string): Promise<void> {
+    if (requests.length === 0) {
+      return;
     }
-    await writeCachedState(input.userId, input.workspaceId, vaultStates);
+    if (requests.length === 1) {
+      await enqueue(requests[0]!, vaultId);
+      return;
+    }
+    const queuedIds: string[] = [];
+    for (const request of requests) {
+      const queued = await outbox.enqueue({ vaultId, request });
+      queuedIds.push(queued.id);
+    }
+    const stateBefore = ensureVaultState(vaultId);
+    const tipBefore = stateBefore.lastAppliedVersion;
+    const appended = await outbox.drain(vaultId);
+    const remaining = (await outbox.list()).filter((entry) => queuedIds.includes(entry.id));
+    if (remaining.length > 0) {
+      try {
+        await replayVaultIncremental(vaultId);
+        await writeCachedState(input.userId, input.workspaceId, vaultStates);
+      } catch {
+        // Best-effort; surface the append failure either way.
+      }
+      const first = remaining[0]!;
+      throw new Error(
+        first.lastErrorCode
+          ? `OUTBOX_ENTRY_NOT_APPENDED:${first.lastErrorCode}`
+          : "OUTBOX_ENTRY_NOT_APPENDED",
+      );
+    }
+    await materializeAfterDrain(vaultId, stateBefore, tipBefore, appended);
   }
 
   return {
@@ -466,6 +515,44 @@ export function createWorkspaceVaultItemsSyncController(input: {
       );
       await enqueue(request, item.vaultId);
       return item.itemId;
+    },
+    createItems: async (items) => {
+      if (items.length === 0) {
+        return [];
+      }
+      const vaultId = items[0]!.vaultId;
+      for (const item of items) {
+        if (item.vaultId !== vaultId) {
+          throw new Error("CREATE_ITEMS_MIXED_VAULT");
+        }
+      }
+      // Chunk to the server batch limit so each drain issues ≤1 batch HTTP call
+      // per chunk (300 records → 3 requests at SYNC_EVENTS_BATCH_MAX=100).
+      const createdIds: string[] = [];
+      for (let offset = 0; offset < items.length; offset += SYNC_EVENTS_BATCH_MAX) {
+        const chunk = items.slice(offset, offset + SYNC_EVENTS_BATCH_MAX);
+        const state = ensureVaultState(vaultId);
+        const vaultKey = await resolveVaultKey(vaultId);
+        const tip = state.lastAppliedVersion;
+        const requests: SyncAppendEventRequestDto[] = [];
+        for (let i = 0; i < chunk.length; i += 1) {
+          const item = chunk[i]!;
+          requests.push(
+            buildItemSyncMetadataFromPlaintext(
+              await buildItemCreateAppendRequest(
+                vaultKey,
+                item,
+                tip + i,
+                generateEntityId(),
+              ),
+              item,
+            ),
+          );
+        }
+        await enqueueMany(requests, vaultId);
+        createdIds.push(...chunk.map((item) => item.itemId));
+      }
+      return createdIds;
     },
     updateItem: async (item) => {
       const state = ensureVaultState(item.vaultId);

@@ -83,7 +83,14 @@ export default function ImportSection({
   const { t } = useLocale();
   const { accessToken } = useAuthVault();
   const { canPostToVault } = useWorkspaceVaultProfiles();
-  const { createItem, updateItem, resolveVaultEncryptionKey, maxFileSizeMb, allowedFileExtensions } = useWorkspaceItems();
+  const {
+    createItem,
+    createItems,
+    updateItem,
+    resolveVaultEncryptionKey,
+    maxFileSizeMb,
+    allowedFileExtensions,
+  } = useWorkspaceItems();
   const { assignItemToFolder, createFolder, setItemFavorite } = useWorkspaceFolders();
 
   const formatOptions = useMemo(() => listImportFormatOptions(), []);
@@ -232,6 +239,7 @@ export default function ImportSection({
         vaultKey,
         exportPassword,
         createItem,
+        createItems,
         updateItem,
         assignItemToFolder,
         createFolder,

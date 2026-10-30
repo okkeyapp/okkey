@@ -1,4 +1,10 @@
-import type { SyncAppendEventRequestDto, SyncEventWireDto, SyncEventsListResponseDto } from "@okkey/types";
+import type {
+  SyncAppendEventRequestDto,
+  SyncAppendEventsBatchResponseDto,
+  SyncEventWireDto,
+  SyncEventsListResponseDto,
+} from "@okkey/types";
+import { SYNC_EVENTS_BATCH_MAX } from "@okkey/types";
 import { generateEntityId } from "@okkey/id";
 import { eventsListHasMore } from "./events-list-page.js";
 import { replayVaultEvents, type ReplayEngineOptions, type SyncMaterializedState } from "./replay-engine.js";
@@ -29,6 +35,11 @@ export interface OutboxStore {
 export interface OutboxTransport {
   appendVaultEvent(vaultId: string, body: SyncAppendEventRequestDto): Promise<SyncEventWireDto>;
   listVaultEvents(vaultId: string, afterVersion: number): Promise<SyncEventsListResponseDto>;
+  /** Optional batch append — used by drain when ≥2 pending entries share a vault. */
+  appendVaultEventsBatch?: (
+    vaultId: string,
+    body: { events: SyncAppendEventRequestDto[] },
+  ) => Promise<SyncAppendEventsBatchResponseDto>;
 }
 
 export interface VersionMismatchDetails {
@@ -341,6 +352,49 @@ export class SyncOutboxClient {
     this.options.hooks?.onConflictResolved?.(entry);
   }
 
+  private nextSendableBatch(vaultId?: string): OutboxEntry[] {
+    const first = this.nextSendableEntry(vaultId);
+    if (!first) {
+      return [];
+    }
+    const now = this.nowMs();
+    const batch: OutboxEntry[] = [first];
+    const rest = this.entries
+      .filter(
+        (e) =>
+          e.id !== first.id &&
+          e.vaultId === first.vaultId &&
+          (e.status === "pending" || e.status === "failed") &&
+          e.nextAttemptAtMs <= now,
+      )
+      .sort((a, b) => a.createdAtMs - b.createdAtMs || a.id.localeCompare(b.id));
+    for (const entry of rest) {
+      if (batch.length >= SYNC_EVENTS_BATCH_MAX) {
+        break;
+      }
+      batch.push(entry);
+    }
+    return batch;
+  }
+
+  private renumberPendingBaseVersions(vaultId: string, startVersion: number): void {
+    const now = this.nowMs();
+    const pending = this.entries
+      .filter(
+        (e) =>
+          e.vaultId === vaultId &&
+          (e.status === "pending" || e.status === "failed") &&
+          e.nextAttemptAtMs <= now,
+      )
+      .sort((a, b) => a.createdAtMs - b.createdAtMs || a.id.localeCompare(b.id));
+    let version = startVersion;
+    for (const entry of pending) {
+      entry.request = { ...entry.request, baseVersion: version };
+      entry.updatedAtMs = now;
+      version += 1;
+    }
+  }
+
   /**
    * Drain pending appends. Returns successfully appended wire events in order
    * so callers can materialize local state without a follow-up list GET when
@@ -349,11 +403,13 @@ export class SyncOutboxClient {
   async drain(vaultId?: string): Promise<SyncEventWireDto[]> {
     await this.ensureLoaded();
     const appended: SyncEventWireDto[] = [];
+    const canBatch = typeof this.transport.appendVaultEventsBatch === "function";
 
     // eslint-disable-next-line no-constant-condition
     while (true) {
-      const entry = this.nextSendableEntry(vaultId);
-      if (!entry) {
+      const batch = canBatch ? this.nextSendableBatch(vaultId) : [];
+      const entry = batch.length >= 2 ? undefined : this.nextSendableEntry(vaultId);
+      if (batch.length < 2 && !entry) {
         const stalled = this.entries.filter((e) => e.status === "dead");
         if (stalled.length) {
           this.options.hooks?.onQueueStalled?.(stalled.map((e) => ({ ...e, request: { ...e.request } })));
@@ -362,37 +418,98 @@ export class SyncOutboxClient {
         return appended;
       }
 
-      entry.status = "sending";
-      entry.updatedAtMs = this.nowMs();
+      if (batch.length >= 2) {
+        for (const e of batch) {
+          e.status = "sending";
+          e.updatedAtMs = this.nowMs();
+        }
+        await this.flush();
+        try {
+          const response = await this.transport.appendVaultEventsBatch!(batch[0]!.vaultId, {
+            events: batch.map((e) => e.request),
+          });
+          appended.push(...response.events);
+          const sentIds = new Set(batch.map((e) => e.id));
+          this.entries = this.entries.filter((e) => !sentIds.has(e.id));
+          await this.flush();
+          continue;
+        } catch (err) {
+          const parsed = toOutboxError(err);
+          if (parsed.versionMismatch) {
+            const first = batch[0]!;
+            await this.handleVersionMismatch(first, parsed.versionMismatch);
+            // Peer writes moved the tip — renumber the whole pending queue for this vault.
+            this.renumberPendingBaseVersions(first.vaultId, first.request.baseVersion);
+            for (const e of batch) {
+              if (e.id !== first.id && e.status === "sending") {
+                e.status = "pending";
+                e.nextAttemptAtMs = this.nowMs();
+                e.updatedAtMs = this.nowMs();
+              }
+            }
+            await this.flush();
+            continue;
+          }
+
+          for (const e of batch) {
+            e.attemptCount += 1;
+            e.lastErrorCode = parsed.code;
+            e.lastErrorMessage = parsed.message;
+            e.updatedAtMs = this.nowMs();
+            if (e.attemptCount >= this.maxAttempts) {
+              e.status = "dead";
+              e.nextAttemptAtMs = Number.MAX_SAFE_INTEGER;
+            } else {
+              e.status = "failed";
+              e.nextAttemptAtMs =
+                this.nowMs() +
+                computeBackoffDelayMs(
+                  e.attemptCount,
+                  this.baseDelayMs,
+                  this.maxDelayMs,
+                  this.jitterRatio,
+                  this.random,
+                );
+            }
+          }
+          await this.flush();
+          continue;
+        }
+      }
+
+      const single = entry!;
+      single.status = "sending";
+      single.updatedAtMs = this.nowMs();
       await this.flush();
 
       try {
-        const created = await this.transport.appendVaultEvent(entry.vaultId, entry.request);
+        const created = await this.transport.appendVaultEvent(single.vaultId, single.request);
         appended.push(created);
-        this.entries = this.entries.filter((e) => e.id !== entry.id);
+        this.entries = this.entries.filter((e) => e.id !== single.id);
         await this.flush();
         continue;
       } catch (err) {
         const parsed = toOutboxError(err);
         if (parsed.versionMismatch) {
-          await this.handleVersionMismatch(entry, parsed.versionMismatch);
+          await this.handleVersionMismatch(single, parsed.versionMismatch);
+          this.renumberPendingBaseVersions(single.vaultId, single.request.baseVersion);
           await this.flush();
           continue;
         }
 
-        entry.attemptCount += 1;
-        entry.lastErrorCode = parsed.code;
-        entry.lastErrorMessage = parsed.message;
-        entry.updatedAtMs = this.nowMs();
-        if (entry.attemptCount >= this.maxAttempts) {
-          entry.status = "dead";
-          entry.nextAttemptAtMs = Number.MAX_SAFE_INTEGER;
+        single.attemptCount += 1;
+        single.lastErrorCode = parsed.code;
+        single.lastErrorMessage = parsed.message;
+        single.updatedAtMs = this.nowMs();
+        if (single.attemptCount >= this.maxAttempts) {
+          single.status = "dead";
+          single.nextAttemptAtMs = Number.MAX_SAFE_INTEGER;
         } else {
-          entry.status = "failed";
-          entry.nextAttemptAtMs =
+          single.status = "failed";
+          single.nextAttemptAtMs =
             this.nowMs() +
             computeBackoffDelayMs(
-              entry.attemptCount,
+              single.attemptCount,
               this.baseDelayMs,
               this.maxDelayMs,
               this.jitterRatio,

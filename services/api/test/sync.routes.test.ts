@@ -79,6 +79,18 @@ function createSyncServiceStub(overrides?: Partial<SyncService>): SyncService {
       version: 2,
       createdAt: "2026-01-01T00:00:00.000Z",
     }),
+    appendEvents: async (_vaultId, _userId, inputs) =>
+      inputs.map((input, index) => ({
+        id: `e-batch-${index + 1}`,
+        vaultId: "v1",
+        actorId: "u1",
+        eventType: input.eventType,
+        encryptedBlob: mkBlob("x", 1),
+        idempotencyKey: input.idempotencyKey ?? null,
+        clientCreatedAt: null,
+        version: (input.baseVersion ?? 0) + 1,
+        createdAt: "2026-01-01T00:00:00.000Z",
+      })),
     ...(overrides ?? {}),
   } as unknown as SyncService;
 }
@@ -139,6 +151,40 @@ test("POST /vaults/:vaultId/events appends event", async () => {
   const payload = JSON.parse(res.body) as { id: string; version: number };
   assert.equal(payload.id, "e2");
   assert.equal(payload.version, 2);
+});
+
+test("POST /vaults/:vaultId/events/batch appends events", async () => {
+  const res = await dispatch({
+    method: "POST",
+    url: "/vaults/v1/events/batch",
+    headers: { "x-user-id": "u1" },
+    body: {
+      events: [
+        { eventType: "ITEM_UPDATE", encryptedBlob: mkBlob("a"), baseVersion: 1 },
+        { eventType: "ITEM_UPDATE", encryptedBlob: mkBlob("b"), baseVersion: 2 },
+      ],
+    },
+  });
+
+  assert.equal(res.statusCode, 201);
+  const payload = JSON.parse(res.body) as {
+    vaultId: string;
+    events: Array<{ id: string; version: number }>;
+    latestVersion: number;
+  };
+  assert.equal(payload.vaultId, "v1");
+  assert.equal(payload.events.length, 2);
+  assert.equal(payload.latestVersion, 3);
+});
+
+test("POST /vaults/:vaultId/events/batch rejects empty events", async () => {
+  const res = await dispatch({
+    method: "POST",
+    url: "/vaults/v1/events/batch",
+    headers: { "x-user-id": "u1" },
+    body: { events: [] },
+  });
+  assert.equal(res.statusCode, 400);
 });
 
 test("sync routes require x-user-id", async () => {
