@@ -49,13 +49,34 @@ function handleExtensionAuthError(
  */
 export function createExtensionAuthIssueCodeRoute(
   extensionAuthService: ExtensionAuthService,
-  resolveUserId: (req: IncomingMessage) => Promise<string | null>,
+  resolveSession: (req: IncomingMessage) => Promise<{
+    userId: string;
+    deviceId: string | null;
+    tokenHash: string;
+    expiresAt: string | null;
+  } | null>,
+  isDeviceTrusted: (userId: string, deviceId: string) => Promise<boolean>,
 ): RouteHandler {
   return async (ctx) => {
-    const userId = await resolveUserId(ctx.req);
-    if (!userId) {
+    const session = await resolveSession(ctx.req);
+    if (!session?.userId) {
       json(ctx.res, 401, errorPayload("UNAUTHORIZED", "authentication required", ctx.requestId));
       return;
+    }
+
+    let expiresAtCap: string | null = null;
+    const realBearer = session.tokenHash !== "";
+    if (realBearer) {
+      const trusted = session.deviceId
+        ? await isDeviceTrusted(session.userId, session.deviceId)
+        : false;
+      if (!trusted) {
+        if (!session.expiresAt) {
+          json(ctx.res, 401, errorPayload("UNAUTHORIZED", "authentication required", ctx.requestId));
+          return;
+        }
+        expiresAtCap = session.expiresAt;
+      }
     }
 
     let body: IssueCodeBody;
@@ -68,12 +89,13 @@ export function createExtensionAuthIssueCodeRoute(
 
     try {
       const result = await extensionAuthService.issueAuthCode({
-        userId,
+        userId: session.userId,
         clientId: body.client_id?.trim() ?? body.clientId?.trim() ?? "",
         redirectUri: body.redirect_uri?.trim() ?? body.redirectUri?.trim() ?? "",
         codeChallenge: body.code_challenge?.trim() ?? body.codeChallenge?.trim() ?? "",
         codeChallengeMethod:
           body.code_challenge_method?.trim() ?? body.codeChallengeMethod?.trim(),
+        expiresAtCap,
       });
       json(ctx.res, 200, {
         code: result.code,

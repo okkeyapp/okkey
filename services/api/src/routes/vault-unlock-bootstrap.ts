@@ -17,17 +17,24 @@ function parseDeviceFingerprint(req: IncomingMessage): string | undefined {
 
 export function createVaultUnlockBootstrapRoute(
   service: VaultUnlockBootstrapService,
-  resolveUserId: (req: IncomingMessage) => Promise<string | null>,
+  resolveSession: (req: IncomingMessage) => Promise<{
+    userId: string;
+    deviceId: string | null;
+  } | null>,
 ): RouteHandler {
   return async (ctx) => {
     try {
-      const userId = await resolveUserId(ctx.req);
-      if (!userId) {
+      const session = await resolveSession(ctx.req);
+      if (!session?.userId || !session.deviceId) {
         json(ctx.res, 401, errorPayload("AUTH_REQUIRED", "auth required", ctx.requestId));
         return;
       }
       const fingerprint = parseDeviceFingerprint(ctx.req);
-      const body = await service.getForUser(userId, fingerprint);
+      const body = await service.getForBoundDevice({
+        userId: session.userId,
+        deviceId: session.deviceId,
+        queryFingerprint: fingerprint,
+      });
       json(ctx.res, 200, body);
     } catch (error) {
       if (error instanceof VaultUnlockBootstrapError) {
