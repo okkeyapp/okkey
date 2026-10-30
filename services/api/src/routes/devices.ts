@@ -582,19 +582,26 @@ export function createListDevicesRoute(
         undefined;
       const result = await deviceService.listDevices(userId, currentFingerprint);
       const session = resolveSession ? await resolveSession(ctx.req) : null;
-      const unboundBearer =
-        session != null &&
-        (session.deviceId == null || session.deviceId === "") &&
-        session.tokenHash !== "";
+      const sessionDeviceId = session?.deviceId?.trim() ?? "";
+      const realBearer = session != null && session.tokenHash !== "";
+      const unboundBearer = realBearer && sessionDeviceId === "";
+      const sessionDeviceIsTrusted =
+        realBearer &&
+        sessionDeviceId !== "" &&
+        result.devices.some((row) => sameDeviceId(row.deviceId, sessionDeviceId));
+      const ownDeviceOnly = realBearer && sessionDeviceId !== "" && !sessionDeviceIsTrusted;
       const fingerprint = (currentFingerprint ?? "").trim().toLowerCase();
-      const visible = <T extends { deviceFingerprint: string }>(rows: T[]): T[] => {
-        if (!unboundBearer) {
-          return rows;
+      const visible = <T extends { deviceId: string; deviceFingerprint: string }>(rows: T[]): T[] => {
+        if (unboundBearer) {
+          if (!fingerprint) {
+            return [];
+          }
+          return rows.filter((row) => row.deviceFingerprint.trim().toLowerCase() === fingerprint);
         }
-        if (!fingerprint) {
-          return [];
+        if (ownDeviceOnly) {
+          return rows.filter((row) => sameDeviceId(row.deviceId, sessionDeviceId));
         }
-        return rows.filter((row) => row.deviceFingerprint.trim().toLowerCase() === fingerprint);
+        return rows;
       };
       json(ctx.res, 200, {
         devices: visible(result.devices).map(toWireDevice),

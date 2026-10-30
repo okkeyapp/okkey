@@ -3,16 +3,10 @@ import {
   VaultUnlockBootstrapError,
   VaultUnlockBootstrapService,
 } from "../account/vault-unlock-bootstrap.ts";
-import { getHeader, json, type RouteHandler } from "../http.ts";
+import { json, type RouteHandler } from "../http.ts";
 
 function errorPayload(code: string, message: string, requestId: string) {
   return { error: code, message, requestId };
-}
-
-function parseDeviceFingerprint(req: IncomingMessage): string | undefined {
-  const url = new URL(req.url ?? "/", "http://localhost");
-  const raw = url.searchParams.get("device_fingerprint")?.trim();
-  return raw && raw.length > 0 ? raw : undefined;
 }
 
 export function createVaultUnlockBootstrapRoute(
@@ -29,11 +23,9 @@ export function createVaultUnlockBootstrapRoute(
         json(ctx.res, 401, errorPayload("AUTH_REQUIRED", "auth required", ctx.requestId));
         return;
       }
-      const fingerprint = parseDeviceFingerprint(ctx.req);
       const body = await service.getForBoundDevice({
         userId: session.userId,
         deviceId: session.deviceId,
-        queryFingerprint: fingerprint,
       });
       json(ctx.res, 200, body);
     } catch (error) {

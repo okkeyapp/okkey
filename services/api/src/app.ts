@@ -468,12 +468,10 @@ export function createApiApp(
     );
   }
   if (deps.sessionService !== undefined && deps.usersRepository) {
-    // Display fields only. Clients load this while waiting for device approval and
-    // treat 401 as a dead session, so it stays open for any live bearer.
     app.route(
       "GET",
       "/account/profile",
-      createAccountProfileRoute(deps.usersRepository, resolveUserIdAllowUnboundDevice),
+      createAccountProfileRoute(deps.usersRepository, resolveUserId),
     );
     app.route(
       "PATCH",

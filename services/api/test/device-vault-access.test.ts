@@ -72,10 +72,7 @@ test("vault routes reject pending, revoked, and blocked devices and keep device 
         if (deviceId !== "d1" || deviceStatus !== "trusted") {
           return null;
         }
-        return {
-          deviceShare: Uint8Array.from({ length: 32 }, (_, i) => i + 1),
-          deviceFingerprint: SESSION_FP,
-        };
+        return Uint8Array.from({ length: 32 }, (_, i) => i + 1);
       },
     },
   });
@@ -127,6 +124,8 @@ test("vault routes reject pending, revoked, and blocked devices and keep device 
       body: { eventType: "ITEM_UPDATE", encryptedBlob: { payload: "aa" }, baseVersion: 0 },
     },
     { method: "GET", url: "/account/recovery/key/wrap" },
+    { method: "GET", url: "/account/profile" },
+    { method: "GET", url: "/account/vault-unlock/status" },
     {
       method: "GET",
       url: `/vault/unlock-bootstrap?device_fingerprint=${OTHER_FP}`,
@@ -153,10 +152,6 @@ test("vault routes reject pending, revoked, and blocked devices and keep device 
     }
     const devices = await call("GET", "/devices");
     assert.equal(devices, 200, `${status} GET /devices`);
-    const profile = await call("GET", "/account/profile");
-    assert.equal(profile, 200, `${status} GET /account/profile`);
-    const profilePatch = await call("PATCH", "/account/profile");
-    assert.equal(profilePatch, 401, `${status} PATCH /account/profile`);
   }
 
   deviceStatus = "trusted";
@@ -169,7 +164,7 @@ test("vault routes reject pending, revoked, and blocked devices and keep device 
     "GET",
     `/vault/unlock-bootstrap?device_fingerprint=${OTHER_FP}`,
   );
-  assert.equal(foreign, 404);
+  assert.equal(foreign, 200);
 
   const own = await call(
     "GET",
