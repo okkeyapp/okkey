@@ -718,15 +718,18 @@ export class DeviceService {
     };
   }
 
-  async acceptDeviceBindProof(input: {
+  /**
+   * Consume a one-time bind challenge and check a device-key signature or a
+   * vault-share proof. Does not change keys or session binding.
+   */
+  async proveDevicePossession(input: {
     userId: string;
     deviceId: string;
     tokenHash: string;
     challengeId: string;
     signatureB64?: string;
     shareProofB64?: string;
-    newDevicePublicKeyB64?: string;
-  }): Promise<{ deviceId: string; status: "trusted" | "pending_approval" }> {
+  }): Promise<{ deviceId: string; status: "trusted" | "pending"; proof: "signature" | "share" }> {
     const device = await this.requireActiveDevice(input.userId, input.deviceId);
     const raw = await this.bindChallenges.take(
       deviceBindChallengeKey(input.tokenHash, device.id, input.challengeId),
@@ -774,28 +777,17 @@ export class DeviceService {
       }
       return {
         deviceId: device.id,
-        status: device.status === "pending" ? "pending_approval" : "trusted",
+        status: device.status === "pending" ? "pending" : "trusted",
+        proof: "signature",
       };
     }
 
     const shareProof = input.shareProofB64?.trim() ?? "";
-    const nextPublicKey = input.newDevicePublicKeyB64?.trim() ?? "";
-    if (!shareProof || !nextPublicKey) {
+    if (!shareProof) {
       throw new DeviceServiceError(
         "DEVICE_BAD_REQUEST",
         400,
         "challenge_id and a device proof are required",
-      );
-    }
-    const publicKeyBytes = Buffer.from(nextPublicKey, "base64");
-    if (
-      publicKeyBytes.length !== 32 ||
-      publicKeyBytes.toString("base64").replace(/=+$/, "") !== nextPublicKey.replace(/=+$/, "")
-    ) {
-      throw new DeviceServiceError(
-        "DEVICE_BAD_REQUEST",
-        400,
-        "new_device_public_key is invalid",
       );
     }
     if (!verifyDeviceBindShareProof(device.deviceShare, message, shareProof)) {
@@ -805,12 +797,52 @@ export class DeviceService {
         "device share proof is invalid",
       );
     }
+    return {
+      deviceId: device.id,
+      status: device.status === "pending" ? "pending" : "trusted",
+      proof: "share",
+    };
+  }
+
+  async acceptDeviceBindProof(input: {
+    userId: string;
+    deviceId: string;
+    tokenHash: string;
+    challengeId: string;
+    signatureB64?: string;
+    shareProofB64?: string;
+    newDevicePublicKeyB64?: string;
+  }): Promise<{ deviceId: string; status: "trusted" | "pending_approval" }> {
+    const signature = input.signatureB64?.trim() ?? "";
+    const shareProof = input.shareProofB64?.trim() ?? "";
+    const nextPublicKey = input.newDevicePublicKeyB64?.trim() ?? "";
+    if (!signature && shareProof) {
+      const publicKeyBytes = Buffer.from(nextPublicKey, "base64");
+      if (
+        !nextPublicKey ||
+        publicKeyBytes.length !== 32 ||
+        publicKeyBytes.toString("base64").replace(/=+$/, "") !== nextPublicKey.replace(/=+$/, "")
+      ) {
+        throw new DeviceServiceError(
+          "DEVICE_BAD_REQUEST",
+          400,
+          "new_device_public_key is invalid",
+        );
+      }
+    }
+    const proved = await this.proveDevicePossession(input);
+    if (proved.proof === "signature") {
+      return {
+        deviceId: proved.deviceId,
+        status: proved.status === "pending" ? "pending_approval" : "trusted",
+      };
+    }
     if (!this.devices.rotateActiveDevicePublicKey) {
       throw new DeviceServiceError("DEVICE_NOT_FOUND", 404, "device not found");
     }
     const rotated = await this.devices.rotateActiveDevicePublicKey({
       userId: input.userId,
-      deviceId: device.id,
+      deviceId: proved.deviceId,
       devicePublicKey: nextPublicKey,
       now: this.now().toISOString(),
     });
@@ -818,8 +850,8 @@ export class DeviceService {
       throw new DeviceServiceError("DEVICE_NOT_ACTIVE", 409, "device is not active");
     }
     return {
-      deviceId: device.id,
-      status: device.status === "pending" ? "pending_approval" : "trusted",
+      deviceId: proved.deviceId,
+      status: proved.status === "pending" ? "pending_approval" : "trusted",
     };
   }
 
@@ -860,11 +892,38 @@ export class DeviceService {
   async requestDeviceKeyRebind(
     userId: string,
     requestIp: string,
-    input: RegisterDeviceInput & { deviceId: string },
+    input: RegisterDeviceInput & {
+      deviceId: string;
+      tokenHash: string;
+      challengeId: string;
+      signatureB64?: string;
+      shareProofB64?: string;
+    },
   ): Promise<RegisterDeviceResult> {
     if (!this.devices.requestKeyRebind) {
       throw new DeviceServiceError("DEVICE_NOT_FOUND", 404, "device not found");
     }
+    const owned = await this.devices.findOwnedDeviceAuth?.(userId, input.deviceId);
+    if (!owned) {
+      throw new DeviceServiceError("DEVICE_NOT_FOUND", 404, "device not found");
+    }
+    const claimed = input.deviceFingerprint.trim().toLowerCase();
+    const stored = owned.deviceFingerprint.trim().toLowerCase();
+    if (!claimed || claimed === "unknown" || claimed !== stored) {
+      throw new DeviceServiceError(
+        "DEVICE_REBIND_FINGERPRINT_MISMATCH",
+        403,
+        "device key rebind is only allowed for this session fingerprint",
+      );
+    }
+    await this.proveDevicePossession({
+      userId,
+      deviceId: input.deviceId,
+      tokenHash: input.tokenHash,
+      challengeId: input.challengeId,
+      signatureB64: input.signatureB64,
+      shareProofB64: input.shareProofB64,
+    });
     if (!isValidBase64(input.devicePublicKey)) {
       throw new DeviceServiceError(
         "DEVICE_INVALID_PUBLIC_KEY",

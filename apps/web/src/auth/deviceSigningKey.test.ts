@@ -100,7 +100,7 @@ describe("deviceSigningKey", () => {
     vi.unstubAllGlobals();
   });
 
-  it("mints a durable seed in IndexedDB and can sign without reminting", async () => {
+  it("stores only a non-extractable CryptoKey and can sign without reminting", async () => {
     const mod = await import("./deviceSigningKey");
     const pub = await mod.ensureDeviceSigningPublicKey();
     expect(pub.length).toBeGreaterThan(10);
@@ -109,8 +109,9 @@ describe("deviceSigningKey", () => {
     expect(sig.byteLength).toBe(64);
     const local = (globalThis as { __local?: Map<string, string> }).__local!;
     expect(local.get(DEVICE_PRIVATE_KEY_KEY)).toBeUndefined();
-    const stored = memory.get("current") as { seed?: ArrayBuffer };
-    expect(stored.seed?.byteLength).toBe(32);
+    const stored = memory.get("current") as { seed?: ArrayBuffer; privateKey?: CryptoKey };
+    expect(stored.seed).toBeUndefined();
+    expect(stored.privateKey?.extractable).toBe(false);
   });
 
   it("does not mint a new key when signing without stored material", async () => {
@@ -120,17 +121,27 @@ describe("deviceSigningKey", () => {
     );
   });
 
-  it("migrates legacy localStorage seed into IndexedDB and clears it", async () => {
+  it("migrates legacy localStorage seed into a non-extractable key and clears it", async () => {
+    const generated = await crypto.subtle.generateKey({ name: "Ed25519" }, true, ["sign"]);
+    const jwk = await crypto.subtle.exportKey("jwk", generated.privateKey);
+    const b64urlToBytes = (value: string) => {
+      const padded = value.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(value.length / 4) * 4, "=");
+      const binary = atob(padded);
+      return Uint8Array.from(binary, (char) => char.charCodeAt(0));
+    };
     const b64 = (bytes: Uint8Array) => btoa(String.fromCharCode(...bytes));
     const local = (globalThis as { __local?: Map<string, string> }).__local!;
-    local.set(DEVICE_PRIVATE_KEY_KEY, b64(seed));
-    local.set(DEVICE_PUBLIC_KEY_KEY, b64(publicKey));
+    local.set(DEVICE_PRIVATE_KEY_KEY, b64(b64urlToBytes(jwk.d!)));
+    local.set(DEVICE_PUBLIC_KEY_KEY, b64(b64urlToBytes(jwk.x!)));
 
     const mod = await import("./deviceSigningKey");
     const pub = await mod.ensureDeviceSigningPublicKey();
-    expect(pub).toBe(b64(publicKey));
+    expect(pub).toBe(b64(b64urlToBytes(jwk.x!)));
     expect(local.get(DEVICE_PRIVATE_KEY_KEY)).toBeUndefined();
     expect(local.get(DEVICE_PUBLIC_KEY_KEY)).toBeUndefined();
+    const stored = memory.get("current") as { seed?: ArrayBuffer; privateKey?: CryptoKey };
+    expect(stored.seed).toBeUndefined();
+    expect(stored.privateKey?.extractable).toBe(false);
     await mod.clearDeviceSigningKey();
     expect(await mod.hasDeviceSigningKey()).toBe(false);
   });

@@ -98,7 +98,7 @@ export type AuthVaultContextValue = {
   setRegistrationAuthStateId: (id: string | null) => void;
   setTwoFactorAuthStateId: (id: string | null) => void;
   applyAccessTokenResponse: (dto: AccessTokenResponseDto) => void;
-  logout: () => void;
+  logout: (options?: { wipeDeviceKey?: boolean }) => void;
   lockVault: () => void;
   touchActivity: () => void;
   saveVaultBundle: (bundle: StoredVaultBundle) => void;
@@ -469,7 +469,6 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
         // pending "Request approval again" screen (retry would also 401).
         if (error instanceof ApiRequestError && error.status === 401) {
           clearBoundDeviceSession();
-          void clearDeviceSigningKey();
           logoutRef.current();
           return;
         }
@@ -636,7 +635,10 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
     lastActivityRef.current = Date.now();
   }, [clearPasswordShareSecrets, clearVaultKeySecret]);
 
-  const logout = useCallback(() => {
+  const logout = useCallback((options?: { wipeDeviceKey?: boolean }) => {
+    if (options?.wipeDeviceKey) {
+      void clearDeviceSigningKey();
+    }
     const workspaceUserId = userIdRef.current;
     if (workspaceUserId) {
       clearStoredCurrentWorkspaceId(workspaceUserId);
@@ -1030,7 +1032,6 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
     } catch (error: unknown) {
       if (error instanceof ApiRequestError && error.status === 401) {
         clearBoundDeviceSession();
-        void clearDeviceSigningKey();
         logout();
         return;
       }
@@ -1098,7 +1099,6 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
     } catch (error: unknown) {
       if (error instanceof ApiRequestError && error.status === 401) {
         clearBoundDeviceSession();
-        void clearDeviceSigningKey();
         logout();
         return;
       }

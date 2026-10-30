@@ -124,35 +124,6 @@ async function bindDeviceWithProof(
   boundSessionDeviceId = deviceId;
 }
 
-async function requestKeyRebindForLostSeed(
-  core: CoreApiClient,
-  deviceId: string,
-  fingerprint: string,
-): Promise<DeviceRegisterResponseDto> {
-  const env = parseBrowserEnvironment(
-    typeof navigator !== "undefined" ? navigator.userAgent : "",
-  );
-  const publicKeyB64 = await rotateDeviceSigningKey();
-  const shareBytes = randomPlaceholderShare();
-  try {
-    return await core.requestDeviceKeyRebind(deviceId, {
-      device_public_key: publicKeyB64,
-      device_share: bytesToBase64(shareBytes),
-      device_fingerprint: fingerprint,
-      device_name: env.deviceName,
-      platform: env.platform,
-      os_name: env.osName,
-      os_version: env.osVersion,
-      app_version: "web",
-      client_type: env.clientType,
-      user_agent: env.userAgent,
-      locale: readStoredLocale(),
-    });
-  } finally {
-    wipeBytes(shareBytes);
-  }
-}
-
 /**
  * Reclaim is only for the registration browser that lost a legacy random hex fingerprint
  * but still holds the local vault bundle. Never rebind a different browser onto the sole
@@ -253,9 +224,6 @@ export async function resolveDeviceTrust(
     soleTrusted !== null &&
     canReclaimSoleTrustedDevice(soleTrusted, fingerprint, env.clientType);
   const canBootstrapTrusted = hasBundle && listed.devices.length === 0;
-  const otherTrustedCount = listed.devices.filter(
-    (device) => !trustedMatch || device.device_id !== trustedMatch.device_id,
-  ).length;
 
   // Re-login on an already trusted or pending fingerprint binds the session
   // without minting new keys. Register would replace the trusted device share.
@@ -279,49 +247,14 @@ export async function resolveDeviceTrust(
           };
         }
       }
-      // Pre-upgrade installs (and W1 bug) have no seed and no vault share.
-      // Another device must approve a key rebind, or the user uses recovery.
-      if (otherTrustedCount < 1) {
-        return {
-          status: "error",
-          deviceId: trustedMatch.device_id,
-          approverDevices: listed.devices,
-          needsRecovery: true,
-          errorMessage: "DEVICE_REBIND_REQUIRES_RECOVERY",
-        };
-      }
-      try {
-        const rebound = await requestKeyRebindForLostSeed(
-          core,
-          trustedMatch.device_id,
-          fingerprint,
-        );
-        const after = await core.listDevices(fingerprint).catch(() => listed);
-        return {
-          status: "pending",
-          deviceId: rebound.device_id,
-          approverDevices: after.devices,
-        };
-      } catch (error: unknown) {
-        if (
-          error instanceof ApiRequestError &&
-          error.body.error === "DEVICE_REBIND_REQUIRES_RECOVERY"
-        ) {
-          return {
-            status: "error",
-            deviceId: trustedMatch.device_id,
-            approverDevices: listed.devices,
-            needsRecovery: true,
-            errorMessage: "DEVICE_REBIND_REQUIRES_RECOVERY",
-          };
-        }
-        return {
-          status: "error",
-          deviceId: trustedMatch.device_id,
-          approverDevices: listed.devices,
-          errorMessage: error instanceof Error ? error.message : String(error),
-        };
-      }
+      // No signing key and no vault share: do not demote another device.
+      return {
+        status: "error",
+        deviceId: trustedMatch.device_id,
+        approverDevices: listed.devices,
+        needsRecovery: true,
+        errorMessage: "DEVICE_REBIND_REQUIRES_RECOVERY",
+      };
     }
     try {
       await bindDeviceWithProof(core, trustedMatch.device_id);
@@ -341,35 +274,31 @@ export async function resolveDeviceTrust(
   }
   if (pendingMatch && !canReclaimSole && !canBootstrapTrusted) {
     if (!(await hasDeviceSigningKey())) {
-      // Pending row without local seed: mint keys and request rebind when approvers exist.
-      if (listed.devices.length < 1) {
-        return {
-          status: "pending",
-          deviceId: pendingMatch.device_id,
-          approverDevices: listed.devices,
-          needsRecovery: true,
-          errorMessage: "DEVICE_REBIND_REQUIRES_RECOVERY",
-        };
+      const shareB64 = bundle?.device_share_b64?.trim() ?? "";
+      if (shareB64) {
+        try {
+          await bindDeviceWithShareProof(core, pendingMatch.device_id, shareB64);
+          return {
+            status: "pending",
+            deviceId: pendingMatch.device_id,
+            approverDevices: listed.devices,
+          };
+        } catch (error: unknown) {
+          return {
+            status: "pending",
+            deviceId: pendingMatch.device_id,
+            approverDevices: listed.devices,
+            errorMessage: error instanceof Error ? error.message : String(error),
+          };
+        }
       }
-      try {
-        const rebound = await requestKeyRebindForLostSeed(
-          core,
-          pendingMatch.device_id,
-          fingerprint,
-        );
-        return {
-          status: "pending",
-          deviceId: rebound.device_id,
-          approverDevices: listed.devices,
-        };
-      } catch (error: unknown) {
-        return {
-          status: "pending",
-          deviceId: pendingMatch.device_id,
-          approverDevices: listed.devices,
-          errorMessage: error instanceof Error ? error.message : String(error),
-        };
-      }
+      return {
+        status: "pending",
+        deviceId: pendingMatch.device_id,
+        approverDevices: listed.devices,
+        needsRecovery: listed.devices.length < 1,
+        errorMessage: listed.devices.length < 1 ? "DEVICE_REBIND_REQUIRES_RECOVERY" : undefined,
+      };
     }
     try {
       await bindDeviceWithProof(core, pendingMatch.device_id);
@@ -425,26 +354,12 @@ export async function resolveDeviceTrust(
       error instanceof ApiRequestError &&
       error.body.error === "DEVICE_FINGERPRINT_ALREADY_TRUSTED"
     ) {
-      // Trusted fingerprint + new keys without a seed path — never overwrite; recover/rebind.
       const conflictId = trustedMatch?.device_id ?? pendingMatch?.device_id ?? null;
-      if (conflictId && otherTrustedCount >= 1) {
-        try {
-          const rebound = await requestKeyRebindForLostSeed(core, conflictId, fingerprint);
-          const after = await core.listDevices(fingerprint).catch(() => listed);
-          return {
-            status: "pending",
-            deviceId: rebound.device_id,
-            approverDevices: after.devices,
-          };
-        } catch {
-          /* fall through */
-        }
-      }
       return {
         status: "error",
         deviceId: conflictId,
         approverDevices: listed.devices,
-        needsRecovery: otherTrustedCount < 1,
+        needsRecovery: true,
         errorMessage: "DEVICE_FINGERPRINT_ALREADY_TRUSTED",
       };
     }

@@ -672,6 +672,99 @@ test("POST /devices/:id/revoke still revokes a different device when caller head
   assert.equal(payload.status, "revoked");
 });
 
+test("POST /devices/:id/bind-session rejects non-string share proof fields", async () => {
+  const share = await dispatch({
+    method: "POST",
+    url: `/devices/${DEVICE_A}/bind-session`,
+    headers: { authorization: "Bearer tok-1" },
+    body: { challenge_id: "ch", share_proof: 1, new_device_public_key: "abc" },
+  });
+  assert.equal(share.statusCode, 400);
+  assert.equal(JSON.parse(share.body).error, "DEVICE_BAD_REQUEST");
+
+  const publicKey = await dispatch({
+    method: "POST",
+    url: `/devices/${DEVICE_A}/bind-session`,
+    headers: { authorization: "Bearer tok-1" },
+    body: { challenge_id: "ch", share_proof: "abc", new_device_public_key: { bad: true } },
+  });
+  assert.equal(publicKey.statusCode, 400);
+  assert.equal(JSON.parse(publicKey.body).error, "DEVICE_BAD_REQUEST");
+});
+
+test("GET /devices hides other device ids from an unbound bearer session", async () => {
+  const fingerprint = "a".repeat(64);
+  const res = await dispatch({
+    method: "GET",
+    url: `/devices?device_fingerprint=${fingerprint}`,
+    headers: { authorization: "Bearer tok-unbound" },
+    sessionService: createSessionServiceStub({
+      resolveAccessToken: async () => ({
+        userId: "u1",
+        deviceId: null,
+        scope: null,
+        tokenHash: "hash:tok-unbound",
+      }),
+    }),
+    deviceService: createDeviceServiceStub({
+      listDevices: async () => ({
+        devices: [
+          {
+            deviceId: "d-mine",
+            deviceName: "This browser",
+            deviceFingerprint: fingerprint,
+            status: "trusted",
+            platform: "web",
+            osName: "macOS",
+            osVersion: "14",
+            appVersion: "web",
+            clientType: "chrome",
+            userAgent: "ua",
+            ipAddress: "127.0.0.1",
+            country: null,
+            city: null,
+            createdAt: "2026-01-01T00:00:00.000Z",
+            lastSeenAt: null,
+            approvedAt: null,
+            isCurrent: true,
+            approvalExpiresAt: null,
+            blockedUntil: null,
+          },
+          {
+            deviceId: "d-other",
+            deviceName: "Work laptop",
+            deviceFingerprint: "b".repeat(64),
+            status: "trusted",
+            platform: "web",
+            osName: "macOS",
+            osVersion: "14",
+            appVersion: "web",
+            clientType: "chrome",
+            userAgent: "ua",
+            ipAddress: "10.0.0.8",
+            country: null,
+            city: null,
+            createdAt: "2026-01-01T00:00:00.000Z",
+            lastSeenAt: null,
+            approvedAt: null,
+            isCurrent: false,
+            approvalExpiresAt: null,
+            blockedUntil: null,
+          },
+        ],
+        pending: [],
+        blocked: [],
+      }),
+    }),
+  });
+  assert.equal(res.statusCode, 200);
+  const payload = JSON.parse(res.body) as { devices: Array<{ device_id: string }> };
+  assert.deepEqual(
+    payload.devices.map((device) => device.device_id),
+    ["d-mine"],
+  );
+});
+
 test("POST /devices/:id/bind-session without a signature is rejected", async () => {
   const res = await dispatch({
     method: "POST",

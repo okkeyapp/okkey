@@ -67,6 +67,8 @@ function vaultBundle() {
 describe("resolveDeviceTrust", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    listDevices.mockReset();
+    registerDevice.mockReset();
     clearBoundDeviceSession();
     readVaultBundle.mockReturnValue(null);
     hasDeviceSigningKey.mockResolvedValue(true);
@@ -143,7 +145,7 @@ describe("resolveDeviceTrust", () => {
     expect(snapshot.deviceId).toBe("d-me");
   });
 
-  it("requests key rebind when trusted fingerprint has no local seed and another device can approve", async () => {
+  it("does not demote a trusted device when the browser has no seed and no vault share", async () => {
     hasDeviceSigningKey.mockResolvedValue(false);
     listDevices
       .mockResolvedValueOnce({
@@ -184,13 +186,11 @@ describe("resolveDeviceTrust", () => {
 
     const snapshot = await resolveDeviceTrust(coreClient(), "u1");
 
-    expect(rotateDeviceSigningKey).toHaveBeenCalledOnce();
-    expect(requestDeviceKeyRebind).toHaveBeenCalledWith(
-      "d-me",
-      expect.objectContaining({ device_public_key: expect.any(String) }),
-    );
+    expect(requestDeviceKeyRebind).not.toHaveBeenCalled();
+    expect(rotateDeviceSigningKey).not.toHaveBeenCalled();
     expect(registerDevice).not.toHaveBeenCalled();
-    expect(snapshot.status).toBe("pending");
+    expect(snapshot.status).toBe("error");
+    expect(snapshot.needsRecovery).toBe(true);
     expect(snapshot.deviceId).toBe("d-me");
   });
 

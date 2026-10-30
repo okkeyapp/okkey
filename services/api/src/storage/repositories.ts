@@ -2133,15 +2133,17 @@ export class DevicesRepository {
     status: string;
     devicePublicKey: string;
     deviceShare: Uint8Array;
+    deviceFingerprint: string;
   } | null> {
     const rows = await this.db.query<{
       id: string;
       status: string;
       device_public_key: string;
       device_share: Buffer;
+      device_fingerprint: string;
     }>(
       `
-        SELECT id, status, device_public_key, device_share
+        SELECT id, status, device_public_key, device_share, device_fingerprint
         FROM devices
         WHERE id = $1 AND user_id = $2
         LIMIT 1
@@ -2157,6 +2159,7 @@ export class DevicesRepository {
       status: row.status,
       devicePublicKey: row.device_public_key,
       deviceShare: Uint8Array.from(row.device_share),
+      deviceFingerprint: row.device_fingerprint,
     };
   }
 

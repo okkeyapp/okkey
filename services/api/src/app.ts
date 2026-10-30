@@ -268,6 +268,12 @@ export function createApiApp(
           allowUnboundDevice: true,
         })
       : resolveUserId;
+  const resolveSessionAllowUnboundDevice =
+    deps.sessionService !== undefined
+      ? createResolveAuthenticatedSession(config, deps.sessionService, undefined, {
+          allowUnboundDevice: true,
+        })
+      : undefined;
   /** Full session or post-register recovery bootstrap (enroll + ack-export only). */
   const resolveUserIdForRegistrationRecovery: (req: IncomingMessage) => Promise<string | null> =
     deps.sessionService !== undefined
@@ -729,7 +735,11 @@ export function createApiApp(
     app.route(
       "GET",
       "/devices",
-      createListDevicesRoute(deps.deviceService, resolveUserIdAllowUnboundDevice),
+      createListDevicesRoute(
+        deps.deviceService,
+        resolveUserIdAllowUnboundDevice,
+        resolveSessionAllowUnboundDevice,
+      ),
     );
     app.route(
       "POST",
@@ -766,6 +776,7 @@ export function createApiApp(
         deps.deviceService,
         resolveUserIdAllowUnboundDevice,
         config.trustedProxyHops,
+        deps.sessionService,
       ),
     );
     app.route(
