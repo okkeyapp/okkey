@@ -84,7 +84,12 @@ function setupAuthService(params?: {
   const redis = new InMemoryRedis();
   redis.setNow(Date.UTC(2026, 0, 1, 12, 0, 0));
 
-  const sentEmails: Array<{ to: string; code: string; locale?: string }> = [];
+  const sentEmails: Array<{
+    to: string;
+    code: string;
+    locale?: string;
+    purpose?: string;
+  }> = [];
   const config = { ...baseConfig, ...(params?.configOverrides ?? {}) };
   const generatedCode = params?.generatedCode ?? "123456";
   const hasAnyUsers = params?.hasAnyUsers ?? true;
@@ -118,6 +123,7 @@ function setupAuthService(params?: {
           to: input.to,
           code: input.variables.code,
           locale: input.localeHints.explicitLocale,
+          purpose: input.variables.purpose,
         });
       },
     },
@@ -144,6 +150,7 @@ test("startEmailLogin sends normalized email and 6-digit code", async () => {
   assert.equal(sentEmails.length, 1);
   assert.equal(sentEmails[0].to, "user@example.com");
   assert.equal(sentEmails[0].code, "654321");
+  assert.equal(sentEmails[0].purpose, "registration");
   assert.equal(result.bootstrapRequired, undefined);
 });
 
@@ -184,6 +191,7 @@ test("startEmailLogin empty catalog on saas still requires email OTP", async () 
   assert.ok(result.challengeId);
   assert.equal(sentEmails.length, 1);
   assert.equal(sentEmails[0].to, "first@example.com");
+  assert.equal(sentEmails[0].purpose, "registration");
 });
 
 test("startEmailLogin first-run claim is idempotent for the same email", async () => {
@@ -222,6 +230,22 @@ test("startEmailLogin second empty-catalog email requires OTP while claim is hel
   assert.ok(second.challengeId);
   assert.equal(sentEmails.length, 1);
   assert.equal(sentEmails[0].to, "other@example.com");
+  assert.equal(sentEmails[0].purpose, "registration");
+});
+
+test("startEmailLogin uses sign_in purpose for existing users", async () => {
+  const { service, sentEmails } = setupAuthService({
+    existingUser: true,
+    generatedCode: "777888",
+  });
+
+  await service.startEmailLogin({
+    email: "user@example.com",
+    requestIp: "127.0.0.1",
+  });
+
+  assert.equal(sentEmails.length, 1);
+  assert.equal(sentEmails[0].purpose, "sign_in");
 });
 
 test("startEmailLogin reuses active challenge for same email without sending again", async () => {

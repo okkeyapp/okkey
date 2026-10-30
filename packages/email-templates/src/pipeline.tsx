@@ -82,7 +82,9 @@ export async function renderAuthEmailCode(
   const messagePrefix =
     variables.purpose === "email_change"
       ? "email.auth.emailChangeCode"
-      : "email.auth.signInCode";
+      : variables.purpose === "registration"
+        ? "email.auth.registrationCode"
+        : "email.auth.signInCode";
   const subject = formatEmailMessage(locale, `${messagePrefix}.subject`, {
     code: variables.code,
   });
@@ -387,10 +389,6 @@ export async function renderContactRecoveryReleaseRequest(
     });
   }
   const props = buildContactRecoveryReleaseEmailProps(locale, variables);
-  const helpUrl = variables.helpUrl.trim();
-  const footer = helpUrl
-    ? formatEmailMessage(locale, "email.contacts.recovery.textFooterWithUrl", { helpUrl })
-    : props.noteNoUrl;
   const standard = buildEmailStandardFooterCopy(locale);
   const plainText = appendStandardFooterPlain(
     formatEmailMessage(locale, "email.contacts.recovery.plain", {
@@ -398,7 +396,7 @@ export async function renderContactRecoveryReleaseRequest(
       detailLine: props.detailLine,
       requestLine: props.requestLine ?? "",
       expiresLine: props.expiresLine,
-      footer,
+      footer: props.noteNoUrl,
       noteIgnore: props.noteIgnore,
     }),
     standard,
