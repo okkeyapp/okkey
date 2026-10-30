@@ -1426,6 +1426,57 @@ export interface DeviceRegisterRequestDto {
   metadata?: RegisterCompleteMetadataDto;
 }
 
+/** `POST /devices/:deviceId/bind-challenge` success body. */
+export interface DeviceBindChallengeResponseDto {
+  challenge_id: string;
+  /** Base64 of the exact bytes the device private key must sign. */
+  challenge: string;
+  expires_at: string;
+}
+
+/** `POST /devices/:deviceId/bind-session` request body. */
+export interface DeviceBindSessionRequestDto {
+  challenge_id: string;
+  /**
+   * Base64 Ed25519 signature of `challenge` by the device private key.
+   * Required unless `share_proof` and `new_device_public_key` are both set.
+   */
+  signature?: string;
+  /**
+   * Base64 SHA-256 of `okkey-device-bind-share-v1\\n || device_share || challenge`.
+   * Browsers that never stored a signing seed prove the local vault share and
+   * install a new signing key. Does not replace `device_share` and does not register.
+   */
+  share_proof?: string;
+  /** Base64 32-byte Ed25519 public key installed when `share_proof` succeeds. */
+  new_device_public_key?: string;
+  device_name?: string;
+  platform?: string;
+  os_name?: string;
+  os_version?: string;
+  app_version?: string;
+  client_type?: string;
+  user_agent?: string;
+}
+
+/**
+ * `POST /devices/:deviceId/request-key-rebind` — replace lost signing keys and
+ * demote the device to pending for approval by another trusted device.
+ */
+export interface DeviceKeyRebindRequestDto {
+  device_public_key: string;
+  device_share: string;
+  device_fingerprint?: string;
+  device_name?: string;
+  platform?: string;
+  os_name?: string;
+  os_version?: string;
+  app_version?: string;
+  client_type?: string;
+  user_agent?: string;
+  locale?: string;
+}
+
 /** `POST /devices/register` success body (snake_case on wire). */
 export interface DeviceRegisterResponseDto {
   device_id: EntityId;
@@ -1508,6 +1559,16 @@ export interface DevicePatchRequestDto {
 export interface DevicePatchResponseDto {
   device_id: EntityId;
   device_name: string;
+}
+
+/** `POST /devices/:deviceId/revoke` request body. */
+export interface DeviceRevokeRequestDto {
+  reason?: string;
+  /**
+   * When true, allows revoking the caller device identified by `X-Device-Id`
+   * (sign-out / logout path). Omitted or false rejects that case with 403.
+   */
+  sign_out?: boolean;
 }
 
 /** `POST /devices/:deviceId/revoke` success body. */

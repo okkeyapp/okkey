@@ -59,6 +59,7 @@ import {
   retryExtensionDeviceRegistration,
   revokeExtensionDeviceBestEffort,
 } from "../../lib/deviceTrust";
+import { clearExtensionDeviceSigningKey } from "../../lib/deviceSigningKey";
 import { readExtensionPinUnlockWrap } from "../../lib/extensionDeviceUnlockStore";
 import {
   ensureExtensionVaultBundle,
@@ -367,6 +368,8 @@ export function PopupApp() {
     unlockSecretsRef.current = null;
     setUnlockSecrets(null);
     setEncryptedPrivateKeyPayload(null);
+    // Preserve device signing keys across 401 / account wipe so re-login can still
+    // prove bind-session. Blocked/rejected paths clear keys inside deviceTrust.
     await wipeAllExtensionData();
     await resetToServerAfterWipe();
   }, [resetToServerAfterWipe]);
@@ -379,6 +382,7 @@ export function PopupApp() {
             ? t("web.devicePending.blockedTitle")
             : t("web.devicePending.rejectedTitle"),
         );
+        // deviceTrust already cleared the signing key for blocked/rejected.
         await wipeLocalAndReset();
         return;
       }
@@ -427,7 +431,10 @@ export function PopupApp() {
     async (apiBaseUrl: string, accessToken: string, userId?: string) => {
       try {
         const core = createCoreClient(apiBaseUrl, accessToken);
-        const snapshot = await resolveExtensionDeviceTrust(core);
+        const shareB64 = userId
+          ? (await readExtensionVaultBundle(userId))?.device_share_b64
+          : undefined;
+        const snapshot = await resolveExtensionDeviceTrust(core, { deviceShareB64: shareB64 });
         await applyTrustSnapshot(snapshot, userId);
         void loadIdentity(apiBaseUrl, accessToken, userId).catch(async (err: unknown) => {
           if (isUnauthorizedApiError(err)) {
@@ -724,12 +731,15 @@ export function PopupApp() {
     unlockSecretsRef.current = null;
     setUnlockSecrets(null);
     setEncryptedPrivateKeyPayload(null);
-    // Wipe local state before network revoke (server may be unreachable).
+    // Wipe account/session state first; keep device signing keys unless revoke succeeds
+    // so a failed revoke still allows proof-before-bind on the next login.
     await wipeAllExtensionData();
     await resetToServerAfterWipe();
     if (priorProfile && priorSession) {
       const core = createCoreClient(priorProfile.apiBaseUrl, priorSession.access_token);
       await revokeExtensionDeviceBestEffort(core, priorDeviceId);
+      // Device row revoked — seed must not survive for a 409 re-register.
+      await clearExtensionDeviceSigningKey();
     }
   };
 
@@ -740,7 +750,8 @@ export function PopupApp() {
     setRetrying(true);
     try {
       const core = createCoreClient(profile.apiBaseUrl, session.access_token);
-      const snapshot = await retryExtensionDeviceRegistration(core);
+      const shareB64 = (await readExtensionVaultBundle(session.user_id))?.device_share_b64;
+      const snapshot = await retryExtensionDeviceRegistration(core, shareB64);
       await applyTrustSnapshot(snapshot, session.user_id);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);

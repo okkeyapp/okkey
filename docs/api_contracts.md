@@ -348,7 +348,7 @@ On successful `POST /auth/session/bootstrap` or `POST /auth/two-factor/verify`, 
 | `user_id` | Authenticated user. |
 | `token_hash` | SHA-256 (hex) of the opaque `access_token`; the raw token appears **only** in the JSON response. |
 | `expires_at` | Now + `SESSION_TTL_SECONDS`. |
-| `device_id` | **`NULL` at issuance.** Device binding for vault crypto (`4.7`) is handled by `POST /devices/register` and related flows using the authenticated user; linking `sessions.device_id` after device registration may be added later without changing the login/2FA contract. |
+| `device_id` | **`NULL` at issuance** for email/2FA bootstrap. After `POST /devices/register` (Bearer), Core binds `sessions.device_id` to the registered device. Registration complete mints the session with the first device id already set. |
 
 Token rotation / refresh is **not** implemented in Core v1; clients treat the access token as a long-lived session handle until expiry or explicit logout (when implemented).
 
@@ -1116,13 +1116,27 @@ Renames a trusted or pending device owned by the user.
 
 Revokes a trusted or pending device owned by the authenticated user (settings dismiss / revoke). Does **not** require `X-Device-Id`. Approval-flow reject with a trusted approver remains `POST …/reject`.
 
+Registering a fingerprint that already belongs to a trusted device does not replace that device's public key or share, and new keys do not become trusted. Attaching a session to an existing device is `POST /devices/:deviceId/bind-challenge` then `POST /devices/:deviceId/bind-session` with an Ed25519 signature of that one-time challenge by the device private key. Bind challenges live in shared Redis (TTL) and are single-use. `challenge_id` and `signature` must be strings (`400 DEVICE_BAD_REQUEST` otherwise). Name, app, and OS metadata change only after that proof. A login on that same fingerprint uses this signed bind instead of register. When the client lost its device signing seed but still holds the vault device share, `bind-session` accepts `share_proof` plus `new_device_public_key` instead of a signature. That rotates only the signing public key, does not replace the device share, and does not call register, so a trusted fingerprint is not `409`. An invalid signature is not retried as a share proof. `share_proof` and `new_device_public_key` must be strings (`400` otherwise). `POST /devices/:deviceId/request-key-rebind` demotes a device only after the same challenge proof and only when the request fingerprint matches that device; otherwise the row is unchanged. An unbound full session `GET /devices` returns only the row for the requested fingerprint. The **current device** is the session’s `device_id`. Ids compare as integers, so a leading-zero form of the same id is still the current device. A full Bearer session with no `device_id` cannot revoke devices unless `sign_out: true`, and cannot call vault or workspace routes until a new registration or a signed bind attaches a device. Header-auth may still send `X-Device-Id`. Revoking the current device is rejected unless `sign_out: true`. On success, and on reject, block, or any other transition to revoked or blocked, Core deletes server sessions bound to that device. A session already bound to a device is not moved to another device by a later register. With `sign_out: true`, Core also deletes the caller’s access-token session.
+
 **Auth:** Bearer (or allowed `X-User-Id`).
 
-**Request body:** optional `{ "reason": "string" }`.
+**Request body:** optional `{ "reason": "string", "sign_out": true }`.
 
 **Response `200`:** `{ "device_id": "uuid", "status": "revoked" }`
 
-**Errors:** `AUTH_REQUIRED` 401, `DEVICE_NOT_FOUND` 404.
+**Errors:** `AUTH_REQUIRED` 401, `DEVICE_BAD_REQUEST` 400 (invalid id), `DEVICE_REVOKE_CURRENT_FORBIDDEN` 403, `DEVICE_NOT_FOUND` 404.
+
+### `POST /devices/:deviceId/request-key-rebind`
+
+Replace lost device signing keys on an already-trusted (or pending) install and demote the device to `pending` so **another** trusted device must approve. Requires a bind challenge proved by the current device key signature or by `share_proof`, and the request fingerprint must match that device. Otherwise the device row is unchanged (`400`, `403 DEVICE_REBIND_FINGERPRINT_MISMATCH`, or `404`). Never silently re-trusts. When the account has no other trusted device, returns `409 DEVICE_REBIND_REQUIRES_RECOVERY` (client must use account recovery / `claim_after_recovery`).
+
+**Auth:** Bearer unbound full session allowed (same as register/bind).
+
+**Request body:** `{ "device_public_key": "…", "device_share": "…", "device_name"?: "…", … }` (same metadata fields as register).
+
+**Response `200`:** `{ "device_id": "…", "status": "pending_approval" }`
+
+**Errors:** `AUTH_REQUIRED` 401, `DEVICE_BAD_REQUEST` 400, `DEVICE_NOT_FOUND` 404, `DEVICE_REBIND_REQUIRES_RECOVERY` 409.
 
 ---
 
