@@ -1,6 +1,7 @@
 import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
 
 import {
+  expectUnlockRejectsMasterPassword,
   gotoItemsUnlocked,
   registerBootstrapAndUnlock,
   signInWithEmailOtp,
@@ -8,14 +9,16 @@ import {
 } from "../helpers/auth";
 import { assertVaultBlobsHaveNoPlaintext } from "../helpers/db";
 import { E2E_MASTER_PASSWORD, uniqueEmail } from "../helpers/env";
+import { extensionBuildReady, extensionPkceSignInUnlockAndSeeItem } from "../helpers/extension";
 import { createLoginItem } from "../helpers/items";
 
 /**
- * Minimal browser smoke covering qa/web scenarios from enterprise#110:
+ * Minimal browser smoke for the password-manager chain:
  * 1) registration → recovery key gate → unlock
  * 2) create Login item → visible after reload → ciphertext-only in DB
  * 3) second browser → device pending → trust → decrypt
- * 4) forgot master password → recovery key → new password → items readable
+ * 4) forgot master password → recovery key → new password proves old rejected
+ * 5) Chromium extension PKCE → trust → unlock → item visible
  *
  * Shared browser context keeps vault storage across steps. Needs empty users
  * table (fresh CI Postgres) and SMTP → Mailpit for OTP (no API createCode bypass).
@@ -115,7 +118,7 @@ test("3) second browser → device confirm → item decrypts", async () => {
   }
 });
 
-test("4) recovery key → new master password → items readable", async () => {
+test("4) recovery key → new master password → old rejected, new unlocks", async () => {
   test.skip(!email || !recoveryKey, "registration did not run");
 
   await page.goto("/account/lock");
@@ -151,16 +154,40 @@ test("4) recovery key → new master password → items readable", async () => {
   await cont.click();
   await expect(newKeyHeading).toBeHidden({ timeout: 30_000 });
 
-  // After recovery the app may land unlocked on /items (CI screenshot) or on lock.
-  // Must not remint the post-login recovery gate ("Save your recovery key").
-  const lock = page.getByRole("heading", { name: /vault is locked/i });
-  const topbar = page.getByTestId("items-shell-topbar");
-  await expect(lock.or(topbar)).toBeVisible({ timeout: 60_000 });
-  if (await lock.isVisible().catch(() => false)) {
-    await unlockWithMasterPassword(page, NEW_MASTER);
-  }
+  // After recovery the app may land unlocked on /items or on lock. Force lock and
+  // prove rotation: old master password is rejected; new password unlocks and decrypts.
+  await page.goto("/account/lock");
+  await expect(page.getByRole("heading", { name: /vault is locked/i })).toBeVisible({
+    timeout: 60_000,
+  });
+  await expectUnlockRejectsMasterPassword(page, E2E_MASTER_PASSWORD);
+  await unlockWithMasterPassword(page, NEW_MASTER);
 
   await expect(page.getByText(LOGIN_TITLE, { exact: false }).first()).toBeVisible({
     timeout: 60_000,
+  });
+
+  await page.reload();
+  await gotoItemsUnlocked(page, NEW_MASTER);
+  await expect(page.getByText(LOGIN_TITLE, { exact: false }).first()).toBeVisible({
+    timeout: 60_000,
+  });
+});
+
+test("5) extension PKCE → trust → unlock → item visible", async () => {
+  test.skip(
+    process.env.E2E_EXTENSION !== "1" || !extensionBuildReady(),
+    "set E2E_EXTENSION=1 and run yarn build:extension:chromium",
+  );
+  test.skip(!email, "registration did not run");
+
+  // Primary web session must stay unlocked so Trust device can approve the extension.
+  await gotoItemsUnlocked(page, NEW_MASTER);
+
+  await extensionPkceSignInUnlockAndSeeItem({
+    trustPage: page,
+    email,
+    masterPassword: NEW_MASTER,
+    itemTitle: LOGIN_TITLE,
   });
 });

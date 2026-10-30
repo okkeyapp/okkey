@@ -32,6 +32,9 @@ import {
   createBlockDeviceRoute,
   createListDevicesRoute,
   createPatchDeviceRoute,
+  createBindDeviceSessionRoute,
+  createDeviceBindChallengeRoute,
+  createRequestDeviceKeyRebindRoute,
   createRegisterDeviceRoute,
   createRejectDeviceRoute,
   createRevokeDeviceRoute,
@@ -258,6 +261,19 @@ export function createApiApp(
           const header = getHeader(req, "x-user-id");
           return header?.trim() ?? null;
         };
+  /** Device list/register and the revoke guard must see an unbound Bearer so it can bind or return 403. */
+  const resolveUserIdAllowUnboundDevice: (req: IncomingMessage) => Promise<string | null> =
+    deps.sessionService !== undefined
+      ? createResolveAuthenticatedUserId(config, deps.sessionService, undefined, {
+          allowUnboundDevice: true,
+        })
+      : resolveUserId;
+  const resolveSessionAllowUnboundDevice =
+    deps.sessionService !== undefined
+      ? createResolveAuthenticatedSession(config, deps.sessionService, undefined, {
+          allowUnboundDevice: true,
+        })
+      : undefined;
   /** Full session or post-register recovery bootstrap (enroll + ack-export only). */
   const resolveUserIdForRegistrationRecovery: (req: IncomingMessage) => Promise<string | null> =
     deps.sessionService !== undefined
@@ -719,12 +735,49 @@ export function createApiApp(
     app.route(
       "GET",
       "/devices",
-      createListDevicesRoute(deps.deviceService, resolveUserId),
+      createListDevicesRoute(
+        deps.deviceService,
+        resolveUserIdAllowUnboundDevice,
+        resolveSessionAllowUnboundDevice,
+      ),
     );
     app.route(
       "POST",
       "/devices/register",
-      createRegisterDeviceRoute(deps.deviceService, resolveUserId, config.trustedProxyHops),
+      createRegisterDeviceRoute(
+        deps.deviceService,
+        resolveUserIdAllowUnboundDevice,
+        config.trustedProxyHops,
+        deps.sessionService,
+      ),
+    );
+    app.route(
+      "POST",
+      "/devices/:deviceId/bind-challenge",
+      createDeviceBindChallengeRoute(
+        deps.deviceService,
+        resolveUserIdAllowUnboundDevice,
+        deps.sessionService,
+      ),
+    );
+    app.route(
+      "POST",
+      "/devices/:deviceId/bind-session",
+      createBindDeviceSessionRoute(
+        deps.deviceService,
+        resolveUserIdAllowUnboundDevice,
+        deps.sessionService,
+      ),
+    );
+    app.route(
+      "POST",
+      "/devices/:deviceId/request-key-rebind",
+      createRequestDeviceKeyRebindRoute(
+        deps.deviceService,
+        resolveUserIdAllowUnboundDevice,
+        config.trustedProxyHops,
+        deps.sessionService,
+      ),
     );
     app.route(
       "PATCH",
@@ -734,7 +787,11 @@ export function createApiApp(
     app.route(
       "POST",
       "/devices/:deviceId/revoke",
-      createRevokeDeviceRoute(deps.deviceService, resolveUserId),
+      createRevokeDeviceRoute(
+        deps.deviceService,
+        resolveUserIdAllowUnboundDevice,
+        deps.sessionService,
+      ),
     );
     app.route(
       "POST",
@@ -744,12 +801,12 @@ export function createApiApp(
     app.route(
       "POST",
       "/devices/:deviceId/reject",
-      createRejectDeviceRoute(deps.deviceService, resolveUserId),
+      createRejectDeviceRoute(deps.deviceService, resolveUserId, deps.sessionService),
     );
     app.route(
       "POST",
       "/devices/:deviceId/block",
-      createBlockDeviceRoute(deps.deviceService, resolveUserId),
+      createBlockDeviceRoute(deps.deviceService, resolveUserId, deps.sessionService),
     );
     app.route(
       "POST",

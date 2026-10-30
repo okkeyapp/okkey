@@ -116,6 +116,25 @@ describe("getTotpTokenState", () => {
     expect(state!.digits).toBe(8);
   });
 
+  it("matches RFC 6238 Appendix B SHA256 / SHA512 8-digit vectors at T=59", () => {
+    // RFC Appendix B uses longer seed material for SHA-256 / SHA-512.
+    const sha256Secret = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQGEZA";
+    const sha512Secret =
+      "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQGEZDGNA";
+    const sha256 = getTotpTokenState(sha256Secret, 59 * 1000, {
+      periodSeconds: 30,
+      digits: 8,
+      algorithm: "SHA256",
+    });
+    const sha512 = getTotpTokenState(sha512Secret, 59 * 1000, {
+      periodSeconds: 30,
+      digits: 8,
+      algorithm: "SHA512",
+    });
+    expect(sha256?.token).toBe("46119246");
+    expect(sha512?.token).toBe("90693936");
+  });
+
   it("bare Base32 with stored period 30 matches period-30 code generation", () => {
     const at = 59 * 1000;
     const withDefault = getTotpTokenState(RFC_SECRET_BASE32, at);

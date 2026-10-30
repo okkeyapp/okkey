@@ -298,18 +298,44 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
     setRecordName(suggestedRecordName);
   }, [suggestedRecordName]);
 
+  // Autofocus the title once per form instance. Never steal focus from another
+  // control in the dialog — Playwright (and users) can already be filling Login
+  // before a late rAF runs; select()+focus() then dumps keystrokes into the name.
+  const didAutofocusRecordNameRef = useRef(false);
+  useEffect(() => {
+    didAutofocusRecordNameRef.current = false;
+  }, [categoryId, isEditMode, isCopyMode, isTemplateMode]);
+
   useEffect(() => {
     if (isEditMode || isCopyMode) {
+      return;
+    }
+    if (didAutofocusRecordNameRef.current) {
       return;
     }
 
     const frameId = window.requestAnimationFrame(() => {
       const input = recordNameInputRef.current;
-      if (!input) {
+      if (!input || didAutofocusRecordNameRef.current) {
         return;
       }
+
+      const active = document.activeElement;
+      if (
+        active instanceof HTMLElement &&
+        active !== document.body &&
+        active !== input
+      ) {
+        // Another field already has focus (user or automation) — do not steal it.
+        didAutofocusRecordNameRef.current = true;
+        return;
+      }
+
       input.focus();
-      input.select();
+      if (!input.value) {
+        input.select();
+      }
+      didAutofocusRecordNameRef.current = true;
     });
 
     return () => window.cancelAnimationFrame(frameId);
@@ -636,6 +662,10 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
             recordNameEditedRef.current = true;
             setRecordName(event.target.value);
           }}
+          // Prevent Chromium password-manager autofill from writing the login
+          // email into the item title while sibling key fields are filled.
+          autoComplete="off"
+          name="okkey-item-record-name"
           placeholder={t("web.newItemPopup.recordNamePlaceholder", { category: categoryLabel })}
           className={cn(
             "h-10 min-w-0 flex-1 text-xl font-semibold leading-6",

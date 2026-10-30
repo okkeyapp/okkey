@@ -83,7 +83,7 @@ Transports (`EMAIL_PROVIDER`) are protocols, not named vendors. See [`docs/backe
 - `EMAIL_PROVIDER=logger` — log sends only (default; used in CI)
 - `EMAIL_PROVIDER=smtp` — any SMTP host (personal mailbox or Unisender Go / Postmark / Resend / OVH / …)
 - `EMAIL_PROVIDER=ses` — AWS SES API (SigV4) with optional `EMAIL_SES_ENDPOINT` for SES-compatible APIs (Yandex Cloud Postbox)
-- `EMAIL_PROVIDER=http-api` — generic JSON POST + Bearer webhook
+- `EMAIL_PROVIDER=http-api` — generic JSON POST + Bearer webhook (JSON includes optional `inlineAttachments` for CID logos; see `docs/backend-email.md` and `EMAIL_HTTP_API_INLINE`)
 
 Set `PUBLIC_APP_URL` (e.g. `http://localhost:5173`) so invite emails contain a working link.
 

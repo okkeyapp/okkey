@@ -1,11 +1,21 @@
 import type { Logger } from "../logger.ts";
-import { json, type Middleware } from "../http.ts";
+import {
+  HttpRequestError,
+  json,
+  respondWithRequestError,
+  type Middleware,
+} from "../http.ts";
 
 export function createErrorHandlerMiddleware(logger: Logger): Middleware {
   return async (ctx, next) => {
     try {
       await next();
     } catch (error) {
+      if (error instanceof HttpRequestError) {
+        respondWithRequestError(ctx, error);
+        return;
+      }
+
       const message =
         error instanceof Error ? error.message : "Unhandled server error";
 

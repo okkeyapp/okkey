@@ -1,15 +1,22 @@
-import { ed25519Keypair, initCrypto, wipeBytes } from "@okkey/crypto";
-import type { CoreApiClient } from "@okkey/api";
+import { ApiRequestError, type CoreApiClient } from "@okkey/api";
+import { deviceBindShareProof, initCrypto, wipeBytes } from "@okkey/crypto";
 import type { DeviceListItemDto, DeviceRegisterResponseDto } from "@okkey/types";
 
-import { base64ToBytes, bytesToBase64 } from "./base64";
+import { readStoredLocale } from "../locale/localeStorage";
+import { bytesToBase64 } from "./base64";
 import { parseBrowserEnvironment } from "./browserEnvironment";
+import {
+  clearDeviceSigningKey,
+  ensureDeviceSigningPublicKey,
+  hasDeviceSigningKey,
+  rotateDeviceSigningKey,
+  signDeviceBindChallenge,
+} from "./deviceSigningKey";
 import {
   getOrCreateDeviceFingerprint,
   isLegacyHexFingerprint,
 } from "./deviceFingerprint";
 import { readVaultBundle } from "./localVaultBundle";
-import { DEVICE_PUBLIC_KEY_KEY } from "./storageKeys";
 
 export type DeviceTrustStatus =
   | "checking"
@@ -27,9 +34,18 @@ export type DeviceTrustSnapshot = {
   errorMessage?: string;
   /** When status is blocked; null means permanently blocked. */
   blockedUntil?: string | null;
+  /** Sole trusted device lost its seed — user must use account recovery. */
+  needsRecovery?: boolean;
 };
 
 const PLACEHOLDER_SHARE_LEN = 32;
+
+/** Device id whose bind-session proof succeeded for this tab session. */
+let boundSessionDeviceId: string | null = null;
+
+export function clearBoundDeviceSession(): void {
+  boundSessionDeviceId = null;
+}
 
 function randomPlaceholderShare(): Uint8Array {
   const bytes = new Uint8Array(PLACEHOLDER_SHARE_LEN);
@@ -41,23 +57,71 @@ function fingerprintMatch(device: DeviceListItemDto, fingerprint: string): boole
   return device.device_fingerprint.trim().toLowerCase() === fingerprint.trim().toLowerCase();
 }
 
-function readStoredDevicePublicKey(): string | null {
-  if (typeof window === "undefined") return null;
+function browserBindMetadata() {
+  const env = parseBrowserEnvironment(
+    typeof navigator !== "undefined" ? navigator.userAgent : "",
+  );
+  return {
+    device_name: env.deviceName,
+    platform: env.platform,
+    os_name: env.osName,
+    os_version: env.osVersion,
+    app_version: "web",
+    client_type: env.clientType,
+    user_agent: env.userAgent,
+  };
+}
+
+/**
+ * Same browser, seed never stored: prove the vault device share and install a
+ * signing key. Does not call register, so a trusted fingerprint cannot 409.
+ */
+async function bindDeviceWithShareProof(
+  core: CoreApiClient,
+  deviceId: string,
+  shareB64: string,
+): Promise<void> {
+  await initCrypto();
+  const publicKeyB64 = await rotateDeviceSigningKey();
   try {
-    const value = window.localStorage.getItem(DEVICE_PUBLIC_KEY_KEY);
-    return value && value.trim() ? value.trim() : null;
-  } catch {
-    return null;
+    const challenge = await core.createDeviceBindChallenge(deviceId);
+    const message = Uint8Array.from(atob(challenge.challenge), (c) => c.charCodeAt(0));
+    const share = Uint8Array.from(atob(shareB64), (c) => c.charCodeAt(0));
+    const proof = deviceBindShareProof(share, message);
+    wipeBytes(share);
+    await core.bindDeviceSession(deviceId, {
+      challenge_id: challenge.challenge_id,
+      share_proof: bytesToBase64(proof),
+      new_device_public_key: publicKeyB64,
+      ...browserBindMetadata(),
+    });
+    boundSessionDeviceId = deviceId;
+  } catch (error) {
+    await clearDeviceSigningKey();
+    throw error;
   }
 }
 
-function writeStoredDevicePublicKey(publicKeyB64: string): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(DEVICE_PUBLIC_KEY_KEY, publicKeyB64);
-  } catch {
-    /* ignore quota / private mode */
+async function bindDeviceWithProof(
+  core: CoreApiClient,
+  deviceId: string,
+): Promise<void> {
+  if (!(await hasDeviceSigningKey())) {
+    throw new Error("device private key is missing");
   }
+  await initCrypto();
+  const challenge = await core.createDeviceBindChallenge(deviceId);
+  const message = Uint8Array.from(
+    atob(challenge.challenge),
+    (c) => c.charCodeAt(0),
+  );
+  const signature = await signDeviceBindChallenge(message);
+  await core.bindDeviceSession(deviceId, {
+    challenge_id: challenge.challenge_id,
+    signature: bytesToBase64(signature),
+    ...browserBindMetadata(),
+  });
+  boundSessionDeviceId = deviceId;
 }
 
 /**
@@ -116,6 +180,10 @@ export async function resolveDeviceTrust(
   try {
     listed = await core.listDevices(fingerprint);
   } catch (error: unknown) {
+    // Dead Bearer (device revoked/blocked elsewhere) → caller must clear session.
+    if (error instanceof ApiRequestError && error.status === 401) {
+      throw error;
+    }
     if (import.meta.env.MODE === "test") {
       return { status: "trusted", deviceId: null, approverDevices: [] };
     }
@@ -138,6 +206,7 @@ export async function resolveDeviceTrust(
         ? null
         : new Date(blockedMatch.blocked_until).getTime();
     if (untilMs === null || untilMs > Date.now()) {
+      await clearDeviceSigningKey();
       return {
         status: "blocked",
         deviceId: blockedMatch.device_id,
@@ -148,14 +217,6 @@ export async function resolveDeviceTrust(
   }
 
   const trustedMatch = listed.devices.find((device) => fingerprintMatch(device, fingerprint));
-  if (trustedMatch) {
-    return {
-      status: "trusted",
-      deviceId: trustedMatch.device_id,
-      approverDevices: listed.devices,
-    };
-  }
-
   const pendingMatch = listed.pending.find((device) => fingerprintMatch(device, fingerprint));
   const soleTrusted = listed.devices.length === 1 ? listed.devices[0] : null;
   const canReclaimSole =
@@ -164,17 +225,96 @@ export async function resolveDeviceTrust(
     canReclaimSoleTrustedDevice(soleTrusted, fingerprint, env.clientType);
   const canBootstrapTrusted = hasBundle && listed.devices.length === 0;
 
-  // Local vault proves this browser already owns unlock material — do not stay stuck on pending.
-  if (pendingMatch && !canReclaimSole && !canBootstrapTrusted) {
-    return {
-      status: "pending",
-      deviceId: pendingMatch.device_id,
-      approverDevices: listed.devices,
-    };
+  // Re-login on an already trusted or pending fingerprint binds the session
+  // without minting new keys. Register would replace the trusted device share.
+  if (trustedMatch && !canReclaimSole) {
+    if (!(await hasDeviceSigningKey())) {
+      const shareB64 = bundle?.device_share_b64?.trim() ?? "";
+      if (shareB64) {
+        try {
+          await bindDeviceWithShareProof(core, trustedMatch.device_id, shareB64);
+          return {
+            status: "trusted",
+            deviceId: trustedMatch.device_id,
+            approverDevices: listed.devices,
+          };
+        } catch (error: unknown) {
+          return {
+            status: "error",
+            deviceId: trustedMatch.device_id,
+            approverDevices: listed.devices,
+            errorMessage: error instanceof Error ? error.message : String(error),
+          };
+        }
+      }
+      // No signing key and no vault share: do not demote another device.
+      return {
+        status: "error",
+        deviceId: trustedMatch.device_id,
+        approverDevices: listed.devices,
+        needsRecovery: true,
+        errorMessage: "DEVICE_REBIND_REQUIRES_RECOVERY",
+      };
+    }
+    try {
+      await bindDeviceWithProof(core, trustedMatch.device_id);
+      return {
+        status: "trusted",
+        deviceId: trustedMatch.device_id,
+        approverDevices: listed.devices,
+      };
+    } catch (error: unknown) {
+      return {
+        status: "error",
+        deviceId: trustedMatch.device_id,
+        approverDevices: listed.devices,
+        errorMessage: error instanceof Error ? error.message : String(error),
+      };
+    }
   }
-
-  if (!pendingMatch && !canReclaimSole && !canBootstrapTrusted) {
-    // New browser without local vault → register as pending (or trusted if server has none).
+  if (pendingMatch && !canReclaimSole && !canBootstrapTrusted) {
+    if (!(await hasDeviceSigningKey())) {
+      const shareB64 = bundle?.device_share_b64?.trim() ?? "";
+      if (shareB64) {
+        try {
+          await bindDeviceWithShareProof(core, pendingMatch.device_id, shareB64);
+          return {
+            status: "pending",
+            deviceId: pendingMatch.device_id,
+            approverDevices: listed.devices,
+          };
+        } catch (error: unknown) {
+          return {
+            status: "pending",
+            deviceId: pendingMatch.device_id,
+            approverDevices: listed.devices,
+            errorMessage: error instanceof Error ? error.message : String(error),
+          };
+        }
+      }
+      return {
+        status: "pending",
+        deviceId: pendingMatch.device_id,
+        approverDevices: listed.devices,
+        needsRecovery: listed.devices.length < 1,
+        errorMessage: listed.devices.length < 1 ? "DEVICE_REBIND_REQUIRES_RECOVERY" : undefined,
+      };
+    }
+    try {
+      await bindDeviceWithProof(core, pendingMatch.device_id);
+      return {
+        status: "pending",
+        deviceId: pendingMatch.device_id,
+        approverDevices: listed.devices,
+      };
+    } catch (error: unknown) {
+      return {
+        status: "pending",
+        deviceId: pendingMatch.device_id,
+        approverDevices: listed.devices,
+        errorMessage: error instanceof Error ? error.message : String(error),
+      };
+    }
   }
 
   try {
@@ -183,6 +323,8 @@ export async function resolveDeviceTrust(
       reclaimSoleTrusted: canReclaimSole,
     });
     if (registered.status === "trusted") {
+      // POST /devices still binds the Bearer when it creates a trusted row.
+      boundSessionDeviceId = registered.device_id;
       const after = await core.listDevices(fingerprint).catch(() => listed);
       return {
         status: "trusted",
@@ -192,6 +334,7 @@ export async function resolveDeviceTrust(
     }
 
     if (registered.status === "blocked") {
+      await clearDeviceSigningKey();
       return {
         status: "blocked",
         deviceId: registered.device_id,
@@ -207,6 +350,19 @@ export async function resolveDeviceTrust(
       approverDevices: afterPending.devices,
     };
   } catch (error: unknown) {
+    if (
+      error instanceof ApiRequestError &&
+      error.body.error === "DEVICE_FINGERPRINT_ALREADY_TRUSTED"
+    ) {
+      const conflictId = trustedMatch?.device_id ?? pendingMatch?.device_id ?? null;
+      return {
+        status: "error",
+        deviceId: conflictId,
+        approverDevices: listed.devices,
+        needsRecovery: true,
+        errorMessage: "DEVICE_FINGERPRINT_ALREADY_TRUSTED",
+      };
+    }
     if (pendingMatch) {
       return {
         status: "pending",
@@ -231,6 +387,7 @@ export async function pollDeviceTrust(
   core: CoreApiClient,
   fingerprint: string,
   pendingDeviceId: string | null,
+  userId?: string,
 ): Promise<DeviceTrustSnapshot> {
   const listed = await core.listDevices(fingerprint);
 
@@ -244,6 +401,7 @@ export async function pollDeviceTrust(
           ? null
           : new Date(blockedById.blocked_until).getTime();
       if (untilMs === null || untilMs > Date.now()) {
+        await clearDeviceSigningKey();
         return {
           status: "blocked",
           deviceId: blockedById.device_id,
@@ -263,6 +421,7 @@ export async function pollDeviceTrust(
         ? null
         : new Date(blockedMatch.blocked_until).getTime();
     if (untilMs === null || untilMs > Date.now()) {
+      await clearDeviceSigningKey();
       return {
         status: "blocked",
         deviceId: blockedMatch.device_id,
@@ -274,11 +433,58 @@ export async function pollDeviceTrust(
 
   const trustedMatch = listed.devices.find((device) => fingerprintMatch(device, fingerprint));
   if (trustedMatch) {
-    return {
-      status: "trusted",
-      deviceId: trustedMatch.device_id,
-      approverDevices: listed.devices,
-    };
+    // Never report trusted for an unbound Bearer — that unlocked the vault UI while
+    // /account/recovery and vault-unlock stayed 401 after a failed bind-session proof.
+    if (boundSessionDeviceId === trustedMatch.device_id) {
+      return {
+        status: "trusted",
+        deviceId: trustedMatch.device_id,
+        approverDevices: listed.devices,
+      };
+    }
+    if (!(await hasDeviceSigningKey())) {
+      const shareB64 =
+        (userId ? readVaultBundle(userId)?.device_share_b64?.trim() : "") ?? "";
+      if (shareB64) {
+        try {
+          await bindDeviceWithShareProof(core, trustedMatch.device_id, shareB64);
+          return {
+            status: "trusted",
+            deviceId: trustedMatch.device_id,
+            approverDevices: listed.devices,
+          };
+        } catch (error: unknown) {
+          return {
+            status: "error",
+            deviceId: trustedMatch.device_id,
+            approverDevices: listed.devices,
+            errorMessage: error instanceof Error ? error.message : String(error),
+          };
+        }
+      }
+      return {
+        status: "error",
+        deviceId: trustedMatch.device_id,
+        approverDevices: listed.devices,
+        needsRecovery: listed.devices.length <= 1,
+        errorMessage: "DEVICE_REBIND_REQUIRES_RECOVERY",
+      };
+    }
+    try {
+      await bindDeviceWithProof(core, trustedMatch.device_id);
+      return {
+        status: "trusted",
+        deviceId: trustedMatch.device_id,
+        approverDevices: listed.devices,
+      };
+    } catch (error: unknown) {
+      return {
+        status: "error",
+        deviceId: trustedMatch.device_id,
+        approverDevices: listed.devices,
+        errorMessage: error instanceof Error ? error.message : String(error),
+      };
+    }
   }
 
   const pendingMatch =
@@ -296,6 +502,7 @@ export async function pollDeviceTrust(
   }
 
   if (pendingDeviceId) {
+    await clearDeviceSigningKey();
     return {
       status: "rejected",
       deviceId: pendingDeviceId,
@@ -325,21 +532,15 @@ export async function registerCurrentBrowserDevice(
   );
   // Prefer structured identity from UA; argument is kept for callers/tests.
   const deviceFingerprint = fingerprint.trim() || env.fingerprint;
-
-  let devicePublicKeyB64 = readStoredDevicePublicKey();
-  if (!devicePublicKeyB64) {
-    const deviceKp = ed25519Keypair();
-    devicePublicKeyB64 = bytesToBase64(deviceKp.slice(32, 64));
-    wipeBytes(deviceKp);
-    writeStoredDevicePublicKey(devicePublicKeyB64);
-  }
+  const devicePublicKeyB64 = await ensureDeviceSigningPublicKey();
 
   const bundle = options?.userId ? readVaultBundle(options.userId) : null;
   let shareBytes: Uint8Array | null = null;
   let ownsShare = false;
   if (bundle?.device_share_b64) {
     try {
-      shareBytes = base64ToBytes(bundle.device_share_b64);
+      const binary = atob(bundle.device_share_b64);
+      shareBytes = Uint8Array.from(binary, (c) => c.charCodeAt(0));
     } catch {
       shareBytes = null;
     }
@@ -361,6 +562,8 @@ export async function registerCurrentBrowserDevice(
       app_version: "web",
       client_type: env.clientType,
       user_agent: env.userAgent,
+      // Explicit body locale: browsers ignore Accept-Language set via fetch.
+      locale: readStoredLocale(),
       metadata: {
         crypto_capable: true,
         reclaim_sole_trusted: options?.reclaimSoleTrusted === true,

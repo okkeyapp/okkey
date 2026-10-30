@@ -37,13 +37,20 @@ export interface ResolvedAccessToken {
 }
 
 export interface SessionServiceDeps {
-  sessions: SessionsRepository;
+  sessions: Pick<
+    SessionsRepository,
+    | "createSession"
+    | "findValidByTokenHash"
+    | "bindDevice"
+    | "deleteByDeviceId"
+    | "deleteByTokenHash"
+  >;
   config: Pick<ApiConfig, "sessionTtlSeconds">;
   now?: () => Date;
 }
 
 export class SessionService {
-  private readonly sessions: SessionsRepository;
+  private readonly sessions: SessionServiceDeps["sessions"];
   private readonly config: Pick<ApiConfig, "sessionTtlSeconds">;
   private readonly now: () => Date;
 
@@ -100,6 +107,28 @@ export class SessionService {
       scope: isFullSessionScope(row.scope) ? null : row.scope,
       tokenHash: this.hashAccessToken(trimmed),
     };
+  }
+
+  /** Attach a registered device to the caller's current access-token session. */
+  async bindAccessTokenDevice(
+    accessToken: string,
+    userId: string,
+    deviceId: string,
+  ): Promise<boolean> {
+    const trimmed = accessToken.trim();
+    if (!trimmed || !deviceId) {
+      return false;
+    }
+    return this.sessions.bindDevice({
+      tokenHash: this.hashAccessToken(trimmed),
+      userId,
+      deviceId,
+    });
+  }
+
+  /** End all server sessions bound to a device (revoke / sign-out). */
+  async revokeSessionsForDevice(userId: string, deviceId: string): Promise<void> {
+    await this.sessions.deleteByDeviceId({ userId, deviceId });
   }
 
   async revokeAccessToken(token: string): Promise<boolean> {
