@@ -5,7 +5,6 @@ import type { DeviceListItemDto, DeviceRegisterResponseDto } from "@okkey/types"
 import { isUnauthorizedApiError } from "./apiErrors.ts";
 import { parseBrowserEnvironment } from "./browserEnvironment.ts";
 import { randomDeviceShareB64 } from "./deviceKeyPlaceholders.ts";
-import { readExtensionVaultBundle } from "./vaultStorage.ts";
 import {
   clearExtensionDeviceSigningKey,
   ensureExtensionDeviceSigningPublicKey,
@@ -197,7 +196,7 @@ export async function markExtensionDeviceDeferred(deviceId: string | null): Prom
  */
 export async function resolveExtensionDeviceTrust(
   core: CoreApiClient,
-  options?: { forceRegister?: boolean; userId?: string },
+  options?: { forceRegister?: boolean; deviceShareB64?: string },
 ): Promise<DeviceTrustSnapshot> {
   const fingerprint = await ensureFingerprint();
   const deferred = options?.forceRegister ? null : await readDeviceDeferred();
@@ -247,8 +246,7 @@ export async function resolveExtensionDeviceTrust(
 
   if (trustedMatch) {
     if (!(await hasExtensionDeviceSigningKey())) {
-      const bundle = options?.userId ? await readExtensionVaultBundle(options.userId) : null;
-      const shareB64 = bundle?.device_share_b64?.trim() ?? "";
+      const shareB64 = options?.deviceShareB64?.trim() ?? "";
       if (shareB64) {
         try {
           await bindExtensionDeviceWithShareProof(core, trustedMatch.device_id, shareB64);
@@ -303,8 +301,7 @@ export async function resolveExtensionDeviceTrust(
   const pendingMatch = listed.pending.find((device) => fingerprintMatch(device, fingerprint));
   if (pendingMatch) {
     if (!(await hasExtensionDeviceSigningKey())) {
-      const bundle = options?.userId ? await readExtensionVaultBundle(options.userId) : null;
-      const shareB64 = bundle?.device_share_b64?.trim() ?? "";
+      const shareB64 = options?.deviceShareB64?.trim() ?? "";
       if (shareB64) {
         try {
           await bindExtensionDeviceWithShareProof(core, pendingMatch.device_id, shareB64);
@@ -400,10 +397,10 @@ export async function resolveExtensionDeviceTrust(
 /** Explicit re-request after deferred / rejected — same as web retryDeviceRegistration. */
 export async function retryExtensionDeviceRegistration(
   core: CoreApiClient,
-  userId?: string,
+  deviceShareB64?: string,
 ): Promise<DeviceTrustSnapshot> {
   await clearDeviceDeferred();
-  return resolveExtensionDeviceTrust(core, { forceRegister: true, userId });
+  return resolveExtensionDeviceTrust(core, { forceRegister: true, deviceShareB64 });
 }
 
 /**

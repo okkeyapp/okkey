@@ -431,7 +431,10 @@ export function PopupApp() {
     async (apiBaseUrl: string, accessToken: string, userId?: string) => {
       try {
         const core = createCoreClient(apiBaseUrl, accessToken);
-        const snapshot = await resolveExtensionDeviceTrust(core, { userId });
+        const shareB64 = userId
+          ? (await readExtensionVaultBundle(userId))?.device_share_b64
+          : undefined;
+        const snapshot = await resolveExtensionDeviceTrust(core, { deviceShareB64: shareB64 });
         await applyTrustSnapshot(snapshot, userId);
         void loadIdentity(apiBaseUrl, accessToken, userId).catch(async (err: unknown) => {
           if (isUnauthorizedApiError(err)) {
@@ -747,7 +750,8 @@ export function PopupApp() {
     setRetrying(true);
     try {
       const core = createCoreClient(profile.apiBaseUrl, session.access_token);
-      const snapshot = await retryExtensionDeviceRegistration(core, session.user_id);
+      const shareB64 = (await readExtensionVaultBundle(session.user_id))?.device_share_b64;
+      const snapshot = await retryExtensionDeviceRegistration(core, shareB64);
       await applyTrustSnapshot(snapshot, session.user_id);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
