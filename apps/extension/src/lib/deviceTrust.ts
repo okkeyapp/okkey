@@ -170,27 +170,12 @@ export async function resolveExtensionDeviceTrust(
   const trustedMatch = listed.devices.find((device) => fingerprintMatch(device, fingerprint));
   if (trustedMatch) {
     try {
-      const registered = await registerExtensionDevice(core);
-      await writeDeviceId(registered.device_id);
+      await core.bindDeviceSession(trustedMatch.device_id);
+      await writeDeviceId(trustedMatch.device_id);
       await clearDeviceDeferred();
-      if (registered.status === "blocked") {
-        return {
-          status: "blocked",
-          deviceId: registered.device_id,
-          approverDevices: listed.devices,
-          blockedUntil: registered.blocked_until ?? null,
-        };
-      }
-      if (registered.status === "pending_approval") {
-        return {
-          status: "pending",
-          deviceId: registered.device_id,
-          approverDevices: listed.devices,
-        };
-      }
       return {
         status: "trusted",
-        deviceId: registered.device_id,
+        deviceId: trustedMatch.device_id,
         approverDevices: listed.devices,
       };
     } catch (error: unknown) {
@@ -211,27 +196,12 @@ export async function resolveExtensionDeviceTrust(
   const pendingMatch = listed.pending.find((device) => fingerprintMatch(device, fingerprint));
   if (pendingMatch) {
     try {
-      const registered = await registerExtensionDevice(core);
-      await writeDeviceId(registered.device_id);
+      await core.bindDeviceSession(pendingMatch.device_id);
+      await writeDeviceId(pendingMatch.device_id);
       await clearDeviceDeferred();
-      if (registered.status === "trusted") {
-        return {
-          status: "trusted",
-          deviceId: registered.device_id,
-          approverDevices: listed.devices,
-        };
-      }
-      if (registered.status === "blocked") {
-        return {
-          status: "blocked",
-          deviceId: registered.device_id,
-          approverDevices: listed.devices,
-          blockedUntil: registered.blocked_until ?? null,
-        };
-      }
       return {
         status: "pending",
-        deviceId: registered.device_id,
+        deviceId: pendingMatch.device_id,
         approverDevices: listed.devices,
       };
     } catch (error: unknown) {

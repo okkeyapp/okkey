@@ -20,6 +20,7 @@ import {
   type WorkspaceMonitoringCardSettingsDto,
 } from "@okkey/types";
 import type { QueryExecutor } from "./postgres.ts";
+import { lockUserDevices, withUserDeviceLock } from "./user-device-lock.ts";
 import {
   EntityNotFoundError,
   UniqueConstraintError,
@@ -1001,6 +1002,14 @@ async function deleteSessionsForDevices(
   await db.query(`DELETE FROM sessions WHERE device_id = ANY($1::bigint[])`, [ids]);
 }
 
+/** Presented public key does not match the trusted device that already owns this fingerprint. */
+export class TrustedDeviceKeyConflictError extends Error {
+  constructor() {
+    super("trusted device keys cannot be replaced");
+    this.name = "TrustedDeviceKeyConflictError";
+  }
+}
+
 export class DevicesRepository {
   private readonly db: QueryExecutor & {
     transaction<T>(fn: (tx: QueryExecutor) => Promise<T>): Promise<T>;
@@ -1162,7 +1171,8 @@ export class DevicesRepository {
     requestIp: string;
     now: string;
   }): Promise<DeviceRecord> {
-    return this.db.transaction(async (tx) => {
+    return withUserDeviceLock(input.userId, () => this.db.transaction(async (tx) => {
+      await lockUserDevices(tx, input.userId);
       const revokedDevices = await tx.query<{ id: string }>(
         `
           UPDATE devices
@@ -1328,7 +1338,7 @@ export class DevicesRepository {
         ],
       );
       return mapDevice(rows[0]!);
-    });
+    }));
   }
 
   async registerOrUpdate(input: {
@@ -1347,7 +1357,8 @@ export class DevicesRepository {
     now: string;
   }): Promise<DeviceRecord & { sendApprovalEmail: boolean }> {
     try {
-      return await this.db.transaction(async (tx) => {
+      return await withUserDeviceLock(input.userId, () => this.db.transaction(async (tx) => {
+      await lockUserDevices(tx, input.userId);
       // Serialize parallel registers of the same fingerprint so only one approval email is sent.
       await tx.query(`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, [
         `okkey-device-register:${input.userId}:${input.deviceFingerprint}`,
@@ -1429,6 +1440,27 @@ export class DevicesRepository {
           if (blockedUntilMs > new Date(input.now).getTime()) {
             return { ...mapDevice(current), sendApprovalEmail: false };
           }
+        }
+        if (current.status === "trusted") {
+          if (current.device_public_key.trim() !== input.devicePublicKey.trim()) {
+            throw new TrustedDeviceKeyConflictError();
+          }
+          await tx.query(
+            `
+              UPDATE devices
+              SET last_seen_at = $3::timestamptz, ip_last = $4
+              WHERE id = $1 AND user_id = $2::bigint AND status = 'trusted'
+            `,
+            [current.id, input.userId, input.now, input.requestIp],
+          );
+          return {
+            ...mapDevice({
+              ...current,
+              last_seen_at: input.now,
+              ip_last: input.requestIp,
+            }),
+            sendApprovalEmail: false,
+          };
         }
         const hasOtherTrusted = await tx.query<{ n: string }>(
           `
@@ -1745,8 +1777,11 @@ export class DevicesRepository {
         ...inserted,
         sendApprovalEmail: inserted.status === "pending",
       };
-      });
+      }));
     } catch (error) {
+      if (error instanceof TrustedDeviceKeyConflictError) {
+        throw error;
+      }
       throw toUniqueError(error);
     }
   }
@@ -1813,7 +1848,8 @@ export class DevicesRepository {
     approverDeviceId?: string;
     rejectReason?: string;
   }): Promise<DeviceApprovalState> {
-    return this.db.transaction(async (tx) => {
+    return withUserDeviceLock(input.userId, () => this.db.transaction(async (tx) => {
+      await lockUserDevices(tx, input.userId);
       const rows = await tx.query<{
         id: string;
         user_id: string;
@@ -2083,7 +2119,7 @@ export class DevicesRepository {
       );
       await deleteSessionsForDevices(tx, [input.deviceId]);
       return { kind: "rejected", device: mapDevice(rejectedRows[0]) };
-    });
+    }));
   }
 
   async listByUser(
@@ -2226,7 +2262,13 @@ export class DevicesRepository {
     now: string;
     reason?: string;
   }): Promise<DeviceRecord | null> {
-    const rows = await this.db.query<{
+    return withUserDeviceLock(input.userId, () => this.db.transaction(async (tx) => {
+      await lockUserDevices(tx, input.userId);
+      await tx.query(
+        `SELECT id FROM devices WHERE id = $1 AND user_id = $2 FOR UPDATE`,
+        [input.deviceId, input.userId],
+      );
+    const rows = await tx.query<{
       id: string;
       user_id: string;
       device_fingerprint: string;
@@ -2293,8 +2335,9 @@ export class DevicesRepository {
     if (!rows[0]) {
       return null;
     }
-    await deleteSessionsForDevices(this.db, [input.deviceId]);
+    await deleteSessionsForDevices(tx, [input.deviceId]);
     return mapDevice(rows[0]);
+    }));
   }
 
   async blockPending(input: {
@@ -2305,7 +2348,13 @@ export class DevicesRepository {
     blockedUntil: string | null;
     reason?: string;
   }): Promise<DeviceRecord | null> {
-    const rows = await this.db.query<{
+    return withUserDeviceLock(input.userId, () => this.db.transaction(async (tx) => {
+      await lockUserDevices(tx, input.userId);
+      await tx.query(
+        `SELECT id FROM devices WHERE id = $1 AND user_id = $2 AND status = 'pending' FOR UPDATE`,
+        [input.deviceId, input.userId],
+      );
+    const rows = await tx.query<{
       id: string;
       user_id: string;
       device_fingerprint: string;
@@ -2383,8 +2432,9 @@ export class DevicesRepository {
     if (!rows[0]) {
       return null;
     }
-    await deleteSessionsForDevices(this.db, [input.deviceId]);
+    await deleteSessionsForDevices(tx, [input.deviceId]);
     return mapDevice(rows[0]);
+    }));
   }
 
   async unblockDevice(input: {
@@ -3146,19 +3196,38 @@ export class SessionsRepository {
     userId: string;
     deviceId: string;
   }): Promise<boolean> {
-    const rows = await this.db.query<{ id: string }>(
-      `
-        UPDATE sessions
-        SET device_id = $3
-        WHERE token_hash = $1
-          AND user_id = $2
-          AND expires_at > now()
-          AND (device_id IS NULL OR device_id = $3)
-        RETURNING id
-      `,
-      [input.tokenHash, input.userId, input.deviceId],
-    );
-    return rows.length > 0;
+    const db = this.db as QueryExecutor & {
+      transaction<T>(fn: (tx: QueryExecutor) => Promise<T>): Promise<T>;
+    };
+    return withUserDeviceLock(input.userId, () => db.transaction(async (tx) => {
+      await lockUserDevices(tx, input.userId);
+      const devices = await tx.query<{ status: string }>(
+        `
+          SELECT status
+          FROM devices
+          WHERE id = $1 AND user_id = $2
+          FOR UPDATE
+        `,
+        [input.deviceId, input.userId],
+      );
+      const status = devices[0]?.status;
+      if (status !== "trusted" && status !== "pending") {
+        return false;
+      }
+      const rows = await tx.query<{ id: string }>(
+        `
+          UPDATE sessions
+          SET device_id = $3
+          WHERE token_hash = $1
+            AND user_id = $2
+            AND expires_at > now()
+            AND (device_id IS NULL OR device_id = $3)
+          RETURNING id
+        `,
+        [input.tokenHash, input.userId, input.deviceId],
+      );
+      return rows.length > 0;
+    }));
   }
 
   async deleteByDeviceId(input: { userId: string; deviceId: string }): Promise<number> {

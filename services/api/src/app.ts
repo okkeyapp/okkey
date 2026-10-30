@@ -32,6 +32,7 @@ import {
   createBlockDeviceRoute,
   createListDevicesRoute,
   createPatchDeviceRoute,
+  createBindDeviceSessionRoute,
   createRegisterDeviceRoute,
   createRejectDeviceRoute,
   createRevokeDeviceRoute,
@@ -735,6 +736,15 @@ export function createApiApp(
         deps.deviceService,
         resolveUserIdAllowUnboundDevice,
         config.trustedProxyHops,
+        deps.sessionService,
+      ),
+    );
+    app.route(
+      "POST",
+      "/devices/:deviceId/bind-session",
+      createBindDeviceSessionRoute(
+        deps.deviceService,
+        resolveUserIdAllowUnboundDevice,
         deps.sessionService,
       ),
     );

@@ -632,6 +632,39 @@ test("POST /devices/:id/revoke still revokes a different device when caller head
   assert.equal(payload.status, "revoked");
 });
 
+test("POST /devices/register does not bind a blocked device", async () => {
+  let bound = false;
+  const res = await dispatch({
+    method: "POST",
+    url: "/devices/register",
+    headers: { authorization: "Bearer tok-blocked", "x-user-id": "u1" },
+    body: registerBody(),
+    deviceService: createDeviceServiceStub({
+      registerDevice: async () => ({
+        deviceId: DEVICE_A,
+        status: "blocked",
+        blockedUntil: null,
+      }),
+    }),
+    sessionService: createSessionServiceStub({
+      resolveAccessToken: async () => ({
+        userId: "u1",
+        deviceId: null,
+        scope: null,
+        tokenHash: "hash",
+      }),
+      bindAccessTokenDevice: async () => {
+        bound = true;
+        return true;
+      },
+    }),
+  });
+  assert.equal(res.statusCode, 200);
+  const payload = JSON.parse(res.body) as { status: string };
+  assert.equal(payload.status, "blocked");
+  assert.equal(bound, false);
+});
+
 test("POST /devices/register binds the access-token session to the device", async () => {
   const bound: Array<{ token: string; userId: string; deviceId: string }> = [];
   const res = await dispatch({

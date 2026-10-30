@@ -86,7 +86,8 @@ describe("resolveDeviceTrust", () => {
     expect(snapshot.approverDevices).toHaveLength(1);
   });
 
-  it("returns trusted when fingerprint matches and binds the session via register", async () => {
+  it("binds a trusted fingerprint without registering new keys", async () => {
+    const bindDeviceSession = vi.fn().mockResolvedValue({ device_id: "d-me", status: "trusted" });
     listDevices.mockResolvedValue({
       devices: [
         {
@@ -97,11 +98,14 @@ describe("resolveDeviceTrust", () => {
       ],
       pending: [],
     });
-    registerDevice.mockResolvedValue({ device_id: "d-me", status: "trusted" });
 
-    const snapshot = await resolveDeviceTrust(coreClient(), "u1");
+    const snapshot = await resolveDeviceTrust(
+      { listDevices, registerDevice, bindDeviceSession } as never,
+      "u1",
+    );
 
-    expect(registerDevice).toHaveBeenCalledOnce();
+    expect(registerDevice).not.toHaveBeenCalled();
+    expect(bindDeviceSession).toHaveBeenCalledWith("d-me");
     expect(snapshot.status).toBe("trusted");
     expect(snapshot.deviceId).toBe("d-me");
   });

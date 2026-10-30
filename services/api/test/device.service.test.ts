@@ -7,6 +7,7 @@ import {
 } from "../src/device/service.ts";
 import type { EmailTemplateService } from "../src/email/service.ts";
 import { UniqueConstraintError } from "../src/storage/errors.ts";
+import { TrustedDeviceKeyConflictError } from "../src/storage/repositories.ts";
 import type { DeviceApprovalState } from "../src/storage/repositories.ts";
 
 function createInput(overrides?: Partial<RegisterDeviceInput>): RegisterDeviceInput {
@@ -175,6 +176,21 @@ test("registerDevice claimAfterRecovery becomes sole trusted without pending", a
   assert.equal(claimed, true);
   assert.equal(result.status, "trusted");
   assert.equal(result.deviceId, "d-fresh");
+});
+
+test("registerDevice does not accept new keys for an existing trusted fingerprint", async () => {
+  const service = createService({
+    registerOrUpdate: async () => {
+      throw new TrustedDeviceKeyConflictError();
+    },
+  });
+  await assert.rejects(
+    () => service.registerDevice("u1", "127.0.0.1", createInput()),
+    (error: unknown) =>
+      error instanceof DeviceServiceError &&
+      error.code === "DEVICE_FINGERPRINT_ALREADY_TRUSTED" &&
+      error.statusCode === 409,
+  );
 });
 
 test("registerDevice skips a second approval email for an existing pending device", async () => {

@@ -114,12 +114,12 @@ export class SessionService {
     accessToken: string,
     userId: string,
     deviceId: string,
-  ): Promise<void> {
+  ): Promise<boolean> {
     const trimmed = accessToken.trim();
     if (!trimmed || !deviceId) {
-      return;
+      return false;
     }
-    await this.sessions.bindDevice({
+    return this.sessions.bindDevice({
       tokenHash: this.hashAccessToken(trimmed),
       userId,
       deviceId,

@@ -843,6 +843,14 @@ export class CoreApiClient {
     return this.api.post<DeviceRegisterResponseDto>("/devices/register", body);
   }
 
+  /** Attach the current Bearer session to an existing trusted or pending device. Does not change device keys. */
+  bindDeviceSession(deviceId: string): Promise<DeviceRegisterResponseDto> {
+    return this.api.post<DeviceRegisterResponseDto>(
+      `/devices/${encodeURIComponent(deviceId)}/bind-session`,
+      {},
+    );
+  }
+
   listDevices(currentFingerprint?: string): Promise<DeviceListResponseDto> {
     const query = currentFingerprint
       ? `?device_fingerprint=${encodeURIComponent(currentFingerprint)}`

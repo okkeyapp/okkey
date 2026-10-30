@@ -152,15 +152,51 @@ export async function resolveDeviceTrust(
     }
   }
 
+  const trustedMatch = listed.devices.find((device) => fingerprintMatch(device, fingerprint));
   const pendingMatch = listed.pending.find((device) => fingerprintMatch(device, fingerprint));
   const soleTrusted = listed.devices.length === 1 ? listed.devices[0] : null;
   const canReclaimSole =
     hasBundle &&
     soleTrusted !== null &&
     canReclaimSoleTrustedDevice(soleTrusted, fingerprint, env.clientType);
+  const canBootstrapTrusted = hasBundle && listed.devices.length === 0;
 
-  // Always register, including a trusted or pending fingerprint match, so the
-  // full session is bound to that device. A match-only return left device_id NULL.
+  // Re-login on an already trusted or pending fingerprint binds the session
+  // without minting new keys. Register would replace the trusted device share.
+  if (trustedMatch && !canReclaimSole) {
+    try {
+      await core.bindDeviceSession(trustedMatch.device_id);
+      return {
+        status: "trusted",
+        deviceId: trustedMatch.device_id,
+        approverDevices: listed.devices,
+      };
+    } catch (error: unknown) {
+      return {
+        status: "error",
+        deviceId: trustedMatch.device_id,
+        approverDevices: listed.devices,
+        errorMessage: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+  if (pendingMatch && !canReclaimSole && !canBootstrapTrusted) {
+    try {
+      await core.bindDeviceSession(pendingMatch.device_id);
+      return {
+        status: "pending",
+        deviceId: pendingMatch.device_id,
+        approverDevices: listed.devices,
+      };
+    } catch (error: unknown) {
+      return {
+        status: "pending",
+        deviceId: pendingMatch.device_id,
+        approverDevices: listed.devices,
+        errorMessage: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
 
   try {
     const registered = await registerCurrentBrowserDevice(core, fingerprint, {

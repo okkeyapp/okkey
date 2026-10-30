@@ -228,7 +228,11 @@ export function createRegisterDeviceRoute(
       });
 
       const accessToken = getBearerToken(ctx.req);
-      if (accessToken && sessionService) {
+      if (
+        accessToken &&
+        sessionService &&
+        (result.status === "trusted" || result.status === "pending_approval")
+      ) {
         await sessionService.bindAccessTokenDevice(accessToken, userId, result.deviceId);
       }
 
@@ -238,6 +242,59 @@ export function createRegisterDeviceRoute(
         ...(result.status === "blocked"
           ? { blocked_until: result.blockedUntil ?? null }
           : {}),
+      });
+    } catch (error) {
+      handleDeviceError(ctx.requestId, ctx.res, error);
+    }
+  };
+}
+
+export function createBindDeviceSessionRoute(
+  deviceService: DeviceService,
+  resolveUserId: (req: IncomingMessage) => Promise<string | null>,
+  sessionService?: Pick<SessionDeviceBinding, "bindAccessTokenDevice">,
+): RouteHandler {
+  return async (ctx) => {
+    const deviceId = canonicalDeviceId(ctx.params.deviceId ?? "");
+    if (!deviceId) {
+      json(
+        ctx.res,
+        400,
+        errorPayload("DEVICE_BAD_REQUEST", "deviceId is invalid", ctx.requestId),
+      );
+      return;
+    }
+    try {
+      const userId = await resolveUserId(ctx.req);
+      if (!userId) {
+        json(ctx.res, 401, errorPayload("AUTH_REQUIRED", "auth required", ctx.requestId));
+        return;
+      }
+      const accessToken = getBearerToken(ctx.req);
+      if (!accessToken || !sessionService) {
+        json(ctx.res, 401, errorPayload("AUTH_REQUIRED", "auth required", ctx.requestId));
+        return;
+      }
+      const listed = await deviceService.listDevices(userId);
+      const match = [...listed.devices, ...listed.pending].find(
+        (device) => device.deviceId === deviceId,
+      );
+      if (!match) {
+        json(ctx.res, 404, errorPayload("DEVICE_NOT_FOUND", "device not found", ctx.requestId));
+        return;
+      }
+      const bound = await sessionService.bindAccessTokenDevice(accessToken, userId, deviceId);
+      if (!bound) {
+        json(
+          ctx.res,
+          409,
+          errorPayload("DEVICE_NOT_ACTIVE", "device is not active", ctx.requestId),
+        );
+        return;
+      }
+      json(ctx.res, 200, {
+        device_id: deviceId,
+        status: match.status,
       });
     } catch (error) {
       handleDeviceError(ctx.requestId, ctx.res, error);

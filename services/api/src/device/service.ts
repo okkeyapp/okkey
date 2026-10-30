@@ -10,6 +10,7 @@ import type {
   DeviceRecord,
   DevicesRepository,
 } from "../storage/repositories.ts";
+import { TrustedDeviceKeyConflictError } from "../storage/repositories.ts";
 import { assertOpaqueSplitKeyShare } from "../registration/split-key-transport-policy.ts";
 
 export class DeviceServiceError extends Error {
@@ -275,6 +276,13 @@ export class DeviceService {
 
       return result;
     } catch (error) {
+      if (error instanceof TrustedDeviceKeyConflictError) {
+        throw new DeviceServiceError(
+          "DEVICE_FINGERPRINT_ALREADY_TRUSTED",
+          409,
+          "trusted device keys cannot be replaced",
+        );
+      }
       if (error instanceof UniqueConstraintError) {
         throw new DeviceServiceError(
           "DEVICE_DUPLICATE_CONFLICT",
