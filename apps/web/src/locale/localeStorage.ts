@@ -28,6 +28,24 @@ export function stripLocaleFromUrlSearch(search: string): string {
 }
 
 /**
+ * Absolute href with `lng` removed. Returns null when `lng` is absent.
+ * Always returns a same-origin absolute URL so `history.replaceState` stays
+ * safe even when `pathname` starts with `//` (protocol-relative trap).
+ */
+export function hrefWithoutLocaleQuery(href: string): string | null {
+  try {
+    const url = new URL(href);
+    if (!url.searchParams.has(LOCALE_QUERY_PARAM)) {
+      return null;
+    }
+    url.searchParams.delete(LOCALE_QUERY_PARAM);
+    return url.href;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * If the URL has a supported `lng`, persist it, apply once, then remove `lng`
  * via `history.replaceState` so reload does not keep overriding the UI locale.
  */
@@ -40,13 +58,13 @@ export function applyLocaleFromUrlAndStrip(): WebLocale | null {
     return null;
   }
   writeStoredLocale(fromUrl);
-  const nextSearch = stripLocaleFromUrlSearch(window.location.search);
-  if (nextSearch !== window.location.search) {
-    window.history.replaceState(
-      window.history.state,
-      "",
-      `${window.location.pathname}${nextSearch}${window.location.hash}`,
-    );
+  const nextHref = hrefWithoutLocaleQuery(window.location.href);
+  if (nextHref && nextHref !== window.location.href) {
+    try {
+      window.history.replaceState(window.history.state, "", nextHref);
+    } catch {
+      /* SecurityError / odd history hosts — locale already persisted */
+    }
   }
   return fromUrl;
 }

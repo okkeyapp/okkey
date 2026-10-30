@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  hrefWithoutLocaleQuery,
   LOCALE_QUERY_PARAM,
   readLocaleFromSearch,
   stripLocaleFromUrlSearch,
@@ -36,5 +37,20 @@ describe("stripLocaleFromUrlSearch", () => {
   it("leaves search unchanged when lng is absent", () => {
     expect(stripLocaleFromUrlSearch("?popup=settings")).toBe("?popup=settings");
     expect(stripLocaleFromUrlSearch("")).toBe("");
+  });
+});
+
+describe("hrefWithoutLocaleQuery", () => {
+  it("returns an absolute href with lng removed", () => {
+    expect(hrefWithoutLocaleQuery("https://app.example/items?lng=ru&popup=settings")).toBe(
+      "https://app.example/items?popup=settings",
+    );
+    expect(hrefWithoutLocaleQuery("https://app.example/items?popup=settings")).toBeNull();
+  });
+
+  it("keeps absolute href when path starts with //", () => {
+    expect(
+      hrefWithoutLocaleQuery("https://app.example//items?lng=ru&popup=settings%7Cdevices"),
+    ).toBe("https://app.example//items?popup=settings%7Cdevices");
   });
 });
