@@ -53,7 +53,9 @@ E2E_EXTENSION=1 xvfb-run --auto-servernum yarn test:browser -- extension-smoke
 
 ## CI
 
-Workflow `.github/workflows/browser-e2e.yml` runs on `push`, schedule, and
-`workflow_dispatch` (no `pull_request`). Web is built like `apps/web/Dockerfile`
+Workflow `.github/workflows/browser-e2e.yml` runs on pull requests targeting
+`dev`, `release/**`, `hotfix/**`, and `main`, on pushes to `release/**` and
+`hotfix/**`, a weekly schedule, and `workflow_dispatch`. Pushes to `dev` and
+feature branches do not start it. Web is built like `apps/web/Dockerfile`
 with `VITE_E2E_DISABLE_PERSONAL_DATA_BOOTSTRAP=1` so smoke is not raced by the
 personal-data Edit popup; extension is built and exercised under `xvfb-run`.
