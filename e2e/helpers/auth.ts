@@ -81,6 +81,47 @@ export async function unlockWithMasterPassword(
   await expect(page).toHaveURL(/\/items/, { timeout: 60_000 });
 }
 
+/** Assert unlock rejects this master password and stays on the lock screen. */
+export async function expectUnlockRejectsMasterPassword(
+  page: Page,
+  masterPassword: string,
+): Promise<void> {
+  await expect(page.getByRole("heading", { name: /vault is locked/i })).toBeVisible({
+    timeout: 30_000,
+  });
+  await page.locator("#unlock-master-password").fill(masterPassword);
+  await page.getByRole("button", { name: /^unlock$/i }).click();
+  await expect(page.getByText(/incorrect master password/i)).toBeVisible({
+    timeout: 30_000,
+  });
+  await expect(page.getByRole("heading", { name: /vault is locked/i })).toBeVisible();
+  await expect(page).toHaveURL(/\/account\/lock/, { timeout: 10_000 });
+}
+
+/**
+ * Complete email + OTP on the current page (or from email entry).
+ * Does not navigate away first — used by extension PKCE auth tabs.
+ */
+export async function completeEmailOtpOnPage(page: Page, email: string): Promise<void> {
+  const sinceMs = Date.now();
+  const otpDigit = page.getByLabel(/digit 1 of 6/i);
+  const emailField = page.locator("#auth-email");
+
+  if (!(await otpDigit.isVisible().catch(() => false))) {
+    await expect(emailField.or(otpDigit)).toBeVisible({ timeout: 60_000 });
+    if (await emailField.isVisible().catch(() => false)) {
+      await emailField.fill(email);
+      await page.getByRole("button", { name: /^sign in$/i }).click();
+    }
+  }
+
+  await expect(otpDigit).toBeVisible({ timeout: 30_000 });
+  const otp = await waitForMailpitOtp(email, { sinceMs });
+  for (let i = 0; i < 6; i += 1) {
+    await page.getByLabel(new RegExp(`digit ${i + 1} of 6`, "i")).fill(otp[i]!);
+  }
+}
+
 /**
  * Full navigation to /items reloads the SPA — vault session is locked again.
  * Wait for either lock or items shell (avoid racing isVisible on a still-loading page).
