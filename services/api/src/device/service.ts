@@ -989,6 +989,11 @@ export class DeviceService {
     };
   }
 
+  /** True only when this user's device row is trusted. */
+  async isSessionDeviceTrusted(userId: string, deviceId: string): Promise<boolean> {
+    return this.devices.isTrustedDevice(userId, deviceId);
+  }
+
   private async requireActiveDevice(userId: string, deviceId: string) {
     if (!this.devices.findOwnedDeviceAuth) {
       throw new DeviceServiceError("DEVICE_NOT_FOUND", 404, "device not found");

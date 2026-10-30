@@ -2,18 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
-  isUnlockBootstrapFingerprint,
   VaultUnlockBootstrapError,
   VaultUnlockBootstrapService,
 } from "../src/account/vault-unlock-bootstrap.ts";
 
-test("isUnlockBootstrapFingerprint accepts structured and legacy hex", () => {
-  assert.equal(isUnlockBootstrapFingerprint("web_app-chrome-macos-14.5"), true);
-  assert.equal(isUnlockBootstrapFingerprint("a".repeat(64)), true);
-  assert.equal(isUnlockBootstrapFingerprint("not-a-fingerprint"), false);
-});
-
-test("getForUser accepts structured fingerprint used by web clients", async () => {
+test("getForBoundDevice returns the session device share", async () => {
   const share = Uint8Array.from({ length: 32 }, (_, i) => i + 1);
   const identityBlob = Uint8Array.from(
     Buffer.from(
@@ -26,6 +19,7 @@ test("getForUser accepts structured fingerprint used by web clients", async () =
       "utf8",
     ),
   );
+  let lookedUpId: string | null = null;
   const service = new VaultUnlockBootstrapService({
     users: {
       loadVaultUnlockRow: async () => ({
@@ -36,38 +30,30 @@ test("getForUser accepts structured fingerprint used by web clients", async () =
       }),
     },
     devices: {
-      findTrustedDeviceShareForUnlock: async (_userId, fingerprint) => {
-        assert.equal(fingerprint, "web_app-chrome-macos-14.5");
+      findTrustedDeviceShareById: async (_userId, deviceId) => {
+        lookedUpId = deviceId;
+        if (deviceId !== "d-session") {
+          return null;
+        }
         return share;
       },
     },
   });
 
-  const result = await service.getForUser("u1", "web_app-chrome-macos-14.5");
-  assert.equal(result.device_share, Buffer.from(share).toString("base64"));
-  assert.equal(result.password_kdf_params_version, 2);
-});
-
-test("getForUser rejects obsolete 64-hex-only gate for structured ids", async () => {
-  const service = new VaultUnlockBootstrapService({
-    users: {
-      loadVaultUnlockRow: async () => ({
-        serverKeyShare: Buffer.alloc(32, 1),
-        passwordKdfSalt: Buffer.alloc(16, 2),
-        passwordKdfParamsVersion: 2,
-        encryptedPrivateKey: Uint8Array.from([1, 2, 3]),
-      }),
-    },
-    devices: {
-      findTrustedDeviceShareForUnlock: async () => {
-        throw new Error("should not be called for invalid fp");
-      },
-    },
+  const result = await service.getForBoundDevice({
+    userId: "u1",
+    deviceId: "d-session",
   });
+  assert.equal(lookedUpId, "d-session");
+  assert.equal(result.device_share, Buffer.from(share).toString("base64"));
 
   await assert.rejects(
-    () => service.getForUser("u1", "bad"),
+    () =>
+      service.getForBoundDevice({
+        userId: "u1",
+        deviceId: "d-other",
+      }),
     (err: unknown) =>
-      err instanceof VaultUnlockBootstrapError && err.code === "VAULT_UNLOCK_INVALID_FINGERPRINT",
+      err instanceof VaultUnlockBootstrapError && err.code === "VAULT_UNLOCK_DEVICE_NOT_FOUND",
   );
 });

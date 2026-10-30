@@ -437,9 +437,15 @@ export function PopupApp() {
         const snapshot = await resolveExtensionDeviceTrust(core, { deviceShareB64: shareB64 });
         await applyTrustSnapshot(snapshot, userId);
         void loadIdentity(apiBaseUrl, accessToken, userId).catch(async (err: unknown) => {
-          if (isUnauthorizedApiError(err)) {
-            await wipeLocalAndReset();
+          if (!isUnauthorizedApiError(err)) {
+            return;
           }
+          // Profile stays closed until the device is trusted. Device list already
+          // succeeded, so keep waiting for approval instead of signing out.
+          if (snapshot.status === "pending" || snapshot.status === "checking") {
+            return;
+          }
+          await wipeLocalAndReset();
         });
       } catch (err: unknown) {
         if (isUnauthorizedApiError(err)) {

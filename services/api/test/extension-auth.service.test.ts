@@ -142,3 +142,43 @@ test("rejects bad PKCE verifier", async () => {
     (err: unknown) => err instanceof Error && /PKCE/.test(err.message),
   );
 });
+
+test("exchange of a capped code does not mint a longer session", async () => {
+  const redis = memoryRedis();
+  const cap = new Date(Date.now() + 30_000).toISOString();
+  let seenTtl: number | undefined;
+  const service = new ExtensionAuthService({
+    redis,
+    sessionService: {
+      async createSession(_userId: string, options?: { ttlSeconds?: number }) {
+        seenTtl = options?.ttlSeconds;
+        return {
+          accessToken: "capped",
+          expiresAt: cap,
+          scope: null,
+        };
+      },
+    },
+    generateCode: () => "capped-code",
+    now: () => new Date(),
+  });
+  const verifier = "b".repeat(64);
+  const challenge = sha256Base64Url(verifier);
+  const redirectUri = "chrome-extension://abc123/auth-callback.html";
+  await service.issueAuthCode({
+    userId: "user-1",
+    clientId: "okkey_extension",
+    redirectUri,
+    codeChallenge: challenge,
+    expiresAtCap: cap,
+  });
+  await service.exchangeAuthCode({
+    clientId: "okkey_extension",
+    redirectUri,
+    code: "capped-code",
+    codeVerifier: verifier,
+  });
+  assert.equal(typeof seenTtl, "number");
+  assert.ok((seenTtl ?? 0) <= 30);
+  assert.ok((seenTtl ?? 0) >= 1);
+});
