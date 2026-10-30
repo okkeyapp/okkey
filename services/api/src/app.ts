@@ -327,7 +327,11 @@ export function createApiApp(
     app.route(
       "POST",
       "/auth/extension/code",
-      createExtensionAuthIssueCodeRoute(deps.extensionAuthService, resolveUserId),
+      // Email login has not bound a device yet; PKCE handoff must still mint a code.
+      createExtensionAuthIssueCodeRoute(
+        deps.extensionAuthService,
+        resolveUserIdAllowUnboundDevice,
+      ),
     );
     app.route(
       "POST",
