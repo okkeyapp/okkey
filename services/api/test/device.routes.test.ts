@@ -239,6 +239,46 @@ test("POST /devices/register maps service error codes", async () => {
   assert.equal(payload.error, "DEVICE_INVALID_PUBLIC_KEY");
 });
 
+test("POST /devices/register returns 409 when trusted fingerprint keys differ", async () => {
+  let bound = false;
+  const res = await dispatch({
+    method: "POST",
+    url: "/devices/register",
+    headers: {
+      authorization: "Bearer tok-conflict",
+      "x-user-id": "u1",
+      "x-forwarded-for": "10.0.0.1",
+    },
+    body: registerBody(),
+    deviceService: createDeviceServiceStub({
+      registerDevice: async () => {
+        throw new DeviceServiceError(
+          "DEVICE_FINGERPRINT_ALREADY_TRUSTED",
+          409,
+          "trusted device keys cannot be replaced",
+        );
+      },
+    }),
+    sessionService: createSessionServiceStub({
+      resolveAccessToken: async () => ({
+        userId: "u1",
+        deviceId: null,
+        scope: null,
+        tokenHash: "hash:tok-conflict",
+      }),
+      bindAccessTokenDevice: async () => {
+        bound = true;
+        return true;
+      },
+    }),
+  });
+
+  assert.equal(res.statusCode, 409);
+  const payload = JSON.parse(res.body) as { error: string };
+  assert.equal(payload.error, "DEVICE_FINGERPRINT_ALREADY_TRUSTED");
+  assert.equal(bound, false);
+});
+
 test("POST /devices/:id/approve requires trusted approver headers", async () => {
   const res = await dispatch({
     method: "POST",

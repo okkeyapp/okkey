@@ -435,6 +435,55 @@ test("DevicesRepository.registerOrUpdate does not replace trusted device keys", 
   );
 });
 
+test("DevicesRepository.registerOrUpdate refreshes presence only when trusted keys match", async () => {
+  const storedKey = Buffer.from("original-pk").toString("base64");
+  const db = new FakeDb();
+  db.enqueueResult([]);
+  db.enqueueResult([]);
+  db.enqueueResult([
+    makeDeviceRow({
+      status: "trusted",
+      device_public_key: storedKey,
+      device_share: Buffer.from([1, 2, 3]),
+      device_name: "MacBook Pro",
+      app_version: "1.0.0",
+      ip_last: "10.0.0.1",
+    }),
+  ]);
+  db.enqueueResult([]); // last_seen / ip update
+  const repo = new DevicesRepository(db);
+  const result = await repo.registerOrUpdate({
+    userId: "u1",
+    deviceFingerprint: "a".repeat(64),
+    deviceName: "Work MacBook",
+    devicePublicKey: storedKey,
+    deviceShare: new Uint8Array(32).fill(9),
+    platform: "desktop",
+    osName: "macOS",
+    osVersion: "14.5",
+    appVersion: "1.1.0",
+    clientType: "desktop",
+    userAgent: "ua",
+    requestIp: "10.0.0.3",
+    now: "2026-01-01T00:02:00.000Z",
+  });
+  assert.equal(result.status, "trusted");
+  assert.equal(result.deviceName, "MacBook Pro");
+  assert.equal(result.appVersion, "1.0.0");
+  assert.deepEqual(Buffer.from(result.deviceShare), Buffer.from([1, 2, 3]));
+  assert.equal(result.ipLast, "10.0.0.3");
+  assert.equal(result.lastSeenAt, "2026-01-01T00:02:00.000Z");
+  assert.equal(result.sendApprovalEmail, false);
+  assert.equal(
+    db.queries.some((query) => /device_public_key = \$3/.test(query.sql)),
+    false,
+  );
+  assert.equal(
+    db.queries.some((query) => /SET last_seen_at = \$3::timestamptz, ip_last = \$4/.test(query.sql)),
+    true,
+  );
+});
+
 test("SessionsRepository.bindDevice refuses a blocked device", async () => {
   const db = new FakeDb();
   db.enqueueResult([]);

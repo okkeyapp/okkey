@@ -10,6 +10,7 @@ import { loadConfig } from "../src/config.ts";
 import {
   DevicesRepository,
   EventsRepository,
+  TrustedDeviceKeyConflictError,
   UsersRepository,
   VaultsRepository,
   WorkspacesRepository,
@@ -175,7 +176,7 @@ test("integration: EventsRepository.append persists event and detects version co
   assert.equal(replay[0].version, 1);
 });
 
-test("integration: DevicesRepository deduplicates and updates trusted metadata", async (t) => {
+test("integration: DevicesRepository deduplicates trusted fingerprints without replacing keys", async (t) => {
 
   if (await skipIfIntegrationUnavailable(t)) {
     return;
@@ -247,17 +248,17 @@ test("integration: DevicesRepository deduplicates and updates trusted metadata",
 
   assert.equal(second.id, first.id);
   assert.equal(second.status, "trusted");
+  // Matching public key must not replace the stored device share.
+  assert.deepEqual(Buffer.from(second.deviceShare), Buffer.from([1, 2, 3]));
+  assert.equal(second.appVersion, "1.0.0");
+  assert.equal(second.ipLast, "10.0.0.2");
+  assert.equal(second.lastSeenAt, "2026-01-01T00:01:00.000Z");
 
   const countRows = await db.query<{ count: string }>(
     "SELECT COUNT(*)::text AS count FROM devices WHERE user_id = $1",
     [user.id],
   );
   assert.equal(Number(countRows[0].count), 1);
-
-  await db.query(
-    "UPDATE devices SET status = 'trusted', revoked_at = NULL WHERE id = $1",
-    [first.id],
-  );
 
   const trusted = await devices.registerOrUpdate({
     userId: user.id,
@@ -276,10 +277,43 @@ test("integration: DevicesRepository deduplicates and updates trusted metadata",
   });
 
   assert.equal(trusted.status, "trusted");
-  assert.equal(trusted.deviceName, "Work MacBook");
-  assert.equal(trusted.appVersion, "1.1.0");
+  // Trusted keys and non-presence metadata stay put; only last_seen / ip refresh.
+  assert.equal(trusted.deviceName, "MacBook Pro");
+  assert.equal(trusted.appVersion, "1.0.0");
+  assert.deepEqual(Buffer.from(trusted.deviceShare), Buffer.from([1, 2, 3]));
   assert.equal(trusted.ipLast, "10.0.0.3");
   assert.equal(trusted.lastSeenAt, "2026-01-01T00:02:00.000Z");
+
+  await assert.rejects(
+    () =>
+      devices.registerOrUpdate({
+        userId: user.id,
+        deviceFingerprint: fingerprint,
+        deviceName: "Attacker",
+        devicePublicKey: Buffer.from("attacker-public-key").toString("base64"),
+        deviceShare: new Uint8Array([9, 9, 9]),
+        platform: "desktop",
+        osName: "macOS",
+        osVersion: "14.5",
+        appVersion: "9.9.9",
+        clientType: "desktop",
+        userAgent: "attacker",
+        requestIp: "10.0.0.9",
+        now: "2026-01-01T00:03:00.000Z",
+      }),
+    (error: unknown) => error instanceof TrustedDeviceKeyConflictError,
+  );
+
+  const afterConflict = await db.query<{
+    device_name: string;
+    device_public_key: string;
+    device_share: Buffer;
+  }>("SELECT device_name, device_public_key, device_share FROM devices WHERE id = $1", [
+    first.id,
+  ]);
+  assert.equal(afterConflict[0]?.device_name, "MacBook Pro");
+  assert.equal(afterConflict[0]?.device_public_key, devicePublicKey);
+  assert.deepEqual(Buffer.from(afterConflict[0]!.device_share), Buffer.from([1, 2, 3]));
 });
 
 test("integration: DevicesRepository approval transitions are consistent", async (t) => {
