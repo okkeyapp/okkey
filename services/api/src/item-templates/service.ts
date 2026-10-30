@@ -2,7 +2,8 @@ import type { VaultsRepository, WorkspacesRepository } from "../storage/reposito
 import type { WorkspaceItemTemplatesRepository } from "../storage/workspace-item-templates.ts";
 import { WORKSPACE_ITEM_CATEGORY_IDS } from "../item-category-preferences/service.ts";
 import type { AttachmentService } from "../attachments/service.ts";
-import { isEntityId } from "../entity-id.ts";
+import { UniqueConstraintError } from "../storage/errors.ts";
+import { generateEntityId, isEntityId } from "../entity-id.ts";
 
 export class ItemTemplatesServiceError extends Error {
   readonly code: string;
@@ -70,8 +71,8 @@ export class ItemTemplatesService {
   }
 
   async list(workspaceId: string, userId: string) {
-    await this.assertWorkspaceAccess(workspaceId, userId);
-    const rows = await this.templates.listByWorkspace(workspaceId);
+    const normalizedWorkspaceId = await this.assertWorkspaceAccess(workspaceId, userId);
+    const rows = await this.templates.listByWorkspace(normalizedWorkspaceId);
     const visible = [];
     for (const row of rows) {
       const vaultId =
@@ -97,11 +98,23 @@ export class ItemTemplatesService {
   async create(
     workspaceId: string,
     userId: string,
-    input: { id: string; name: string; category_id: string; payload: ItemTemplatePayload; favicon_id?: string | null },
+    input: {
+      /**
+       * Optional client hint. When present it must be a valid entity id (else 400), but
+       * the value is never stored: template ids are a global PK, and accepting a
+       * client-chosen id would let callers distinguish free vs taken (including in
+       * other workspaces). The server always allocates the id; response is 201 either way.
+       */
+      id?: string | null;
+      name: string;
+      category_id: string;
+      payload: ItemTemplatePayload;
+      favicon_id?: string | null;
+    },
   ) {
-    await this.assertWorkspaceAccess(workspaceId, userId);
-    const templateId = input.id.trim();
-    if (!isEntityId(templateId)) {
+    const normalizedWorkspaceId = await this.assertWorkspaceAccess(workspaceId, userId);
+    const requestedId = typeof input.id === "string" ? input.id.trim() : "";
+    if (requestedId && !isEntityId(requestedId)) {
       throw new ItemTemplatesServiceError("INVALID_TEMPLATE_ID", 400, "template id is required");
     }
     const name = input.name.trim();
@@ -112,17 +125,44 @@ export class ItemTemplatesService {
     if (!allowedCategoryIdSet.has(categoryId)) {
       throw new ItemTemplatesServiceError("INVALID_CATEGORY_ID", 400, "unknown category id");
     }
-    const vaultId = await this.assertTemplateVault(workspaceId, userId, input.payload.vault_id);
+    const vaultId = await this.assertTemplateVault(normalizedWorkspaceId, userId, input.payload.vault_id);
     const payload = normalizeTemplatePayload(input.payload, vaultId);
-    const row = await this.templates.create({
-      workspaceId,
-      id: templateId,
-      name,
-      categoryId,
-      payloadJson: payload,
-      faviconId: input.favicon_id?.trim() || null,
-      createdBy: userId,
-    });
+    const faviconId = normalizeOptionalFaviconId(input.favicon_id);
+    let templateId = generateEntityId();
+    let row;
+    try {
+      row = await this.templates.create({
+        workspaceId: normalizedWorkspaceId,
+        id: templateId,
+        name,
+        categoryId,
+        payloadJson: payload,
+        faviconId,
+        createdBy: userId,
+      });
+    } catch (error) {
+      if (!isUniqueConstraintError(error)) {
+        throw error;
+      }
+      // Extremely unlikely snowflake collision: retry once with a fresh id.
+      templateId = generateEntityId();
+      try {
+        row = await this.templates.create({
+          workspaceId: normalizedWorkspaceId,
+          id: templateId,
+          name,
+          categoryId,
+          payloadJson: payload,
+          faviconId,
+          createdBy: userId,
+        });
+      } catch (retryError) {
+        if (isUniqueConstraintError(retryError)) {
+          throw new ItemTemplatesServiceError("TEMPLATE_ID_CONFLICT", 409, "template id is already in use");
+        }
+        throw retryError;
+      }
+    }
     return toTemplateDto(row);
   }
 
@@ -132,16 +172,16 @@ export class ItemTemplatesService {
     templateId: string,
     input: { name: string; category_id: string; payload: ItemTemplatePayload; favicon_id?: string | null },
   ) {
-    await this.assertWorkspaceAccess(workspaceId, userId);
+    const normalizedWorkspaceId = await this.assertWorkspaceAccess(workspaceId, userId);
     const normalizedTemplateId = templateId.trim();
     if (!isEntityId(normalizedTemplateId)) {
       throw new ItemTemplatesServiceError("INVALID_TEMPLATE_ID", 400, "template id is required");
     }
-    const existing = await this.templates.findById(workspaceId, normalizedTemplateId);
+    const existing = await this.templates.findById(normalizedWorkspaceId, normalizedTemplateId);
     if (!existing) {
       throw new ItemTemplatesServiceError("TEMPLATE_NOT_FOUND", 404, "template not found");
     }
-    await this.assertCanMutateTemplate(workspaceId, userId, existing.createdBy);
+    await this.assertCanMutateTemplate(normalizedWorkspaceId, userId, existing.createdBy);
     const name = input.name.trim();
     if (!name) {
       throw new ItemTemplatesServiceError("INVALID_TEMPLATE_NAME", 400, "template name is required");
@@ -150,15 +190,17 @@ export class ItemTemplatesService {
     if (!allowedCategoryIdSet.has(categoryId)) {
       throw new ItemTemplatesServiceError("INVALID_CATEGORY_ID", 400, "unknown category id");
     }
-    const vaultId = await this.assertTemplateVault(workspaceId, userId, input.payload.vault_id);
+    const vaultId = await this.assertTemplateVault(normalizedWorkspaceId, userId, input.payload.vault_id);
     const payload = normalizeTemplatePayload(input.payload, vaultId);
+    const faviconId =
+      input.favicon_id === undefined ? existing.faviconId : normalizeOptionalFaviconId(input.favicon_id);
     const row = await this.templates.update({
-      workspaceId,
+      workspaceId: normalizedWorkspaceId,
       templateId: normalizedTemplateId,
       name,
       categoryId,
       payloadJson: payload,
-      faviconId: input.favicon_id === undefined ? existing.faviconId : input.favicon_id?.trim() || null,
+      faviconId,
     });
     if (!row) {
       throw new ItemTemplatesServiceError("TEMPLATE_NOT_FOUND", 404, "template not found");
@@ -167,36 +209,41 @@ export class ItemTemplatesService {
   }
 
   async delete(workspaceId: string, userId: string, templateId: string): Promise<void> {
-    await this.assertWorkspaceAccess(workspaceId, userId);
+    const normalizedWorkspaceId = await this.assertWorkspaceAccess(workspaceId, userId);
     const normalizedTemplateId = templateId.trim();
     if (!isEntityId(normalizedTemplateId)) {
       throw new ItemTemplatesServiceError("INVALID_TEMPLATE_ID", 400, "template id is required");
     }
-    const existing = await this.templates.findById(workspaceId, normalizedTemplateId);
+    const existing = await this.templates.findById(normalizedWorkspaceId, normalizedTemplateId);
     if (!existing) {
       throw new ItemTemplatesServiceError("TEMPLATE_NOT_FOUND", 404, "template not found");
     }
-    await this.assertCanMutateTemplate(workspaceId, userId, existing.createdBy);
+    await this.assertCanMutateTemplate(normalizedWorkspaceId, userId, existing.createdBy);
     await this.attachments?.purgeForTemplate(
       normalizedTemplateId,
       collectTemplateAttachmentIds(existing.payloadJson, existing.faviconId),
     );
 
-    const deleted = await this.templates.delete(workspaceId, normalizedTemplateId);
+    const deleted = await this.templates.delete(normalizedWorkspaceId, normalizedTemplateId);
     if (!deleted) {
       throw new ItemTemplatesServiceError("TEMPLATE_NOT_FOUND", 404, "template not found");
     }
   }
 
-  private async assertWorkspaceAccess(workspaceId: string, userId: string): Promise<void> {
-    const workspace = await this.workspaces.findById(workspaceId);
+  private async assertWorkspaceAccess(workspaceId: string, userId: string): Promise<string> {
+    const normalizedWorkspaceId = workspaceId.trim();
+    if (!isEntityId(normalizedWorkspaceId)) {
+      throw new ItemTemplatesServiceError("INVALID_WORKSPACE_ID", 400, "workspace id is required");
+    }
+    const workspace = await this.workspaces.findById(normalizedWorkspaceId);
     if (!workspace) {
       throw new ItemTemplatesServiceError("WORKSPACE_NOT_FOUND", 404, "workspace not found");
     }
-    const hasAccess = await this.workspaces.hasAccess(workspaceId, userId);
+    const hasAccess = await this.workspaces.hasAccess(normalizedWorkspaceId, userId);
     if (!hasAccess) {
       throw new ItemTemplatesServiceError("ACCESS_DENIED", 403, "access denied");
     }
+    return normalizedWorkspaceId;
   }
 
   /** Creator, workspace owner, or admin may update/delete a template. */
@@ -234,6 +281,40 @@ export class ItemTemplatesService {
     }
     return vaultId;
   }
+}
+
+/** Empty / omitted favicon clears the field; non-empty values must be entity ids. */
+function normalizeOptionalFaviconId(value: string | null | undefined): string | null {
+  if (value === undefined || value === null) {
+    return null;
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+  if (!isEntityId(trimmed)) {
+    throw new ItemTemplatesServiceError("INVALID_FAVICON_ID", 400, "favicon id is invalid");
+  }
+  return trimmed;
+}
+
+function isUniqueConstraintError(error: unknown): boolean {
+  if (error instanceof UniqueConstraintError) {
+    return true;
+  }
+  if (typeof error !== "object" || error === null) {
+    return false;
+  }
+  if ("code" in error && (error as { code?: string }).code === "23505") {
+    return true;
+  }
+  if ("details" in error) {
+    return isUniqueConstraintError((error as { details: unknown }).details);
+  }
+  if ("cause" in error) {
+    return isUniqueConstraintError((error as { cause: unknown }).cause);
+  }
+  return false;
 }
 
 function collectTemplateAttachmentIds(payloadJson: Record<string, unknown>, faviconId: string | null): string[] {

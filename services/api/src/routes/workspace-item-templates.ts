@@ -65,7 +65,7 @@ export function createWorkspaceItemTemplatesCreateRoute(
       return;
     }
 
-    const templateId = typeof body.id === "string" ? body.id : "";
+    const templateId = typeof body.id === "string" ? body.id : undefined;
     const name = typeof body.name === "string" ? body.name : "";
     const categoryId = typeof body.category_id === "string" ? body.category_id : "";
     const payload = body.payload;
