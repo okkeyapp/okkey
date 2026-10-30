@@ -163,7 +163,10 @@ export async function renderWorkspaceInvite(
 ): Promise<RenderedEmail> {
   assertRequired("workspace_invite", variables as unknown as Record<string, unknown>, [
     "inviterDisplayName",
+    "inviterEmail",
     "workspaceName",
+    "roleName",
+    "expiresAtIso",
     "inviteUrl",
   ]);
   const inviteUrl = variables.inviteUrl.trim();
@@ -179,8 +182,10 @@ export async function renderWorkspaceInvite(
   const standard = buildEmailStandardFooterCopy(locale);
   const plainText = appendStandardFooterPlain(
     formatEmailMessage(locale, "email.workspaceInvite.plain", {
-      inviter: variables.inviterDisplayName,
-      workspaceName: variables.workspaceName,
+      intro: props.intro,
+      roleLine: props.roleLine,
+      inviterEmailLine: props.inviterEmailLine,
+      expiresLine: props.expiresLine,
       inviteUrl,
     }),
     standard,

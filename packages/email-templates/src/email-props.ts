@@ -129,6 +129,15 @@ export function buildWorkspaceInviteEmailProps(
     inviter: variables.inviterDisplayName,
     workspaceName: variables.workspaceName,
   });
+  const roleLine = formatEmailMessage(locale, "email.workspaceInvite.roleLine", {
+    roleName: variables.roleName,
+  });
+  const inviterEmailLine = formatEmailMessage(locale, "email.workspaceInvite.inviterEmailLine", {
+    inviterEmail: variables.inviterEmail,
+  });
+  const expiresLine = formatEmailMessage(locale, "email.workspaceInvite.expiresLine", {
+    when: formatUtcWhen(locale, variables.expiresAtIso),
+  });
   const ctaLabel = formatEmailMessage(locale, "email.workspaceInvite.ctaAccept", {});
   const standard = buildEmailStandardFooterCopy(locale);
   return {
@@ -137,6 +146,9 @@ export function buildWorkspaceInviteEmailProps(
       workspaceName: variables.workspaceName,
     }),
     intro,
+    roleLine,
+    inviterEmailLine,
+    expiresLine,
     ctaLabel,
     inviteUrl,
     noReply: standard.noReply,
@@ -336,7 +348,10 @@ export const previewSampleDeviceApproval: DeviceApprovalRequestVariables = {
 
 export const previewSampleWorkspaceInvite: WorkspaceInviteVariables = {
   inviterDisplayName: "Alex",
+  inviterEmail: "alex@example.com",
   workspaceName: "Design",
+  roleName: "Admin",
+  expiresAtIso: "2026-01-29T10:00:00.000Z",
   inviteUrl: "https://app.okkey.local/invite/sample-token",
 };
 

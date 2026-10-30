@@ -24,7 +24,13 @@ export interface DeviceApprovalRequestVariables {
 
 export interface WorkspaceInviteVariables {
   inviterDisplayName: string;
+  /** Inviter account email shown in the body. */
+  inviterEmail: string;
   workspaceName: string;
+  /** Workspace role name granted by the invitation. */
+  roleName: string;
+  /** ISO timestamp when the invite link expires. */
+  expiresAtIso: string;
   inviteUrl: string;
 }
 

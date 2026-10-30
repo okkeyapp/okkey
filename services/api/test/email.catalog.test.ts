@@ -23,7 +23,10 @@ const deviceVars = {
 
 const workspaceVars = {
   inviterDisplayName: "Sam",
+  inviterEmail: "sam@example.com",
   workspaceName: "Lab",
+  roleName: "Admin",
+  expiresAtIso: "2026-01-29T10:00:00.000Z",
   inviteUrl: "https://app.example/invite/token-abc",
 } as const;
 
@@ -340,7 +343,14 @@ test("renderEmailTemplate workspace_invite en and ru", async () => {
   assert.match(en.subject, /Invitation|workspace/i);
   assert.match(en.html, /token-abc/);
   assert.match(en.html, /Sam/);
+  assert.match(en.html, /sam@example\.com/);
+  assert.match(en.html, /Role: Admin/);
+  assert.match(en.html, /Invitation valid until:/);
+  assert.match(en.text, /Role: Admin/);
+  assert.match(en.text, /Inviter account: sam@example\.com/);
+  assert.match(en.text, /Invitation valid until:/);
   assert.match(en.html, /#2563EB/i);
+  assertSharedEmailFooter("en", en);
   assertNoMustachePlaceholders(en.text);
 
   const ru = await renderEmailTemplate("workspace_invite", "ru", workspaceVars);
@@ -349,6 +359,12 @@ test("renderEmailTemplate workspace_invite en and ru", async () => {
     formatEmailMessage("ru", "email.workspaceInvite.subject", { workspaceName: workspaceVars.workspaceName }),
   );
   assert.match(ru.html, /token-abc/);
+  assert.match(ru.html, /Роль: Admin/);
+  assert.match(ru.html, /Аккаунт пригласившего: sam@example\.com/);
+  assert.match(ru.html, /Приглашение действует до:/);
+  assert.match(ru.text, /Роль: Admin/);
+  assert.match(ru.text, /Приглашение действует до:/);
+  assertSharedEmailFooter("ru", ru);
   assertNoMustachePlaceholders(ru.text);
 });
 
@@ -615,12 +631,18 @@ test("EmailTemplateService workspace_invite renders invite link", async () => {
     localeHints: {},
     variables: {
       inviterDisplayName: "Alex",
+      inviterEmail: "alex@example.com",
       workspaceName: "Team",
+      roleName: "User",
+      expiresAtIso: "2026-01-29T10:00:00.000Z",
       inviteUrl: "https://okkey.test/invite/abc",
     },
   });
   assert.match(sent[0].html, /invite\/abc/);
   assert.match(sent[0].html, /Alex/);
+  assert.match(sent[0].html, /alex@example\.com/);
+  assert.match(sent[0].html, /Role: User/);
+  assert.match(sent[0].html, /Invitation valid until:/);
 });
 
 test("EmailTemplateService sendTwoFactorEnabled/disabled/backupRegen respect explicit ru locale", async () => {
