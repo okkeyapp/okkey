@@ -9,10 +9,18 @@ import { readStoredExtensionLocale } from "../../lib/locale";
 import {
   clearPkcePending,
   readPkcePending,
+  readSession,
   wipeAllExtensionData,
   writeProfile,
   writeSession,
 } from "../../lib/storage";
+
+/**
+ * React StrictMode (and rare remounts) can re-run the exchange effect. Auth codes are
+ * one-time on the server, so a second exchange would fail with INVALID_CODE after the
+ * first already wrote the session. Guard by code across mounts in this JS realm.
+ */
+const exchangeStartedForCode = new Set<string>();
 
 /**
  * Receives `?code=&state=` from web after PKCE login and exchanges for a Bearer session.
@@ -36,6 +44,18 @@ export function AuthCallbackApp() {
 
   useEffect(() => {
     let cancelled = false;
+
+    async function markSignedIn(signedIn: string): Promise<void> {
+      if (cancelled) {
+        return;
+      }
+      setStatus("ok");
+      setMessage(signedIn);
+      toast.success(t("extension.authCallback.sessionReady"), {
+        description: signedIn,
+      });
+    }
+
     async function run(): Promise<void> {
       try {
         const params = new URLSearchParams(window.location.search);
@@ -44,8 +64,30 @@ export function AuthCallbackApp() {
         if (!code || !state) {
           throw new Error(t("extension.authCallback.errorMissingCode"));
         }
+
+        // Another invocation (StrictMode remount) already owns this code.
+        if (exchangeStartedForCode.has(code)) {
+          const deadline = Date.now() + 15_000;
+          while (Date.now() < deadline) {
+            const existing = await readSession();
+            if (existing?.access_token) {
+              await markSignedIn(t("extension.authCallback.signedIn"));
+              return;
+            }
+            await new Promise((resolve) => window.setTimeout(resolve, 50));
+          }
+          throw new Error(t("extension.authCallback.signInFailed"));
+        }
+        exchangeStartedForCode.add(code);
+
         const pending = await readPkcePending();
         if (!pending) {
+          // Owner may have cleared pending after a successful exchange — recover via session.
+          const existing = await readSession();
+          if (existing?.access_token) {
+            await markSignedIn(t("extension.authCallback.signedIn"));
+            return;
+          }
           throw new Error(t("extension.authCallback.errorNoPending"));
         }
         if (pending.state !== state) {
@@ -69,21 +111,21 @@ export function AuthCallbackApp() {
         });
         await clearPkcePending();
 
-        if (!cancelled) {
-          const signedIn = t("extension.authCallback.signedIn");
-          setStatus("ok");
-          setMessage(signedIn);
-          toast.success(t("extension.authCallback.sessionReady"), {
-            description: signedIn,
-          });
-        }
+        await markSignedIn(t("extension.authCallback.signedIn"));
       } catch (err: unknown) {
-        if (!cancelled) {
-          const text = err instanceof Error ? err.message : String(err);
-          setStatus("error");
-          setMessage(text);
-          toast.error(t("extension.authCallback.signInFailed"), { description: text });
+        if (cancelled) {
+          return;
         }
+        // Code already spent by the first invocation — treat existing session as success.
+        const existing = await readSession();
+        if (existing?.access_token) {
+          await markSignedIn(t("extension.authCallback.signedIn"));
+          return;
+        }
+        const text = err instanceof Error ? err.message : String(err);
+        setStatus("error");
+        setMessage(text);
+        toast.error(t("extension.authCallback.signInFailed"), { description: text });
       }
     }
     void run();

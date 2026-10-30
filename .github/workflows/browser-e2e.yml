@@ -108,6 +108,10 @@ jobs:
           yarn --cwd apps/web vite build
 
       - name: Build Chromium extension
+        # Job-level NODE_ENV=development would ship a dev React build; PKCE auth-callback
+        # must not double-exchange one-time codes under StrictMode remounts.
+        env:
+          NODE_ENV: production
         run: yarn build:extension:chromium
 
       - name: Install Playwright Chromium

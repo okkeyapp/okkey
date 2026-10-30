@@ -152,12 +152,27 @@ export async function extensionPkceSignInUnlockAndSeeItem(input: {
     await expect(authPage).toHaveURL(/chrome-extension:\/\/.*auth-callback/, {
       timeout: 90_000,
     });
-    await expect(
-      authPage.getByText(/signed in|вы вошли|сессия готова/i).first(),
-    ).toBeVisible({ timeout: 60_000 });
 
     // Popup stays on "signing-in" until Continue reads chrome.storage session.
+    // Under React StrictMode the callback may remount; success is either the
+    // callback "signed in" copy or the popup already offering Continue.
     const continueBtn = popup.getByRole("button", { name: /^continue$|^продолжить$/i });
+    const signedIn = authPage.getByText(/signed in|вы вошли|сессия готова/i).first();
+    await expect
+      .poll(
+        async () => {
+          if (await signedIn.isVisible().catch(() => false)) {
+            return "signed-in";
+          }
+          if (await continueBtn.isVisible().catch(() => false)) {
+            return "continue";
+          }
+          return "";
+        },
+        { timeout: 60_000 },
+      )
+      .not.toBe("");
+
     await expect(continueBtn).toBeVisible({ timeout: 30_000 });
     await continueBtn.click();
 
