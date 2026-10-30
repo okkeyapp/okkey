@@ -59,7 +59,7 @@ test("FREE denies capsule access settings and ENTERPRISE allows them", async () 
 
   await assert.rejects(
     () =>
-      serviceForTier("FREE").createCapsule("w1", "u1", {
+      serviceForTier("FREE").createCapsule("1000000000000000001", "1000000000000000003", {
         type: "item",
         encryptedPayload: blob,
         password: "capsule-secret",
@@ -72,7 +72,7 @@ test("FREE denies capsule access settings and ENTERPRISE allows them", async () 
 
   await assert.rejects(
     () =>
-      serviceForTier("ENTERPRISE").createCapsule("w1", "u1", {
+      serviceForTier("ENTERPRISE").createCapsule("1000000000000000001", "1000000000000000003", {
         type: "item",
         encryptedPayload: blob,
         password: "capsule-secret",
@@ -82,7 +82,7 @@ test("FREE denies capsule access settings and ENTERPRISE allows them", async () 
 
   await assert.rejects(
     () =>
-      serviceForTier("FREE").createCapsule("w1", "u1", {
+      serviceForTier("FREE").createCapsule("1000000000000000001", "1000000000000000003", {
         type: "item",
         encryptedPayload: blob,
       }),
@@ -129,7 +129,7 @@ test("self_hosted without modules denies capsule access even when plan_tier is E
 
   await assert.rejects(
     () =>
-      service.createCapsule("w1", "u1", {
+      service.createCapsule("1000000000000000001", "1000000000000000003", {
         type: "item",
         encryptedPayload: blob,
         password: "capsule-secret",

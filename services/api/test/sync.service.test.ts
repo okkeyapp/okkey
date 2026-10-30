@@ -19,11 +19,11 @@ test("listEvents returns mapped events for readable vault", async () => {
   const service = new SyncService({
     vaults: {
       findById: async () => ({
-        id: "v1",
-        workspaceId: "w1",
+        id: "1000000000000000002",
+        workspaceId: "1000000000000000001",
         name: "Vault",
         isPersonal: false,
-        ownerId: "u1",
+        ownerId: "1000000000000000003",
         cryptoVersion: 2,
         createdAt: "",
         updatedAt: "",
@@ -34,8 +34,8 @@ test("listEvents returns mapped events for readable vault", async () => {
       listAfterVersion: async () => [
         {
           id: "e1",
-          vaultId: "v1",
-          actorId: "u1",
+          vaultId: "1000000000000000002",
+          actorId: "1000000000000000003",
           eventType: "ITEM_CREATE",
           encryptedPayload: new Uint8Array([1, 2, 3]),
           payloadSchemaVersion: 1,
@@ -55,7 +55,7 @@ test("listEvents returns mapped events for readable vault", async () => {
     },
   });
 
-  const events = await service.listEvents("v1", "u1", 0);
+  const events = await service.listEvents("1000000000000000002", "1000000000000000003", 0);
   assert.equal(events[0].referencedItemId, null);
   assert.equal(events.length, 1);
   assert.equal(events[0].encryptedPayload, Buffer.from([1, 2, 3]).toString("base64"));
@@ -65,11 +65,11 @@ test("appendEvent validates event type", async () => {
   const service = new SyncService({
     vaults: {
       findById: async () => ({
-        id: "v1",
-        workspaceId: "w1",
+        id: "1000000000000000002",
+        workspaceId: "1000000000000000001",
         name: "Vault",
         isPersonal: false,
-        ownerId: "u1",
+        ownerId: "1000000000000000003",
         cryptoVersion: 2,
         createdAt: "",
         updatedAt: "",
@@ -88,7 +88,7 @@ test("appendEvent validates event type", async () => {
 
   await assert.rejects(
     () =>
-      service.appendEvent("v1", "u1", {
+      service.appendEvent("1000000000000000002", "1000000000000000003", {
         eventType: "BAD_TYPE",
         encryptedBlob: mkBlob("x"),
         baseVersion: 0,
@@ -104,11 +104,11 @@ test("appendEvent maps version conflict", async () => {
   const service = new SyncService({
     vaults: {
       findById: async () => ({
-        id: "v1",
-        workspaceId: "w1",
+        id: "1000000000000000002",
+        workspaceId: "1000000000000000001",
         name: "Vault",
         isPersonal: false,
-        ownerId: "u1",
+        ownerId: "1000000000000000003",
         cryptoVersion: 2,
         createdAt: "",
         updatedAt: "",
@@ -127,7 +127,7 @@ test("appendEvent maps version conflict", async () => {
 
   await assert.rejects(
     () =>
-      service.appendEvent("v1", "u1", {
+      service.appendEvent("1000000000000000002", "1000000000000000003", {
         eventType: "ITEM_UPDATE",
         encryptedBlob: mkBlob("x"),
         baseVersion: 1,
@@ -146,11 +146,11 @@ test("appendEvent rejects FOLDER_CREATE on vault stream", async () => {
   const service = new SyncService({
     vaults: {
       findById: async () => ({
-        id: "v1",
-        workspaceId: "w1",
+        id: "1000000000000000002",
+        workspaceId: "1000000000000000001",
         name: "Vault",
         isPersonal: false,
-        ownerId: "u1",
+        ownerId: "1000000000000000003",
         cryptoVersion: 2,
         createdAt: "",
         updatedAt: "",
@@ -169,7 +169,7 @@ test("appendEvent rejects FOLDER_CREATE on vault stream", async () => {
 
   await assert.rejects(
     () =>
-      service.appendEvent("v1", "u1", {
+      service.appendEvent("1000000000000000002", "1000000000000000003", {
         eventType: "FOLDER_CREATE",
         encryptedBlob: mkBlob("x"),
         baseVersion: 0,
@@ -186,11 +186,11 @@ test("appendEvent requires idempotencyKey for ITEM_CREATE", async () => {
   const service = new SyncService({
     vaults: {
       findById: async () => ({
-        id: "v1",
-        workspaceId: "w1",
+        id: "1000000000000000002",
+        workspaceId: "1000000000000000001",
         name: "Vault",
         isPersonal: true,
-        ownerId: "u1",
+        ownerId: "1000000000000000003",
         cryptoVersion: 2,
         createdAt: "",
         updatedAt: "",
@@ -209,7 +209,7 @@ test("appendEvent requires idempotencyKey for ITEM_CREATE", async () => {
 
   await assert.rejects(
     () =>
-      service.appendEvent("v1", "u1", {
+      service.appendEvent("1000000000000000002", "1000000000000000003", {
         eventType: "ITEM_CREATE",
         encryptedBlob: mkBlob("x"),
         baseVersion: 0,
@@ -225,11 +225,11 @@ test("appendEvent rejects ITEM_CREATE in shared vault without sharedVaults plan"
   const service = new SyncService({
     vaults: {
       findById: async () => ({
-        id: "v-shared",
-        workspaceId: "w1",
+        id: "1000000000000000004",
+        workspaceId: "1000000000000000001",
         name: "Shared",
         isPersonal: false,
-        ownerId: "u1",
+        ownerId: "1000000000000000003",
         cryptoVersion: 2,
         createdAt: "",
         updatedAt: "",
@@ -238,9 +238,9 @@ test("appendEvent rejects ITEM_CREATE in shared vault without sharedVaults plan"
     },
     workspaces: {
       findById: async () => ({
-        id: "w1",
+        id: "1000000000000000001",
         name: "Workspace",
-        ownerId: "u1",
+        ownerId: "1000000000000000003",
         planTier: "FREE",
         planCustomOverride: false,
         planFeatureOverrides: {},
@@ -264,7 +264,7 @@ test("appendEvent rejects ITEM_CREATE in shared vault without sharedVaults plan"
 
   await assert.rejects(
     () =>
-      service.appendEvent("v-shared", "u1", {
+      service.appendEvent("1000000000000000004", "1000000000000000003", {
         eventType: "ITEM_CREATE",
         encryptedBlob: mkBlob("x"),
         baseVersion: 0,
@@ -282,11 +282,11 @@ test("appendEvent rejects ITEM_UPDATE when ITEM_CREATE is missing", async () => 
   const service = new SyncService({
     vaults: {
       findById: async () => ({
-        id: "v1",
-        workspaceId: "w1",
+        id: "1000000000000000002",
+        workspaceId: "1000000000000000001",
         name: "Vault",
         isPersonal: false,
-        ownerId: "u1",
+        ownerId: "1000000000000000003",
         cryptoVersion: 2,
         createdAt: "",
         updatedAt: "",
@@ -306,7 +306,7 @@ test("appendEvent rejects ITEM_UPDATE when ITEM_CREATE is missing", async () => 
 
   await assert.rejects(
     () =>
-      service.appendEvent("v1", "u1", {
+      service.appendEvent("1000000000000000002", "1000000000000000003", {
         eventType: "ITEM_UPDATE",
         encryptedBlob: mkBlob("x"),
         baseVersion: 1,
@@ -324,11 +324,11 @@ test("appendEvent allows ITEM_UPDATE in shared vault without sharedVaults plan",
   const service = new SyncService({
     vaults: {
       findById: async () => ({
-        id: "v-shared",
-        workspaceId: "w1",
+        id: "1000000000000000004",
+        workspaceId: "1000000000000000001",
         name: "Shared",
         isPersonal: false,
-        ownerId: "u1",
+        ownerId: "1000000000000000003",
         cryptoVersion: 2,
         createdAt: "",
         updatedAt: "",
@@ -337,9 +337,9 @@ test("appendEvent allows ITEM_UPDATE in shared vault without sharedVaults plan",
     },
     workspaces: {
       findById: async () => ({
-        id: "w1",
+        id: "1000000000000000001",
         name: "Workspace",
-        ownerId: "u1",
+        ownerId: "1000000000000000003",
         planTier: "FREE",
         planCustomOverride: false,
         planFeatureOverrides: {},
@@ -357,8 +357,8 @@ test("appendEvent allows ITEM_UPDATE in shared vault without sharedVaults plan",
       findByIdempotencyKey: async () => null,
       append: async () => ({
         id: "e1",
-        vaultId: "v-shared",
-        actorId: "u1",
+        vaultId: "1000000000000000004",
+        actorId: "1000000000000000003",
         eventType: "ITEM_UPDATE",
         encryptedPayload: new Uint8Array([1]),
         payloadSchemaVersion: 1,
@@ -373,7 +373,7 @@ test("appendEvent allows ITEM_UPDATE in shared vault without sharedVaults plan",
     },
   });
 
-  const event = await service.appendEvent("v-shared", "u1", {
+  const event = await service.appendEvent("1000000000000000004", "1000000000000000003", {
     eventType: "ITEM_UPDATE",
     encryptedBlob: mkBlob("x"),
     baseVersion: 1,
@@ -389,11 +389,11 @@ test("appendEvent persists itemSoftDeleted=true for ITEM_DELETE", async () => {
   const service = new SyncService({
     vaults: {
       findById: async () => ({
-        id: "v-shared",
-        workspaceId: "w1",
+        id: "1000000000000000004",
+        workspaceId: "1000000000000000001",
         name: "Shared",
         isPersonal: false,
-        ownerId: "u1",
+        ownerId: "1000000000000000003",
         cryptoVersion: 2,
         createdAt: "",
         updatedAt: "",
@@ -408,8 +408,8 @@ test("appendEvent persists itemSoftDeleted=true for ITEM_DELETE", async () => {
         capturedSoft = input.itemSoftDeleted ?? null;
         return {
           id: "e-del",
-          vaultId: "v-shared",
-          actorId: "u1",
+          vaultId: "1000000000000000004",
+          actorId: "1000000000000000003",
           eventType: "ITEM_DELETE",
           encryptedPayload: input.encryptedPayload,
           payloadSchemaVersion: input.payloadSchemaVersion ?? 2,
@@ -431,7 +431,7 @@ test("appendEvent persists itemSoftDeleted=true for ITEM_DELETE", async () => {
     },
   });
 
-  const event = await service.appendEvent("v-shared", "u1", {
+  const event = await service.appendEvent("1000000000000000004", "1000000000000000003", {
     eventType: "ITEM_DELETE",
     encryptedBlob: mkBlob("x"),
     baseVersion: 1,
@@ -448,11 +448,11 @@ test("appendEvent persists itemSoftDeleted=true for soft-delete ITEM_UPDATE on s
   const service = new SyncService({
     vaults: {
       findById: async () => ({
-        id: "v-shared",
-        workspaceId: "w1",
+        id: "1000000000000000004",
+        workspaceId: "1000000000000000001",
         name: "Shared",
         isPersonal: false,
-        ownerId: "u1",
+        ownerId: "1000000000000000003",
         cryptoVersion: 2,
         createdAt: "",
         updatedAt: "",
@@ -467,8 +467,8 @@ test("appendEvent persists itemSoftDeleted=true for soft-delete ITEM_UPDATE on s
         capturedSoft = input.itemSoftDeleted ?? null;
         return {
           id: "e-soft",
-          vaultId: "v-shared",
-          actorId: "u1",
+          vaultId: "1000000000000000004",
+          actorId: "1000000000000000003",
           eventType: "ITEM_UPDATE",
           encryptedPayload: input.encryptedPayload,
           payloadSchemaVersion: input.payloadSchemaVersion ?? 2,
@@ -490,7 +490,7 @@ test("appendEvent persists itemSoftDeleted=true for soft-delete ITEM_UPDATE on s
     },
   });
 
-  const event = await service.appendEvent("v-shared", "u1", {
+  const event = await service.appendEvent("1000000000000000004", "1000000000000000003", {
     eventType: "ITEM_UPDATE",
     encryptedBlob: mkBlob("x"),
     baseVersion: 1,
@@ -507,8 +507,8 @@ test("appendEvent does not upsert softDeletes when idempotent row lacks soft-del
   let softDeleteUpserts = 0;
   const existing = {
     id: "e-old",
-    vaultId: "v-shared",
-    actorId: "u1",
+    vaultId: "1000000000000000004",
+    actorId: "1000000000000000003",
     eventType: "ITEM_UPDATE",
     encryptedPayload: new Uint8Array([1]),
     payloadSchemaVersion: 2,
@@ -522,11 +522,11 @@ test("appendEvent does not upsert softDeletes when idempotent row lacks soft-del
   const service = new SyncService({
     vaults: {
       findById: async () => ({
-        id: "v-shared",
-        workspaceId: "w1",
+        id: "1000000000000000004",
+        workspaceId: "1000000000000000001",
         name: "Shared",
         isPersonal: false,
-        ownerId: "u1",
+        ownerId: "1000000000000000003",
         cryptoVersion: 2,
         createdAt: "",
         updatedAt: "",
@@ -549,7 +549,7 @@ test("appendEvent does not upsert softDeletes when idempotent row lacks soft-del
   });
 
   // Request claims soft-delete, but idempotent append returns a prior non-soft row.
-  await service.appendEvent("v-shared", "u1", {
+  await service.appendEvent("1000000000000000004", "1000000000000000003", {
     eventType: "ITEM_UPDATE",
     encryptedBlob: mkBlob("x"),
     baseVersion: 1,
@@ -566,11 +566,11 @@ test("appendEvent persists itemSoftDeleted=false when omitted on ITEM_UPDATE", a
   const service = new SyncService({
     vaults: {
       findById: async () => ({
-        id: "v1",
-        workspaceId: "w1",
+        id: "1000000000000000002",
+        workspaceId: "1000000000000000001",
         name: "Vault",
         isPersonal: true,
-        ownerId: "u1",
+        ownerId: "1000000000000000003",
         cryptoVersion: 2,
         createdAt: "",
         updatedAt: "",
@@ -585,8 +585,8 @@ test("appendEvent persists itemSoftDeleted=false when omitted on ITEM_UPDATE", a
         capturedSoft = input.itemSoftDeleted ?? null;
         return {
           id: "e1",
-          vaultId: "v1",
-          actorId: "u1",
+          vaultId: "1000000000000000002",
+          actorId: "1000000000000000003",
           eventType: "ITEM_UPDATE",
           encryptedPayload: input.encryptedPayload,
           payloadSchemaVersion: input.payloadSchemaVersion ?? 2,
@@ -602,7 +602,7 @@ test("appendEvent persists itemSoftDeleted=false when omitted on ITEM_UPDATE", a
     },
   });
 
-  const event = await service.appendEvent("v1", "u1", {
+  const event = await service.appendEvent("1000000000000000002", "1000000000000000003", {
     eventType: "ITEM_UPDATE",
     encryptedBlob: mkBlob("x"),
     baseVersion: 1,
@@ -616,11 +616,11 @@ test("appendEvent rejects oversized payload", async () => {
   const service = new SyncService({
     vaults: {
       findById: async () => ({
-        id: "v1",
-        workspaceId: "w1",
+        id: "1000000000000000002",
+        workspaceId: "1000000000000000001",
         name: "Vault",
         isPersonal: false,
-        ownerId: "u1",
+        ownerId: "1000000000000000003",
         cryptoVersion: 2,
         createdAt: "",
         updatedAt: "",
@@ -640,7 +640,7 @@ test("appendEvent rejects oversized payload", async () => {
   const big = Buffer.alloc(600 * 1024, 7).toString("base64");
   await assert.rejects(
     () =>
-      service.appendEvent("v1", "u1", {
+      service.appendEvent("1000000000000000002", "1000000000000000003", {
         eventType: "ITEM_UPDATE",
         encryptedBlob: {
           crypto_version: 2,
@@ -659,11 +659,11 @@ test("appendEvent rejects strip attack: missing crypto_version in encryptedBlob"
   const service = new SyncService({
     vaults: {
       findById: async () => ({
-        id: "v1",
-        workspaceId: "w1",
+        id: "1000000000000000002",
+        workspaceId: "1000000000000000001",
         name: "Vault",
         isPersonal: false,
-        ownerId: "u1",
+        ownerId: "1000000000000000003",
         cryptoVersion: 2,
         createdAt: "",
         updatedAt: "",
@@ -689,7 +689,7 @@ test("appendEvent rejects strip attack: missing crypto_version in encryptedBlob"
 
   await assert.rejects(
     () =>
-      service.appendEvent("v1", "u1", {
+      service.appendEvent("1000000000000000002", "1000000000000000003", {
         eventType: "ITEM_UPDATE",
         encryptedBlob: encryptedBlobMissing,
         baseVersion: 0,
@@ -704,11 +704,11 @@ test("appendEvent rejects strip attack: legacy encryptedBlob string when legacy 
   const service = new SyncService({
     vaults: {
       findById: async () => ({
-        id: "v1",
-        workspaceId: "w1",
+        id: "1000000000000000002",
+        workspaceId: "1000000000000000001",
         name: "Vault",
         isPersonal: false,
-        ownerId: "u1",
+        ownerId: "1000000000000000003",
         cryptoVersion: 2,
         createdAt: "",
         updatedAt: "",
@@ -727,7 +727,7 @@ test("appendEvent rejects strip attack: legacy encryptedBlob string when legacy 
 
   await assert.rejects(
     () =>
-      service.appendEvent("v1", "u1", {
+      service.appendEvent("1000000000000000002", "1000000000000000003", {
         eventType: "ITEM_UPDATE",
         encryptedBlob: Buffer.from("x").toString("base64"),
         baseVersion: 0,
@@ -755,7 +755,7 @@ test("listEvents returns VAULT_NOT_FOUND when vault does not exist", async () =>
   });
 
   await assert.rejects(
-    () => service.listEvents("v1", "u1", 0),
+    () => service.listEvents("1000000000000000002", "1000000000000000003", 0),
     (error: unknown) =>
       error instanceof SyncServiceError && error.code === "VAULT_NOT_FOUND",
   );
@@ -765,11 +765,11 @@ test("listEvents returns ACCESS_DENIED when user cannot read vault", async () =>
   const service = new SyncService({
     vaults: {
       findById: async () => ({
-        id: "v1",
-        workspaceId: "w1",
+        id: "1000000000000000002",
+        workspaceId: "1000000000000000001",
         name: "Vault",
         isPersonal: false,
-        ownerId: "u1",
+        ownerId: "1000000000000000003",
         cryptoVersion: 2,
         createdAt: "",
         updatedAt: "",
@@ -787,7 +787,7 @@ test("listEvents returns ACCESS_DENIED when user cannot read vault", async () =>
   });
 
   await assert.rejects(
-    () => service.listEvents("v1", "u1", 0),
+    () => service.listEvents("1000000000000000002", "1000000000000000003", 0),
     (error: unknown) =>
       error instanceof SyncServiceError && error.code === "ACCESS_DENIED",
   );
@@ -811,7 +811,7 @@ test("appendEvent returns VAULT_NOT_FOUND when vault does not exist", async () =
 
   await assert.rejects(
     () =>
-      service.appendEvent("v1", "u1", {
+      service.appendEvent("1000000000000000002", "1000000000000000003", {
         eventType: "ITEM_UPDATE",
         encryptedBlob: mkBlob("x"),
         baseVersion: 0,
@@ -826,11 +826,11 @@ test("appendEvent returns ACCESS_DENIED when user cannot read vault", async () =
   const service = new SyncService({
     vaults: {
       findById: async () => ({
-        id: "v1",
-        workspaceId: "w1",
+        id: "1000000000000000002",
+        workspaceId: "1000000000000000001",
         name: "Vault",
         isPersonal: false,
-        ownerId: "u1",
+        ownerId: "1000000000000000003",
         cryptoVersion: 2,
         createdAt: "",
         updatedAt: "",
@@ -849,7 +849,7 @@ test("appendEvent returns ACCESS_DENIED when user cannot read vault", async () =
 
   await assert.rejects(
     () =>
-      service.appendEvent("v1", "u1", {
+      service.appendEvent("1000000000000000002", "1000000000000000003", {
         eventType: "ITEM_UPDATE",
         encryptedBlob: mkBlob("x"),
         baseVersion: 0,
@@ -864,11 +864,11 @@ test("appendEvent maps CryptoDowngradeInvariantError to CRYPTO_DOWNGRADE_NOT_ALL
   const service = new SyncService({
     vaults: {
       findById: async () => ({
-        id: "v1",
-        workspaceId: "w1",
+        id: "1000000000000000002",
+        workspaceId: "1000000000000000001",
         name: "Vault",
         isPersonal: false,
-        ownerId: "u1",
+        ownerId: "1000000000000000003",
         cryptoVersion: 2,
         createdAt: "",
         updatedAt: "",
@@ -880,7 +880,7 @@ test("appendEvent maps CryptoDowngradeInvariantError to CRYPTO_DOWNGRADE_NOT_ALL
       hasItemCreateEvent: async () => true,
       findByIdempotencyKey: async () => null,
       append: async () => {
-        throw new CryptoDowngradeInvariantError("v1", 2, 1);
+        throw new CryptoDowngradeInvariantError("1000000000000000002", 2, 1);
       },
     },
     config: {
@@ -891,7 +891,7 @@ test("appendEvent maps CryptoDowngradeInvariantError to CRYPTO_DOWNGRADE_NOT_ALL
 
   await assert.rejects(
     () =>
-      service.appendEvent("v1", "u1", {
+      service.appendEvent("1000000000000000002", "1000000000000000003", {
         eventType: "ITEM_UPDATE",
         encryptedBlob: mkBlob("x", 1),
         baseVersion: 0,
@@ -908,11 +908,11 @@ test("appendEvent rejects disallowed crypto profile by policy", async () => {
   const service = new SyncService({
     vaults: {
       findById: async () => ({
-        id: "v1",
-        workspaceId: "w1",
+        id: "1000000000000000002",
+        workspaceId: "1000000000000000001",
         name: "Vault",
         isPersonal: false,
-        ownerId: "u1",
+        ownerId: "1000000000000000003",
         cryptoVersion: 2,
         createdAt: "",
         updatedAt: "",
@@ -934,7 +934,7 @@ test("appendEvent rejects disallowed crypto profile by policy", async () => {
 
   await assert.rejects(
     () =>
-      service.appendEvent("v1", "u1", {
+      service.appendEvent("1000000000000000002", "1000000000000000003", {
         eventType: "ITEM_UPDATE",
         encryptedBlob: mkBlob("x", 1),
         baseVersion: 0,
@@ -950,11 +950,11 @@ test("appendEvent preserves encryptedBlob crypto_version", async () => {
   const service = new SyncService({
     vaults: {
       findById: async () => ({
-        id: "v1",
-        workspaceId: "w1",
+        id: "1000000000000000002",
+        workspaceId: "1000000000000000001",
         name: "Vault",
         isPersonal: false,
-        ownerId: "u1",
+        ownerId: "1000000000000000003",
         cryptoVersion: 2,
         createdAt: "",
         updatedAt: "",
@@ -988,7 +988,7 @@ test("appendEvent preserves encryptedBlob crypto_version", async () => {
     },
   });
 
-  await service.appendEvent("v1", "u1", {
+  await service.appendEvent("1000000000000000002", "1000000000000000003", {
     eventType: "ITEM_UPDATE",
     encryptedBlob: mkBlob("x", 2),
     baseVersion: 0,
@@ -1001,11 +1001,11 @@ test("appendEvent strict mode rejects actor without PQ capability", async () => 
   const service = new SyncService({
     vaults: {
       findById: async () => ({
-        id: "v1",
-        workspaceId: "w1",
+        id: "1000000000000000002",
+        workspaceId: "1000000000000000001",
         name: "Vault",
         isPersonal: false,
-        ownerId: "u1",
+        ownerId: "1000000000000000003",
         cryptoVersion: 2,
         createdAt: "",
         updatedAt: "",
@@ -1014,7 +1014,7 @@ test("appendEvent strict mode rejects actor without PQ capability", async () => 
     },
     users: {
       findById: async () => ({
-        id: "u1",
+        id: "1000000000000000003",
         email: "u1@okkey.local",
         publicKey: "pk",
         publicPqKey: null,
@@ -1040,7 +1040,7 @@ test("appendEvent strict mode rejects actor without PQ capability", async () => 
 
   await assert.rejects(
     () =>
-      service.appendEvent("v1", "u1", {
+      service.appendEvent("1000000000000000002", "1000000000000000003", {
         eventType: "ITEM_UPDATE",
         encryptedBlob: mkBlob("x", 2),
         baseVersion: 0,
@@ -1055,11 +1055,11 @@ test("appendEvent compat mode allows actor without PQ capability", async () => {
   const service = new SyncService({
     vaults: {
       findById: async () => ({
-        id: "v1",
-        workspaceId: "w1",
+        id: "1000000000000000002",
+        workspaceId: "1000000000000000001",
         name: "Vault",
         isPersonal: false,
-        ownerId: "u1",
+        ownerId: "1000000000000000003",
         cryptoVersion: 2,
         createdAt: "",
         updatedAt: "",
@@ -1068,7 +1068,7 @@ test("appendEvent compat mode allows actor without PQ capability", async () => {
     },
     users: {
       findById: async () => ({
-        id: "u1",
+        id: "1000000000000000003",
         email: "u1@okkey.local",
         publicKey: "pk",
         publicPqKey: null,
@@ -1103,7 +1103,7 @@ test("appendEvent compat mode allows actor without PQ capability", async () => {
     },
   });
 
-  const result = await service.appendEvent("v1", "u1", {
+  const result = await service.appendEvent("1000000000000000002", "1000000000000000003", {
     eventType: "ITEM_UPDATE",
     encryptedBlob: mkBlob("x", 2),
     baseVersion: 0,
@@ -1117,11 +1117,11 @@ test("appendEvent strict mode requires signature for VAULT_SHARE", async () => {
   const service = new SyncService({
     vaults: {
       findById: async () => ({
-        id: "v1",
-        workspaceId: "w1",
+        id: "1000000000000000002",
+        workspaceId: "1000000000000000001",
         name: "Vault",
         isPersonal: false,
-        ownerId: "u1",
+        ownerId: "1000000000000000003",
         cryptoVersion: 2,
         createdAt: "",
         updatedAt: "",
@@ -1130,7 +1130,7 @@ test("appendEvent strict mode requires signature for VAULT_SHARE", async () => {
     },
     users: {
       findById: async () => ({
-        id: "u1",
+        id: "1000000000000000003",
         email: "u1@okkey.local",
         publicKey: "cHVibGljLWtleQ==",
         publicPqKey: "cHEta2V5",
@@ -1156,7 +1156,7 @@ test("appendEvent strict mode requires signature for VAULT_SHARE", async () => {
 
   await assert.rejects(
     () =>
-      service.appendEvent("v1", "u1", {
+      service.appendEvent("1000000000000000002", "1000000000000000003", {
         eventType: "VAULT_SHARE",
         encryptedBlob: mkBlob("x", 2),
         baseVersion: 0,
@@ -1171,11 +1171,11 @@ test("appendEvent rejects malformed signature envelope when provided", async () 
   const service = new SyncService({
     vaults: {
       findById: async () => ({
-        id: "v1",
-        workspaceId: "w1",
+        id: "1000000000000000002",
+        workspaceId: "1000000000000000001",
         name: "Vault",
         isPersonal: false,
-        ownerId: "u1",
+        ownerId: "1000000000000000003",
         cryptoVersion: 2,
         createdAt: "",
         updatedAt: "",
@@ -1184,7 +1184,7 @@ test("appendEvent rejects malformed signature envelope when provided", async () 
     },
     users: {
       findById: async () => ({
-        id: "u1",
+        id: "1000000000000000003",
         email: "u1@okkey.local",
         publicKey: "cHVibGljLWtleQ==",
         publicPqKey: "cHEta2V5",
@@ -1210,7 +1210,7 @@ test("appendEvent rejects malformed signature envelope when provided", async () 
 
   await assert.rejects(
     () =>
-      service.appendEvent("v1", "u1", {
+      service.appendEvent("1000000000000000002", "1000000000000000003", {
         eventType: "VAULT_SHARE",
         encryptedBlob: mkBlob("x", 2),
         signature: {
@@ -1235,11 +1235,11 @@ test("appendEvent rejects duplicate ITEM_CREATE for the same referencedItemId", 
   const service = new SyncService({
     vaults: {
       findById: async () => ({
-        id: "v1",
-        workspaceId: "w1",
+        id: "1000000000000000002",
+        workspaceId: "1000000000000000001",
         name: "Vault",
         isPersonal: true,
-        ownerId: "u1",
+        ownerId: "1000000000000000003",
         cryptoVersion: 2,
         createdAt: "",
         updatedAt: "",
@@ -1258,7 +1258,7 @@ test("appendEvent rejects duplicate ITEM_CREATE for the same referencedItemId", 
 
   await assert.rejects(
     () =>
-      service.appendEvent("v1", "u1", {
+      service.appendEvent("1000000000000000002", "1000000000000000003", {
         eventType: "ITEM_CREATE",
         encryptedBlob: mkBlob("x"),
         baseVersion: 0,
@@ -1276,8 +1276,8 @@ test("appendEvent returns existing ITEM_CREATE on matching idempotency retry", a
   const idempotencyKey = testEntityId();
   const existing = {
     id: "e1",
-    vaultId: "v1",
-    actorId: "u1",
+    vaultId: "1000000000000000002",
+    actorId: "1000000000000000003",
     eventType: "ITEM_CREATE",
     encryptedPayload: new Uint8Array([1, 2, 3]),
     payloadSchemaVersion: 2,
@@ -1291,11 +1291,11 @@ test("appendEvent returns existing ITEM_CREATE on matching idempotency retry", a
   const service = new SyncService({
     vaults: {
       findById: async () => ({
-        id: "v1",
-        workspaceId: "w1",
+        id: "1000000000000000002",
+        workspaceId: "1000000000000000001",
         name: "Vault",
         isPersonal: true,
-        ownerId: "u1",
+        ownerId: "1000000000000000003",
         cryptoVersion: 2,
         createdAt: "",
         updatedAt: "",
@@ -1312,7 +1312,7 @@ test("appendEvent returns existing ITEM_CREATE on matching idempotency retry", a
     },
   });
 
-  const result = await service.appendEvent("v1", "u1", {
+  const result = await service.appendEvent("1000000000000000002", "1000000000000000003", {
     eventType: "ITEM_CREATE",
     encryptedBlob: mkBlob("x"),
     baseVersion: 0,

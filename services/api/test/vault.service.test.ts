@@ -6,13 +6,13 @@ function vaultsStub(overrides?: Record<string, unknown>) {
   return {
     listAccessibleByWorkspace: async () => [
       {
-        id: "v1",
-        workspaceId: "w1",
+        id: "1000000000000000002",
+        workspaceId: "1000000000000000001",
         name: "Personal",
         description: "",
         icon: "🏠",
         isPersonal: true,
-        ownerId: "u1",
+        ownerId: "1000000000000000003",
         cryptoVersion: 2,
         createdAt: "",
         updatedAt: "",
@@ -20,13 +20,13 @@ function vaultsStub(overrides?: Record<string, unknown>) {
     ],
     listByWorkspace: async () => [
       {
-        id: "v1",
-        workspaceId: "w1",
+        id: "1000000000000000002",
+        workspaceId: "1000000000000000001",
         name: "Personal",
         description: "",
         icon: "🏠",
         isPersonal: true,
-        ownerId: "u1",
+        ownerId: "1000000000000000003",
         cryptoVersion: 2,
         createdAt: "",
         updatedAt: "",
@@ -45,9 +45,9 @@ test("listWorkspaceVaults returns vaults for accessible workspace", async () => 
   const service = new VaultService({
     workspaces: {
       findById: async () => ({
-        id: "w1",
+        id: "1000000000000000001",
         name: "Workspace",
-        ownerId: "u1",
+        ownerId: "1000000000000000003",
         planTier: "FREE",
         planCustomOverride: false,
         planFeatureOverrides: {},
@@ -60,18 +60,18 @@ test("listWorkspaceVaults returns vaults for accessible workspace", async () => 
     vaults: vaultsStub(),
   });
 
-  const result = await service.listWorkspaceVaults("w1", "u1");
+  const result = await service.listWorkspaceVaults("1000000000000000001", "1000000000000000003");
   assert.equal(result.length, 1);
-  assert.equal(result[0].id, "v1");
+  assert.equal(result[0].id, "1000000000000000002");
 });
 
 test("listWorkspaceVaults hides other members personal vaults for workspace owner", async () => {
   const service = new VaultService({
     workspaces: {
       findById: async () => ({
-        id: "w1",
+        id: "1000000000000000001",
         name: "Workspace",
-        ownerId: "u1",
+        ownerId: "1000000000000000003",
         planTier: "ENTERPRISE",
         planCustomOverride: false,
         planFeatureOverrides: {},
@@ -84,32 +84,32 @@ test("listWorkspaceVaults hides other members personal vaults for workspace owne
     vaults: vaultsStub({
       listByWorkspace: async () => [
         {
-          id: "v-own",
-          workspaceId: "w1",
+          id: "1000000000000000005",
+          workspaceId: "1000000000000000001",
           name: "Личный сейф",
           description: "",
           icon: "🌟",
           isPersonal: true,
-          ownerId: "u1",
+          ownerId: "1000000000000000003",
           cryptoVersion: 2,
           createdAt: "",
           updatedAt: "",
         },
         {
-          id: "v-other",
-          workspaceId: "w1",
+          id: "1000000000000000006",
+          workspaceId: "1000000000000000001",
           name: "Personal",
           description: "",
           icon: "🏠",
           isPersonal: true,
-          ownerId: "u2",
+          ownerId: "1000000000000000007",
           cryptoVersion: 2,
           createdAt: "",
           updatedAt: "",
         },
         {
-          id: "v-shared",
-          workspaceId: "w1",
+          id: "1000000000000000004",
+          workspaceId: "1000000000000000001",
           name: "Новый сейф",
           description: "",
           icon: "💜",
@@ -123,10 +123,10 @@ test("listWorkspaceVaults hides other members personal vaults for workspace owne
     }),
   });
 
-  const result = await service.listWorkspaceVaults("w1", "u1");
+  const result = await service.listWorkspaceVaults("1000000000000000001", "1000000000000000003");
   assert.deepEqual(
     result.map((vault) => vault.id),
-    ["v-own", "v-shared"],
+    ["1000000000000000005", "1000000000000000004"],
   );
 });
 
@@ -141,7 +141,7 @@ test("getVault returns 404 when vault missing", async () => {
   });
 
   await assert.rejects(
-    () => service.getVault("missing", "u1"),
+    () => service.getVault("1999999999999999999", "1000000000000000003"),
     (error: unknown) =>
       error instanceof VaultServiceError && error.code === "VAULT_NOT_FOUND",
   );
@@ -156,8 +156,8 @@ test("getVault returns 403 when user has no access", async () => {
     },
     vaults: vaultsStub({
       findById: async () => ({
-        id: "v1",
-        workspaceId: "w1",
+        id: "1000000000000000002",
+        workspaceId: "1000000000000000001",
         name: "Shared",
         description: "",
         icon: "💼",
@@ -172,7 +172,7 @@ test("getVault returns 403 when user has no access", async () => {
   });
 
   await assert.rejects(
-    () => service.getVault("v1", "u1"),
+    () => service.getVault("1000000000000000002", "1000000000000000003"),
     (error: unknown) =>
       error instanceof VaultServiceError && error.code === "ACCESS_DENIED",
   );
@@ -180,9 +180,9 @@ test("getVault returns 403 when user has no access", async () => {
 
 test("listAccessibleWorkspaces delegates to workspaces repository", async () => {
   const ws = {
-    id: "w1",
+    id: "1000000000000000001",
     name: "Personal",
-    ownerId: "u1",
+    ownerId: "1000000000000000003",
     planTier: "FREE",
     planCustomOverride: false,
     planFeatureOverrides: {},
@@ -193,14 +193,14 @@ test("listAccessibleWorkspaces delegates to workspaces repository", async () => 
     workspaces: {
       findById: async () => null,
       hasAccess: async () => false,
-      listAccessibleByUser: async (userId: string) => (userId === "u1" ? [ws] : []),
+      listAccessibleByUser: async (userId: string) => (userId === "1000000000000000003" ? [ws] : []),
     },
     vaults: vaultsStub(),
   });
 
-  const result = await service.listAccessibleWorkspaces("u1");
+  const result = await service.listAccessibleWorkspaces("1000000000000000003");
   assert.equal(result.length, 1);
-  assert.equal(result[0].id, "w1");
+  assert.equal(result[0].id, "1000000000000000001");
 });
 
 
@@ -212,9 +212,9 @@ test("updateVault freezes shared vault metadata without sharedVaults plan", asyn
     },
     workspaces: {
       findById: async () => ({
-        id: "w1",
+        id: "1000000000000000001",
         name: "Workspace",
-        ownerId: "u1",
+        ownerId: "1000000000000000003",
         planTier: "FREE",
         planCustomOverride: false,
         planFeatureOverrides: {},
@@ -226,13 +226,13 @@ test("updateVault freezes shared vault metadata without sharedVaults plan", asyn
     },
     vaults: vaultsStub({
       findById: async () => ({
-        id: "v-shared",
-        workspaceId: "w1",
+        id: "1000000000000000004",
+        workspaceId: "1000000000000000001",
         name: "Shared",
         description: "",
         icon: "💜",
         isPersonal: false,
-        ownerId: "u1",
+        ownerId: "1000000000000000003",
         cryptoVersion: 2,
         createdAt: "",
         updatedAt: "",
@@ -245,7 +245,7 @@ test("updateVault freezes shared vault metadata without sharedVaults plan", asyn
   });
 
   await assert.rejects(
-    () => service.updateVault("v-shared", "u1", { name: "Renamed" }),
+    () => service.updateVault("1000000000000000004", "1000000000000000003", { name: "Renamed" }),
     (error: unknown) =>
       error instanceof VaultServiceError &&
       error.code === "PLAN_FEATURE_REQUIRED" &&
@@ -261,9 +261,9 @@ test("updateVault allows personal vault metadata without sharedVaults plan", asy
     },
     workspaces: {
       findById: async () => ({
-        id: "w1",
+        id: "1000000000000000001",
         name: "Workspace",
-        ownerId: "u1",
+        ownerId: "1000000000000000003",
         planTier: "FREE",
         planCustomOverride: false,
         planFeatureOverrides: {},
@@ -275,25 +275,25 @@ test("updateVault allows personal vault metadata without sharedVaults plan", asy
     },
     vaults: vaultsStub({
       findById: async () => ({
-        id: "v1",
-        workspaceId: "w1",
+        id: "1000000000000000002",
+        workspaceId: "1000000000000000001",
         name: "Personal",
         description: "",
         icon: "🏠",
         isPersonal: true,
-        ownerId: "u1",
+        ownerId: "1000000000000000003",
         cryptoVersion: 2,
         createdAt: "",
         updatedAt: "",
       }),
       updateMetadata: async () => ({
-        id: "v1",
-        workspaceId: "w1",
+        id: "1000000000000000002",
+        workspaceId: "1000000000000000001",
         name: "Renamed",
         description: "",
         icon: "🏠",
         isPersonal: true,
-        ownerId: "u1",
+        ownerId: "1000000000000000003",
         cryptoVersion: 2,
         createdAt: "",
         updatedAt: "",
@@ -301,7 +301,7 @@ test("updateVault allows personal vault metadata without sharedVaults plan", asy
     }),
   });
 
-  const updated = await service.updateVault("v1", "u1", { name: "Renamed" });
+  const updated = await service.updateVault("1000000000000000002", "1000000000000000003", { name: "Renamed" });
   assert.equal(updated.name, "Renamed");
 });
 
@@ -310,9 +310,9 @@ test("deleteVault removes shared vault when actor can manage settings", async ()
   const service = new VaultService({
     workspaces: {
       findById: async () => ({
-        id: "w1",
+        id: "1000000000000000001",
         name: "Workspace",
-        ownerId: "u1",
+        ownerId: "1000000000000000003",
         planTier: "FREE",
         planCustomOverride: false,
         planFeatureOverrides: {},
@@ -324,13 +324,13 @@ test("deleteVault removes shared vault when actor can manage settings", async ()
     },
     vaults: vaultsStub({
       findById: async () => ({
-        id: "v-shared",
-        workspaceId: "w1",
+        id: "1000000000000000004",
+        workspaceId: "1000000000000000001",
         name: "Shared",
         description: "",
         icon: "💜",
         isPersonal: false,
-        ownerId: "u1",
+        ownerId: "1000000000000000003",
         cryptoVersion: 2,
         createdAt: "",
         updatedAt: "",
@@ -343,17 +343,17 @@ test("deleteVault removes shared vault when actor can manage settings", async ()
     }),
   });
 
-  await service.deleteVault("v-shared", "u1");
-  assert.equal(deletedId, "v-shared");
+  await service.deleteVault("1000000000000000004", "1000000000000000003");
+  assert.equal(deletedId, "1000000000000000004");
 });
 
 test("deleteVault rejects personal vault", async () => {
   const service = new VaultService({
     workspaces: {
       findById: async () => ({
-        id: "w1",
+        id: "1000000000000000001",
         name: "Workspace",
-        ownerId: "u1",
+        ownerId: "1000000000000000003",
         planTier: "FREE",
         planCustomOverride: false,
         planFeatureOverrides: {},
@@ -365,13 +365,13 @@ test("deleteVault rejects personal vault", async () => {
     },
     vaults: vaultsStub({
       findById: async () => ({
-        id: "v1",
-        workspaceId: "w1",
+        id: "1000000000000000002",
+        workspaceId: "1000000000000000001",
         name: "Personal",
         description: "",
         icon: "🏠",
         isPersonal: true,
-        ownerId: "u1",
+        ownerId: "1000000000000000003",
         cryptoVersion: 2,
         createdAt: "",
         updatedAt: "",
@@ -380,7 +380,7 @@ test("deleteVault rejects personal vault", async () => {
   });
 
   await assert.rejects(
-    () => service.deleteVault("v1", "u1"),
+    () => service.deleteVault("1000000000000000002", "1000000000000000003"),
     (error: unknown) =>
       error instanceof VaultServiceError && error.code === "VAULT_DELETE_FORBIDDEN",
   );
