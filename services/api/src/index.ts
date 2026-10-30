@@ -139,6 +139,7 @@ async function main(): Promise<void> {
   });
   const workspaceSettingsService = new WorkspaceSettingsService({
     workspaces: storage.repositories.workspaces,
+    vaults: storage.repositories.vaults,
     db: storage.postgres,
     config,
   });
