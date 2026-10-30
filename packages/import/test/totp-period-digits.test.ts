@@ -48,6 +48,54 @@ describe("parseTotpParams", () => {
       digits: DEFAULT_TOTP_DIGITS,
     });
   });
+
+  it("falls back when period or digits are non-integers or out of range", () => {
+    expect(
+      parseTotpParams(`otpauth://totp/QA?secret=${RFC_SECRET}&period=1.5&digits=6.5`),
+    ).toMatchObject({
+      secretBase32: RFC_SECRET,
+      periodSeconds: DEFAULT_TOTP_PERIOD_SECONDS,
+      digits: DEFAULT_TOTP_DIGITS,
+    });
+    expect(
+      parseTotpParams(`otpauth://totp/QA?secret=${RFC_SECRET}&period=0&digits=12`),
+    ).toMatchObject({
+      secretBase32: RFC_SECRET,
+      periodSeconds: DEFAULT_TOTP_PERIOD_SECONDS,
+      digits: DEFAULT_TOTP_DIGITS,
+    });
+    expect(
+      parseTotpParams(`otpauth://totp/QA?secret=${RFC_SECRET}&period=-30&digits=100`),
+    ).toMatchObject({
+      secretBase32: RFC_SECRET,
+      periodSeconds: DEFAULT_TOTP_PERIOD_SECONDS,
+      digits: DEFAULT_TOTP_DIGITS,
+    });
+    expect(
+      parseTotpParams(`otpauth://totp/QA?secret=${RFC_SECRET}&period=60&digits=5`),
+    ).toMatchObject({
+      secretBase32: RFC_SECRET,
+      periodSeconds: 60,
+      digits: DEFAULT_TOTP_DIGITS,
+    });
+    expect(
+      parseTotpParams(`otpauth://totp/QA?secret=${RFC_SECRET}&period=60&digits=10`),
+    ).toMatchObject({
+      secretBase32: RFC_SECRET,
+      periodSeconds: 60,
+      digits: 10,
+    });
+  });
+
+  it("parses KeeOtp key/step/size/otpHashMode without trailing junk on the secret", () => {
+    const keeOtp = `key=${RFC_SECRET}&step=60&size=8&otpHashMode=Sha256`;
+    expect(parseTotpParams(keeOtp)).toMatchObject({
+      secretBase32: RFC_SECRET,
+      periodSeconds: 60,
+      digits: 8,
+      algorithm: "SHA256",
+    });
+  });
 });
 
 describe("import preserves TOTP period and digits", () => {
@@ -134,17 +182,16 @@ describe("import preserves TOTP period and digits", () => {
     });
   });
 
-  it("maps KeePass otp field (after key= strip) with 60 s / 8 digits", () => {
-    // KeePass2XmlImporter sets login.totp = value.replace("key=", ""); DOMParser is
-    // browser-only, so exercise the same post-parse string through the Okkey mapper.
-    const keepassTotp = NON_DEFAULT_URI.replace("key=", "");
+  it("maps KeePass otpauth otp field with 60 s / 8 digits", () => {
+    // KeePass2XmlImporter stores the raw otp value; DOMParser is browser-only, so
+    // exercise the same post-parse string through the Okkey mapper.
     const result = new ImportResult();
     result.success = true;
     const cipher = new CipherView();
     cipher.type = CipherType.Login;
     cipher.name = "KeePass TOTP";
     cipher.login = new LoginView();
-    cipher.login.totp = keepassTotp;
+    cipher.login.totp = NON_DEFAULT_URI;
     result.ciphers.push(cipher);
 
     const mapped = mapImportResultToOkkeyItems({ result, vaultId: "vault-demo" });
@@ -152,6 +199,27 @@ describe("import preserves TOTP period and digits", () => {
       secretBase32: RFC_SECRET,
       periodSeconds: 60,
       digits: 8,
+    });
+  });
+
+  it("maps KeePass KeeOtp otp field with step/size (60 s / 8 digits)", () => {
+    const keeOtp = `key=${RFC_SECRET}&step=60&size=8&otpHashMode=Sha1`;
+    const result = new ImportResult();
+    result.success = true;
+    const cipher = new CipherView();
+    cipher.type = CipherType.Login;
+    cipher.name = "KeePass KeeOtp";
+    cipher.login = new LoginView();
+    cipher.login.totp = keeOtp;
+    result.ciphers.push(cipher);
+
+    const mapped = mapImportResultToOkkeyItems({ result, vaultId: "vault-demo" });
+    expect(findTotpValue(mapped[0])).toMatchObject({
+      kind: "totp",
+      secretBase32: RFC_SECRET,
+      periodSeconds: 60,
+      digits: 8,
+      algorithm: "SHA1",
     });
   });
 
