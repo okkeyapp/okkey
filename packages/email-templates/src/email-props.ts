@@ -33,6 +33,8 @@ export function buildAuthSignInCodeEmailProps(
   const standard = buildEmailStandardFooterCopy(locale);
   return {
     lang: locale,
+    title: formatEmailMessage(locale, `${prefix}.subject`, { code: variables.code }),
+    preview: formatEmailMessage(locale, `${prefix}.preview`, { minutes }),
     beforeCode: formatEmailMessage(locale, `${prefix}.beforeCode`, {}),
     code: variables.code,
     line2: formatEmailMessage(locale, `${prefix}.line2`, { minutes }),
@@ -99,6 +101,7 @@ export function buildDeviceApprovalEmailProps(
   const standard = buildEmailStandardFooterCopy(locale);
   return {
     lang: locale,
+    title: formatEmailMessage(locale, "email.device.approval.subject", {}),
     lead,
     deviceLine,
     whenLine,
@@ -128,6 +131,9 @@ export function buildWorkspaceInviteEmailProps(
   const standard = buildEmailStandardFooterCopy(locale);
   return {
     lang: locale,
+    title: formatEmailMessage(locale, "email.workspaceInvite.subject", {
+      workspaceName: variables.workspaceName,
+    }),
     intro,
     ctaLabel,
     inviteUrl,
@@ -137,18 +143,21 @@ export function buildWorkspaceInviteEmailProps(
 }
 
 const twoFactorEnabledKeys = {
+  subject: "email.twoFactor.enabled.subject",
   line1: "email.twoFactor.enabled.line1",
   line2: "email.twoFactor.enabled.line2",
   cta: "email.twoFactor.enabled.ctaSecurity",
 } as const;
 
 const twoFactorDisabledKeys = {
+  subject: "email.twoFactor.disabled.subject",
   line1: "email.twoFactor.disabled.line1",
   line2: "email.twoFactor.disabled.line2",
   cta: "email.twoFactor.disabled.ctaSecurity",
 } as const;
 
 const twoFactorBackupKeys = {
+  subject: "email.twoFactor.backupRegen.subject",
   line1: "email.twoFactor.backupRegen.line1",
   line2: "email.twoFactor.backupRegen.line2",
   cta: "email.twoFactor.backupRegen.ctaSecurity",
@@ -157,13 +166,14 @@ const twoFactorBackupKeys = {
 function buildTwoFactorNoticeEmailProps(
   locale: EmailLocale,
   variables: TwoFactorNoticeVariables,
-  keys: { line1: string; line2: string; cta: string },
+  keys: { subject: string; line1: string; line2: string; cta: string },
 ): TwoFactorNoticeEmailProps {
   const securityUrl = variables.securitySettingsUrl.trim();
   const whenUtc = formatUtcWhen(locale, variables.occurredAtIso);
   const standard = buildEmailStandardFooterCopy(locale);
   return {
     lang: locale,
+    title: formatEmailMessage(locale, keys.subject, {}),
     line1: formatEmailMessage(locale, keys.line1, { whenUtc }),
     line2: formatEmailMessage(locale, keys.line2, {}),
     securityUrl,
@@ -203,6 +213,7 @@ export function buildAccountEmailChangedEmailProps(
   const standard = buildEmailStandardFooterCopy(locale);
   return {
     lang: locale,
+    title: formatEmailMessage(locale, "email.account.emailChanged.subject", {}),
     line1: formatEmailMessage(locale, "email.account.emailChanged.line1", {
       newEmailMasked: variables.newEmailMasked,
       whenUtc,
@@ -227,6 +238,7 @@ export function buildDeviceRecoveryApprovalEmailProps(
   const standard = buildEmailStandardFooterCopy(locale);
   return {
     lang: locale,
+    title: formatEmailMessage(locale, "email.device.recovery.subject", {}),
     lead: formatEmailMessage(locale, "email.device.recovery.lead", {}),
     deviceLine: formatEmailMessage(locale, "email.device.approval.deviceLine", {
       deviceName: deviceDetail,
@@ -258,6 +270,7 @@ export function buildContactRecoveryReleaseEmailProps(
   const standard = buildEmailStandardFooterCopy(locale);
   return {
     lang: locale,
+    title: formatEmailMessage(locale, "email.contacts.recovery.subject", {}),
     lead: formatEmailMessage(locale, "email.contacts.recovery.lead", {}),
     detailLine: formatEmailMessage(locale, "email.contacts.recovery.accountLine", {
       ownerEmail: variables.ownerEmail,
@@ -284,6 +297,7 @@ export function buildTrustedContactInviteEmailProps(
   const standard = buildEmailStandardFooterCopy(locale);
   return {
     lang: locale,
+    title: formatEmailMessage(locale, "email.contacts.invite.subject", {}),
     lead: formatEmailMessage(locale, "email.contacts.invite.lead", {
       inviter: variables.inviterDisplayName,
     }),

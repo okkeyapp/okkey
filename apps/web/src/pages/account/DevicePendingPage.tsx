@@ -8,7 +8,7 @@ import {
   Button,
 } from "@okkey/ui";
 import { useEffect, useMemo, useState } from "react";
-import { Navigate, useSearchParams } from "react-router-dom";
+import { Link, Navigate, useSearchParams } from "react-router-dom";
 
 import AccountUserBar from "../../components/account/AccountUserBar";
 import AppShellLayout from "../../components/app-shell/AppShellLayout";
@@ -16,6 +16,7 @@ import { useAuthVault } from "../../auth/AuthVaultContext";
 import { useLocale } from "../../locale/LocaleContext";
 import {
   ACCOUNT_LOCK_PATH,
+  ACCOUNT_RESTORE_PATH,
   AUTH_EMAIL_PATH,
   accountLockWithRedirectQuery,
 } from "../../routes/paths";
@@ -42,6 +43,7 @@ export default function DevicePendingPage() {
     deviceTrustStatus,
     deviceBlockedUntil,
     deviceApprovers,
+    deviceNeedsRecovery,
     refreshDeviceTrust,
     retryDeviceRegistration,
   } = useAuthVault();
@@ -105,9 +107,11 @@ export default function DevicePendingPage() {
       : t("web.devicePending.title");
   const description = blocked
     ? t("web.devicePending.blockedBody")
-    : rejected
-      ? t("web.devicePending.rejectedBody")
-      : t("web.devicePending.body");
+    : deviceNeedsRecovery
+      ? t("web.devicePending.recoveryRequiredBody")
+      : rejected
+        ? t("web.devicePending.rejectedBody")
+        : t("web.devicePending.body");
 
   const mode = checking ? "checking" : blocked ? "blocked" : rejected ? "rejected" : "pending";
 
@@ -144,10 +148,16 @@ export default function DevicePendingPage() {
           approvers={approvers}
           actions={
             rejected ? (
-              <Button type="button" disabled={retrying} onClick={() => void onRetry()}>
-                {retrying ? <Spinner data-icon="inline-start" /> : null}
-                {t("web.devicePending.retry")}
-              </Button>
+              deviceNeedsRecovery ? (
+                <Button type="button" asChild>
+                  <Link to={ACCOUNT_RESTORE_PATH}>{t("web.devicePending.recoveryRequiredCta")}</Link>
+                </Button>
+              ) : (
+                <Button type="button" disabled={retrying} onClick={() => void onRetry()}>
+                  {retrying ? <Spinner data-icon="inline-start" /> : null}
+                  {t("web.devicePending.retry")}
+                </Button>
+              )
             ) : null
           }
         />

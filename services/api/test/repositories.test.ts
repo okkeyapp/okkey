@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import {
   DevicesRepository,
   EventsRepository,
+  SessionsRepository,
+  TrustedDeviceKeyConflictError,
   ItemsRepository,
   UsersRepository,
   VaultsRepository,
@@ -153,8 +155,9 @@ test("ItemsRepository.listByVault maps encrypted data", async () => {
 
 test("DevicesRepository.registerOrUpdate returns mapped device row", async () => {
   const db = new FakeDb();
-  // Lookup by fingerprint finds nothing, then INSERT … ON CONFLICT returns the row.
-  // First device with no other trusted row is auto-trusted.
+  // User lock, fingerprint lock, fingerprint miss, then INSERT returns the row.
+  db.enqueueResult([]);
+  db.enqueueResult([]);
   db.enqueueResult([]);
   db.enqueueResult([makeDeviceRow({ status: "trusted" })]);
 
@@ -177,12 +180,64 @@ test("DevicesRepository.registerOrUpdate returns mapped device row", async () =>
 
   assert.equal(result.id, "d1");
   assert.equal(result.status, "trusted");
+  assert.equal(result.sendApprovalEmail, false);
   assert.equal(result.ipFirst, "10.0.0.1");
   assert.equal(result.approvedBy, null);
-  assert.equal(db.queries.length, 2);
-  assert.match(db.queries[0].sql, /FROM devices/);
-  assert.match(db.queries[0].sql, /device_fingerprint/);
-  assert.match(db.queries[1].sql, /INSERT INTO devices/);
+  assert.equal(db.queries.length, 4);
+  assert.deepEqual(db.queries[0].params, ["okkey-user-devices:u1"]);
+  assert.match(db.queries[1].sql, /pg_advisory_xact_lock/);
+  assert.match(db.queries[2].sql, /FROM devices/);
+  assert.match(db.queries[2].sql, /device_fingerprint/);
+  assert.match(db.queries[3].sql, /INSERT INTO devices/);
+});
+
+test("DevicesRepository.registerOrUpdate emails only a newly pending device", async () => {
+  const existing = new FakeDb();
+  existing.enqueueResult([]);
+  existing.enqueueResult([]);
+  existing.enqueueResult([makeDeviceRow({ status: "pending" })]);
+  existing.enqueueResult([{ n: "1" }]);
+  existing.enqueueResult([makeDeviceRow({ status: "pending" })]);
+  const repo = new DevicesRepository(existing);
+  const again = await repo.registerOrUpdate({
+    userId: "u1",
+    deviceFingerprint: "a".repeat(64),
+    deviceName: "MacBook Pro",
+    devicePublicKey: Buffer.from("pk").toString("base64"),
+    deviceShare: new Uint8Array([1, 2, 3]),
+    platform: "desktop",
+    osName: "macOS",
+    osVersion: "14.5",
+    appVersion: "1.0.0",
+    clientType: "desktop",
+    userAgent: "ua",
+    requestIp: "10.0.0.1",
+    now: "2026-01-01T00:00:00.000Z",
+  });
+  assert.equal(again.sendApprovalEmail, false);
+
+  const created = new FakeDb();
+  created.enqueueResult([]);
+  created.enqueueResult([]);
+  created.enqueueResult([]);
+  created.enqueueResult([makeDeviceRow({ status: "pending" })]);
+  const createdRepo = new DevicesRepository(created);
+  const first = await createdRepo.registerOrUpdate({
+    userId: "u1",
+    deviceFingerprint: "b".repeat(64),
+    deviceName: "New",
+    devicePublicKey: Buffer.from("pk").toString("base64"),
+    deviceShare: new Uint8Array([1, 2, 3]),
+    platform: "desktop",
+    osName: "macOS",
+    osVersion: "14.5",
+    appVersion: "1.0.0",
+    clientType: "desktop",
+    userAgent: "ua",
+    requestIp: "10.0.0.1",
+    now: "2026-01-01T00:00:00.000Z",
+  });
+  assert.equal(first.sendApprovalEmail, true);
 });
 
 test("DevicesRepository.isTrustedDevice checks trusted status", async () => {
@@ -224,7 +279,10 @@ test("DevicesRepository.renameDevice and revokeOwned update owned rows", async (
   assert.match(renameDb.queries[0].sql, /SET device_name/);
 
   const revokeDb = new FakeDb();
+  revokeDb.enqueueResult([]);
+  revokeDb.enqueueResult([{ id: "d1" }]);
   revokeDb.enqueueResult([makeDeviceRow({ status: "revoked", revoked_at: "2026-01-01T00:03:00.000Z" })]);
+  revokeDb.enqueueResult([]);
   const revokeRepo = new DevicesRepository(revokeDb);
   const revoked = await revokeRepo.revokeOwned({
     userId: "u1",
@@ -233,11 +291,16 @@ test("DevicesRepository.renameDevice and revokeOwned update owned rows", async (
     reason: "not now",
   });
   assert.equal(revoked?.status, "revoked");
-  assert.match(revokeDb.queries[0].sql, /status = 'revoked'/);
+  const revokeSql = revokeDb.queries.find((query) => /status = 'revoked'/.test(query.sql));
+  const deleteSql = revokeDb.queries.find((query) => /DELETE FROM sessions/.test(query.sql));
+  assert.ok(revokeSql);
+  assert.ok(deleteSql);
+  assert.deepEqual(deleteSql?.params, [["d1"]]);
 });
 
 test("DevicesRepository.resolveApproval approves pending device", async () => {
   const db = new FakeDb();
+  db.enqueueResult([]); // user device lock
   db.enqueueResult([makeDeviceRow({ status: "pending" })]); // SELECT FOR UPDATE
   db.enqueueResult([
     makeDeviceRow({
@@ -263,8 +326,195 @@ test("DevicesRepository.resolveApproval approves pending device", async () => {
   assert.equal(result.device?.status, "trusted");
   assert.equal(result.device?.approvedBy, "u1");
   assert.equal(result.device?.approvedAt, "2026-01-01T00:02:00.000Z");
-  assert.match(db.queries[1].sql, /device_share = approver\.device_share/);
-  assert.equal(db.queries[1].params[3], "trusted1");
+  assert.match(db.queries[2].sql, /device_share = approver\.device_share/);
+  assert.equal(db.queries[2].params[3], "trusted1");
+});
+
+test("DevicesRepository.resolveApproval reject ends device sessions", async () => {
+  const db = new FakeDb();
+  db.enqueueResult([]);
+  db.enqueueResult([makeDeviceRow({ status: "pending" })]);
+  db.enqueueResult([makeDeviceRow({ status: "revoked" })]);
+  db.enqueueResult([]);
+  const repo = new DevicesRepository(db);
+  const result = await repo.resolveApproval({
+    deviceId: "d1",
+    userId: "u1",
+    action: "reject",
+    now: "2026-01-01T00:02:00.000Z",
+    expiresAt: "2025-12-31T23:59:00.000Z",
+    approvedBy: "u1",
+    approverDeviceId: "trusted1",
+    rejectReason: "no",
+  });
+  assert.equal(result.kind, "rejected");
+  assert.match(db.queries.at(-1)?.sql ?? "", /DELETE FROM sessions/);
+  assert.deepEqual(db.queries.at(-1)?.params, [["d1"]]);
+});
+
+test("DevicesRepository.blockPending ends device sessions", async () => {
+  const db = new FakeDb();
+  db.enqueueResult([]);
+  db.enqueueResult([{ id: "d1" }]);
+  db.enqueueResult([makeDeviceRow({ status: "blocked", blocked_until: null })]);
+  db.enqueueResult([]);
+  const repo = new DevicesRepository(db);
+  const blocked = await repo.blockPending({
+    userId: "u1",
+    deviceId: "d1",
+    approverDeviceId: "trusted1",
+    now: "2026-01-01T00:02:00.000Z",
+    blockedUntil: null,
+    reason: "blocked:forever",
+  });
+  assert.equal(blocked?.status, "blocked");
+  assert.ok(db.queries.some((query) => /DELETE FROM sessions/.test(query.sql)));
+});
+
+test("DevicesRepository.claimTrustedAfterRecovery ends sessions of revoked devices", async () => {
+  const db = new FakeDb();
+  db.enqueueResult([]);
+  db.enqueueResult([{ id: "old-device" }]);
+  db.enqueueResult([]);
+  db.enqueueResult([]);
+  db.enqueueResult([{ id: "keep" }]);
+  db.enqueueResult([makeDeviceRow({ id: "keep", status: "trusted" })]);
+  const repo = new DevicesRepository(db);
+  const claimed = await repo.claimTrustedAfterRecovery({
+    userId: "u1",
+    deviceFingerprint: "c".repeat(64),
+    deviceName: "Recovered",
+    devicePublicKey: Buffer.from("pk").toString("base64"),
+    deviceShare: new Uint8Array(32),
+    platform: "desktop",
+    osName: "macOS",
+    osVersion: "14",
+    appVersion: "1.0.0",
+    clientType: "desktop",
+    userAgent: "ua",
+    requestIp: "127.0.0.1",
+    now: "2026-01-02T00:00:00.000Z",
+  });
+  assert.equal(claimed.id, "keep");
+  const sessionDelete = db.queries.find((query) => /DELETE FROM sessions/.test(query.sql));
+  assert.ok(sessionDelete);
+  assert.deepEqual(sessionDelete?.params, [["old-device"]]);
+});
+
+test("DevicesRepository.registerOrUpdate does not replace trusted device keys", async () => {
+  const storedKey = Buffer.from("original-pk").toString("base64");
+  const db = new FakeDb();
+  db.enqueueResult([]);
+  db.enqueueResult([]);
+  db.enqueueResult([
+    makeDeviceRow({ status: "trusted", device_public_key: storedKey }),
+  ]);
+  const repo = new DevicesRepository(db);
+  await assert.rejects(
+    () =>
+      repo.registerOrUpdate({
+        userId: "u1",
+        deviceFingerprint: "a".repeat(64),
+        deviceName: "Taken",
+        devicePublicKey: Buffer.from("attacker-pk").toString("base64"),
+        deviceShare: new Uint8Array(32).fill(9),
+        platform: "desktop",
+        osName: "macOS",
+        osVersion: "14.5",
+        appVersion: "1.0.0",
+        clientType: "desktop",
+        userAgent: "ua",
+        requestIp: "10.0.0.1",
+        now: "2026-01-01T00:00:00.000Z",
+      }),
+    (error: unknown) => error instanceof TrustedDeviceKeyConflictError,
+  );
+  assert.equal(
+    db.queries.some((query) => /device_public_key = /.test(query.sql)),
+    false,
+  );
+});
+
+test("DevicesRepository.registerOrUpdate refreshes presence only when trusted keys match", async () => {
+  const storedKey = Buffer.from("original-pk").toString("base64");
+  const db = new FakeDb();
+  db.enqueueResult([]);
+  db.enqueueResult([]);
+  db.enqueueResult([
+    makeDeviceRow({
+      status: "trusted",
+      device_public_key: storedKey,
+      device_share: Buffer.from([1, 2, 3]),
+      device_name: "MacBook Pro",
+      app_version: "1.0.0",
+      ip_last: "10.0.0.1",
+    }),
+  ]);
+  db.enqueueResult([]); // last_seen / ip update
+  const repo = new DevicesRepository(db);
+  const result = await repo.registerOrUpdate({
+    userId: "u1",
+    deviceFingerprint: "a".repeat(64),
+    deviceName: "Work MacBook",
+    devicePublicKey: storedKey,
+    deviceShare: new Uint8Array(32).fill(9),
+    platform: "desktop",
+    osName: "macOS",
+    osVersion: "14.5",
+    appVersion: "1.1.0",
+    clientType: "desktop",
+    userAgent: "ua",
+    requestIp: "10.0.0.3",
+    now: "2026-01-01T00:02:00.000Z",
+  });
+  assert.equal(result.status, "trusted");
+  assert.equal(result.deviceName, "MacBook Pro");
+  assert.equal(result.appVersion, "1.0.0");
+  assert.deepEqual(Buffer.from(result.deviceShare), Buffer.from([1, 2, 3]));
+  assert.equal(result.ipLast, "10.0.0.3");
+  assert.equal(result.lastSeenAt, "2026-01-01T00:02:00.000Z");
+  assert.equal(result.sendApprovalEmail, false);
+  assert.equal(
+    db.queries.some((query) => /device_public_key = \$3/.test(query.sql)),
+    false,
+  );
+  assert.equal(
+    db.queries.some((query) => /SET last_seen_at = \$3::timestamptz, ip_last = \$4/.test(query.sql)),
+    true,
+  );
+});
+
+test("SessionsRepository.bindDevice refuses a blocked device", async () => {
+  const db = new FakeDb();
+  db.enqueueResult([]);
+  db.enqueueResult([{ status: "blocked" }]);
+  const repo = new SessionsRepository(db);
+  const bound = await repo.bindDevice({
+    tokenHash: "hash",
+    userId: "u1",
+    deviceId: "d2",
+  });
+  assert.equal(bound, false);
+  assert.equal(
+    db.queries.some((query) => /UPDATE sessions/.test(query.sql)),
+    false,
+  );
+});
+
+test("SessionsRepository.bindDevice does not move a session already bound to another device", async () => {
+  const db = new FakeDb();
+  db.enqueueResult([]);
+  db.enqueueResult([{ status: "trusted" }]);
+  db.enqueueResult([{ id: "s1" }]);
+  const repo = new SessionsRepository(db);
+  const bound = await repo.bindDevice({
+    tokenHash: "hash",
+    userId: "u1",
+    deviceId: "d2",
+  });
+  assert.equal(bound, true);
+  const update = db.queries.find((query) => /UPDATE sessions/.test(query.sql));
+  assert.match(update?.sql ?? "", /device_id IS NULL OR device_id = \$3/);
 });
 
 test("EventsRepository.append increments version in transaction", async () => {
