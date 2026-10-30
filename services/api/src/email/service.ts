@@ -19,7 +19,11 @@ import {
   type EmailQueueRedis,
 } from "./queue.ts";
 import { withOkkeyMarkInlineAttachment } from "./inline-attachments.ts";
+import type { EmailHttpApiInlineMode } from "./http-api-inline-mode.ts";
+import { prepareHttpApiEmailPayload } from "./http-api-payload.ts";
 import { SesEmailSender } from "./ses-sender.ts";
+
+export type { EmailHttpApiInlineMode } from "./http-api-inline-mode.ts";
 
 /** Inline (CID) attachment referenced from HTML as `cid:<cid>`. */
 export interface EmailInlineAttachment {
@@ -199,19 +203,37 @@ export class SmtpEmailSender implements EmailSender {
   }
 }
 
+export type HttpApiEmailSenderOptions = {
+  inlineMode?: EmailHttpApiInlineMode;
+  /** Absolute https URL used when `inlineMode` is `url`. */
+  logoUrl?: string;
+};
+
 export class HttpApiEmailSender implements EmailSender {
   private readonly endpoint: string;
   private readonly apiKey: string;
   private readonly timeoutMs: number;
+  private readonly inlineMode: EmailHttpApiInlineMode;
+  private readonly logoUrl: string;
 
-  constructor(endpoint: string, apiKey: string, timeoutMs: number) {
+  constructor(
+    endpoint: string,
+    apiKey: string,
+    timeoutMs: number,
+    options: HttpApiEmailSenderOptions = {},
+  ) {
     this.endpoint = endpoint;
     this.apiKey = apiKey;
     this.timeoutMs = timeoutMs;
+    this.inlineMode = options.inlineMode ?? "cid";
+    this.logoUrl = (options.logoUrl ?? "").trim();
   }
 
   async send(message: EmailMessage): Promise<void> {
-    const prepared = withOkkeyMarkInlineAttachment(message);
+    const prepared = prepareHttpApiEmailPayload(message, {
+      inlineMode: this.inlineMode,
+      logoUrl: this.logoUrl,
+    });
     const controller = new AbortController();
     const timeout = setTimeout(() => {
       controller.abort();
@@ -278,6 +300,13 @@ export function assertEmailTransportConfig(config: ApiConfig): void {
       if (!config.emailApiKey) {
         throw new Error("EMAIL_API_KEY is required for EMAIL_PROVIDER=http-api");
       }
+      if (config.emailHttpApiInlineMode === "url") {
+        if (!config.emailLogoUrl.trim()) {
+          throw new Error(
+            "EMAIL_LOGO_URL is required when EMAIL_PROVIDER=http-api and EMAIL_HTTP_API_INLINE=url",
+          );
+        }
+      }
       return;
     case "ses":
       if (!config.sesRegion) {
@@ -337,6 +366,10 @@ export async function createTransportEmailSender(
         config.emailApiEndpoint,
         config.emailApiKey,
         config.emailApiTimeoutMs,
+        {
+          inlineMode: config.emailHttpApiInlineMode,
+          logoUrl: config.emailLogoUrl,
+        },
       );
     case "ses":
       return new SesEmailSender({
