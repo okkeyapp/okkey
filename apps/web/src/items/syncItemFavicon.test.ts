@@ -19,6 +19,7 @@ import * as itemFaviconsApi from "../api/item-favicons";
 import * as keyFieldFilesApi from "../api/key-field-files";
 import {
   applyFaviconToItem,
+  lookupWebsiteFaviconFromNetwork,
   shouldAttachWebsiteFaviconInBackground,
   syncItemFaviconForPlaintext,
   websiteFaviconUrlsEqual,
@@ -244,7 +245,118 @@ describe("syncItemFaviconForPlaintext", () => {
       { allowNetworkFetch: true },
     );
 
+    expect(itemFaviconsApi.previewItemFavicon).not.toHaveBeenCalled();
     expect(synced.item.faviconId).toBe("1000000000000000013");
+  });
+
+  it("keeps previous icon on form save when URLs are unchanged even without preview bytes", async () => {
+    const previous = loginWithUrl("https://example.com", {
+      faviconId: "1000000000000000020",
+      faviconSource: "website",
+    });
+    // Username-only edit: title/fields change but website URL list is identical.
+    const edited = loginWithUrl("https://example.com", {
+      title: "Renamed",
+      fields: [
+        {
+          id: "f1",
+          type: "url",
+          sectionId: "websites",
+          order: 0,
+          label: "website URL",
+          value: { kind: "url", url: "https://example.com" },
+        },
+        {
+          id: "f2",
+          type: "text",
+          sectionId: "login",
+          order: 1,
+          label: "username",
+          value: { kind: "text", text: "new-user" },
+        },
+      ],
+    });
+
+    const synced = await syncItemFaviconForPlaintext("token", new Uint8Array([1]), edited, previous);
+
+    expect(itemFaviconsApi.previewItemFavicon).not.toHaveBeenCalled();
+    expect(synced.item.faviconId).toBe("1000000000000000020");
+    expect(synced.item.faviconSource).toBe("website");
+    expect(synced.needsBackgroundWebsiteFavicon).toBeFalsy();
+    expect(shouldAttachWebsiteFaviconInBackground(synced.item, undefined, synced)).toBe(false);
+  });
+
+  it("does not re-upload preview bytes when website URLs are unchanged", async () => {
+    const previous = loginWithUrl("https://example.com", {
+      faviconId: "1000000000000000021",
+      faviconSource: "website",
+    });
+    const edited = loginWithUrl("https://example.com", { title: "Name changed" });
+    const png = new Uint8Array([137, 80, 78, 71, 9]);
+
+    const synced = await syncItemFaviconForPlaintext("token", new Uint8Array([1]), edited, previous, {
+      websiteFaviconPng: png,
+    });
+
+    expect(keyFieldFilesApi.uploadEncryptedAttachment).not.toHaveBeenCalled();
+    expect(synced.item.faviconId).toBe("1000000000000000021");
+  });
+
+  it("keeps previous icon on form save when URL changed but preview is not ready yet", async () => {
+    const previous = loginWithUrl("https://old.example", {
+      faviconId: "1000000000000000022",
+      faviconSource: "website",
+    });
+    const edited = loginWithUrl("https://new.example", { title: "Moved" });
+
+    const synced = await syncItemFaviconForPlaintext("token", new Uint8Array([1]), edited, previous);
+
+    expect(synced.item.faviconId).toBe("1000000000000000022");
+    expect(synced.needsBackgroundWebsiteFavicon).toBe(true);
+    expect(synced.clearFaviconIfBackgroundAbsent).toBe(true);
+    expect(shouldAttachWebsiteFaviconInBackground(synced.item, undefined, synced)).toBe(true);
+  });
+
+  it("keeps previous icon when allowNetworkFetch lookup throws (network/timeout)", async () => {
+    vi.mocked(itemFaviconsApi.previewItemFavicon).mockRejectedValue(new Error("network down"));
+    const previous = loginWithUrl("https://old.example", {
+      faviconId: "1000000000000000023",
+      faviconSource: "website",
+    });
+    const edited = loginWithUrl("https://new.example");
+
+    const synced = await syncItemFaviconForPlaintext(
+      "token",
+      new Uint8Array([1]),
+      edited,
+      previous,
+      undefined,
+      { allowNetworkFetch: true },
+    );
+
+    expect(synced.item.faviconId).toBe("1000000000000000023");
+    expect(synced.item.faviconSource).toBe("website");
+  });
+
+  it("clears previous icon when URL changed and lookup positively finds no icon", async () => {
+    vi.mocked(itemFaviconsApi.previewItemFavicon).mockResolvedValue(null);
+    const previous = loginWithUrl("https://old.example", {
+      faviconId: "1000000000000000024",
+      faviconSource: "website",
+    });
+    const edited = loginWithUrl("https://new.example");
+
+    const synced = await syncItemFaviconForPlaintext(
+      "token",
+      new Uint8Array([1]),
+      edited,
+      previous,
+      undefined,
+      { allowNetworkFetch: true },
+    );
+
+    expect(synced.item.faviconId).toBeUndefined();
+    expect(synced.item.faviconSource).toBeUndefined();
   });
 
   it("fetches on import when allowNetworkFetch is set", async () => {
@@ -274,5 +386,52 @@ describe("syncItemFaviconForPlaintext", () => {
 
     expect(itemFaviconsApi.previewItemFavicon).toHaveBeenCalled();
     expect(synced.item.faviconId).toBe("1000000000000000014");
+  });
+});
+
+describe("lookupWebsiteFaviconFromNetwork", () => {
+  it("returns absent when preview resolves null", async () => {
+    vi.mocked(itemFaviconsApi.previewItemFavicon).mockResolvedValue(null);
+    const result = await lookupWebsiteFaviconFromNetwork(
+      "token",
+      new Uint8Array([1]),
+      loginWithUrl("https://example.com"),
+    );
+    expect(result).toEqual({ status: "absent" });
+  });
+
+  it("returns unavailable when preview throws", async () => {
+    vi.mocked(itemFaviconsApi.previewItemFavicon).mockRejectedValue(new Error("timeout"));
+    const result = await lookupWebsiteFaviconFromNetwork(
+      "token",
+      new Uint8Array([1]),
+      loginWithUrl("https://example.com"),
+    );
+    expect(result).toEqual({ status: "unavailable" });
+  });
+
+  it("returns found with uploaded attachment when preview yields bytes", async () => {
+    const previewBytes = new Uint8Array([1, 2, 3, 4]);
+    vi.mocked(itemFaviconsApi.previewItemFavicon).mockResolvedValue({
+      arrayBuffer: async () =>
+        previewBytes.buffer.slice(previewBytes.byteOffset, previewBytes.byteOffset + previewBytes.byteLength),
+    } as Blob);
+    vi.mocked(keyFieldFilesApi.uploadEncryptedAttachment).mockResolvedValue({
+      attachmentId: "1000000000000000015",
+      name: "favicon.png",
+      mimeType: "image/png",
+      sizeBytes: 4,
+    });
+
+    const result = await lookupWebsiteFaviconFromNetwork(
+      "token",
+      new Uint8Array([1]),
+      loginWithUrl("https://example.com"),
+    );
+
+    expect(result.status).toBe("found");
+    if (result.status === "found") {
+      expect(result.sync.item.faviconId).toBe("1000000000000000015");
+    }
   });
 });
