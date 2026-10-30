@@ -161,12 +161,11 @@ export async function renderWorkspaceInvite(
   locale: EmailLocale,
   variables: WorkspaceInviteVariables,
 ): Promise<RenderedEmail> {
+  // Detail fields (inviterEmail / role / expiry) are optional so Core can render
+  // invites without a companion caller upgrade; omit blank lines when absent.
   assertRequired("workspace_invite", variables as unknown as Record<string, unknown>, [
     "inviterDisplayName",
-    "inviterEmail",
     "workspaceName",
-    "roleName",
-    "expiresAtIso",
     "inviteUrl",
   ]);
   const inviteUrl = variables.inviteUrl.trim();
@@ -180,16 +179,16 @@ export async function renderWorkspaceInvite(
   });
   const props = buildWorkspaceInviteEmailProps(locale, variables);
   const standard = buildEmailStandardFooterCopy(locale);
-  const plainText = appendStandardFooterPlain(
-    formatEmailMessage(locale, "email.workspaceInvite.plain", {
-      intro: props.intro,
-      roleLine: props.roleLine,
-      inviterEmailLine: props.inviterEmailLine,
-      expiresLine: props.expiresLine,
-      inviteUrl,
-    }),
-    standard,
-  );
+  const plainBody = [
+    props.intro,
+    props.roleLine,
+    props.inviterEmailLine,
+    props.expiresLine,
+    formatEmailMessage(locale, "email.workspaceInvite.plainAccept", { inviteUrl }),
+  ]
+    .filter((line) => line.trim().length > 0)
+    .join("\n");
+  const plainText = appendStandardFooterPlain(plainBody, standard);
   const element = <WorkspaceInviteEmail {...props} />;
   const html = renderEmailHtml(element);
   const text = renderEmailPlainText(element);

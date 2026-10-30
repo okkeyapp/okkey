@@ -25,6 +25,7 @@ const workspaceVars = {
   inviterDisplayName: "Sam",
   inviterEmail: "sam@example.com",
   workspaceName: "Lab",
+  roleBuiltinKey: "admin" as const,
   roleName: "Admin",
   expiresAtIso: "2026-01-29T10:00:00.000Z",
   inviteUrl: "https://app.example/invite/token-abc",
@@ -359,13 +360,61 @@ test("renderEmailTemplate workspace_invite en and ru", async () => {
     formatEmailMessage("ru", "email.workspaceInvite.subject", { workspaceName: workspaceVars.workspaceName }),
   );
   assert.match(ru.html, /token-abc/);
-  assert.match(ru.html, /Роль: Admin/);
+  assert.match(ru.html, /Роль: Админ/);
   assert.match(ru.html, /Аккаунт пригласившего: sam@example\.com/);
   assert.match(ru.html, /Приглашение действует до:/);
-  assert.match(ru.text, /Роль: Admin/);
+  assert.match(ru.text, /Роль: Админ/);
   assert.match(ru.text, /Приглашение действует до:/);
+  assert.equal(/Роль: Admin/.test(ru.html), false);
+  assert.equal(/Роль: Admin/.test(ru.text), false);
   assertSharedEmailFooter("ru", ru);
   assertNoMustachePlaceholders(ru.text);
+});
+
+test("renderEmailTemplate workspace_invite localizes builtin roles and keeps custom names", async () => {
+  const userRu = await renderEmailTemplate("workspace_invite", "ru", {
+    ...workspaceVars,
+    roleBuiltinKey: "user",
+    roleName: "User",
+  });
+  assert.match(userRu.html, /Роль: Пользователь/);
+  assert.match(userRu.text, /Роль: Пользователь/);
+
+  const ownerEn = await renderEmailTemplate("workspace_invite", "en", {
+    ...workspaceVars,
+    roleBuiltinKey: "owner",
+    roleName: "Owner",
+  });
+  assert.match(ownerEn.html, /Role: Owner/);
+  assert.match(ownerEn.text, /Role: Owner/);
+
+  const custom = await renderEmailTemplate("workspace_invite", "ru", {
+    ...workspaceVars,
+    roleBuiltinKey: null,
+    roleName: 'Ops <script> & "Lead"',
+  });
+  assert.match(custom.html, /Роль: Ops &lt;script&gt; &amp; &quot;Lead&quot;/);
+  assert.match(custom.text, /Роль: Ops <script> & "Lead"/);
+  assert.equal(custom.html.includes("<script>"), false);
+});
+
+test("renderEmailTemplate workspace_invite allows omitting detail variables", async () => {
+  const minimal = await renderEmailTemplate("workspace_invite", "en", {
+    inviterDisplayName: "Sam",
+    workspaceName: "Lab",
+    inviteUrl: "https://app.example/invite/token-abc",
+  });
+  assert.match(minimal.subject, /Invitation|workspace/i);
+  assert.match(minimal.html, /token-abc/);
+  assert.match(minimal.html, /Sam/);
+  assert.equal(/Role:/i.test(minimal.html), false);
+  assert.equal(/Inviter account:/i.test(minimal.html), false);
+  assert.equal(/Invitation valid until:/i.test(minimal.html), false);
+  assert.equal(/Role:/i.test(minimal.text), false);
+  assert.equal(/Inviter account:/i.test(minimal.text), false);
+  assert.equal(/Invitation valid until:/i.test(minimal.text), false);
+  assertSharedEmailFooter("en", minimal);
+  assertNoMustachePlaceholders(minimal.text);
 });
 
 test("renderEmailTemplate two_factor_enabled en and ru", async () => {
@@ -633,6 +682,7 @@ test("EmailTemplateService workspace_invite renders invite link", async () => {
       inviterDisplayName: "Alex",
       inviterEmail: "alex@example.com",
       workspaceName: "Team",
+      roleBuiltinKey: "user",
       roleName: "User",
       expiresAtIso: "2026-01-29T10:00:00.000Z",
       inviteUrl: "https://okkey.test/invite/abc",
@@ -643,6 +693,33 @@ test("EmailTemplateService workspace_invite renders invite link", async () => {
   assert.match(sent[0].html, /alex@example\.com/);
   assert.match(sent[0].html, /Role: User/);
   assert.match(sent[0].html, /Invitation valid until:/);
+});
+
+test("EmailTemplateService workspace_invite works without detail variables", async () => {
+  const sent: Array<{ html: string; text: string }> = [];
+  const sender: EmailSender = {
+    send: async (m) => {
+      sent.push({ html: m.html, text: m.text });
+    },
+  };
+  const svc = new EmailTemplateService(sender, {
+    from: "x@y.z",
+    defaultLocale: "en",
+    publicAppBaseUrl: createTestApiConfig().publicAppBaseUrl,
+  });
+  await svc.sendWorkspaceInvite({
+    to: "invitee@example.com",
+    localeHints: {},
+    variables: {
+      inviterDisplayName: "Alex",
+      workspaceName: "Team",
+      inviteUrl: "https://okkey.test/invite/abc",
+    },
+  });
+  assert.match(sent[0].html, /invite\/abc/);
+  assert.match(sent[0].html, /Alex/);
+  assert.equal(/Role:/i.test(sent[0].html), false);
+  assert.equal(/Inviter account:/i.test(sent[0].text), false);
 });
 
 test("EmailTemplateService sendTwoFactorEnabled/disabled/backupRegen respect explicit ru locale", async () => {

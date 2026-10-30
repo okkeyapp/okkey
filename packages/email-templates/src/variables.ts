@@ -24,14 +24,25 @@ export interface DeviceApprovalRequestVariables {
 
 export interface WorkspaceInviteVariables {
   inviterDisplayName: string;
-  /** Inviter account email shown in the body. */
-  inviterEmail: string;
   workspaceName: string;
-  /** Workspace role name granted by the invitation. */
-  roleName: string;
-  /** ISO timestamp when the invite link expires. */
-  expiresAtIso: string;
   inviteUrl: string;
+  /**
+   * Inviter account email shown in the body.
+   * Optional so Core alone stays renderable when a caller has not upgraded yet.
+   */
+  inviterEmail?: string | null;
+  /**
+   * Built-in role key; when set, the template localizes Owner/Admin/User.
+   * Custom roles omit this and use {@link roleName} as-is.
+   */
+  roleBuiltinKey?: "owner" | "admin" | "user" | null;
+  /**
+   * Role display name for custom roles (and fallback when builtin key is absent).
+   * Optional together with {@link roleBuiltinKey} for Core-alone compatibility.
+   */
+  roleName?: string | null;
+  /** ISO timestamp when the invite link expires. Optional for Core-alone callers. */
+  expiresAtIso?: string | null;
 }
 
 export interface TwoFactorNoticeVariables {

@@ -36,6 +36,7 @@ export function WorkspaceInviteEmail({
   noReply,
   ignoreIfMistake,
 }: WorkspaceInviteEmailProps) {
+  const metaLines = [roleLine, inviterEmailLine, expiresLine].filter((line) => line.trim().length > 0);
   return (
     <EmailShell
       lang={lang}
@@ -46,17 +47,15 @@ export function WorkspaceInviteEmail({
       <Text className={EMAIL_CLASS_INK} style={leadStyle}>
         {intro}
       </Text>
-      <Section style={listStyle}>
-        <Text className={EMAIL_CLASS_MUTED} style={metaStyle}>
-          {roleLine}
-        </Text>
-        <Text className={EMAIL_CLASS_MUTED} style={metaStyle}>
-          {inviterEmailLine}
-        </Text>
-        <Text className={EMAIL_CLASS_MUTED} style={metaStyle}>
-          {expiresLine}
-        </Text>
-      </Section>
+      {metaLines.length > 0 ? (
+        <Section style={listStyle}>
+          {metaLines.map((line) => (
+            <Text key={line} className={EMAIL_CLASS_MUTED} style={metaStyle}>
+              {line}
+            </Text>
+          ))}
+        </Section>
+      ) : null}
       <Section style={ctaWrapStyle}>
         <EmailPrimaryButton href={inviteUrl}>{ctaLabel}</EmailPrimaryButton>
       </Section>
