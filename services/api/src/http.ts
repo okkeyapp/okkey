@@ -21,6 +21,32 @@ interface RouteRecord {
   handler: RouteHandler;
 }
 
+/** Typed request failure that maps to an HTTP response without crashing the process. */
+export class HttpRequestError extends Error {
+  readonly statusCode: number;
+  readonly code: string;
+
+  constructor(statusCode: number, code: string, message: string) {
+    super(message);
+    this.name = "HttpRequestError";
+    this.statusCode = statusCode;
+    this.code = code;
+  }
+}
+
+/** Decode one URI path segment; invalid percent-encoding becomes a 400. */
+export function decodePathSegment(segment: string): string {
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    throw new HttpRequestError(
+      400,
+      "BAD_REQUEST",
+      "Invalid URI encoding in path",
+    );
+  }
+}
+
 export class HttpApp {
   private readonly middlewares: Middleware[] = [];
   private readonly routes: RouteRecord[] = [];
@@ -46,27 +72,36 @@ export class HttpApp {
         params: {},
       };
 
-      const route = this.matchRoute(req.method, req.url);
-      if (route) {
-        ctx.params = route.params;
+      try {
+        await this.dispatch(ctx);
+      } catch (error) {
+        // Last-resort guard: never let a single request take down the process.
+        respondWithRequestError(ctx, error);
+      }
+    };
+  }
+
+  private async dispatch(ctx: RequestContext): Promise<void> {
+    const route = this.matchRoute(ctx.req.method, ctx.req.url);
+    if (route) {
+      ctx.params = route.params;
+    }
+
+    const chain = [...this.middlewares];
+    chain.push(async (innerCtx) => {
+      if (!route) {
+        json(innerCtx.res, 404, {
+          error: "NOT_FOUND",
+          message: "Route not found",
+          requestId: innerCtx.requestId,
+        });
+        return;
       }
 
-      const chain = [...this.middlewares];
-      chain.push(async (innerCtx) => {
-        if (!route) {
-          json(innerCtx.res, 404, {
-            error: "NOT_FOUND",
-            message: "Route not found",
-            requestId: innerCtx.requestId,
-          });
-          return;
-        }
+      await route.handler(innerCtx);
+    });
 
-        await route.handler(innerCtx);
-      });
-
-      await this.runMiddlewares(ctx, chain, 0);
-    };
+    await this.runMiddlewares(ctx, chain, 0);
   }
 
   private matchRoute(method: string | undefined, url: string | undefined):
@@ -74,12 +109,18 @@ export class HttpApp {
     | null {
     const normalizedMethod = (method ?? "GET").toUpperCase();
     const pathname = new URL(url ?? "/", "http://localhost").pathname;
+    // Validate encoding for every path segment up front so bad input never
+    // reaches route handlers and always yields a stable 400 for all routes.
+    const pathSegments = pathname
+      .split("/")
+      .filter(Boolean)
+      .map(decodePathSegment);
 
     for (const route of this.routes) {
       if (route.method !== normalizedMethod) {
         continue;
       }
-      const params = matchPath(route.pathPattern, pathname);
+      const params = matchPath(route.pathPattern, pathSegments);
       if (params) {
         return {
           handler: route.handler,
@@ -108,20 +149,19 @@ export class HttpApp {
 
 function matchPath(
   pattern: string,
-  pathname: string,
+  pathSegments: string[],
 ): Record<string, string> | null {
   const patternParts = pattern.split("/").filter(Boolean);
-  const pathParts = pathname.split("/").filter(Boolean);
-  if (patternParts.length !== pathParts.length) {
+  if (patternParts.length !== pathSegments.length) {
     return null;
   }
 
   const params: Record<string, string> = {};
   for (let i = 0; i < patternParts.length; i += 1) {
     const patternPart = patternParts[i];
-    const pathPart = pathParts[i];
+    const pathPart = pathSegments[i];
     if (patternPart.startsWith(":")) {
-      params[patternPart.slice(1)] = decodeURIComponent(pathPart);
+      params[patternPart.slice(1)] = pathPart;
       continue;
     }
     if (patternPart !== pathPart) {
@@ -130,6 +170,30 @@ function matchPath(
   }
 
   return params;
+}
+
+export function respondWithRequestError(
+  ctx: RequestContext,
+  error: unknown,
+): void {
+  if (ctx.res.writableEnded) {
+    return;
+  }
+
+  if (error instanceof HttpRequestError) {
+    json(ctx.res, error.statusCode, {
+      error: error.code,
+      message: error.message,
+      requestId: ctx.requestId,
+    });
+    return;
+  }
+
+  json(ctx.res, 500, {
+    error: "INTERNAL_SERVER_ERROR",
+    message: "Internal server error",
+    requestId: ctx.requestId,
+  });
 }
 
 export function json(
