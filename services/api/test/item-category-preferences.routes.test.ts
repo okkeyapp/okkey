@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import test from "node:test";
 
-import type { ItemCategoryPreferencesService } from "../src/item-category-preferences/service.ts";
+import {
+  ItemCategoryPreferencesServiceError,
+  type ItemCategoryPreferencesService,
+} from "../src/item-category-preferences/service.ts";
 import { createWorkspaceItemCategoryPreferencesRoute } from "../src/routes/workspace-item-category-preferences.ts";
 
 class MockResponse {
@@ -25,7 +28,11 @@ type Prefs = {
   personalDataBootstrapDismissed: boolean;
 };
 
-function createPreferencesServiceStub(initial?: Partial<Prefs>): ItemCategoryPreferencesService {
+function createPreferencesServiceStub(
+  initial?: Partial<Prefs> & {
+    ensureWorkspaceAccess?: (workspaceId: string, userId: string) => Promise<void>;
+  },
+): ItemCategoryPreferencesService {
   let state: Prefs = {
     favoriteCategoryIds: ["login", "personal_data"],
     favoriteTemplateIds: [],
@@ -35,6 +42,11 @@ function createPreferencesServiceStub(initial?: Partial<Prefs>): ItemCategoryPre
   };
 
   return {
+    ensureWorkspaceAccess:
+      initial?.ensureWorkspaceAccess ??
+      (async () => {
+        /* allow */
+      }),
     getPreferences: async () => ({ ...state }),
     updatePreferences: async (_workspaceId, _userId, input) => {
       state = {
@@ -154,4 +166,25 @@ test("PUT rejects non-boolean personal_data_bootstrap_dismissed", async () => {
   assert.equal(res.statusCode, 400);
   const payload = JSON.parse(res.body) as { error: string };
   assert.equal(payload.error, "INVALID_PERSONAL_DATA_BOOTSTRAP_DISMISSED");
+});
+
+test("PUT checks workspace access before body validation", async () => {
+  let accessChecked = false;
+  const service = createPreferencesServiceStub({
+    ensureWorkspaceAccess: async () => {
+      accessChecked = true;
+      throw new ItemCategoryPreferencesServiceError("ACCESS_DENIED", 403, "access denied");
+    },
+  });
+  const res = await dispatch({
+    method: "PUT",
+    userId: "u1",
+    workspaceId: "1000000000000000099",
+    body: { personal_data_bootstrap_dismissed: "yes" },
+    service,
+  });
+  assert.equal(accessChecked, true);
+  assert.equal(res.statusCode, 403);
+  const payload = JSON.parse(res.body) as { error: string };
+  assert.equal(payload.error, "ACCESS_DENIED");
 });

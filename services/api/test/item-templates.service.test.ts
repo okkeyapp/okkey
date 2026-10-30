@@ -45,6 +45,27 @@ function vaultsStub(options?: {
   };
 }
 
+/** Accept listed favicon ids as belonging to the given vault/workspace. */
+function attachmentsStub(options?: {
+  ownedFaviconIds?: string[];
+  ownedVaultId?: string;
+  ownedWorkspaceId?: string;
+}) {
+  const owned = new Set(options?.ownedFaviconIds ?? []);
+  const ownedVaultId = options?.ownedVaultId ?? "1000000000000000002";
+  const ownedWorkspaceId = options?.ownedWorkspaceId ?? WS_ID;
+  return {
+    async attachmentBelongsToVault(attachmentId: string, vaultId: string, workspaceId: string) {
+      return (
+        owned.has(attachmentId) && vaultId === ownedVaultId && workspaceId === ownedWorkspaceId
+      );
+    },
+    async purgeForTemplate() {
+      /* no-op */
+    },
+  };
+}
+
 test("stripTemplateSectionValues allowlists structural keys and clears values", () => {
   const stripped = stripTemplateSectionValues([
     {
@@ -189,6 +210,7 @@ test("ItemTemplatesService.create stores structure-only payload", async () => {
     } as never,
     workspaces: workspacesStub(),
     vaults: vaultsStub(),
+    attachments: attachmentsStub({ ownedFaviconIds: ["1000000000000000003"] }),
   });
 
   const template = await service.create(WS_ID, "user-1", {
@@ -972,6 +994,7 @@ test("ItemTemplatesService.update persists template changes for creator", async 
     },
     workspaces: workspacesStub(),
     vaults: vaultsStub(),
+    attachments: attachmentsStub({ ownedFaviconIds: ["1000000000000000003"] }),
   });
 
   const template = await service.update("1000000000000000091", "user-1", "1000000000000000001", {
@@ -1168,9 +1191,9 @@ test("ItemTemplatesService.delete rejects non-creator non-admin member", async (
   );
 });
 
-test("ItemTemplatesService.delete purges template attachments by template id", async () => {
+test("ItemTemplatesService.delete purges template attachments by vault scope", async () => {
   let purgedTemplateId = "";
-  let purgedAttachmentIds: string[] = [];
+  let purgedScope: { vaultId: string; workspaceId: string } | null = null;
   const service = new ItemTemplatesService({
     templates: {
       listByWorkspace: async () => [],
@@ -1181,21 +1204,7 @@ test("ItemTemplatesService.delete purges template attachments by template id", a
         categoryId: "login",
         payloadJson: {
           vault_id: "1000000000000000002",
-          sections: [
-            {
-              fields: [
-                {
-                  type: "file",
-                  value: JSON.stringify({
-                    attachmentId: "1000000000000000004",
-                    name: "doc.pdf",
-                    mimeType: "application/pdf",
-                    sizeBytes: 10,
-                  }),
-                },
-              ],
-            },
-          ],
+          sections: [],
         },
         faviconId: "1000000000000000003",
         createdBy: "user-1",
@@ -1210,9 +1219,15 @@ test("ItemTemplatesService.delete purges template attachments by template id", a
     workspaces: workspacesStub(),
     vaults: vaultsStub(),
     attachments: {
-      async purgeForTemplate(templateId: string, referencedAttachmentIds: Iterable<string>) {
+      async attachmentBelongsToVault() {
+        return false;
+      },
+      async purgeForTemplate(
+        templateId: string,
+        scope: { vaultId: string; workspaceId: string },
+      ) {
         purgedTemplateId = templateId;
-        purgedAttachmentIds = [...referencedAttachmentIds];
+        purgedScope = scope;
       },
     },
   });
@@ -1220,5 +1235,148 @@ test("ItemTemplatesService.delete purges template attachments by template id", a
   await service.delete("1000000000000000091", "user-1", "1000000000000000001");
 
   assert.equal(purgedTemplateId, "1000000000000000001");
-  assert.deepEqual(purgedAttachmentIds, ["1000000000000000003", "1000000000000000004"]);
+  assert.deepEqual(purgedScope, {
+    vaultId: "1000000000000000002",
+    workspaceId: "1000000000000000091",
+  });
+});
+
+test("ItemTemplatesService rejects foreign and missing favicon_id with the same 400", async () => {
+  const foreignFaviconId = "1000000000000000999";
+  const missingFaviconId = "1000000000000000888";
+  const service = new ItemTemplatesService({
+    templates: {
+      listByWorkspace: async () => [],
+      create: async () => {
+        throw new Error("should not be called");
+      },
+      findById: async () => ({
+        id: "1000000000000000001",
+        workspaceId: WS_ID,
+        name: "Template",
+        categoryId: "login",
+        payloadJson: {
+          vault_id: "1000000000000000002",
+          folder_id: "__none__",
+          sections: [],
+          tags: [],
+        },
+        faviconId: null,
+        createdBy: "user-1",
+        createdAt: "",
+        updatedAt: "",
+      }),
+      update: async () => {
+        throw new Error("should not be called");
+      },
+    } as never,
+    workspaces: workspacesStub(),
+    vaults: vaultsStub(),
+    attachments: attachmentsStub({ ownedFaviconIds: ["1000000000000000003"] }),
+  });
+
+  for (const faviconId of [foreignFaviconId, missingFaviconId]) {
+    await assert.rejects(
+      () =>
+        service.create(WS_ID, "user-1", {
+          name: "My template",
+          category_id: "login",
+          payload: {
+            record_name: "",
+            vault_id: "1000000000000000002",
+            folder_id: "__none__",
+            sections: [],
+            tags: [],
+          },
+          favicon_id: faviconId,
+        }),
+      (error: unknown) => {
+        assert.ok(error instanceof ItemTemplatesServiceError);
+        assert.equal(error.code, "INVALID_FAVICON_ID");
+        assert.equal(error.statusCode, 400);
+        return true;
+      },
+    );
+
+    await assert.rejects(
+      () =>
+        service.update(WS_ID, "user-1", "1000000000000000001", {
+          name: "Updated",
+          category_id: "login",
+          payload: {
+            record_name: "",
+            vault_id: "1000000000000000002",
+            folder_id: "__none__",
+            sections: [],
+            tags: [],
+          },
+          favicon_id: faviconId,
+        }),
+      (error: unknown) => {
+        assert.ok(error instanceof ItemTemplatesServiceError);
+        assert.equal(error.code, "INVALID_FAVICON_ID");
+        assert.equal(error.statusCode, 400);
+        return true;
+      },
+    );
+  }
+});
+
+test("ItemTemplatesService rejects favicon_id from another workspace vault", async () => {
+  const otherVaultId = "1000000000000007777";
+  const otherWorkspaceId = "1000000000000007788";
+  const foreignFaviconId = "1000000000000000666";
+  let createCalled = false;
+  const service = new ItemTemplatesService({
+    templates: {
+      listByWorkspace: async () => [],
+      create: async () => {
+        createCalled = true;
+        throw new Error("should not be called");
+      },
+    } as never,
+    workspaces: workspacesStub(),
+    vaults: vaultsStub({
+      readableVaultIds: ["1000000000000000002", otherVaultId],
+      vaultWorkspaceById: {
+        "1000000000000000002": WS_ID,
+        [otherVaultId]: otherWorkspaceId,
+      },
+    }),
+    attachments: {
+      async attachmentBelongsToVault(attachmentId, vaultId, workspaceId) {
+        // Attachment lives in another workspace's vault — never belongs here.
+        assert.equal(attachmentId, foreignFaviconId);
+        assert.equal(vaultId, "1000000000000000002");
+        assert.equal(workspaceId, WS_ID);
+        return false;
+      },
+      async purgeForTemplate() {
+        /* no-op */
+      },
+    },
+  });
+
+  await assert.rejects(
+    () =>
+      service.create(WS_ID, "user-1", {
+        name: "My template",
+        category_id: "login",
+        payload: {
+          record_name: "",
+          vault_id: "1000000000000000002",
+          folder_id: "__none__",
+          sections: [],
+          tags: [],
+        },
+        favicon_id: foreignFaviconId,
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof ItemTemplatesServiceError);
+      assert.equal(error.code, "INVALID_FAVICON_ID");
+      assert.equal(error.statusCode, 400);
+      return true;
+    },
+  );
+  assert.equal(createCalled, false);
 });

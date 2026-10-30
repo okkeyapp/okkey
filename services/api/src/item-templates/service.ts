@@ -54,7 +54,7 @@ export interface ItemTemplatesServiceDeps {
   templates: WorkspaceItemTemplatesRepository;
   workspaces: Pick<WorkspacesRepository, "findById" | "hasAccess" | "isOwnerOrAdmin">;
   vaults: Pick<VaultsRepository, "canReadVault" | "findById">;
-  attachments?: Pick<AttachmentService, "purgeForTemplate">;
+  attachments?: Pick<AttachmentService, "purgeForTemplate" | "attachmentBelongsToVault">;
 }
 
 export class ItemTemplatesService {
@@ -127,7 +127,11 @@ export class ItemTemplatesService {
     }
     const vaultId = await this.assertTemplateVault(normalizedWorkspaceId, userId, input.payload.vault_id);
     const payload = normalizeTemplatePayload(input.payload, vaultId);
-    const faviconId = normalizeOptionalFaviconId(input.favicon_id);
+    const faviconId = await this.assertFaviconAttachment(
+      normalizeOptionalFaviconId(input.favicon_id),
+      normalizedWorkspaceId,
+      vaultId,
+    );
     let templateId = generateEntityId();
     let row;
     try {
@@ -193,7 +197,13 @@ export class ItemTemplatesService {
     const vaultId = await this.assertTemplateVault(normalizedWorkspaceId, userId, input.payload.vault_id);
     const payload = normalizeTemplatePayload(input.payload, vaultId);
     const faviconId =
-      input.favicon_id === undefined ? existing.faviconId : normalizeOptionalFaviconId(input.favicon_id);
+      input.favicon_id === undefined
+        ? existing.faviconId
+        : await this.assertFaviconAttachment(
+            normalizeOptionalFaviconId(input.favicon_id),
+            normalizedWorkspaceId,
+            vaultId,
+          );
     const row = await this.templates.update({
       workspaceId: normalizedWorkspaceId,
       templateId: normalizedTemplateId,
@@ -219,15 +229,40 @@ export class ItemTemplatesService {
       throw new ItemTemplatesServiceError("TEMPLATE_NOT_FOUND", 404, "template not found");
     }
     await this.assertCanMutateTemplate(normalizedWorkspaceId, userId, existing.createdBy);
-    await this.attachments?.purgeForTemplate(
-      normalizedTemplateId,
-      collectTemplateAttachmentIds(existing.payloadJson, existing.faviconId),
-    );
+    const vaultId =
+      typeof existing.payloadJson.vault_id === "string" ? existing.payloadJson.vault_id.trim() : "";
+    if (vaultId && isEntityId(vaultId)) {
+      await this.attachments?.purgeForTemplate(normalizedTemplateId, {
+        vaultId,
+        workspaceId: normalizedWorkspaceId,
+      });
+    }
 
     const deleted = await this.templates.delete(normalizedWorkspaceId, normalizedTemplateId);
     if (!deleted) {
       throw new ItemTemplatesServiceError("TEMPLATE_NOT_FOUND", 404, "template not found");
     }
+  }
+
+  /**
+   * Accept favicon_id only when the attachment is in the template vault/workspace.
+   * Missing and foreign ids share the same 400 so callers cannot distinguish them.
+   */
+  private async assertFaviconAttachment(
+    faviconId: string | null,
+    workspaceId: string,
+    vaultId: string,
+  ): Promise<string | null> {
+    if (faviconId === null) {
+      return null;
+    }
+    const belongs = this.attachments
+      ? await this.attachments.attachmentBelongsToVault(faviconId, vaultId, workspaceId)
+      : false;
+    if (!belongs) {
+      throw new ItemTemplatesServiceError("INVALID_FAVICON_ID", 400, "favicon id is invalid");
+    }
+    return faviconId;
   }
 
   private async assertWorkspaceAccess(workspaceId: string, userId: string): Promise<string> {
@@ -315,52 +350,6 @@ function isUniqueConstraintError(error: unknown): boolean {
     return isUniqueConstraintError((error as { cause: unknown }).cause);
   }
   return false;
-}
-
-function collectTemplateAttachmentIds(payloadJson: Record<string, unknown>, faviconId: string | null): string[] {
-  const ids = new Set<string>();
-  const normalizedFaviconId = faviconId?.trim();
-  if (normalizedFaviconId) {
-    ids.add(normalizedFaviconId);
-  }
-
-  const sections = payloadJson.sections;
-  if (!Array.isArray(sections)) {
-    return [...ids];
-  }
-
-  for (const section of sections) {
-    if (!section || typeof section !== "object") {
-      continue;
-    }
-    const fields = (section as { fields?: unknown }).fields;
-    if (!Array.isArray(fields)) {
-      continue;
-    }
-    for (const field of fields) {
-      if (!field || typeof field !== "object") {
-        continue;
-      }
-      const typedField = field as { type?: unknown; value?: unknown };
-      if (typedField.type !== "file" || typeof typedField.value !== "string") {
-        continue;
-      }
-      try {
-        const parsed = JSON.parse(typedField.value) as { attachmentId?: unknown };
-        if (typeof parsed.attachmentId !== "string") {
-          continue;
-        }
-        const attachmentId = parsed.attachmentId.trim();
-        if (attachmentId && !attachmentId.startsWith("pending:")) {
-          ids.add(attachmentId);
-        }
-      } catch {
-        /* ignore malformed file field payload */
-      }
-    }
-  }
-
-  return [...ids];
 }
 
 function asNonEmptyString(value: unknown): string | undefined {
