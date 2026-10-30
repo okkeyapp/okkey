@@ -131,6 +131,34 @@ export function parseTotpParams(secretOrUri: string): ParsedTotpParams | null {
 }
 
 /**
+ * Serialize a stored TOTP field for Bitwarden / CSV / OTPAuth export columns.
+ * Always emits an `otpauth://` URI so period, digits, and algorithm round-trip
+ * through formats that only accept a string (not structured TOTP JSON).
+ */
+export function formatTotpForExport(value: {
+  secretBase32?: string;
+  periodSeconds?: number;
+  digits?: number;
+  algorithm?: TotpAlgorithm | string | null;
+}): string {
+  const secret = (value.secretBase32 ?? "").trim();
+  if (!secret) {
+    return "";
+  }
+  const periodSeconds = sanitizeTotpPeriodSeconds(
+    value.periodSeconds ?? DEFAULT_TOTP_PERIOD_SECONDS,
+  );
+  const digits = sanitizeTotpDigits(value.digits ?? DEFAULT_TOTP_DIGITS);
+  const algorithm = normalizeTotpAlgorithm(value.algorithm);
+  const params = new URLSearchParams();
+  params.set("secret", secret);
+  params.set("period", String(periodSeconds));
+  params.set("digits", String(digits));
+  params.set("algorithm", algorithm);
+  return `otpauth://totp/?${params.toString()}`;
+}
+
+/**
  * Write a TOTP field onto an item plaintext, preserving period / digits / algorithm
  * from `otpauth://` or KeeOtp (or RFC defaults for a bare secret).
  */
