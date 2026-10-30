@@ -55,6 +55,7 @@ export interface DeviceServiceDeps {
     | "clearExpiredBlocks"
     | "findOwnedDeviceAuth"
     | "updateActiveDeviceMetadata"
+    | "requestKeyRebind"
   >;
   config: Pick<ApiConfig, "deviceApprovalTtlSeconds" | "publicAppBaseUrl">;
   users?: Pick<UsersRepository, "findById">;
@@ -803,6 +804,83 @@ export class DeviceService {
       userAgent: input.userAgent,
       requestIp: input.requestIp,
     });
+  }
+
+  /**
+   * Replace lost device signing keys and demote to pending for another trusted
+   * device to approve. Sole-device accounts must use account recovery instead.
+   */
+  async requestDeviceKeyRebind(
+    userId: string,
+    requestIp: string,
+    input: RegisterDeviceInput & { deviceId: string },
+  ): Promise<RegisterDeviceResult> {
+    if (!this.devices.requestKeyRebind) {
+      throw new DeviceServiceError("DEVICE_NOT_FOUND", 404, "device not found");
+    }
+    if (!isValidBase64(input.devicePublicKey)) {
+      throw new DeviceServiceError(
+        "DEVICE_INVALID_PUBLIC_KEY",
+        400,
+        "invalid device_public_key",
+      );
+    }
+    if (!isValidBase64(input.deviceShare)) {
+      throw new DeviceServiceError("DEVICE_BAD_REQUEST", 400, "invalid device_share");
+    }
+    const deviceShareBytes = Uint8Array.from(Buffer.from(input.deviceShare, "base64"));
+    try {
+      assertOpaqueSplitKeyShare(deviceShareBytes, "device_share");
+    } catch (error: unknown) {
+      throw new DeviceServiceError(
+        "DEVICE_BAD_REQUEST",
+        400,
+        error instanceof Error ? error.message : "invalid device_share",
+      );
+    }
+
+    const result = await this.devices.requestKeyRebind({
+      userId,
+      deviceId: input.deviceId,
+      devicePublicKey: input.devicePublicKey.trim(),
+      deviceShare: deviceShareBytes,
+      deviceName: cleanString(input.deviceName, "Unknown device"),
+      platform: cleanString(input.platform, "unknown"),
+      osName: cleanString(input.osName, "unknown"),
+      osVersion: cleanString(input.osVersion, "unknown"),
+      appVersion: cleanString(input.appVersion, "unknown"),
+      clientType: cleanString(input.clientType, "unknown"),
+      userAgent: cleanString(input.userAgent, "unknown"),
+      requestIp: cleanString(requestIp, "unknown"),
+      now: this.now().toISOString(),
+    });
+
+    if (result.kind === "not_found") {
+      throw new DeviceServiceError("DEVICE_NOT_FOUND", 404, "device not found");
+    }
+    if (result.kind === "requires_recovery") {
+      throw new DeviceServiceError(
+        "DEVICE_REBIND_REQUIRES_RECOVERY",
+        409,
+        "device key rebind requires account recovery when no other trusted device can approve",
+      );
+    }
+
+    if (result.sendApprovalEmail !== false) {
+      try {
+        await this.notifyDeviceApprovalEmail(userId, requestIp, input);
+      } catch (error: unknown) {
+        this.log?.warn("[device] key-rebind approval email failed", {
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    return {
+      deviceId: result.device.id,
+      status: "pending_approval",
+      created: false,
+    };
   }
 
   private async requireActiveDevice(userId: string, deviceId: string) {

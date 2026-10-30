@@ -11,39 +11,11 @@ export type DeviceBindChallengeRecord = {
   expiresAtMs: number;
 };
 
-export interface DeviceBindChallengeStore {
-  put(key: string, value: string, ttlSeconds: number): Promise<void>;
-  /** Return the value and delete it. A second call returns null (replay). */
-  take(key: string): Promise<string | null>;
-}
-
-export class MemoryDeviceBindChallengeStore implements DeviceBindChallengeStore {
-  private readonly rows = new Map<string, { value: string; expiresAtMs: number }>();
-  private readonly now: () => number;
-
-  constructor(now: () => number = () => Date.now()) {
-    this.now = now;
-  }
-
-  async put(key: string, value: string, ttlSeconds: number): Promise<void> {
-    this.rows.set(key, {
-      value,
-      expiresAtMs: this.now() + ttlSeconds * 1000,
-    });
-  }
-
-  async take(key: string): Promise<string | null> {
-    const row = this.rows.get(key);
-    if (!row) {
-      return null;
-    }
-    this.rows.delete(key);
-    if (row.expiresAtMs <= this.now()) {
-      return null;
-    }
-    return row.value;
-  }
-}
+export {
+  MemoryDeviceBindChallengeStore,
+  RedisDeviceBindChallengeStore,
+  type DeviceBindChallengeStore,
+} from "./bind-challenge-store.ts";
 
 export function deviceBindChallengeKey(
   tokenHash: string,

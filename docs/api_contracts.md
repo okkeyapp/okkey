@@ -1116,7 +1116,7 @@ Renames a trusted or pending device owned by the user.
 
 Revokes a trusted or pending device owned by the authenticated user (settings dismiss / revoke). Does **not** require `X-Device-Id`. Approval-flow reject with a trusted approver remains `POST …/reject`.
 
-Registering a fingerprint that already belongs to a trusted device does not replace that device's public key or share, and new keys do not become trusted. Attaching a session to an existing device is `POST /devices/:deviceId/bind-challenge` then `POST /devices/:deviceId/bind-session` with an Ed25519 signature of that one-time challenge by the device private key. Name, app, and OS metadata change only after that proof. A login on that same fingerprint uses this signed bind instead of register. The **current device** is the session’s `device_id`. Ids compare as integers, so a leading-zero form of the same id is still the current device. A full Bearer session with no `device_id` cannot revoke devices unless `sign_out: true`, and cannot call vault or workspace routes until a new registration or a signed bind attaches a device. Header-auth may still send `X-Device-Id`. Revoking the current device is rejected unless `sign_out: true`. On success, and on reject, block, or any other transition to revoked or blocked, Core deletes server sessions bound to that device. A session already bound to a device is not moved to another device by a later register. With `sign_out: true`, Core also deletes the caller’s access-token session.
+Registering a fingerprint that already belongs to a trusted device does not replace that device's public key or share, and new keys do not become trusted. Attaching a session to an existing device is `POST /devices/:deviceId/bind-challenge` then `POST /devices/:deviceId/bind-session` with an Ed25519 signature of that one-time challenge by the device private key. Bind challenges live in shared Redis (TTL) and are single-use. `challenge_id` and `signature` must be strings (`400 DEVICE_BAD_REQUEST` otherwise). Name, app, and OS metadata change only after that proof. A login on that same fingerprint uses this signed bind instead of register. When the client lost its device signing seed, use `POST /devices/:deviceId/request-key-rebind` (never silent trust). The **current device** is the session’s `device_id`. Ids compare as integers, so a leading-zero form of the same id is still the current device. A full Bearer session with no `device_id` cannot revoke devices unless `sign_out: true`, and cannot call vault or workspace routes until a new registration or a signed bind attaches a device. Header-auth may still send `X-Device-Id`. Revoking the current device is rejected unless `sign_out: true`. On success, and on reject, block, or any other transition to revoked or blocked, Core deletes server sessions bound to that device. A session already bound to a device is not moved to another device by a later register. With `sign_out: true`, Core also deletes the caller’s access-token session.
 
 **Auth:** Bearer (or allowed `X-User-Id`).
 
@@ -1125,6 +1125,18 @@ Registering a fingerprint that already belongs to a trusted device does not repl
 **Response `200`:** `{ "device_id": "uuid", "status": "revoked" }`
 
 **Errors:** `AUTH_REQUIRED` 401, `DEVICE_BAD_REQUEST` 400 (invalid id), `DEVICE_REVOKE_CURRENT_FORBIDDEN` 403, `DEVICE_NOT_FOUND` 404.
+
+### `POST /devices/:deviceId/request-key-rebind`
+
+Replace lost device signing keys on an already-trusted (or pending) install and demote the device to `pending` so **another** trusted device must approve. Never silently re-trusts. When the account has no other trusted device, returns `409 DEVICE_REBIND_REQUIRES_RECOVERY` (client must use account recovery / `claim_after_recovery`).
+
+**Auth:** Bearer unbound full session allowed (same as register/bind).
+
+**Request body:** `{ "device_public_key": "…", "device_share": "…", "device_name"?: "…", … }` (same metadata fields as register).
+
+**Response `200`:** `{ "device_id": "…", "status": "pending_approval" }`
+
+**Errors:** `AUTH_REQUIRED` 401, `DEVICE_BAD_REQUEST` 400, `DEVICE_NOT_FOUND` 404, `DEVICE_REBIND_REQUIRES_RECOVERY` 409.
 
 ---
 

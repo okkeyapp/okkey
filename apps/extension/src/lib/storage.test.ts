@@ -164,7 +164,7 @@ test("isLoopbackHostname", () => {
   assert.equal(isLoopbackHostname("localhost.example.com"), false);
 });
 
-test("wipeAllExtensionData clears session storage and local vault keys, keeps lastServer", async () => {
+test("wipeAllExtensionData clears session storage and local vault keys, keeps lastServer and device identity", async () => {
   const mocks = installStorageMocks({
     local: {
       [STORAGE_KEYS.lastServer]: {
@@ -178,7 +178,10 @@ test("wipeAllExtensionData clears session storage and local vault keys, keeps la
         apiBaseUrl: "https://vault.example.com",
         updatedAt: 1,
       },
-      "okkey.extension.deviceId": "dev-1",
+      [STORAGE_KEYS.deviceId]: "dev-1",
+      [STORAGE_KEYS.deviceFingerprint]: "web_ext-chrome-linux-abc",
+      [STORAGE_KEYS.devicePrivateKey]: "c2VlZC1zZWVkLXNlZWQtc2VlZA==",
+      [STORAGE_KEYS.devicePublicKey]: "cHViLWtleS0zMi1ieXRlcy1wYWQtISEhISE=",
       "okkey.extension.vaultBundle.u.u1": { v: 1 },
       "okkey.extension.workspace.current.u.u1": "ws-1",
       "okkey.vault.deviceUnlock.v1.u.u1": JSON.stringify({ pin: { kdfSaltB64: "s", ciphertextB64: "c" } }),
@@ -208,7 +211,11 @@ test("wipeAllExtensionData clears session storage and local vault keys, keeps la
     assert.equal(mocks.local["unrelated.key"], "keep-me");
     assert.equal(mocks.local[STORAGE_KEYS.session], undefined);
     assert.equal(mocks.local[STORAGE_KEYS.profile], undefined);
-    assert.equal(mocks.local["okkey.extension.deviceId"], undefined);
+    // Device identity must survive account wipe so re-login can sign bind challenges.
+    assert.equal(mocks.local[STORAGE_KEYS.deviceId], "dev-1");
+    assert.equal(mocks.local[STORAGE_KEYS.deviceFingerprint], "web_ext-chrome-linux-abc");
+    assert.equal(mocks.local[STORAGE_KEYS.devicePrivateKey], "c2VlZC1zZWVkLXNlZWQtc2VlZA==");
+    assert.equal(mocks.local[STORAGE_KEYS.devicePublicKey], "cHViLWtleS0zMi1ieXRlcy1wYWQtISEhISE=");
     assert.equal(mocks.local["okkey.extension.vaultBundle.u.u1"], undefined);
     assert.equal(mocks.local["okkey.extension.workspace.current.u.u1"], undefined);
     assert.equal(mocks.local["okkey.vault.deviceUnlock.v1.u.u1"], undefined);

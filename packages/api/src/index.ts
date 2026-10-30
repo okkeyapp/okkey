@@ -17,6 +17,7 @@ import type {
   CryptoRolloutMode,
   DeviceBindChallengeResponseDto,
   DeviceBindSessionRequestDto,
+  DeviceKeyRebindRequestDto,
   DeviceRegisterRequestDto,
   DeviceRegisterResponseDto,
   DeviceRejectResponseDto,
@@ -859,6 +860,20 @@ export class CoreApiClient {
   ): Promise<DeviceRegisterResponseDto> {
     return this.api.post<DeviceRegisterResponseDto>(
       `/devices/${encodeURIComponent(deviceId)}/bind-session`,
+      body,
+    );
+  }
+
+  /**
+   * Replace lost device signing keys and demote to pending for another trusted
+   * device to approve. Sole-device accounts get `DEVICE_REBIND_REQUIRES_RECOVERY`.
+   */
+  requestDeviceKeyRebind(
+    deviceId: string,
+    body: DeviceKeyRebindRequestDto,
+  ): Promise<DeviceRegisterResponseDto> {
+    return this.api.post<DeviceRegisterResponseDto>(
+      `/devices/${encodeURIComponent(deviceId)}/request-key-rebind`,
       body,
     );
   }

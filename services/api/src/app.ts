@@ -34,6 +34,7 @@ import {
   createPatchDeviceRoute,
   createBindDeviceSessionRoute,
   createDeviceBindChallengeRoute,
+  createRequestDeviceKeyRebindRoute,
   createRegisterDeviceRoute,
   createRejectDeviceRoute,
   createRevokeDeviceRoute,
@@ -756,6 +757,15 @@ export function createApiApp(
         deps.deviceService,
         resolveUserIdAllowUnboundDevice,
         deps.sessionService,
+      ),
+    );
+    app.route(
+      "POST",
+      "/devices/:deviceId/request-key-rebind",
+      createRequestDeviceKeyRebindRoute(
+        deps.deviceService,
+        resolveUserIdAllowUnboundDevice,
+        config.trustedProxyHops,
       ),
     );
     app.route(

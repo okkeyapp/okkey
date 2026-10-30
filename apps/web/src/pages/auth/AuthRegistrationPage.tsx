@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState, type FormEvent, type SVGProps } f
 import { useNavigate } from "react-router-dom";
 import {
   buildRegistrationCryptoArtifacts,
-  ed25519Keypair,
   generateRecoverySecret,
   initCrypto,
   registrationArtifactsToWire,
@@ -33,7 +32,7 @@ import { finalizePendingVaultBundle } from "../../auth/localVaultBundle";
 import { bytesToBase64 } from "../../auth/base64";
 import { getOrCreateDeviceFingerprint } from "../../auth/deviceFingerprint";
 import { parseBrowserEnvironment } from "../../auth/browserEnvironment";
-import { DEVICE_PUBLIC_KEY_KEY } from "../../auth/storageKeys";
+import { ensureDeviceSigningPublicKey } from "../../auth/deviceSigningKey";
 import { useLocale } from "../../locale/LocaleContext";
 import { AUTH_EMAIL_PATH } from "../../routes/paths";
 import { writeLastLoginMethodHint } from "../../auth/loginMethodStorage";
@@ -173,14 +172,8 @@ export default function AuthRegistrationPage() {
         encrypted_private_key: wire.encrypted_private_key,
       });
 
-      const deviceKp = ed25519Keypair();
-      const devicePublicKeyB64 = bytesToBase64(deviceKp.slice(32, 64));
-      wipeBytes(deviceKp);
-      try {
-        window.localStorage.setItem(DEVICE_PUBLIC_KEY_KEY, devicePublicKeyB64);
-      } catch {
-        /* ignore */
-      }
+      // Non-extractable Ed25519 key in IndexedDB — keep seed across reload/re-login.
+      const devicePublicKeyB64 = await ensureDeviceSigningPublicKey();
 
       const personalWorkspaceName = t("auth.registration.personalWorkspaceName");
       const personalVaultName = t("web.workspaceSettings.vaults.personal.title");

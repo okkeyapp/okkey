@@ -117,6 +117,14 @@ test("bind-session requires a device-key signature and rejects reuse, expiry, an
   assert.equal(missing.status, 400);
   assert.equal(bound, false);
 
+  const nonStringChallenge = await call("POST", `/devices/${DEVICE_ID}/bind-session`, {
+    challenge_id: 12345,
+    signature: "abcd",
+  });
+  assert.equal(nonStringChallenge.status, 400);
+  assert.equal(nonStringChallenge.body.error, "DEVICE_BAD_REQUEST");
+  assert.equal(bound, false);
+
   deviceStatus = "blocked";
   const blockedChallenge = await call("POST", `/devices/${DEVICE_ID}/bind-challenge`, {});
   assert.equal(blockedChallenge.status, 409);

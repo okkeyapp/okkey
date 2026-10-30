@@ -1448,6 +1448,24 @@ export interface DeviceBindSessionRequestDto {
   user_agent?: string;
 }
 
+/**
+ * `POST /devices/:deviceId/request-key-rebind` — replace lost signing keys and
+ * demote the device to pending for approval by another trusted device.
+ */
+export interface DeviceKeyRebindRequestDto {
+  device_public_key: string;
+  device_share: string;
+  device_fingerprint?: string;
+  device_name?: string;
+  platform?: string;
+  os_name?: string;
+  os_version?: string;
+  app_version?: string;
+  client_type?: string;
+  user_agent?: string;
+  locale?: string;
+}
+
 /** `POST /devices/register` success body (snake_case on wire). */
 export interface DeviceRegisterResponseDto {
   device_id: EntityId;

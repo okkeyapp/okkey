@@ -2153,6 +2153,166 @@ export class DevicesRepository {
     };
   }
 
+  /**
+   * Lost device-key seed on an already-trusted install: replace the public key and
+   * demote to pending so another trusted device must approve. Never silent-trust.
+   */
+  async requestKeyRebind(input: {
+    userId: string;
+    deviceId: string;
+    devicePublicKey: string;
+    deviceShare: Uint8Array;
+    deviceName?: string;
+    platform?: string;
+    osName?: string;
+    osVersion?: string;
+    appVersion?: string;
+    clientType?: string;
+    userAgent?: string;
+    requestIp?: string;
+    now: string;
+  }): Promise<
+    | { kind: "not_found" }
+    | { kind: "requires_recovery" }
+    | { kind: "pending"; device: DeviceRecord; sendApprovalEmail: boolean }
+  > {
+    return withUserDeviceLock(input.userId, () => this.db.transaction(async (tx) => {
+      await lockUserDevices(tx, input.userId);
+      const rows = await tx.query<{
+        id: string;
+        user_id: string;
+        device_fingerprint: string;
+        device_name: string;
+        device_public_key: string;
+        device_share: Buffer;
+        platform: string;
+        os_name: string;
+        os_version: string;
+        app_version: string;
+        client_type: string;
+        user_agent: string;
+        ip_first: string;
+        ip_last: string;
+        status: "trusted" | "pending" | "revoked" | "blocked";
+        created_at: string | Date;
+        last_seen_at: string | Date | null;
+        approved_by: string | null;
+        approved_at: string | Date | null;
+        rejected_at: string | Date | null;
+        rejection_reason: string | null;
+        revoked_at: string | Date | null;
+        blocked_until: string | Date | null;
+      }>(
+        `
+          SELECT
+            id, user_id, device_fingerprint, device_name, device_public_key, device_share,
+            platform, os_name, os_version, app_version, client_type, user_agent,
+            ip_first, ip_last, status, created_at, last_seen_at, approved_by, approved_at,
+            rejected_at, rejection_reason, revoked_at, blocked_until
+          FROM devices
+          WHERE id = $1 AND user_id = $2::bigint
+          FOR UPDATE
+        `,
+        [input.deviceId, input.userId],
+      );
+      const current = rows[0];
+      if (!current || (current.status !== "trusted" && current.status !== "pending")) {
+        return { kind: "not_found" };
+      }
+
+      const otherTrusted = await tx.query<{ n: string }>(
+        `
+          SELECT COUNT(*)::text AS n
+          FROM devices
+          WHERE user_id = $1::bigint
+            AND status = 'trusted'
+            AND id <> $2
+        `,
+        [input.userId, input.deviceId],
+      );
+      if (Number(otherTrusted[0]?.n ?? 0) < 1) {
+        return { kind: "requires_recovery" };
+      }
+
+      const updated = await tx.query<{
+        id: string;
+        user_id: string;
+        device_fingerprint: string;
+        device_name: string;
+        device_public_key: string;
+        device_share: Buffer;
+        platform: string;
+        os_name: string;
+        os_version: string;
+        app_version: string;
+        client_type: string;
+        user_agent: string;
+        ip_first: string;
+        ip_last: string;
+        status: "trusted" | "pending" | "revoked" | "blocked";
+        created_at: string | Date;
+        last_seen_at: string | Date | null;
+        approved_by: string | null;
+        approved_at: string | Date | null;
+        rejected_at: string | Date | null;
+        rejection_reason: string | null;
+        revoked_at: string | Date | null;
+        blocked_until: string | Date | null;
+      }>(
+        `
+          UPDATE devices
+          SET
+            device_public_key = $3,
+            device_share = $4,
+            device_name = COALESCE($5, device_name),
+            platform = COALESCE($6, platform),
+            os_name = COALESCE($7, os_name),
+            os_version = COALESCE($8, os_version),
+            app_version = COALESCE($9, app_version),
+            client_type = COALESCE($10, client_type),
+            user_agent = COALESCE($11, user_agent),
+            ip_last = COALESCE($12, ip_last),
+            status = 'pending',
+            approved_by = NULL,
+            approved_at = NULL,
+            rejected_at = NULL,
+            rejection_reason = NULL,
+            revoked_at = NULL,
+            blocked_until = NULL,
+            created_at = $13::timestamptz,
+            last_seen_at = $13::timestamptz
+          WHERE id = $1 AND user_id = $2::bigint
+          RETURNING
+            id, user_id, device_fingerprint, device_name, device_public_key, device_share,
+            platform, os_name, os_version, app_version, client_type, user_agent,
+            ip_first, ip_last, status, created_at, last_seen_at, approved_by, approved_at,
+            rejected_at, rejection_reason, revoked_at, blocked_until
+        `,
+        [
+          input.deviceId,
+          input.userId,
+          input.devicePublicKey.trim(),
+          Buffer.from(input.deviceShare),
+          input.deviceName ?? null,
+          input.platform ?? null,
+          input.osName ?? null,
+          input.osVersion ?? null,
+          input.appVersion ?? null,
+          input.clientType ?? null,
+          input.userAgent ?? null,
+          input.requestIp ?? null,
+          input.now,
+        ],
+      );
+      await deleteSessionsForDevices(tx, [input.deviceId]);
+      return {
+        kind: "pending",
+        device: mapDevice(updated[0]),
+        sendApprovalEmail: true,
+      };
+    }));
+  }
+
   /** Name and client metadata only. Caller must already have verified device-key possession. */
   async updateActiveDeviceMetadata(input: {
     userId: string;

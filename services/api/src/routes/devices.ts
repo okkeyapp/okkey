@@ -300,6 +300,79 @@ export function createDeviceBindChallengeRoute(
   };
 }
 
+export function createRequestDeviceKeyRebindRoute(
+  deviceService: DeviceService,
+  resolveUserId: (req: IncomingMessage) => Promise<string | null>,
+  trustedProxyHops = 0,
+): RouteHandler {
+  return async (ctx) => {
+    const deviceId = canonicalDeviceId(ctx.params.deviceId ?? "");
+    if (!deviceId) {
+      json(
+        ctx.res,
+        400,
+        errorPayload("DEVICE_BAD_REQUEST", "deviceId is invalid", ctx.requestId),
+      );
+      return;
+    }
+    let body: RegisterDeviceBody;
+    try {
+      body = await readJsonBody<RegisterDeviceBody>(ctx.req);
+    } catch {
+      json(ctx.res, 400, errorPayload("DEVICE_BAD_REQUEST", "invalid json", ctx.requestId));
+      return;
+    }
+    if (
+      typeof body.device_public_key !== "string" ||
+      typeof body.device_share !== "string" ||
+      !body.device_public_key.trim() ||
+      !body.device_share.trim()
+    ) {
+      json(
+        ctx.res,
+        400,
+        errorPayload(
+          "DEVICE_BAD_REQUEST",
+          "device_public_key and device_share are required",
+          ctx.requestId,
+        ),
+      );
+      return;
+    }
+    try {
+      const userId = await resolveUserId(ctx.req);
+      if (!userId) {
+        json(ctx.res, 401, errorPayload("AUTH_REQUIRED", "auth required", ctx.requestId));
+        return;
+      }
+      const metadata = resolveMetadata(body);
+      const requestIp = await getRequestIp(ctx.req, { trustedProxyHops });
+      const result = await deviceService.requestDeviceKeyRebind(userId, requestIp, {
+        deviceId,
+        deviceFingerprint: body.device_fingerprint?.trim() || "unknown",
+        devicePublicKey: body.device_public_key.trim(),
+        deviceShare: body.device_share.trim(),
+        deviceName: body.device_name?.trim() || "Unknown device",
+        platform: metadata.platform ?? "unknown",
+        osName: metadata.os_name ?? "unknown",
+        osVersion: metadata.os_version ?? "unknown",
+        appVersion: metadata.app_version ?? "unknown",
+        clientType: metadata.client_type ?? "unknown",
+        userAgent:
+          metadata.user_agent?.trim() || getHeader(ctx.req, "user-agent") || "unknown",
+        locale: typeof body.locale === "string" ? body.locale : undefined,
+        acceptLanguage: getHeader(ctx.req, "accept-language") ?? undefined,
+      });
+      json(ctx.res, 200, {
+        device_id: result.deviceId,
+        status: result.status,
+      });
+    } catch (error) {
+      handleDeviceError(ctx.requestId, ctx.res, error);
+    }
+  };
+}
+
 export function createBindDeviceSessionRoute(
   deviceService: DeviceService,
   resolveUserId: (req: IncomingMessage) => Promise<string | null>,
@@ -322,7 +395,15 @@ export function createBindDeviceSessionRoute(
       json(ctx.res, 400, errorPayload("DEVICE_BAD_REQUEST", "invalid json", ctx.requestId));
       return;
     }
-    if (!body.challenge_id?.trim() || !body.signature?.trim()) {
+    if (typeof body.challenge_id !== "string" || typeof body.signature !== "string") {
+      json(
+        ctx.res,
+        400,
+        errorPayload("DEVICE_BAD_REQUEST", "challenge_id and signature must be strings", ctx.requestId),
+      );
+      return;
+    }
+    if (!body.challenge_id.trim() || !body.signature.trim()) {
       json(
         ctx.res,
         400,

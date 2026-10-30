@@ -22,7 +22,13 @@ export function profileScopedStorageKey(userId: string): string {
 export const PROFILE_STORAGE_KEY = "okkey.profile.local";
 /** localStorage: cached device fingerprint (structured id; recomputed from UA) */
 export const DEVICE_FINGERPRINT_KEY = "okkey.device.fingerprint";
-/** localStorage: base64 device public key (stable across register retries) */
+/**
+ * Legacy localStorage: base64 device public key.
+ * Prefer IndexedDB non-extractable CryptoKey via `deviceSigningKey.ts`.
+ */
 export const DEVICE_PUBLIC_KEY_KEY = "okkey.device.public_key";
-/** localStorage: Ed25519 seed for this browser's device key (needed to sign bind challenges). */
+/**
+ * Legacy localStorage: Ed25519 seed (migrated once into IndexedDB, then cleared).
+ * Do not write new seeds here.
+ */
 export const DEVICE_PRIVATE_KEY_KEY = "okkey.device.private_key";

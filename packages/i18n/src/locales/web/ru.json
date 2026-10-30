@@ -307,6 +307,8 @@
   "web.devicePending.waiting": "Ожидаем подтверждения…",
   "web.devicePending.rejectedTitle": "Вход отклонён",
   "web.devicePending.rejectedBody": "Доверенное устройство отклонило этот вход. Можно запросить подтверждение снова.",
+  "web.devicePending.recoveryRequiredBody": "У этого браузера больше нет ключа подписи устройства. Восстановите доступ с помощью ключа восстановления — для смены ключа нужно подтверждение с другого доверенного устройства.",
+  "web.devicePending.recoveryRequiredCta": "Восстановить с ключом восстановления",
   "web.devicePending.retry": "Запросить подтверждение снова",
   "web.devicePending.blockedTitle": "Устройство заблокировано",
   "web.devicePending.blockedBody": "Доверенное устройство заблокировало этот вход. Повторная заявка недоступна до конца срока блокировки.",
