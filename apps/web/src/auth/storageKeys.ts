@@ -24,3 +24,5 @@ export const PROFILE_STORAGE_KEY = "okkey.profile.local";
 export const DEVICE_FINGERPRINT_KEY = "okkey.device.fingerprint";
 /** localStorage: base64 device public key (stable across register retries) */
 export const DEVICE_PUBLIC_KEY_KEY = "okkey.device.public_key";
+/** localStorage: Ed25519 seed for this browser's device key (needed to sign bind challenges). */
+export const DEVICE_PRIVATE_KEY_KEY = "okkey.device.private_key";

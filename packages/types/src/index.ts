@@ -1426,6 +1426,28 @@ export interface DeviceRegisterRequestDto {
   metadata?: RegisterCompleteMetadataDto;
 }
 
+/** `POST /devices/:deviceId/bind-challenge` success body. */
+export interface DeviceBindChallengeResponseDto {
+  challenge_id: string;
+  /** Base64 of the exact bytes the device private key must sign. */
+  challenge: string;
+  expires_at: string;
+}
+
+/** `POST /devices/:deviceId/bind-session` request body. */
+export interface DeviceBindSessionRequestDto {
+  challenge_id: string;
+  /** Base64 Ed25519 signature of `challenge` by the device private key. */
+  signature: string;
+  device_name?: string;
+  platform?: string;
+  os_name?: string;
+  os_version?: string;
+  app_version?: string;
+  client_type?: string;
+  user_agent?: string;
+}
+
 /** `POST /devices/register` success body (snake_case on wire). */
 export interface DeviceRegisterResponseDto {
   device_id: EntityId;

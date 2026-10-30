@@ -1355,7 +1355,7 @@ export class DevicesRepository {
     userAgent: string;
     requestIp: string;
     now: string;
-  }): Promise<DeviceRecord & { sendApprovalEmail: boolean }> {
+  }): Promise<DeviceRecord & { sendApprovalEmail: boolean; created: boolean }> {
     try {
       return await withUserDeviceLock(input.userId, () => this.db.transaction(async (tx) => {
       await lockUserDevices(tx, input.userId);
@@ -1431,14 +1431,14 @@ export class DevicesRepository {
         const current = existingByFingerprint[0];
         if (current.status === "blocked") {
           if (current.blocked_until === null) {
-            return { ...mapDevice(current), sendApprovalEmail: false };
+            return { ...mapDevice(current), sendApprovalEmail: false, created: false };
           }
           const blockedUntilMs =
             current.blocked_until instanceof Date
               ? current.blocked_until.getTime()
               : new Date(current.blocked_until).getTime();
           if (blockedUntilMs > new Date(input.now).getTime()) {
-            return { ...mapDevice(current), sendApprovalEmail: false };
+            return { ...mapDevice(current), sendApprovalEmail: false, created: false };
           }
         }
         if (current.status === "trusted") {
@@ -1460,6 +1460,7 @@ export class DevicesRepository {
               ip_last: input.requestIp,
             }),
             sendApprovalEmail: false,
+            created: false,
           };
         }
         const hasOtherTrusted = await tx.query<{ n: string }>(
@@ -1580,6 +1581,7 @@ export class DevicesRepository {
           ...updatedDevice,
           sendApprovalEmail:
             updatedDevice.status === "pending" && current.status !== "pending",
+          created: false,
         };
       }
 
@@ -1776,6 +1778,7 @@ export class DevicesRepository {
       return {
         ...inserted,
         sendApprovalEmail: inserted.status === "pending",
+        created: true,
       };
       }));
     } catch (error) {
@@ -2119,6 +2122,114 @@ export class DevicesRepository {
       );
       await deleteSessionsForDevices(tx, [input.deviceId]);
       return { kind: "rejected", device: mapDevice(rejectedRows[0]) };
+    }));
+  }
+
+  async findOwnedDeviceAuth(
+    userId: string,
+    deviceId: string,
+  ): Promise<{ id: string; status: string; devicePublicKey: string } | null> {
+    const rows = await this.db.query<{
+      id: string;
+      status: string;
+      device_public_key: string;
+    }>(
+      `
+        SELECT id, status, device_public_key
+        FROM devices
+        WHERE id = $1 AND user_id = $2
+        LIMIT 1
+      `,
+      [deviceId, userId],
+    );
+    const row = rows[0];
+    if (!row) {
+      return null;
+    }
+    return {
+      id: row.id,
+      status: row.status,
+      devicePublicKey: row.device_public_key,
+    };
+  }
+
+  /** Name and client metadata only. Caller must already have verified device-key possession. */
+  async updateActiveDeviceMetadata(input: {
+    userId: string;
+    deviceId: string;
+    now: string;
+    deviceName?: string;
+    platform?: string;
+    osName?: string;
+    osVersion?: string;
+    appVersion?: string;
+    clientType?: string;
+    userAgent?: string;
+    requestIp?: string;
+  }): Promise<DeviceRecord | null> {
+    return withUserDeviceLock(input.userId, () => this.db.transaction(async (tx) => {
+      await lockUserDevices(tx, input.userId);
+      const rows = await tx.query<{
+        id: string;
+        user_id: string;
+        device_fingerprint: string;
+        device_name: string;
+        device_public_key: string;
+        device_share: Buffer;
+        platform: string;
+        os_name: string;
+        os_version: string;
+        app_version: string;
+        client_type: string;
+        user_agent: string;
+        ip_first: string;
+        ip_last: string;
+        status: "trusted" | "pending" | "revoked" | "blocked";
+        created_at: string | Date;
+        last_seen_at: string | Date | null;
+        approved_by: string | null;
+        approved_at: string | Date | null;
+        rejected_at: string | Date | null;
+        rejection_reason: string | null;
+        revoked_at: string | Date | null;
+        blocked_until: string | Date | null;
+      }>(
+        `
+          UPDATE devices
+          SET
+            device_name = COALESCE($3, device_name),
+            platform = COALESCE($4, platform),
+            os_name = COALESCE($5, os_name),
+            os_version = COALESCE($6, os_version),
+            app_version = COALESCE($7, app_version),
+            client_type = COALESCE($8, client_type),
+            user_agent = COALESCE($9, user_agent),
+            ip_last = COALESCE($10, ip_last),
+            last_seen_at = $11::timestamptz
+          WHERE id = $1
+            AND user_id = $2
+            AND status IN ('trusted', 'pending')
+          RETURNING
+            id, user_id, device_fingerprint, device_name, device_public_key, device_share,
+            platform, os_name, os_version, app_version, client_type, user_agent,
+            ip_first, ip_last, status, created_at, last_seen_at, approved_by, approved_at,
+            rejected_at, rejection_reason, revoked_at, blocked_until
+        `,
+        [
+          input.deviceId,
+          input.userId,
+          input.deviceName ?? null,
+          input.platform ?? null,
+          input.osName ?? null,
+          input.osVersion ?? null,
+          input.appVersion ?? null,
+          input.clientType ?? null,
+          input.userAgent ?? null,
+          input.requestIp ?? null,
+          input.now,
+        ],
+      );
+      return rows[0] ? mapDevice(rows[0]) : null;
     }));
   }
 

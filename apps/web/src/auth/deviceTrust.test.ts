@@ -21,6 +21,7 @@ vi.mock("./localVaultBundle", () => ({
 vi.mock("@okkey/crypto", () => ({
   initCrypto: vi.fn(async () => undefined),
   ed25519Keypair: () => new Uint8Array(64),
+  ed25519Sign: (_secret: Uint8Array, message: Uint8Array) => message,
   wipeBytes: vi.fn(),
 }));
 
@@ -86,7 +87,21 @@ describe("resolveDeviceTrust", () => {
     expect(snapshot.approverDevices).toHaveLength(1);
   });
 
-  it("binds a trusted fingerprint without registering new keys", async () => {
+  it("binds a trusted fingerprint with a device-key signature and does not register", async () => {
+    const store = new Map<string, string>([["okkey.device.private_key", btoa("seed-seed-seed-seed")]]);
+    vi.stubGlobal("window", {
+      localStorage: {
+        getItem: (key: string) => store.get(key) ?? null,
+        setItem: (key: string, value: string) => {
+          store.set(key, value);
+        },
+      },
+    });
+    const createDeviceBindChallenge = vi.fn().mockResolvedValue({
+      challenge_id: "ch-1",
+      challenge: btoa("bind-message"),
+      expires_at: "2026-01-01T00:02:00.000Z",
+    });
     const bindDeviceSession = vi.fn().mockResolvedValue({ device_id: "d-me", status: "trusted" });
     listDevices.mockResolvedValue({
       devices: [
@@ -100,12 +115,16 @@ describe("resolveDeviceTrust", () => {
     });
 
     const snapshot = await resolveDeviceTrust(
-      { listDevices, registerDevice, bindDeviceSession } as never,
+      { listDevices, registerDevice, createDeviceBindChallenge, bindDeviceSession } as never,
       "u1",
     );
 
     expect(registerDevice).not.toHaveBeenCalled();
-    expect(bindDeviceSession).toHaveBeenCalledWith("d-me");
+    expect(createDeviceBindChallenge).toHaveBeenCalledWith("d-me");
+    expect(bindDeviceSession).toHaveBeenCalledWith(
+      "d-me",
+      expect.objectContaining({ challenge_id: "ch-1", signature: expect.any(String) }),
+    );
     expect(snapshot.status).toBe("trusted");
     expect(snapshot.deviceId).toBe("d-me");
   });

@@ -33,6 +33,7 @@ import {
   createListDevicesRoute,
   createPatchDeviceRoute,
   createBindDeviceSessionRoute,
+  createDeviceBindChallengeRoute,
   createRegisterDeviceRoute,
   createRejectDeviceRoute,
   createRevokeDeviceRoute,
@@ -736,6 +737,15 @@ export function createApiApp(
         deps.deviceService,
         resolveUserIdAllowUnboundDevice,
         config.trustedProxyHops,
+        deps.sessionService,
+      ),
+    );
+    app.route(
+      "POST",
+      "/devices/:deviceId/bind-challenge",
+      createDeviceBindChallengeRoute(
+        deps.deviceService,
+        resolveUserIdAllowUnboundDevice,
         deps.sessionService,
       ),
     );

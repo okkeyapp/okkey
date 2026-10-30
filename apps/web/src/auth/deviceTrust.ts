@@ -1,5 +1,5 @@
 import { ApiRequestError, type CoreApiClient } from "@okkey/api";
-import { ed25519Keypair, initCrypto, wipeBytes } from "@okkey/crypto";
+import { ed25519Keypair, ed25519Sign, initCrypto, wipeBytes } from "@okkey/crypto";
 import type { DeviceListItemDto, DeviceRegisterResponseDto } from "@okkey/types";
 
 import { readStoredLocale } from "../locale/localeStorage";
@@ -10,7 +10,7 @@ import {
   isLegacyHexFingerprint,
 } from "./deviceFingerprint";
 import { readVaultBundle } from "./localVaultBundle";
-import { DEVICE_PUBLIC_KEY_KEY } from "./storageKeys";
+import { DEVICE_PRIVATE_KEY_KEY, DEVICE_PUBLIC_KEY_KEY } from "./storageKeys";
 
 export type DeviceTrustStatus =
   | "checking"
@@ -59,6 +59,52 @@ function writeStoredDevicePublicKey(publicKeyB64: string): void {
   } catch {
     /* ignore quota / private mode */
   }
+}
+
+function readStoredDevicePrivateKey(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const value = window.localStorage.getItem(DEVICE_PRIVATE_KEY_KEY);
+    return value && value.trim() ? value.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredDevicePrivateKey(privateKeyB64: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(DEVICE_PRIVATE_KEY_KEY, privateKeyB64);
+  } catch {
+    /* ignore quota / private mode */
+  }
+}
+
+async function bindDeviceWithProof(
+  core: CoreApiClient,
+  deviceId: string,
+): Promise<void> {
+  await initCrypto();
+  const secretB64 = readStoredDevicePrivateKey();
+  if (!secretB64) {
+    throw new Error("device private key is missing");
+  }
+  const env = parseBrowserEnvironment(
+    typeof navigator !== "undefined" ? navigator.userAgent : "",
+  );
+  const challenge = await core.createDeviceBindChallenge(deviceId);
+  const signature = ed25519Sign(base64ToBytes(secretB64), base64ToBytes(challenge.challenge));
+  await core.bindDeviceSession(deviceId, {
+    challenge_id: challenge.challenge_id,
+    signature: bytesToBase64(signature),
+    device_name: env.deviceName,
+    platform: env.platform,
+    os_name: env.osName,
+    os_version: env.osVersion,
+    app_version: "web",
+    client_type: env.clientType,
+    user_agent: env.userAgent,
+  });
 }
 
 /**
@@ -165,7 +211,7 @@ export async function resolveDeviceTrust(
   // without minting new keys. Register would replace the trusted device share.
   if (trustedMatch && !canReclaimSole) {
     try {
-      await core.bindDeviceSession(trustedMatch.device_id);
+      await bindDeviceWithProof(core, trustedMatch.device_id);
       return {
         status: "trusted",
         deviceId: trustedMatch.device_id,
@@ -182,7 +228,7 @@ export async function resolveDeviceTrust(
   }
   if (pendingMatch && !canReclaimSole && !canBootstrapTrusted) {
     try {
-      await core.bindDeviceSession(pendingMatch.device_id);
+      await bindDeviceWithProof(core, pendingMatch.device_id);
       return {
         status: "pending",
         deviceId: pendingMatch.device_id,
@@ -348,10 +394,13 @@ export async function registerCurrentBrowserDevice(
   const deviceFingerprint = fingerprint.trim() || env.fingerprint;
 
   let devicePublicKeyB64 = readStoredDevicePublicKey();
-  if (!devicePublicKeyB64) {
+  let devicePrivateKeyB64 = readStoredDevicePrivateKey();
+  if (!devicePublicKeyB64 || !devicePrivateKeyB64) {
     const deviceKp = ed25519Keypair();
+    devicePrivateKeyB64 = bytesToBase64(deviceKp.slice(0, 32));
     devicePublicKeyB64 = bytesToBase64(deviceKp.slice(32, 64));
     wipeBytes(deviceKp);
+    writeStoredDevicePrivateKey(devicePrivateKeyB64);
     writeStoredDevicePublicKey(devicePublicKeyB64);
   }
 

@@ -260,7 +260,7 @@ test("integration: DevicesRepository deduplicates trusted fingerprints without r
   );
   assert.equal(Number(countRows[0].count), 1);
 
-  const trusted = await devices.registerOrUpdate({
+  const unproven = await devices.registerOrUpdate({
     userId: user.id,
     deviceFingerprint: fingerprint,
     deviceName: "Work MacBook",
@@ -268,7 +268,7 @@ test("integration: DevicesRepository deduplicates trusted fingerprints without r
     deviceShare: new Uint8Array([3, 4, 5]),
     platform: "desktop",
     osName: "macOS",
-    osVersion: "14.5",
+    osVersion: "15.0",
     appVersion: "1.1.0",
     clientType: "desktop",
     userAgent: "okkey-desktop/1.1.0",
@@ -276,13 +276,31 @@ test("integration: DevicesRepository deduplicates trusted fingerprints without r
     now: "2026-01-01T00:02:00.000Z",
   });
 
-  assert.equal(trusted.status, "trusted");
-  // Trusted keys and non-presence metadata stay put; only last_seen / ip refresh.
-  assert.equal(trusted.deviceName, "MacBook Pro");
-  assert.equal(trusted.appVersion, "1.0.0");
-  assert.deepEqual(Buffer.from(trusted.deviceShare), Buffer.from([1, 2, 3]));
-  assert.equal(trusted.ipLast, "10.0.0.3");
-  assert.equal(trusted.lastSeenAt, "2026-01-01T00:02:00.000Z");
+  assert.equal(unproven.status, "trusted");
+  assert.equal(unproven.created, false);
+  // Matching public key refreshes presence only. Name and app version stay until a signed bind.
+  assert.equal(unproven.deviceName, "MacBook Pro");
+  assert.equal(unproven.appVersion, "1.0.0");
+  assert.equal(unproven.osVersion, "14.5");
+  assert.deepEqual(Buffer.from(unproven.deviceShare), Buffer.from([1, 2, 3]));
+  assert.equal(unproven.ipLast, "10.0.0.3");
+  assert.equal(unproven.lastSeenAt, "2026-01-01T00:02:00.000Z");
+
+  const proven = await devices.updateActiveDeviceMetadata({
+    userId: user.id,
+    deviceId: first.id,
+    deviceName: "Work MacBook",
+    osVersion: "15.0",
+    appVersion: "1.1.0",
+    requestIp: "10.0.0.4",
+    now: "2026-01-01T00:03:00.000Z",
+  });
+  assert.equal(proven?.deviceName, "Work MacBook");
+  assert.equal(proven?.appVersion, "1.1.0");
+  assert.equal(proven?.osVersion, "15.0");
+  assert.equal(proven?.ipLast, "10.0.0.4");
+  assert.deepEqual(Buffer.from(proven!.deviceShare), Buffer.from([1, 2, 3]));
+  assert.equal(proven?.devicePublicKey, devicePublicKey);
 
   await assert.rejects(
     () =>
@@ -311,7 +329,7 @@ test("integration: DevicesRepository deduplicates trusted fingerprints without r
   }>("SELECT device_name, device_public_key, device_share FROM devices WHERE id = $1", [
     first.id,
   ]);
-  assert.equal(afterConflict[0]?.device_name, "MacBook Pro");
+  assert.equal(afterConflict[0]?.device_name, "Work MacBook");
   assert.equal(afterConflict[0]?.device_public_key, devicePublicKey);
   assert.deepEqual(Buffer.from(afterConflict[0]!.device_share), Buffer.from([1, 2, 3]));
 });

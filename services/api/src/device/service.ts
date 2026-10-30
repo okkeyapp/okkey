@@ -12,6 +12,14 @@ import type {
 } from "../storage/repositories.ts";
 import { TrustedDeviceKeyConflictError } from "../storage/repositories.ts";
 import { assertOpaqueSplitKeyShare } from "../registration/split-key-transport-policy.ts";
+import {
+  DEVICE_BIND_CHALLENGE_TTL_SECONDS,
+  deviceBindChallengeKey,
+  issueDeviceBindChallenge,
+  MemoryDeviceBindChallengeStore,
+  verifyDeviceBindSignature,
+  type DeviceBindChallengeStore,
+} from "./bind-proof.ts";
 
 export class DeviceServiceError extends Error {
   readonly code: string;
@@ -45,6 +53,8 @@ export interface DeviceServiceDeps {
     | "blockPending"
     | "unblockDevice"
     | "clearExpiredBlocks"
+    | "findOwnedDeviceAuth"
+    | "updateActiveDeviceMetadata"
   >;
   config: Pick<ApiConfig, "deviceApprovalTtlSeconds" | "publicAppBaseUrl">;
   users?: Pick<UsersRepository, "findById">;
@@ -52,6 +62,8 @@ export interface DeviceServiceDeps {
   geoIp?: Pick<GeoIpLookup, "lookup">;
   log?: Pick<Logger, "warn">;
   now?: () => Date;
+  bindChallenges?: DeviceBindChallengeStore;
+  verifyDeviceSignature?: (publicKeyB64: string, message: Uint8Array, signatureB64: string) => boolean;
 }
 
 export interface RegisterDeviceInput {
@@ -82,6 +94,8 @@ export interface RegisterDeviceResult {
   deviceId: string;
   status: "trusted" | "pending_approval" | "blocked";
   blockedUntil?: string | null;
+  /** True only when this call inserted the device row. Existing devices need a signed bind. */
+  created: boolean;
 }
 
 export interface ResolveDeviceApprovalResult {
@@ -143,6 +157,12 @@ export class DeviceService {
   private readonly geoIp?: Pick<GeoIpLookup, "lookup">;
   private readonly log?: Pick<Logger, "warn">;
   private readonly now: () => Date;
+  private readonly bindChallenges: DeviceBindChallengeStore;
+  private readonly verifyDeviceSignature: (
+    publicKeyB64: string,
+    message: Uint8Array,
+    signatureB64: string,
+  ) => boolean;
 
   constructor(deps: DeviceServiceDeps) {
     this.devices = deps.devices;
@@ -152,6 +172,9 @@ export class DeviceService {
     this.geoIp = deps.geoIp;
     this.log = deps.log;
     this.now = deps.now ?? (() => new Date());
+    this.bindChallenges =
+      deps.bindChallenges ?? new MemoryDeviceBindChallengeStore(() => this.now().getTime());
+    this.verifyDeviceSignature = deps.verifyDeviceSignature ?? verifyDeviceBindSignature;
   }
 
   async registerDevice(
@@ -209,6 +232,7 @@ export class DeviceService {
         return {
           deviceId: claimed.id,
           status: "trusted",
+          created: true,
         };
       }
 
@@ -231,6 +255,7 @@ export class DeviceService {
           return {
             deviceId: reclaimed.id,
             status: "trusted",
+            created: true,
           };
         }
       }
@@ -256,12 +281,14 @@ export class DeviceService {
           deviceId: record.id,
           status: "blocked",
           blockedUntil: record.blockedUntil,
+          created: false,
         };
       }
 
       const result: RegisterDeviceResult = {
         deviceId: record.id,
         status: record.status === "trusted" ? "trusted" : "pending_approval",
+        created: record.created === true,
       };
 
       if (result.status === "pending_approval" && record.sendApprovalEmail !== false) {
@@ -663,6 +690,133 @@ export class DeviceService {
         : null,
       blockedUntil: isBlocked ? record.blockedUntil : null,
     };
+  }
+
+  async issueDeviceBindChallenge(input: {
+    userId: string;
+    deviceId: string;
+    tokenHash: string;
+  }): Promise<{ challengeId: string; challengeB64: string; expiresAt: string }> {
+    const device = await this.requireActiveDevice(input.userId, input.deviceId);
+    const issued = issueDeviceBindChallenge({
+      deviceId: device.id,
+      tokenHash: input.tokenHash,
+      nowMs: this.now().getTime(),
+    });
+    await this.bindChallenges.put(
+      deviceBindChallengeKey(input.tokenHash, device.id, issued.challengeId),
+      JSON.stringify(issued.record),
+      DEVICE_BIND_CHALLENGE_TTL_SECONDS,
+    );
+    return {
+      challengeId: issued.challengeId,
+      challengeB64: Buffer.from(issued.message).toString("base64"),
+      expiresAt: issued.expiresAt,
+    };
+  }
+
+  async acceptDeviceBindProof(input: {
+    userId: string;
+    deviceId: string;
+    tokenHash: string;
+    challengeId: string;
+    signatureB64: string;
+  }): Promise<{ deviceId: string; status: "trusted" | "pending_approval" }> {
+    const device = await this.requireActiveDevice(input.userId, input.deviceId);
+    const raw = await this.bindChallenges.take(
+      deviceBindChallengeKey(input.tokenHash, device.id, input.challengeId),
+    );
+    if (!raw) {
+      throw new DeviceServiceError(
+        "DEVICE_BIND_CHALLENGE_INVALID",
+        401,
+        "device bind challenge is invalid or expired",
+      );
+    }
+    let record: { messageB64?: string; deviceId?: string; tokenHash?: string; expiresAtMs?: number };
+    try {
+      record = JSON.parse(raw) as typeof record;
+    } catch {
+      throw new DeviceServiceError(
+        "DEVICE_BIND_CHALLENGE_INVALID",
+        401,
+        "device bind challenge is invalid or expired",
+      );
+    }
+    if (
+      record.deviceId !== device.id ||
+      record.tokenHash !== input.tokenHash ||
+      typeof record.messageB64 !== "string" ||
+      typeof record.expiresAtMs !== "number" ||
+      record.expiresAtMs <= this.now().getTime()
+    ) {
+      throw new DeviceServiceError(
+        "DEVICE_BIND_CHALLENGE_INVALID",
+        401,
+        "device bind challenge is invalid or expired",
+      );
+    }
+    const message = Buffer.from(record.messageB64, "base64");
+    const ok = this.verifyDeviceSignature(
+      device.devicePublicKey,
+      new Uint8Array(message),
+      input.signatureB64,
+    );
+    if (!ok) {
+      throw new DeviceServiceError(
+        "DEVICE_BIND_PROOF_INVALID",
+        403,
+        "device key signature is invalid",
+      );
+    }
+    return {
+      deviceId: device.id,
+      status: device.status === "pending" ? "pending_approval" : "trusted",
+    };
+  }
+
+  async applyProvenDeviceMetadata(input: {
+    userId: string;
+    deviceId: string;
+    deviceName?: string;
+    platform?: string;
+    osName?: string;
+    osVersion?: string;
+    appVersion?: string;
+    clientType?: string;
+    userAgent?: string;
+    requestIp?: string;
+  }): Promise<void> {
+    if (!this.devices.updateActiveDeviceMetadata) {
+      return;
+    }
+    await this.devices.updateActiveDeviceMetadata({
+      userId: input.userId,
+      deviceId: input.deviceId,
+      now: this.now().toISOString(),
+      deviceName: input.deviceName,
+      platform: input.platform,
+      osName: input.osName,
+      osVersion: input.osVersion,
+      appVersion: input.appVersion,
+      clientType: input.clientType,
+      userAgent: input.userAgent,
+      requestIp: input.requestIp,
+    });
+  }
+
+  private async requireActiveDevice(userId: string, deviceId: string) {
+    if (!this.devices.findOwnedDeviceAuth) {
+      throw new DeviceServiceError("DEVICE_NOT_FOUND", 404, "device not found");
+    }
+    const device = await this.devices.findOwnedDeviceAuth(userId, deviceId);
+    if (!device) {
+      throw new DeviceServiceError("DEVICE_NOT_FOUND", 404, "device not found");
+    }
+    if (device.status !== "trusted" && device.status !== "pending") {
+      throw new DeviceServiceError("DEVICE_NOT_ACTIVE", 409, "device is not active");
+    }
+    return device;
   }
 }
 

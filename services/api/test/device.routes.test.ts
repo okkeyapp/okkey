@@ -672,6 +672,18 @@ test("POST /devices/:id/revoke still revokes a different device when caller head
   assert.equal(payload.status, "revoked");
 });
 
+test("POST /devices/:id/bind-session without a signature is rejected", async () => {
+  const res = await dispatch({
+    method: "POST",
+    url: `/devices/${DEVICE_A}/bind-session`,
+    headers: { authorization: "Bearer tok-1", "x-user-id": "u1" },
+    body: {},
+  });
+  assert.equal(res.statusCode, 400);
+  const payload = JSON.parse(res.body) as { error: string };
+  assert.equal(payload.error, "DEVICE_BAD_REQUEST");
+});
+
 test("POST /devices/register does not bind a blocked device", async () => {
   let bound = false;
   const res = await dispatch({
@@ -717,7 +729,7 @@ test("POST /devices/register binds the access-token session to the device", asyn
     },
     body: registerBody(),
     deviceService: createDeviceServiceStub({
-      registerDevice: async () => ({ deviceId: DEVICE_A, status: "trusted" }),
+      registerDevice: async () => ({ deviceId: DEVICE_A, status: "trusted", created: true }),
     }),
     sessionService: createSessionServiceStub({
       resolveAccessToken: async () => ({

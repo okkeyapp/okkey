@@ -1,9 +1,10 @@
 import type { CoreApiClient } from "@okkey/api";
+import { ed25519Keypair, ed25519Sign, initCrypto } from "@okkey/crypto";
 import type { DeviceListItemDto, DeviceRegisterResponseDto } from "@okkey/types";
 
 import { isUnauthorizedApiError } from "./apiErrors.ts";
 import { parseBrowserEnvironment } from "./browserEnvironment.ts";
-import { randomDevicePublicKeyB64, randomDeviceShareB64 } from "./deviceKeyPlaceholders.ts";
+import { randomDeviceShareB64 } from "./deviceKeyPlaceholders.ts";
 import { loadExtensionLocale } from "./locale.ts";
 import {
   clearDeviceDeferred,
@@ -12,10 +13,12 @@ import {
   readDeviceDeferred,
   readDeviceFingerprint,
   readDeviceId,
+  readDevicePrivateKey,
   readDevicePublicKey,
   writeDeviceDeferred,
   writeDeviceFingerprint,
   writeDeviceId,
+  writeDevicePrivateKey,
   writeDevicePublicKey,
 } from "./storage.ts";
 
@@ -34,6 +37,51 @@ export type DeviceTrustSnapshot = {
   errorMessage?: string;
   blockedUntil?: string | null;
 };
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 1) {
+    binary += String.fromCharCode(bytes[i]!);
+  }
+  return btoa(binary);
+}
+
+function base64ToBytes(value: string): Uint8Array {
+  const binary = atob(value);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
+}
+
+async function bindExtensionDeviceWithProof(
+  core: CoreApiClient,
+  deviceId: string,
+): Promise<void> {
+  await initCrypto();
+  const secretB64 = await readDevicePrivateKey();
+  if (!secretB64) {
+    throw new Error("device private key is missing");
+  }
+  const env = parseBrowserEnvironment(
+    typeof navigator !== "undefined" ? navigator.userAgent : "",
+    { channel: "Extension" },
+  );
+  const challenge = await core.createDeviceBindChallenge(deviceId);
+  const signature = ed25519Sign(base64ToBytes(secretB64), base64ToBytes(challenge.challenge));
+  await core.bindDeviceSession(deviceId, {
+    challenge_id: challenge.challenge_id,
+    signature: bytesToBase64(signature),
+    device_name: env.deviceName,
+    platform: env.platform,
+    os_name: env.osName,
+    os_version: env.osVersion,
+    app_version: "extension",
+    client_type: env.clientType,
+    user_agent: env.userAgent,
+  });
+}
 
 function fingerprintMatch(device: DeviceListItemDto, fingerprint: string): boolean {
   return device.device_fingerprint.trim().toLowerCase() === fingerprint.trim().toLowerCase();
@@ -62,8 +110,13 @@ export async function registerExtensionDevice(
   const fingerprint = await ensureFingerprint();
 
   let devicePublicKeyB64 = await readDevicePublicKey();
-  if (!devicePublicKeyB64) {
-    devicePublicKeyB64 = randomDevicePublicKeyB64();
+  let devicePrivateKeyB64 = await readDevicePrivateKey();
+  if (!devicePublicKeyB64 || !devicePrivateKeyB64) {
+    await initCrypto();
+    const deviceKp = ed25519Keypair();
+    devicePrivateKeyB64 = bytesToBase64(deviceKp.slice(0, 32));
+    devicePublicKeyB64 = bytesToBase64(deviceKp.slice(32, 64));
+    await writeDevicePrivateKey(devicePrivateKeyB64);
     await writeDevicePublicKey(devicePublicKeyB64);
   }
 
@@ -170,7 +223,7 @@ export async function resolveExtensionDeviceTrust(
   const trustedMatch = listed.devices.find((device) => fingerprintMatch(device, fingerprint));
   if (trustedMatch) {
     try {
-      await core.bindDeviceSession(trustedMatch.device_id);
+      await bindExtensionDeviceWithProof(core, trustedMatch.device_id);
       await writeDeviceId(trustedMatch.device_id);
       await clearDeviceDeferred();
       return {
@@ -196,7 +249,7 @@ export async function resolveExtensionDeviceTrust(
   const pendingMatch = listed.pending.find((device) => fingerprintMatch(device, fingerprint));
   if (pendingMatch) {
     try {
-      await core.bindDeviceSession(pendingMatch.device_id);
+      await bindExtensionDeviceWithProof(core, pendingMatch.device_id);
       await writeDeviceId(pendingMatch.device_id);
       await clearDeviceDeferred();
       return {

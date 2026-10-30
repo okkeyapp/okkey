@@ -16,7 +16,11 @@ const MAX_PG_BIGINT = 9223372036854775807n;
 
 type SessionDeviceBinding = Pick<
   SessionService,
-  "bindAccessTokenDevice" | "resolveAccessToken" | "revokeSessionsForDevice" | "revokeAccessToken"
+  | "bindAccessTokenDevice"
+  | "resolveAccessToken"
+  | "revokeSessionsForDevice"
+  | "revokeAccessToken"
+  | "hashAccessToken"
 >;
 
 function getBearerToken(req: IncomingMessage): string | null {
@@ -231,6 +235,7 @@ export function createRegisterDeviceRoute(
       if (
         accessToken &&
         sessionService &&
+        result.created &&
         (result.status === "trusted" || result.status === "pending_approval")
       ) {
         await sessionService.bindAccessTokenDevice(accessToken, userId, result.deviceId);
@@ -249,10 +254,56 @@ export function createRegisterDeviceRoute(
   };
 }
 
+interface BindDeviceSessionBody {
+  challenge_id?: string;
+  signature?: string;
+  device_name?: string;
+  platform?: string;
+  os_name?: string;
+  os_version?: string;
+  app_version?: string;
+  client_type?: string;
+  user_agent?: string;
+}
+
+export function createDeviceBindChallengeRoute(
+  deviceService: DeviceService,
+  resolveUserId: (req: IncomingMessage) => Promise<string | null>,
+  sessionService?: Pick<SessionDeviceBinding, "hashAccessToken">,
+): RouteHandler {
+  return async (ctx) => {
+    const deviceId = canonicalDeviceId(ctx.params.deviceId ?? "");
+    if (!deviceId) {
+      json(ctx.res, 400, errorPayload("DEVICE_BAD_REQUEST", "deviceId is invalid", ctx.requestId));
+      return;
+    }
+    try {
+      const userId = await resolveUserId(ctx.req);
+      const accessToken = getBearerToken(ctx.req);
+      if (!userId || !accessToken || !sessionService) {
+        json(ctx.res, 401, errorPayload("AUTH_REQUIRED", "auth required", ctx.requestId));
+        return;
+      }
+      const issued = await deviceService.issueDeviceBindChallenge({
+        userId,
+        deviceId,
+        tokenHash: sessionService.hashAccessToken(accessToken),
+      });
+      json(ctx.res, 200, {
+        challenge_id: issued.challengeId,
+        challenge: issued.challengeB64,
+        expires_at: issued.expiresAt,
+      });
+    } catch (error) {
+      handleDeviceError(ctx.requestId, ctx.res, error);
+    }
+  };
+}
+
 export function createBindDeviceSessionRoute(
   deviceService: DeviceService,
   resolveUserId: (req: IncomingMessage) => Promise<string | null>,
-  sessionService?: Pick<SessionDeviceBinding, "bindAccessTokenDevice">,
+  sessionService?: Pick<SessionDeviceBinding, "bindAccessTokenDevice" | "hashAccessToken">,
 ): RouteHandler {
   return async (ctx) => {
     const deviceId = canonicalDeviceId(ctx.params.deviceId ?? "");
@@ -264,25 +315,35 @@ export function createBindDeviceSessionRoute(
       );
       return;
     }
+    let body: BindDeviceSessionBody;
+    try {
+      body = await readJsonBody<BindDeviceSessionBody>(ctx.req);
+    } catch {
+      json(ctx.res, 400, errorPayload("DEVICE_BAD_REQUEST", "invalid json", ctx.requestId));
+      return;
+    }
+    if (!body.challenge_id?.trim() || !body.signature?.trim()) {
+      json(
+        ctx.res,
+        400,
+        errorPayload("DEVICE_BAD_REQUEST", "challenge_id and signature are required", ctx.requestId),
+      );
+      return;
+    }
     try {
       const userId = await resolveUserId(ctx.req);
-      if (!userId) {
-        json(ctx.res, 401, errorPayload("AUTH_REQUIRED", "auth required", ctx.requestId));
-        return;
-      }
       const accessToken = getBearerToken(ctx.req);
-      if (!accessToken || !sessionService) {
+      if (!userId || !accessToken || !sessionService) {
         json(ctx.res, 401, errorPayload("AUTH_REQUIRED", "auth required", ctx.requestId));
         return;
       }
-      const listed = await deviceService.listDevices(userId);
-      const match = [...listed.devices, ...listed.pending].find(
-        (device) => device.deviceId === deviceId,
-      );
-      if (!match) {
-        json(ctx.res, 404, errorPayload("DEVICE_NOT_FOUND", "device not found", ctx.requestId));
-        return;
-      }
+      const proof = await deviceService.acceptDeviceBindProof({
+        userId,
+        deviceId,
+        tokenHash: sessionService.hashAccessToken(accessToken),
+        challengeId: body.challenge_id.trim(),
+        signatureB64: body.signature.trim(),
+      });
       const bound = await sessionService.bindAccessTokenDevice(accessToken, userId, deviceId);
       if (!bound) {
         json(
@@ -292,9 +353,21 @@ export function createBindDeviceSessionRoute(
         );
         return;
       }
+      await deviceService.applyProvenDeviceMetadata({
+        userId,
+        deviceId,
+        deviceName: body.device_name?.trim() || undefined,
+        platform: body.platform?.trim() || undefined,
+        osName: body.os_name?.trim() || undefined,
+        osVersion: body.os_version?.trim() || undefined,
+        appVersion: body.app_version?.trim() || undefined,
+        clientType: body.client_type?.trim() || undefined,
+        userAgent: body.user_agent?.trim() || undefined,
+        requestIp: await getRequestIp(ctx.req, { trustedProxyHops: 0 }),
+      });
       json(ctx.res, 200, {
-        device_id: deviceId,
-        status: match.status,
+        device_id: proof.deviceId,
+        status: proof.status,
       });
     } catch (error) {
       handleDeviceError(ctx.requestId, ctx.res, error);

@@ -10,6 +10,7 @@ export const STORAGE_KEYS = {
   session: "okkey.extension.session",
   pkce: "okkey.extension.pkce",
   devicePublicKey: "okkey.extension.devicePublicKey",
+  devicePrivateKey: "okkey.extension.devicePrivateKey",
   deviceFingerprint: "okkey.extension.deviceFingerprint",
   deviceId: "okkey.extension.deviceId",
   /**
@@ -118,6 +119,16 @@ export async function readDevicePublicKey(): Promise<string | null> {
 
 export async function writeDevicePublicKey(publicKeyB64: string): Promise<void> {
   await storageArea().set({ [STORAGE_KEYS.devicePublicKey]: publicKeyB64 });
+}
+
+export async function readDevicePrivateKey(): Promise<string | null> {
+  const result = await storageArea().get(STORAGE_KEYS.devicePrivateKey);
+  const value = result[STORAGE_KEYS.devicePrivateKey];
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+export async function writeDevicePrivateKey(privateKeyB64: string): Promise<void> {
+  await storageArea().set({ [STORAGE_KEYS.devicePrivateKey]: privateKeyB64 });
 }
 
 export async function readDeviceFingerprint(): Promise<string | null> {
