@@ -13,6 +13,17 @@ import { websiteUrlsLookupKey } from "./useItemFormFaviconPreview";
 const FAVICON_ATTACHMENT_NAME = "favicon.png";
 const FAVICON_ATTACHMENT_MIME_TYPE = "image/png";
 
+/** Client-side deadline for background / import `/favicon/preview` lookups. */
+export const WEBSITE_FAVICON_LOOKUP_TIMEOUT_MS = 12_000;
+
+async function readPreviewBlobBytes(blob: Blob): Promise<Uint8Array> {
+  if (typeof blob.arrayBuffer === "function") {
+    return new Uint8Array(await blob.arrayBuffer());
+  }
+  // jsdom / odd Blob shims: Response can still materialize bytes.
+  return new Uint8Array(await new Response(blob).arrayBuffer());
+}
+
 export function collectWebsiteUrlsFromItem(item: ItemPlaintextV2): string[] {
   return item.fields
     .filter((field) => field.type === "url" && field.value.kind === "url")
@@ -165,12 +176,17 @@ export async function attachWebsiteFaviconFromNetwork(
 
 /**
  * Distinguishes a positive "no icon" (404) from a failed lookup so callers can keep a
- * previously stored favicon when the site is temporarily unreachable.
+ * previously stored favicon when the site is temporarily unreachable (503 / timeout / 5xx).
+ *
+ * Client timeout uses Promise.race (not a locally constructed AbortSignal) so background
+ * lookups work under jsdom/undici realm mismatches; callers may still pass a same-realm
+ * `signal` to cancel the underlying fetch.
  */
 export async function lookupWebsiteFaviconFromNetwork(
   accessToken: string,
   vaultKey: Uint8Array,
   item: ItemPlaintextV2,
+  options?: { timeoutMs?: number; signal?: AbortSignal },
 ): Promise<WebsiteFaviconLookupResult> {
   if (item.categoryId !== ITEM_CATEGORY_LOGIN) {
     return { status: "absent" };
@@ -179,8 +195,24 @@ export async function lookupWebsiteFaviconFromNetwork(
   if (urls.length === 0) {
     return { status: "absent" };
   }
+
+  if (options?.signal?.aborted) {
+    return { status: "unavailable" };
+  }
+
+  const timeoutMs = options?.timeoutMs ?? WEBSITE_FAVICON_LOOKUP_TIMEOUT_MS;
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => {
+      reject(new Error("FAVICON_LOOKUP_TIMEOUT"));
+    }, timeoutMs);
+  });
+
   try {
-    const previewBlob = await previewItemFavicon(accessToken, urls);
+    const previewBlob = await Promise.race([
+      previewItemFavicon(accessToken, urls, options?.signal ? { signal: options.signal } : undefined),
+      timeoutPromise,
+    ]);
     if (!previewBlob) {
       return { status: "absent" };
     }
@@ -188,11 +220,16 @@ export async function lookupWebsiteFaviconFromNetwork(
       accessToken,
       vaultKey,
       item,
-      rawBytes: new Uint8Array(await previewBlob.arrayBuffer()),
+      rawBytes: await readPreviewBlobBytes(previewBlob),
     });
     return { status: "found", sync };
   } catch {
+    // Network / client timeout / 503 FAVICON_UNAVAILABLE / 5xx — keep previous icon.
     return { status: "unavailable" };
+  } finally {
+    if (timeoutId !== undefined) {
+      clearTimeout(timeoutId);
+    }
   }
 }
 
@@ -282,8 +319,17 @@ export async function syncItemFaviconForPlaintext(
   }
 
   if (options?.allowNetworkFetch) {
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeoutId = setTimeout(() => {
+        reject(new Error("FAVICON_LOOKUP_TIMEOUT"));
+      }, WEBSITE_FAVICON_LOOKUP_TIMEOUT_MS);
+    });
     try {
-      const previewBlob = await previewItemFavicon(accessToken, urls);
+      const previewBlob = await Promise.race([
+        previewItemFavicon(accessToken, urls),
+        timeoutPromise,
+      ]);
       if (!previewBlob) {
         // Positive "no icon" (HTTP 404). Unchanged URLs already returned above; when the URL
         // list changed, clear any previous icon. Keep only if we somehow still have unchanged URLs.
@@ -292,18 +338,22 @@ export async function syncItemFaviconForPlaintext(
         }
         return { item: applyFaviconToItem(item, undefined, undefined) };
       }
-      return normalizeAndUploadWebsiteFavicon({
+      return await normalizeAndUploadWebsiteFavicon({
         accessToken,
         vaultKey,
         item,
-        rawBytes: new Uint8Array(await previewBlob.arrayBuffer()),
+        rawBytes: await readPreviewBlobBytes(previewBlob),
       });
     } catch {
-      // Network / timeout / 5xx — never treat as positive absence; keep any previous icon.
+      // Network / client timeout / 503 FAVICON_UNAVAILABLE / 5xx — never treat as absence.
       if (previousHasWebsiteIcon && previous) {
         return { item: keepPreviousWebsiteFavicon(item, previous) };
       }
       return { item: applyFaviconToItem(item, undefined, undefined) };
+    } finally {
+      if (timeoutId !== undefined) {
+        clearTimeout(timeoutId);
+      }
     }
   }
 

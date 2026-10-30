@@ -254,11 +254,13 @@ describe("looksLikeImageBytes", () => {
 });
 
 describe("fetchRemoteFaviconBytes provider=off", () => {
-  test("returns null without network", async () => {
-    assert.equal(await fetchRemoteFaviconBytes("example.com", { provider: "off" }), null);
-    assert.equal(
+  test("returns absent without network", async () => {
+    assert.deepEqual(await fetchRemoteFaviconBytes("example.com", { provider: "off" }), {
+      status: "absent",
+    });
+    assert.deepEqual(
       await fetchRemoteFaviconBytesFromUrls(["https://example.com"], { provider: "off" }),
-      null,
+      { status: "absent" },
     );
   });
 });
@@ -319,11 +321,13 @@ describe("fetchRemoteFaviconBytes provider=direct", () => {
       return { status: 404 };
     });
 
-    const bytes = await fetchRemoteFaviconBytesFromUrls(["https://login.example.com/common"], {
+    const result = await fetchRemoteFaviconBytesFromUrls(["https://login.example.com/common"], {
       provider: "direct",
     });
-    assert.ok(bytes);
-    assert.equal(bytes.byteLength, 96);
+    assert.equal(result.status, "found");
+    if (result.status === "found") {
+      assert.equal(result.bytes.byteLength, 96);
+    }
     assert.ok(requested.some((entry) => entry.href === "https://login.example.com/common"));
     assert.ok(requested.some((entry) => entry.href === "https://cdn.example.com/fav.ico"));
     assert.ok(!requested.some((entry) => entry.href.endsWith("/favicon.ico")));
@@ -364,11 +368,13 @@ describe("fetchRemoteFaviconBytes provider=direct", () => {
       return { status: 404 };
     });
 
-    const bytes = await fetchRemoteFaviconBytesFromUrls(["https://api.github.com/repos"], {
+    const result = await fetchRemoteFaviconBytesFromUrls(["https://api.github.com/repos"], {
       provider: "direct",
     });
-    assert.ok(bytes);
-    assert.equal(bytes.byteLength, 80);
+    assert.equal(result.status, "found");
+    if (result.status === "found") {
+      assert.equal(result.bytes.byteLength, 80);
+    }
     assert.ok(requested.some((entry) => entry.href === "https://api.github.com/repos"));
     assert.ok(requested.some((entry) => entry.href === "https://github.com/favicon.ico"));
   });
@@ -399,20 +405,22 @@ describe("fetchRemoteFaviconBytes provider=direct", () => {
       return { status: 404 };
     });
 
-    const bytes = await fetchRemoteFaviconBytesFromUrls(
+    const result = await fetchRemoteFaviconBytesFromUrls(
       ["https://no-such-host.invalid/x", "https://docs.github.com/en"],
       { provider: "direct" },
     );
-    assert.ok(bytes);
-    assert.equal(bytes.byteLength, 72);
+    assert.equal(result.status, "found");
+    if (result.status === "found") {
+      assert.equal(result.bytes.byteLength, 72);
+    }
   });
 
   test("skips hosts that resolve to disallowed addresses", async () => {
     setFaviconHostResolverForTests(async () => ["127.0.0.1"]);
     const { requested } = mockOutbound(() => ({ status: 404 }));
 
-    const bytes = await fetchRemoteFaviconBytes("127.0.0.1.nip.io", { provider: "direct" });
-    assert.equal(bytes, null);
+    const result = await fetchRemoteFaviconBytes("127.0.0.1.nip.io", { provider: "direct" });
+    assert.equal(result.status, "absent");
     assert.deepEqual(requested, []);
   });
 
@@ -420,8 +428,8 @@ describe("fetchRemoteFaviconBytes provider=direct", () => {
     setFaviconHostResolverForTests(async () => ["198.18.0.1"]);
     const { requested } = mockOutbound(() => ({ status: 200, body: pngBytes() }));
 
-    const bytes = await fetchRemoteFaviconBytes("lab.example.com", { provider: "direct" });
-    assert.equal(bytes, null);
+    const result = await fetchRemoteFaviconBytes("lab.example.com", { provider: "direct" });
+    assert.equal(result.status, "absent");
     assert.deepEqual(requested, []);
   });
 
@@ -447,8 +455,8 @@ describe("fetchRemoteFaviconBytes provider=direct", () => {
       return { status: 404 };
     });
 
-    const bytes = await fetchRemoteFaviconBytes("example.com", { provider: "direct" });
-    assert.equal(bytes, null);
+    const result = await fetchRemoteFaviconBytes("example.com", { provider: "direct" });
+    assert.equal(result.status, "absent");
     assert.ok(requested.some((entry) => entry.href === "https://example.com/favicon.ico"));
     assert.ok(!requested.some((entry) => entry.href.includes("127.0.0.1.nip.io")));
   });
@@ -466,8 +474,8 @@ describe("fetchRemoteFaviconBytes provider=direct", () => {
       return { status: 404 };
     });
 
-    const bytes = await fetchRemoteFaviconBytes("example.com", { provider: "direct" });
-    assert.equal(bytes, null);
+    const result = await fetchRemoteFaviconBytes("example.com", { provider: "direct" });
+    assert.equal(result.status, "absent");
     assert.ok(requested.some((entry) => entry.href === "https://example.com/favicon.ico"));
     assert.ok(!requested.some((entry) => entry.href.includes(":8443")));
   });
@@ -482,8 +490,8 @@ describe("fetchRemoteFaviconBytes provider=direct", () => {
       body: oversized,
     }));
 
-    const bytes = await fetchRemoteFaviconBytes("example.com", { provider: "direct" });
-    assert.equal(bytes, null);
+    const result = await fetchRemoteFaviconBytes("example.com", { provider: "direct" });
+    assert.equal(result.status, "absent");
     assert.ok(requested.length > 0);
   });
 
@@ -502,8 +510,64 @@ describe("fetchRemoteFaviconBytes provider=direct", () => {
       return { status: 404 };
     });
 
-    const bytes = await fetchRemoteFaviconBytes("example.com", { provider: "direct" });
-    assert.ok(bytes);
-    assert.equal(bytes.byteLength, 128);
+    const result = await fetchRemoteFaviconBytes("example.com", { provider: "direct" });
+    assert.equal(result.status, "found");
+    if (result.status === "found") {
+      assert.equal(result.bytes.byteLength, 128);
+    }
+  });
+
+  test("DNS failure is unavailable, not absent", async () => {
+    setFaviconHostResolverForTests(async () => {
+      throw new Error("ENOTFOUND");
+    });
+    const { requested } = mockOutbound(() => ({ status: 200, body: pngBytes() }));
+
+    const result = await fetchRemoteFaviconBytesFromUrls(["https://down.example.com"], {
+      provider: "direct",
+    });
+    assert.equal(result.status, "unavailable");
+    assert.deepEqual(requested, []);
+  });
+
+  test("connection errors are unavailable, not absent", async () => {
+    setFaviconHostResolverForTests(async () => ["93.184.216.34"]);
+    setFaviconOutboundRequestForTests(async () => {
+      throw Object.assign(new Error("connect ECONNREFUSED"), { code: "ECONNREFUSED" });
+    });
+
+    const result = await fetchRemoteFaviconBytesFromUrls(["https://refused.example.com"], {
+      provider: "direct",
+    });
+    assert.equal(result.status, "unavailable");
+  });
+
+  test("HTTP 5xx is unavailable, not absent", async () => {
+    setFaviconHostResolverForTests(async () => ["93.184.216.34"]);
+    mockOutbound(() => ({ status: 503, headers: { "content-type": "text/plain" }, body: new Uint8Array() }));
+
+    const result = await fetchRemoteFaviconBytesFromUrls(["https://broken.example.com"], {
+      provider: "direct",
+    });
+    assert.equal(result.status, "unavailable");
+  });
+
+  test("reachable site with no icon is absent", async () => {
+    setFaviconHostResolverForTests(async () => ["93.184.216.34"]);
+    mockOutbound((url) => {
+      if (url.pathname === "/" || url.pathname === "") {
+        return {
+          status: 200,
+          headers: { "content-type": "text/html" },
+          body: new TextEncoder().encode("<html><head></head></html>"),
+        };
+      }
+      return { status: 404 };
+    });
+
+    const result = await fetchRemoteFaviconBytesFromUrls(["https://no-icon.example.com"], {
+      provider: "direct",
+    });
+    assert.equal(result.status, "absent");
   });
 });
