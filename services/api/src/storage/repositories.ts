@@ -1789,39 +1789,24 @@ export class DevicesRepository {
     }
   }
 
-  /**
-   * Trusted device_share (B) for unlock bootstrap.
-   * Only returns a share when `fingerprint` matches a trusted device row.
-   * No sole-device fallback — a new browser fingerprint must register and be approved first.
-   */
-  async findTrustedDeviceShareForUnlock(
+  /** Share of the trusted device bound to the session. Does not search by fingerprint. */
+  async findTrustedDeviceShareById(
     userId: string,
-    fingerprint: string | null,
+    deviceId: string,
   ): Promise<Uint8Array | null> {
-    const norm = fingerprint?.trim().toLowerCase() ?? null;
-    if (
-      !norm ||
-      !(
-        /^[0-9a-f]{32,128}$/i.test(norm) ||
-        /^(web_app|mobile_app|desktop_app|extension)-[a-z0-9]+-[a-z0-9]+-[a-z0-9.]+$/i.test(norm)
-      )
-    ) {
-      return null;
-    }
-
     const rows = await this.db.query<{ device_share: Buffer }>(
       `
         SELECT device_share
         FROM devices
-        WHERE user_id = $1::bigint
-          AND device_fingerprint = $2
+        WHERE id = $1
+          AND user_id = $2::bigint
           AND status = 'trusted'
-        ORDER BY last_seen_at DESC NULLS LAST, created_at DESC
         LIMIT 1
       `,
-      [userId, norm],
+      [deviceId, userId],
     );
-    return rows[0] ? Uint8Array.from(rows[0].device_share) : null;
+    const row = rows[0];
+    return row ? Uint8Array.from(row.device_share) : null;
   }
 
   async isTrustedDevice(userId: string, deviceId: string): Promise<boolean> {
@@ -3502,15 +3487,22 @@ export class SessionsRepository {
   async findValidByTokenHash(
     tokenHash: string,
     nowIso: string,
-  ): Promise<{ id: string; userId: string; deviceId: string | null; scope: string | null } | null> {
+  ): Promise<{
+    id: string;
+    userId: string;
+    deviceId: string | null;
+    scope: string | null;
+    expiresAt: string;
+  } | null> {
     const rows = await this.db.query<{
       id: string;
       user_id: string;
       device_id: string | null;
       scope: string | null;
+      expires_at: string | Date;
     }>(
       `
-        SELECT id, user_id, device_id, scope
+        SELECT id, user_id, device_id, scope, expires_at
         FROM sessions
         WHERE token_hash = $1 AND expires_at > $2::timestamptz
         LIMIT 1
@@ -3518,14 +3510,20 @@ export class SessionsRepository {
       [tokenHash, nowIso],
     );
     const row = rows[0];
-    return row
-      ? {
-          id: row.id,
-          userId: row.user_id,
-          deviceId: row.device_id,
-          scope: row.scope,
-        }
-      : null;
+    if (!row) {
+      return null;
+    }
+    const expiresAt =
+      row.expires_at instanceof Date
+        ? row.expires_at.toISOString()
+        : new Date(row.expires_at).toISOString();
+    return {
+      id: row.id,
+      userId: row.user_id,
+      deviceId: row.device_id,
+      scope: row.scope,
+      expiresAt,
+    };
   }
 
   async bindDevice(input: {

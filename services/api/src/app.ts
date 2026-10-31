@@ -254,13 +254,36 @@ export function createApiApp(
   app.use(createCorsMiddleware(config.corsOrigin));
   app.use(createRequestLoggerMiddleware(logger));
 
-  const resolveUserId: (req: IncomingMessage) => Promise<string | null> =
+  const resolveSessionStrict =
     deps.sessionService !== undefined
-      ? createResolveAuthenticatedUserId(config, deps.sessionService)
-      : async (req) => {
-          const header = getHeader(req, "x-user-id");
-          return header?.trim() ?? null;
-        };
+      ? createResolveAuthenticatedSession(config, deps.sessionService)
+      : null;
+  const sessionIfDeviceTrusted = async (
+    req: IncomingMessage,
+  ): Promise<{ userId: string; deviceId: string | null } | null> => {
+    if (!resolveSessionStrict) {
+      const header = getHeader(req, "x-user-id")?.trim();
+      return header ? { userId: header, deviceId: null } : null;
+    }
+    const session = await resolveSessionStrict(req);
+    if (!session) {
+      return null;
+    }
+    if (session.deviceId && deps.deviceService?.isSessionDeviceTrusted) {
+      const trusted = await deps.deviceService.isSessionDeviceTrusted(
+        session.userId,
+        session.deviceId,
+      );
+      if (!trusted) {
+        return null;
+      }
+    }
+    return { userId: session.userId, deviceId: session.deviceId };
+  };
+  const resolveUserId: (req: IncomingMessage) => Promise<string | null> = async (req) => {
+    const session = await sessionIfDeviceTrusted(req);
+    return session?.userId ?? null;
+  };
   /** Device list/register and the revoke guard must see an unbound Bearer so it can bind or return 403. */
   const resolveUserIdAllowUnboundDevice: (req: IncomingMessage) => Promise<string | null> =
     deps.sessionService !== undefined
@@ -327,7 +350,18 @@ export function createApiApp(
     app.route(
       "POST",
       "/auth/extension/code",
-      createExtensionAuthIssueCodeRoute(deps.extensionAuthService, resolveUserId),
+      // Email login has not bound a device yet; PKCE handoff must still mint a code.
+      createExtensionAuthIssueCodeRoute(
+        deps.extensionAuthService,
+        resolveSessionAllowUnboundDevice ??
+          (async () => null),
+        async (userId, deviceId) => {
+          if (!deps.deviceService?.isSessionDeviceTrusted) {
+            return false;
+          }
+          return deps.deviceService.isSessionDeviceTrusted(userId, deviceId);
+        },
+      ),
     );
     app.route(
       "POST",
@@ -430,7 +464,7 @@ export function createApiApp(
     app.route(
       "GET",
       "/vault/unlock-bootstrap",
-      createVaultUnlockBootstrapRoute(deps.vaultUnlockBootstrapService, resolveUserId),
+      createVaultUnlockBootstrapRoute(deps.vaultUnlockBootstrapService, sessionIfDeviceTrusted),
     );
   }
   if (deps.sessionService !== undefined && deps.usersRepository) {

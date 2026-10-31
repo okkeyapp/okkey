@@ -765,6 +765,99 @@ test("GET /devices hides other device ids from an unbound bearer session", async
   );
 });
 
+test("GET /devices for a non-trusted bound session returns only that device", async () => {
+  const trustedFingerprint = "a".repeat(64);
+  const pendingFingerprint = "b".repeat(64);
+  const row = (
+    deviceId: string,
+    fingerprint: string,
+    status: "trusted" | "pending_approval" | "blocked",
+  ) => ({
+    deviceId,
+    deviceName: deviceId,
+    deviceFingerprint: fingerprint,
+    status,
+    platform: "web",
+    osName: "macOS",
+    osVersion: "14",
+    appVersion: "web",
+    clientType: "chrome",
+    userAgent: "ua",
+    ipAddress: "127.0.0.1",
+    country: null,
+    city: null,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    lastSeenAt: null,
+    approvedAt: null,
+    isCurrent: false,
+    approvalExpiresAt: null,
+    blockedUntil: null,
+  });
+  const listed = {
+    devices: [row("d-trusted", trustedFingerprint, "trusted")],
+    pending: [row("d-pending", pendingFingerprint, "pending_approval")],
+    blocked: [row("d-blocked", "c".repeat(64), "blocked")],
+  };
+
+  async function listAs(deviceId: string) {
+    const res = await dispatch({
+      method: "GET",
+      url: `/devices?device_fingerprint=${trustedFingerprint}`,
+      headers: { authorization: "Bearer tok-bound" },
+      sessionService: createSessionServiceStub({
+        resolveAccessToken: async () => ({
+          userId: "u1",
+          deviceId,
+          scope: null,
+          tokenHash: "hash:tok-bound",
+        }),
+      }),
+      deviceService: createDeviceServiceStub({
+        listDevices: async () => listed,
+      }),
+    });
+    assert.equal(res.statusCode, 200);
+    return JSON.parse(res.body) as {
+      devices: Array<{ device_id: string; device_fingerprint: string }>;
+      pending: Array<{ device_id: string; device_fingerprint: string }>;
+      blocked: Array<{ device_id: string; device_fingerprint: string }>;
+    };
+  }
+
+  const pending = await listAs("d-pending");
+  assert.deepEqual(pending.devices, []);
+  assert.deepEqual(
+    pending.pending.map((device) => device.device_id),
+    ["d-pending"],
+  );
+  assert.equal(pending.pending[0]?.device_fingerprint, pendingFingerprint);
+  assert.deepEqual(pending.blocked, []);
+  assert.equal(JSON.stringify(pending).includes(trustedFingerprint), false);
+
+  const blocked = await listAs("d-blocked");
+  assert.deepEqual(blocked.devices, []);
+  assert.deepEqual(blocked.pending, []);
+  assert.deepEqual(
+    blocked.blocked.map((device) => device.device_id),
+    ["d-blocked"],
+  );
+
+  const revoked = await listAs("d-revoked");
+  assert.deepEqual(revoked.devices, []);
+  assert.deepEqual(revoked.pending, []);
+  assert.deepEqual(revoked.blocked, []);
+
+  const trusted = await listAs("d-trusted");
+  assert.deepEqual(
+    trusted.devices.map((device) => device.device_id),
+    ["d-trusted"],
+  );
+  assert.deepEqual(
+    trusted.pending.map((device) => device.device_id),
+    ["d-pending"],
+  );
+});
+
 test("POST /devices/:id/bind-session without a signature is rejected", async () => {
   const res = await dispatch({
     method: "POST",

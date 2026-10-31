@@ -106,8 +106,20 @@ async function dispatch(input: {
       : {}),
     ...(input.includeUnlockBootstrap
       ? {
+          sessionService: {
+            resolveAccessToken: async (token: string) =>
+              token === "trusted-token"
+                ? {
+                    userId: "u1",
+                    deviceId: "d1",
+                    scope: null,
+                    tokenHash: "hash",
+                    expiresAt: "2099-01-01T00:00:00.000Z",
+                  }
+                : null,
+          },
           vaultUnlockBootstrapService: {
-            getForUser: async () => ({
+            getForBoundDevice: async () => ({
               server_key_share: "aa",
               device_share: "bb",
               password_kdf_salt: "cc",
@@ -264,6 +276,7 @@ test("unlock bootstrap stays available without a recovery key", async () => {
     url: "/vault/unlock-bootstrap",
     exported: false,
     includeUnlockBootstrap: true,
+    headers: { authorization: "Bearer trusted-token" },
   });
   assert.equal(res.statusCode, 200);
   assert.equal(JSON.parse(res.body).server_key_share, "aa");

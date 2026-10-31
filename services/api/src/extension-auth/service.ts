@@ -37,6 +37,8 @@ type StoredAuthCode = {
   codeChallenge: string;
   codeChallengeMethod: "S256";
   createdAt: string;
+  /** When set, the exchanged session must not outlive this instant. */
+  expiresAtCap?: string;
 };
 
 function authCodeRedisKey(code: string): string {
@@ -118,6 +120,8 @@ export class ExtensionAuthService {
     redirectUri: string;
     codeChallenge: string;
     codeChallengeMethod?: string;
+    /** When set, the new session expires at this time instead of a fresh TTL. */
+    expiresAtCap?: string | null;
   }): Promise<{ code: string; expiresAt: string; expiresIn: number }> {
     const clientId = input.clientId.trim();
     if (clientId !== EXTENSION_AUTH_CLIENT_ID) {
@@ -162,6 +166,7 @@ export class ExtensionAuthService {
       codeChallenge,
       codeChallengeMethod: "S256",
       createdAt,
+      ...(input.expiresAtCap ? { expiresAtCap: input.expiresAtCap } : {}),
     };
     await this.redis.setWithTtl(
       authCodeRedisKey(code),
@@ -246,7 +251,23 @@ export class ExtensionAuthService {
       );
     }
 
-    const session = await this.sessionService.createSession(stored.userId);
+    let ttlSeconds: number | undefined;
+    if (stored.expiresAtCap) {
+      const remainMs = Date.parse(stored.expiresAtCap) - this.now().getTime();
+      if (!Number.isFinite(remainMs) || remainMs <= 0) {
+        throw new ExtensionAuthError(
+          "EXTENSION_AUTH_INVALID_CODE",
+          400,
+          "invalid or expired authorization code",
+        );
+      }
+      ttlSeconds = Math.max(1, Math.ceil(remainMs / 1000));
+    }
+
+    const session = await this.sessionService.createSession(
+      stored.userId,
+      ttlSeconds === undefined ? {} : { ttlSeconds },
+    );
     return {
       accessToken: session.accessToken,
       expiresAt: session.expiresAt,
