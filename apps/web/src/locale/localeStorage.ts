@@ -1,6 +1,73 @@
 import { isWebLocale, type WebLocale } from "@okkey/i18n";
 
 export const LOCALE_STORAGE_KEY = "okkey.locale";
+/** Query param used by email deep-links (`buildEmailAppPathUrl` / `lng`). */
+export const LOCALE_QUERY_PARAM = "lng";
+
+export function readLocaleFromSearch(search: string): WebLocale | null {
+  try {
+    const raw = new URLSearchParams(search.startsWith("?") ? search : `?${search}`).get(
+      LOCALE_QUERY_PARAM,
+    );
+    if (raw != null && isWebLocale(raw)) return raw;
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
+/** Drop `lng` from a query string (preserves other params). */
+export function stripLocaleFromUrlSearch(search: string): string {
+  const params = new URLSearchParams(search.startsWith("?") ? search : `?${search}`);
+  if (!params.has(LOCALE_QUERY_PARAM)) {
+    return search.startsWith("?") || search.length === 0 ? search : `?${search}`;
+  }
+  params.delete(LOCALE_QUERY_PARAM);
+  const qs = params.toString();
+  return qs ? `?${qs}` : "";
+}
+
+/**
+ * Absolute href with `lng` removed. Returns null when `lng` is absent.
+ * Always returns a same-origin absolute URL so `history.replaceState` stays
+ * safe even when `pathname` starts with `//` (protocol-relative trap).
+ */
+export function hrefWithoutLocaleQuery(href: string): string | null {
+  try {
+    const url = new URL(href);
+    if (!url.searchParams.has(LOCALE_QUERY_PARAM)) {
+      return null;
+    }
+    url.searchParams.delete(LOCALE_QUERY_PARAM);
+    return url.href;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * If the URL has a supported `lng`, persist it, apply once, then remove `lng`
+ * via `history.replaceState` so reload does not keep overriding the UI locale.
+ */
+export function applyLocaleFromUrlAndStrip(): WebLocale | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  const fromUrl = readLocaleFromSearch(window.location.search);
+  if (!fromUrl) {
+    return null;
+  }
+  writeStoredLocale(fromUrl);
+  const nextHref = hrefWithoutLocaleQuery(window.location.href);
+  if (nextHref && nextHref !== window.location.href) {
+    try {
+      window.history.replaceState(window.history.state, "", nextHref);
+    } catch {
+      /* SecurityError / odd history hosts — locale already persisted */
+    }
+  }
+  return fromUrl;
+}
 
 export function readStoredLocale(): WebLocale {
   try {

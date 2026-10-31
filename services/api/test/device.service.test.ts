@@ -296,7 +296,7 @@ test("registerDevice sends device_approval_request when pending and email deps c
   assert.equal(sends[0].variables.requestIp, "203.0.113.9");
   assert.match(
     sends[0].variables.helpUrl,
-    /^https:\/\/app\.test\/items\?popup=settings\|devices$/,
+    /^https:\/\/app\.test\/items\?popup=settings%7Cdevices$/,
   );
   assert.ok(typeof sends[0].variables.requestedAtIso === "string");
   assert.ok(typeof sends[0].variables.expiresAtIso === "string");
