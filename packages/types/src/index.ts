@@ -1,6 +1,7 @@
 export type { EntityId, UUID } from "./entity-id.js";
 export {
   ENTITY_ID_RE,
+  MAX_ENTITY_ID,
   assertEntityId,
   entityIdFromDb,
   generateEntityId,
@@ -1778,7 +1779,8 @@ export interface WorkspaceItemTemplatesListResponseDto {
 }
 
 export interface WorkspaceItemTemplateCreateRequestDto {
-  id: EntityId;
+  /** Optional; ignored by the API. Template ids are always allocated server-side. */
+  id?: EntityId;
   name: string;
   category_id: string;
   payload: WorkspaceItemTemplatePayloadDto;

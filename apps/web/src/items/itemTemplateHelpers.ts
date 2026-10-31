@@ -122,14 +122,12 @@ export function buildTemplateUpdatePayload(
 }
 
 export function buildTemplateCreatePayload(
-  templateId: string,
   snapshot: ItemTemplateFormSnapshot,
   templateName: string,
   faviconId?: string,
   faviconSource?: ItemFaviconSource,
 ) {
   return {
-    id: templateId,
     name: templateName.trim(),
     category_id: snapshot.categoryId,
     payload: buildStructureOnlyPayload(snapshot, faviconSource),

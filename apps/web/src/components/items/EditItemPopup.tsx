@@ -1,6 +1,5 @@
 import type { WebMessageValues } from "@okkey/i18n";
 import type { Vault } from "@okkey/types";
-import { generateEntityId } from "@okkey/types";
 import { Button, Popup, type KeyFieldFileValue } from "@okkey/ui";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
@@ -171,19 +170,19 @@ export default function EditItemPopup({
           error: t("web.saveItemTemplatePopup.saveErrorGeneric"),
         },
         async () => {
-          const draftTemplateId = generateEntityId();
           // Templates store structure only — skip field-file uploads.
-          // Create the template first so item-favicon uploads can target an existing row.
+          // Create first so item-favicon uploads can target the server-allocated id.
           const response = await core.createWorkspaceItemTemplate(
             workspaceId,
-            buildTemplateCreatePayload(draftTemplateId, snapshot, templateName),
+            buildTemplateCreatePayload(snapshot, templateName),
           );
+          const createdTemplateId = response.template.id;
           let uploadedFavicon: KeyFieldFileValue | undefined;
           try {
             const favicon = await syncTemplateFaviconForSnapshot(
               accessToken,
               vaultKey,
-              draftTemplateId,
+              createdTemplateId,
               snapshot,
               faviconSyncInput,
             );
@@ -191,7 +190,7 @@ export default function EditItemPopup({
             if (favicon.faviconId || favicon.faviconSource) {
               await core.updateWorkspaceItemTemplate(
                 workspaceId,
-                draftTemplateId,
+                createdTemplateId,
                 buildTemplateUpdatePayload(
                   snapshot,
                   templateName,
@@ -205,7 +204,7 @@ export default function EditItemPopup({
               await deleteKeyFieldFileAttachment({
                 accessToken,
                 vaultId: snapshot.vaultId,
-                itemId: draftTemplateId,
+                itemId: createdTemplateId,
                 file: uploadedFavicon,
               }).catch(() => undefined);
             }
