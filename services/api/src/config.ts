@@ -15,11 +15,18 @@ import {
   loadEnterpriseBackendEnv,
 } from "./enterpriseEnv.ts";
 import { resolveEmailDeliveryMode, type EmailDeliveryMode } from "./email/queue.ts";
+import {
+  normalizeEmailLogoUrl,
+  parseEmailHttpApiInlineMode,
+  type EmailHttpApiInlineMode,
+} from "./email/http-api-inline-mode.ts";
 import { parseFaviconProvider, type FaviconProvider } from "./favicon/fetch-remote.ts";
 
 type NodeEnv = "development" | "test" | "production";
 type EmailProvider = "logger" | "smtp" | "http-api" | "ses";
 type CryptoRolloutState = "resume" | "stop";
+
+export type { EmailHttpApiInlineMode };
 
 export type DeploymentMode = "self_hosted" | "saas";
 
@@ -30,7 +37,7 @@ export interface ApiConfig {
   deploymentMode: DeploymentMode;
   /**
    * Plan assigned to newly created workspaces (catalog / billing display).
-   * Always FREE — paid create/edit need modules loaded **and** a paid `plan_tier`.
+   * Always FREE. Self-hosted paid features unlock from loaded modules, not this column.
    */
   defaultWorkspacePlanTier: PlanTier;
   port: number;
@@ -51,8 +58,17 @@ export interface ApiConfig {
   invitePreviewRateLimitPerIp: number;
   authRateLimitConfirmPerIp: number;
   authRateLimitResendPerIp: number;
+  /** POST /auth/register/complete per-IP budget within `authRateLimitWindowSeconds`. */
+  authRateLimitRegisterCompletePerIp: number;
+  /** Same window; keyed by email from the auth state (normalized). */
+  authRateLimitRegisterCompletePerEmail: number;
   registrationAuthStateTtlSeconds: number;
   registrationResultTtlSeconds: number;
+  /**
+   * TTL for the post-registration bootstrap Bearer (`registration_recovery` scope).
+   * Default 900s (15 minutes). Full sessions use `sessionTtlSeconds`.
+   */
+  registrationBootstrapSessionTtlSeconds: number;
   deviceApprovalTtlSeconds: number;
   /** Server secret: AES key for TOTP at rest, backup-code pepper, session binding */
   sessionSecret: string;
@@ -77,7 +93,7 @@ export interface ApiConfig {
   emailFrom: string;
   /**
    * Sales inbox for workspace plan-change / license purchase requests (manual fulfillment).
-   * Override with `OKKEY_SALES_EMAIL`. Defaults: local/dev → aleksandr-zoryn@ya.ru; else get-license@okkey.io.
+   * Required via `OKKEY_SALES_EMAIL` in every environment (no built-in default).
    */
   salesEmail: string;
   emailProvider: EmailProvider;
@@ -100,6 +116,17 @@ export interface ApiConfig {
   emailApiEndpoint: string;
   emailApiKey: string;
   emailApiTimeoutMs: number;
+  /**
+   * `EMAIL_HTTP_API_INLINE` for `EMAIL_PROVIDER=http-api`:
+   * how the Okkey mark is represented when HTML uses `cid:okkey-mark`.
+   * Default `cid` — include `inlineAttachments` in the JSON body.
+   */
+  emailHttpApiInlineMode: EmailHttpApiInlineMode;
+  /**
+   * Absolute https URL for the Okkey mark when `emailHttpApiInlineMode` is `url`
+   * (`EMAIL_LOGO_URL`). Ignored for other modes.
+   */
+  emailLogoUrl: string;
   /** AWS SES / SES-compatible (Yandex Postbox) region for SigV4. */
   sesRegion: string;
   sesAccessKeyId: string;
@@ -303,16 +330,41 @@ function parseDeploymentMode(value: string | undefined): DeploymentMode {
   throw new Error(`OKKEY_DEPLOYMENT_MODE must be "self_hosted" or "saas", got: ${value}`);
 }
 
-/** Sales inbox for plan-change / license purchase request emails (`OKKEY_SALES_EMAIL`). */
-function resolveSalesEmail(nodeEnv: NodeEnv, raw: string | undefined): string {
-  const trimmed = raw?.trim() ?? "";
-  if (trimmed) {
-    return trimmed;
+/**
+ * Sales inbox for plan-change / license purchase request emails (`OKKEY_SALES_EMAIL`).
+ * Required in production, development, and test — no hardcoded fallback addresses.
+ */
+export function resolveSalesEmail(raw: string | undefined): string {
+  const trimmed = (raw ?? "").trim();
+  if (!trimmed) {
+    throw new Error(
+      "OKKEY_SALES_EMAIL is required (license / plan-change request recipient). Set it explicitly; there is no default address.",
+    );
   }
-  if (nodeEnv === "development" || nodeEnv === "test") {
-    return "aleksandr-zoryn@ya.ru";
+  if (!trimmed.includes("@") || trimmed.length > 320) {
+    throw new Error("OKKEY_SALES_EMAIL must be a valid email address");
   }
-  return "get-license@okkey.io";
+  return trimmed;
+}
+
+/**
+ * Optional public https URL for the email logo (`EMAIL_LOGO_URL`).
+ * Empty is allowed at load time; `EMAIL_HTTP_API_INLINE=url` still requires a non-empty
+ * value (validated in transport assert). When set, the value is validated for any
+ * `EMAIL_PROVIDER` (fail-closed) and stored as the normalized `URL.href`.
+ */
+export function resolveEmailLogoUrl(raw: string | undefined): string {
+  const trimmed = (raw ?? "").trim();
+  if (!trimmed) {
+    return "";
+  }
+  const normalized = normalizeEmailLogoUrl(trimmed);
+  if (!normalized) {
+    throw new Error(
+      "EMAIL_LOGO_URL must be an absolute public https URL without credentials or loopback hosts (e.g. https://cdn.example.com/okkey-mark.png)",
+    );
+  }
+  return normalized;
 }
 
 export function loadConfig(): ApiConfig {
@@ -399,6 +451,14 @@ export function loadConfig(): ApiConfig {
       process.env.AUTH_RATE_LIMIT_RESEND_PER_IP,
       10,
     ),
+    authRateLimitRegisterCompletePerIp: parsePositiveInt(
+      process.env.AUTH_RATE_LIMIT_REGISTER_COMPLETE_PER_IP,
+      10,
+    ),
+    authRateLimitRegisterCompletePerEmail: parsePositiveInt(
+      process.env.AUTH_RATE_LIMIT_REGISTER_COMPLETE_PER_EMAIL,
+      5,
+    ),
     registrationAuthStateTtlSeconds: parsePositiveInt(
       process.env.REGISTRATION_AUTH_STATE_TTL_SECONDS,
       3600,
@@ -406,6 +466,10 @@ export function loadConfig(): ApiConfig {
     registrationResultTtlSeconds: parsePositiveInt(
       process.env.REGISTRATION_RESULT_TTL_SECONDS,
       604800,
+    ),
+    registrationBootstrapSessionTtlSeconds: parsePositiveInt(
+      process.env.REGISTRATION_BOOTSTRAP_SESSION_TTL_SECONDS,
+      900,
     ),
     deviceApprovalTtlSeconds: parsePositiveInt(
       process.env.DEVICE_APPROVAL_TTL_SECONDS,
@@ -446,7 +510,7 @@ export function loadConfig(): ApiConfig {
     defaultEmailLocale: process.env.EMAIL_DEFAULT_LOCALE ?? "en",
     publicAppBaseUrl: (process.env.PUBLIC_APP_URL ?? "").trim(),
     emailFrom: process.env.EMAIL_FROM ?? "no-reply@okkey.local",
-    salesEmail: resolveSalesEmail(nodeEnv, process.env.OKKEY_SALES_EMAIL),
+    salesEmail: resolveSalesEmail(process.env.OKKEY_SALES_EMAIL),
     emailProvider: (process.env.EMAIL_PROVIDER ?? "logger") as EmailProvider,
     emailDeliveryMode: resolveEmailDeliveryMode(nodeEnv, process.env.EMAIL_DELIVERY_MODE),
     emailDeadLetterSealSecret:
@@ -459,6 +523,8 @@ export function loadConfig(): ApiConfig {
     emailApiEndpoint: process.env.EMAIL_API_ENDPOINT ?? "",
     emailApiKey: process.env.EMAIL_API_KEY ?? "",
     emailApiTimeoutMs: parsePositiveInt(process.env.EMAIL_API_TIMEOUT_MS, 10000),
+    emailHttpApiInlineMode: parseEmailHttpApiInlineMode(process.env.EMAIL_HTTP_API_INLINE),
+    emailLogoUrl: resolveEmailLogoUrl(process.env.EMAIL_LOGO_URL),
     sesRegion: process.env.EMAIL_SES_REGION ?? "",
     sesAccessKeyId: process.env.EMAIL_SES_ACCESS_KEY_ID ?? "",
     sesSecretAccessKey: process.env.EMAIL_SES_SECRET_ACCESS_KEY ?? "",

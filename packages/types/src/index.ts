@@ -422,10 +422,22 @@ export interface PendingVaultWrapDto {
   publicPqKey: string | null;
 }
 
+/**
+ * Staged grant that cannot be wrapped because the recipient public key is invalid.
+ * Returned so the client can notify the admin (wraps list omits these rows).
+ */
+export interface PendingVaultWrapSkippedDto {
+  userId: EntityId;
+  vaultId: EntityId;
+  profileId: EntityId;
+}
+
 /** `GET /workspaces/:workspaceId/pending-vault-wraps` success body. */
 export interface PendingVaultWrapsResponseDto {
   workspaceId: EntityId;
   wraps: PendingVaultWrapDto[];
+  /** Recipients skipped server-side due to invalid Ed25519 / ML-KEM public keys. */
+  skippedInvalidKeyRecipients: PendingVaultWrapSkippedDto[];
 }
 
 /** `POST /workspaces/:workspaceId/invitations` body. */
@@ -533,6 +545,8 @@ export interface VaultAccessResponseDto {
   vaultId: EntityId;
   members: VaultAccessMemberDto[];
   invitations: VaultAccessInvitationDto[];
+  /** Current vault event-log head (`MAX(events.version)`). Used as `baseVersion` for revokes. */
+  latestVersion?: number;
 }
 
 /**
@@ -587,7 +601,14 @@ export {
 } from "./item-plaintext-v1.js";
 
 import type { ItemFaviconSource, ItemPlaintextV2 } from "./item-schema/types.js";
-export type { FieldValueV2, ItemFieldV2, ItemSectionV2, UrlAutofillScope } from "./item-schema/types.js";
+export type {
+  FieldValueV2,
+  FieldValueTotp,
+  ItemFieldV2,
+  ItemSectionV2,
+  TotpAlgorithm,
+  UrlAutofillScope,
+} from "./item-schema/types.js";
 export type { ItemPlaintextV2, ItemFaviconSource };
 export {
   ITEM_PLAINTEXT_SCHEMA_VERSION_V1,
@@ -1117,6 +1138,17 @@ export interface SyncEventWireDto {
   signature?: HybridSignatureEnvelopeDto;
   idempotencyKey: EntityId | null;
   clientCreatedAt: string | null;
+  /**
+   * Server-side item id for ITEM_* events (retention + client integrity checks).
+   * Clients must ignore ITEM_* events whose decrypted plaintext.itemId differs.
+   */
+  referencedItemId?: EntityId | null;
+  /**
+   * Server-persisted soft-delete hint for ITEM_* events.
+   * Clients must apply plaintext `deleted` on ITEM_UPDATE only when this is true
+   * (or when unset on legacy events). `false` means the update is not a soft-delete.
+   */
+  itemSoftDeleted?: boolean | null;
   version: number;
   createdAt: string;
 }
@@ -1126,6 +1158,13 @@ export interface SyncEventsListResponseDto {
   vaultId: EntityId;
   afterVersion: number;
   events: SyncEventWireDto[];
+  /** Highest version in this response, or `afterVersion` when `events` is empty. */
+  latestVersion: number;
+  /**
+   * When false, this page is the full remainder after `afterVersion`.
+   * Clients must not issue another GET just to observe an empty page.
+   */
+  hasMore: boolean;
 }
 
 /** Workspace personal metadata event on the wire. */
@@ -1147,6 +1186,13 @@ export interface WorkspacePersonalEventsListResponseDto {
   userId: EntityId;
   afterVersion: number;
   events: WorkspacePersonalEventWireDto[];
+  /** Highest version in this response, or `afterVersion` when `events` is empty. */
+  latestVersion: number;
+  /**
+   * When false, this page is the full remainder after `afterVersion`.
+   * Clients must not issue another GET just to observe an empty page.
+   */
+  hasMore: boolean;
 }
 
 /** `POST /vaults/:vaultId/events` request body. */
@@ -1237,7 +1283,7 @@ export interface WorkspacePlanChangeRequestStatusDto {
    * open `mailto:` instead of the in-app form.
    */
   sales_email_deliverable: boolean;
-  /** Sales inbox for mailto fallback (`OKKEY_SALES_EMAIL` / default get-license@okkey.io). */
+  /** Sales inbox for mailto fallback (`OKKEY_SALES_EMAIL`; required server setting, no default). */
   sales_email: string;
 }
 
@@ -1271,7 +1317,7 @@ export interface VaultShareUpsertRequestDto {
   recipientUserId: EntityId;
   /**
    * Recipient wrapped vault key.
-   * Production hybrid-by-default contract expects:
+   * Hybrid-by-default contract (every `DEPLOY_ENV`) expects:
    * - `crypto_version >= 2`
    * - `meta.key_wrap_scheme = "hybrid_ecc_pq_v1"`
    */
@@ -1372,7 +1418,63 @@ export interface DeviceRegisterRequestDto {
   app_version?: string;
   client_type?: string;
   user_agent?: string;
+  /**
+   * UI locale (`en` | `ru`), same pattern as auth email codes.
+   * Prefer this over `Accept-Language` — browsers forbid overriding that header from fetch.
+   */
+  locale?: string;
   metadata?: RegisterCompleteMetadataDto;
+}
+
+/** `POST /devices/:deviceId/bind-challenge` success body. */
+export interface DeviceBindChallengeResponseDto {
+  challenge_id: string;
+  /** Base64 of the exact bytes the device private key must sign. */
+  challenge: string;
+  expires_at: string;
+}
+
+/** `POST /devices/:deviceId/bind-session` request body. */
+export interface DeviceBindSessionRequestDto {
+  challenge_id: string;
+  /**
+   * Base64 Ed25519 signature of `challenge` by the device private key.
+   * Required unless `share_proof` and `new_device_public_key` are both set.
+   */
+  signature?: string;
+  /**
+   * Base64 SHA-256 of `okkey-device-bind-share-v1\\n || device_share || challenge`.
+   * Browsers that never stored a signing seed prove the local vault share and
+   * install a new signing key. Does not replace `device_share` and does not register.
+   */
+  share_proof?: string;
+  /** Base64 32-byte Ed25519 public key installed when `share_proof` succeeds. */
+  new_device_public_key?: string;
+  device_name?: string;
+  platform?: string;
+  os_name?: string;
+  os_version?: string;
+  app_version?: string;
+  client_type?: string;
+  user_agent?: string;
+}
+
+/**
+ * `POST /devices/:deviceId/request-key-rebind` — replace lost signing keys and
+ * demote the device to pending for approval by another trusted device.
+ */
+export interface DeviceKeyRebindRequestDto {
+  device_public_key: string;
+  device_share: string;
+  device_fingerprint?: string;
+  device_name?: string;
+  platform?: string;
+  os_name?: string;
+  os_version?: string;
+  app_version?: string;
+  client_type?: string;
+  user_agent?: string;
+  locale?: string;
 }
 
 /** `POST /devices/register` success body (snake_case on wire). */
@@ -1459,6 +1561,16 @@ export interface DevicePatchResponseDto {
   device_name: string;
 }
 
+/** `POST /devices/:deviceId/revoke` request body. */
+export interface DeviceRevokeRequestDto {
+  reason?: string;
+  /**
+   * When true, allows revoking the caller device identified by `X-Device-Id`
+   * (sign-out / logout path). Omitted or false rejects that case with 403.
+   */
+  sign_out?: boolean;
+}
+
 /** `POST /devices/:deviceId/revoke` success body. */
 export interface DeviceRevokeResponseDto {
   device_id: EntityId;
@@ -1467,7 +1579,8 @@ export interface DeviceRevokeResponseDto {
 
 /** `POST /auth/register/complete` request body (snake_case on wire). */
 export interface RegisterCompleteRequestDto {
-  auth_state_id: EntityId;
+  /** Opaque auth state id from email confirm (CSPRNG hex; not a snowflake entity id). */
+  auth_state_id: string;
   user_public_key: string;
   /** ML-KEM-768 encapsulation key (1184 raw bytes), standard base64. */
   user_public_pq_key: string;
@@ -1505,9 +1618,15 @@ export interface RegisterCompleteResponseDto {
   vault_id: EntityId;
   device_id: EntityId;
   device_status: "trusted";
-  access_token: string;
-  expires_at: string;
-  token_type: "Bearer";
+  /**
+   * Short-lived bootstrap Bearer for recovery key enroll + export ack only.
+   * Present on the first successful completion; omitted on idempotent replay.
+   */
+  access_token?: string;
+  expires_at?: string;
+  token_type?: "Bearer";
+  /** When `access_token` is present: `registration_recovery`. */
+  scope?: "registration_recovery";
 }
 
 /** `GET /account/profile` (Bearer) — non-sensitive display fields for UI. */

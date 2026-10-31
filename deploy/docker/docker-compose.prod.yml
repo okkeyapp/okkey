@@ -75,7 +75,7 @@ services:
     restart: "no"
 
   api:
-    image: ${OKKEY_API_IMAGE:-ghcr.io/okkeyapp/api}:${OKKEY_IMAGE_TAG:-dev}
+    image: ${OKKEY_API_IMAGE:-ghcr.io/okkeyapp/api}:${OKKEY_IMAGE_TAG:-1.0.0-beta.2}
     restart: unless-stopped
     depends_on:
       postgres:
@@ -108,6 +108,8 @@ services:
       CORS_ORIGIN: ${CORS_ORIGIN}
       PUBLIC_APP_URL: ${PUBLIC_APP_URL}
       EMAIL_FROM: ${EMAIL_FROM}
+      # Required: license / plan-change request recipient (no built-in default).
+      OKKEY_SALES_EMAIL: ${OKKEY_SALES_EMAIL}
       EMAIL_PROVIDER: ${EMAIL_PROVIDER:-logger}
       EMAIL_DELIVERY_MODE: ${EMAIL_DELIVERY_MODE:-queue}
       EMAIL_DEFAULT_LOCALE: ${EMAIL_DEFAULT_LOCALE:-en}
@@ -116,14 +118,23 @@ services:
       EMAIL_SMTP_SECURE: ${EMAIL_SMTP_SECURE:-false}
       EMAIL_SMTP_USER: ${EMAIL_SMTP_USER:-}
       EMAIL_SMTP_PASSWORD: ${EMAIL_SMTP_PASSWORD:-}
+      EMAIL_API_ENDPOINT: ${EMAIL_API_ENDPOINT:-}
+      EMAIL_API_KEY: ${EMAIL_API_KEY:-}
+      EMAIL_API_TIMEOUT_MS: ${EMAIL_API_TIMEOUT_MS:-10000}
+      EMAIL_HTTP_API_INLINE: ${EMAIL_HTTP_API_INLINE:-cid}
+      EMAIL_LOGO_URL: ${EMAIL_LOGO_URL:-}
       WEBAUTHN_RP_ID: ${WEBAUTHN_RP_ID}
       WEBAUTHN_RP_NAME: ${WEBAUTHN_RP_NAME:-Okkey}
       WEBAUTHN_ORIGINS: ${WEBAUTHN_ORIGINS}
       OKKEY_DEPLOYMENT_MODE: self_hosted
+      # 0 = ignore X-Forwarded-For (TCP peer). Set 1 when api sits behind deploy/docker/proxy nginx.
+      # Keep the host publish on 127.0.0.1 so a forged XFF cannot hit the API from the LAN/WAN.
+      TRUSTED_PROXY_HOPS: ${TRUSTED_PROXY_HOPS:-0}
       GEOIP_ENABLED: ${GEOIP_ENABLED:-false}
       FAVICON_PROVIDER: ${FAVICON_PROVIDER:-direct}
     ports:
-      - "${API_PORT:-4000}:4000"
+      # Loopback only — browsers use OKKEY_API_PUBLIC_URL; proxy overlay reaches api:4000 on the Docker network.
+      - "127.0.0.1:${API_PORT:-4000}:4000"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:4000/health"]
       interval: 10s
@@ -132,7 +143,7 @@ services:
       start_period: 40s
 
   worker:
-    image: ${OKKEY_WORKER_IMAGE:-ghcr.io/okkeyapp/worker}:${OKKEY_IMAGE_TAG:-dev}
+    image: ${OKKEY_WORKER_IMAGE:-ghcr.io/okkeyapp/worker}:${OKKEY_IMAGE_TAG:-1.0.0-beta.2}
     restart: unless-stopped
     depends_on:
       postgres:
@@ -162,6 +173,8 @@ services:
       SESSION_SECRET: ${SESSION_SECRET}
       EMAIL_DEAD_LETTER_SEAL_KEY: ${EMAIL_DEAD_LETTER_SEAL_KEY:-}
       EMAIL_FROM: ${EMAIL_FROM}
+      # Required: same as api (worker loads shared API config).
+      OKKEY_SALES_EMAIL: ${OKKEY_SALES_EMAIL}
       EMAIL_PROVIDER: ${EMAIL_PROVIDER:-logger}
       EMAIL_DELIVERY_MODE: ${EMAIL_DELIVERY_MODE:-queue}
       EMAIL_DEFAULT_LOCALE: ${EMAIL_DEFAULT_LOCALE:-en}
@@ -170,10 +183,15 @@ services:
       EMAIL_SMTP_SECURE: ${EMAIL_SMTP_SECURE:-false}
       EMAIL_SMTP_USER: ${EMAIL_SMTP_USER:-}
       EMAIL_SMTP_PASSWORD: ${EMAIL_SMTP_PASSWORD:-}
+      EMAIL_API_ENDPOINT: ${EMAIL_API_ENDPOINT:-}
+      EMAIL_API_KEY: ${EMAIL_API_KEY:-}
+      EMAIL_API_TIMEOUT_MS: ${EMAIL_API_TIMEOUT_MS:-10000}
+      EMAIL_HTTP_API_INLINE: ${EMAIL_HTTP_API_INLINE:-cid}
+      EMAIL_LOGO_URL: ${EMAIL_LOGO_URL:-}
       GEOIP_ENABLED: ${GEOIP_ENABLED:-false}
 
   web:
-    image: ${OKKEY_WEB_IMAGE:-ghcr.io/okkeyapp/web}:${OKKEY_IMAGE_TAG:-dev}
+    image: ${OKKEY_WEB_IMAGE:-ghcr.io/okkeyapp/web}:${OKKEY_IMAGE_TAG:-1.0.0-beta.2}
     restart: unless-stopped
     depends_on:
       api:

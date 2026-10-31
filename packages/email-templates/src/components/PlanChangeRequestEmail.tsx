@@ -1,25 +1,58 @@
 import { Text } from "@react-email/components";
 import * as React from "react";
 
-import { EMAIL_SECONDARY_TEXT, EmailShell } from "./EmailShell.js";
+import {
+  EMAIL_CLASS_INK,
+  EMAIL_CLASS_MUTED,
+  EMAIL_PRIMARY_TEXT,
+  EMAIL_SECONDARY_TEXT,
+  EmailShell,
+} from "./EmailShell.js";
+import { EmailStandardFooter } from "./EmailStandardFooter.js";
 
 export interface PlanChangeRequestEmailProps {
+  lang: string;
+  title: string;
+  lead: string;
   lines: readonly string[];
+  noReply: string;
+  ignoreIfMistake: string;
 }
 
-/** Plain field-list body (same lines as mailto); no lead/marketing copy. */
-export function PlanChangeRequestEmail({ lines }: PlanChangeRequestEmailProps) {
-  const preview = lines[0] ?? "License request";
+/** License / plan-change sales mail: shared shell + two-line footer. */
+export function PlanChangeRequestEmail({
+  lang,
+  title,
+  lead,
+  lines,
+  noReply,
+  ignoreIfMistake,
+}: PlanChangeRequestEmailProps) {
   return (
-    <EmailShell preview={preview}>
+    <EmailShell
+      lang={lang}
+      title={title}
+      preview={lead}
+      footer={<EmailStandardFooter noReply={noReply} ignoreIfMistake={ignoreIfMistake} />}
+    >
+      <Text className={EMAIL_CLASS_INK} style={leadStyle}>
+        {lead}
+      </Text>
       {lines.map((line) => (
-        <Text key={line} style={lineStyle}>
+        <Text key={line} className={EMAIL_CLASS_MUTED} style={lineStyle}>
           {line}
         </Text>
       ))}
     </EmailShell>
   );
 }
+
+const leadStyle: React.CSSProperties = {
+  fontSize: "16px",
+  lineHeight: "24px",
+  color: EMAIL_PRIMARY_TEXT,
+  margin: "0 0 16px",
+};
 
 const lineStyle: React.CSSProperties = {
   fontSize: "14px",

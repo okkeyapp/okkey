@@ -1,5 +1,6 @@
 import { formatEmailMessage, type EmailLocale } from "@okkey/i18n";
 
+/** Shared two-line footer for every transactional email (no per-template variants). */
 export type EmailStandardFooterCopy = {
   noReply: string;
   ignoreIfMistake: string;
@@ -12,7 +13,7 @@ export function buildEmailStandardFooterCopy(locale: EmailLocale): EmailStandard
   };
 }
 
-/** Append shared no-reply + mistake lines to a plain-text body. */
+/** Append the shared two-line footer to a plain-text body. */
 export function appendStandardFooterPlain(
   body: string,
   copy: EmailStandardFooterCopy,

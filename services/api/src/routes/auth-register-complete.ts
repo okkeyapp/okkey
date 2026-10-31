@@ -4,7 +4,8 @@ import type { EncryptedBlob } from "../crypto/encrypted-blob.ts";
 import { requestClientIp } from "../request-ip.ts";
 
 interface RegisterCompleteBody {
-  auth_state_id?: string;
+  /** Wire may send non-strings; validated by {@link parseAuthStateId}. */
+  auth_state_id?: unknown;
   user_public_key?: string;
   user_public_pq_key?: string;
   encrypted_private_key?: unknown;
@@ -41,6 +42,21 @@ interface RegisterCompleteBody {
 
 const PERSONAL_WORKSPACE_NAME_MAX_LEN = 128;
 const PROFILE_NAME_MAX_LEN = 128;
+
+/** Accept CSPRNG hex (32) or legacy snowflake decimal entity ids. */
+function parseAuthStateId(raw: unknown): string | null {
+  if (typeof raw !== "string") {
+    return null;
+  }
+  const t = raw.trim();
+  if (!t) {
+    return null;
+  }
+  if (/^[0-9a-f]{32}$/i.test(t) || /^\d{10,20}$/.test(t)) {
+    return t;
+  }
+  return null;
+}
 
 function parsePersonalWorkspaceName(raw: string | undefined): string | null {
   if (raw === undefined) {
@@ -126,11 +142,16 @@ export function createRegisterCompleteRoute(
       return;
     }
 
-    if (!body.auth_state_id?.trim()) {
+    const authStateId = parseAuthStateId(body.auth_state_id);
+    if (!authStateId) {
       json(
         ctx.res,
         400,
-        errorPayload("REGISTRATION_BAD_REQUEST", "auth_state_id is required", ctx.requestId),
+        errorPayload(
+          "REGISTRATION_BAD_REQUEST",
+          "auth_state_id is required (opaque hex or legacy snowflake)",
+          ctx.requestId,
+        ),
       );
       return;
     }
@@ -282,7 +303,7 @@ export function createRegisterCompleteRoute(
 
     try {
       const result = await registrationService.completeRegistration({
-        authStateId: body.auth_state_id.trim(),
+        authStateId,
         userPublicKey: body.user_public_key!.trim(),
         userPublicPqKey: body.user_public_pq_key!.trim(),
         encryptedPrivateKey: body.encrypted_private_key as EncryptedBlob,
@@ -307,16 +328,21 @@ export function createRegisterCompleteRoute(
         lastName: lastNameForDb,
       });
 
-      json(ctx.res, 201, {
+      const bodyOut: Record<string, unknown> = {
         user_id: result.userId,
         workspace_id: result.workspaceId,
         vault_id: result.vaultId,
         device_id: result.deviceId,
         device_status: result.deviceStatus,
-        access_token: result.accessToken,
-        expires_at: result.expiresAt,
-        token_type: result.tokenType,
-      });
+      };
+      // Bootstrap bearer only on first success (idempotent replay omits it).
+      if (result.accessToken && result.expiresAt && result.tokenType && result.scope) {
+        bodyOut.access_token = result.accessToken;
+        bodyOut.expires_at = result.expiresAt;
+        bodyOut.token_type = result.tokenType;
+        bodyOut.scope = result.scope;
+      }
+      json(ctx.res, 201, bodyOut);
     } catch (error) {
       handleRegistrationError(ctx.requestId, ctx.res, error);
     }

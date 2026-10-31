@@ -13,7 +13,11 @@ import {
   createAuthEmailResendRoute,
   createAuthEmailStartRoute,
 } from "./routes/auth-email.ts";
-import { createResolveAuthenticatedUserId } from "./routes/auth-context.ts";
+import {
+  createResolveAuthenticatedSession,
+  createResolveAuthenticatedUserId,
+} from "./routes/auth-context.ts";
+import { REGISTRATION_RECOVERY_ALLOWED_SCOPES } from "./session/scopes.ts";
 import { createRegisterCompleteRoute } from "./routes/auth-register-complete.ts";
 import { createAuthSessionBootstrapRoute } from "./routes/auth-session.ts";
 import {
@@ -28,6 +32,9 @@ import {
   createBlockDeviceRoute,
   createListDevicesRoute,
   createPatchDeviceRoute,
+  createBindDeviceSessionRoute,
+  createDeviceBindChallengeRoute,
+  createRequestDeviceKeyRebindRoute,
   createRegisterDeviceRoute,
   createRejectDeviceRoute,
   createRevokeDeviceRoute,
@@ -247,13 +254,66 @@ export function createApiApp(
   app.use(createCorsMiddleware(config.corsOrigin));
   app.use(createRequestLoggerMiddleware(logger));
 
-  const resolveUserId: (req: IncomingMessage) => Promise<string | null> =
+  const resolveSessionStrict =
     deps.sessionService !== undefined
-      ? createResolveAuthenticatedUserId(config, deps.sessionService)
-      : async (req) => {
-          const header = getHeader(req, "x-user-id");
-          return header?.trim() ?? null;
-        };
+      ? createResolveAuthenticatedSession(config, deps.sessionService)
+      : null;
+  const sessionIfDeviceTrusted = async (
+    req: IncomingMessage,
+  ): Promise<{ userId: string; deviceId: string | null } | null> => {
+    if (!resolveSessionStrict) {
+      const header = getHeader(req, "x-user-id")?.trim();
+      return header ? { userId: header, deviceId: null } : null;
+    }
+    const session = await resolveSessionStrict(req);
+    if (!session) {
+      return null;
+    }
+    if (session.deviceId && deps.deviceService?.isSessionDeviceTrusted) {
+      const trusted = await deps.deviceService.isSessionDeviceTrusted(
+        session.userId,
+        session.deviceId,
+      );
+      if (!trusted) {
+        return null;
+      }
+    }
+    return { userId: session.userId, deviceId: session.deviceId };
+  };
+  const resolveUserId: (req: IncomingMessage) => Promise<string | null> = async (req) => {
+    const session = await sessionIfDeviceTrusted(req);
+    return session?.userId ?? null;
+  };
+  /** Device list/register and the revoke guard must see an unbound Bearer so it can bind or return 403. */
+  const resolveUserIdAllowUnboundDevice: (req: IncomingMessage) => Promise<string | null> =
+    deps.sessionService !== undefined
+      ? createResolveAuthenticatedUserId(config, deps.sessionService, undefined, {
+          allowUnboundDevice: true,
+        })
+      : resolveUserId;
+  const resolveSessionAllowUnboundDevice =
+    deps.sessionService !== undefined
+      ? createResolveAuthenticatedSession(config, deps.sessionService, undefined, {
+          allowUnboundDevice: true,
+        })
+      : undefined;
+  /** Full session or post-register recovery bootstrap (enroll + ack-export only). */
+  const resolveUserIdForRegistrationRecovery: (req: IncomingMessage) => Promise<string | null> =
+    deps.sessionService !== undefined
+      ? createResolveAuthenticatedUserId(
+          config,
+          deps.sessionService,
+          REGISTRATION_RECOVERY_ALLOWED_SCOPES,
+        )
+      : resolveUserId;
+  const resolveSessionForRegistrationRecovery =
+    deps.sessionService !== undefined
+      ? createResolveAuthenticatedSession(
+          config,
+          deps.sessionService,
+          REGISTRATION_RECOVERY_ALLOWED_SCOPES,
+        )
+      : undefined;
 
   const gateVaultUse = (handler: RouteHandler): RouteHandler =>
     deps.accountRecoveryService
@@ -290,7 +350,18 @@ export function createApiApp(
     app.route(
       "POST",
       "/auth/extension/code",
-      createExtensionAuthIssueCodeRoute(deps.extensionAuthService, resolveUserId),
+      // Email login has not bound a device yet; PKCE handoff must still mint a code.
+      createExtensionAuthIssueCodeRoute(
+        deps.extensionAuthService,
+        resolveSessionAllowUnboundDevice ??
+          (async () => null),
+        async (userId, deviceId) => {
+          if (!deps.deviceService?.isSessionDeviceTrusted) {
+            return false;
+          }
+          return deps.deviceService.isSessionDeviceTrusted(userId, deviceId);
+        },
+      ),
     );
     app.route(
       "POST",
@@ -393,7 +464,7 @@ export function createApiApp(
     app.route(
       "GET",
       "/vault/unlock-bootstrap",
-      createVaultUnlockBootstrapRoute(deps.vaultUnlockBootstrapService, resolveUserId),
+      createVaultUnlockBootstrapRoute(deps.vaultUnlockBootstrapService, sessionIfDeviceTrusted),
     );
   }
   if (deps.sessionService !== undefined && deps.usersRepository) {
@@ -698,12 +769,49 @@ export function createApiApp(
     app.route(
       "GET",
       "/devices",
-      createListDevicesRoute(deps.deviceService, resolveUserId),
+      createListDevicesRoute(
+        deps.deviceService,
+        resolveUserIdAllowUnboundDevice,
+        resolveSessionAllowUnboundDevice,
+      ),
     );
     app.route(
       "POST",
       "/devices/register",
-      createRegisterDeviceRoute(deps.deviceService, resolveUserId, config.trustedProxyHops),
+      createRegisterDeviceRoute(
+        deps.deviceService,
+        resolveUserIdAllowUnboundDevice,
+        config.trustedProxyHops,
+        deps.sessionService,
+      ),
+    );
+    app.route(
+      "POST",
+      "/devices/:deviceId/bind-challenge",
+      createDeviceBindChallengeRoute(
+        deps.deviceService,
+        resolveUserIdAllowUnboundDevice,
+        deps.sessionService,
+      ),
+    );
+    app.route(
+      "POST",
+      "/devices/:deviceId/bind-session",
+      createBindDeviceSessionRoute(
+        deps.deviceService,
+        resolveUserIdAllowUnboundDevice,
+        deps.sessionService,
+      ),
+    );
+    app.route(
+      "POST",
+      "/devices/:deviceId/request-key-rebind",
+      createRequestDeviceKeyRebindRoute(
+        deps.deviceService,
+        resolveUserIdAllowUnboundDevice,
+        config.trustedProxyHops,
+        deps.sessionService,
+      ),
     );
     app.route(
       "PATCH",
@@ -713,7 +821,11 @@ export function createApiApp(
     app.route(
       "POST",
       "/devices/:deviceId/revoke",
-      createRevokeDeviceRoute(deps.deviceService, resolveUserId),
+      createRevokeDeviceRoute(
+        deps.deviceService,
+        resolveUserIdAllowUnboundDevice,
+        deps.sessionService,
+      ),
     );
     app.route(
       "POST",
@@ -723,12 +835,12 @@ export function createApiApp(
     app.route(
       "POST",
       "/devices/:deviceId/reject",
-      createRejectDeviceRoute(deps.deviceService, resolveUserId),
+      createRejectDeviceRoute(deps.deviceService, resolveUserId, deps.sessionService),
     );
     app.route(
       "POST",
       "/devices/:deviceId/block",
-      createBlockDeviceRoute(deps.deviceService, resolveUserId),
+      createBlockDeviceRoute(deps.deviceService, resolveUserId, deps.sessionService),
     );
     app.route(
       "POST",
@@ -750,7 +862,11 @@ export function createApiApp(
     app.route(
       "POST",
       "/account/recovery/key/enroll",
-      createAccountRecoveryKeyEnrollRoute(deps.accountRecoveryService, resolveUserId),
+      createAccountRecoveryKeyEnrollRoute(
+        deps.accountRecoveryService,
+        resolveUserIdForRegistrationRecovery,
+        resolveSessionForRegistrationRecovery,
+      ),
     );
     app.route(
       "POST",
@@ -760,7 +876,14 @@ export function createApiApp(
     app.route(
       "POST",
       "/account/recovery/key/ack-export",
-      createAccountRecoveryKeyAckExportRoute(deps.accountRecoveryService, resolveUserId),
+      createAccountRecoveryKeyAckExportRoute(
+        deps.accountRecoveryService,
+        resolveUserIdForRegistrationRecovery,
+        {
+          resolveSession: resolveSessionForRegistrationRecovery,
+          sessionService: deps.sessionService,
+        },
+      ),
     );
     app.route(
       "GET",

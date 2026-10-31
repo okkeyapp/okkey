@@ -22,15 +22,19 @@ declare module "@okkey-enterprise/workspace-profiles" {
 
 declare module "@okkey-enterprise/workspace-members" {
   import type { CoreApiClient } from "@okkey/api";
+  import type { WorkspacePermissionsMatrixDto } from "@okkey/types";
   import type { WorkspaceSettingsMembersModule } from "./workspace-features/registry";
   const workspaceMembersModule: WorkspaceSettingsMembersModule;
   export default workspaceMembersModule;
+  export function canCompletePendingVaultWraps(
+    permissions: WorkspacePermissionsMatrixDto | null | undefined,
+  ): boolean;
   export function tryCompletePendingVaultWraps(input: {
     core: CoreApiClient;
     workspaceId: string;
     userId: string;
     accountVaultKey: Uint8Array;
-  }): Promise<void>;
+  }): Promise<{ skippedInvalidKeys: number }>;
 }
 
 declare module "@okkey-enterprise/workspace-shared-vaults" {
@@ -85,11 +89,6 @@ interface ImportMetaEnv {
   readonly VITE_DOMAIN_CAPABILITIES_BRANCH?: string;
   readonly VITE_DOMAIN_CAPABILITIES_MANIFEST_URL?: string;
   readonly VITE_DOMAIN_CAPABILITIES_CATALOG_URL?: string;
-  /**
-   * Browser e2e only: skip personal-data bootstrap edit popup so smoke can
-   * create Login items without racing `#editItem`.
-   */
-  readonly VITE_E2E_DISABLE_PERSONAL_DATA_BOOTSTRAP?: string;
 }
 
 interface ImportMeta {

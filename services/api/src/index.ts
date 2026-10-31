@@ -6,6 +6,7 @@ import { RegistrationService } from "./registration/service.ts";
 import { createServer } from "node:http";
 import { createApiApp } from "./app.ts";
 import { isEnterpriseBackendLoadable, loadConfig } from "./config.ts";
+import { RedisDeviceBindChallengeStore } from "./device/bind-challenge-store.ts";
 import { DeviceService } from "./device/service.ts";
 import { json } from "./http.ts";
 import {
@@ -47,6 +48,10 @@ import {
 import { applySqlMigrations } from "./storage/migrate.ts";
 import { ItemFaviconService } from "./favicon/service.ts";
 import { AttachmentService } from "./attachments/service.ts";
+import {
+  resolveWorkspacePermissions,
+  WorkspacePermissionError,
+} from "./workspace-roles/permissions.ts";
 import { AccountRecoveryService } from "./account-recovery/service.ts";
 import { initEntityIdGenerator } from "./entity-id.ts";
 
@@ -143,6 +148,7 @@ async function main(): Promise<void> {
     workspaces: storage.repositories.workspaces,
     users: storage.repositories.users,
     emailTemplates,
+    redis: storage.redis,
     salesEmail: config.salesEmail,
     salesEmailDeliverable: isOutboundEmailDeliverable(config),
     deploymentMode: config.deploymentMode,
@@ -222,6 +228,7 @@ async function main(): Promise<void> {
     emailTemplates,
     geoIp,
     log: logger,
+    bindChallenges: new RedisDeviceBindChallengeStore(storage.redis),
   });
   const accountRecoveryService = new AccountRecoveryService({
     recovery: storage.repositories.accountRecovery,
@@ -256,6 +263,21 @@ async function main(): Promise<void> {
         softDeletes: storage.repositories.vaultItemSoftDeletes,
         templates: storage.repositories.workspaceItemTemplates,
         config,
+        canUpdateWorkspaceBranding: async (workspaceId, userId) => {
+          try {
+            const matrix = await resolveWorkspacePermissions(
+              storage.postgres,
+              workspaceId,
+              userId,
+            );
+            return matrix.settings.put >= 1;
+          } catch (error) {
+            if (error instanceof WorkspacePermissionError) {
+              return false;
+            }
+            throw error;
+          }
+        },
       })
     : undefined;
   const itemTemplatesService = new ItemTemplatesService({

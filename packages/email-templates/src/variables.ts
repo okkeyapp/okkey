@@ -1,10 +1,10 @@
 /** Why the OTP was issued; selects subject/body copy for `auth_email_code`. */
-export type AuthEmailCodePurpose = "sign_in" | "email_change";
+export type AuthEmailCodePurpose = "sign_in" | "registration" | "email_change";
 
 export interface AuthEmailCodeVariables {
   code: string;
   ttlSeconds: number;
-  /** Defaults to `sign_in` when omitted (login / registration OTP). */
+  /** Defaults to `sign_in` when omitted (existing-account login OTP). */
   purpose?: AuthEmailCodePurpose;
 }
 
@@ -18,6 +18,8 @@ export interface DeviceApprovalRequestVariables {
   city?: string | null;
   /** ISO timestamp of the approval request (shown as date + time). */
   requestedAtIso?: string | null;
+  /** ISO timestamp when the pending approval challenge expires. */
+  expiresAtIso?: string | null;
 }
 
 export interface WorkspaceInviteVariables {

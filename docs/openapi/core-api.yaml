@@ -13,6 +13,7 @@ servers:
 
 tags:
   - name: Auth
+  - name: Account
   - name: Vaults
   - name: Sync
   - name: Capsules
@@ -233,7 +234,7 @@ components:
       properties:
         auth_state_id:
           type: string
-          pattern: '^d{10,20}
+          description: Opaque auth state id from email confirm (128-bit CSPRNG hex)
 
         user_public_key:
           type: string
@@ -314,6 +315,18 @@ components:
         device_status:
           type: string
           enum: [trusted]
+        access_token:
+          type: string
+          description: Short-lived bootstrap Bearer for recovery key enroll/ack; omitted on idempotent replay
+        expires_at:
+          type: string
+          format: date-time
+        token_type:
+          type: string
+          enum: [Bearer]
+        scope:
+          type: string
+          enum: [registration_recovery]
 
     Vault:
       type: object
@@ -437,7 +450,7 @@ components:
 
     SyncEventsListResponse:
       type: object
-      required: [vaultId, afterVersion, events]
+      required: [vaultId, afterVersion, events, latestVersion, hasMore]
       properties:
         vaultId:
           type: string
@@ -450,6 +463,13 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/SyncEvent"
+        latestVersion:
+          type: integer
+          minimum: 0
+          description: Max event version in this page, or afterVersion when events is empty.
+        hasMore:
+          type: boolean
+          description: False when this page is the full remainder after afterVersion.
 
     SyncAppendRequest:
       type: object
@@ -531,7 +551,7 @@ components:
           $ref: "#/components/schemas/EncryptedBlob"
           description: >
             Recipient wrapped vault key.
-            In production hybrid-by-default path, must use `crypto_version >= 2`
+            Hybrid-by-default in every DEPLOY_ENV, must use `crypto_version >= 2`
             and include `meta.key_wrap_scheme = "hybrid_ecc_pq_v1"`.
         encryptedPayload:
           $ref: "#/components/schemas/EncryptedBlob"
@@ -575,7 +595,7 @@ components:
                 $ref: "#/components/schemas/EncryptedBlob"
                 description: >
                   Rotated recipient wrapped vault key.
-                  In production hybrid-by-default path, must use `crypto_version >= 2`
+                  Hybrid-by-default in every DEPLOY_ENV, must use `crypto_version >= 2`
                   and include `meta.key_wrap_scheme = "hybrid_ecc_pq_v1"`.
         encryptedPayload:
           $ref: "#/components/schemas/EncryptedBlob"
@@ -625,7 +645,7 @@ components:
                 $ref: "#/components/schemas/EncryptedBlob"
                 description: >
                   Re-wrapped vault key for this recipient.
-                  In production hybrid-by-default path must use `crypto_version >= 2`
+                  Hybrid-by-default in every DEPLOY_ENV must use `crypto_version >= 2`
                   and `meta.key_wrap_scheme = "hybrid_ecc_pq_v1"`.
         encryptedPayload:
           $ref: "#/components/schemas/EncryptedBlob"
@@ -670,7 +690,7 @@ components:
                 $ref: "#/components/schemas/EncryptedBlob"
                 description: >
                   Re-wrapped vault key for this recipient.
-                  Must follow the hybrid-by-default contract in production.
+                  Must follow the hybrid-by-default contract in every DEPLOY_ENV.
         encryptedPayload:
           $ref: "#/components/schemas/EncryptedBlob"
         signature:
@@ -815,6 +835,56 @@ components:
         meta:
           type: object
           additionalProperties: true
+
+    AccountRecoveryKeyMeta:
+      type: object
+      required: [enrolled, createdAt, rotatedAt, exportedAt]
+      properties:
+        enrolled:
+          type: boolean
+        createdAt:
+          type: string
+          nullable: true
+          format: date-time
+        rotatedAt:
+          type: string
+          nullable: true
+          format: date-time
+        exportedAt:
+          type: string
+          nullable: true
+          format: date-time
+
+    AccountRecoverySettings:
+      type: object
+      required: [keyEnabled, devicesEnabled, contactsEnabled]
+      properties:
+        keyEnabled:
+          type: boolean
+        devicesEnabled:
+          type: boolean
+        contactsEnabled:
+          type: boolean
+
+    AccountRecoveryKeyEnrollResponse:
+      type: object
+      required: [key, settings]
+      properties:
+        key:
+          $ref: "#/components/schemas/AccountRecoveryKeyMeta"
+        settings:
+          $ref: "#/components/schemas/AccountRecoverySettings"
+
+    AccountRecoveryStatusResponse:
+      type: object
+      description: Aggregate recovery status (full field set in api_contracts / @okkey/types)
+      additionalProperties: true
+      properties:
+        key:
+          $ref: "#/components/schemas/AccountRecoveryKeyMeta"
+        settings:
+          $ref: "#/components/schemas/AccountRecoverySettings"
+
     HybridSignatureEnvelope:
       type: object
       required:
@@ -1212,6 +1282,90 @@ paths:
         "200":
           description: Updated login methods snapshot
 
+  /account/recovery/key/enroll:
+    post:
+      tags: [Account]
+      summary: Enroll recovery key wrap (first enroll; bootstrap scope cannot rotate)
+      description: >
+        Accepts a full session Bearer or a short-lived `registration_recovery` bootstrap
+        token from `POST /auth/register/complete`. With bootstrap scope, enroll is
+        insert-if-absent only; a second enroll or concurrent loser returns
+        `RECOVERY_ROTATE_FORBIDDEN` (403).
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [encryptedBlob]
+              properties:
+                encryptedBlob:
+                  $ref: "#/components/schemas/EncryptedBlob"
+                encrypted_blob:
+                  $ref: "#/components/schemas/EncryptedBlob"
+      responses:
+        "200":
+          description: Wrap stored; key marked enrolled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountRecoveryKeyEnrollResponse"
+        "400":
+          description: RECOVERY_BAD_REQUEST
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "403":
+          description: RECOVERY_ROTATE_FORBIDDEN (bootstrap / forbidRotate; wrap already exists)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+
+  /account/recovery/key/ack-export:
+    post:
+      tags: [Account]
+      summary: Acknowledge recovery key copy or PDF export
+      description: >
+        With `registration_recovery` bootstrap scope, a successful ack revokes that
+        access token. Clients should treat a local already-exported flag as success
+        instead of re-acking with the revoked Bearer.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: Export marked; returns recovery status aggregate
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountRecoveryStatusResponse"
+        "401":
+          description: AUTH_REQUIRED (including revoked bootstrap Bearer)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "404":
+          description: RECOVERY_KEY_NOT_ENROLLED
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+
   /auth/email/confirm:
     post:
       tags: [Auth]
@@ -1265,6 +1419,15 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorBody"
         "410":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "429":
+          description: >
+            AUTH_RATE_LIMITED — per-IP / per-email register-complete budget exceeded
+            (defaults AUTH_RATE_LIMIT_REGISTER_COMPLETE_PER_IP=10,
+            AUTH_RATE_LIMIT_REGISTER_COMPLETE_PER_EMAIL=5)
           content:
             application/json:
               schema:

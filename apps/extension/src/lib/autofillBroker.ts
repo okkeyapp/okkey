@@ -22,9 +22,10 @@ import {
   type AutofillItemCategory,
 } from "@okkey/vault";
 
-import { createCoreClient } from "./api";
+import { createCoreClient, isUnauthorizedApiError } from "./api";
 import { EMAIL_OTP_URL } from "./autofillFieldClassify";
 import {
+  clearAllPendingSaveOffers,
   clearPendingSaveOffer,
   getPendingSaveOffer,
   markPendingSaveDismissed,
@@ -49,10 +50,80 @@ import {
   type AutofillSiteIconResponse,
   type AutofillUpdateFieldKey,
 } from "./autofillMessages";
+import { probeExtensionDeviceTrusted } from "./deviceTrust";
 import { readExtensionUnlockSessionIfFresh, touchExtensionUnlockSession } from "./extensionVaultSession";
 import { initExtensionCrypto } from "./initExtensionCrypto";
-import { readProfile, readSession } from "./storage";
+import { readProfile, readSession, wipeAllExtensionData } from "./storage";
 import { readExtensionVaultBundle, readStoredCurrentWorkspaceId } from "./vaultStorage";
+
+/** Positive trust probe cache — revoke must still be seen within this window on autofill. */
+const DEVICE_TRUST_CACHE_MS = 5_000;
+let lastTrustedProbeAt = 0;
+
+async function wipeIfUnauthorized(err: unknown): Promise<boolean> {
+  if (!isUnauthorizedApiError(err)) {
+    return false;
+  }
+  lastTrustedProbeAt = 0;
+  await wipeAllExtensionData();
+  await clearAllPendingSaveOffers();
+  return true;
+}
+
+/**
+ * Ensure this install is still a trusted device before using unlock session / cache.
+ * Web Revoke often leaves the account Bearer valid, so we must list devices.
+ */
+export async function ensureAutofillDeviceTrusted(options?: {
+  /** Skip positive cache (e.g. fill / periodic alarm). */
+  force?: boolean;
+}): Promise<"ok" | "locked" | "signed-out"> {
+  const session = await readSession();
+  const profile = await readProfile();
+  if (!session || !profile) {
+    return "signed-out";
+  }
+  const fresh = await readExtensionUnlockSessionIfFresh(session.user_id);
+  if (!fresh?.passwordShareC) {
+    return "locked";
+  }
+  if (!options?.force && Date.now() - lastTrustedProbeAt < DEVICE_TRUST_CACHE_MS) {
+    return "ok";
+  }
+  try {
+    const core = createCoreClient(profile.apiBaseUrl, session.access_token);
+    const result = await probeExtensionDeviceTrusted(core);
+    if (result === "trusted") {
+      lastTrustedProbeAt = Date.now();
+      return "ok";
+    }
+    if (result === "untrusted") {
+      lastTrustedProbeAt = 0;
+      await clearAllPendingSaveOffers();
+      return "locked";
+    }
+    // Transient listDevices failure — fail open for offline autofill.
+    return "ok";
+  } catch (err: unknown) {
+    if (await wipeIfUnauthorized(err)) {
+      return "signed-out";
+    }
+    return "ok";
+  }
+}
+
+/** Periodic SW probe: wipe unlock session if web revoked this device. */
+export async function runBackgroundDeviceTrustProbe(): Promise<void> {
+  const session = await readSession();
+  if (!session) {
+    return;
+  }
+  const fresh = await readExtensionUnlockSessionIfFresh(session.user_id);
+  if (!fresh?.passwordShareC) {
+    return;
+  }
+  await ensureAutofillDeviceTrusted({ force: true });
+}
 
 export {
   clearPendingSaveOffer,
@@ -149,10 +220,19 @@ async function syncWebsiteFaviconForItem(input: {
   });
 }
 
-async function resolveUnlockUserId(): Promise<{ userId: string; unlocked: boolean } | null> {
+async function resolveUnlockUserId(options?: {
+  forceTrustProbe?: boolean;
+}): Promise<{ userId: string; unlocked: boolean } | null> {
   const session = await readSession();
   if (!session) {
     return null;
+  }
+  const trust = await ensureAutofillDeviceTrusted({ force: options?.forceTrustProbe });
+  if (trust === "signed-out") {
+    return null;
+  }
+  if (trust === "locked") {
+    return { userId: session.user_id, unlocked: false };
   }
   const fresh = await readExtensionUnlockSessionIfFresh(session.user_id);
   return { userId: session.user_id, unlocked: Boolean(fresh?.passwordShareC) };
@@ -366,7 +446,8 @@ export async function handleAutofillFill(
   pageUrl: string,
   fillOverrides?: Record<string, string>,
 ): Promise<AutofillFillResponse> {
-  const auth = await resolveUnlockUserId();
+  // Force trust probe on fill — must not use vaultKey after web Revoke.
+  const auth = await resolveUnlockUserId({ forceTrustProbe: true });
   if (!auth) {
     return { status: "signed-out" };
   }
@@ -433,6 +514,7 @@ export async function handleAutofillFill(
         secretBase32: secrets.totpSecretBase32,
         periodSeconds: secrets.totpPeriodSeconds,
         digits: secrets.totpDigits,
+        algorithm: secrets.totpAlgorithm,
       })) ?? undefined;
   }
 
@@ -523,6 +605,11 @@ async function previewFaviconPng(apiBaseUrl: string, accessToken: string, urls: 
       },
       body: JSON.stringify({ urls }),
     });
+    if (response.status === 401) {
+      await wipeAllExtensionData();
+      await clearAllPendingSaveOffers();
+      return null;
+    }
     if (!response.ok) {
       return null;
     }
@@ -536,6 +623,13 @@ export async function handleAutofillSiteIcon(
   websiteUrl: string,
   urls?: string[],
 ): Promise<AutofillSiteIconResponse> {
+  const trust = await ensureAutofillDeviceTrusted();
+  if (trust === "signed-out") {
+    return { status: "signed-out" };
+  }
+  if (trust === "locked") {
+    return { status: "locked" };
+  }
   const session = await readSession();
   const profile = await readProfile();
   if (!session || !profile) {
@@ -549,7 +643,9 @@ export async function handleAutofillSiteIcon(
   const lookupUrls = [...new Set([...(urls ?? []), websiteUrl].map((u) => u.trim()).filter(Boolean))];
   const png = await previewFaviconPng(profile.apiBaseUrl, session.access_token, lookupUrls);
   if (!png || png.byteLength === 0) {
-    return { status: "missing" };
+    // Favicon 401 wipes local state; surface signed-out instead of "missing".
+    const stillSignedIn = await readSession();
+    return stillSignedIn ? { status: "missing" } : { status: "signed-out" };
   }
   return { status: "ok", iconUrl: pngToDataUrl(png) };
 }
@@ -583,6 +679,11 @@ async function uploadFaviconAttachment(input: {
         body: encrypted.encryptedBody,
       },
     );
+    if (response.status === 401) {
+      await wipeAllExtensionData();
+      await clearAllPendingSaveOffers();
+      return null;
+    }
     if (!response.ok) {
       return null;
     }
@@ -776,6 +877,13 @@ export async function handleAutofillSaveOffer(input: {
 }
 
 export async function handleAutofillSaveContext(): Promise<AutofillSaveContextResponse> {
+  const trust = await ensureAutofillDeviceTrusted({ force: true });
+  if (trust === "signed-out") {
+    return { status: "signed-out" };
+  }
+  if (trust === "locked") {
+    return { status: "locked" };
+  }
   const session = await readSession();
   const profile = await readProfile();
   if (!session || !profile) {
@@ -814,7 +922,10 @@ export async function handleAutofillSaveContext(): Promise<AutofillSaveContextRe
       vaults: options,
       defaultVaultId: defaultVault.id,
     };
-  } catch {
+  } catch (err: unknown) {
+    if (await wipeIfUnauthorized(err)) {
+      return { status: "signed-out" };
+    }
     return { status: "locked" };
   }
 }
@@ -828,6 +939,13 @@ export async function handleAutofillSave(input: {
   vaultId?: string;
   itemId?: string;
 }): Promise<AutofillSaveResponse> {
+  const trust = await ensureAutofillDeviceTrusted({ force: true });
+  if (trust === "signed-out") {
+    return { status: "signed-out" };
+  }
+  if (trust === "locked") {
+    return { status: "locked" };
+  }
   const session = await readSession();
   const profile = await readProfile();
   if (!session || !profile) {
@@ -998,6 +1116,9 @@ export async function handleAutofillSave(input: {
       controller.dispose();
     }
   } catch (err: unknown) {
+    if (await wipeIfUnauthorized(err)) {
+      return { status: "signed-out" };
+    }
     const message = err instanceof Error ? err.message : String(err);
     return { status: "error", message };
   }
@@ -1006,6 +1127,13 @@ export async function handleAutofillSave(input: {
 export async function handleAutofillSaveFormDraft(
   input: Omit<AutofillSaveFormDraftMessage, "type">,
 ): Promise<AutofillSaveFormDraftResponse> {
+  const trust = await ensureAutofillDeviceTrusted({ force: true });
+  if (trust === "signed-out") {
+    return { status: "signed-out" };
+  }
+  if (trust === "locked") {
+    return { status: "locked" };
+  }
   const session = await readSession();
   const profile = await readProfile();
   if (!session || !profile) {
@@ -1103,6 +1231,9 @@ export async function handleAutofillSaveFormDraft(
       controller.dispose();
     }
   } catch (err: unknown) {
+    if (await wipeIfUnauthorized(err)) {
+      return { status: "signed-out" };
+    }
     const message = err instanceof Error ? err.message : String(err);
     return { status: "error", message };
   }
@@ -1111,6 +1242,13 @@ export async function handleAutofillSaveFormDraft(
 export async function handleAutofillSaveFormCommit(
   input: Omit<AutofillSaveFormCommitMessage, "type">,
 ): Promise<AutofillSaveResponse> {
+  const trust = await ensureAutofillDeviceTrusted({ force: true });
+  if (trust === "signed-out") {
+    return { status: "signed-out" };
+  }
+  if (trust === "locked") {
+    return { status: "locked" };
+  }
   const session = await readSession();
   const profile = await readProfile();
   if (!session || !profile) {
@@ -1223,6 +1361,9 @@ export async function handleAutofillSaveFormCommit(
       controller.dispose();
     }
   } catch (err: unknown) {
+    if (await wipeIfUnauthorized(err)) {
+      return { status: "signed-out" };
+    }
     const message = err instanceof Error ? err.message : String(err);
     return { status: "error", message };
   }

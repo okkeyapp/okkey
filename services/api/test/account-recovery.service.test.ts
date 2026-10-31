@@ -129,6 +129,22 @@ function createService(overrides?: {
       };
       return wrap;
     },
+    insertWrapIfAbsent: async (
+      userId: string,
+      encryptedBlob: typeof wrap extends null ? never : NonNullable<typeof wrap>["encryptedBlob"],
+    ) => {
+      if (wrap?.userId === userId) {
+        return null;
+      }
+      wrap = {
+        userId,
+        encryptedBlob,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        rotatedAt: null,
+        exportedAt: null,
+      };
+      return wrap;
+    },
     markExported: async (userId: string) => {
       if (!wrap || wrap.userId !== userId) {
         return null;
@@ -299,6 +315,22 @@ test("getStatus PREMIUM defaults devicesEnabled off until explicitly enabled", a
   const status = await service.getStatus("u1");
   assert.equal(status.entitlements.trustedDevices, true);
   assert.equal(status.settings.devicesEnabled, false);
+});
+
+test("enrollKey forbidRotate rejects when a wrap already exists", async () => {
+  const service = createService({ workspaces: [{ planTier: "PREMIUM" }] });
+  const blob = {
+    crypto_version: 2,
+    algorithm: "xchacha20-poly1305",
+    payload: "abc",
+    meta: { entity: "vault_key_recovery_wrap", key_scope: "account" },
+  };
+  await service.enrollKey("u1", blob, { forbidRotate: true });
+  await assert.rejects(
+    () => service.enrollKey("u1", { ...blob, payload: "def" }, { forbidRotate: true }),
+    (err: unknown) =>
+      err instanceof AccountRecoveryError && err.code === "RECOVERY_ROTATE_FORBIDDEN",
+  );
 });
 
 test("enrollKey persists wrap and enables key settings", async () => {

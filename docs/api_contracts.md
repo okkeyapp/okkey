@@ -25,7 +25,7 @@ Wire-aligned DTOs and the error body type live in `@okkey/types` (e.g. `CoreApiE
 | Content-Type | Request bodies: `application/json`. Responses: JSON unless noted. |
 | Identifiers | UUIDs as lowercase string (8-4-4-4-12), unless otherwise specified. |
 | Time | ISO-8601 UTC with millisecond precision where emitted by the server, e.g. `2026-01-01T12:05:00.000Z`. |
-| Client IP (rate limits) | First hop in `X-Forwarded-For` when present; otherwise internal logic may treat IP as `unknown`. |
+| Client IP (rate limits) | `TRUSTED_PROXY_HOPS` (default `0`): **ignore** `X-Forwarded-For` and use the TCP peer (`socket.remoteAddress`). Set hops ≥ 1 only behind a trusted reverse proxy so the edge-appended client address is used. |
 | Authentication (Core v1) | Prefer `Authorization: Bearer <access_token>` from `POST /auth/session/bootstrap` (after email confirm when 2FA is off) or `POST /auth/two-factor/verify` (when 2FA is on). `X-User-Id` remains a **non-production fallback** when enabled by environment (off by default in `production`). |
 | Device approval | `POST /devices/:deviceId/approve` and `POST /devices/:deviceId/reject` additionally require `X-Device-Id: <trusted approver device uuid>`. |
 
@@ -184,7 +184,7 @@ Validates the code and returns an auth state handle for the next onboarding step
 
 | Field | Type | Description |
 |--------|------|-------------|
-| `authStateId` | string | Opaque; used by future registration/device flows. |
+| `authStateId` | string | Opaque 128-bit CSPRNG hex; used by registration / device / 2FA flows. |
 | `userExists` | boolean | Whether a user row exists for this email. |
 | `nextStep` | string | `"registration"` if new user; `"two_factor"` if existing user with 2FA enabled; otherwise `"device_check"`. |
 
@@ -348,7 +348,7 @@ On successful `POST /auth/session/bootstrap` or `POST /auth/two-factor/verify`, 
 | `user_id` | Authenticated user. |
 | `token_hash` | SHA-256 (hex) of the opaque `access_token`; the raw token appears **only** in the JSON response. |
 | `expires_at` | Now + `SESSION_TTL_SECONDS`. |
-| `device_id` | **`NULL` at issuance.** Device binding for vault crypto (`4.7`) is handled by `POST /devices/register` and related flows using the authenticated user; linking `sessions.device_id` after device registration may be added later without changing the login/2FA contract. |
+| `device_id` | **`NULL` at issuance** for email/2FA bootstrap. After `POST /devices/register` (Bearer), Core binds `sessions.device_id` to the registered device. Registration complete mints the session with the first device id already set. |
 
 Token rotation / refresh is **not** implemented in Core v1; clients treat the access token as a long-lived session handle until expiry or explicit logout (when implemented).
 
@@ -364,7 +364,7 @@ Completes **new user** onboarding after email confirm. Accepts only server-side 
 
 | Field | Type | Required | Notes |
 |--------|------|----------|--------|
-| `auth_state_id` | string | Yes | From `POST /auth/email/confirm`. |
+| `auth_state_id` | string | Yes | From `POST /auth/email/confirm` (128-bit CSPRNG hex). Legacy decimal snowflake ids are still accepted for in-flight clients. Non-string values are rejected with `400`. |
 | `user_public_key` | string | Yes | Base64 of **32** raw Ed25519 public key bytes. |
 | `user_public_pq_key` | string | Yes | Base64 of **1184** raw ML-KEM-768 encapsulation key bytes. |
 | `encrypted_private_key` | object (`EncryptedBlob`) | Yes | Versioned encrypted envelope. Required keys: `crypto_version`, `algorithm`, `payload`, `meta`. Min decoded payload length **2473** bytes (XChaCha20-Poly1305 over hybrid identity bundle). |
@@ -381,15 +381,19 @@ Completes **new user** onboarding after email confirm. Accepts only server-side 
 
 **Response `201`:**
 
-| Field | Type |
-|--------|------|
-| `user_id` | uuid string |
-| `workspace_id` | uuid string |
-| `vault_id` | uuid string |
-| `device_id` | uuid string |
-| `device_status` | `"trusted"` |
+| Field | Type | Notes |
+|--------|------|--------|
+| `user_id` | string | |
+| `workspace_id` | string | |
+| `vault_id` | string | |
+| `device_id` | string | |
+| `device_status` | `"trusted"` | |
+| `access_token` | string | Optional. Short-lived bootstrap Bearer (`scope: registration_recovery`) for account recovery key enroll + export ack only. Present on **first** success; omitted on idempotent replay. |
+| `expires_at` | string | ISO timestamp; with `access_token`. Default TTL `REGISTRATION_BOOTSTRAP_SESSION_TTL_SECONDS` (900s). |
+| `token_type` | `"Bearer"` | With `access_token`. |
+| `scope` | `"registration_recovery"` | With `access_token`. Does **not** authorize vault unlock, devices, profile, or other APIs. Full session requires the normal email login flow. Enroll with this scope cannot rotate an existing recovery key; successful export ack revokes the bootstrap token. |
 
-Side effects (single DB transaction): insert user (with KDF columns), default workspace (name from `personal_workspace_name` or **`Personal`**), personal vault with the **same** name, first device with status **trusted**.
+Side effects (single DB transaction): insert user (with KDF columns), default workspace (name from `personal_workspace_name` or **`Personal`**), personal vault with the **same** name, first device with status **trusted**. Bootstrap session (when issued) stores that `device_id` on the session row; requests with this scope require the binding to be present.
 
 **Errors:**
 
@@ -403,10 +407,47 @@ Side effects (single DB transaction): insert user (with KDF columns), default wo
 | `AUTH_CHALLENGE_INVALID` | 400 | Auth state not eligible (e.g. `userId` already set). |
 | `REGISTRATION_ALREADY_COMPLETED` | 409 | User row already exists for email. |
 | `REGISTRATION_CONFLICT` | 409 | Unique constraint (race / duplicate). |
+| `AUTH_RATE_LIMITED` | 429 | Per-IP / per-email register-complete budget exceeded. |
 
-**Idempotency:** Repeating the same `auth_state_id` after success returns **`201`** with the **same** JSON body while Redis still holds `registration:result:{authStateId}` (`REGISTRATION_RESULT_TTL_SECONDS`, default 7 days). Auth state is deleted after the first success.
+**Idempotency:** Repeating the same `auth_state_id` after success returns **`201`** with **public ids only** (no bearer) while Redis still holds `registration:result:{authStateId}` (`REGISTRATION_RESULT_TTL_SECONDS`, default 7 days). Auth state is deleted after the first success. The bootstrap token is **never** stored in that cache.
 
 **Client helper:** `@okkey/crypto` exports `buildRegistrationCryptoArtifacts` and `registrationArtifactsToWire` (WASM-only primitives).
+
+### `POST /account/recovery/key/enroll`
+
+Stores the first recovery-key wrap for the authenticated user (or for a `registration_recovery` bootstrap Bearer). Ciphertext only — the server never sees the recovery secret.
+
+**Auth:** `Authorization: Bearer <access_token>` — full session **or** `scope: registration_recovery` from `POST /auth/register/complete`.
+
+**Request body:** `{ "encryptedBlob": EncryptedBlob }` (`encrypted_blob` accepted as an alias). Wrap `meta` must identify a vault-key recovery wrap (`entity: vault_key_recovery_wrap`, `key_scope: account`).
+
+**Response `200`:** `{ key: { enrolled, createdAt, rotatedAt, exportedAt }, settings: { keyEnabled, devicesEnabled, contactsEnabled } }`.
+
+| `error` | HTTP | When |
+|---------|------|------|
+| `AUTH_REQUIRED` | 401 | Missing/invalid Bearer |
+| `RECOVERY_BAD_REQUEST` | 400 | Invalid JSON / missing blob / invalid wrap meta |
+| `RECOVERY_ROTATE_FORBIDDEN` | 403 | Bootstrap scope (or `forbidRotate`) and a wrap already exists — first enroll only; concurrent losers of the atomic insert also receive this code |
+| `RECOVERY_PLAN_REQUIRED` | 403 | Plan does not allow recovery key (should not apply to default Free) |
+
+With `registration_recovery`, enroll is **atomic insert-if-absent** (`ON CONFLICT DO NOTHING`). Rotation requires a full session and `POST /account/recovery/key/rotate`.
+
+### `POST /account/recovery/key/ack-export`
+
+Marks the recovery key as exported (copy / PDF). Idempotent for a full session once `exportedAt` is set.
+
+**Auth:** Same as enroll (full session or `registration_recovery`).
+
+**Request body:** empty object `{}`.
+
+**Response `200`:** Same aggregate shape as `GET /account/recovery` (status after ack).
+
+| `error` | HTTP | When |
+|---------|------|------|
+| `AUTH_REQUIRED` | 401 | Missing/invalid Bearer (including a second ack with a bootstrap token that was already revoked) |
+| `RECOVERY_KEY_NOT_ENROLLED` | 404 | No wrap enrolled yet |
+
+**Bootstrap revoke:** On success with `scope: registration_recovery`, the server **revokes** that access token. Clients must not re-ack with the same bootstrap Bearer (treat a local “already exported” flag as success). Full sessions may ack again without revoke.
 
 ---
 
@@ -585,7 +626,7 @@ Grants or updates explicit shared access for a workspace member, stores recipien
 | Field | Type | Required | Notes |
 |--------|------|----------|--------|
 | `recipientUserId` | uuid | Yes | Must already have workspace access. |
-| `encryptedVaultKey` | object (`EncryptedBlob`) | Yes | Wrapped key for recipient in canonical envelope. In production hybrid-by-default path: `crypto_version >= 2` and `meta.key_wrap_scheme = \"hybrid_ecc_pq_v1\"`. |
+| `encryptedVaultKey` | object (`EncryptedBlob`) | Yes | Wrapped key for recipient in canonical envelope. Hybrid-by-default in every `DEPLOY_ENV`: `crypto_version >= 2` and `meta.key_wrap_scheme = \"hybrid_ecc_pq_v1\"`. |
 | `encryptedPayload` | object (`EncryptedBlob`) | Yes | Opaque sync ciphertext for `VAULT_SHARE`. |
 | `signature` | object (`HybridSignatureEnvelope`) | Yes | Hybrid integrity signature (`context = vault.share`). |
 | `baseVersion` | integer | Yes | Expected event-log head version. |
@@ -606,7 +647,7 @@ Revokes explicit member access, applies key rotation wraps for all remaining act
 | Field | Type | Required | Notes |
 |--------|------|----------|--------|
 | `recipientUserId` | uuid | Yes | Member to revoke. |
-| `rotatedVaultKeys` | array | Yes | Non-empty full recipient set after revoke (`{ userId, encryptedVaultKey: EncryptedBlob }[]`), each wrap follows the same hybrid-by-default contract in production. |
+| `rotatedVaultKeys` | array | Yes | Non-empty full recipient set after revoke (`{ userId, encryptedVaultKey: EncryptedBlob }[]`), each wrap follows the same hybrid-by-default contract in every `DEPLOY_ENV`. |
 | `encryptedPayload` | object (`EncryptedBlob`) | Yes | Opaque sync ciphertext for `VAULT_KEY_ROTATION`. |
 | `signature` | object (`HybridSignatureEnvelope`) | Yes | Hybrid integrity signature (`context = vault.revoke`). |
 | `baseVersion` | integer | Yes | Expected event-log head version. |
@@ -633,7 +674,7 @@ Standalone key rotation trigger (security incident or manual rotation). The clie
 
 | Field | Type | Required | Notes |
 |--------|------|----------|--------|
-| `rotatedVaultKeys` | array | Yes | Non-empty; **must cover every active recipient** (`{ userId, encryptedVaultKey: EncryptedBlob }[]`). Each wrap must follow the hybrid-by-default contract in production (`crypto_version >= 2`, `meta.key_wrap_scheme = "hybrid_ecc_pq_v1"`, `meta.recipient_user_id` matches). |
+| `rotatedVaultKeys` | array | Yes | Non-empty; **must cover every active recipient** (`{ userId, encryptedVaultKey: EncryptedBlob }[]`). Each wrap must follow the hybrid-by-default contract in every `DEPLOY_ENV` (`crypto_version >= 2`, `meta.key_wrap_scheme = "hybrid_ecc_pq_v1"`, `meta.recipient_user_id` matches). |
 | `encryptedPayload` | object (`EncryptedBlob`) | Yes | Opaque sync ciphertext for `VAULT_KEY_ROTATION` event. |
 | `signature` | object (`HybridSignatureEnvelope`) | Yes | Hybrid integrity signature (`context = vault.rotate`). |
 | `baseVersion` | integer | Yes | Expected event-log head version. |
@@ -746,9 +787,16 @@ Allowed `eventType` values (must match exactly):
       "version": 1,
       "createdAt": "2026-01-01T12:00:00.000Z"
     }
-  ]
+  ],
+  "latestVersion": 1,
+  "hasMore": false
 }
 ```
+
+| Field | Notes |
+|--------|------|
+| `latestVersion` | Max `version` in `events`, or `afterVersion` when the page is empty. |
+| `hasMore` | `false` while the API returns the full remainder in one response. Clients must stop paging when `hasMore` is false (do not issue an empty confirmation GET). |
 
 **Errors:**
 
@@ -828,9 +876,13 @@ Per-user workspace personal metadata stream (folders, item→folder assignments)
       "version": 1,
       "createdAt": "2026-01-01T12:00:00.000Z"
     }
-  ]
+  ],
+  "latestVersion": 1,
+  "hasMore": false
 }
 ```
+
+`latestVersion` / `hasMore` have the same meaning as on `GET /vaults/:vaultId/events`.
 
 Allowed `eventType` values: `FOLDER_CREATE`, `FOLDER_UPDATE`, `FOLDER_DELETE`, `ITEM_FOLDER_ASSIGN`.
 
@@ -1064,13 +1116,27 @@ Renames a trusted or pending device owned by the user.
 
 Revokes a trusted or pending device owned by the authenticated user (settings dismiss / revoke). Does **not** require `X-Device-Id`. Approval-flow reject with a trusted approver remains `POST …/reject`.
 
+Registering a fingerprint that already belongs to a trusted device does not replace that device's public key or share, and new keys do not become trusted. Vault, workspace, event, recovery-wrap, account profile, vault-unlock status, and unlock-bootstrap routes require the session's device to be trusted. Unlock bootstrap returns key material only for that trusted device and does not use a client fingerprint. A session whose device is not trusted receives only that device from `GET /devices`. Attaching a session to an existing device is `POST /devices/:deviceId/bind-challenge` then `POST /devices/:deviceId/bind-session` with an Ed25519 signature of that one-time challenge by the device private key. Bind challenges live in shared Redis (TTL) and are single-use. `challenge_id` and `signature` must be strings (`400 DEVICE_BAD_REQUEST` otherwise). Name, app, and OS metadata change only after that proof. A login on that same fingerprint uses this signed bind instead of register. When the client lost its device signing seed but still holds the vault device share, `bind-session` accepts `share_proof` plus `new_device_public_key` instead of a signature. That rotates only the signing public key, does not replace the device share, and does not call register, so a trusted fingerprint is not `409`. An invalid signature is not retried as a share proof. `share_proof` and `new_device_public_key` must be strings (`400` otherwise). `POST /devices/:deviceId/request-key-rebind` demotes a device only after the same challenge proof and only when the request fingerprint matches that device; otherwise the row is unchanged. An unbound full session `GET /devices` returns only the row for the requested fingerprint. A session bound to a device that is not trusted returns only that device. The **current device** is the session’s `device_id`. Ids compare as integers, so a leading-zero form of the same id is still the current device. A full Bearer session with no `device_id` cannot revoke devices unless `sign_out: true`, and cannot call vault or workspace routes until a new registration or a signed bind attaches a device. Header-auth may still send `X-Device-Id`. Revoking the current device is rejected unless `sign_out: true`. On success, and on reject, block, or any other transition to revoked or blocked, Core deletes server sessions bound to that device. A session already bound to a device is not moved to another device by a later register. With `sign_out: true`, Core also deletes the caller’s access-token session.
+
 **Auth:** Bearer (or allowed `X-User-Id`).
 
-**Request body:** optional `{ "reason": "string" }`.
+**Request body:** optional `{ "reason": "string", "sign_out": true }`.
 
 **Response `200`:** `{ "device_id": "uuid", "status": "revoked" }`
 
-**Errors:** `AUTH_REQUIRED` 401, `DEVICE_NOT_FOUND` 404.
+**Errors:** `AUTH_REQUIRED` 401, `DEVICE_BAD_REQUEST` 400 (invalid id), `DEVICE_REVOKE_CURRENT_FORBIDDEN` 403, `DEVICE_NOT_FOUND` 404.
+
+### `POST /devices/:deviceId/request-key-rebind`
+
+Replace lost device signing keys on an already-trusted (or pending) install and demote the device to `pending` so **another** trusted device must approve. Requires a bind challenge proved by the current device key signature or by `share_proof`, and the request fingerprint must match that device. Otherwise the device row is unchanged (`400`, `403 DEVICE_REBIND_FINGERPRINT_MISMATCH`, or `404`). Never silently re-trusts. When the account has no other trusted device, returns `409 DEVICE_REBIND_REQUIRES_RECOVERY` (client must use account recovery / `claim_after_recovery`).
+
+**Auth:** Bearer unbound full session allowed (same as register/bind).
+
+**Request body:** `{ "device_public_key": "…", "device_share": "…", "device_name"?: "…", … }` (same metadata fields as register).
+
+**Response `200`:** `{ "device_id": "…", "status": "pending_approval" }`
+
+**Errors:** `AUTH_REQUIRED` 401, `DEVICE_BAD_REQUEST` 400, `DEVICE_NOT_FOUND` 404, `DEVICE_REBIND_REQUIRES_RECOVERY` 409.
 
 ---
 

@@ -80,7 +80,7 @@ Server stores:
 
 HTTP contract: [`docs/api_contracts.md`](../api_contracts.md) (`POST /auth/register/complete`).
 
-**Session after registration:** Core does **not** issue an access token in the `register/complete` response. The new user must perform the normal email login flow (`POST /auth/email/start` → `confirm` → `bootstrap` or `two-factor/verify`) to obtain a Bearer session. See transactional mail side-effects in [`docs/backend-email.md`](../backend-email.md).
+**Session after registration:** On first success, Core may issue a short-lived bootstrap Bearer with scope `registration_recovery` (default TTL 15 minutes). The session row stores the registration `device_id`; requests with this scope are rejected if that binding is missing. The token authorizes only account recovery key enroll (first enroll only — rotation forbidden) and export ack; ack revokes the bootstrap token. It is **not** a full session and is omitted on idempotent replay. The new user must perform the normal email login flow (`POST /auth/email/start` → `confirm` → `bootstrap` or `two-factor/verify`) to obtain a full Bearer session. See transactional mail side-effects in [`docs/backend-email.md`](../backend-email.md).
 
 ---
 

@@ -1,8 +1,15 @@
-import type { ItemFieldV2, ItemPlaintextV2 } from "@okkey/types";
+import type { ItemFieldV2, ItemPlaintextV2, TotpAlgorithm } from "@okkey/types";
 import {
   formatKeyFieldAddressCopyValue,
   parseKeyFieldAddressValue,
 } from "@okkey/ui/lib/key-field-address";
+
+import {
+  DEFAULT_TOTP_ALGORITHM,
+  DEFAULT_TOTP_DIGITS,
+  DEFAULT_TOTP_PERIOD_SECONDS,
+  normalizeTotpAlgorithm,
+} from "./item-totp.js";
 
 export type ExtensionItemListRecord = {
   id: string;
@@ -215,6 +222,7 @@ export type LoginAutofillSecrets = {
   totpSecretBase32: string;
   totpPeriodSeconds: number;
   totpDigits: number;
+  totpAlgorithm: TotpAlgorithm;
 };
 
 function firstFilledText(item: ItemPlaintextV2, predicate: (field: ItemFieldV2) => boolean): string {
@@ -235,8 +243,9 @@ export function extractLoginAutofillSecrets(item: ItemPlaintextV2): LoginAutofil
   let username = "";
   let password = "";
   let totpSecretBase32 = "";
-  let totpPeriodSeconds = 30;
-  let totpDigits = 6;
+  let totpPeriodSeconds = DEFAULT_TOTP_PERIOD_SECONDS;
+  let totpDigits = DEFAULT_TOTP_DIGITS;
+  let totpAlgorithm: TotpAlgorithm = DEFAULT_TOTP_ALGORITHM;
 
   for (const field of orderedItemFields(item)) {
     if (!username && (field.id === "login" || field.type === "email") && field.value.kind === "text") {
@@ -247,8 +256,13 @@ export function extractLoginAutofillSecrets(item: ItemPlaintextV2): LoginAutofil
     }
     if (!totpSecretBase32 && field.value.kind === "totp") {
       totpSecretBase32 = field.value.secretBase32.trim();
-      totpPeriodSeconds = field.value.periodSeconds && field.value.periodSeconds > 0 ? field.value.periodSeconds : 30;
-      totpDigits = field.value.digits && field.value.digits > 0 ? field.value.digits : 6;
+      totpPeriodSeconds =
+        field.value.periodSeconds && field.value.periodSeconds > 0
+          ? field.value.periodSeconds
+          : DEFAULT_TOTP_PERIOD_SECONDS;
+      totpDigits =
+        field.value.digits && field.value.digits > 0 ? field.value.digits : DEFAULT_TOTP_DIGITS;
+      totpAlgorithm = normalizeTotpAlgorithm(field.value.algorithm);
     }
   }
 
@@ -263,7 +277,7 @@ export function extractLoginAutofillSecrets(item: ItemPlaintextV2): LoginAutofil
     return null;
   }
 
-  return { username, password, totpSecretBase32, totpPeriodSeconds, totpDigits };
+  return { username, password, totpSecretBase32, totpPeriodSeconds, totpDigits, totpAlgorithm };
 }
 
 /** Copy-guard applies to login / password (not URL, TOTP, notes). */

@@ -17,12 +17,18 @@ import {
   buildTemplateUpdatePayload,
   syncTemplateFaviconForSnapshot,
 } from "../../items/itemTemplateHelpers";
-import { keyFieldFileValueFromFaviconId, syncItemFaviconForPlaintext } from "../../items/syncItemFavicon";
+import {
+  attachWebsiteFaviconFromNetwork,
+  keyFieldFileValueFromFaviconId,
+  seedFaviconUrlCacheAfterUpload,
+  shouldAttachWebsiteFaviconInBackground,
+  syncItemFaviconForPlaintext,
+} from "../../items/syncItemFavicon";
 import { useWorkspaceItemTemplates } from "../../items/useWorkspaceItemTemplates";
 import { useWorkspaceItems } from "../../items/WorkspaceItemsContext";
 import { useWorkspaceVaultProfiles } from "../../items/WorkspaceVaultProfilesContext";
 import { useLocale } from "../../locale/LocaleContext";
-import { runSaveWithToast } from "../../lib/saveWithToast";
+import { formatSaveError, runSaveWithToast } from "../../lib/saveWithToast";
 import PopupSaveButton from "../ui/PopupSaveButton";
 import { createKeyFormEditorMessages } from "../key-form/keyFormI18n";
 import {
@@ -254,7 +260,8 @@ export default function EditItemPopup({
         {
           loading: t("web.toast.save.loading"),
           success: t("web.toast.save.success"),
-          error: t("web.editItemPopup.saveErrorGeneric"),
+          error: t("web.toast.save.error"),
+          conflict: t("web.toast.save.conflict"),
         },
         async () => {
           if (itemContentChanged) {
@@ -266,6 +273,7 @@ export default function EditItemPopup({
             let updatedItem = buildItemFromEditSavePayload(uploadedPayload, uploadedPayload.createdAtMs!, item);
             let uploadedFavicon: KeyFieldFileValue | undefined;
             try {
+              // Reuse form preview / keep icon when URLs unchanged — never block Save on site fetch.
               const faviconSync = await syncItemFaviconForPlaintext(
                 accessToken,
                 itemVaultKey,
@@ -275,7 +283,37 @@ export default function EditItemPopup({
               );
               updatedItem = faviconSync.item;
               uploadedFavicon = faviconSync.uploadedFavicon;
+              seedFaviconUrlCacheAfterUpload({
+                vaultId: uploadedPayload.vaultId,
+                itemId: uploadedPayload.itemId,
+                uploadedFavicon: faviconSync.uploadedFavicon,
+                uploadedPngBytes: faviconSync.uploadedPngBytes,
+              });
               await updateItem(updatedItem);
+              if (shouldAttachWebsiteFaviconInBackground(updatedItem, faviconSyncInput)) {
+                void attachWebsiteFaviconFromNetwork(accessToken, itemVaultKey, updatedItem)
+                  .then(async (attached) => {
+                    if (!attached?.item.faviconId) {
+                      return;
+                    }
+                    seedFaviconUrlCacheAfterUpload({
+                      vaultId: uploadedPayload.vaultId,
+                      itemId: uploadedPayload.itemId,
+                      uploadedFavicon: attached.uploadedFavicon,
+                      uploadedPngBytes: attached.uploadedPngBytes,
+                    });
+                    await updateItem(attached.item);
+                    if (updatedItem.faviconId && updatedItem.faviconId !== attached.item.faviconId) {
+                      await deleteKeyFieldFileAttachment({
+                        accessToken,
+                        vaultId: item.vaultId,
+                        itemId: item.itemId,
+                        file: keyFieldFileValueFromFaviconId(updatedItem.faviconId),
+                      }).catch(() => undefined);
+                    }
+                  })
+                  .catch(() => undefined);
+              }
             } catch (error) {
               const filesToDelete = uploadedFavicon ? [...uploadedFiles, uploadedFavicon] : uploadedFiles;
               await Promise.allSettled(
@@ -310,7 +348,9 @@ export default function EditItemPopup({
       closePopup();
       setShowValidation(false);
     } catch (error) {
-      setSaveError(error instanceof Error ? error.message : t("web.editItemPopup.saveErrorGeneric"));
+      setSaveError(
+        formatSaveError(error, t("web.toast.save.error"), t("web.editItemPopup.saveConflict")),
+      );
     } finally {
       setSaving(false);
     }

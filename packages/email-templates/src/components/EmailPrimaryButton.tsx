@@ -13,8 +13,8 @@ type EmailPrimaryButtonProps = {
 };
 
 /**
- * Matches web primary Button, size default: h-9 (36px), px-4 py-2, rounded-md (8px),
- * text-sm / font-medium, bg-primary (#3B82F6) / text-primary-foreground.
+ * Primary CTA: h-9 (36px), px-4 py-2, rounded-md (8px), text-sm / font-medium.
+ * Uses EMAIL_PRIMARY (#2563EB) for ≥4.5:1 contrast with white (web #3B82F6 is ~3.68:1).
  */
 export function EmailPrimaryButton({ href, children }: EmailPrimaryButtonProps) {
   return (

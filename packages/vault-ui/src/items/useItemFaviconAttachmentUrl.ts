@@ -8,6 +8,29 @@ function cacheKey(input: { vaultId: string; itemId: string; faviconId: string })
   return `${input.vaultId}:${input.itemId}:${input.faviconId}`;
 }
 
+/**
+ * Seed the attachment URL cache with bytes already on the client (e.g. right after
+ * upload). Avoids an immediate GET /attachments that would re-download the same PNG.
+ */
+export function seedItemFaviconAttachmentUrl(input: {
+  vaultId: string;
+  itemId: string;
+  faviconId: string;
+  pngBytes: Uint8Array;
+}): string {
+  const key = cacheKey(input);
+  const existing = faviconUrlCache.get(key);
+  if (existing) {
+    return existing;
+  }
+  const copy = new Uint8Array(input.pngBytes.byteLength);
+  copy.set(input.pngBytes);
+  const url = URL.createObjectURL(new Blob([copy], { type: "image/png" }));
+  faviconUrlCache.set(key, url);
+  pendingFaviconUrlCache.delete(key);
+  return url;
+}
+
 export function useItemFaviconAttachmentUrl(input: {
   apiBaseUrl: string;
   accessToken: string | null;

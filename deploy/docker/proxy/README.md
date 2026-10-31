@@ -63,7 +63,11 @@ WEBAUTHN_ORIGINS=https://app.example.com
 WEBAUTHN_RP_ID=example.com
 OKKEY_WEB_HOST=app.example.com
 OKKEY_API_HOST=api.example.com
+# nginx appends one X-Forwarded-For hop; API must trust it for per-IP rate limits
+TRUSTED_PROXY_HOPS=1
 ```
+
+nginx reaches the API as `api:4000` on the Compose network (`OKKEY_API_UPSTREAM`). The prod compose publishes the API host port on **`127.0.0.1` only** — do not change that publish to `0.0.0.0` while `TRUSTED_PROXY_HOPS≥1`, or clients could bypass the proxy and forge `X-Forwarded-For`.
 
 From a **git checkout** of this repo (recommended for `--build`):
 

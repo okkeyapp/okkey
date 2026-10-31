@@ -25,8 +25,12 @@ import {
 import { useEffect, useMemo, useRef, useState, useCallback, type ComponentProps, type PointerEvent } from "react";
 import { Outlet, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import workspaceTenancyModule from "@okkey-enterprise/workspace-tenancy";
-import { tryCompletePendingVaultWraps } from "@okkey-enterprise/workspace-members";
+import {
+  canCompletePendingVaultWraps,
+  tryCompletePendingVaultWraps,
+} from "@okkey-enterprise/workspace-members";
 import { refreshWorkspaceFoldersCachesForIds } from "@okkey/vault";
+import { toast } from "sonner";
 
 import AppShellNavLink from "../components/workspace/AppShellNavLink";
 import { useAuthVault, useAuthenticatedCoreClient } from "../auth/AuthVaultContext";
@@ -239,13 +243,36 @@ export default function WorkspaceRoutesLayout() {
     if (!webEnterpriseModulesActive()) {
       return;
     }
+    // Contract requires `members:get`; builtin user role has none — do not probe (403 spam).
+    if (!workspacePermissionsReady || !canCompletePendingVaultWraps(workspacePermissions)) {
+      return;
+    }
     void tryCompletePendingVaultWraps({
       core,
       workspaceId: resolvedWorkspaceId,
       userId,
       accountVaultKey: vaultKey,
-    }).catch(() => undefined);
-  }, [core, resolvedWorkspaceId, userId, vaultKey, vaultUnlocked]);
+    })
+      .then((result) => {
+        if (result.skippedInvalidKeys > 0) {
+          toast.warning(
+            t("web.workspace.pendingVaultWraps.skippedInvalidKeys", {
+              count: result.skippedInvalidKeys,
+            }),
+          );
+        }
+      })
+      .catch(() => undefined);
+  }, [
+    core,
+    resolvedWorkspaceId,
+    t,
+    userId,
+    vaultKey,
+    vaultUnlocked,
+    workspacePermissions,
+    workspacePermissionsReady,
+  ]);
 
   // API-first rematerialize personal folders for every workspace after unlock
   // (personal-events from version 0 → decrypt → tree). Same path as active

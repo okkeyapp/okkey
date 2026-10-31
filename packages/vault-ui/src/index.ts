@@ -251,7 +251,10 @@ export {
   type ItemsListMonitoringFilter,
 } from "./filter/ItemsListFilterDropdown.js";
 
-export { useItemFaviconAttachmentUrl } from "./items/useItemFaviconAttachmentUrl.js";
+export {
+  useItemFaviconAttachmentUrl,
+  seedItemFaviconAttachmentUrl,
+} from "./items/useItemFaviconAttachmentUrl.js";
 export { useWorkspaceLogoUrl } from "./items/useWorkspaceLogoUrl.js";
 
 export {

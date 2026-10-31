@@ -2,10 +2,18 @@ import { Section, Text } from "@react-email/components";
 import * as React from "react";
 
 import { EmailPrimaryButton } from "./EmailPrimaryButton.js";
-import { EMAIL_PRIMARY_TEXT, EMAIL_SECONDARY_TEXT, EmailShell } from "./EmailShell.js";
+import {
+  EMAIL_CLASS_INK,
+  EMAIL_CLASS_MUTED,
+  EMAIL_PRIMARY_TEXT,
+  EMAIL_SECONDARY_TEXT,
+  EmailShell,
+} from "./EmailShell.js";
 import { EmailStandardFooter } from "./EmailStandardFooter.js";
 
 export interface RecoveryActionEmailProps {
+  lang: string;
+  title: string;
   lead: string;
   detailLine: string;
   /** Optional second meta line (e.g. contact recovery "Requested: …"). */
@@ -14,13 +22,16 @@ export interface RecoveryActionEmailProps {
   helpUrl: string;
   ctaLabel: string;
   noteNoUrl: string;
+  /** Body warning at the bottom, above the shared footer separator. */
   noteIgnore: string;
   noReply: string;
   ignoreIfMistake: string;
 }
 
-/** Shared layout for enterprise recovery notify emails (device approve / contact release / invite). */
+/** Shared layout for enterprise recovery notify emails (contact release / invite). */
 export function RecoveryActionEmail({
+  lang,
+  title,
   lead,
   detailLine,
   requestLine,
@@ -35,28 +46,41 @@ export function RecoveryActionEmail({
   const hasUrl = helpUrl.trim().length > 0;
   return (
     <EmailShell
+      lang={lang}
+      title={title}
       preview={lead}
-      footer={
-        <EmailStandardFooter
-          footnotes={<Text style={footnoteStyle}>{noteIgnore}</Text>}
-          noReply={noReply}
-          ignoreIfMistake={ignoreIfMistake}
-        />
-      }
+      footer={<EmailStandardFooter noReply={noReply} ignoreIfMistake={ignoreIfMistake} />}
     >
-      <Text style={leadStyle}>{lead}</Text>
+      <Text className={EMAIL_CLASS_INK} style={leadStyle}>
+        {lead}
+      </Text>
       <Section style={listStyle}>
-        <Text style={metaStyle}>{detailLine}</Text>
-        {requestLine ? <Text style={metaStyle}>{requestLine}</Text> : null}
-        {expiresLine ? <Text style={metaStyle}>{expiresLine}</Text> : null}
+        <Text className={EMAIL_CLASS_MUTED} style={metaStyle}>
+          {detailLine}
+        </Text>
+        {requestLine ? (
+          <Text className={EMAIL_CLASS_MUTED} style={metaStyle}>
+            {requestLine}
+          </Text>
+        ) : null}
+        {expiresLine ? (
+          <Text className={EMAIL_CLASS_MUTED} style={metaStyle}>
+            {expiresLine}
+          </Text>
+        ) : null}
       </Section>
       {hasUrl ? (
         <Section style={ctaWrapStyle}>
           <EmailPrimaryButton href={helpUrl}>{ctaLabel}</EmailPrimaryButton>
         </Section>
       ) : (
-        <Text style={noteStyle}>{noteNoUrl}</Text>
+        <Text className={EMAIL_CLASS_MUTED} style={noteStyle}>
+          {noteNoUrl}
+        </Text>
       )}
+      <Text className={EMAIL_CLASS_MUTED} style={warningStyle}>
+        {noteIgnore}
+      </Text>
     </EmailShell>
   );
 }
@@ -83,17 +107,17 @@ const noteStyle: React.CSSProperties = {
   fontSize: "14px",
   lineHeight: "22px",
   color: EMAIL_SECONDARY_TEXT,
-  margin: 0,
+  margin: "0 0 16px",
 };
 
 const ctaWrapStyle: React.CSSProperties = {
   marginTop: "4px",
-  marginBottom: 0,
+  marginBottom: "16px",
 };
 
-const footnoteStyle: React.CSSProperties = {
-  fontSize: "13px",
-  lineHeight: "20px",
+const warningStyle: React.CSSProperties = {
+  fontSize: "14px",
+  lineHeight: "22px",
   color: EMAIL_SECONDARY_TEXT,
-  margin: "0 0 8px",
+  margin: 0,
 };

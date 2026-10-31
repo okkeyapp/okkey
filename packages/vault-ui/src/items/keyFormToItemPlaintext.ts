@@ -4,6 +4,12 @@ import type { EntityId } from "@okkey/types";
 import { normalizePinValue, parseKeyFieldFileValue, serializeKeyFieldSecretRaw } from "@okkey/ui";
 
 import type { KeyFormEditorField, KeyFormEditorSection } from "../key-form/KeyFormEditor.js";
+import {
+  DEFAULT_TOTP_ALGORITHM,
+  DEFAULT_TOTP_DIGITS,
+  DEFAULT_TOTP_PERIOD_SECONDS,
+  resolveTotpFieldFromFormInput,
+} from "../key-form/totpFromSecret.js";
 import { serializeSelectFieldValue } from "./keyFormSelectField.js";
 
 function sectionsForItemPlaintext(sections: readonly KeyFormEditorSection[]): KeyFormEditorSection[] {
@@ -54,8 +60,30 @@ function fieldValueFromForm(field: KeyFormEditorField): ItemFieldV2["value"] {
         url: raw,
         urlAutofillScope: field.urlAutofillScope ?? "entire-site",
       };
-    case "totp":
-      return { kind: "totp", secretBase32: raw, periodSeconds: 30, digits: 6 };
+    case "totp": {
+      const resolved = resolveTotpFieldFromFormInput({
+        raw,
+        storedPeriodSeconds: field.totpPeriodSeconds,
+        storedDigits: field.totpDigits,
+        storedAlgorithm: field.totpAlgorithm,
+      });
+      if (!resolved) {
+        return {
+          kind: "totp",
+          secretBase32: "",
+          periodSeconds: DEFAULT_TOTP_PERIOD_SECONDS,
+          digits: DEFAULT_TOTP_DIGITS,
+          algorithm: DEFAULT_TOTP_ALGORITHM,
+        };
+      }
+      return {
+        kind: "totp",
+        secretBase32: resolved.secretBase32,
+        periodSeconds: resolved.periodSeconds,
+        digits: resolved.digits,
+        algorithm: resolved.algorithm,
+      };
+    }
     case "multiline-text": {
       const noteValue: { kind: "note"; note: string; disableClickCopy?: boolean } = { kind: "note", note: raw };
       if (field.disableClickCopy) {

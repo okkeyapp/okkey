@@ -71,9 +71,9 @@ Two gates on self-hosted:
 | Gate | Meaning |
 |---|---|
 | Enterprise modules on? | `ENTERPRISE_MODULES` / `VITE_ENTERPRISE_MODULES=true` **and** loadable sibling `okkey-enterprise` → EE UI/plugins available. Without modules, paid routes are absent (404) and matrix is FREE even if SQL says ENTERPRISE. |
-| Workspace feature matrix | With modules loaded, `workspace.plan_tier` (+ custom overrides) via `hasPlanFeature` — same as SaaS. FREE = view-only paid settings cards (no create/edit); ENTERPRISE = full. |
+| Workspace feature matrix | With modules loaded → ENTERPRISE matrix via `resolveEntitlementPlanTier` / `hasPlanFeature` (`plan_tier` ignored). Modules off → FREE + `SELF_HOSTED_FREE_EXTRA`. |
 
-License token from **`okkey-license`** (future/current sales flow) is what promotes self-host `plan_tier` to ENTERPRISE. Setting `plan_tier=ENTERPRISE` alone does **not** load modules.
+Setting `plan_tier=ENTERPRISE` alone does **not** load modules. Future signed license from **`okkey-license`** may bind instance claims; interim self-host paid access is modules-only.
 
 Canonical contract: Project store `docs/license-and-updates.md`. Enterprise docs: `okkey-enterprise/docs/architecture/04_feature_gating.md`, `10_license_enforcement.md`.
 
@@ -82,7 +82,7 @@ Canonical contract: Project store `docs/license-and-updates.md`. Enterprise docs
 | Deployment | Who changes `plan_tier` | Mechanism (future product surfaces) |
 |---|---|---|
 | **SaaS** | Subscription / billing lifecycle | Checkout → payment webhook → update `plan_tier` (and seats). Self-serve “Сменить тариф”. |
-| **Self-hosted** | License / sales | Modules load EE UI; paid create/edit unlock when `plan_tier` is ENTERPRISE (license). **No** self-serve Stripe on self-hosted. |
+| **Self-hosted** | Display / catalog only | Modules decide paid create/edit. `plan_tier` stays FREE for new workspaces and does not gate features. **No** self-serve Stripe on self-hosted. |
 
 Core stores the tier and matrix; commercial write paths (subscribe, invoices) live in `okkey-enterprise`. Self-host license issuance lives in **`okkey-license`**.
 
@@ -93,8 +93,8 @@ Core stores the tier and matrix; commercial write paths (subscribe, invoices) li
 ### Existing `ENTERPRISE` rows (dev strategy)
 
 - Rows already on `ENTERPRISE` **stay** `ENTERPRISE` — no remapping to `TEAM` / `PREMIUM`.
-- New workspaces always default to `plan_tier=FREE` (including when modules are on). Self-host paid create/edit require modules **and** a paid `plan_tier`.
-- Optional local upgrade of FREE → ENTERPRISE for licensed smoke (modules must still be on):
+- New workspaces always default to `plan_tier=FREE` (including when modules are on). On self-host, paid create/edit require modules only (`plan_tier` ignored).
+- Optional local display upgrade (does not change self-host gating when modules are on):
 
 ```sql
 UPDATE workspaces
@@ -207,7 +207,7 @@ Enterprise / SaaS build:
 - includes enterprise plugins
 - ships as `okkey-enterprise/*` images
 - SaaS: deployment mode `saas` (from enterprise env when modules load) + `ENTERPRISE_MODULES=true` (workspace features via `plan_tier`)
-- Self-hosted enterprise: `self_hosted` + enterprise modules / loadable sibling. Modules unlock EE UI; `plan_tier` gates paid features (FREE = read-only cards / upsell; ENTERPRISE = full). License from `okkey-license` sets tier when present.
+- Self-hosted enterprise: `self_hosted` + enterprise modules / loadable sibling. Modules unlock EE UI and paid create/edit (`plan_tier` ignored). Modules off → FREE + `SELF_HOSTED_FREE_EXTRA`.
 
 ---
 
@@ -217,6 +217,6 @@ Core schema is stable and public.
 Enterprise migrations **only add** tables and indexes.
 No core table is altered or removed by enterprise code.
 
-On self-hosted with modules loaded, `plan_tier=FREE` keeps paid settings view-only (same card UX as SaaS FREE); `plan_tier=ENTERPRISE` unlocks create/edit. SaaS uses catalog tiers / billing webhooks.
+On self-hosted with modules loaded, entitlements are ENTERPRISE regardless of `plan_tier`. SaaS uses catalog tiers / billing webhooks.
 
 Custom selective plans use `plan_custom_override` + `plan_feature_overrides` (migration `0031_workspace_plan_custom_override.sql`) instead of inventing a `CUSTOM` tier string.

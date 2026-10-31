@@ -18,7 +18,12 @@ export interface SyncQueue {
 
 /** Item event replay only (no WASM). Helpers that encrypt payloads live in `@okkey/sync/item-sync`. */
 export { replayItemPlaintextEvents, type ItemVaultReplayState } from "./item-replay.js";
-export { applyItemPlaintextToReplayMap } from "./item-replay-state.js";
+export {
+  applyItemPlaintextToReplayMap,
+  isUnmarkedItemSoftDelete,
+  shouldApplyItemSoftDelete,
+} from "./item-replay-state.js";
+export { itemPlaintextMatchesReferencedId } from "./item-id-binding.js";
 
 export {
   replayFolderAndAssignEvents,
@@ -60,6 +65,7 @@ export {
 export {
   InMemoryOutboxStore,
   SyncOutboxClient,
+  ITEM_UPDATE_CONFLICT,
   computeBackoffDelayMs,
   type ItemUpdateRebaseContext,
   type OutboxClientOptions,
@@ -71,6 +77,13 @@ export {
   type OutboxTransport,
   type VersionMismatchDetails,
 } from "./outbox.js";
+
+export {
+  areContiguousEventVersions,
+  eventsListHasMore,
+  latestVersionFromEventsPage,
+  type EventsListPageLike,
+} from "./events-list-page.js";
 
 export { IndexedDbOutboxStore, type IndexedDbOutboxStoreOptions } from "./outbox-store-indexeddb.js";
 export { SqliteOutboxStore, type SqliteDriver, type SqliteOutboxStoreOptions } from "./outbox-store-sqlite.js";

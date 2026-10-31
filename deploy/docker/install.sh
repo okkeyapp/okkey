@@ -39,8 +39,173 @@ env_file_value() {
   grep -E "^${key}=" .env 2>/dev/null | cut -d= -f2- || true
 }
 
+# Rewrite KEY=value in ./.env without sed (sed treats `&` `\` in the replacement).
+# Safe for RFC-valid emails and other values with metacharacters.
+replace_env() {
+  local key="$1"
+  local value="$2"
+  local tmp
+  if [[ -f .env ]] && grep -Eq "^${key}=" .env 2>/dev/null; then
+    tmp="$(mktemp "${TMPDIR:-/tmp}/okkey-env.XXXXXX")"
+    # Preserve final newline behavior; rewrite matching KEY= lines only.
+    while IFS= read -r line || [[ -n "${line}" ]]; do
+      if [[ "${line}" == "${key}="* ]]; then
+        printf '%s=%s\n' "${key}" "${value}"
+      else
+        printf '%s\n' "${line}"
+      fi
+    done < .env > "${tmp}"
+    mv "${tmp}" .env
+  else
+    printf '%s=%s\n' "${key}" "${value}" >> .env
+  fi
+}
+
+# True when /dev/tty can actually be opened (controlling tty present).
+# `-r/-w /dev/tty` can pass in CI/cloud-init/setsid without a usable ctty.
+tty_usable() {
+  { : </dev/tty; } 2>/dev/null
+}
+
+# Loose email check: must contain one @ and a dot in the domain; no spaces.
+is_valid_sales_email() {
+  local email="$1"
+  [[ -n "${email}" ]] || return 1
+  [[ "${email}" != *[[:space:]]* ]] || return 1
+  [[ "${email}" == *@*.* ]] || return 1
+  [[ "${email}" != *@*@* ]] || return 1
+  [[ "${#email}" -le 320 ]] || return 1
+  return 0
+}
+
+# Resolve required sales inbox into `sales_email` without writing install files.
+# Prefer process env, then existing ./.env, then interactive prompt; never invent a default.
+# Must run before fetch_file / .env minting so a failed check leaves the install untouched.
+resolve_sales_email() {
+  sales_email="${OKKEY_SALES_EMAIL:-}"
+  if [[ -z "${sales_email}" ]]; then
+    sales_email="$(env_file_value OKKEY_SALES_EMAIL)"
+  fi
+  if [[ -n "${sales_email}" ]] && ! is_valid_sales_email "${sales_email}"; then
+    die "OKKEY_SALES_EMAIL is invalid: ${sales_email}
+Set a real inbox address (must contain @ and a domain)."
+  fi
+  if [[ -n "${sales_email}" ]]; then
+    return 0
+  fi
+  # `curl … | bash` makes stdin a pipe (not a TTY). Prefer a usable /dev/tty when a
+  # controlling terminal is attached; hard-fail with a clear hint when there is none
+  # (CI, cloud-init, setsid, ssh without -t).
+  local prompt_tty=""
+  if tty_usable; then
+    prompt_tty="/dev/tty"
+  elif [[ -t 0 ]]; then
+    prompt_tty=""
+  else
+    die "OKKEY_SALES_EMAIL is required (non-interactive install).
+Pass it on the right of \`|\` or set it in ${OKKEY_INSTALL_DIR}/.env before re-running, e.g.
+  curl -fsSL …/install.sh | OKKEY_SALES_EMAIL=sales@your-company.example bash
+There is no built-in default address."
+  fi
+  log "==> OKKEY_SALES_EMAIL is required (license / plan-change request recipient; no default)."
+  while true; do
+    if [[ -n "${prompt_tty}" ]]; then
+      printf 'OKKEY_SALES_EMAIL: ' >"${prompt_tty}"
+      # shellcheck disable=SC2162
+      read -r sales_email <"${prompt_tty}" || true
+    else
+      printf 'OKKEY_SALES_EMAIL: ' >&2
+      read -r sales_email || true
+    fi
+    sales_email="$(printf '%s' "${sales_email}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+    if is_valid_sales_email "${sales_email}"; then
+      break
+    fi
+    if [[ -n "${prompt_tty}" ]]; then
+      printf '%s\n' "error: enter a valid email address (example: sales@your-company.example)" >"${prompt_tty}"
+    else
+      log "error: enter a valid email address (example: sales@your-company.example)" >&2
+    fi
+  done
+}
+
 need_cmd() {
   command -v "$1" >/dev/null 2>&1 || die "missing required command: $1"
+}
+
+# Cosign keyless OIDC identity for Core publish workflow
+# (.github/workflows/publish-images.yml on okkeyapp/okkey).
+OKKEY_COSIGN_CERTIFICATE_IDENTITY_REGEXP="${OKKEY_COSIGN_CERTIFICATE_IDENTITY_REGEXP:-https://github.com/okkeyapp/okkey/\.github/workflows/publish-images\.yml@refs/(heads/dev|tags/v.+)}"
+OKKEY_COSIGN_CERTIFICATE_OIDC_ISSUER="${OKKEY_COSIGN_CERTIFICATE_OIDC_ISSUER:-https://token.actions.githubusercontent.com}"
+
+# Resolve image ref used by compose for a service (env override → default GHCR).
+compose_image_ref() {
+  local env_key="$1"
+  local default_image="$2"
+  local tag="$3"
+  local image
+  image="$(env_file_value "${env_key}")"
+  image="${image:-${default_image}}"
+  printf '%s:%s\n' "${image}" "${tag}"
+}
+
+# Resolve a pulled image to a registry digest ref (name@sha256:…).
+image_digest_ref() {
+  local ref="$1"
+  local digest_line digest
+  digest_line="$(docker image inspect --format '{{index .RepoDigests 0}}' "${ref}" 2>/dev/null || true)"
+  if [[ -z "${digest_line}" || "${digest_line}" == "<no value>" ]]; then
+    die "cannot resolve digest for ${ref} after pull (RepoDigests empty).
+hint: re-pull from GHCR, or set OKKEY_SKIP_COSIGN_VERIFY=1 only for local/unsigned images."
+  fi
+  # RepoDigests is already name@sha256:…
+  if [[ "${digest_line}" == *@sha256:* ]]; then
+    printf '%s\n' "${digest_line}"
+    return 0
+  fi
+  digest="$(docker image inspect --format '{{.Id}}' "${ref}" 2>/dev/null || true)"
+  die "unexpected RepoDigests format for ${ref}: ${digest_line} (id=${digest})"
+}
+
+# Verify cosign keyless signatures for api/web/worker before compose up.
+# Skip only with an explicit flag (default: verify on). Local/preloaded
+# installs that skip pull also skip verify unless OKKEY_FORCE_COSIGN_VERIFY=1.
+verify_pulled_image_signatures() {
+  local tag="$1"
+  local skip_pull="${2:-0}"
+
+  if [[ "${OKKEY_SKIP_COSIGN_VERIFY:-}" == "1" ]]; then
+    log "==> WARNING: skipping image signature verify (OKKEY_SKIP_COSIGN_VERIFY=1)"
+    return 0
+  fi
+  if [[ "${skip_pull}" == "1" && "${OKKEY_FORCE_COSIGN_VERIFY:-}" != "1" ]]; then
+    log "==> WARNING: skipping image signature verify (OKKEY_SKIP_PULL=1; set OKKEY_FORCE_COSIGN_VERIFY=1 to require cosign)"
+    return 0
+  fi
+
+  need_cmd cosign
+  need_cmd docker
+
+  local refs=()
+  refs+=("$(compose_image_ref OKKEY_API_IMAGE ghcr.io/okkeyapp/api "${tag}")")
+  refs+=("$(compose_image_ref OKKEY_WORKER_IMAGE ghcr.io/okkeyapp/worker "${tag}")")
+  refs+=("$(compose_image_ref OKKEY_WEB_IMAGE ghcr.io/okkeyapp/web "${tag}")")
+
+  local ref digest_ref
+  for ref in "${refs[@]}"; do
+    digest_ref="$(image_digest_ref "${ref}")"
+    log "==> Verifying cosign signature: ${digest_ref}"
+    if ! cosign verify \
+      --certificate-identity-regexp "${OKKEY_COSIGN_CERTIFICATE_IDENTITY_REGEXP}" \
+      --certificate-oidc-issuer "${OKKEY_COSIGN_CERTIFICATE_OIDC_ISSUER}" \
+      "${digest_ref}"; then
+      die "cosign verify failed for ${digest_ref}.
+hint: Core images must be signed keyless by .github/workflows/publish-images.yml.
+  Install cosign (https://docs.sigstore.dev/cosign/system_config/installation/).
+  Emergency bypass only: OKKEY_SKIP_COSIGN_VERIFY=1 (prints a warning; not for prod)."
+    fi
+  done
+  log "==> Image signatures OK (api, worker, web)"
 }
 
 gen_secret() {
@@ -161,7 +326,7 @@ wait_for_api_healthy() {
 }
 
 # Resolve effective GHCR tag for a fresh install.
-# Precedence: OKKEY_IMAGE_TAG env → OKKEY_CHANNEL=prod pin → .env.example default (`dev`).
+# Precedence: OKKEY_IMAGE_TAG env → OKKEY_CHANNEL=prod pin → .env.example default (`1.0.0-beta.2`).
 resolve_image_tag_for_fresh_install() {
   if [[ -n "${OKKEY_IMAGE_TAG:-}" ]]; then
     printf '%s\n' "${OKKEY_IMAGE_TAG}"
@@ -169,21 +334,21 @@ resolve_image_tag_for_fresh_install() {
   fi
   case "${OKKEY_CHANNEL:-}" in
     prod|production)
-      # Guard: GHCR currently publishes :dev / :dev-<sha> only — no SemVer tags yet.
-      # Refuse OKKEY_CHANNEL=prod so install does not pull a missing 1.0.0-beta.2 manifest.
+      # Guard: refuse OKKEY_CHANNEL=prod until SemVer exists in GHCR.
+      # .env.example already pins 1.0.0-beta.2 (never :latest); tag publishes with v1.0.0-beta.2.
       if [[ "${OKKEY_PROD_CHANNEL_FORCE:-}" != "1" ]]; then
         die "OKKEY_CHANNEL=prod is not available yet: no SemVer image tag in GHCR (only :dev).
 Use tracking images:
   OKKEY_IMAGE_TAG=dev
-Or pin an explicit published tag when a release exists:
-  OKKEY_IMAGE_TAG=<semver>
-To force the historical pin ${OKKEY_PROD_IMAGE_TAG} anyway (pull will fail if missing):
+Or pin the prod SemVer when published:
+  OKKEY_IMAGE_TAG=1.0.0-beta.2
+To force the pin ${OKKEY_PROD_IMAGE_TAG} anyway (pull will fail if missing):
   OKKEY_PROD_CHANNEL_FORCE=1 OKKEY_CHANNEL=prod"
       fi
       printf '%s\n' "${OKKEY_PROD_IMAGE_TAG}"
       ;;
     *)
-      # Leave empty → keep .env.example value (dev).
+      # Leave empty → keep .env.example value (1.0.0-beta.2).
       printf '\n'
       ;;
   esac
@@ -225,6 +390,12 @@ cd "$OKKEY_INSTALL_DIR"
 
 log "==> Installing Okkey into ${OKKEY_INSTALL_DIR}"
 log "==> Raw base: ${OKKEY_REPO_RAW_BASE}  ref: ${OKKEY_REF}"
+
+# Obtain a valid sales inbox before any install file rewrite (compose / .env.example /
+# secrets). Failed checks must leave an existing install untouched.
+sales_email=""
+resolve_sales_email
+
 fetch_file "$COMPOSE_FILE_NAME" "./${COMPOSE_FILE_NAME}"
 fetch_file "$ENV_EXAMPLE_NAME" "./${ENV_EXAMPLE_NAME}"
 
@@ -237,17 +408,6 @@ if [[ ! -f .env ]]; then
   EMAIL_DEAD_SEAL="$(gen_secret)"
   PG_PASS="$(gen_secret)"
   MINIO_PASS="$(gen_secret)"
-
-  # Portable in-place sed (GNU/BSD)
-  replace_env() {
-    local key="$1"
-    local value="$2"
-    if sed --version >/dev/null 2>&1; then
-      sed -i "s|^${key}=.*|${key}=${value}|" .env
-    else
-      sed -i '' "s|^${key}=.*|${key}=${value}|" .env
-    fi
-  }
 
   replace_env JWT_SECRET "$JWT"
   replace_env SESSION_SECRET "$SESSION"
@@ -317,11 +477,16 @@ else
   fi
 fi
 
+replace_env OKKEY_SALES_EMAIL "${sales_email}"
+log "==> OKKEY_SALES_EMAIL=${sales_email}"
+
 image_tag="$(env_file_value OKKEY_IMAGE_TAG)"
 image_tag="${image_tag:-dev}"
 log "==> Pulling images and starting stack (compose project=$(compose_project_name), OKKEY_IMAGE_TAG=${image_tag})"
 # OKKEY_SKIP_PULL=1: use images already present locally (e.g. :local / pre-loaded tags).
+skip_pull=0
 if [[ "${OKKEY_SKIP_PULL:-}" == "1" ]]; then
+  skip_pull=1
   log "==> Skipping pull (OKKEY_SKIP_PULL=1)"
 else
   if ! run_compose .env pull; then
@@ -332,6 +497,8 @@ hint: the tag must exist in GHCR (ghcr.io/okkeyapp/{api,web,worker}).
   Or set OKKEY_SKIP_PULL=1 with local images."
   fi
 fi
+# Signature check before compose up — unsigned / mismatched digest stops install.
+verify_pulled_image_signatures "${image_tag}" "${skip_pull}"
 run_compose .env up -d
 wait_for_api_healthy
 

@@ -67,9 +67,9 @@ test("folder sync decrypts after concurrent path-less ensureWasm race", async ()
     listWorkspacePersonalEvents: async (_ws, afterVersion) => {
       listCalls += 1;
       if (afterVersion === 0) {
-        return { events };
+        return { events, afterVersion, latestVersion: 1, hasMore: false };
       }
-      return { events: [] };
+      return { events: [], afterVersion, latestVersion: afterVersion, hasMore: false };
     },
     appendWorkspacePersonalEvent: async () => {
       throw new Error("not used");
@@ -90,6 +90,9 @@ test("folder sync decrypts after concurrent path-less ensureWasm race", async ()
   const diag = controller.getLastRefreshDiagnostics();
   assert.ok(tree.length > 0, `expected folders, got ${tree.length} (listCalls=${listCalls})`);
   assert.equal(tree[0]?.label, "Работа");
+  // refresh = replayIncremental (1) + probeCurrentKeyAgainstStream (1); hasMore:false
+  // means neither path issues an empty confirmation GET (would be 3+ otherwise).
+  assert.equal(listCalls, 2);
   assert.ok(diag);
   assert.equal(diag.folderCount, 1);
   assert.ok(diag.decryptAttempts >= 1);

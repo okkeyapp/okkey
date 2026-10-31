@@ -1,8 +1,7 @@
 # Browser e2e (Playwright)
 
-Minimal Chromium smoke for the password-manager chain called out in
-[okkey-enterprise#110](https://github.com/okkeyapp/okkey-enterprise/issues/110)
-(qa/web registration → unlock → login item → second device → recovery; extension load fixture).
+Minimal Chromium smoke for the password-manager chain: registration → unlock →
+login item → second device → recovery password rotation → extension PKCE sign-in.
 
 Existing `yarn test:e2e` remains **API** email-provider tests. Browser suite is
 `yarn test:browser`.
@@ -43,17 +42,22 @@ yarn test:browser:install
 E2E_BASE_URL=http://127.0.0.1:4173 E2E_MAILPIT_URL=http://127.0.0.1:8025 yarn test:browser
 ```
 
-Extension load check (scenario 5 — load only; PKCE/autofill/lock-timeout are follow-up):
+Extension scenario (test 5 — PKCE → device trust → unlock → item). Build the
+extension and set `E2E_EXTENSION=1`. Headed Chromium needs a display; in CI we
+use `xvfb-run`:
 
 ```bash
 yarn build:extension:chromium
-# headed Chromium needs a display; in CI we use xvfb-run
-E2E_EXTENSION=1 xvfb-run --auto-servernum yarn test:browser -- extension-smoke
+E2E_EXTENSION=1 xvfb-run --auto-servernum yarn test:browser
 ```
+
+Personal-data bootstrap after first unlock opens `#editItem`; the Login create
+helper dismisses that dialog — there is no production build flag to skip it.
 
 ## CI
 
-Workflow `.github/workflows/browser-e2e.yml` runs on `push`, schedule, and
-`workflow_dispatch` (no `pull_request`). Web is built like `apps/web/Dockerfile`
-with `VITE_E2E_DISABLE_PERSONAL_DATA_BOOTSTRAP=1` so smoke is not raced by the
-personal-data Edit popup; extension is built and exercised under `xvfb-run`.
+Workflow `.github/workflows/browser-e2e.yml` runs on pull requests targeting
+`dev`, `release/**`, `hotfix/**`, and `main`, on pushes to `release/**` and
+`hotfix/**`, a weekly schedule, and `workflow_dispatch`. Pushes to `dev` and
+feature branches do not start it. Web is built like `apps/web/Dockerfile`;
+extension is built and exercised under `xvfb-run`.

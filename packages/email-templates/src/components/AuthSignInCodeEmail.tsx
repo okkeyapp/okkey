@@ -1,54 +1,70 @@
 import { Section, Text } from "@react-email/components";
 import * as React from "react";
 
-import { EMAIL_CANVAS, EMAIL_PRIMARY_TEXT, EMAIL_SECONDARY_TEXT, EmailShell } from "./EmailShell.js";
+import {
+  EMAIL_CANVAS,
+  EMAIL_CLASS_INK,
+  EMAIL_CLASS_MUTED,
+  EMAIL_CLASS_SURFACE,
+  EMAIL_PRIMARY_TEXT,
+  EMAIL_SECONDARY_TEXT,
+  EmailShell,
+} from "./EmailShell.js";
 import { EmailStandardFooter } from "./EmailStandardFooter.js";
 
 export interface AuthSignInCodeEmailProps {
+  lang: string;
+  title: string;
+  /** Inbox preheader — useful without repeating or revealing the code. */
+  preview: string;
   beforeCode: string;
   code: string;
   line2: string;
-  ignore: string;
   noReply: string;
   ignoreIfMistake: string;
 }
 
 export function AuthSignInCodeEmail({
+  lang,
+  title,
+  preview,
   beforeCode,
   code,
   line2,
-  ignore,
   noReply,
   ignoreIfMistake,
 }: AuthSignInCodeEmailProps) {
   return (
     <EmailShell
-      preview={beforeCode}
-      footer={
-        <EmailStandardFooter
-          footnotes={<Text style={footnoteStyle}>{ignore}</Text>}
-          noReply={noReply}
-          ignoreIfMistake={ignoreIfMistake}
-        />
-      }
+      lang={lang}
+      title={title}
+      preview={preview}
+      footer={<EmailStandardFooter noReply={noReply} ignoreIfMistake={ignoreIfMistake} />}
     >
-      <Text style={leadStyle}>{beforeCode}</Text>
+      <Text className={EMAIL_CLASS_INK} style={leadStyle}>
+        {beforeCode}
+      </Text>
       <Section style={codeWrapStyle}>
         <table
           align="center"
           cellPadding={0}
           cellSpacing={0}
           role="presentation"
+          className={EMAIL_CLASS_SURFACE}
           style={codeTableStyle}
         >
           <tr>
             <td style={codeCellStyle}>
-              <span style={codeStyle}>{code}</span>
+              <span className={EMAIL_CLASS_INK} style={codeStyle}>
+                {code}
+              </span>
             </td>
           </tr>
         </table>
       </Section>
-      <Text style={noteStyle}>{line2}</Text>
+      <Text className={EMAIL_CLASS_MUTED} style={noteStyle}>
+        {line2}
+      </Text>
     </EmailShell>
   );
 }
@@ -89,13 +105,6 @@ const codeStyle: React.CSSProperties = {
 const noteStyle: React.CSSProperties = {
   fontSize: "14px",
   lineHeight: "22px",
-  color: EMAIL_SECONDARY_TEXT,
-  margin: "0 0 8px",
-};
-
-const footnoteStyle: React.CSSProperties = {
-  fontSize: "13px",
-  lineHeight: "20px",
   color: EMAIL_SECONDARY_TEXT,
   margin: "0 0 8px",
 };

@@ -1,9 +1,11 @@
-import type { CoreClient } from "@okkey/api";
+import { ApiRequestError, type CoreClient } from "@okkey/api";
 import { decryptVaultItemPayload } from "@okkey/crypto";
 import {
   IndexedDbOutboxStore,
   SyncOutboxClient,
   applyItemPlaintextToReplayMap,
+  areContiguousEventVersions,
+  eventsListHasMore,
 } from "@okkey/sync";
 import {
   buildItemCreateAppendRequest,
@@ -211,7 +213,10 @@ function getEventBlob(event: SyncEventWireDto): { crypto_version: number; payloa
 async function applyVaultItemEvents(
   state: VaultItemsMaterializedState,
   events: SyncEventWireDto[],
-  decryptWirePayload: (encryptedPayloadBase64: string) => Promise<Uint8Array>,
+  decryptWirePayload: (
+    encryptedPayloadBase64: string,
+    itemId?: string | null,
+  ) => Promise<Uint8Array>,
 ): Promise<VaultItemsMaterializedState> {
   const items = new Map(state.items);
   const itemActivity = new Map(state.itemActivity);
@@ -236,13 +241,20 @@ async function applyVaultItemEvents(
 
     let plaintextBytes: Uint8Array;
     try {
-      plaintextBytes = await decryptWirePayload(blob.payload);
+      plaintextBytes = await decryptWirePayload(blob.payload, event.referencedItemId);
     } catch {
       lastAppliedVersion = event.version;
       continue;
     }
     const parsed = parseAndNormalizeItemPlaintextUtf8(plaintextBytes);
     if (!parsed) {
+      lastAppliedVersion = event.version;
+      continue;
+    }
+    if (
+      event.referencedItemId &&
+      parsed.itemId !== event.referencedItemId
+    ) {
       lastAppliedVersion = event.version;
       continue;
     }
@@ -327,6 +339,14 @@ export function createWorkspaceVaultItemsReadController(input: {
       appendVaultEvent: (vaultId, body) => input.core.appendVaultEvent(vaultId, body),
       listVaultEvents: (vaultId, afterVersion) => input.core.listVaultEvents(vaultId, afterVersion),
     },
+    {
+      decryptItemPayloadForVault: async (vaultId, encryptedPayloadBase64, itemId) => {
+        const vaultKey = await resolveVaultKey(vaultId);
+        return decryptVaultItemPayload(vaultKey, base64ToBytes(encryptedPayloadBase64), 2, {
+          itemId,
+        });
+      },
+    },
   );
 
   function ensureVaultState(vaultId: string): VaultItemsMaterializedState {
@@ -361,8 +381,13 @@ export function createWorkspaceVaultItemsReadController(input: {
   async function replayVaultIncremental(vaultId: string): Promise<void> {
     let state = ensureVaultState(vaultId);
     const vaultKey = await resolveVaultKey(vaultId);
-    const decryptWirePayload = async (encryptedPayloadBase64: string) =>
-      decryptVaultItemPayload(vaultKey, base64ToBytes(encryptedPayloadBase64), 2);
+    const decryptWirePayload = async (
+      encryptedPayloadBase64: string,
+      itemId?: string | null,
+    ) =>
+      decryptVaultItemPayload(vaultKey, base64ToBytes(encryptedPayloadBase64), 2, {
+        itemId,
+      });
 
     while (true) {
       const page = await input.core.listVaultEvents(vaultId, state.lastAppliedVersion);
@@ -371,6 +396,10 @@ export function createWorkspaceVaultItemsReadController(input: {
       }
       state = await applyVaultItemEvents(state, page.events, decryptWirePayload);
       vaultStates.set(vaultId, state);
+      // Stop when the server reports a complete page — avoids the always-empty follow-up GET.
+      if (!eventsListHasMore(page)) {
+        break;
+      }
     }
   }
 
@@ -383,7 +412,12 @@ export function createWorkspaceVaultItemsReadController(input: {
     for (const vault of input.vaults) {
       try {
         await replayVaultIncremental(vault.id);
-      } catch {
+      } catch (error: unknown) {
+        // Auth failures must not be collapsed into VAULT_ITEMS_SYNC_FAILED —
+        // callers wipe unlock session on 401.
+        if (error instanceof ApiRequestError && error.status === 401) {
+          throw error;
+        }
         failures.push(vault.id);
       }
     }
@@ -394,9 +428,40 @@ export function createWorkspaceVaultItemsReadController(input: {
   }
 
   async function enqueue(request: SyncAppendEventRequestDto, vaultId: string): Promise<void> {
-    await outbox.enqueue({ vaultId, request });
-    await outbox.drain(vaultId);
-    await replayVaultIncremental(vaultId);
+    const queued = await outbox.enqueue({ vaultId, request });
+    const stateBefore = ensureVaultState(vaultId);
+    const tipBefore = stateBefore.lastAppliedVersion;
+    const appended = await outbox.drain(vaultId);
+    const remaining = (await outbox.list()).find((entry) => entry.id === queued.id);
+    if (remaining) {
+      try {
+        await replayVaultIncremental(vaultId);
+        await writeCachedState(input.userId, input.workspaceId, vaultStates);
+      } catch {
+        // Best-effort; surface the append failure either way.
+      }
+      throw new Error(
+        remaining.lastErrorCode
+          ? `OUTBOX_ENTRY_NOT_APPENDED:${remaining.lastErrorCode}`
+          : "OUTBOX_ENTRY_NOT_APPENDED",
+      );
+    }
+    // Clean write: apply POST response locally and skip list GET (incl. empty tail).
+    // After VERSION_MISMATCH rebase, versions may gap — fall back to incremental replay.
+    if (areContiguousEventVersions(appended, tipBefore)) {
+      const vaultKey = await resolveVaultKey(vaultId);
+      const decryptWirePayload = async (
+        encryptedPayloadBase64: string,
+        itemId?: string | null,
+      ) =>
+        decryptVaultItemPayload(vaultKey, base64ToBytes(encryptedPayloadBase64), 2, {
+          itemId,
+        });
+      const next = await applyVaultItemEvents(stateBefore, appended, decryptWirePayload);
+      vaultStates.set(vaultId, next);
+    } else {
+      await replayVaultIncremental(vaultId);
+    }
     await writeCachedState(input.userId, input.workspaceId, vaultStates);
   }
 

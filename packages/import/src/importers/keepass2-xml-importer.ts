@@ -65,7 +65,9 @@ export class KeePass2XmlImporter extends BaseImporter implements Importer {
         } else if (key === "Password") {
           cipher.login!.password = value;
         } else if (key === "otp") {
-          cipher.login!.totp = value!.replace("key=", "");
+          // Keep raw value: otpauth:// or KeeOtp `key=&step=&size=&otpHashMode=` —
+          // period/digits/algorithm are parsed in ensureTotpField / parseTotpParams.
+          cipher.login!.totp = value!;
         } else if (key === "Title") {
           cipher.name = value!;
         } else if (key === "Notes") {

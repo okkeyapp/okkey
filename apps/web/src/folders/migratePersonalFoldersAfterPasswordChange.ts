@@ -16,6 +16,7 @@ import {
 import {
   buildFolderCreateAppendRequest,
   buildItemFolderAssignAppendRequest,
+  eventsListHasMore,
   replayWorkspaceFolderEvents,
   type WorkspaceFolderReplayState,
 } from "@okkey/sync";
@@ -49,7 +50,7 @@ async function materializeWithKey(
         state,
       );
       after = state.lastAppliedVersion;
-      if (page.events.length < 100) {
+      if (!eventsListHasMore(page)) {
         break;
       }
     }

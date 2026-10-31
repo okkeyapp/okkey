@@ -4,6 +4,7 @@ import { generateEntityId } from "@okkey/id";
 import { ImportResult } from "../types/import-result.js";
 import type { OkkeyNativeImportEntry } from "../types/okkey-export.js";
 import { FolderView } from "../types/views/folder.view.js";
+import { ensureTotpField } from "../utils/totp.js";
 import type { Importer } from "./importer.js";
 import { normalizeFolderPath } from "./okkey-json-importer.js";
 
@@ -144,6 +145,12 @@ function map1PuxItem(raw: unknown, vaultName: string): OkkeyNativeImportEntry | 
   if (record.details?.notesPlain && item.categoryId === ITEM_CATEGORY_LOGIN) {
     setText(item, "note", record.details.notesPlain);
   }
+
+  const totpUri = extract1PuxTotp(record.details?.sections);
+  if (totpUri && item.categoryId === ITEM_CATEGORY_LOGIN) {
+    ensureTotpField(item, totpUri);
+  }
+
   if (tags.length > 0) {
     item = { ...item, tags };
   }
@@ -159,6 +166,35 @@ function map1PuxItem(raw: unknown, vaultName: string): OkkeyNativeImportEntry | 
     favorite: Boolean(record.favorite),
     attachmentRefs: [],
   };
+}
+
+function extract1PuxTotp(
+  sections:
+    | Array<{
+        title?: string;
+        fields?: Array<{
+          title?: string;
+          value?: { string?: string; concealed?: string; totp?: string; url?: string };
+          n?: string;
+        }>;
+      }>
+    | undefined,
+): string | null {
+  if (!Array.isArray(sections)) {
+    return null;
+  }
+  for (const section of sections) {
+    if (!Array.isArray(section.fields)) {
+      continue;
+    }
+    for (const field of section.fields) {
+      const totp = field.value?.totp?.trim();
+      if (totp) {
+        return totp;
+      }
+    }
+  }
+  return null;
 }
 
 function setText(
@@ -177,7 +213,7 @@ function setText(
   } else if (field.type === "note") {
     field.value = { kind: "note", note: text };
   } else if (field.type === "totp") {
-    field.value = { kind: "totp", secretBase32: text };
+    ensureTotpField(item, text);
   } else {
     field.value = { kind: "text", text };
   }

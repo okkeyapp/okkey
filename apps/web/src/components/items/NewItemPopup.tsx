@@ -11,7 +11,10 @@ import { usePopupZoneGate } from "../../auth/usePopupZoneGate";
 import { deleteRemovedKeyFieldFiles } from "../../items/keyFieldFileAttachments";
 import {
   applyFaviconToItem,
+  attachWebsiteFaviconFromNetwork,
   keyFieldFileValueFromFaviconId,
+  seedFaviconUrlCacheAfterUpload,
+  shouldAttachWebsiteFaviconInBackground,
   syncItemFaviconForPlaintext,
 } from "../../items/syncItemFavicon";
 import {
@@ -24,7 +27,7 @@ import { useWorkspaceItemTemplates } from "../../items/useWorkspaceItemTemplates
 import { useWorkspaceFolders } from "../../folders/WorkspaceFoldersContext";
 import { NO_FOLDER_VALUE } from "../../folders/workspaceFolderTree";
 import { buildItemCopyPrefillValues } from "../../items/buildItemCopyPrefill";
-import { runSaveWithToast } from "../../lib/saveWithToast";
+import { formatSaveError, runSaveWithToast } from "../../lib/saveWithToast";
 import PopupSaveButton from "../ui/PopupSaveButton";
 import { buildItemFromNewItemSavePayload } from "./NewItemForm";
 import { useWorkspaceItems } from "../../items/WorkspaceItemsContext";
@@ -460,7 +463,8 @@ export default function NewItemPopup({ t, workspaceId, workspaceName, vaults, va
         {
           loading: t("web.toast.save.loading"),
           success: t("web.toast.save.success"),
-          error: t("web.newItemPopup.saveErrorGeneric"),
+          error: t("web.toast.save.error"),
+          conflict: t("web.toast.save.conflict"),
         },
         async () => {
           if (!accessToken || !vaultKey) {
@@ -484,6 +488,7 @@ export default function NewItemPopup({ t, workspaceId, workspaceName, vaults, va
           }
           let uploadedFavicon: KeyFieldFileValue | undefined;
           try {
+            // Reuse form preview bytes / skip unchanged URLs — never await /favicon/preview here.
             const faviconSync = await syncItemFaviconForPlaintext(
               accessToken,
               itemVaultKey,
@@ -493,8 +498,29 @@ export default function NewItemPopup({ t, workspaceId, workspaceName, vaults, va
             );
             item = faviconSync.item;
             uploadedFavicon = faviconSync.uploadedFavicon;
+            seedFaviconUrlCacheAfterUpload({
+              vaultId: uploadedPayload.vaultId,
+              itemId: uploadedPayload.itemId,
+              uploadedFavicon: faviconSync.uploadedFavicon,
+              uploadedPngBytes: faviconSync.uploadedPngBytes,
+            });
             if (item.faviconId || item.faviconSource) {
               await updateItem(item);
+            } else if (shouldAttachWebsiteFaviconInBackground(item, faviconSyncInput)) {
+              void attachWebsiteFaviconFromNetwork(accessToken, itemVaultKey, item)
+                .then(async (attached) => {
+                  if (!attached?.item.faviconId) {
+                    return;
+                  }
+                  seedFaviconUrlCacheAfterUpload({
+                    vaultId: uploadedPayload.vaultId,
+                    itemId: uploadedPayload.itemId,
+                    uploadedFavicon: attached.uploadedFavicon,
+                    uploadedPngBytes: attached.uploadedPngBytes,
+                  });
+                  await updateItem(attached.item);
+                })
+                .catch(() => undefined);
             }
           } catch (error) {
             if (uploadedFavicon) {
@@ -534,7 +560,9 @@ export default function NewItemPopup({ t, workspaceId, workspaceName, vaults, va
       );
       setShowValidation(false);
     } catch (error) {
-      setSaveError(error instanceof Error ? error.message : t("web.newItemPopup.saveErrorGeneric"));
+      setSaveError(
+        formatSaveError(error, t("web.toast.save.error"), t("web.newItemPopup.saveConflict")),
+      );
     } finally {
       setSaving(false);
     }

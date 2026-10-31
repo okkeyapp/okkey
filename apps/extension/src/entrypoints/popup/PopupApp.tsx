@@ -43,7 +43,7 @@ import {
 
 import { Toaster } from "../../components/toaster";
 import { AUTOFILL_MSG } from "../../lib/autofillMessages";
-import { createCoreClient } from "../../lib/api";
+import { createCoreClient, isUnauthorizedApiError } from "../../lib/api";
 import { applyExtensionStoredTheme } from "../../lib/applyExtensionTheme";
 import {
   buildExtensionAuthStartUrl,
@@ -59,6 +59,7 @@ import {
   retryExtensionDeviceRegistration,
   revokeExtensionDeviceBestEffort,
 } from "../../lib/deviceTrust";
+import { clearExtensionDeviceSigningKey } from "../../lib/deviceSigningKey";
 import { readExtensionPinUnlockWrap } from "../../lib/extensionDeviceUnlockStore";
 import {
   ensureExtensionVaultBundle,
@@ -88,7 +89,7 @@ import {
   probeWebBaseUrl,
 } from "../../lib/probeWebBaseUrl";
 import {
-  clearSession,
+  clearExtensionSessionArea,
   normalizeWebBaseUrl,
   readDeviceId,
   readLastServer,
@@ -283,7 +284,10 @@ export function PopupApp() {
         setVaultIdleLockMs(vaultIdleLockMsFromServerSeconds(account.vault_idle_lock_seconds));
       }
       return account;
-    } catch {
+    } catch (err: unknown) {
+      if (isUnauthorizedApiError(err)) {
+        throw err;
+      }
       setIdentity(null);
       return null;
     }
@@ -291,7 +295,7 @@ export function PopupApp() {
 
   const tryRestoreUnlockSession = useCallback(async (userId: string): Promise<boolean> => {
     const fresh = await readExtensionUnlockSessionIfFresh(userId);
-    // Share C must exist to restore; null means incomplete session — do not unlock.
+    // Share C must exist to restore; null means incomplete / mismatched session — do not unlock.
     if (!fresh?.passwordShareC) {
       return false;
     }
@@ -326,8 +330,62 @@ export function PopupApp() {
     return true;
   }, []);
 
+  const applyServerPreference = useCallback((mode: ExtensionHostMode, webBaseUrl: string) => {
+    setHostMode(mode);
+    setBaseUrlInput(mode === "saas" ? OKKEY_SAAS_WEB_BASE_URL : webBaseUrl);
+  }, []);
+
+  const resetToServerAfterWipe = useCallback(async () => {
+    setProfile(null);
+    setSession(null);
+    setTrust(null);
+    setIdentity(null);
+    setMasterPassword("");
+    setUnlockSecrets(null);
+    setEncryptedPrivateKeyPayload(null);
+    const lastServer = await readLastServer();
+    if (lastServer) {
+      const mode: ExtensionHostMode =
+        !ENABLE_SAAS_SIGNIN || lastServer.hostMode !== "saas" ? "self-hosted" : "saas";
+      applyServerPreference(
+        mode,
+        mode === "self-hosted"
+          ? lastServer.hostMode === "self-hosted"
+            ? lastServer.webBaseUrl
+            : ""
+          : OKKEY_SAAS_WEB_BASE_URL,
+      );
+    } else if (ENABLE_SAAS_SIGNIN) {
+      applyServerPreference("saas", OKKEY_SAAS_WEB_BASE_URL);
+    } else {
+      applyServerPreference("self-hosted", "");
+    }
+    setScreen("server");
+  }, [applyServerPreference]);
+
+  const wipeLocalAndReset = useCallback(async () => {
+    wipeUnlockSecrets(unlockSecretsRef.current);
+    unlockSecretsRef.current = null;
+    setUnlockSecrets(null);
+    setEncryptedPrivateKeyPayload(null);
+    // Preserve device signing keys across 401 / account wipe so re-login can still
+    // prove bind-session. Blocked/rejected paths clear keys inside deviceTrust.
+    await wipeAllExtensionData();
+    await resetToServerAfterWipe();
+  }, [resetToServerAfterWipe]);
+
   const applyTrustSnapshot = useCallback(
     async (snapshot: DeviceTrustSnapshot, userId?: string) => {
+      if (snapshot.status === "blocked" || snapshot.status === "rejected") {
+        toast.error(
+          snapshot.status === "blocked"
+            ? t("web.devicePending.blockedTitle")
+            : t("web.devicePending.rejectedTitle"),
+        );
+        // deviceTrust already cleared the signing key for blocked/rejected.
+        await wipeLocalAndReset();
+        return;
+      }
       setTrust(snapshot);
       if (snapshot.status === "trusted") {
         if (userId) {
@@ -337,38 +395,68 @@ export function PopupApp() {
           }
         }
         setScreen("unlock");
-      } else if (snapshot.status === "blocked") {
-        setScreen("blocked");
-      } else if (snapshot.status === "rejected") {
-        setScreen("rejected");
-      } else if (snapshot.status === "pending" || snapshot.status === "checking") {
-        setScreen("pending");
       } else if (snapshot.status === "error") {
+        // Drop unlock / pending-save material; keep account session so the user can retry.
+        wipeUnlockSecrets(unlockSecretsRef.current);
+        unlockSecretsRef.current = null;
+        setUnlockSecrets(null);
+        setEncryptedPrivateKeyPayload(null);
+        void clearExtensionSessionArea();
         const message = snapshot.errorMessage ?? "Device registration failed";
         setError(message);
         toast.error(message);
         setScreen("error");
+      } else if (snapshot.status === "pending" || snapshot.status === "checking") {
+        // Defense in depth: unlock secrets must not survive lost device trust
+        // (e.g. web revoke → re-pending) even if resolve already cleared session.
+        wipeUnlockSecrets(unlockSecretsRef.current);
+        unlockSecretsRef.current = null;
+        setUnlockSecrets(null);
+        setEncryptedPrivateKeyPayload(null);
+        void clearExtensionSessionArea();
+        setScreen("pending");
       } else {
+        wipeUnlockSecrets(unlockSecretsRef.current);
+        unlockSecretsRef.current = null;
+        setUnlockSecrets(null);
+        setEncryptedPrivateKeyPayload(null);
+        void clearExtensionSessionArea();
         setScreen("pending");
       }
     },
-    [tryRestoreUnlockSession],
+    [t, tryRestoreUnlockSession, wipeLocalAndReset],
   );
 
   const refreshTrust = useCallback(
     async (apiBaseUrl: string, accessToken: string, userId?: string) => {
-      const core = createCoreClient(apiBaseUrl, accessToken);
-      const snapshot = await resolveExtensionDeviceTrust(core);
-      await applyTrustSnapshot(snapshot, userId);
-      void loadIdentity(apiBaseUrl, accessToken, userId);
+      try {
+        const core = createCoreClient(apiBaseUrl, accessToken);
+        const shareB64 = userId
+          ? (await readExtensionVaultBundle(userId))?.device_share_b64
+          : undefined;
+        const snapshot = await resolveExtensionDeviceTrust(core, { deviceShareB64: shareB64 });
+        await applyTrustSnapshot(snapshot, userId);
+        void loadIdentity(apiBaseUrl, accessToken, userId).catch(async (err: unknown) => {
+          if (!isUnauthorizedApiError(err)) {
+            return;
+          }
+          // Profile stays closed until the device is trusted. Device list already
+          // succeeded, so keep waiting for approval instead of signing out.
+          if (snapshot.status === "pending" || snapshot.status === "checking") {
+            return;
+          }
+          await wipeLocalAndReset();
+        });
+      } catch (err: unknown) {
+        if (isUnauthorizedApiError(err)) {
+          await wipeLocalAndReset();
+          return;
+        }
+        throw err;
+      }
     },
-    [applyTrustSnapshot, loadIdentity],
+    [applyTrustSnapshot, loadIdentity, wipeLocalAndReset],
   );
-
-  const applyServerPreference = useCallback((mode: ExtensionHostMode, webBaseUrl: string) => {
-    setHostMode(mode);
-    setBaseUrlInput(mode === "saas" ? OKKEY_SAAS_WEB_BASE_URL : webBaseUrl);
-  }, []);
 
   useEffect(() => {
     void applyExtensionStoredTheme();
@@ -579,11 +667,15 @@ export function PopupApp() {
       await probeWebBaseUrl(webBaseUrl);
       const previous = await readProfile();
       if (previous && previous.webBaseUrl !== webBaseUrl) {
-        if (session) {
-          const core = createCoreClient(previous.apiBaseUrl, session.access_token);
-          await revokeExtensionDeviceBestEffort(core, trust?.deviceId ?? (await readDeviceId()));
-        }
+        const priorToken = session?.access_token ?? null;
+        const priorApiBase = previous.apiBaseUrl;
+        const priorDeviceId = trust?.deviceId ?? (await readDeviceId());
+        // Local wipe first so unlock / pending-save cannot survive a hung revoke.
         await wipeAllExtensionData();
+        if (priorToken) {
+          const core = createCoreClient(priorApiBase, priorToken);
+          await revokeExtensionDeviceBestEffort(core, priorDeviceId);
+        }
       }
       const nextProfile: ExtensionProfile = {
         webBaseUrl,
@@ -638,39 +730,23 @@ export function PopupApp() {
   }, []);
 
   const onLogout = async () => {
+    const priorProfile = profile;
+    const priorSession = session;
+    const priorDeviceId = trust?.deviceId ?? (await readDeviceId());
     wipeUnlockSecrets(unlockSecretsRef.current);
     unlockSecretsRef.current = null;
     setUnlockSecrets(null);
     setEncryptedPrivateKeyPayload(null);
-    void clearExtensionUnlockSession();
-    if (profile && session) {
-      const core = createCoreClient(profile.apiBaseUrl, session.access_token);
-      await revokeExtensionDeviceBestEffort(core, trust?.deviceId ?? (await readDeviceId()));
-    }
+    // Wipe account/session state first; keep device signing keys unless revoke succeeds
+    // so a failed revoke still allows proof-before-bind on the next login.
     await wipeAllExtensionData();
-    setProfile(null);
-    setSession(null);
-    setTrust(null);
-    setIdentity(null);
-    setMasterPassword("");
-    const lastServer = await readLastServer();
-    if (lastServer) {
-      const mode: ExtensionHostMode =
-        !ENABLE_SAAS_SIGNIN || lastServer.hostMode !== "saas" ? "self-hosted" : "saas";
-      applyServerPreference(
-        mode,
-        mode === "self-hosted"
-          ? lastServer.hostMode === "self-hosted"
-            ? lastServer.webBaseUrl
-            : ""
-          : OKKEY_SAAS_WEB_BASE_URL,
-      );
-    } else if (ENABLE_SAAS_SIGNIN) {
-      applyServerPreference("saas", OKKEY_SAAS_WEB_BASE_URL);
-    } else {
-      applyServerPreference("self-hosted", "");
+    await resetToServerAfterWipe();
+    if (priorProfile && priorSession) {
+      const core = createCoreClient(priorProfile.apiBaseUrl, priorSession.access_token);
+      await revokeExtensionDeviceBestEffort(core, priorDeviceId);
+      // Device row revoked — seed must not survive for a 409 re-register.
+      await clearExtensionDeviceSigningKey();
     }
-    setScreen("server");
   };
 
   const onRetryRegistration = async () => {
@@ -680,7 +756,8 @@ export function PopupApp() {
     setRetrying(true);
     try {
       const core = createCoreClient(profile.apiBaseUrl, session.access_token);
-      const snapshot = await retryExtensionDeviceRegistration(core);
+      const shareB64 = (await readExtensionVaultBundle(session.user_id))?.device_share_b64;
+      const snapshot = await retryExtensionDeviceRegistration(core, shareB64);
       await applyTrustSnapshot(snapshot, session.user_id);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
@@ -1162,9 +1239,10 @@ export function PopupApp() {
             type="button"
             className="w-full"
             onClick={() => {
-              void clearSession();
-              setError(null);
-              setScreen("server");
+              void (async () => {
+                await wipeLocalAndReset();
+                setError(null);
+              })();
             }}
           >
             {t("auth.extension.signingInBack")}
@@ -1190,6 +1268,7 @@ export function PopupApp() {
           onLocaleChange={onLocaleChange}
           signOutLabel={t("unlock.signOut")}
           onSignOut={() => void onLogout()}
+          onUnauthorized={() => void wipeLocalAndReset()}
           onChangeServer={() => void onLogout()}
           onLock={lockVault}
           idleLockMs={vaultIdleLockMs}

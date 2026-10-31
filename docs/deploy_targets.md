@@ -23,6 +23,7 @@ Core requires these services in all environments:
 
 Tested and supported for the first stable release:
 
+- Docker Engine: ≥ 28.0 (self-host Compose; required for true `127.0.0.1` port publish — see [moby#45610](https://github.com/moby/moby/issues/45610))
 - PostgreSQL: 16.x
 - Redis: 7.x
 - Object storage: S3-compatible (MinIO tested)

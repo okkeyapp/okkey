@@ -31,6 +31,14 @@ Supported:
 - Docker / Docker Compose (MVP install artifact under `deploy/docker/`)
 - Kubernetes (planned; not in this MVP)
 
+### Requirements (Docker Compose)
+
+- **Docker Engine ≥ 28.0** (and the Compose plugin). Before 28.0, ports published on `127.0.0.1` were still reachable from other hosts on the same L2 segment ([moby#45610](https://github.com/moby/moby/issues/45610)). The production compose file publishes the API port on loopback only and assumes true host loopback isolation.
+
+### API publish (loopback)
+
+`deploy/docker/docker-compose.prod.yml` binds the API host port to `127.0.0.1` only. Same-host health checks work (`http://127.0.0.1:4000/health`). Clients on other machines cannot use `http://<server>:4000` (or a web UI that points at a host-published API URL on that port). Network access requires the reverse proxy under `deploy/docker/proxy` (TLS, `TRUSTED_PROXY_HOPS=1`). Details: [`deploy/docker/README.md`](../../deploy/docker/README.md).
+
 ---
 
 ## Required Services
@@ -125,6 +133,8 @@ GEOIP_AUTO_UPDATE=true
 TRUSTED_PROXY_HOPS=1
 ```
 
+When `TRUSTED_PROXY_HOPS≥1`, keep the API unreachable except via the trusted proxy (self-host `deploy/docker/docker-compose.prod.yml` binds the published API port to `127.0.0.1`; nginx uses Docker DNS `api:4000`). Do not re-publish the API on `0.0.0.0`. Off-host clients must use the `deploy/docker/proxy` edge, not the host API port.
+
 The optional `geoip-updater` service (repo-root compose profile `geoip`) downloads DB-IP City Lite into a shared volume.
 The production MVP compose leaves GeoIP off by default (`GEOIP_ENABLED=false`).
 
@@ -164,7 +174,8 @@ Images:
 
 Tag scheme (see [`deploy/docker/README.md`](../../deploy/docker/README.md) and `.github/workflows/publish-images.yml`):
 
-- push to `dev` → `:dev`, `:dev-<sha>` (installer tracking default; published on every push to `dev`)
+- `workflow_dispatch` → floating `:dev` (installer tracking default; not published on push to `dev`)
+- push to `release/<version>` or `hotfix/<version>` → `:<version>-candidate`, `:<version>-<sha7>` (no `:latest`, no final SemVer pin)
 - pre-release tag e.g. `v1.0.0-beta.2` → `:1.0.0-beta.2` only (first image-backed release pin)
 - clean SemVer tag `vX.Y.Z` on `main` → `:X.Y.Z`, `:X.Y`, `:X` (`:latest` only via manual `workflow_dispatch` + `push_latest=true`)
 - production installs must **pin** a SemVer (default prod pin `1.0.0-beta.2`; never floating `:latest`)

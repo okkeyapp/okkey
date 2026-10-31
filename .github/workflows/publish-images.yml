@@ -3,16 +3,27 @@
 # Scope: api / worker / web only. Browser extension is not published here
 # (out of the first image-backed release slice: 1.0.0-beta.2).
 #
-# Tag scheme (aligned with okkey-internal release-and-images + enterprise#53):
-#   push to `dev`          → :dev, :dev-<sha>
+# Image builds and signing run on:
+#   push to release/** and hotfix/**
+#   push of version tags (v*)
+#   workflow_dispatch — the only way to publish the floating :dev image
+# The daily schedule is GHCR TTL cleanup only (no image build).
+#
+# Tag scheme:
+#   release/<version> or hotfix/<version>
+#                          → :<version>-candidate, :<version>-<sha7>
+#                            (no :latest, no rolling :X / :X.Y)
 #   tag vX.Y.Z (clean)     → :X.Y.Z, :X.Y, :X   (:latest ONLY via manual dispatch)
 #   tag vX.Y.Z-prerelease  → :X.Y.Z-prerelease  (no rolling / :latest)
-#   pull_request           → :pr-<n>, :pr-<n>-<head-sha7>  (PR head, not merge commit)
-#   workflow_dispatch      → explicit tag (+ optional :latest when push_latest=true)
+#     e.g. v1.0.0-beta.2   → :1.0.0-beta.2 only (spelling: beta, never betta)
+#   workflow_dispatch      → explicit tag (default dev; + :latest when push_latest=true)
+#
+# Tag resolution: scripts/resolve-publish-image-tags.mjs (unit-tested in supply-chain).
 #
 # Retention (scheduled GC — never deletes SemVer / :latest / floating :dev):
 #   pr-*       → delete 14 days AFTER the PR is CLOSED; open-PR tags are never deleted
 #   dev-<sha>  → keep if age ≤ 30 days OR among the newest 20; else delete
+#   :<version>-candidate and :<version>-<sha7> match the SemVer keeper (not deleted)
 #
 # Multi-arch: linux/amd64 + linux/arm64 via native runners (no QEMU), then
 # manifest-list merge. BuildKit yarn/cargo cache mounts + GHA buildx cache.
@@ -23,18 +34,17 @@ name: Publish container images
 on:
   push:
     branches:
-      - dev
+      - "release/**"
+      - "hotfix/**"
     tags:
       - "v*"
-  pull_request:
-    types: [opened, synchronize, reopened, closed]
   schedule:
-    # Daily GHCR TTL cleanup (pr-* / dev-<sha>).
+    # Daily GHCR TTL cleanup (pr-* / dev-<sha>). Does not build or sign images.
     - cron: "17 3 * * *"
   workflow_dispatch:
     inputs:
       tag:
-        description: "Image tag to push (default: dev)"
+        description: "Image tag to push (default: dev). This is the only way to publish :dev."
         required: false
         default: "dev"
       push_latest:
@@ -80,15 +90,14 @@ jobs:
     if: >
       (github.event_name == 'workflow_dispatch' &&
        github.event.inputs.run_gc_only != 'true') ||
-      github.event_name == 'push' ||
-      (github.event_name == 'pull_request' &&
-       github.event.action != 'closed' &&
-       github.event.pull_request.head.repo.full_name == github.repository)
+      github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
       platforms: ${{ steps.prep.outputs.platforms }}
       revision: ${{ steps.prep.outputs.revision }}
+      image_version: ${{ steps.prep.outputs.image_version }}
+      image_created: ${{ steps.prep.outputs.image_created }}
       want_amd64: ${{ steps.prep.outputs.want_amd64 }}
       want_arm64: ${{ steps.prep.outputs.want_arm64 }}
       tags_api: ${{ steps.prep.outputs.tags_api }}
@@ -98,6 +107,13 @@ jobs:
       image_worker: ${{ steps.prep.outputs.image_worker }}
       image_web: ${{ steps.prep.outputs.image_web }}
     steps:
+      - name: Checkout (tag resolver)
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            scripts/resolve-publish-image-tags.mjs
+          sparse-checkout-cone-mode: false
+
       - name: Resolve platforms, tags, revision
         id: prep
         shell: bash
@@ -113,47 +129,13 @@ jobs:
           DISPATCH_LATEST: ${{ github.event.inputs.push_latest }}
           DISPATCH_PLATFORMS: ${{ github.event.inputs.platforms }}
           PR_IMAGE_PLATFORMS: ${{ vars.PR_IMAGE_PLATFORMS }}
+          REGISTRY: ${{ env.REGISTRY }}
+          OWNER: ${{ env.OWNER }}
         run: |
           set -euo pipefail
           PLATFORMS="${DEFAULT_PLATFORMS}"
-          REVISION="${SHA}"
-
-          short7() { printf '%.7s' "$1"; }
-
-          tags_for() {
-            local IMAGE="$1"
-            local TAGS=""
-            if [[ "${EVENT_NAME}" == "pull_request" ]]; then
-              SHORT="$(short7 "${REVISION}")"
-              TAGS="${IMAGE}:pr-${PR_NUMBER},${IMAGE}:pr-${PR_NUMBER}-${SHORT}"
-            elif [[ "${EVENT_NAME}" == "push" && "${REF}" == "refs/heads/dev" ]]; then
-              SHORT="$(short7 "${REVISION}")"
-              TAGS="${IMAGE}:dev,${IMAGE}:dev-${SHORT}"
-            elif [[ "${REF_TYPE}" == "tag" ]]; then
-              VERSION="${REF_NAME#v}"
-              TAGS="${IMAGE}:${VERSION}"
-              # Clean SemVer vX.Y.Z only → rolling :X.Y / :X.
-              # :latest is NEVER automatic — only workflow_dispatch + push_latest=true.
-              if [[ "${REF_NAME}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-                MAJOR="${VERSION%%.*}"
-                MINOR_MAJOR="${VERSION%.*}" # X.Y
-                TAGS="${TAGS},${IMAGE}:${MINOR_MAJOR},${IMAGE}:${MAJOR}"
-              fi
-            elif [[ "${EVENT_NAME}" == "workflow_dispatch" ]]; then
-              local DT="${DISPATCH_TAG:-dev}"
-              TAGS="${IMAGE}:${DT}"
-              if [[ "${DISPATCH_LATEST}" == "true" && "${DT}" != "latest" ]]; then
-                TAGS="${TAGS},${IMAGE}:latest"
-              fi
-            else
-              echo "Unsupported event for publish: ${EVENT_NAME} ref=${REF}" >&2
-              exit 1
-            fi
-            printf '%s' "${TAGS}"
-          }
 
           if [[ "${EVENT_NAME}" == "pull_request" ]]; then
-            REVISION="${PR_HEAD_SHA}"
             if [[ -n "${PR_IMAGE_PLATFORMS}" ]]; then
               PLATFORMS="${PR_IMAGE_PLATFORMS}"
             fi
@@ -174,28 +156,20 @@ jobs:
             exit 1
           fi
 
-          IMAGE_API="${REGISTRY}/${OWNER}/api"
-          IMAGE_WORKER="${REGISTRY}/${OWNER}/worker"
-          IMAGE_WEB="${REGISTRY}/${OWNER}/web"
+          # Shared resolver (unit-tested): v1.0.0-beta.2 → :1.0.0-beta.2 only
+          # (no :latest / :1 / :1.0). Spelling: beta, never betta.
+          node scripts/resolve-publish-image-tags.mjs
 
+          IMAGE_CREATED="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           {
             echo "platforms=${PLATFORMS}"
-            echo "revision=${REVISION}"
+            echo "image_created=${IMAGE_CREATED}"
             echo "want_amd64=${WANT_AMD64}"
             echo "want_arm64=${WANT_ARM64}"
-            echo "image_api=${IMAGE_API}"
-            echo "image_worker=${IMAGE_WORKER}"
-            echo "image_web=${IMAGE_WEB}"
-            echo "tags_api=$(tags_for "${IMAGE_API}")"
-            echo "tags_worker=$(tags_for "${IMAGE_WORKER}")"
-            echo "tags_web=$(tags_for "${IMAGE_WEB}")"
           } >> "$GITHUB_OUTPUT"
 
-          echo "Revision: ${REVISION}"
+          echo "OCI created: ${IMAGE_CREATED}"
           echo "Platforms: ${PLATFORMS} (amd64=${WANT_AMD64} arm64=${WANT_ARM64})"
-          echo "api tags: $(tags_for "${IMAGE_API}")"
-          echo "worker tags: $(tags_for "${IMAGE_WORKER}")"
-          echo "web tags: $(tags_for "${IMAGE_WEB}")"
 
   # Native per-arch builds (amd64 on x86 runner, arm64 on ARM runner — no QEMU).
   # Split by arch so job-level `if` can use needs.* (matrix is not allowed there).
@@ -268,6 +242,8 @@ jobs:
             org.opencontainers.image.vendor=okkeyapp
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.revision=${{ needs.prep.outputs.revision }}
+            org.opencontainers.image.version=${{ needs.prep.outputs.image_version }}
+            org.opencontainers.image.created=${{ needs.prep.outputs.image_created }}
             org.opencontainers.image.licenses=AGPL-3.0-or-later
           provenance: mode=max
           sbom: true
@@ -362,6 +338,8 @@ jobs:
             org.opencontainers.image.vendor=okkeyapp
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.revision=${{ needs.prep.outputs.revision }}
+            org.opencontainers.image.version=${{ needs.prep.outputs.image_version }}
+            org.opencontainers.image.created=${{ needs.prep.outputs.image_created }}
             org.opencontainers.image.licenses=AGPL-3.0-or-later
           provenance: mode=max
           sbom: true

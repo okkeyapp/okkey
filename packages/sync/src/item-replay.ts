@@ -4,6 +4,7 @@ import {
   ITEM_PLAINTEXT_SCHEMA_VERSION_LATEST,
   parseAndNormalizeItemPlaintextUtf8,
 } from "@okkey/types";
+import { itemPlaintextMatchesReferencedId } from "./item-id-binding.js";
 import { applyItemPlaintextToReplayMap } from "./item-replay-state.js";
 
 const ITEM_TYPES = new Set(["ITEM_CREATE", "ITEM_UPDATE", "ITEM_DELETE"]);
@@ -37,16 +38,22 @@ export interface ItemVaultReplayState {
   items: Map<string, ItemPlaintextV2>;
 }
 
+export type DecryptWirePayload = (
+  encryptedPayloadBase64: string,
+  itemId?: string | null,
+) => Promise<Uint8Array>;
+
 /**
  * Deterministic replay of ITEM_* events for a vault stream (after decrypting ciphertext).
  * v1 and v2 plaintext JSON are normalized to {@link ItemPlaintextV2}.
  * The version checked here is the plaintext schema, not the crypto profile.
  * Vault item decryption must use crypto profile v2 (`qday_default`).
  * Unknown plaintext schema versions are skipped (see sync architecture).
+ * Events whose plaintext.itemId ≠ referencedItemId are skipped.
  */
 export async function replayItemPlaintextEvents(
   events: SyncEventWireDto[],
-  decryptWirePayload: (encryptedPayloadBase64: string) => Promise<Uint8Array>,
+  decryptWirePayload: DecryptWirePayload,
 ): Promise<ItemVaultReplayState> {
   const items = new Map<string, ItemPlaintextV2>();
   for (const ev of events) {
@@ -57,9 +64,24 @@ export async function replayItemPlaintextEvents(
     if (!SUPPORTED_PAYLOAD_SCHEMA_VERSIONS.has(blob.crypto_version)) {
       continue;
     }
-    const plaintextBytes = await decryptWirePayload(blob.payload);
+    const plaintextBytes = await decryptWirePayload(blob.payload, ev.referencedItemId);
     const parsed = parseAndNormalizeItemPlaintextUtf8(plaintextBytes);
     if (!parsed) {
+      continue;
+    }
+    if (!itemPlaintextMatchesReferencedId(parsed, ev)) {
+      continue;
+    }
+    const itemId = ev.referencedItemId ?? parsed.itemId;
+    if (ev.eventType === "ITEM_UPDATE" && !items.has(itemId)) {
+      // Mirror SyncReplayEngine: do not materialize UPDATE for unknown ids.
+      continue;
+    }
+    if (
+      ev.eventType === "ITEM_UPDATE" &&
+      Boolean(parsed.deleted) &&
+      ev.itemSoftDeleted !== true
+    ) {
       continue;
     }
     applyItemPlaintextToReplayMap(items, parsed, ev);

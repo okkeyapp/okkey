@@ -17,9 +17,11 @@ import {
   markPendingSaveDismissed,
   markPendingSaveInteracted,
   openExtensionUnlockPrompt,
+  runBackgroundDeviceTrustProbe,
   setPendingSaveOffer,
   wirePendingSaveTabCleanup,
 } from "../lib/autofillBroker";
+import { clearAllPendingSaveOffers } from "../lib/autofillPendingSave";
 import { AUTOFILL_MSG } from "../lib/autofillMessages";
 import { EXTENSION_DEVICE_CHANNEL } from "../lib/deviceChannel";
 import {
@@ -27,16 +29,38 @@ import {
   isOffscreenClearMessage,
   wireExtensionVaultLifecycle,
 } from "../lib/extensionVaultLifecycle";
+import { EXTENSION_DATA_WIPED_MSG } from "../lib/storage";
+
+/** Probe device trust while unlocked so web Revoke clears session without opening the popup. */
+const DEVICE_TRUST_ALARM = "okkey.deviceTrustProbe";
+const DEVICE_TRUST_PERIOD_MINUTES = 1;
 
 export default defineBackground(() => {
   console.info(`[okkey] background ready (channel=${EXTENSION_DEVICE_CHANNEL})`);
   wirePendingSaveTabCleanup();
   wireExtensionVaultLifecycle();
 
+  void browser.alarms.create(DEVICE_TRUST_ALARM, { periodInMinutes: DEVICE_TRUST_PERIOD_MINUTES });
+  browser.alarms.onAlarm.addListener((alarm) => {
+    if (alarm.name === DEVICE_TRUST_ALARM) {
+      void runBackgroundDeviceTrustProbe();
+    }
+  });
+  // Immediate probe on SW wake (MV3) when unlock session may still be present.
+  void runBackgroundDeviceTrustProbe();
+
   browser.runtime.onMessage.addListener((message, sender) => {
     // Handled by wireExtensionVaultLifecycle or the offscreen document — do not swallow.
     if (isClipboardScheduleMessage(message) || isOffscreenClearMessage(message)) {
       return undefined;
+    }
+    if (
+      message &&
+      typeof message === "object" &&
+      "type" in message &&
+      (message as { type?: unknown }).type === EXTENSION_DATA_WIPED_MSG
+    ) {
+      return clearAllPendingSaveOffers().then(() => ({ ok: true }));
     }
     if (!isAutofillRuntimeMessage(message)) {
       if (message && typeof message === "object" && "type" in message) {

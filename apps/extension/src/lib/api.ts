@@ -5,6 +5,9 @@ import type { AccessTokenResponseDto } from "@okkey/types";
 import { EXTENSION_AUTH_CLIENT_ID } from "./pkce";
 import type { ExtensionSession } from "./storage";
 
+export { isUnauthorizedApiError } from "./apiErrors.ts";
+export { randomDevicePublicKeyB64, randomDeviceShareB64 } from "./deviceKeyPlaceholders.ts";
+
 export function createPublicApi(apiBaseUrl: string): ApiClient {
   return new ApiClient({ baseUrl: apiBaseUrl.replace(/\/$/, "") });
 }
@@ -51,17 +54,4 @@ export function bytesToBase64(bytes: Uint8Array): string {
     binary += String.fromCharCode(bytes[i]!);
   }
   return btoa(binary);
-}
-
-/** Random placeholder device public key (base64). Server validates encoding only at register. */
-export function randomDevicePublicKeyB64(): string {
-  const bytes = new Uint8Array(32);
-  crypto.getRandomValues(bytes);
-  return bytesToBase64(bytes);
-}
-
-export function randomDeviceShareB64(): string {
-  const bytes = new Uint8Array(32);
-  crypto.getRandomValues(bytes);
-  return bytesToBase64(bytes);
 }

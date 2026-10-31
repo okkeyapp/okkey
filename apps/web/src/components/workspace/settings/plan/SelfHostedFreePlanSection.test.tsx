@@ -1,3 +1,4 @@
+import { ApiRequestError } from "@okkey/api";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -76,6 +77,17 @@ describe("SelfHostedFreePlanSection", () => {
     };
     vi.stubGlobal("location", locationStub);
 
+    getStatus.mockResolvedValue({
+      submitted: false,
+      sent_at: null,
+      sales_email_deliverable: false,
+      sales_email: "sales@example.com",
+    });
+    useCore.mockReturnValue({
+      getWorkspacePlanChangeRequestStatus: getStatus,
+      requestWorkspacePlanChange: requestChange,
+    });
+
     render(
       <SelfHostedFreePlanSection
         workspaceId="ws-1"
@@ -84,6 +96,12 @@ describe("SelfHostedFreePlanSection", () => {
         t={(key) => key}
       />,
     );
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: "web.workspaceSettings.plan.selfHosted.requestCta" }),
+      ).toBeEnabled();
+    });
 
     fireEvent.click(
       screen.getByRole("button", { name: "web.workspaceSettings.plan.selfHosted.requestCta" }),
@@ -102,7 +120,11 @@ describe("SelfHostedFreePlanSection", () => {
       screen.getByRole("button", { name: "web.workspaceSettings.plan.selfHosted.requestSubmit" }),
     );
 
-    expect(mailtoHref.startsWith("mailto:get-license@okkey.io?")).toBe(true);
+    expect(mailtoHref.startsWith("mailto:sales@example.com?")).toBe(true);
+    expect(mailtoHref).toContain("License%20request%3A%20ENTERPRISE");
+    expect(mailtoHref).toContain("Requested%20plan%3A%20ENTERPRISE");
+    expect(mailtoHref).toContain("Current%20plan%3A%20FREE");
+    expect(mailtoHref).toContain("Deployment%3A%20self-hosted");
     expect(mailtoHref).toContain("Members%3A%207");
     expect(mailtoHref).toContain("Reply%20email%3A%20reply%40okkey.local");
     expect(mailtoHref).not.toMatch(/[?&](?:subject|body)=[^&]*\+/);
@@ -121,7 +143,7 @@ describe("SelfHostedFreePlanSection", () => {
       submitted: true,
       sent_at: "2026-10-22T12:00:00.000Z",
       sales_email_deliverable: true,
-      sales_email: "get-license@okkey.io",
+      sales_email: "sales@example.com",
     });
     useCore.mockReturnValue({
       getWorkspacePlanChangeRequestStatus: getStatus,
@@ -158,7 +180,7 @@ describe("SelfHostedFreePlanSection", () => {
       submitted: true,
       sent_at: "2026-10-22T12:00:00.000Z",
       sales_email_deliverable: true,
-      sales_email: "get-license@okkey.io",
+      sales_email: "sales@example.com",
     });
     requestChange.mockResolvedValue({ submitted: true });
     useCore.mockReturnValue({
@@ -203,5 +225,65 @@ describe("SelfHostedFreePlanSection", () => {
         }),
       );
     });
+  });
+
+  it("shows localized rate-limit copy instead of raw RATE_LIMITED code", async () => {
+    getStatus.mockResolvedValue({
+      submitted: true,
+      sent_at: "2026-10-22T12:00:00.000Z",
+      sales_email_deliverable: true,
+      sales_email: "sales@example.com",
+    });
+    requestChange.mockRejectedValue(
+      new ApiRequestError(429, {
+        error: "RATE_LIMITED",
+        message: "license request daily limit exceeded",
+        requestId: "req_1",
+        details: { retryAfterSeconds: 3600 },
+      }),
+    );
+    useCore.mockReturnValue({
+      getWorkspacePlanChangeRequestStatus: getStatus,
+      requestWorkspacePlanChange: requestChange,
+    });
+
+    render(
+      <SelfHostedFreePlanSection
+        workspaceId="ws-1"
+        planTier="FREE"
+        canRequest
+        t={(key, values) =>
+          values?.hours != null ? `${key}:${String(values.hours)}` : key
+        }
+      />,
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: "web.workspaceSettings.plan.request.sendAgain" }),
+      ).toBeEnabled();
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "web.workspaceSettings.plan.request.sendAgain" }),
+    );
+    fireEvent.change(screen.getByLabelText("web.workspaceSettings.plan.request.emailLabel"), {
+      target: { value: "reply@okkey.local" },
+    });
+    fireEvent.change(screen.getByLabelText("web.workspaceSettings.plan.request.memberCountLabel"), {
+      target: { value: "3" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "web.workspaceSettings.plan.selfHosted.requestSubmit" }),
+    );
+
+    // retryAfterSeconds: 3600 → ceil to 1 hour (not minutes).
+    await waitFor(() => {
+      expect(
+        screen.getByText("web.workspaceSettings.plan.request.errorRateLimited:1"),
+      ).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/RATE_LIMITED/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/tomorrow/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/min/i)).not.toBeInTheDocument();
   });
 });

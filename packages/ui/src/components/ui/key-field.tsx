@@ -1258,6 +1258,7 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
                     ref={setValueTextareaRef}
                     value={draftValue}
                     placeholder={valuePlaceholder}
+                    autoComplete="off"
                     onChange={handleValueChange}
                     onFocus={() => {
                       setIsValueFocused(true);
@@ -1344,6 +1345,9 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
                         ? undefined
                         : valuePlaceholder
                     }
+                    // Vault item fields must not receive browser password-manager
+                    // autofill (it races Playwright fills into the item title).
+                    autoComplete="off"
                     onChange={handleValueChange}
                     onFocus={() => {
                       setIsValueFocused(true);

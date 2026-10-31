@@ -41,7 +41,6 @@ vi.mock("../../auth/AuthVaultContext", () => ({
     saveVaultBundle: vi.fn(),
     updateLocalProfile: vi.fn(),
     setRegistrationAuthStateId: vi.fn(),
-    applyAccessTokenResponse: vi.fn(),
     clearEmailLoginFlow: vi.fn(),
     logout: vi.fn(),
     accessToken: null,
@@ -68,7 +67,6 @@ vi.mock("@okkey/crypto", () => ({
     password_kdf_salt: "c2FsdA==",
     password_kdf_params_version: 2,
   })),
-  ed25519Keypair: vi.fn(() => new Uint8Array(64)),
   generateRecoverySecret: vi.fn(async () => "ABCD-EFGH-IJKM"),
   wrapVaultKeyWithRecoverySecret: vi.fn(async () => ({
     crypto_version: 2,
@@ -96,6 +94,10 @@ vi.mock("../../components/settings/recoveryKeyPdf", () => ({
 
 vi.mock("../../auth/localVaultBundle", () => ({
   finalizePendingVaultBundle: vi.fn(),
+}));
+
+vi.mock("../../auth/deviceSigningKey", () => ({
+  ensureDeviceSigningPublicKey: vi.fn(async () => btoa("pub-key-32-bytes-pad!!!!!!")),
 }));
 
 vi.mock("./registrationErrors", () => ({
@@ -161,6 +163,31 @@ describe("AuthRegistrationPage recovery key", () => {
     expect(next).toBeDisabled();
 
     fireEvent.click(screen.getByRole("button", { name: "auth.registration.recovery.copy" }));
+    await waitFor(() => {
+      expect(next).toBeEnabled();
+    });
+  });
+
+  it("keeps Continue disabled until export ack resolves after copy", async () => {
+    enrollAccountRecoveryKey.mockResolvedValue({});
+    let resolveAck: ((value: unknown) => void) | undefined;
+    ackAccountRecoveryKeyExport.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveAck = resolve;
+        }),
+    );
+    renderPage();
+    await submitRegistration();
+
+    const next = await screen.findByRole("button", { name: "auth.registration.recovery.next" });
+    fireEvent.click(screen.getByRole("button", { name: "auth.registration.recovery.copy" }));
+    await waitFor(() => {
+      expect(ackAccountRecoveryKeyExport).toHaveBeenCalled();
+    });
+    expect(next).toBeDisabled();
+
+    resolveAck?.({});
     await waitFor(() => {
       expect(next).toBeEnabled();
     });

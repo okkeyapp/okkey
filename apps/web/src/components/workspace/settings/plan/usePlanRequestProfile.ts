@@ -4,27 +4,24 @@ import { useEffect, useState } from "react";
 import { useAuthenticatedCoreClient } from "../../../../auth/AuthVaultContext";
 import { normalizeAccountProfileWire } from "../../../../auth/normalizeAccountProfileWire";
 import { useLocale } from "../../../../locale/LocaleContext";
-import {
-  detectBrowserRegion,
-  normalizeRegionCode,
-  type RegionCode,
-} from "../../../../regions/regions";
+import { normalizeRegionCode, type RegionCode } from "../../../../regions/regions";
 import { getSettingsPopupCacheState } from "../../../settings/settingsPopupCache";
 
-function resolvePrefillRegion(billingRegion: string | null | undefined): RegionCode {
-  return normalizeRegionCode(billingRegion) ?? detectBrowserRegion();
+/** Billing region only — do not invent a browser default (keeps SMTP ≡ direct API). */
+function resolvePrefillRegion(billingRegion: string | null | undefined): RegionCode | null {
+  return normalizeRegionCode(billingRegion);
 }
 
 /** Prefill contact email / region / locale for plan sales request popups. */
 export function usePlanRequestProfile(): {
   email: string;
-  region: RegionCode;
+  region: RegionCode | null;
   locale: WebLocale;
 } {
   const { locale } = useLocale();
   const core = useAuthenticatedCoreClient();
   const [email, setEmail] = useState("");
-  const [region, setRegion] = useState<RegionCode>(() => detectBrowserRegion());
+  const [region, setRegion] = useState<RegionCode | null>(null);
   const [profileLocale, setProfileLocale] = useState<WebLocale>(locale);
 
   useEffect(() => {

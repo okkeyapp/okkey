@@ -2,26 +2,33 @@
 
 Run Okkey Core on your own machine with Docker Compose — **no monorepo clone or local build**.
 
+## Requirements
+
+- **Docker Engine ≥ 28.0** and the Compose plugin. Before Engine 28.0, ports published on `127.0.0.1` could still be reached from other hosts on the same L2 segment ([moby#45610](https://github.com/moby/moby/issues/45610)). Self-host compose relies on true loopback-only publish for the API port.
+
 ## One-command install
 
-**Tracking / QA** (floating `:dev` images, published on every push to `dev` after the publish workflow lands):
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/okkeyapp/okkey/dev/deploy/docker/install.sh | bash
-```
-
-**Production** — pin a **published** SemVer image (never floating `:latest`):
+**Tracking / QA** (floating `:dev` images, published only by a manual run of the publish workflow):
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/okkeyapp/okkey/dev/deploy/docker/install.sh \
-  | OKKEY_IMAGE_TAG=<published-semver> bash
+  | OKKEY_IMAGE_TAG=dev bash
 ```
 
-`OKKEY_CHANNEL=prod` is **disabled** until a SemVer tag exists in GHCR (today only `:dev` / `:dev-<sha>` are published). The installer exits with a clear error instead of pulling a missing `1.0.0-beta.2` manifest. After the first release is published, use `OKKEY_IMAGE_TAG=<semver>` (or `OKKEY_PROD_CHANNEL_FORCE=1 OKKEY_CHANNEL=prod` to force the historical pin).
+**Production** — pin full SemVer (never floating `:latest`). `.env.example` defaults to `1.0.0-beta.2`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/okkeyapp/okkey/dev/deploy/docker/install.sh | bash
+# or explicitly:
+curl -fsSL https://raw.githubusercontent.com/okkeyapp/okkey/dev/deploy/docker/install.sh \
+  | OKKEY_IMAGE_TAG=1.0.0-beta.2 bash
+```
+
+`:1.0.0-beta.2` is published when git tag `v1.0.0-beta.2` lands. Until then, tracking installs must pass `OKKEY_IMAGE_TAG=dev`. Pushes to `release/1.0.0-beta.2` publish `:1.0.0-beta.2-candidate` and `:1.0.0-beta.2-<sha>` and do not move that pin or `:latest`. `OKKEY_CHANNEL=prod` stays gated until the SemVer exists in GHCR (or `OKKEY_PROD_CHANNEL_FORCE=1`).
 
 Note: `OKKEY_REF=…` / `OKKEY_IMAGE_TAG=…` / `OKKEY_CHANNEL=…` must be on the **right** of `|` so the installer process sees them — `VAR=x curl | bash` does **not** pass `VAR` into `bash`.
 
-`.env.example` defaults to `OKKEY_IMAGE_TAG=dev` for tracking. Core GHCR packages (`ghcr.io/okkeyapp/{api,web,worker}`) are **public** for anonymous pull. Do not use `:latest` for prod.
+`.env.example` pins `OKKEY_IMAGE_TAG=1.0.0-beta.2` for prod (never `:latest`). Core GHCR packages (`ghcr.io/okkeyapp/{api,web,worker}`) are **public** for anonymous pull.
 
 Optional env:
 
@@ -30,13 +37,16 @@ Optional env:
 | `OKKEY_REF` | Git branch/tag/SHA for raw `deploy/docker/*` downloads (default `dev`). Independent of the container image tag. |
 | `OKKEY_IMAGE_TAG` | On **fresh** installs, overrides the `.env.example` default written into `.env` |
 | `OKKEY_CHANNEL=prod` | Refused until SemVer exists in GHCR; with `OKKEY_PROD_CHANNEL_FORCE=1`, pins `OKKEY_PROD_IMAGE_TAG` |
-| `OKKEY_PROD_IMAGE_TAG` | Historical SemVer pin name (default `1.0.0-beta.2`; never `latest`) — not published yet |
+| `OKKEY_PROD_IMAGE_TAG` | Prod SemVer pin name (default `1.0.0-beta.2`; never `latest`) — published with git tag `v1.0.0-beta.2` |
 | `OKKEY_RAW_BASE` / `OKKEY_REPO_RAW_BASE` | Raw GitHub repo root (default `https://raw.githubusercontent.com/okkeyapp/okkey`) |
 | `OKKEY_INSTALL_DIR` | Install directory (default `~/okkey`). Compose project name = directory basename (containers/volumes are namespaced per install dir). |
 | `OKKEY_SKIP_PULL=1` | Skip `docker compose pull` (local/preloaded images) |
+| `OKKEY_SKIP_COSIGN_VERIFY=1` | Skip cosign keyless signature check (**warning**; off by default — not for prod) |
+| `OKKEY_FORCE_COSIGN_VERIFY=1` | With `OKKEY_SKIP_PULL=1`, still require cosign verify |
 | `OKKEY_RESET_VOLUMES=1` | `docker compose down -v` before start (wipe Postgres/Redis/MinIO data) |
-| `WEB_PORT` / `API_PORT` | Host ports for web/API. On **fresh** installs, written into `.env`; when set without explicit URLs, also derives `PUBLIC_APP_URL` / `OKKEY_API_PUBLIC_URL` / `CORS_ORIGIN` / `WEBAUTHN_ORIGINS`. |
+| `WEB_PORT` / `API_PORT` | Host ports for web/API. **API is published on `127.0.0.1` only** (not `0.0.0.0`) so forged `X-Forwarded-For` cannot reach the API when `TRUSTED_PROXY_HOPS≥1`. On **fresh** installs, written into `.env`; when set without explicit URLs, also derives `PUBLIC_APP_URL` / `OKKEY_API_PUBLIC_URL` / `CORS_ORIGIN` / `WEBAUTHN_ORIGINS`. Without a reverse proxy, other machines cannot call the API on `http://<host>:4000` (or any `API_PORT`) — use the [`proxy/`](./proxy/) overlay (TLS, `TRUSTED_PROXY_HOPS=1`) for network access. |
 | `PUBLIC_APP_URL` / `OKKEY_API_PUBLIC_URL` / `CORS_ORIGIN` / `WEBAUTHN_ORIGINS` | Optional overrides written into `.env` on fresh installs (keep `config.js` and `.env` aligned). |
+| `OKKEY_SALES_EMAIL` | **Required** sales inbox for license / plan-change requests (passed to `api` and `worker`). No built-in default. Resolved **before** any compose/`.env` rewrite — failed checks leave an existing install untouched. When a terminal is available (including `curl … \| bash` via `/dev/tty`), install prompts for it; true non-interactive installs must set it on the right of `\|` or in `.env`. |
 
 ### Reinstall / password mismatch
 
@@ -57,9 +67,19 @@ This will:
 1. Create `~/okkey` (override with `OKKEY_INSTALL_DIR`)
 2. Download `docker-compose.prod.yml` + `.env.example` from `OKKEY_REF`
 3. Generate `JWT_SECRET`, `SESSION_SECRET`, `EMAIL_DEAD_LETTER_SEAL_KEY`, Postgres and MinIO passwords
-4. `docker compose pull && up -d`
+4. `docker compose pull`, **cosign verify** (keyless GitHub OIDC) for `api` / `worker` / `web`, then `up -d`
 
-Then open **http://localhost:8080** (web) and check **http://localhost:4000/health** (API). After `up -d`, `install.sh` prints a large **OKKEY** banner and the web URL (`PUBLIC_APP_URL`, or `http://localhost:$WEB_PORT`).
+### Image signature verify (cosign)
+
+After pull, `install.sh` verifies Sigstore **cosign keyless** signatures produced by `.github/workflows/publish-images.yml` (GitHub OIDC issuer `token.actions.githubusercontent.com`). Verification is **on by default** for both floating `:dev` and pinned SemVer tags.
+
+Requirements: [`cosign`](https://docs.sigstore.dev/cosign/system_config/installation/) on `PATH`, and images pulled from GHCR (so `RepoDigests` resolve).
+
+Emergency bypass: `OKKEY_SKIP_COSIGN_VERIFY=1` — installer prints a warning and continues. Do **not** use for production. Local builds with `OKKEY_SKIP_PULL=1` skip verify unless `OKKEY_FORCE_COSIGN_VERIFY=1`.
+
+Then open **http://localhost:8080** (web) and check **http://127.0.0.1:4000/health** (API; loopback bind — same host only). After `up -d`, `install.sh` prints a large **OKKEY** banner and the web URL (`PUBLIC_APP_URL`, or `http://localhost:$WEB_PORT`).
+
+**Remote / LAN access:** the published API port is loopback-only. Other machines cannot call `http://<server>:4000` (or any `API_PORT`). Loading the web UI from another host (for example `http://<server>:8080`) still cannot reach the API unless `OKKEY_API_PUBLIC_URL` points at a network-reachable edge. For off-host access, run the TLS proxy under [`proxy/`](./proxy/) with `TRUSTED_PROXY_HOPS=1` and set `PUBLIC_APP_URL` / `OKKEY_API_PUBLIC_URL` to the proxy hosts — see [TLS / domain](#tls--domain).
 
 ## First-run (empty database)
 
@@ -108,11 +128,10 @@ Published by [`.github/workflows/publish-images.yml`](../../.github/workflows/pu
 
 | Event | Tags |
 |-------|------|
-| Push to `dev` | `:dev`, `:dev-<sha>` (intended immediately after this workflow merges to `dev`) |
+| Push to `release/<version>` or `hotfix/<version>` | `:<version>-candidate`, `:<version>-<sha7>` (no `:latest`, no rolling `:X` / `:X.Y`, no final SemVer pin) |
 | Git tag `vX.Y.Z` (clean SemVer on `main`) | `:X.Y.Z`, `:X.Y`, `:X` (**not** `:latest`) |
 | Git tag `vX.Y.Z-…` (pre-release, e.g. `v1.0.0-beta.2`) | `:X.Y.Z-…` only (no `:latest` / rolling) |
-| Pull request | `:pr-<n>`, `:pr-<n>-<head-sha7>` (PR head commit, not the merge commit) |
-| `workflow_dispatch` | explicit tag; `:latest` only when `push_latest=true` (manual/approved) |
+| `workflow_dispatch` | explicit tag (default `:dev`, the only way to publish `:dev`); `:latest` only when `push_latest=true` |
 
 Retention (scheduled GC; release SemVer tags and floating `:dev` are never deleted):
 
@@ -120,7 +139,7 @@ Retention (scheduled GC; release SemVer tags and floating `:dev` are never delet
 |-----------|--------|
 | `pr-*` | Deleted **14 days after the PR is closed**; tags of **open** PRs are never deleted |
 | `dev-<sha>` | Keep if age ≤ 30 days **or** among the newest 20 |
-| SemVer / `:latest` / `:dev` | Never deleted by GC |
+| SemVer / `:latest` / `:dev` | Never deleted by GC. Includes `:<version>-candidate` and `:<version>-<sha7>` |
 
 Ephemeral `pr-*` versions are deleted only by CI (`GITHUB_TOKEN` + `packages:write`), not by hand. Prod never uses floating `:latest`.
 
@@ -128,8 +147,8 @@ Installer defaults:
 
 | Channel | `OKKEY_IMAGE_TAG` |
 |---------|-------------------|
-| Tracking / QA (default) | `dev` |
-| Production | pin a **published** SemVer via `OKKEY_IMAGE_TAG=<semver>` — **never** `:latest`; `OKKEY_CHANNEL=prod` gated until SemVer exists |
+| Production (`.env.example` default) | `1.0.0-beta.2` — **never** `:latest` |
+| Tracking / QA | override `OKKEY_IMAGE_TAG=dev`; `OKKEY_CHANNEL=prod` gated until SemVer exists in GHCR |
 
 Multi-arch (`linux/amd64` + `linux/arm64`), OCI labels, SBOM, and build provenance are enabled in CI. Cosign **keyless GitHub OIDC** signing runs on every non-PR publish (no key-based override).
 
@@ -142,8 +161,8 @@ curl -fsSL -O "https://raw.githubusercontent.com/okkeyapp/okkey/${REF}/deploy/do
 curl -fsSL -O "https://raw.githubusercontent.com/okkeyapp/okkey/${REF}/deploy/docker/.env.example"
 cp .env.example .env
 # edit secrets and PUBLIC_APP_URL / OKKEY_API_PUBLIC_URL
-# tracking: keep OKKEY_IMAGE_TAG=dev
-# production: set OKKEY_IMAGE_TAG=<SemVer>
+# production pin (default): OKKEY_IMAGE_TAG=1.0.0-beta.2 — never :latest
+# tracking: set OKKEY_IMAGE_TAG=dev until / alongside tip images
 docker compose -f docker-compose.prod.yml --env-file .env up -d
 ```
 
@@ -177,7 +196,9 @@ Self-host uses Redis keys `okkey:email:queue` / `okkey:email:delayed` / `okkey:e
 
 ## TLS / domain
 
-**Primary edge template (self-host):** [`proxy/`](./proxy/) — nginx + OpenSSL ≥ 3.5, default hybrid group `X25519MLKEM768`, TLS 1.3 only (no silent classical downgrade). Classical-only clients need an **explicit, isolated, time-boxed** compat listener (`proxy/compat.env.example`, `policy-compat.sh`) — never on the default host. Caddy/Traefik are notes-only; see [`proxy/README.md`](./proxy/README.md).
+Required for any access that is not same-host loopback: the API host port stays on `127.0.0.1`, so the reverse proxy is the supported way to expose API (and web) on the network.
+
+**Primary edge template (self-host):** [`proxy/`](./proxy/) — nginx + OpenSSL ≥ 3.5, default hybrid group `X25519MLKEM768`, TLS 1.3 only (no silent classical downgrade). Set `TRUSTED_PROXY_HOPS=1` when the API sits behind this proxy. Classical-only clients need an **explicit, isolated, time-boxed** compat listener (`proxy/compat.env.example`, `policy-compat.sh`) — never on the default host. Caddy/Traefik are notes-only; see [`proxy/README.md`](./proxy/README.md).
 
 **SaaS stage/prod edge:** [`../saas/edge/`](../saas/edge/) — same nginx image + hybrid group; overlays `stage.env` / `prod.env`.
 
