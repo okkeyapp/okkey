@@ -50,7 +50,7 @@ test("loadConfig defaults crypto policy by deploy environment", () => {
     },
     () => {
       const cfg = loadConfig();
-      assert.deepEqual(cfg.allowedCryptoProfileVersions, [1, 2]);
+      assert.deepEqual(cfg.allowedCryptoProfileVersions, [2]);
       assert.equal(cfg.deployEnv, "dev");
       assert.equal(cfg.cryptoRolloutMode, "compat");
     },
@@ -81,6 +81,21 @@ test("loadConfig rejects crypto profile overrides blocked by matrix", () => {
       assert.throws(
         () => loadConfig(),
         /CRYPTO_ALLOWED_PROFILE_VERSIONS includes versions blocked by prod policy: 1/,
+      );
+    },
+  );
+});
+
+test("loadConfig rejects dev overrides that enable forbidden profiles", () => {
+  withEnv(
+    {
+      DEPLOY_ENV: "dev",
+      CRYPTO_ALLOWED_PROFILE_VERSIONS: "1,2",
+    },
+    () => {
+      assert.throws(
+        () => loadConfig(),
+        /CRYPTO_ALLOWED_PROFILE_VERSIONS includes versions blocked by dev policy: 1/,
       );
     },
   );

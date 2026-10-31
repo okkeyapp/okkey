@@ -80,7 +80,7 @@ export function createTestApiConfig(overrides: Partial<ApiConfig> = {}): ApiConf
     sesTimeoutMs: 10_000,
     capsuleOpenRateLimitPerIp: 60,
     capsuleRateLimitWindowSeconds: 60,
-    allowedCryptoProfileVersions: [1, 2],
+    allowedCryptoProfileVersions: [2],
     cryptoRolloutMode: "compat",
     cryptoRolloutEnabled: true,
     cryptoRolloutState: "resume",

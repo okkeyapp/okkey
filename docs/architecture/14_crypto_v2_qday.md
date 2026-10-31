@@ -47,13 +47,16 @@ Applies to wrapped vault keys, item payload envelopes, encrypted private keys, a
 Profile resolution is runtime-driven via a versioned config registry in `packages/crypto/src/config/` (`v1.ts`, `v2.ts`, `index.ts`).
 SDK entrypoint `getCryptoConfig(version)` is the single public resolver for profile selection.
 
-Baseline policy by environment:
+Baseline policy by environment for vault items:
 
-- `dev`: `v1`, `v2` (fixtures and compatibility tests allowed).
-- `stage`: `v2` only for new write operations.
-- `prod`: `v2` only for new write operations.
+- `dev`, `stage`, and `prod`: crypto profile `v2` (`qday_default`) is required for reading and writing vault items.
+- Crypto profile `v1` is forbidden for vault item reads and writes. There is no migration of existing profile `v1` vault item payloads.
+- `CRYPTO_ALLOWED_PROFILE_VERSIONS` can only narrow the allowlist. It cannot add profile `v1`.
+- Profile `v1` deprecation dates stay `announcedOn` `2026-03-29`, `startsOn` `2026-03-29`, `graceEndsOn` `2026-09-30`, `removalTarget` `2026-12-31`.
 
-For first production release, Core does not guarantee legacy client-data migration flows. Legacy compatibility remains test-only unless explicitly approved by release policy.
+Plaintext item `schemaVersion` 1 remains a separate field. Replay still normalizes that JSON through `migrateItemPlaintextV1ToV2` after a `v2` decrypt.
+
+For first production release, Core does not guarantee legacy client-data migration flows.
 
 Resolver policy:
 
@@ -162,8 +165,9 @@ Cross-layer compatibility requirement:
 ## Migration Strategy
 
 - No post-factum migration obligations for first production client data.
-- `v2` is required for new production writes from day one.
-- Legacy migration tooling is limited to internal pre-prod/test data.
+- `v2` is required for vault item reads and writes in every environment.
+- There is no migration of crypto profile `v1` vault item payloads.
+- Legacy migration tooling is limited to internal pre-prod/test data and does not make profile `v1` vault items readable.
 - Vault-level `crypto_version` metadata and replay-safe updates remain mandatory invariants.
 - Internal tooling runbook and guardrails are documented in `docs/security/6.23-preprod-migration-tooling.md`.
 
@@ -179,9 +183,7 @@ Key rotation remains mandatory for access changes and is upgraded to hybrid rewr
 
 System target behavior:
 
-- `dev`: `v1` and `v2` allowed for fixtures and compatibility tests.
-- `stage`: only `v2` writes; downgrade blocked.
-- `prod`: only `v2` writes; downgrade blocked; no legacy exceptions by default.
+- `dev`, `stage`, and `prod`: vault items require `v2` for read and write. Crypto profile `v1` is forbidden. Downgrade is blocked.
 
 Release gates and readiness checklist are defined in `docs/release_policy_qday.md`.
 

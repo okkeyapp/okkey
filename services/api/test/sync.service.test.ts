@@ -904,6 +904,42 @@ test("appendEvent maps CryptoDowngradeInvariantError to CRYPTO_DOWNGRADE_NOT_ALL
   );
 });
 
+test("appendEvent rejects crypto profile v1 with the default allowlist", async () => {
+  const service = new SyncService({
+    vaults: {
+      findById: async () => ({
+        id: "v1",
+        workspaceId: "w1",
+        name: "Vault",
+        isPersonal: false,
+        ownerId: "u1",
+        cryptoVersion: 2,
+        createdAt: "",
+        updatedAt: "",
+      }),
+      canReadVault: async () => true,
+    },
+    events: {
+      listAfterVersion: async () => [],
+      append: async () => {
+        throw new Error("not used");
+      },
+    },
+  });
+
+  await assert.rejects(
+    () =>
+      service.appendEvent("v1", "u1", {
+        eventType: "ITEM_UPDATE",
+        encryptedBlob: mkBlob("x", 1),
+        baseVersion: 0,
+        referencedItemId: TEST_ITEM_ID,
+      }),
+    (error: unknown) =>
+      error instanceof SyncServiceError && error.code === "CRYPTO_PROFILE_NOT_ALLOWED",
+  );
+});
+
 test("appendEvent rejects disallowed crypto profile by policy", async () => {
   const service = new SyncService({
     vaults: {

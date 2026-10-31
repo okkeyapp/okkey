@@ -89,14 +89,13 @@ On a fresh install the `users` table is empty. Open the web UI, enter an email, 
 
 ## Crypto profiles (registration)
 
-The web client registers with `password_kdf_params_version: 1` (identity blob is crypto v2). API policy:
+The web client registers with `password_kdf_params_version: 2` (identity blob is crypto v2). Vault items require crypto profile `v2` for read and write. API policy:
 
 | `DEPLOY_ENV` | Default allowed profiles | Notes |
 |--------------|--------------------------|--------|
-| `dev` (self-host default) | `1,2` | Required for current web registration |
-| `stage` / `prod` | `2` only | Rejects kdf v1 with `CRYPTO_PROFILE_NOT_ALLOWED` |
+| `dev`, `stage`, `prod` | `2` only | Profile `v1` is forbidden. `CRYPTO_ALLOWED_PROFILE_VERSIONS` can only narrow this set. |
 
-Compose passes `DEPLOY_ENV`, `CRYPTO_ALLOWED_PROFILE_VERSIONS`, and `CRYPTO_ROLLOUT_MODE` from `.env` (defaults `dev` / `1,2` / `compat`). You cannot set `CRYPTO_ALLOWED_PROFILE_VERSIONS=1,2` with `DEPLOY_ENV=prod` — the process exits on boot.
+Compose passes `DEPLOY_ENV`, `CRYPTO_ALLOWED_PROFILE_VERSIONS`, and `CRYPTO_ROLLOUT_MODE` from `.env` (defaults `dev` / `2` / `compat`). Setting `CRYPTO_ALLOWED_PROFILE_VERSIONS=1,2` makes the process exit on boot.
 
 ### Workaround (existing install showing «Профиль шифрования не разрешён»)
 
@@ -112,7 +111,7 @@ curl -fsSL -o ~/okkey/docker-compose.prod.yml \
 
 ```bash
 DEPLOY_ENV=dev
-CRYPTO_ALLOWED_PROFILE_VERSIONS=1,2
+CRYPTO_ALLOWED_PROFILE_VERSIONS=2
 CRYPTO_ROLLOUT_MODE=compat
 ```
 
