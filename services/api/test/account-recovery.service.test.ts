@@ -87,6 +87,10 @@ function createService(overrides?: {
   devices?: ReturnType<typeof mockDevice>[];
   emailTemplates?: ConstructorParameters<typeof AccountRecoveryService>[0]["emailTemplates"];
   publicAppBaseUrl?: string;
+  config?: {
+    deploymentMode: "self_hosted" | "saas";
+    enterpriseModulesEnabled: boolean;
+  };
 }) {
   const workspaces = overrides?.workspaces ?? [{ planTier: "FREE" }];
   const users = overrides?.users ?? [
@@ -298,6 +302,7 @@ function createService(overrides?: {
     },
     emailTemplates: overrides?.emailTemplates,
     publicAppBaseUrl: overrides?.publicAppBaseUrl,
+    config: overrides?.config,
   });
 }
 
@@ -375,6 +380,69 @@ test("devicesEnabled requires paid entitlement", async () => {
     () => service.updateSettings("u1", { devicesEnabled: true }),
     (err: unknown) => err instanceof AccountRecoveryError && err.code === "RECOVERY_ENTITLEMENT_REQUIRED",
   );
+});
+
+test("self-hosted modules off ignores plan_tier ENTERPRISE for trusted recovery", async () => {
+  const service = createService({
+    workspaces: [{ planTier: "ENTERPRISE" }],
+    devices: [
+      mockDevice({ fingerprint: "fp-current", status: "trusted" }),
+      mockDevice({ fingerprint: "fp-other", status: "trusted" }),
+    ],
+    config: { deploymentMode: "self_hosted", enterpriseModulesEnabled: false },
+  });
+  const status = await service.getStatus("u1");
+  assert.equal(status.entitlements.recoveryKey, true);
+  assert.equal(status.entitlements.trustedDevices, false);
+  assert.equal(status.entitlements.trustedContacts, false);
+  await assert.rejects(
+    () =>
+      service.updateSettings(
+        "u1",
+        { devicesEnabled: true },
+        { currentFingerprint: "fp-current" },
+      ),
+    (err: unknown) =>
+      err instanceof AccountRecoveryError && err.code === "RECOVERY_ENTITLEMENT_REQUIRED",
+  );
+});
+
+test("self-hosted modules on grants trusted recovery when plan_tier is FREE", async () => {
+  const blocked = createService({
+    workspaces: [{ planTier: "FREE" }],
+    devices: [mockDevice({ fingerprint: "fp-current", status: "trusted" })],
+    config: { deploymentMode: "self_hosted", enterpriseModulesEnabled: true },
+  });
+  const status = await blocked.getStatus("u1");
+  assert.equal(status.entitlements.recoveryKey, true);
+  assert.equal(status.entitlements.trustedDevices, true);
+  assert.equal(status.entitlements.trustedContacts, true);
+  await assert.rejects(
+    () =>
+      blocked.updateSettings(
+        "u1",
+        { devicesEnabled: true },
+        { currentFingerprint: "fp-current" },
+      ),
+    (err: unknown) =>
+      err instanceof AccountRecoveryError && err.code === "RECOVERY_DEVICES_INSUFFICIENT",
+  );
+
+  const allowed = createService({
+    workspaces: [{ planTier: "FREE" }],
+    devices: [
+      mockDevice({ fingerprint: "fp-current", status: "trusted" }),
+      mockDevice({ fingerprint: "fp-other", status: "trusted" }),
+    ],
+    config: { deploymentMode: "self_hosted", enterpriseModulesEnabled: true },
+  });
+  const updated = await allowed.updateSettings(
+    "u1",
+    { devicesEnabled: true },
+    { currentFingerprint: "fp-current" },
+  );
+  assert.equal(updated.settings.devicesEnabled, true);
+  assert.equal(updated.entitlements.trustedDevices, true);
 });
 
 test("devicesEnabled requires ≥2 trusted devices including current", async () => {
