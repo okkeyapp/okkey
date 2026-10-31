@@ -3156,6 +3156,186 @@ export class EventsRepository {
     });
   }
 
+  /**
+   * Append many events in one transaction (vault row locked). Idempotent keys
+   * short-circuit to the existing row without advancing the tip — same as
+   * {@link append}. Non-idempotent inserts require contiguous `baseVersion`
+   * values against the live tip as each row is written.
+   */
+  async appendBatch(
+    inputs: Array<{
+      vaultId: string;
+      actorId?: string | null;
+      eventType: string;
+      encryptedPayload: Uint8Array;
+      baseVersion: number;
+      payloadSchemaVersion?: number;
+      idempotencyKey?: string | null;
+      clientCreatedAt?: string | null;
+      referencedItemId?: string | null;
+      itemSoftDeleted?: boolean | null;
+    }>,
+  ): Promise<EventRecord[]> {
+    if (inputs.length === 0) {
+      return [];
+    }
+    const vaultId = inputs[0]!.vaultId;
+    for (const input of inputs) {
+      if (input.vaultId !== vaultId) {
+        throw new Error("appendBatch requires a single vaultId");
+      }
+    }
+
+    return this.db.transaction(async (tx) => {
+      const vaultRows = await tx.query<{ id: string; crypto_version: number }>(
+        "SELECT id, crypto_version FROM vaults WHERE id = $1 FOR UPDATE",
+        [vaultId],
+      );
+      if (!vaultRows[0]) {
+        throw new EntityNotFoundError("vault", vaultId);
+      }
+      let vaultCryptoVersion = vaultRows[0].crypto_version;
+
+      const versionRows = await tx.query<{ current_version: number }>(
+        "SELECT COALESCE(MAX(version), 0) AS current_version FROM events WHERE vault_id = $1",
+        [vaultId],
+      );
+      let currentVersion = Number(versionRows[0]?.current_version ?? 0);
+
+      const maxSchemaRows = await tx.query<{ m: number | null }>(
+        "SELECT MAX(payload_schema_version) AS m FROM events WHERE vault_id = $1",
+        [vaultId],
+      );
+      let establishedMax = maxSchemaRows[0]?.m ?? null;
+
+      type EventRow = {
+        id: string;
+        vault_id: string;
+        actor_id: string | null;
+        event_type: string;
+        encrypted_payload: Buffer;
+        payload_schema_version: number;
+        idempotency_key: string | null;
+        client_created_at: string | null;
+        referenced_item_id: string | null;
+        item_soft_deleted: boolean | null;
+        version: number;
+        created_at: string;
+      };
+
+      const out: EventRecord[] = [];
+      let maxPayloadSchemaWritten = vaultCryptoVersion;
+
+      for (const input of inputs) {
+        if (input.idempotencyKey) {
+          const existingRows = await tx.query<EventRow>(
+            `
+              SELECT id, vault_id, actor_id, event_type, encrypted_payload,
+                     payload_schema_version, idempotency_key, client_created_at,
+                     referenced_item_id::text AS referenced_item_id, item_soft_deleted, version, created_at
+              FROM events
+              WHERE vault_id = $1 AND idempotency_key = $2::bigint
+              FOR UPDATE
+            `,
+            [vaultId, input.idempotencyKey],
+          );
+          if (existingRows[0]) {
+            out.push(mapEvent(existingRows[0]));
+            continue;
+          }
+        }
+
+        if (input.baseVersion !== currentVersion) {
+          throw new VersionConflictError(input.baseVersion, currentVersion);
+        }
+
+        const nextVersion = currentVersion + 1;
+        const payloadSchemaVersion = input.payloadSchemaVersion ?? 2;
+        assertVaultCryptoFloor(vaultId, vaultCryptoVersion, payloadSchemaVersion);
+        assertPayloadSchemaMonotonic(vaultId, establishedMax, payloadSchemaVersion);
+
+        const eventId = generateEntityId();
+        let rows: EventRow[];
+        try {
+          rows = await tx.query<EventRow>(
+            `
+            INSERT INTO events (
+              id, vault_id, actor_id, event_type, encrypted_payload, version,
+              payload_schema_version, idempotency_key, client_created_at, referenced_item_id,
+              item_soft_deleted
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            RETURNING id, vault_id, actor_id, event_type, encrypted_payload,
+                      payload_schema_version, idempotency_key, client_created_at,
+                      referenced_item_id::text AS referenced_item_id, item_soft_deleted, version, created_at
+          `,
+            [
+              eventId,
+              vaultId,
+              input.actorId ?? null,
+              input.eventType,
+              Buffer.from(input.encryptedPayload),
+              nextVersion,
+              payloadSchemaVersion,
+              input.idempotencyKey ?? null,
+              input.clientCreatedAt ?? null,
+              input.referencedItemId ?? null,
+              input.itemSoftDeleted ?? false,
+            ],
+          );
+        } catch (error) {
+          if (
+            input.idempotencyKey &&
+            typeof error === "object" &&
+            error !== null &&
+            "code" in error &&
+            (error as { code?: string }).code === "23505"
+          ) {
+            const retryRows = await tx.query<EventRow>(
+              `
+                SELECT id, vault_id, actor_id, event_type, encrypted_payload,
+                       payload_schema_version, idempotency_key, client_created_at,
+                       referenced_item_id::text AS referenced_item_id, item_soft_deleted, version, created_at
+                FROM events
+                WHERE vault_id = $1 AND idempotency_key = $2::bigint
+                FOR UPDATE
+              `,
+              [vaultId, input.idempotencyKey],
+            );
+            if (retryRows[0]) {
+              out.push(mapEvent(retryRows[0]));
+              continue;
+            }
+          }
+          throw error;
+        }
+
+        currentVersion = nextVersion;
+        establishedMax =
+          establishedMax == null
+            ? payloadSchemaVersion
+            : Math.max(establishedMax, payloadSchemaVersion);
+        vaultCryptoVersion = Math.max(vaultCryptoVersion, payloadSchemaVersion);
+        maxPayloadSchemaWritten = Math.max(maxPayloadSchemaWritten, payloadSchemaVersion);
+        out.push(mapEvent(rows[0]!));
+      }
+
+      if (maxPayloadSchemaWritten > (vaultRows[0]?.crypto_version ?? 0)) {
+        await tx.query(
+          `
+            UPDATE vaults
+            SET crypto_version = GREATEST(crypto_version, $2),
+                updated_at = now()
+            WHERE id = $1
+          `,
+          [vaultId, maxPayloadSchemaWritten],
+        );
+      }
+
+      return out;
+    });
+  }
+
   async deleteByVaultAndReferencedItemId(vaultId: string, referencedItemId: string): Promise<number> {
     const rows = await this.db.query<{ id: string }>(
       `

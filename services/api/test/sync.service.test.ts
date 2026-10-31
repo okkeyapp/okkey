@@ -1323,3 +1323,116 @@ test("appendEvent returns existing ITEM_CREATE on matching idempotency retry", a
   assert.equal(result.version, 1);
   assert.equal(result.referencedItemId, TEST_ITEM_ID);
 });
+
+test("appendEvents commits a contiguous batch via appendBatch", async () => {
+  const itemA = testEntityId();
+  const itemB = testEntityId();
+  const appended: Array<{ baseVersion: number; referencedItemId: string | null }> = [];
+  const service = new SyncService({
+    vaults: {
+      findById: async () => ({
+        id: "v1",
+        workspaceId: "w1",
+        name: "Vault",
+        isPersonal: true,
+        ownerId: "u1",
+        cryptoVersion: 2,
+        createdAt: "",
+        updatedAt: "",
+      }),
+      canReadVault: async () => true,
+    },
+    events: {
+      listAfterVersion: async () => [],
+      hasItemCreateEvent: async () => false,
+      findByIdempotencyKey: async () => null,
+      append: async () => {
+        throw new Error("single append must not be used for batch");
+      },
+      appendBatch: async (inputs) => {
+        for (const input of inputs) {
+          appended.push({
+            baseVersion: input.baseVersion,
+            referencedItemId: input.referencedItemId ?? null,
+          });
+        }
+        return inputs.map((input, index) => ({
+          id: `e${index + 1}`,
+          vaultId: "v1",
+          actorId: "u1",
+          eventType: input.eventType,
+          encryptedPayload: input.encryptedPayload,
+          payloadSchemaVersion: input.payloadSchemaVersion ?? 2,
+          idempotencyKey: input.idempotencyKey ?? null,
+          clientCreatedAt: input.clientCreatedAt ?? null,
+          referencedItemId: input.referencedItemId ?? null,
+          itemSoftDeleted: input.itemSoftDeleted ?? false,
+          version: input.baseVersion + 1,
+          createdAt: "2026-01-01T00:00:00.000Z",
+        }));
+      },
+    },
+  });
+
+  const results = await service.appendEvents("v1", "u1", [
+    {
+      eventType: "ITEM_CREATE",
+      encryptedBlob: mkBlob("a"),
+      baseVersion: 0,
+      idempotencyKey: testEntityId(),
+      referencedItemId: itemA,
+    },
+    {
+      eventType: "ITEM_CREATE",
+      encryptedBlob: mkBlob("b"),
+      baseVersion: 1,
+      idempotencyKey: testEntityId(),
+      referencedItemId: itemB,
+    },
+  ]);
+  assert.equal(results.length, 2);
+  assert.deepEqual(
+    appended.map((row) => row.baseVersion),
+    [0, 1],
+  );
+  assert.equal(results[0]?.version, 1);
+  assert.equal(results[1]?.version, 2);
+});
+
+test("appendEvents rejects oversized batches", async () => {
+  const service = new SyncService({
+    vaults: {
+      findById: async () => ({
+        id: "v1",
+        workspaceId: "w1",
+        name: "Vault",
+        isPersonal: true,
+        ownerId: "u1",
+        cryptoVersion: 2,
+        createdAt: "",
+        updatedAt: "",
+      }),
+      canReadVault: async () => true,
+    },
+    events: {
+      listAfterVersion: async () => [],
+      hasItemCreateEvent: async () => false,
+      findByIdempotencyKey: async () => null,
+      append: async () => {
+        throw new Error("not used");
+      },
+    },
+  });
+
+  const tooMany = Array.from({ length: 101 }, (_, index) => ({
+    eventType: "ITEM_UPDATE",
+    encryptedBlob: mkBlob(`x${index}`),
+    baseVersion: index,
+    referencedItemId: TEST_ITEM_ID,
+  }));
+  await assert.rejects(
+    () => service.appendEvents("v1", "u1", tooMany),
+    (error: unknown) =>
+      error instanceof SyncServiceError && error.code === "SYNC_BAD_REQUEST",
+  );
+});

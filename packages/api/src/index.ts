@@ -32,6 +32,8 @@ import type {
   DeviceRevokeResponseDto,
   EncryptedBlobDto,
   SyncAppendEventRequestDto,
+  SyncAppendEventsBatchRequestDto,
+  SyncAppendEventsBatchResponseDto,
   SyncEventWireDto,
   SyncEventsListResponseDto,
   WorkspacePersonalEventWireDto,
@@ -103,7 +105,7 @@ import type {
   VaultAccessResponseDto,
   VaultAccessUpdateRequestDto,
 } from "@okkey/types";
-import { isClientPqCapable } from "@okkey/types";
+import { isClientPqCapable, SYNC_EVENTS_BATCH_MAX } from "@okkey/types";
 
 export interface ApiClientOptions {
   baseUrl: string;
@@ -671,6 +673,25 @@ export class CoreApiClient {
     this.assertStrictWritePathCapability(body.encryptedBlob, "sync.append");
     return this.api.post<SyncEventWireDto>(
       `/vaults/${encodeURIComponent(vaultId)}/events`,
+      body,
+    );
+  }
+
+  appendVaultEventsBatch(
+    vaultId: string,
+    body: SyncAppendEventsBatchRequestDto,
+  ): Promise<SyncAppendEventsBatchResponseDto> {
+    if (!Array.isArray(body.events) || body.events.length === 0) {
+      throw new Error("events must be a non-empty array");
+    }
+    if (body.events.length > SYNC_EVENTS_BATCH_MAX) {
+      throw new Error(`events batch exceeds max of ${SYNC_EVENTS_BATCH_MAX}`);
+    }
+    for (const event of body.events) {
+      this.assertStrictWritePathCapability(event.encryptedBlob, "sync.append");
+    }
+    return this.api.post<SyncAppendEventsBatchResponseDto>(
+      `/vaults/${encodeURIComponent(vaultId)}/events/batch`,
       body,
     );
   }

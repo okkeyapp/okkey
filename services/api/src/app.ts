@@ -56,6 +56,7 @@ import {
 } from "./routes/account-recovery.ts";
 import type { AccountRecoveryService } from "./account-recovery/service.ts";
 import {
+  createSyncEventsAppendBatchRoute,
   createSyncEventsAppendRoute,
   createSyncEventsListRoute,
 } from "./routes/sync.ts";
@@ -763,6 +764,11 @@ export function createApiApp(
       "POST",
       "/vaults/:vaultId/events",
       gateVaultUse(createSyncEventsAppendRoute(deps.syncService, resolveUserId)),
+    );
+    app.route(
+      "POST",
+      "/vaults/:vaultId/events/batch",
+      gateVaultUse(createSyncEventsAppendBatchRoute(deps.syncService, resolveUserId)),
     );
   }
   if (deps.deviceService) {

@@ -92,6 +92,48 @@ test("computeBackoffDelayMs grows exponentially", () => {
   assert.equal(d3, 400);
 });
 
+test("outbox drains multiple pending entries via appendVaultEventsBatch", async () => {
+  const vaultId = testEntityId();
+  const store = new InMemoryOutboxStore();
+  const batchCalls: number[][] = [];
+  const singleCalls: number[] = [];
+  const transport: OutboxTransport = {
+    async appendVaultEvent(_vaultId, body) {
+      singleCalls.push(body.baseVersion);
+      return mkEvent(vaultId, body.baseVersion + 1);
+    },
+    async appendVaultEventsBatch(_vaultId, body) {
+      batchCalls.push(body.events.map((e) => e.baseVersion));
+      return {
+        vaultId,
+        events: body.events.map((e) => mkEvent(vaultId, e.baseVersion + 1)),
+        latestVersion: body.events[body.events.length - 1]!.baseVersion + 1,
+      };
+    },
+    async listVaultEvents(vId, afterVersion) {
+      return mkList(vId, afterVersion, []);
+    },
+  };
+
+  const outbox = new SyncOutboxClient(store, transport, {
+    nowMs: (() => {
+      let now = 1_000;
+      return () => (now += 1);
+    })(),
+    random: () => 0.5,
+  });
+
+  await outbox.enqueue({ vaultId, request: mkReq(10) });
+  await outbox.enqueue({ vaultId, request: mkReq(11) });
+  await outbox.enqueue({ vaultId, request: mkReq(12) });
+
+  const appended = await outbox.drain(vaultId);
+  assert.equal(appended.length, 3);
+  assert.deepEqual(batchCalls, [[10, 11, 12]]);
+  assert.deepEqual(singleCalls, []);
+  assert.equal((await outbox.list()).length, 0);
+});
+
 test("outbox drains FIFO after offline failures", async () => {
   const vaultId = testEntityId();
   const store = new InMemoryOutboxStore();
