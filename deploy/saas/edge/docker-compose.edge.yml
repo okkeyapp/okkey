@@ -7,6 +7,9 @@
 #   docker compose -f docker-compose.edge.yml --env-file overlays/stage.env up -d --build
 #   docker compose -f docker-compose.edge.yml --env-file overlays/prod.env  up -d --build
 #
+# Compat port (N8): do NOT publish 8443 here. When OKKEY_COMPAT_ENABLED=1, also include
+# docker-compose.compat.yml (see overlays/compat.env.example).
+#
 # Paths are relative to this directory (deploy/saas/edge).
 
 services:
@@ -15,7 +18,7 @@ services:
       context: ../../docker/proxy/nginx
       dockerfile: Dockerfile
       args:
-        OPENSSL_VERSION: ${OKKEY_PROXY_OPENSSL_VERSION:-3.5.0}
+        OPENSSL_VERSION: ${OKKEY_PROXY_OPENSSL_VERSION:-3.5.9}
         NGINX_VERSION: ${OKKEY_PROXY_NGINX_VERSION:-1.28.0}
     image: ${OKKEY_SAAS_EDGE_IMAGE:-okkey-saas-edge-nginx:openssl35}
     restart: unless-stopped
@@ -34,6 +37,7 @@ services:
       OKKEY_COMPAT_SUNSET: ${OKKEY_COMPAT_SUNSET:-}
       OKKEY_COMPAT_OWNER: ${OKKEY_COMPAT_OWNER:-}
       OKKEY_COMPAT_ALLOW_CIDRS: ${OKKEY_COMPAT_ALLOW_CIDRS:-}
+      OKKEY_COMPAT_HTTPS_PORT: ${OKKEY_COMPAT_HTTPS_PORT:-8443}
     volumes:
       - ./certs:/etc/nginx/certs:ro
     # Default TLS policy is compiled into the image template (ssl_protocols TLSv1.3;

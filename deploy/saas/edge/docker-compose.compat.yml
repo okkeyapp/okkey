@@ -1,0 +1,12 @@
+# Optional SaaS overlay: publish the classical compat HTTPS port.
+# Use ONLY when OKKEY_COMPAT_ENABLED=1 (N8 — base edge compose must not expose 8443).
+#
+#   docker compose -f docker-compose.edge.yml -f docker-compose.compat.yml \
+#     --env-file overlays/stage.env --env-file overlays/compat.env up -d --build
+#
+# Paths relative to deploy/saas/edge.
+
+services:
+  edge:
+    ports:
+      - "${OKKEY_COMPAT_HTTPS_PORT:-8443}:${OKKEY_COMPAT_HTTPS_PORT:-8443}"
