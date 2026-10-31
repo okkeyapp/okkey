@@ -145,6 +145,8 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
   );
   const recordNameEditedRef = useRef(Boolean(initialValues ?? (isCopyMode && prefillValues)));
   const recordNameInputRef = useRef<HTMLInputElement>(null);
+  const committedRecordNameRef = useRef(recordName.trim());
+  const [nameFetchRevision, setNameFetchRevision] = useState(0);
   const [formSections, setFormSections] = useState<KeyFormEditorSection[] | null>(
     initialValues?.sections ?? prefillValues?.sections ?? null,
   );
@@ -249,7 +251,17 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
   const trimmedRecordName = recordName.trim();
   const recordNameInvalid = showValidation && trimmedRecordName.length === 0;
   const currentSections = formSections ?? initialSections;
-  // Favicon preview only on website URL change/focusout (committed list), never on every keystroke.
+  const commitRecordNameForFavicon = useCallback((nextRaw: string) => {
+    const next = nextRaw.trim();
+    if (next === committedRecordNameRef.current) {
+      return;
+    }
+    committedRecordNameRef.current = next;
+    // Re-fetch favicon only when the committed name actually changed (Sasha: name + website URL).
+    setNameFetchRevision((value) => value + 1);
+  }, []);
+
+  // Favicon preview only on committed name / website URL change (change or focusout), never keystrokes in other fields.
   const faviconState = useItemFormFavicon({
     accessToken,
     categoryId,
@@ -258,6 +270,7 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
     initialFaviconItemId: initialValues?.faviconItemId ?? prefillValues?.faviconItemId ?? initialValues?.itemId,
     initialFaviconSource: initialValues?.faviconSource ?? prefillValues?.faviconSource,
     initialUrlsKey: initialValues?.faviconId ? initialWebsiteUrlsKey : null,
+    nameFetchRevision,
   });
   const {
     previewImageSrc,
@@ -286,6 +299,8 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
     }
     setRecordName("");
     recordNameEditedRef.current = false;
+    committedRecordNameRef.current = "";
+    setNameFetchRevision(0);
     setFormSections(null);
     setTags([]);
     setCommittedWebsiteUrls([]);
@@ -296,6 +311,7 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
       return;
     }
     setRecordName(suggestedRecordName);
+    committedRecordNameRef.current = suggestedRecordName.trim();
   }, [suggestedRecordName]);
 
   // Autofocus the title once per form instance. Never steal focus from another
@@ -666,6 +682,14 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
           // email into the item title while sibling key fields are filled.
           autoComplete="off"
           name="okkey-item-record-name"
+          onBlur={(event) => {
+            commitRecordNameForFavicon(event.currentTarget.value);
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              commitRecordNameForFavicon(event.currentTarget.value);
+            }
+          }}
           placeholder={t("web.newItemPopup.recordNamePlaceholder", { category: categoryLabel })}
           className={cn(
             "h-10 min-w-0 flex-1 text-xl font-semibold leading-6",

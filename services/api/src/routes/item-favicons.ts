@@ -45,15 +45,25 @@ export function createItemFaviconPreviewRoute(
     const urls = Array.isArray(body.urls) ? body.urls.filter((url): url is string => typeof url === "string") : [];
 
     try {
-      const bytes = await service.previewFromUrls(urls);
-      if (!bytes) {
+      const lookup = await service.previewFromUrls(urls);
+      if (lookup.status === "unavailable") {
+        // Site could not be reached (DNS / refused / timeout / 5xx). Not a positive absence —
+        // clients must keep any previously stored favicon.
+        json(ctx.res, 503, {
+          error: "FAVICON_UNAVAILABLE",
+          message: "Website unreachable; favicon temporarily unavailable",
+          requestId: ctx.requestId,
+        });
+        return;
+      }
+      if (lookup.status === "absent") {
         json(ctx.res, 404, { error: "NOT_FOUND", message: "Favicon not found", requestId: ctx.requestId });
         return;
       }
 
-      sendBinary(ctx.res, 200, bytes, {
+      sendBinary(ctx.res, 200, lookup.bytes, {
         "Content-Type": "image/png",
-        "Content-Length": String(bytes.byteLength),
+        "Content-Length": String(lookup.bytes.byteLength),
         "Cache-Control": "private, no-store",
       });
     } catch (error) {

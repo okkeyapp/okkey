@@ -33,6 +33,8 @@ export function useItemFormFavicon(input: {
   initialFaviconSource?: ItemFaviconSource;
   /** URL list key at dialog open — used to skip the redundant edit-open preview fetch. */
   initialUrlsKey?: string | null;
+  /** Bumped on committed record-name change only (change/focusout with a new value). */
+  nameFetchRevision?: number;
 }) {
   const [faviconSource, setFaviconSource] = useState<ItemFaviconSource | undefined>(input.initialFaviconSource);
   const [manualPreviewUrl, setManualPreviewUrl] = useState<string | undefined>();
@@ -57,6 +59,7 @@ export function useItemFormFavicon(input: {
     urls: input.urls,
     disabled: autoPreviewDisabled,
     skipFetchForUrlsKey,
+    nameFetchRevision: input.nameFetchRevision,
   });
   const websitePreviewPngRef = useRef<Uint8Array | null>(null);
   const websitePreviewUrlsKeyRef = useRef<string | null>(null);

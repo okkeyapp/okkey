@@ -1,10 +1,22 @@
 import { getApiBaseUrl } from "./client";
 
+export class FaviconPreviewUnavailableError extends Error {
+  readonly code = "FAVICON_UNAVAILABLE" as const;
+
+  constructor(message = "Website unreachable; favicon temporarily unavailable") {
+    super(message);
+    this.name = "FaviconPreviewUnavailableError";
+  }
+}
+
 async function readErrorMessage(status: number, responseText: string): Promise<string> {
   try {
-    const payload = JSON.parse(responseText) as { message?: string };
+    const payload = JSON.parse(responseText) as { message?: string; error?: string };
     if (typeof payload.message === "string" && payload.message.trim()) {
       return payload.message;
+    }
+    if (typeof payload.error === "string" && payload.error.trim()) {
+      return payload.error;
     }
   } catch {
     /* ignore */
@@ -12,6 +24,13 @@ async function readErrorMessage(status: number, responseText: string): Promise<s
   return `Request failed (${status})`;
 }
 
+/**
+ * POST /favicon/preview
+ * - 200 → image blob
+ * - 404 → site reachable, no favicon (`null`)
+ * - 503 FAVICON_UNAVAILABLE → site unreachable (throws {@link FaviconPreviewUnavailableError})
+ * - other errors → throw
+ */
 export async function previewItemFavicon(
   accessToken: string,
   urls: readonly string[],
@@ -31,10 +50,20 @@ export async function previewItemFavicon(
     return null;
   }
 
+  if (response.status === 503) {
+    const text = await response.text();
+    throw new FaviconPreviewUnavailableError(await readErrorMessage(response.status, text));
+  }
+
   if (!response.ok) {
     const text = await response.text();
     throw new Error(await readErrorMessage(response.status, text));
   }
 
-  return response.blob();
+  // Prefer arrayBuffer → Blob so callers can always read bytes (jsdom's response.blob()
+  // may lack arrayBuffer()).
+  const bytes = await response.arrayBuffer();
+  return new Blob([bytes], {
+    type: response.headers.get("content-type") || "image/png",
+  });
 }
