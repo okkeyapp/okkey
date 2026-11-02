@@ -84,7 +84,7 @@ yarn --cwd apps/extension test
 
 `yarn test` runs `yarn test:api`, `yarn test:security`, `yarn test:e2e`, and `yarn test:web`.
 
-API tests need Postgres and Redis. Start them with `yarn infra:up` first. `yarn test:api` builds the WASM package and the TypeScript SDK, then runs `services/api/test/*.test.ts`.
+API tests need Postgres and Redis. Start them with `yarn infra:up` first. `yarn test:api` builds the WASM package, the TypeScript SDK, and the email templates (`yarn build:email`), then runs `services/api/test/*.test.ts`.
 
 ```bash
 yarn infra:up

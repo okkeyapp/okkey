@@ -6,13 +6,13 @@ Run Okkey when you want the server under your control, and when you want to read
 
 ## Status
 
-[v1.0.0-beta.2](CHANGELOG.md) is the first public beta. It is not production-ready. An independent security audit has not been done. The browser extension is not part of this release. Published container images are the web app, the API, and the worker.
+[v1.0.0-beta.2](CHANGELOG.md#v1.0.0-beta.2) is the first public beta. It is not production-ready. An independent security audit has not been done. The browser extension is not part of this release. Published container images are the web app, the API, and the worker.
 
 ## Quick start
 
 You need Docker Engine 28.0 or newer, the Docker Compose plugin, and [cosign](https://docs.sigstore.dev/cosign/system_config/installation/) on your `PATH`. Full steps are in [docs/install.md](docs/install.md).
 
-The installer script's default git ref is `dev`. The command below pins both the script and the files it downloads to the tag `v1.0.0-beta.2`, and pins the container tag `1.0.0-beta.2`. Put the variables on the right side of `|`.
+On tag v1.0.0-beta.2 the installer defaults `OKKEY_REF` to `v1.0.0-beta.2`. The command below pins the script, the files it downloads, and the container tag. Put the variables on the right side of `|`.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/okkeyapp/okkey/v1.0.0-beta.2/deploy/docker/install.sh \
@@ -29,15 +29,15 @@ Names below are the English labels in the web app.
 
 - **All items** in a **Personal vault**, organized with **Folders**
 - Item types: **Login / Password**, **Secure note**, **Credit card**, **Personal data**, **Passport**, **Secure files**, **API credentials**, **Database**, **Server**, **Wi-Fi router**, **Bank account**, **Crypto wallet**
-- **Capsules**. On a default self-hosted server, **Advanced settings** (**Views**, **Time**, **Access**, **Password**, **Approval**) show "Not available on your current plan"
-- **Monitoring**
+- **Capsules** are encrypted records for secure sharing via email or chat. On a default self-hosted server, **Advanced settings** (**Views**, **Time**, **Access**, **Password**, **Approval**) show "Not available on your current plan"
+- **Monitoring** calculates a security score from records you can access in the current workspace. Analysis runs locally
 - **Tools**: **Generator** (**Password**, **Passphrase**, **Username**), **Import**, **Export**
 - **Master password**, **PIN code**, and **Biometric unlock** on this browser
 - Sign-in: **Email confirmation**, **Passkey**, **Hardware key**
 - **Two-factor authentication** with an **Authenticator app** and **Backup codes**
 - **Recovery key**
 
-**Create vault** for a shared vault, and inviting more workspace members, are unavailable on a default self-hosted server. **Trusted devices** and **Trusted contacts** recovery are unavailable in this release. The web app says those two recovery flows are not available yet.
+**Create vault** for a shared vault, and inviting more workspace members, are unavailable on a default self-hosted server. **Trusted devices** and **Trusted contacts** are unavailable in the web app. The restore screen says web recovery via a remote trusted device is not available yet, and interactive contact recovery in the web app is not available yet.
 
 ## How to help
 

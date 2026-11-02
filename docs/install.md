@@ -16,7 +16,7 @@ The web app listens on port `8080` (`WEB_PORT`). The API listens on port `4000` 
 
 ## Install with the pinned script
 
-The script in this repository defaults `OKKEY_REF` to `dev`. When you pipe the script to `bash`, `OKKEY_REF` is the git ref used to download `deploy/docker/docker-compose.prod.yml` and `deploy/docker/.env.example`. It is separate from the container tag. Set both on the right side of `|`. If you omit `OKKEY_REF`, those two files still come from the `dev` branch.
+On tag v1.0.0-beta.2 the installer defaults `OKKEY_REF` to `v1.0.0-beta.2`. When you pipe the script to `bash`, `OKKEY_REF` is the git ref used to download `deploy/docker/docker-compose.prod.yml` and `deploy/docker/.env.example`. It is separate from the container tag. Set it on the right side of `|`.
 
 The container tag `1.0.0-beta.2` is published when the git tag `v1.0.0-beta.2` is created. Images are `ghcr.io/okkeyapp/api`, `ghcr.io/okkeyapp/web`, and `ghcr.io/okkeyapp/worker`.
 
@@ -39,7 +39,7 @@ curl -fsSL https://raw.githubusercontent.com/okkeyapp/okkey/v1.0.0-beta.2/deploy
   | OKKEY_REF=v1.0.0-beta.2 OKKEY_IMAGE_TAG=1.0.0-beta.2 OKKEY_SALES_EMAIL=you@example.com bash
 ```
 
-On a new install the script generates `JWT_SECRET`, `SESSION_SECRET`, `EMAIL_DEAD_LETTER_SEAL_KEY`, `POSTGRES_PASSWORD`, and `MINIO_ROOT_PASSWORD` in `~/okkey/.env`. Keep that file. Postgres keeps the first `POSTGRES_PASSWORD` it was initialized with. Deleting `.env` and running the installer again, while the Postgres volume still exists, makes the API fail until you restore the old `.env` or wipe the volumes with `OKKEY_RESET_VOLUMES=1`. Wiping volumes deletes the database.
+On a new install the script generates `JWT_SECRET`, `SESSION_SECRET`, `EMAIL_DEAD_LETTER_SEAL_KEY`, `POSTGRES_PASSWORD`, and `MINIO_ROOT_PASSWORD` in `~/okkey/.env`. Keep that file. Postgres keeps the first `POSTGRES_PASSWORD` it was initialized with. Deleting `.env` and running the installer again, while the Postgres volume still exists, makes the installer stop with an error. Restore the old `.env`, or set `OKKEY_RESET_VOLUMES=1` to wipe the volumes and start over. Wiping volumes deletes the database.
 
 On tag `v1.0.0-beta.2`, the installer writes these values. Leave them as written:
 

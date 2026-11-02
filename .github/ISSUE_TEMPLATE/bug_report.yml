@@ -1,5 +1,6 @@
 name: Bug report
 description: Report a problem in the current release or in mainline development.
+labels: ["bug"]
 title: "bug: "
 body:
   - type: markdown
