@@ -1,14 +1,16 @@
 import { ApiRequestError } from "@okkey/api";
 import {
+  buildRecoveryPossessionAttestation,
   generateRecoverySecret,
   initCrypto,
   rebalanceServerShareForNewPassword,
+  recoveryPossessionVerifier,
   unwrapVaultKeyWithRecoverySecret,
   wipeBytes,
   wrapVaultKeyWithRecoverySecret,
 } from "@okkey/crypto";
 import { createWorkspaceFoldersSyncController } from "@okkey/vault";
-import type { AccountRecoveryStatusResponseDto } from "@okkey/types";
+import type { AccountRecoveryStatusResponseDto, EncryptedBlobDto } from "@okkey/types";
 import {
   Alert,
   AlertDescription,
@@ -293,7 +295,8 @@ export default function AccountRestorePage() {
       const freshSecret = await generateRecoverySecret();
       newSecretBytes = new TextEncoder().encode(freshSecret);
       const encryptedBlob = await wrapVaultKeyWithRecoverySecret(ownedVaultKey, newSecretBytes);
-      await core.rotateAccountRecoveryKey({ encryptedBlob });
+      const possessionVerifier = await recoveryPossessionVerifier(newSecretBytes);
+      await core.rotateAccountRecoveryKey({ encryptedBlob, possessionVerifier });
 
       const previousPending = pendingUnlockRef.current;
       if (previousPending) {
@@ -350,8 +353,38 @@ export default function AccountRestorePage() {
     try {
       await initCrypto();
       const core = createAuthenticatedCoreClient(accessToken);
-      const wrap = await core.getAccountRecoveryKeyWrap();
-      vaultKey = await unwrapVaultKeyWithRecoverySecret(secretBytes, wrap.encryptedBlob);
+      const possessionVerifier = await recoveryPossessionVerifier(secretBytes);
+      const proof = await core.proveAccountRecoveryKey({ possessionVerifier });
+      let wrapBlob: EncryptedBlobDto;
+      if (proof.proved) {
+        const wrap = await core.getAccountRecoveryKeyWrap();
+        wrapBlob = wrap.encryptedBlob;
+      } else {
+        wrapBlob = proof.encryptedBlob;
+        const opened = await unwrapVaultKeyWithRecoverySecret(secretBytes, wrapBlob);
+        try {
+          const attestation = await buildRecoveryPossessionAttestation({
+            userId,
+            vaultKey: opened,
+            encryptedPrivateKeyPayloadB64: proof.encryptedPrivateKey.payload,
+            challenge: proof.challenge,
+          });
+          const finished = await core.proveAccountRecoveryKey({
+            possessionVerifier,
+            attestation,
+          });
+          if (!finished.proved) {
+            throw new Error("recovery proof was not accepted");
+          }
+          vaultKey = opened;
+        } catch (error) {
+          wipeBytes(opened);
+          throw error;
+        }
+      }
+      if (!vaultKey) {
+        vaultKey = await unwrapVaultKeyWithRecoverySecret(secretBytes, wrapBlob);
+      }
       await completeRestoreFromVaultKey(vaultKey);
       vaultKey = null;
     } catch (err) {

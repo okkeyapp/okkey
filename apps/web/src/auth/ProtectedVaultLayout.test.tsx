@@ -37,6 +37,7 @@ vi.mock("../locale/LocaleContext", () => ({
 vi.mock("@okkey/crypto", () => ({
   initCrypto: vi.fn(async () => undefined),
   generateRecoverySecret: vi.fn(async () => "RECOVERY-SECRET"),
+  recoveryPossessionVerifier: vi.fn(async () => "cG9zc2Vzc2lvbi12ZXJpZmllci1iYXNlNjQ="),
   wrapVaultKeyWithRecoverySecret: vi.fn(async () => ({
     crypto_version: 2,
     algorithm: "xchacha20-poly1305",

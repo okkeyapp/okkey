@@ -246,9 +246,18 @@ export {
 
 export {
   generateRecoverySecret,
+  recoveryPossessionVerifier,
   wrapVaultKeyWithRecoverySecret,
   unwrapVaultKeyWithRecoverySecret,
 } from "./vault-recovery-key.js";
+
+export {
+  RECOVERY_POSSESSION_ATTESTATION_MAX_AGE_MS,
+  RECOVERY_POSSESSION_ATTESTATION_PURPOSE,
+  buildRecoveryPossessionAttestation,
+  recoveryPossessionAttestationMessageBytes,
+  type RecoveryPossessionAttestation,
+} from "./recovery-possession.js";
 
 export {
   wrapUnlockMaterialWithPin,

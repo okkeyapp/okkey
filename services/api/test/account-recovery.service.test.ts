@@ -333,6 +333,35 @@ test("enrollKey forbidRotate rejects when a wrap already exists", async () => {
   );
 });
 
+test("checkRecoveryPossession matches a stored tag and does not open a legacy challenge on a miss", async () => {
+  const tag = Buffer.alloc(32, 4).toString("base64");
+  const other = Buffer.alloc(32, 5).toString("base64");
+  const blob = {
+    crypto_version: 2,
+    algorithm: "xchacha20-poly1305",
+    payload: "abc",
+    meta: { entity: "vault_key_recovery_wrap", key_scope: "account" },
+  };
+  const service = createService({
+    recovery: {
+      getWrap: async () => ({
+        userId: "u1",
+        encryptedBlob: blob,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        rotatedAt: null,
+        exportedAt: null,
+        possessionVerifier: tag,
+      }),
+    },
+  });
+  assert.equal((await service.checkRecoveryPossession("u1", tag)).kind, "match");
+  assert.equal((await service.checkRecoveryPossession("u1", other)).kind, "mismatch");
+  await assert.rejects(
+    () => service.checkRecoveryPossession("u1", "not-a-tag"),
+    (err: unknown) => err instanceof AccountRecoveryError && err.code === "RECOVERY_BAD_REQUEST",
+  );
+});
+
 test("enrollKey persists wrap and enables key settings", async () => {
   const service = createService({ workspaces: [{ planTier: "PREMIUM" }] });
   assert.equal(await service.hasEnrolledRecoveryKey("u1"), false);

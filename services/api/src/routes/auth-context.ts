@@ -75,6 +75,8 @@ export function createResolveAuthenticatedSession(
           scope: null,
           tokenHash: "",
           expiresAt: null,
+          recoveryProvedAt: null,
+          recoveryChallenge: null,
         };
       }
     }

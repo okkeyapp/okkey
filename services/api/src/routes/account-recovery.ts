@@ -5,11 +5,16 @@ import type {
   TrustedContactInviteRequestDto,
 } from "@okkey/types";
 
+import { randomBytes } from "node:crypto";
 import {
   AccountRecoveryError,
   AccountRecoveryService,
   extractTrustedContactInviteEmails,
 } from "../account-recovery/service.ts";
+import {
+  verifyRecoveryPossessionAttestation,
+  type RecoveryPossessionAttestationInput,
+} from "../account-recovery/possession-proof.ts";
 import { getHeader, json, readJsonBody, type RouteHandler } from "../http.ts";
 import type { ResolveAuthenticatedSession } from "./auth-context.ts";
 import {
@@ -62,17 +67,29 @@ async function requireUserId(
   return userId;
 }
 
+export type RecoveryStatusAccess = {
+  userId: string;
+  /** Contact emails and invite directory. False for an unproved untrusted session. */
+  includeDirectory: boolean;
+};
+
 export function createAccountRecoveryStatusRoute(
   service: AccountRecoveryService,
-  resolveUserId: (req: IncomingMessage) => Promise<string | null>,
+  resolveAccess: (req: IncomingMessage) => Promise<RecoveryStatusAccess | null>,
 ): RouteHandler {
   return async (ctx) => {
     try {
-      const userId = await requireUserId(resolveUserId, ctx.req, ctx.requestId, ctx.res);
-      if (!userId) {
+      const access = await resolveAccess(ctx.req);
+      if (!access) {
+        json(ctx.res, 401, errorPayload("AUTH_REQUIRED", "auth required", ctx.requestId));
         return;
       }
-      const status = await service.getStatus(userId);
+      const status = await service.getStatus(access.userId);
+      if (!access.includeDirectory) {
+        status.contacts = [];
+        status.pendingInvites = [];
+        status.servingAsContact = [];
+      }
       json(ctx.res, 200, status);
     } catch (error) {
       handleRecoveryError(ctx.requestId, ctx.res, error);
@@ -152,6 +169,7 @@ export function createAccountRecoveryKeyEnrollRoute(
       const result = await service.enrollKey(userId, encryptedBlob, {
         rotate: false,
         forbidRotate,
+        possessionVerifier: readPossessionVerifier(body),
       });
       json(ctx.res, 200, result);
     } catch (error) {
@@ -188,7 +206,10 @@ export function createAccountRecoveryKeyRotateRoute(
         );
         return;
       }
-      const result = await service.enrollKey(userId, encryptedBlob, { rotate: true });
+      const result = await service.enrollKey(userId, encryptedBlob, {
+        rotate: true,
+        possessionVerifier: readPossessionVerifier(body),
+      });
       json(ctx.res, 200, result);
     } catch (error) {
       handleRecoveryError(ctx.requestId, ctx.res, error);
@@ -392,6 +413,199 @@ export function createAccountRecoveryMembershipLeaveRoute(
       }
       const status = await service.leaveAsContact(userId, contactId);
       json(ctx.res, 200, status);
+    } catch (error) {
+      handleRecoveryError(ctx.requestId, ctx.res, error);
+    }
+  };
+}
+
+function readPossessionVerifier(body: {
+  possessionVerifier?: string;
+  possession_verifier?: string;
+}): string | null {
+  const raw = body.possessionVerifier ?? body.possession_verifier;
+  return typeof raw === "string" ? raw : null;
+}
+
+type ProveBody = {
+  possessionVerifier?: string;
+  possession_verifier?: string;
+  attestation?: {
+    purpose?: string;
+    user_id?: string;
+    userId?: string;
+    recorded_at?: string;
+    recordedAt?: string;
+    challenge?: string;
+    signature?: string;
+  };
+};
+
+function readAttestation(body: ProveBody): RecoveryPossessionAttestationInput | null {
+  const attestation = body.attestation;
+  if (!attestation || typeof attestation !== "object") {
+    return null;
+  }
+  const userId = attestation.user_id ?? attestation.userId;
+  const recordedAt = attestation.recorded_at ?? attestation.recordedAt;
+  if (
+    typeof userId !== "string" ||
+    typeof recordedAt !== "string" ||
+    typeof attestation.challenge !== "string" ||
+    typeof attestation.signature !== "string"
+  ) {
+    return null;
+  }
+  return {
+    purpose: attestation.purpose,
+    userId,
+    recordedAt,
+    challenge: attestation.challenge,
+    signature: attestation.signature,
+  };
+}
+
+/**
+ * `POST /account/recovery/key/prove` — a full session, including a pending device.
+ * A stored possession tag must match before any wrap is returned.
+ * A wrap enrolled before tags existed returns ciphertext only in this response,
+ * and the session is not granted until an identity attestation verifies.
+ */
+export function createAccountRecoveryKeyProveRoute(
+  service: AccountRecoveryService,
+  resolveUserId: (req: IncomingMessage) => Promise<string | null>,
+  options: {
+    resolveSession: (req: IncomingMessage) => Promise<{
+      userId: string;
+      recoveryChallenge?: string | null;
+    } | null>;
+    users: { findById(id: string): Promise<{ publicKey: string } | null> };
+    sessionService: {
+      markRecoveryProved(accessToken: string, userId: string): Promise<boolean>;
+      setRecoveryChallenge(accessToken: string, userId: string, challenge: string): Promise<boolean>;
+    };
+    now?: () => number;
+  },
+): RouteHandler {
+  const now = options.now ?? Date.now;
+  return async (ctx) => {
+    try {
+      const userId = await requireUserId(resolveUserId, ctx.req, ctx.requestId, ctx.res);
+      if (!userId) {
+        return;
+      }
+      let body: ProveBody;
+      try {
+        body = await readJsonBody<ProveBody>(ctx.req);
+      } catch {
+        json(ctx.res, 400, errorPayload("RECOVERY_BAD_REQUEST", "invalid json", ctx.requestId));
+        return;
+      }
+      const possessionVerifier = readPossessionVerifier(body);
+      if (!possessionVerifier) {
+        json(
+          ctx.res,
+          400,
+          errorPayload("RECOVERY_BAD_REQUEST", "possessionVerifier is required", ctx.requestId),
+        );
+        return;
+      }
+      const attestation = readAttestation(body);
+      const session = await options.resolveSession(ctx.req);
+      const accessToken = bearerTokenFromRequest(ctx.req);
+
+      if (attestation) {
+        const expectedChallenge = session?.recoveryChallenge ?? null;
+        if (!expectedChallenge || !accessToken) {
+          json(
+            ctx.res,
+            400,
+            errorPayload("RECOVERY_BAD_REQUEST", "recovery challenge is missing", ctx.requestId),
+          );
+          return;
+        }
+        const user = await options.users.findById(userId);
+        if (!user) {
+          json(ctx.res, 404, errorPayload("USER_NOT_FOUND", "user not found", ctx.requestId));
+          return;
+        }
+        const ok = verifyRecoveryPossessionAttestation({
+          userId,
+          publicKeyBase64: user.publicKey,
+          expectedChallenge,
+          attestation,
+          now: now(),
+        });
+        if (!ok) {
+          json(
+            ctx.res,
+            403,
+            errorPayload("RECOVERY_PROOF_INVALID", "recovery key proof is invalid", ctx.requestId),
+          );
+          return;
+        }
+        await service.storePossessionVerifierIfAbsent(userId, possessionVerifier);
+        const marked = await options.sessionService.markRecoveryProved(accessToken, userId);
+        if (!marked) {
+          json(ctx.res, 401, errorPayload("AUTH_REQUIRED", "auth required", ctx.requestId));
+          return;
+        }
+        json(ctx.res, 200, { proved: true });
+        return;
+      }
+
+      const check = await service.checkRecoveryPossession(userId, possessionVerifier);
+      if (check.kind === "unavailable") {
+        json(
+          ctx.res,
+          404,
+          errorPayload("RECOVERY_KEY_NOT_AVAILABLE", "recovery key is not available for this account", ctx.requestId),
+        );
+        return;
+      }
+      if (check.kind === "mismatch") {
+        json(
+          ctx.res,
+          403,
+          errorPayload("RECOVERY_PROOF_INVALID", "recovery key proof is invalid", ctx.requestId),
+        );
+        return;
+      }
+      if (check.kind === "match") {
+        if (!accessToken) {
+          json(ctx.res, 200, { proved: true });
+          return;
+        }
+        const marked = await options.sessionService.markRecoveryProved(accessToken, userId);
+        if (!marked) {
+          json(ctx.res, 401, errorPayload("AUTH_REQUIRED", "auth required", ctx.requestId));
+          return;
+        }
+        json(ctx.res, 200, { proved: true });
+        return;
+      }
+
+      if (!accessToken) {
+        json(ctx.res, 401, errorPayload("AUTH_REQUIRED", "auth required", ctx.requestId));
+        return;
+      }
+      const challenge = randomBytes(32).toString("base64");
+      const stored = await options.sessionService.setRecoveryChallenge(
+        accessToken,
+        userId,
+        challenge,
+      );
+      if (!stored) {
+        json(ctx.res, 401, errorPayload("AUTH_REQUIRED", "auth required", ctx.requestId));
+        return;
+      }
+      json(ctx.res, 200, {
+        proved: false,
+        status: "attestation_required",
+        challenge,
+        encryptedBlob: check.encryptedBlob,
+        encryptedPrivateKey: check.encryptedPrivateKey,
+      });
     } catch (error) {
       handleRecoveryError(ctx.requestId, ctx.res, error);
     }

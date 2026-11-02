@@ -58,6 +58,8 @@ import type {
   AccountLoginMethodsPrimaryPatchDto,
   AccountLoginMethodsResponseDto,
   AccountRecoveryKeyEnrollRequestDto,
+  AccountRecoveryKeyProveRequestDto,
+  AccountRecoveryKeyProveResponseDto,
   AccountRecoveryKeyEnrollResponseDto,
   AccountRecoveryKeyWrapResponseDto,
   AccountRecoverySettingsUpdateRequestDto,
@@ -913,6 +915,13 @@ export class CoreApiClient {
     body: AccountRecoveryKeyEnrollRequestDto,
   ): Promise<AccountRecoveryKeyEnrollResponseDto> {
     return this.api.post<AccountRecoveryKeyEnrollResponseDto>("/account/recovery/key/rotate", body);
+  }
+
+  /** Prove the recovery key. A pending device may call this before any wrap is readable. */
+  proveAccountRecoveryKey(
+    body: AccountRecoveryKeyProveRequestDto,
+  ): Promise<AccountRecoveryKeyProveResponseDto> {
+    return this.api.post<AccountRecoveryKeyProveResponseDto>("/account/recovery/key/prove", body);
   }
 
   ackAccountRecoveryKeyExport(): Promise<AccountRecoveryStatusResponseDto> {

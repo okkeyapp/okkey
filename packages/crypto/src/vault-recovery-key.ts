@@ -2,7 +2,7 @@
  * Wrap the 32-byte account `VaultKey` with a high-entropy recovery secret (UTF-8 bytes).
  * Used by account recovery flows; wire format is a versioned `EncryptedBlob`.
  */
-import { aead_decrypt, aead_encrypt, kdf_derive, random_bytes } from "@okkey/crypto-wasm";
+import { aead_decrypt, aead_encrypt, kdf_derive, random_bytes, sha256 } from "@okkey/crypto-wasm";
 import { ensureWasm } from "./wasm-init.js";
 import type { EncryptedBlobDto } from "@okkey/types";
 import { getCryptoConfig } from "./config/index.js";
@@ -23,6 +23,8 @@ if (RECOVERY_SECRET_KDF_SALT.length !== KDF_SALT_LEN) {
 }
 
 const RECOVERY_WRAP_AAD = new TextEncoder().encode("okkey-vault-recovery-wrap-v1");
+/** Domain separator for the one-way possession tag. Not a key and not the wrap. */
+const RECOVERY_POSSESSION_LABEL = new TextEncoder().encode("okkey-recovery-possession-v1");
 
 const RECOVERY_WRITE_CONFIG = getCryptoConfig(2);
 
@@ -89,6 +91,24 @@ export async function generateRecoverySecret(): Promise<string> {
     return groups.join("-");
   } finally {
     wipeBytes(entropy);
+  }
+}
+
+/**
+ * One-way tag of the recovery wrap key (SHA-256 over a domain label and the key).
+ * The server stores this and compares it; it cannot unwrap the vault key.
+ */
+export async function recoveryPossessionVerifier(recoverySecretUtf8: Uint8Array): Promise<string> {
+  await ensureWasm();
+  const wrapKey = deriveRecoveryWrapKey(recoverySecretUtf8);
+  const material = new Uint8Array(RECOVERY_POSSESSION_LABEL.length + wrapKey.length);
+  material.set(RECOVERY_POSSESSION_LABEL, 0);
+  material.set(wrapKey, RECOVERY_POSSESSION_LABEL.length);
+  try {
+    return uint8ToStandardBase64(sha256(material));
+  } finally {
+    wipeBytes(wrapKey);
+    wipeBytes(material);
   }
 }
 
