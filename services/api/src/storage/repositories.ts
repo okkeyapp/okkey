@@ -3493,6 +3493,8 @@ export class SessionsRepository {
     deviceId: string | null;
     scope: string | null;
     expiresAt: string;
+    recoveryProvedAt: string | null;
+    recoveryChallenge: string | null;
   } | null> {
     const rows = await this.db.query<{
       id: string;
@@ -3500,9 +3502,11 @@ export class SessionsRepository {
       device_id: string | null;
       scope: string | null;
       expires_at: string | Date;
+      recovery_proved_at: string | Date | null;
+      recovery_challenge: string | null;
     }>(
       `
-        SELECT id, user_id, device_id, scope, expires_at
+        SELECT id, user_id, device_id, scope, expires_at, recovery_proved_at, recovery_challenge
         FROM sessions
         WHERE token_hash = $1 AND expires_at > $2::timestamptz
         LIMIT 1
@@ -3517,12 +3521,20 @@ export class SessionsRepository {
       row.expires_at instanceof Date
         ? row.expires_at.toISOString()
         : new Date(row.expires_at).toISOString();
+    const provedAt = row.recovery_proved_at;
     return {
       id: row.id,
       userId: row.user_id,
       deviceId: row.device_id,
       scope: row.scope,
       expiresAt,
+      recoveryProvedAt:
+        provedAt == null
+          ? null
+          : provedAt instanceof Date
+            ? provedAt.toISOString()
+            : new Date(provedAt).toISOString(),
+      recoveryChallenge: row.recovery_challenge,
     };
   }
 
@@ -3530,6 +3542,8 @@ export class SessionsRepository {
     tokenHash: string;
     userId: string;
     deviceId: string;
+    /** Recovery claim replaces a session still bound to the pre-claim device. */
+    replaceExistingDevice?: boolean;
   }): Promise<boolean> {
     const db = this.db as QueryExecutor & {
       transaction<T>(fn: (tx: QueryExecutor) => Promise<T>): Promise<T>;
@@ -3556,10 +3570,15 @@ export class SessionsRepository {
           WHERE token_hash = $1
             AND user_id = $2
             AND expires_at > now()
-            AND (device_id IS NULL OR device_id = $3)
+            AND ($4::boolean OR device_id IS NULL OR device_id = $3)
           RETURNING id
         `,
-        [input.tokenHash, input.userId, input.deviceId],
+        [
+          input.tokenHash,
+          input.userId,
+          input.deviceId,
+          input.replaceExistingDevice === true,
+        ],
       );
       return rows.length > 0;
     }));
@@ -3575,6 +3594,42 @@ export class SessionsRepository {
       [input.userId, input.deviceId],
     );
     return rows.length;
+  }
+
+  async markRecoveryProved(input: { tokenHash: string; userId: string }): Promise<boolean> {
+    const rows = await this.db.query<{ id: string }>(
+      `
+        UPDATE sessions
+        SET recovery_proved_at = now(),
+            recovery_challenge = NULL
+        WHERE token_hash = $1
+          AND user_id = $2
+          AND expires_at > now()
+        RETURNING id
+      `,
+      [input.tokenHash, input.userId],
+    );
+    return Boolean(rows[0]);
+  }
+
+  async setRecoveryChallenge(input: {
+    tokenHash: string;
+    userId: string;
+    challenge: string;
+  }): Promise<boolean> {
+    const rows = await this.db.query<{ id: string }>(
+      `
+        UPDATE sessions
+        SET recovery_challenge = $3
+        WHERE token_hash = $1
+          AND user_id = $2
+          AND expires_at > now()
+          AND recovery_proved_at IS NULL
+        RETURNING id
+      `,
+      [input.tokenHash, input.userId, input.challenge],
+    );
+    return Boolean(rows[0]);
   }
 
   async deleteByTokenHash(tokenHash: string): Promise<boolean> {

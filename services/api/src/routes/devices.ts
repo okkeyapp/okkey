@@ -175,6 +175,7 @@ export function createRegisterDeviceRoute(
   resolveUserId: (req: IncomingMessage) => Promise<string | null>,
   trustedProxyHops = 0,
   sessionService?: Pick<SessionDeviceBinding, "bindAccessTokenDevice">,
+  mayClaimAfterRecovery?: (req: IncomingMessage) => Promise<boolean>,
 ): RouteHandler {
   return async (ctx) => {
     let body: RegisterDeviceBody;
@@ -216,6 +217,21 @@ export function createRegisterDeviceRoute(
       const claimAfterRecovery = Boolean(
         body.metadata?.claim_after_recovery ?? (body as { claim_after_recovery?: boolean }).claim_after_recovery,
       );
+      if (claimAfterRecovery && mayClaimAfterRecovery) {
+        const allowed = await mayClaimAfterRecovery(ctx.req);
+        if (!allowed) {
+          json(
+            ctx.res,
+            403,
+            errorPayload(
+              "RECOVERY_PROOF_REQUIRED",
+              "recovery key proof is required before claiming this device",
+              ctx.requestId,
+            ),
+          );
+          return;
+        }
+      }
       const requestIp = await getRequestIp(ctx.req, { trustedProxyHops });
       const result = await deviceService.registerDevice(userId, requestIp, {
         deviceFingerprint: body.device_fingerprint,
@@ -241,7 +257,9 @@ export function createRegisterDeviceRoute(
         result.created &&
         (result.status === "trusted" || result.status === "pending_approval")
       ) {
-        await sessionService.bindAccessTokenDevice(accessToken, userId, result.deviceId);
+        await sessionService.bindAccessTokenDevice(accessToken, userId, result.deviceId, {
+          replaceExistingDevice: claimAfterRecovery,
+        });
       }
 
       json(ctx.res, 200, {

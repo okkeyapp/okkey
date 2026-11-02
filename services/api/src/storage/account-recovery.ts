@@ -10,6 +10,8 @@ export interface RecoveryWrapRecord {
   createdAt: string;
   rotatedAt: string | null;
   exportedAt: string | null;
+  /** Base64 possession tag. Null for wraps enrolled before the tag existed. */
+  possessionVerifier: string | null;
 }
 
 export interface RecoverySettingsRecord {
@@ -57,6 +59,7 @@ type WrapRow = {
   created_at: string;
   rotated_at: string | null;
   exported_at: string | null;
+  possession_verifier: string | null;
 };
 
 type SettingsRow = {
@@ -91,6 +94,7 @@ function mapWrap(row: WrapRow): RecoveryWrapRecord {
     createdAt: row.created_at,
     rotatedAt: row.rotated_at,
     exportedAt: row.exported_at,
+    possessionVerifier: row.possession_verifier,
   };
 }
 
@@ -126,7 +130,7 @@ export class AccountRecoveryRepository {
   async getWrap(userId: string): Promise<RecoveryWrapRecord | null> {
     const rows = await this.db.query<WrapRow>(
       `
-        SELECT user_id, encrypted_blob, created_at, rotated_at, exported_at
+        SELECT user_id, encrypted_blob, created_at, rotated_at, exported_at, possession_verifier
         FROM user_vault_recovery_wrap
         WHERE user_id = $1::bigint
       `,
@@ -136,18 +140,26 @@ export class AccountRecoveryRepository {
     return row ? mapWrap(row) : null;
   }
 
-  async upsertWrap(userId: string, encryptedBlob: EncryptedBlobDto, rotated: boolean): Promise<RecoveryWrapRecord> {
+  async upsertWrap(
+    userId: string,
+    encryptedBlob: EncryptedBlobDto,
+    rotated: boolean,
+    possessionVerifier: string | null = null,
+  ): Promise<RecoveryWrapRecord> {
     const rows = await this.db.query<WrapRow>(
       `
-        INSERT INTO user_vault_recovery_wrap (user_id, encrypted_blob, rotated_at, exported_at)
-        VALUES ($1::bigint, $2::jsonb, CASE WHEN $3 THEN now() ELSE NULL END, NULL)
+        INSERT INTO user_vault_recovery_wrap (
+          user_id, encrypted_blob, rotated_at, exported_at, possession_verifier
+        )
+        VALUES ($1::bigint, $2::jsonb, CASE WHEN $3 THEN now() ELSE NULL END, NULL, $4)
         ON CONFLICT (user_id) DO UPDATE SET
           encrypted_blob = EXCLUDED.encrypted_blob,
           rotated_at = now(),
-          exported_at = NULL
-        RETURNING user_id, encrypted_blob, created_at, rotated_at, exported_at
+          exported_at = NULL,
+          possession_verifier = EXCLUDED.possession_verifier
+        RETURNING user_id, encrypted_blob, created_at, rotated_at, exported_at, possession_verifier
       `,
-      [userId, JSON.stringify(encryptedBlob), rotated],
+      [userId, JSON.stringify(encryptedBlob), rotated, possessionVerifier],
     );
     return mapWrap(rows[0]!);
   }
@@ -156,15 +168,18 @@ export class AccountRecoveryRepository {
   async insertWrapIfAbsent(
     userId: string,
     encryptedBlob: EncryptedBlobDto,
+    possessionVerifier: string | null = null,
   ): Promise<RecoveryWrapRecord | null> {
     const rows = await this.db.query<WrapRow>(
       `
-        INSERT INTO user_vault_recovery_wrap (user_id, encrypted_blob, rotated_at, exported_at)
-        VALUES ($1::bigint, $2::jsonb, NULL, NULL)
+        INSERT INTO user_vault_recovery_wrap (
+          user_id, encrypted_blob, rotated_at, exported_at, possession_verifier
+        )
+        VALUES ($1::bigint, $2::jsonb, NULL, NULL, $3)
         ON CONFLICT (user_id) DO NOTHING
-        RETURNING user_id, encrypted_blob, created_at, rotated_at, exported_at
+        RETURNING user_id, encrypted_blob, created_at, rotated_at, exported_at, possession_verifier
       `,
-      [userId, JSON.stringify(encryptedBlob)],
+      [userId, JSON.stringify(encryptedBlob), possessionVerifier],
     );
     const row = rows[0];
     return row ? mapWrap(row) : null;
@@ -176,12 +191,26 @@ export class AccountRecoveryRepository {
         UPDATE user_vault_recovery_wrap
         SET exported_at = now()
         WHERE user_id = $1::bigint
-        RETURNING user_id, encrypted_blob, created_at, rotated_at, exported_at
+        RETURNING user_id, encrypted_blob, created_at, rotated_at, exported_at, possession_verifier
       `,
       [userId],
     );
     const row = rows[0];
     return row ? mapWrap(row) : null;
+  }
+
+  async setPossessionVerifier(userId: string, possessionVerifier: string): Promise<boolean> {
+    const rows = await this.db.query<{ user_id: string | number }>(
+      `
+        UPDATE user_vault_recovery_wrap
+        SET possession_verifier = $2
+        WHERE user_id = $1::bigint
+          AND possession_verifier IS NULL
+        RETURNING user_id
+      `,
+      [userId, possessionVerifier],
+    );
+    return Boolean(rows[0]);
   }
 
   async deleteWrap(userId: string): Promise<void> {

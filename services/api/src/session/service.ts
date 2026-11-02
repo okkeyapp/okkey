@@ -36,6 +36,10 @@ export interface ResolvedAccessToken {
   tokenHash: string;
   /** Absolute expiry of this access token. Null for header-user auth. */
   expiresAt: string | null;
+  /** Set after this session proves the recovery key. Absent on older mocks. */
+  recoveryProvedAt?: string | null;
+  /** Single-use legacy recovery attestation challenge. */
+  recoveryChallenge?: string | null;
 }
 
 export interface SessionServiceDeps {
@@ -46,6 +50,8 @@ export interface SessionServiceDeps {
     | "bindDevice"
     | "deleteByDeviceId"
     | "deleteByTokenHash"
+    | "markRecoveryProved"
+    | "setRecoveryChallenge"
   >;
   config: Pick<ApiConfig, "sessionTtlSeconds">;
   now?: () => Date;
@@ -109,6 +115,8 @@ export class SessionService {
       scope: isFullSessionScope(row.scope) ? null : row.scope,
       tokenHash: this.hashAccessToken(trimmed),
       expiresAt: row.expiresAt,
+      recoveryProvedAt: row.recoveryProvedAt,
+      recoveryChallenge: row.recoveryChallenge,
     };
   }
 
@@ -117,6 +125,7 @@ export class SessionService {
     accessToken: string,
     userId: string,
     deviceId: string,
+    options?: { replaceExistingDevice?: boolean },
   ): Promise<boolean> {
     const trimmed = accessToken.trim();
     if (!trimmed || !deviceId) {
@@ -126,6 +135,35 @@ export class SessionService {
       tokenHash: this.hashAccessToken(trimmed),
       userId,
       deviceId,
+      replaceExistingDevice: options?.replaceExistingDevice === true,
+    });
+  }
+
+  /** Remember that this access token proved the recovery key. */
+  async markRecoveryProved(accessToken: string, userId: string): Promise<boolean> {
+    const trimmed = accessToken.trim();
+    if (!trimmed || !this.sessions.markRecoveryProved) {
+      return false;
+    }
+    return this.sessions.markRecoveryProved({
+      tokenHash: this.hashAccessToken(trimmed),
+      userId,
+    });
+  }
+
+  async setRecoveryChallenge(
+    accessToken: string,
+    userId: string,
+    challenge: string,
+  ): Promise<boolean> {
+    const trimmed = accessToken.trim();
+    if (!trimmed || !challenge || !this.sessions.setRecoveryChallenge) {
+      return false;
+    }
+    return this.sessions.setRecoveryChallenge({
+      tokenHash: this.hashAccessToken(trimmed),
+      userId,
+      challenge,
     });
   }
 

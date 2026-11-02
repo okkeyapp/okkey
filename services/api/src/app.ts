@@ -17,7 +17,7 @@ import {
   createResolveAuthenticatedSession,
   createResolveAuthenticatedUserId,
 } from "./routes/auth-context.ts";
-import { REGISTRATION_RECOVERY_ALLOWED_SCOPES } from "./session/scopes.ts";
+import { isFullSessionScope, REGISTRATION_RECOVERY_ALLOWED_SCOPES } from "./session/scopes.ts";
 import { createRegisterCompleteRoute } from "./routes/auth-register-complete.ts";
 import { createAuthSessionBootstrapRoute } from "./routes/auth-session.ts";
 import {
@@ -48,6 +48,7 @@ import {
   createAccountRecoveryMembershipLeaveRoute,
   createAccountRecoveryKeyAckExportRoute,
   createAccountRecoveryKeyEnrollRoute,
+  createAccountRecoveryKeyProveRoute,
   createAccountRecoveryKeyRotateRoute,
   createAccountRecoveryKeyWrapRoute,
   createAccountRecoveryIdentityEncryptedKeyRoute,
@@ -297,6 +298,62 @@ export function createApiApp(
           allowUnboundDevice: true,
         })
       : undefined;
+  /**
+   * Pending and other untrusted full sessions. Vault ciphertext stays on `resolveUserId`
+   * until the session proves the recovery key or the device is approved.
+   */
+  const resolveFullSession =
+    resolveSessionAllowUnboundDevice ??
+    (async (req: IncomingMessage) => {
+      const session = await sessionIfDeviceTrusted(req);
+      if (!session) {
+        return null;
+      }
+      return {
+        userId: session.userId,
+        deviceId: session.deviceId,
+        scope: null as string | null,
+        tokenHash: "",
+        expiresAt: null as string | null,
+        recoveryProvedAt: null as string | null,
+        recoveryChallenge: null as string | null,
+      };
+    });
+  const resolveRecoveryStatusAccess = async (
+    req: IncomingMessage,
+  ): Promise<{ userId: string; includeDirectory: boolean } | null> => {
+    const trusted = await sessionIfDeviceTrusted(req);
+    if (trusted) {
+      return { userId: trusted.userId, includeDirectory: true };
+    }
+    const session = await resolveFullSession(req);
+    if (!session || !isFullSessionScope(session.scope)) {
+      return null;
+    }
+    return {
+      userId: session.userId,
+      includeDirectory: Boolean(session.recoveryProvedAt),
+    };
+  };
+  /** Trusted device, or a full session that has proved the recovery key. */
+  const resolveUserIdForRestore: (req: IncomingMessage) => Promise<string | null> = async (req) => {
+    const trusted = await resolveUserId(req);
+    if (trusted) {
+      return trusted;
+    }
+    const session = await resolveFullSession(req);
+    if (!session || !isFullSessionScope(session.scope) || !session.recoveryProvedAt) {
+      return null;
+    }
+    return session.userId;
+  };
+  const mayClaimAfterRecovery = async (req: IncomingMessage): Promise<boolean> => {
+    if (await resolveUserId(req)) {
+      return true;
+    }
+    const session = await resolveFullSession(req);
+    return Boolean(session && isFullSessionScope(session.scope) && session.recoveryProvedAt);
+  };
   /** Full session or post-register recovery bootstrap (enroll + ack-export only). */
   const resolveUserIdForRegistrationRecovery: (req: IncomingMessage) => Promise<string | null> =
     deps.sessionService !== undefined
@@ -505,7 +562,7 @@ export function createApiApp(
     app.route(
       "POST",
       "/account/master-password/change",
-      createAccountMasterPasswordChangeRoute(deps.usersRepository, resolveUserId),
+      createAccountMasterPasswordChangeRoute(deps.usersRepository, resolveUserIdForRestore),
     );
   }
   if (deps.sessionService !== undefined && deps.emailChangeService) {
@@ -543,7 +600,7 @@ export function createApiApp(
     app.route(
       "GET",
       "/workspaces",
-      createWorkspacesListRoute(deps.vaultService, resolveUserId),
+      createWorkspacesListRoute(deps.vaultService, resolveUserIdForRestore),
     );
     app.route(
       "GET",
@@ -778,11 +835,12 @@ export function createApiApp(
     app.route(
       "POST",
       "/devices/register",
-      createRegisterDeviceRoute(
+        createRegisterDeviceRoute(
         deps.deviceService,
         resolveUserIdAllowUnboundDevice,
         config.trustedProxyHops,
         deps.sessionService,
+        mayClaimAfterRecovery,
       ),
     );
     app.route(
@@ -852,8 +910,29 @@ export function createApiApp(
     app.route(
       "GET",
       "/account/recovery",
-      createAccountRecoveryStatusRoute(deps.accountRecoveryService, resolveUserId),
+      createAccountRecoveryStatusRoute(deps.accountRecoveryService, resolveRecoveryStatusAccess),
     );
+    if (deps.sessionService && deps.usersRepository) {
+      app.route(
+        "POST",
+        "/account/recovery/key/prove",
+        createAccountRecoveryKeyProveRoute(
+          deps.accountRecoveryService,
+          async (req) => {
+            const session = await resolveFullSession(req);
+            if (!session || !isFullSessionScope(session.scope)) {
+              return null;
+            }
+            return session.userId;
+          },
+          {
+            resolveSession: resolveFullSession,
+            users: deps.usersRepository,
+            sessionService: deps.sessionService,
+          },
+        ),
+      );
+    }
     app.route(
       "PATCH",
       "/account/recovery/settings",
@@ -871,7 +950,7 @@ export function createApiApp(
     app.route(
       "POST",
       "/account/recovery/key/rotate",
-      createAccountRecoveryKeyRotateRoute(deps.accountRecoveryService, resolveUserId),
+      createAccountRecoveryKeyRotateRoute(deps.accountRecoveryService, resolveUserIdForRestore),
     );
     app.route(
       "POST",
@@ -888,12 +967,15 @@ export function createApiApp(
     app.route(
       "GET",
       "/account/recovery/key/wrap",
-      createAccountRecoveryKeyWrapRoute(deps.accountRecoveryService, resolveUserId),
+      createAccountRecoveryKeyWrapRoute(deps.accountRecoveryService, resolveUserIdForRestore),
     );
     app.route(
       "GET",
       "/account/recovery/identity-encrypted-key",
-      createAccountRecoveryIdentityEncryptedKeyRoute(deps.accountRecoveryService, resolveUserId),
+      createAccountRecoveryIdentityEncryptedKeyRoute(
+        deps.accountRecoveryService,
+        resolveUserIdForRestore,
+      ),
     );
     app.route(
       "POST",

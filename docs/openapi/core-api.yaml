@@ -1305,6 +1305,9 @@ paths:
                   $ref: "#/components/schemas/EncryptedBlob"
                 encrypted_blob:
                   $ref: "#/components/schemas/EncryptedBlob"
+                possessionVerifier:
+                  type: string
+                  description: Base64 SHA-256 possession tag of the wrap key.
       responses:
         "200":
           description: Wrap stored; key marked enrolled
@@ -1365,6 +1368,54 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorBody"
+
+  /account/recovery/key/prove:
+    post:
+      tags: [Account]
+      summary: Prove recovery-key possession for this session
+      description: >
+        Full Bearer, including a pending device. A stored possession tag must match
+        before the wrap is returned (`proved: true`, no ciphertext). A wrap enrolled
+        before tags existed returns ciphertext only in the `attestation_required`
+        response; the session is granted after the identity attestation verifies.
+        Vault keys, shares, and events stay limited to a trusted device.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [possessionVerifier]
+              properties:
+                possessionVerifier:
+                  type: string
+                attestation:
+                  type: object
+                  properties:
+                    purpose:
+                      type: string
+                      enum: [account.recovery_possession]
+                    user_id:
+                      type: string
+                    recorded_at:
+                      type: string
+                    challenge:
+                      type: string
+                    signature:
+                      type: string
+      responses:
+        "200":
+          description: Proof accepted, or a legacy attestation challenge
+        "400":
+          description: RECOVERY_BAD_REQUEST
+        "401":
+          description: AUTH_REQUIRED
+        "403":
+          description: RECOVERY_PROOF_INVALID
+        "404":
+          description: RECOVERY_KEY_NOT_AVAILABLE
 
   /auth/email/confirm:
     post:

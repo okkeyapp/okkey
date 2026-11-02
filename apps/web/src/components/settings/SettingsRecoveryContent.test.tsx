@@ -18,6 +18,7 @@ const coreMocks = vi.hoisted(() => ({
 vi.mock("@okkey/crypto", () => ({
   initCrypto: vi.fn(async () => undefined),
   generateRecoverySecret: vi.fn(async () => "AAAA-BBBB-CCCC-DDDD"),
+  recoveryPossessionVerifier: vi.fn(async () => "cG9zc2Vzc2lvbi12ZXJpZmllci1iYXNlNjQ="),
   wrapVaultKeyWithRecoverySecret: vi.fn(async () => ({
     crypto_version: 2,
     algorithm: "xchacha20-poly1305",
