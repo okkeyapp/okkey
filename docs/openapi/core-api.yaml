@@ -968,6 +968,12 @@ components:
               type: string
             user_agent:
               type: string
+            recovery_pending:
+              type: boolean
+              description: >
+                Unbound session only. Insert a pending device beside an already
+                trusted fingerprint without replacing that device's keys, and
+                bind the session to the pending row.
 
     DeviceRegisterResponse:
       type: object
@@ -1305,6 +1311,9 @@ paths:
                   $ref: "#/components/schemas/EncryptedBlob"
                 encrypted_blob:
                   $ref: "#/components/schemas/EncryptedBlob"
+                possessionPublicKey:
+                  type: string
+                  description: Base64 Ed25519 verifying key derived from the recovery secret. Not a bearer token.
       responses:
         "200":
           description: Wrap stored; key marked enrolled
@@ -1365,6 +1374,44 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorBody"
+
+  /account/recovery/key/prove:
+    post:
+      tags: [Account]
+      summary: Prove recovery-key possession for this session
+      description: >
+        Full Bearer bound to a device. An empty object returns a single-use challenge
+        and no ciphertext. A signature over that challenge grants the session.
+        Legacy wraps without a possession public key are refused. Failed signatures
+        are rate-limited per session and per account.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                challenge:
+                  type: string
+                signature:
+                  type: string
+      responses:
+        "200":
+          description: Challenge issued, or proof accepted. Never includes wrap or identity ciphertext.
+        "400":
+          description: RECOVERY_BAD_REQUEST
+        "401":
+          description: AUTH_REQUIRED
+        "403":
+          description: RECOVERY_PROOF_INVALID or RECOVERY_PROOF_REQUIRES_DEVICE
+        "404":
+          description: RECOVERY_KEY_NOT_AVAILABLE
+        "409":
+          description: RECOVERY_PROOF_UNAVAILABLE
+        "429":
+          description: RECOVERY_PROOF_LIMITED
 
   /auth/email/confirm:
     post:

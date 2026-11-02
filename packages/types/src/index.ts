@@ -989,7 +989,35 @@ export interface AccountRecoverySettingsUpdateRequestDto {
 /** `POST /account/recovery/key/enroll` and rotate request. */
 export interface AccountRecoveryKeyEnrollRequestDto {
   encryptedBlob: EncryptedBlobDto;
+  /**
+   * Base64 Ed25519 verifying key derived from the recovery secret.
+   * The server stores this public key only. It cannot sign or unwrap the vault key.
+   */
+  possessionPublicKey?: string;
 }
+
+/** `POST /account/recovery/key/prove` request. Empty object asks for a challenge. */
+export interface AccountRecoveryKeyProveRequestDto {
+  challenge?: string;
+  signature?: string;
+}
+
+/** Challenge signature accepted. No ciphertext. */
+export interface AccountRecoveryKeyProvedResponseDto {
+  proved: true;
+}
+
+/** Server-issued single-use challenge bound to this session and device. */
+export interface AccountRecoveryKeyProveChallengeResponseDto {
+  proved: false;
+  challenge: string;
+  deviceId: string;
+  expiresAt: string;
+}
+
+export type AccountRecoveryKeyProveResponseDto =
+  | AccountRecoveryKeyProvedResponseDto
+  | AccountRecoveryKeyProveChallengeResponseDto;
 
 export interface AccountRecoveryKeyEnrollResponseDto {
   key: AccountRecoveryKeyMetaDto;
@@ -1405,6 +1433,12 @@ export interface RegisterCompleteMetadataDto {
    * device with the provided device_share and revoke other trusted devices.
    */
   claim_after_recovery?: boolean;
+  /**
+   * When true on `POST /devices/register` before recovery-key proof: if this
+   * fingerprint is already trusted, insert a pending device for the new public
+   * key and bind the unbound session to that pending device only.
+   */
+  recovery_pending?: boolean;
 }
 
 /** `POST /devices/register` request body (snake_case on wire). */
