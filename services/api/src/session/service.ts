@@ -38,8 +38,9 @@ export interface ResolvedAccessToken {
   expiresAt: string | null;
   /** Set after this session proves the recovery key. Absent on older mocks. */
   recoveryProvedAt?: string | null;
-  /** Single-use legacy recovery attestation challenge. */
+  /** Single-use recovery possession challenge. Not a proof by itself. */
   recoveryChallenge?: string | null;
+  recoveryChallengeExpiresAt?: string | null;
 }
 
 export interface SessionServiceDeps {
@@ -52,6 +53,7 @@ export interface SessionServiceDeps {
     | "deleteByTokenHash"
     | "markRecoveryProved"
     | "setRecoveryChallenge"
+    | "consumeRecoveryChallenge"
   >;
   config: Pick<ApiConfig, "sessionTtlSeconds">;
   now?: () => Date;
@@ -117,6 +119,7 @@ export class SessionService {
       expiresAt: row.expiresAt,
       recoveryProvedAt: row.recoveryProvedAt,
       recoveryChallenge: row.recoveryChallenge,
+      recoveryChallengeExpiresAt: row.recoveryChallengeExpiresAt,
     };
   }
 
@@ -155,12 +158,30 @@ export class SessionService {
     accessToken: string,
     userId: string,
     challenge: string,
+    expiresAtIso: string,
   ): Promise<boolean> {
     const trimmed = accessToken.trim();
-    if (!trimmed || !challenge || !this.sessions.setRecoveryChallenge) {
+    if (!trimmed || !challenge || !expiresAtIso || !this.sessions.setRecoveryChallenge) {
       return false;
     }
     return this.sessions.setRecoveryChallenge({
+      tokenHash: this.hashAccessToken(trimmed),
+      userId,
+      challenge,
+      expiresAtIso,
+    });
+  }
+
+  async consumeRecoveryChallenge(
+    accessToken: string,
+    userId: string,
+    challenge: string,
+  ): Promise<boolean> {
+    const trimmed = accessToken.trim();
+    if (!trimmed || !challenge || !this.sessions.consumeRecoveryChallenge) {
+      return false;
+    }
+    return this.sessions.consumeRecoveryChallenge({
       tokenHash: this.hashAccessToken(trimmed),
       userId,
       challenge,

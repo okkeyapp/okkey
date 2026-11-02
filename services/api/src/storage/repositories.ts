@@ -3495,6 +3495,7 @@ export class SessionsRepository {
     expiresAt: string;
     recoveryProvedAt: string | null;
     recoveryChallenge: string | null;
+    recoveryChallengeExpiresAt: string | null;
   } | null> {
     const rows = await this.db.query<{
       id: string;
@@ -3504,9 +3505,11 @@ export class SessionsRepository {
       expires_at: string | Date;
       recovery_proved_at: string | Date | null;
       recovery_challenge: string | null;
+      recovery_challenge_expires_at: string | Date | null;
     }>(
       `
-        SELECT id, user_id, device_id, scope, expires_at, recovery_proved_at, recovery_challenge
+        SELECT id, user_id, device_id, scope, expires_at,
+               recovery_proved_at, recovery_challenge, recovery_challenge_expires_at
         FROM sessions
         WHERE token_hash = $1 AND expires_at > $2::timestamptz
         LIMIT 1
@@ -3535,6 +3538,12 @@ export class SessionsRepository {
             ? provedAt.toISOString()
             : new Date(provedAt).toISOString(),
       recoveryChallenge: row.recovery_challenge,
+      recoveryChallengeExpiresAt:
+        row.recovery_challenge_expires_at == null
+          ? null
+          : row.recovery_challenge_expires_at instanceof Date
+            ? row.recovery_challenge_expires_at.toISOString()
+            : new Date(row.recovery_challenge_expires_at).toISOString(),
     };
   }
 
@@ -3601,7 +3610,8 @@ export class SessionsRepository {
       `
         UPDATE sessions
         SET recovery_proved_at = now(),
-            recovery_challenge = NULL
+            recovery_challenge = NULL,
+            recovery_challenge_expires_at = NULL
         WHERE token_hash = $1
           AND user_id = $2
           AND expires_at > now()
@@ -3616,15 +3626,41 @@ export class SessionsRepository {
     tokenHash: string;
     userId: string;
     challenge: string;
+    expiresAtIso: string;
   }): Promise<boolean> {
     const rows = await this.db.query<{ id: string }>(
       `
         UPDATE sessions
-        SET recovery_challenge = $3
+        SET recovery_challenge = $3,
+            recovery_challenge_expires_at = $4::timestamptz
         WHERE token_hash = $1
           AND user_id = $2
+          AND device_id IS NOT NULL
           AND expires_at > now()
           AND recovery_proved_at IS NULL
+        RETURNING id
+      `,
+      [input.tokenHash, input.userId, input.challenge, input.expiresAtIso],
+    );
+    return Boolean(rows[0]);
+  }
+
+  /** Single-use: clear the challenge only if it is still the one presented. */
+  async consumeRecoveryChallenge(input: {
+    tokenHash: string;
+    userId: string;
+    challenge: string;
+  }): Promise<boolean> {
+    const rows = await this.db.query<{ id: string }>(
+      `
+        UPDATE sessions
+        SET recovery_challenge = NULL,
+            recovery_challenge_expires_at = NULL
+        WHERE token_hash = $1
+          AND user_id = $2
+          AND device_id IS NOT NULL
+          AND recovery_challenge = $3
+          AND expires_at > now()
         RETURNING id
       `,
       [input.tokenHash, input.userId, input.challenge],

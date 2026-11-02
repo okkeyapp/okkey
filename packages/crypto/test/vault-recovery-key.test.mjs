@@ -5,7 +5,9 @@ import { readFile } from "node:fs/promises";
 import {
   generateRecoverySecret,
   initCrypto,
-  recoveryPossessionVerifier,
+  recoveryPossessionPublicKey,
+  recoveryPossessionProofMessageBytes,
+  signRecoveryPossessionProof,
   unwrapVaultKeyWithRecoverySecret,
   wrapVaultKeyWithRecoverySecret,
 } from "../dist/index.js";
@@ -31,20 +33,39 @@ test("recovery secret generate + wrap/unwrap round-trip", async () => {
   assert.deepEqual(unwrapped, vaultKey);
 });
 
-test("recovery possession verifier is stable and is not the wrap", async () => {
+test("recovery possession public key signs a challenge and is not the wrap", async () => {
   const vaultKey = crypto.getRandomValues(new Uint8Array(32));
   const secret = await generateRecoverySecret();
   const secretBytes = new TextEncoder().encode(secret);
-  const first = await recoveryPossessionVerifier(secretBytes);
-  const second = await recoveryPossessionVerifier(secretBytes);
+  const first = await recoveryPossessionPublicKey(secretBytes);
+  const second = await recoveryPossessionPublicKey(secretBytes);
   assert.equal(first, second);
   assert.equal(Buffer.from(first, "base64").length, 32);
 
-  const other = await recoveryPossessionVerifier(new TextEncoder().encode(await generateRecoverySecret()));
+  const other = await recoveryPossessionPublicKey(
+    new TextEncoder().encode(await generateRecoverySecret()),
+  );
   assert.notEqual(first, other);
 
   const wrapped = await wrapVaultKeyWithRecoverySecret(vaultKey, secretBytes);
   assert.notEqual(first, wrapped.payload);
+
+  const message = recoveryPossessionProofMessageBytes({
+    userId: "user-1",
+    deviceId: "device-1",
+    challenge: "challenge-1",
+  });
+  const signature = await signRecoveryPossessionProof(secretBytes, {
+    userId: "user-1",
+    deviceId: "device-1",
+    challenge: "challenge-1",
+  });
+  assert.equal(Buffer.from(signature, "base64").length, 64);
+  const { ed25519_verify } = await import("@okkey/crypto-wasm");
+  assert.equal(
+    ed25519_verify(Buffer.from(first, "base64"), message, Buffer.from(signature, "base64")),
+    true,
+  );
 });
 
 test("recovery unwrap fails with wrong secret", async () => {

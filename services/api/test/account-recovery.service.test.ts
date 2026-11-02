@@ -338,16 +338,15 @@ test("enrollKey forbidRotate rejects when a wrap already exists", async () => {
   );
 });
 
-test("checkRecoveryPossession matches a stored tag and does not open a legacy challenge on a miss", async () => {
-  const tag = Buffer.alloc(32, 4).toString("base64");
-  const other = Buffer.alloc(32, 5).toString("base64");
+test("getRecoveryPossession reports a public key or a legacy wrap and never returns ciphertext", async () => {
+  const publicKey = Buffer.alloc(32, 4).toString("base64");
   const blob = {
     crypto_version: 2,
     algorithm: "xchacha20-poly1305",
     payload: "abc",
     meta: { entity: "vault_key_recovery_wrap", key_scope: "account" },
   };
-  const service = createService({
+  const ready = createService({
     recovery: {
       getWrap: async () => ({
         userId: "u1",
@@ -355,16 +354,32 @@ test("checkRecoveryPossession matches a stored tag and does not open a legacy ch
         createdAt: "2026-01-01T00:00:00.000Z",
         rotatedAt: null,
         exportedAt: null,
-        possessionVerifier: tag,
+        possessionPublicKey: publicKey,
       }),
     },
   });
-  assert.equal((await service.checkRecoveryPossession("u1", tag)).kind, "match");
-  assert.equal((await service.checkRecoveryPossession("u1", other)).kind, "mismatch");
-  await assert.rejects(
-    () => service.checkRecoveryPossession("u1", "not-a-tag"),
-    (err: unknown) => err instanceof AccountRecoveryError && err.code === "RECOVERY_BAD_REQUEST",
-  );
+  const readyState = await ready.getRecoveryPossession("u1");
+  assert.equal(readyState.kind, "ready");
+  if (readyState.kind === "ready") {
+    assert.equal(readyState.publicKey, publicKey);
+    assert.equal("encryptedBlob" in readyState, false);
+  }
+
+  const legacy = createService({
+    recovery: {
+      getWrap: async () => ({
+        userId: "u1",
+        encryptedBlob: blob,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        rotatedAt: null,
+        exportedAt: null,
+        possessionPublicKey: null,
+      }),
+    },
+  });
+  const legacyState = await legacy.getRecoveryPossession("u1");
+  assert.equal(legacyState.kind, "legacy");
+  assert.equal(JSON.stringify(legacyState).includes("abc"), false);
 });
 
 test("enrollKey persists wrap and enables key settings", async () => {

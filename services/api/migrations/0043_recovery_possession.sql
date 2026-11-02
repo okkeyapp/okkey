@@ -1,11 +1,11 @@
--- Possession tag for the recovery wrap key, and a per-session grant after proof.
--- The tag is a one-way verifier. It is not the wrap key and cannot decrypt the vault.
+-- Ed25519 verifying key for recovery-key challenge signatures, and a per-session grant.
+-- The public key cannot sign. A challenge is single-use and is not itself a proof.
 
 ALTER TABLE user_vault_recovery_wrap
-  ADD COLUMN IF NOT EXISTS possession_verifier text NULL;
+  ADD COLUMN IF NOT EXISTS possession_public_key text NULL;
 
-COMMENT ON COLUMN user_vault_recovery_wrap.possession_verifier IS
-  'Base64 SHA-256 possession tag of the recovery wrap key. NULL for wraps enrolled before the tag existed.';
+COMMENT ON COLUMN user_vault_recovery_wrap.possession_public_key IS
+  'Base64 Ed25519 verifying key derived from the recovery wrap key. NULL for wraps enrolled before possession proofs. Not a bearer token.';
 
 ALTER TABLE sessions
   ADD COLUMN IF NOT EXISTS recovery_proved_at timestamptz NULL;
@@ -13,8 +13,14 @@ ALTER TABLE sessions
 ALTER TABLE sessions
   ADD COLUMN IF NOT EXISTS recovery_challenge text NULL;
 
+ALTER TABLE sessions
+  ADD COLUMN IF NOT EXISTS recovery_challenge_expires_at timestamptz NULL;
+
 COMMENT ON COLUMN sessions.recovery_proved_at IS
   'Set when this session proved the recovery key. Does not mark the device trusted.';
 
 COMMENT ON COLUMN sessions.recovery_challenge IS
-  'Single-use challenge for a legacy recovery attestation. Cleared when the proof succeeds.';
+  'Single-use challenge nonce for a recovery possession signature. Not a proof by itself.';
+
+COMMENT ON COLUMN sessions.recovery_challenge_expires_at IS
+  'When recovery_challenge stops being acceptable.';

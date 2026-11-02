@@ -246,17 +246,18 @@ export {
 
 export {
   generateRecoverySecret,
-  recoveryPossessionVerifier,
+  recoveryPossessionPublicKey,
+  signRecoveryPossessionMessage,
   wrapVaultKeyWithRecoverySecret,
   unwrapVaultKeyWithRecoverySecret,
 } from "./vault-recovery-key.js";
 
 export {
-  RECOVERY_POSSESSION_ATTESTATION_MAX_AGE_MS,
-  RECOVERY_POSSESSION_ATTESTATION_PURPOSE,
-  buildRecoveryPossessionAttestation,
-  recoveryPossessionAttestationMessageBytes,
-  type RecoveryPossessionAttestation,
+  RECOVERY_POSSESSION_PROOF_PURPOSE,
+  recoveryPossessionProofMessageBytes,
+  recoveryPossessionPublicKeyB64,
+  signRecoveryPossessionProof,
+  type RecoveryPossessionProofMessage,
 } from "./recovery-possession.js";
 
 export {
