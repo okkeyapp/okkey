@@ -1,4 +1,4 @@
-/** Core-only stub for `@okkey-enterprise/api` when enterprise repo is absent. */
+/** Core-only stub for the enterprise API package when enterprise modules are absent. */
 
 export class EnterpriseAccountRecoveryClient {
   constructor(_api: unknown) {}

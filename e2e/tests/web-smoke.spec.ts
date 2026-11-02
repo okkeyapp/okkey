@@ -11,7 +11,7 @@ import { E2E_MASTER_PASSWORD, uniqueEmail } from "../helpers/env";
 import { createLoginItem } from "../helpers/items";
 
 /**
- * Minimal browser smoke covering qa/web scenarios from enterprise#110:
+ * Minimal browser smoke:
  * 1) registration → recovery key gate → unlock
  * 2) create Login item → visible after reload → ciphertext-only in DB
  * 3) second browser → device pending → trust → decrypt

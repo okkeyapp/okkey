@@ -1,4 +1,4 @@
-/** Core-only stub when `okkey-enterprise` is not present (self-host Docker / OSS build). */
+/** Core-only stub when enterprise modules are not present (self-host Docker / OSS build). */
 
 export type EnterpriseEncryptedBlobDto = {
   crypto_version: number;
