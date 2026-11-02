@@ -23,6 +23,41 @@ export type ApplyMigrationsOptions = {
 };
 
 /**
+ * Ordered schema fingerprints for databases created before `schema_migrations`.
+ * v1.0.0-beta.1 applied `0001`–`0034` with psql and had no migrator.
+ * The walk stops at the first missing marker so later files are executed.
+ */
+export const PRE_LEDGER_CHECKPOINTS = [
+  "0034_backup_codes_exported_at.sql",
+  "0035_personal_data_bootstrap_dismissed.sql",
+  "0036_attachment_purpose.sql",
+  "0040_workspace_plan_change_request_sent.sql",
+  "0041_session_scope.sql",
+  "0042_events_item_soft_deleted.sql",
+  "0043_recovery_possession.sql",
+] as const;
+
+export function preLedgerBaselineFilenames(
+  files: readonly string[],
+  checkpointPresent: (filename: string) => boolean,
+): string[] {
+  let through: string | null = null;
+  for (const filename of PRE_LEDGER_CHECKPOINTS) {
+    if (!files.includes(filename)) {
+      continue;
+    }
+    if (!checkpointPresent(filename)) {
+      break;
+    }
+    through = filename;
+  }
+  if (!through) {
+    return [];
+  }
+  return files.filter((name) => name.localeCompare(through) <= 0);
+}
+
+/**
  * Apply SQL files under `services/api/migrations/` in lexical order.
  * Tracks applied files in `schema_migrations` (filename PK).
  *
@@ -66,16 +101,25 @@ async function applySqlMigrationsLocked(
   );
   const already = new Set(appliedRows.map((row) => row.filename));
 
-  // Existing DBs created before schema_migrations: baseline without re-running SQL.
+  // Databases created before schema_migrations (v1.0.0-beta.1 applied 0001–0034 by psql).
+  // Record only the prefix the live schema actually matches, then run the rest.
   if (already.size === 0) {
     const users = await tx.query<{ exists: boolean }>(
-      "SELECT to_regclass('public.users') IS NOT NULL AS exists",
+      "SELECT to_regclass(current_schema() || '.users') IS NOT NULL AS exists",
     );
     if (users[0]?.exists) {
+      const present = await probePreLedgerCheckpoints(tx);
+      const baseline = preLedgerBaselineFilenames(files, (filename) => present.has(filename));
+      if (baseline.length === 0) {
+        throw new Error(
+          "database has users but no schema_migrations and does not match a known release schema; refusing to mark migrations as applied",
+        );
+      }
       logger?.warn("baselining schema_migrations for existing database", {
-        count: files.length,
+        through: baseline[baseline.length - 1],
+        count: baseline.length,
       });
-      for (const filename of files) {
+      for (const filename of baseline) {
         await tx.query("INSERT INTO schema_migrations (filename) VALUES ($1)", [filename]);
         already.add(filename);
       }
@@ -108,4 +152,48 @@ async function applySqlMigrationsLocked(
   }
 
   return { applied, skipped };
+}
+
+async function columnExists(
+  tx: QueryExecutor,
+  table: string,
+  column: string,
+): Promise<boolean> {
+  const rows = await tx.query<{ exists: boolean }>(
+    `
+      SELECT EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = current_schema()
+          AND table_name = $1
+          AND column_name = $2
+      ) AS exists
+    `,
+    [table, column],
+  );
+  return Boolean(rows[0]?.exists);
+}
+
+/** Checkpoints whose marker column is already in the current schema. */
+async function probePreLedgerCheckpoints(tx: QueryExecutor): Promise<Set<string>> {
+  const probes: Array<[string, string, string]> = [
+    ["0034_backup_codes_exported_at.sql", "user_totp_credentials", "backup_codes_exported_at"],
+    [
+      "0035_personal_data_bootstrap_dismissed.sql",
+      "workspace_member_item_category_preferences",
+      "personal_data_bootstrap_dismissed",
+    ],
+    ["0036_attachment_purpose.sql", "attachments", "purpose"],
+    ["0040_workspace_plan_change_request_sent.sql", "workspaces", "plan_change_request_sent_at"],
+    ["0041_session_scope.sql", "sessions", "scope"],
+    ["0042_events_item_soft_deleted.sql", "events", "item_soft_deleted"],
+    ["0043_recovery_possession.sql", "sessions", "recovery_proved_at"],
+  ];
+  const present = new Set<string>();
+  for (const [filename, table, column] of probes) {
+    if (await columnExists(tx, table, column)) {
+      present.add(filename);
+    }
+  }
+  return present;
 }
