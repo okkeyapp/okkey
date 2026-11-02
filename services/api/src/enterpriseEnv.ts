@@ -2,8 +2,8 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 
 /**
- * SaaS / deployment keys owned by okkey-enterprise.
- * Applied from `okkey-enterprise/backend/.env` when ENTERPRISE_MODULES is on.
+ * SaaS / deployment keys owned by optional enterprise modules.
+ * Applied from the enterprise backend `.env` when ENTERPRISE_MODULES is on.
  * Never documented in open-core committed `.env.example`.
  */
 const ENTERPRISE_OWNED_API_KEYS = new Set(["OKKEY_DEPLOYMENT_MODE"]);
@@ -44,7 +44,7 @@ function readEnvDir(envDir: string): Record<string, string> {
 }
 
 /**
- * Load enterprise-owned API keys from `okkey-enterprise/backend/.env`.
+ * Load enterprise-owned API keys from the enterprise backend `.env`.
  * Skips Core bootstrap keys.
  */
 export function loadEnterpriseBackendEnv(enterpriseBackendEnvDir: string): Record<string, string> {
