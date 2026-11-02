@@ -1,7 +1,7 @@
 import { expect, test, type Browser, type Page } from "@playwright/test";
 
 import { registerBootstrapAndUnlock, signInWithEmailOtp } from "../helpers/auth";
-import { clearRecoveryPossessionPublicKey } from "../helpers/db";
+import { clearRecoveryPossessionPublicKey, resetE2eCatalog } from "../helpers/db";
 import { E2E_MASTER_PASSWORD, uniqueEmail } from "../helpers/env";
 
 /**
@@ -22,7 +22,12 @@ let email = "";
 let recoveryKey = "";
 
 test.beforeAll(async ({ browser }) => {
+  await resetE2eCatalog();
   browserRef = browser;
+});
+
+test.afterAll(async () => {
+  await resetE2eCatalog();
 });
 
 async function freshPage(): Promise<{ page: Page; close: () => Promise<void> }> {

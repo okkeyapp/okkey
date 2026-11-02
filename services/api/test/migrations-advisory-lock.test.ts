@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { randomBytes } from "node:crypto";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -23,6 +24,7 @@ type PgClient = {
   connect(): Promise<void>;
   query(sql: string, params?: unknown[]): Promise<{ rows: Array<Record<string, unknown>> }>;
   end(): Promise<void>;
+  on(event: "error", listener: (error: Error) => void): void;
 };
 
 type TempDatabase = {
@@ -78,7 +80,7 @@ async function createTempDatabase(t: TestContext): Promise<TempDatabase | null> 
   }
 
   const admin = await PostgresDatabase.connect(databaseUrl);
-  const dbName = `okkey_mig_lock_${Date.now().toString(36)}`;
+  const dbName = `okkey_mig_lock_${randomBytes(8).toString("hex")}`;
   const clientClosers: Array<() => Promise<void>> = [];
 
   t.after(async () => {
@@ -86,16 +88,9 @@ async function createTempDatabase(t: TestContext): Promise<TempDatabase | null> 
       await settle(close);
     }
     try {
-      await admin.query(
-        `
-          SELECT pg_terminate_backend(pid)
-          FROM pg_stat_activity
-          WHERE datname = $1
-            AND pid <> pg_backend_pid()
-        `,
-        [dbName],
-      );
-      // FORCE avoids hang/fail when a pool client is still draining.
+      // FORCE drops backends that are still draining. Do not also call
+      // pg_terminate_backend: that error is delivered on the closed client
+      // after this hook returns and fails whichever test is running next.
       await admin.query(`DROP DATABASE IF EXISTS ${dbName} WITH (FORCE)`);
     } finally {
       await settle(() => admin.close());
@@ -148,6 +143,7 @@ test("applySqlMigrations waits on the migrations advisory lock", async (t) => {
     Client: new (opts: { connectionString: string }) => PgClient;
   };
   const locker = new pgModule.Client({ connectionString: created.databaseUrl });
+  locker.on("error", () => {});
   await locker.connect();
   created.registerClientClose(async () => {
     await locker.end();
