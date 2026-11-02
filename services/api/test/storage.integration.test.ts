@@ -332,6 +332,55 @@ test("integration: DevicesRepository deduplicates trusted fingerprints without r
   assert.equal(afterConflict[0]?.device_name, "Work MacBook");
   assert.equal(afterConflict[0]?.device_public_key, devicePublicKey);
   assert.deepEqual(Buffer.from(afterConflict[0]!.device_share), Buffer.from([1, 2, 3]));
+
+  const siblingKey = Buffer.from("recovery-pending-public-key").toString("base64");
+  const sibling = await devices.registerOrUpdate({
+    userId: user.id,
+    deviceFingerprint: fingerprint,
+    deviceName: "Recovery browser",
+    devicePublicKey: siblingKey,
+    deviceShare: new Uint8Array(32).fill(7),
+    platform: "web",
+    osName: "Linux",
+    osVersion: "6",
+    appVersion: "web",
+    clientType: "web_app",
+    userAgent: "recovery",
+    requestIp: "10.0.0.8",
+    now: "2026-01-01T00:04:00.000Z",
+    allowPendingAlongsideTrusted: true,
+  });
+  assert.equal(sibling.status, "pending");
+  assert.equal(sibling.created, true);
+  assert.notEqual(sibling.id, first.id);
+  assert.equal(sibling.devicePublicKey, siblingKey);
+
+  const trustedUntouched = await db.query<{
+    device_public_key: string;
+    status: string;
+  }>("SELECT device_public_key, status FROM devices WHERE id = $1", [first.id]);
+  assert.equal(trustedUntouched[0]?.status, "trusted");
+  assert.equal(trustedUntouched[0]?.device_public_key, devicePublicKey);
+
+  const retry = await devices.registerOrUpdate({
+    userId: user.id,
+    deviceFingerprint: fingerprint,
+    deviceName: "Recovery browser",
+    devicePublicKey: siblingKey,
+    deviceShare: new Uint8Array(32).fill(7),
+    platform: "web",
+    osName: "Linux",
+    osVersion: "6",
+    appVersion: "web",
+    clientType: "web_app",
+    userAgent: "recovery",
+    requestIp: "10.0.0.8",
+    now: "2026-01-01T00:05:00.000Z",
+    allowPendingAlongsideTrusted: true,
+  });
+  assert.equal(retry.id, sibling.id);
+  assert.equal(retry.status, "pending");
+  assert.equal(retry.created, false);
 });
 
 test("integration: DevicesRepository approval transitions are consistent", async (t) => {

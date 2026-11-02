@@ -73,6 +73,9 @@ interface RegisterDeviceMetadataBody {
   client_type?: string;
   user_agent?: string;
   reclaim_sole_trusted?: boolean;
+  claim_after_recovery?: boolean;
+  /** Pending sibling for recovery proof. Does not replace a trusted device. */
+  recovery_pending?: boolean;
 }
 
 interface RegisterDeviceBody extends RegisterDeviceMetadataBody {
@@ -175,6 +178,7 @@ export function createRegisterDeviceRoute(
   resolveUserId: (req: IncomingMessage) => Promise<string | null>,
   trustedProxyHops = 0,
   sessionService?: Pick<SessionDeviceBinding, "bindAccessTokenDevice">,
+  mayClaimAfterRecovery?: (req: IncomingMessage) => Promise<boolean>,
 ): RouteHandler {
   return async (ctx) => {
     let body: RegisterDeviceBody;
@@ -216,6 +220,27 @@ export function createRegisterDeviceRoute(
       const claimAfterRecovery = Boolean(
         body.metadata?.claim_after_recovery ?? (body as { claim_after_recovery?: boolean }).claim_after_recovery,
       );
+      const recoveryPending =
+        !claimAfterRecovery &&
+        Boolean(
+          body.metadata?.recovery_pending ??
+            (body as { recovery_pending?: boolean }).recovery_pending,
+        );
+      if (claimAfterRecovery && mayClaimAfterRecovery) {
+        const allowed = await mayClaimAfterRecovery(ctx.req);
+        if (!allowed) {
+          json(
+            ctx.res,
+            403,
+            errorPayload(
+              "RECOVERY_PROOF_REQUIRED",
+              "recovery key proof is required before claiming this device",
+              ctx.requestId,
+            ),
+          );
+          return;
+        }
+      }
       const requestIp = await getRequestIp(ctx.req, { trustedProxyHops });
       const result = await deviceService.registerDevice(userId, requestIp, {
         deviceFingerprint: body.device_fingerprint,
@@ -232,16 +257,19 @@ export function createRegisterDeviceRoute(
         acceptLanguage: getHeader(ctx.req, "accept-language"),
         reclaimSoleTrusted,
         claimAfterRecovery,
+        recoveryPending,
       });
 
       const accessToken = getBearerToken(ctx.req);
-      if (
-        accessToken &&
-        sessionService &&
+      const bindCreated =
         result.created &&
-        (result.status === "trusted" || result.status === "pending_approval")
-      ) {
-        await sessionService.bindAccessTokenDevice(accessToken, userId, result.deviceId);
+        (result.status === "trusted" || result.status === "pending_approval");
+      // Rebind only the new pending row. Never attach this session to the existing trusted device.
+      const bindRecoveryPending = recoveryPending && result.status === "pending_approval";
+      if (accessToken && sessionService && (bindCreated || bindRecoveryPending)) {
+        await sessionService.bindAccessTokenDevice(accessToken, userId, result.deviceId, {
+          replaceExistingDevice: claimAfterRecovery,
+        });
       }
 
       json(ctx.res, 200, {

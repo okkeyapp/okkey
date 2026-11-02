@@ -6,7 +6,7 @@ import {
   signInWithEmailOtp,
   unlockWithMasterPassword,
 } from "../helpers/auth";
-import { assertVaultBlobsHaveNoPlaintext } from "../helpers/db";
+import { assertVaultBlobsHaveNoPlaintext, resetE2eCatalog } from "../helpers/db";
 import { E2E_MASTER_PASSWORD, uniqueEmail } from "../helpers/env";
 import { createLoginItem } from "../helpers/items";
 
@@ -17,8 +17,9 @@ import { createLoginItem } from "../helpers/items";
  * 3) second browser → device pending → trust → decrypt
  * 4) forgot master password → recovery key → new password → items readable
  *
- * Shared browser context keeps vault storage across steps. Needs empty users
- * table (fresh CI Postgres) and SMTP → Mailpit for OTP (no API createCode bypass).
+ * Shared browser context keeps vault storage across steps inside this file.
+ * beforeAll clears users and the e2e Redis DB so bootstrap registration does not
+ * depend on another spec. SMTP → Mailpit supplies OTP (no API createCode bypass).
  */
 test.describe.configure({ mode: "serial" });
 
@@ -35,6 +36,7 @@ let email = "";
 let recoveryKey = "";
 
 test.beforeAll(async ({ browser }) => {
+  await resetE2eCatalog();
   browserRef = browser;
   context = await browser.newContext({
     locale: "en-US",
@@ -45,6 +47,7 @@ test.beforeAll(async ({ browser }) => {
 
 test.afterAll(async () => {
   await context?.close();
+  await resetE2eCatalog();
 });
 
 test("1) bootstrap registration → recovery export → unlock", async () => {

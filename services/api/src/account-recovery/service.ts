@@ -13,6 +13,7 @@ import {
 } from "@okkey/types";
 
 import { generateEntityId } from "../entity-id.ts";
+import { decodePossessionPublicKey } from "./possession-proof.ts";
 import { decodeEncryptedBlobFromStorage } from "../crypto/encrypted-blob.ts";
 import { buildEmailAppPathUrl, type EmailTemplateService } from "../email/service.ts";
 import {
@@ -327,9 +328,10 @@ export class AccountRecoveryService {
   async enrollKey(
     userId: string,
     encryptedBlob: EncryptedBlobDto,
-    options?: { rotate?: boolean; forbidRotate?: boolean },
+    options?: { rotate?: boolean; forbidRotate?: boolean; possessionPublicKey?: string | null },
   ): Promise<AccountRecoveryKeyEnrollResponseDto> {
     this.assertValidRecoveryWrap(encryptedBlob);
+    const possessionPublicKey = this.normalizePossessionPublicKey(options?.possessionPublicKey);
     const entitlements = await this.resolveEntitlements(userId);
     const existing = await this.recovery.getWrap(userId);
     const rotate = Boolean(options?.rotate) || Boolean(existing);
@@ -344,7 +346,11 @@ export class AccountRecoveryService {
     let wrap: Awaited<ReturnType<AccountRecoveryRepository["upsertWrap"]>>;
     if (options?.forbidRotate) {
       // Atomic first-enroll: concurrent losers hit ON CONFLICT DO NOTHING → forbidden.
-      const inserted = await this.recovery.insertWrapIfAbsent(userId, encryptedBlob);
+      const inserted = await this.recovery.insertWrapIfAbsent(
+        userId,
+        encryptedBlob,
+        possessionPublicKey,
+      );
       if (!inserted) {
         throw new AccountRecoveryError(
           "RECOVERY_ROTATE_FORBIDDEN",
@@ -354,7 +360,7 @@ export class AccountRecoveryService {
       }
       wrap = inserted;
     } else {
-      wrap = await this.recovery.upsertWrap(userId, encryptedBlob, rotate);
+      wrap = await this.recovery.upsertWrap(userId, encryptedBlob, rotate, possessionPublicKey);
     }
 
     const settingsRow = await this.recovery.getSettings(userId);
@@ -407,6 +413,27 @@ export class AccountRecoveryService {
       throw new AccountRecoveryError("RECOVERY_KEY_NOT_ENROLLED", 404, "recovery key is not enrolled");
     }
     return { encryptedBlob: wrap.encryptedBlob };
+  }
+
+  /**
+   * Whether this account can be proved from an untrusted device.
+   * Legacy wraps have no verifying key. This method never returns ciphertext.
+   */
+  async getRecoveryPossession(
+    userId: string,
+  ): Promise<{ kind: "unavailable" } | { kind: "legacy" } | { kind: "ready"; publicKey: string }> {
+    const status = await this.getStatus(userId);
+    if (!status.settings.keyEnabled || !status.key.enrolled) {
+      return { kind: "unavailable" };
+    }
+    const wrap = await this.recovery.getWrap(userId);
+    if (!wrap) {
+      return { kind: "unavailable" };
+    }
+    if (!wrap.possessionPublicKey) {
+      return { kind: "legacy" };
+    }
+    return { kind: "ready", publicKey: wrap.possessionPublicKey };
   }
 
   /**
@@ -622,6 +649,21 @@ export class AccountRecoveryService {
           record.deviceFingerprint.toLowerCase() === normalized,
       };
     });
+  }
+
+  private normalizePossessionPublicKey(value: string | null | undefined): string | null {
+    if (value == null || value.trim() === "") {
+      return null;
+    }
+    const decoded = decodePossessionPublicKey(value);
+    if (!decoded) {
+      throw new AccountRecoveryError(
+        "RECOVERY_BAD_REQUEST",
+        400,
+        "possessionPublicKey must be a base64 Ed25519 public key",
+      );
+    }
+    return decoded.toString("base64");
   }
 
   private assertValidRecoveryWrap(blob: EncryptedBlobDto): void {
