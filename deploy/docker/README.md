@@ -1,6 +1,6 @@
 # Self-host Okkey in 5 minutes
 
-Run Okkey Core on your own machine with Docker Compose — **no monorepo clone or local build**.
+Run Okkey Core on your own machine with Docker Compose - **no monorepo clone or local build**.
 
 ## Requirements
 
@@ -8,25 +8,25 @@ Run Okkey Core on your own machine with Docker Compose — **no monorepo clone o
 
 ## One-command install
 
+On tag v1.0.0-beta.2 the installer defaults `OKKEY_REF` to `v1.0.0-beta.2`.
+
 **Tracking / QA** (floating `:dev` images, published only by a manual run of the publish workflow):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/okkeyapp/okkey/dev/deploy/docker/install.sh \
-  | OKKEY_IMAGE_TAG=dev bash
+curl -fsSL https://raw.githubusercontent.com/okkeyapp/okkey/v1.0.0-beta.2/deploy/docker/install.sh \
+  | OKKEY_REF=v1.0.0-beta.2 OKKEY_IMAGE_TAG=dev bash
 ```
 
-**Production** — pin full SemVer (never floating `:latest`). `.env.example` defaults to `1.0.0-beta.2`:
+**Production:** pin full SemVer (never floating `:latest`). `.env.example` on tag v1.0.0-beta.2 defaults to `1.0.0-beta.2`:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/okkeyapp/okkey/dev/deploy/docker/install.sh | bash
-# or explicitly:
-curl -fsSL https://raw.githubusercontent.com/okkeyapp/okkey/dev/deploy/docker/install.sh \
-  | OKKEY_IMAGE_TAG=1.0.0-beta.2 bash
+curl -fsSL https://raw.githubusercontent.com/okkeyapp/okkey/v1.0.0-beta.2/deploy/docker/install.sh \
+  | OKKEY_REF=v1.0.0-beta.2 OKKEY_IMAGE_TAG=1.0.0-beta.2 bash
 ```
 
 `:1.0.0-beta.2` is published when git tag `v1.0.0-beta.2` lands. Until then, tracking installs must pass `OKKEY_IMAGE_TAG=dev`. Pushes to `release/1.0.0-beta.2` publish `:1.0.0-beta.2-candidate` and `:1.0.0-beta.2-<sha>` and do not move that pin or `:latest`. `OKKEY_CHANNEL=prod` stays gated until the SemVer exists in GHCR (or `OKKEY_PROD_CHANNEL_FORCE=1`).
 
-Note: `OKKEY_REF=…` / `OKKEY_IMAGE_TAG=…` / `OKKEY_CHANNEL=…` must be on the **right** of `|` so the installer process sees them — `VAR=x curl | bash` does **not** pass `VAR` into `bash`.
+Note: `OKKEY_REF=…` / `OKKEY_IMAGE_TAG=…` / `OKKEY_CHANNEL=…` must be on the **right** of `|` so the installer process sees them - `VAR=x curl | bash` does **not** pass `VAR` into `bash`.
 
 `.env.example` pins `OKKEY_IMAGE_TAG=1.0.0-beta.2` for prod (never `:latest`). Core GHCR packages (`ghcr.io/okkeyapp/{api,web,worker}`) are **public** for anonymous pull.
 
@@ -34,31 +34,31 @@ Optional env:
 
 | Variable | Purpose |
 |----------|---------|
-| `OKKEY_REF` | Git branch/tag/SHA for raw `deploy/docker/*` downloads (default `dev`). Independent of the container image tag. |
+| `OKKEY_REF` | Git branch, tag, or SHA for raw `deploy/docker/*` downloads. On tag v1.0.0-beta.2 the installer defaults `OKKEY_REF` to `v1.0.0-beta.2`. Independent of the container image tag. |
 | `OKKEY_IMAGE_TAG` | On **fresh** installs, overrides the `.env.example` default written into `.env` |
 | `OKKEY_CHANNEL=prod` | Refused until SemVer exists in GHCR; with `OKKEY_PROD_CHANNEL_FORCE=1`, pins `OKKEY_PROD_IMAGE_TAG` |
-| `OKKEY_PROD_IMAGE_TAG` | Prod SemVer pin name (default `1.0.0-beta.2`; never `latest`) — published with git tag `v1.0.0-beta.2` |
+| `OKKEY_PROD_IMAGE_TAG` | Prod SemVer pin name (default `1.0.0-beta.2`; never `latest`) - published with git tag `v1.0.0-beta.2` |
 | `OKKEY_RAW_BASE` / `OKKEY_REPO_RAW_BASE` | Raw GitHub repo root (default `https://raw.githubusercontent.com/okkeyapp/okkey`) |
 | `OKKEY_INSTALL_DIR` | Install directory (default `~/okkey`). Compose project name = directory basename (containers/volumes are namespaced per install dir). |
 | `OKKEY_SKIP_PULL=1` | Skip `docker compose pull` (local/preloaded images) |
-| `OKKEY_SKIP_COSIGN_VERIFY=1` | Skip cosign keyless signature check (**warning**; off by default — not for prod) |
+| `OKKEY_SKIP_COSIGN_VERIFY=1` | Skip cosign keyless signature check (**warning**; off by default - not for prod) |
 | `OKKEY_FORCE_COSIGN_VERIFY=1` | With `OKKEY_SKIP_PULL=1`, still require cosign verify |
 | `OKKEY_RESET_VOLUMES=1` | `docker compose down -v` before start (wipe Postgres/Redis/MinIO data) |
-| `WEB_PORT` / `API_PORT` | Host ports for web/API. **API is published on `127.0.0.1` only** (not `0.0.0.0`) so forged `X-Forwarded-For` cannot reach the API when `TRUSTED_PROXY_HOPS≥1`. On **fresh** installs, written into `.env`; when set without explicit URLs, also derives `PUBLIC_APP_URL` / `OKKEY_API_PUBLIC_URL` / `CORS_ORIGIN` / `WEBAUTHN_ORIGINS`. Without a reverse proxy, other machines cannot call the API on `http://<host>:4000` (or any `API_PORT`) — use the [`proxy/`](./proxy/) overlay (TLS, `TRUSTED_PROXY_HOPS=1`) for network access. |
+| `WEB_PORT` / `API_PORT` | Host ports for web/API. **API is published on `127.0.0.1` only** (not `0.0.0.0`) so forged `X-Forwarded-For` cannot reach the API when `TRUSTED_PROXY_HOPS≥1`. On **fresh** installs, written into `.env`; when set without explicit URLs, also derives `PUBLIC_APP_URL` / `OKKEY_API_PUBLIC_URL` / `CORS_ORIGIN` / `WEBAUTHN_ORIGINS`. Without a reverse proxy, other machines cannot call the API on `http://<host>:4000` (or any `API_PORT`) - use the [`proxy/`](./proxy/) overlay (TLS, `TRUSTED_PROXY_HOPS=1`) for network access. |
 | `PUBLIC_APP_URL` / `OKKEY_API_PUBLIC_URL` / `CORS_ORIGIN` / `WEBAUTHN_ORIGINS` | Optional overrides written into `.env` on fresh installs (keep `config.js` and `.env` aligned). |
-| `OKKEY_SALES_EMAIL` | **Required** sales inbox for license / plan-change requests (passed to `api` and `worker`). No built-in default. Resolved **before** any compose/`.env` rewrite — failed checks leave an existing install untouched. When a terminal is available (including `curl … \| bash` via `/dev/tty`), install prompts for it; true non-interactive installs must set it on the right of `\|` or in `.env`. |
+| `OKKEY_SALES_EMAIL` | **Required** sales inbox for license / plan-change requests (passed to `api` and `worker`). No built-in default. Resolved **before** any compose/`.env` rewrite - failed checks leave an existing install untouched. When a terminal is available (including `curl … \| bash` via `/dev/tty`), install prompts for it; true non-interactive installs must set it on the right of `\|` or in `.env`. |
 
 ### Reinstall / password mismatch
 
-Postgres applies `POSTGRES_PASSWORD` **only on first volume init**. If you delete `~/okkey/.env` and re-run install (new secrets) while `<basename>_okkey-postgres` still exists (default `okkey_okkey-postgres`), `api` crash-loops with `postgres query failed` / `password authentication failed`, and `web`/`worker` stay `Created` (depend on api healthy).
+Postgres applies `POSTGRES_PASSWORD` only on first volume init. If you delete `~/okkey/.env` and run the installer again while `<basename>_okkey-postgres` still exists (default `okkey_okkey-postgres`), the installer stops with an error before it writes a new password. Restore the old `.env`, or wipe the volumes.
 
 ```bash
-# Destructive — empty DB, keep current .env secrets:
+# Destructive: empty DB, keep current .env secrets:
 cd ~/okkey && docker compose -p okkey -f docker-compose.prod.yml --env-file .env down -v && \
   docker compose -p okkey -f docker-compose.prod.yml --env-file .env up -d
 
 # Or via installer:
-OKKEY_RESET_VOLUMES=1 OKKEY_REF=dev \
+OKKEY_RESET_VOLUMES=1 OKKEY_REF=v1.0.0-beta.2 \
   bash deploy/docker/install.sh
 ```
 
@@ -75,15 +75,15 @@ After pull, `install.sh` verifies Sigstore **cosign keyless** signatures produce
 
 Requirements: [`cosign`](https://docs.sigstore.dev/cosign/system_config/installation/) on `PATH`, and images pulled from GHCR (so `RepoDigests` resolve).
 
-Emergency bypass: `OKKEY_SKIP_COSIGN_VERIFY=1` — installer prints a warning and continues. Do **not** use for production. Local builds with `OKKEY_SKIP_PULL=1` skip verify unless `OKKEY_FORCE_COSIGN_VERIFY=1`.
+Emergency bypass: `OKKEY_SKIP_COSIGN_VERIFY=1` - installer prints a warning and continues. Do **not** use for production. Local builds with `OKKEY_SKIP_PULL=1` skip verify unless `OKKEY_FORCE_COSIGN_VERIFY=1`.
 
-Then open **http://localhost:8080** (web) and check **http://127.0.0.1:4000/health** (API; loopback bind — same host only). After `up -d`, `install.sh` prints a large **OKKEY** banner and the web URL (`PUBLIC_APP_URL`, or `http://localhost:$WEB_PORT`).
+Then open **http://localhost:8080** (web) and check **http://127.0.0.1:4000/health** (API; loopback bind - same host only). After `up -d`, `install.sh` prints a large **OKKEY** banner and the web URL (`PUBLIC_APP_URL`, or `http://localhost:$WEB_PORT`).
 
-**Remote / LAN access:** the published API port is loopback-only. Other machines cannot call `http://<server>:4000` (or any `API_PORT`). Loading the web UI from another host (for example `http://<server>:8080`) still cannot reach the API unless `OKKEY_API_PUBLIC_URL` points at a network-reachable edge. For off-host access, run the TLS proxy under [`proxy/`](./proxy/) with `TRUSTED_PROXY_HOPS=1` and set `PUBLIC_APP_URL` / `OKKEY_API_PUBLIC_URL` to the proxy hosts — see [TLS / domain](#tls--domain).
+**Remote / LAN access:** the published API port is loopback-only. Other machines cannot call `http://<server>:4000` (or any `API_PORT`). Loading the web UI from another host (for example `http://<server>:8080`) still cannot reach the API unless `OKKEY_API_PUBLIC_URL` points at a network-reachable edge. For off-host access, run the TLS proxy under [`proxy/`](./proxy/) with `TRUSTED_PROXY_HOPS=1` and set `PUBLIC_APP_URL` / `OKKEY_API_PUBLIC_URL` to the proxy hosts - see [TLS / domain](#tls--domain).
 
 ## First-run (empty database)
 
-On a fresh install the `users` table is empty. Open the web UI, enter an email, and continue — **OTP is skipped** and you go straight to the registration form (no SMTP needed for the first account).
+On a fresh install the `users` table is empty. Open the web UI, enter an email, and continue - **OTP is skipped** and you go straight to the registration form (no SMTP needed for the first account).
 
 `POST /auth/email/start` returns `bootstrapRequired: true` plus `authStateId` when there are zero users. After the first account exists, the same endpoint uses the normal email OTP flow for every subsequent login/registration.
 
@@ -96,14 +96,14 @@ The web client registers with `password_kdf_params_version: 1` (identity blob is
 | `dev` (self-host default) | `1,2` | Required for current web registration |
 | `stage` / `prod` | `2` only | Rejects kdf v1 with `CRYPTO_PROFILE_NOT_ALLOWED` |
 
-Compose passes `DEPLOY_ENV`, `CRYPTO_ALLOWED_PROFILE_VERSIONS`, and `CRYPTO_ROLLOUT_MODE` from `.env` (defaults `dev` / `1,2` / `compat`). You cannot set `CRYPTO_ALLOWED_PROFILE_VERSIONS=1,2` with `DEPLOY_ENV=prod` — the process exits on boot.
+Compose passes `DEPLOY_ENV`, `CRYPTO_ALLOWED_PROFILE_VERSIONS`, and `CRYPTO_ROLLOUT_MODE` from `.env` (defaults `dev` / `1,2` / `compat`). You cannot set `CRYPTO_ALLOWED_PROFILE_VERSIONS=1,2` with `DEPLOY_ENV=prod` - the process exits on boot.
 
-### Workaround (existing install showing «Профиль шифрования не разрешён»)
+### Workaround (existing install showing "This encryption profile is not allowed in the current environment.")
 
-1. Refresh compose (old files hardcode `DEPLOY_ENV: prod`):
+1. Refresh compose from tag v1.0.0-beta.2 (older files can hardcode `DEPLOY_ENV: prod`):
 
 ```bash
-REF=dev
+REF=v1.0.0-beta.2
 curl -fsSL -o ~/okkey/docker-compose.prod.yml \
   "https://raw.githubusercontent.com/okkeyapp/okkey/${REF}/deploy/docker/docker-compose.prod.yml"
 ```
@@ -125,7 +125,7 @@ docker compose -f docker-compose.prod.yml --env-file .env up -d --force-recreate
 
 ## Image tags
 
-Published by [`.github/workflows/publish-images.yml`](../../.github/workflows/publish-images.yml) to `ghcr.io/okkeyapp/{api,web,worker}` (Core only — the browser extension is **not** published by this workflow).
+Published by [`.github/workflows/publish-images.yml`](../../.github/workflows/publish-images.yml) to `ghcr.io/okkeyapp/{api,web,worker}` (Core only - the browser extension is **not** published by this workflow).
 
 | Event | Tags |
 |-------|------|
@@ -148,7 +148,7 @@ Installer defaults:
 
 | Channel | `OKKEY_IMAGE_TAG` |
 |---------|-------------------|
-| Production (`.env.example` default) | `1.0.0-beta.2` — **never** `:latest` |
+| Production (`.env.example` default) | `1.0.0-beta.2` - **never** `:latest` |
 | Tracking / QA | override `OKKEY_IMAGE_TAG=dev`; `OKKEY_CHANNEL=prod` gated until SemVer exists in GHCR |
 
 Multi-arch (`linux/amd64` + `linux/arm64`), OCI labels, SBOM, and build provenance are enabled in CI. Cosign **keyless GitHub OIDC** signing runs on every non-PR publish (no key-based override).
@@ -156,13 +156,13 @@ Multi-arch (`linux/amd64` + `linux/arm64`), OCI labels, SBOM, and build provenan
 ## Manual install
 
 ```bash
-REF=dev
+REF=v1.0.0-beta.2
 mkdir -p ~/okkey && cd ~/okkey
 curl -fsSL -O "https://raw.githubusercontent.com/okkeyapp/okkey/${REF}/deploy/docker/docker-compose.prod.yml"
 curl -fsSL -O "https://raw.githubusercontent.com/okkeyapp/okkey/${REF}/deploy/docker/.env.example"
 cp .env.example .env
 # edit secrets and PUBLIC_APP_URL / OKKEY_API_PUBLIC_URL
-# production pin (default): OKKEY_IMAGE_TAG=1.0.0-beta.2 — never :latest
+# production pin (default): OKKEY_IMAGE_TAG=1.0.0-beta.2 - never :latest
 # tracking: set OKKEY_IMAGE_TAG=dev until / alongside tip images
 docker compose -f docker-compose.prod.yml --env-file .env up -d
 ```
@@ -199,9 +199,9 @@ Self-host uses Redis keys `okkey:email:queue` / `okkey:email:delayed` / `okkey:e
 
 Required for any access that is not same-host loopback: the API host port stays on `127.0.0.1`, so the reverse proxy is the supported way to expose API (and web) on the network.
 
-**Primary edge template (self-host):** [`proxy/`](./proxy/) — nginx + OpenSSL ≥ 3.5, default hybrid group `X25519MLKEM768`, TLS 1.3 only (no silent classical downgrade). Set `TRUSTED_PROXY_HOPS=1` when the API sits behind this proxy. Classical-only clients need an **explicit, isolated, time-boxed** compat listener (`proxy/compat.env.example`, `policy-compat.sh`) — never on the default host. Caddy/Traefik are notes-only; see [`proxy/README.md`](./proxy/README.md).
+**Primary edge template (self-host):** [`proxy/`](./proxy/) - nginx + OpenSSL ≥ 3.5, default hybrid group `X25519MLKEM768`, TLS 1.3 only (no silent classical downgrade). Set `TRUSTED_PROXY_HOPS=1` when the API sits behind this proxy. Classical-only clients need an **explicit, isolated, time-boxed** compat listener (`proxy/compat.env.example`, `policy-compat.sh`) - never on the default host. Caddy/Traefik are notes-only; see [`proxy/README.md`](./proxy/README.md).
 
-**SaaS stage/prod edge:** [`../saas/edge/`](../saas/edge/) — same nginx image + hybrid group; overlays `stage.env` / `prod.env`.
+**SaaS stage/prod edge:** [`../saas/edge/`](../saas/edge/) - same nginx image + hybrid group; overlays `stage.env` / `prod.env`.
 
 ```bash
 # From a checkout of deploy/docker (recommended for --build).
