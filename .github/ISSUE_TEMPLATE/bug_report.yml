@@ -1,0 +1,40 @@
+name: Bug report
+description: Report a problem in the current release or in mainline development.
+title: "bug: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to write this down.
+        Do not include master passwords, vault keys, recovery keys, session tokens, or vault dumps.
+        For a security vulnerability, use SECURITY.md instead of this form.
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Container tag, git tag, or commit. For a Compose install this is OKKEY_IMAGE_TAG in ~/okkey/.env.
+      placeholder: 1.0.0-beta.2
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what you saw.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Number the steps. Include the page you were on.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Paste relevant logs with secrets removed.
+      render: text
+    validations:
+      required: false

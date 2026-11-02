@@ -1,0 +1,30 @@
+name: Documentation
+description: Report a mistake or a gap in the public docs.
+title: "docs: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form for README, docs/, CONTRIBUTING, and other public pages.
+        Security vulnerabilities belong in SECURITY.md, not in this form.
+  - type: input
+    id: page
+    attributes:
+      label: Page
+      description: Path or URL of the page.
+      placeholder: docs/install.md
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What is wrong or missing
+    validations:
+      required: true
+  - type: textarea
+    id: suggestion
+    attributes:
+      label: Suggested change
+      description: Optional. Quote the sentence you would replace, and write the replacement.
+    validations:
+      required: false
