@@ -1433,6 +1433,12 @@ export interface RegisterCompleteMetadataDto {
    * device with the provided device_share and revoke other trusted devices.
    */
   claim_after_recovery?: boolean;
+  /**
+   * When true on `POST /devices/register` before recovery-key proof: if this
+   * fingerprint is already trusted, insert a pending device for the new public
+   * key and bind the unbound session to that pending device only.
+   */
+  recovery_pending?: boolean;
 }
 
 /** `POST /devices/register` request body (snake_case on wire). */
