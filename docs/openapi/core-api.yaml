@@ -968,6 +968,12 @@ components:
               type: string
             user_agent:
               type: string
+            recovery_pending:
+              type: boolean
+              description: >
+                Unbound session only. Insert a pending device beside an already
+                trusted fingerprint without replacing that device's keys, and
+                bind the session to the pending row.
 
     DeviceRegisterResponse:
       type: object

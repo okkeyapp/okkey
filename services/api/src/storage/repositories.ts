@@ -1355,6 +1355,11 @@ export class DevicesRepository {
     userAgent: string;
     requestIp: string;
     now: string;
+    /**
+     * Recovery restore on a browser that lost its signing key. Insert a pending
+     * row for the new public key without changing the trusted row.
+     */
+    allowPendingAlongsideTrusted?: boolean;
   }): Promise<DeviceRecord & { sendApprovalEmail: boolean; created: boolean }> {
     try {
       return await withUserDeviceLock(input.userId, () => this.db.transaction(async (tx) => {
@@ -1443,7 +1448,137 @@ export class DevicesRepository {
         }
         if (current.status === "trusted") {
           if (current.device_public_key.trim() !== input.devicePublicKey.trim()) {
-            throw new TrustedDeviceKeyConflictError();
+            if (!input.allowPendingAlongsideTrusted) {
+              throw new TrustedDeviceKeyConflictError();
+            }
+            const siblingId = generateEntityId();
+            const sibling = await tx.query<{
+              id: string;
+              user_id: string;
+              device_fingerprint: string;
+              device_name: string;
+              device_public_key: string;
+              device_share: Buffer;
+              platform: string;
+              os_name: string;
+              os_version: string;
+              app_version: string;
+              client_type: string;
+              user_agent: string;
+              ip_first: string;
+              ip_last: string;
+              status: "trusted" | "pending" | "revoked" | "blocked";
+              created_at: string | Date;
+              last_seen_at: string | Date | null;
+              approved_by: string | null;
+              approved_at: string | Date | null;
+              rejected_at: string | Date | null;
+              rejection_reason: string | null;
+              revoked_at: string | Date | null;
+              inserted: boolean;
+            }>(
+              `
+                INSERT INTO devices (
+                  id,
+                  user_id,
+                  device_fingerprint,
+                  device_name,
+                  device_public_key,
+                  device_share,
+                  platform,
+                  os_name,
+                  os_version,
+                  app_version,
+                  client_type,
+                  user_agent,
+                  ip_first,
+                  ip_last,
+                  status,
+                  created_at
+                )
+                VALUES (
+                  $1,
+                  $2::bigint,
+                  $3,
+                  $4,
+                  $5,
+                  $6,
+                  $7,
+                  $8,
+                  $9,
+                  $10,
+                  $11,
+                  $12,
+                  $13,
+                  $13,
+                  'pending',
+                  $14::timestamptz
+                )
+                ON CONFLICT (user_id, device_fingerprint, device_public_key)
+                DO UPDATE SET
+                  device_name = EXCLUDED.device_name,
+                  platform = EXCLUDED.platform,
+                  os_name = EXCLUDED.os_name,
+                  os_version = EXCLUDED.os_version,
+                  app_version = EXCLUDED.app_version,
+                  client_type = EXCLUDED.client_type,
+                  user_agent = EXCLUDED.user_agent,
+                  ip_last = EXCLUDED.ip_last,
+                  status = CASE
+                    WHEN devices.status = 'revoked' THEN 'pending'
+                    ELSE devices.status
+                  END
+                RETURNING
+                  id,
+                  user_id,
+                  device_fingerprint,
+                  device_name,
+                  device_public_key,
+                  device_share,
+                  platform,
+                  os_name,
+                  os_version,
+                  app_version,
+                  client_type,
+                  user_agent,
+                  ip_first,
+                  ip_last,
+                  status,
+                  created_at,
+                  last_seen_at,
+                  approved_by,
+                  approved_at,
+                  rejected_at,
+                  rejection_reason,
+                  revoked_at,
+                  (xmax = 0) AS inserted
+              `,
+              [
+                siblingId,
+                input.userId,
+                input.deviceFingerprint,
+                input.deviceName,
+                input.devicePublicKey,
+                Buffer.from(input.deviceShare),
+                input.platform,
+                input.osName,
+                input.osVersion,
+                input.appVersion,
+                input.clientType,
+                input.userAgent,
+                input.requestIp,
+                input.now,
+              ],
+            );
+            const row = sibling[0];
+            if (!row || row.status === "trusted") {
+              throw new TrustedDeviceKeyConflictError();
+            }
+            return {
+              ...mapDevice(row),
+              sendApprovalEmail: false,
+              created: row.inserted === true,
+            };
           }
           await tx.query(
             `

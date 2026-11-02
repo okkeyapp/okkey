@@ -523,6 +523,8 @@ export async function registerCurrentBrowserDevice(
   options?: {
     reclaimSoleTrusted?: boolean;
     claimAfterRecovery?: boolean;
+    /** Bind a pending sibling before recovery-key proof. Not a trusted-device claim. */
+    recoveryPending?: boolean;
     userId?: string;
   },
 ): Promise<DeviceRegisterResponseDto> {
@@ -568,6 +570,7 @@ export async function registerCurrentBrowserDevice(
         crypto_capable: true,
         reclaim_sole_trusted: options?.reclaimSoleTrusted === true,
         claim_after_recovery: options?.claimAfterRecovery === true,
+        recovery_pending: options?.recoveryPending === true,
       },
     });
   } finally {

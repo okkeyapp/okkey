@@ -91,6 +91,11 @@ export interface RegisterDeviceInput {
    * with a newly minted device_share (B), revoking other trusted devices.
    */
   claimAfterRecovery?: boolean;
+  /**
+   * Unbound recovery session: add a pending device for a new public key when
+   * this fingerprint is already trusted. Does not replace the trusted keys.
+   */
+  recoveryPending?: boolean;
 }
 
 export interface RegisterDeviceResult {
@@ -277,6 +282,7 @@ export class DeviceService {
         userAgent: cleanString(input.userAgent, "unknown"),
         requestIp: cleanString(requestIp, "unknown"),
         now: this.now().toISOString(),
+        allowPendingAlongsideTrusted: input.recoveryPending === true,
       });
 
       if (record.status === "blocked") {

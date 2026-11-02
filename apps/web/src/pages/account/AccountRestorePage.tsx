@@ -339,6 +339,28 @@ export default function AccountRestorePage() {
     }
   }
 
+  function restoreErrorMessage(err: unknown): string | null {
+    if (!(err instanceof ApiRequestError)) {
+      return null;
+    }
+    if (err.status === 429 || err.body.error === "RECOVERY_PROOF_LIMITED") {
+      return t("account.restore.error.proofLimited");
+    }
+    if (
+      err.body.error === "RECOVERY_PROOF_REQUIRES_DEVICE" ||
+      err.body.error === "DEVICE_FINGERPRINT_ALREADY_TRUSTED"
+    ) {
+      return t("account.restore.error.proofRequiresDevice");
+    }
+    if (err.body.error === "RECOVERY_PROOF_UNAVAILABLE") {
+      return t("account.restore.error.proofUnavailable");
+    }
+    if (err.body.error === "RECOVERY_KEY_NOT_AVAILABLE") {
+      return t("account.restore.error.keyUnavailable");
+    }
+    return null;
+  }
+
   async function handleKeyRestore(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!accessToken || !userId || !passwordValid || !recoveryKey.trim()) {
@@ -353,6 +375,12 @@ export default function AccountRestorePage() {
     try {
       await initCrypto();
       const core = createAuthenticatedCoreClient(accessToken);
+      // Proof is bound to the session device. After storage is cleared the
+      // session has none, so register a pending sibling before the challenge.
+      await registerCurrentBrowserDevice(core, getOrCreateDeviceFingerprint(), {
+        userId,
+        recoveryPending: true,
+      });
       const started = await core.proveAccountRecoveryKey({});
       if (started.proved) {
         throw new Error("recovery challenge was not issued");
@@ -375,8 +403,9 @@ export default function AccountRestorePage() {
       await completeRestoreFromVaultKey(vaultKey);
       vaultKey = null;
     } catch (err) {
-      if (err instanceof ApiRequestError && err.body.error === "RECOVERY_KEY_NOT_AVAILABLE") {
-        setFormError(t("account.restore.error.keyUnavailable"));
+      const specific = restoreErrorMessage(err);
+      if (specific) {
+        setFormError(specific);
       } else if (!formError) {
         setFormError(t("account.restore.error.invalidKey"));
       }

@@ -435,6 +435,52 @@ test("DevicesRepository.registerOrUpdate does not replace trusted device keys", 
   );
 });
 
+test("DevicesRepository.registerOrUpdate can add a pending sibling without replacing trusted keys", async () => {
+  const storedKey = Buffer.from("original-pk").toString("base64");
+  const db = new FakeDb();
+  db.enqueueResult([]);
+  db.enqueueResult([]);
+  db.enqueueResult([
+    makeDeviceRow({ id: "d-trusted", status: "trusted", device_public_key: storedKey }),
+  ]);
+  db.enqueueResult([
+    makeDeviceRow({
+      id: "d-pending",
+      status: "pending",
+      device_public_key: Buffer.from("fresh-pk").toString("base64"),
+      inserted: true,
+    }),
+  ]);
+  const repo = new DevicesRepository(db);
+  const sibling = await repo.registerOrUpdate({
+    userId: "u1",
+    deviceFingerprint: "a".repeat(64),
+    deviceName: "Recovered browser",
+    devicePublicKey: Buffer.from("fresh-pk").toString("base64"),
+    deviceShare: new Uint8Array(32).fill(4),
+    platform: "web",
+    osName: "Linux",
+    osVersion: "6",
+    appVersion: "web",
+    clientType: "web_app",
+    userAgent: "ua",
+    requestIp: "10.0.0.8",
+    now: "2026-01-02T00:00:00.000Z",
+    allowPendingAlongsideTrusted: true,
+  });
+  assert.equal(sibling.id, "d-pending");
+  assert.equal(sibling.status, "pending");
+  assert.equal(sibling.created, true);
+  assert.equal(sibling.sendApprovalEmail, false);
+  const insert = db.queries.find((query) => /INSERT INTO devices/.test(query.sql));
+  assert.ok(insert);
+  assert.match(insert.sql, /'pending'/);
+  assert.equal(
+    db.queries.some((query) => /UPDATE devices/.test(query.sql)),
+    false,
+  );
+});
+
 test("DevicesRepository.registerOrUpdate refreshes presence only when trusted keys match", async () => {
   const storedKey = Buffer.from("original-pk").toString("base64");
   const db = new FakeDb();
