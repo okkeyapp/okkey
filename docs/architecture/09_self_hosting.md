@@ -111,6 +111,12 @@ Set `FAVICON_PROVIDER=off` to disable remote preview (clients fall back to monog
 `FAVICON_PROVIDER=google` is an explicit opt-in that sends login-item website domains
 to Google's favicon service. Prefer `direct` or `off` for self-hosted deployments.
 
+`POST /favicon/preview` status codes:
+
+- `200` — favicon image bytes
+- `404` — site reachable, no favicon found (clients may clear a previous icon)
+- `503 FAVICON_UNAVAILABLE` — DNS / refused / timeout / upstream 5xx (clients keep a previous icon)
+
 Record favicon attachments (upload purpose `item-favicon`) are stored on any plan and are
 not gated by the workspace `filesInItems` entitlement or attachment size limits. The API keeps
 at most one `item-favicon` attachment per record/template (new upload replaces the previous

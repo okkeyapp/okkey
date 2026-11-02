@@ -33,6 +33,48 @@ export type FaviconFetchOptions = {
   provider?: FaviconProvider;
 };
 
+/**
+ * Outcome of a remote favicon lookup.
+ * - `found`: usable icon bytes
+ * - `absent`: site was reachable but no icon (clients may clear a previous favicon)
+ * - `unavailable`: DNS / connection refused / timeout / 5xx (clients must keep a previous favicon)
+ */
+export type FaviconRemoteLookupResult =
+  | { status: "found"; bytes: Uint8Array }
+  | { status: "absent" }
+  | { status: "unavailable" };
+
+type FaviconOutboundFetchResult =
+  | { status: "ok"; bytes: Uint8Array; contentType: string }
+  | { status: "miss" }
+  | { status: "unavailable" }
+  | { status: "skip" };
+
+type FaviconPinResolveResult =
+  | { status: "pinned"; pinned: FaviconPinnedAddress }
+  | { status: "unavailable" }
+  | { status: "blocked" };
+
+function combineLookupProgress(
+  current: FaviconRemoteLookupResult | null,
+  next: FaviconRemoteLookupResult,
+): FaviconRemoteLookupResult {
+  if (next.status === "found") {
+    return next;
+  }
+  if (!current) {
+    return next;
+  }
+  if (current.status === "found") {
+    return current;
+  }
+  // Prefer a positive absence over pure unavailability once any probe contacted a site.
+  if (current.status === "absent" || next.status === "absent") {
+    return { status: "absent" };
+  }
+  return { status: "unavailable" };
+}
+
 /** Resolves a hostname to one or more IP addresses (A/AAAA). */
 export type FaviconHostResolver = (hostname: string) => Promise<string[]>;
 
@@ -263,24 +305,24 @@ export function isAllowedFaviconFetchUrl(url: URL): boolean {
   return isHostSuitableForFaviconLookup(url.hostname);
 }
 
-async function resolvePinnedAddress(hostname: string): Promise<FaviconPinnedAddress | null> {
+async function resolvePinnedAddress(hostname: string): Promise<FaviconPinResolveResult> {
   try {
     const addresses = await hostResolver(hostname);
     if (addresses.length === 0) {
-      return null;
+      return { status: "unavailable" };
     }
     if (!addresses.every((address) => !isDisallowedResolvedAddress(address))) {
-      return null;
+      return { status: "blocked" };
     }
     for (const address of addresses) {
       const family = net.isIP(address);
       if (family === 4 || family === 6) {
-        return { address, family };
+        return { status: "pinned", pinned: { address, family } };
       }
     }
-    return null;
+    return { status: "unavailable" };
   } catch {
-    return null;
+    return { status: "unavailable" };
   }
 }
 
@@ -460,34 +502,32 @@ function redirectLocation(
 
 type FaviconFetchKind = "image" | "html";
 
-type FaviconFetchedBody = {
-  bytes: Uint8Array;
-  contentType: string;
-};
-
 async function fetchOutboundBytes(
   urlString: string,
   kind: FaviconFetchKind,
   redirectCount = 0,
-): Promise<FaviconFetchedBody | null> {
+): Promise<FaviconOutboundFetchResult> {
   if (redirectCount > MAX_REDIRECTS) {
-    return null;
+    return { status: "miss" };
   }
 
   let url: URL;
   try {
     url = new URL(urlString);
   } catch {
-    return null;
+    return { status: "skip" };
   }
 
   if (!isAllowedFaviconFetchUrl(url)) {
-    return null;
+    return { status: "skip" };
   }
 
-  const pinned = await resolvePinnedAddress(url.hostname);
-  if (!pinned) {
-    return null;
+  const pin = await resolvePinnedAddress(url.hostname);
+  if (pin.status === "unavailable") {
+    return { status: "unavailable" };
+  }
+  if (pin.status === "blocked") {
+    return { status: "skip" };
   }
 
   const maxBytes = kind === "html" ? MAX_FAVICON_HTML_BYTES : MAX_FAVICON_RESPONSE_BYTES;
@@ -501,7 +541,7 @@ async function fetchOutboundBytes(
   try {
     const response = await outboundRequest(url, {
       signal: controller.signal,
-      pinned,
+      pinned: pin.pinned,
       headers: {
         Accept: accept,
         "User-Agent": FAVICON_USER_AGENT,
@@ -515,16 +555,22 @@ async function fetchOutboundBytes(
       return fetchOutboundBytes(next, kind, redirectCount + 1);
     }
 
+    // 5xx: site answered but is temporarily broken — not a positive "no favicon".
+    if (response.status >= 500) {
+      await response.readBody(maxBytes).catch(() => null);
+      return { status: "unavailable" };
+    }
+
     if (response.status < 200 || response.status >= 300) {
       await response.readBody(maxBytes).catch(() => null);
-      return null;
+      return { status: "miss" };
     }
 
     const contentType = (headerValue(response.headers, "content-type") ?? "").toLowerCase();
     if (kind === "image") {
       if (contentType && !contentType.startsWith("image/") && !contentType.includes("octet-stream")) {
         await response.readBody(maxBytes).catch(() => null);
-        return null;
+        return { status: "miss" };
       }
     } else if (
       contentType &&
@@ -534,27 +580,27 @@ async function fetchOutboundBytes(
       !contentType.includes("octet-stream")
     ) {
       await response.readBody(maxBytes).catch(() => null);
-      return null;
+      return { status: "miss" };
     }
 
     const bytes = await response.readBody(maxBytes);
     if (!bytes || bytes.byteLength === 0) {
-      return null;
+      return { status: "miss" };
     }
     if (kind === "image" && !looksLikeImageBytes(bytes)) {
-      return null;
+      return { status: "miss" };
     }
-    return { bytes, contentType };
+    return { status: "ok", bytes, contentType };
   } catch {
-    return null;
+    // DNS already handled above; connection refused / timeout / reset → unavailable.
+    return { status: "unavailable" };
   } finally {
     clearTimeout(timeout);
   }
 }
 
-async function fetchImageBytes(urlString: string): Promise<Uint8Array | null> {
-  const fetched = await fetchOutboundBytes(urlString, "image");
-  return fetched?.bytes ?? null;
+async function fetchImageBytes(urlString: string): Promise<FaviconOutboundFetchResult> {
+  return fetchOutboundBytes(urlString, "image");
 }
 
 type HtmlIconCandidate = {
@@ -651,10 +697,13 @@ function scoreHtmlIconCandidate(candidate: HtmlIconCandidate): number {
   return score;
 }
 
-async function fetchBestIconFromHtmlPage(pageUrl: string): Promise<Uint8Array | null> {
+async function fetchBestIconFromHtmlPage(pageUrl: string): Promise<FaviconRemoteLookupResult> {
   const page = await fetchOutboundBytes(pageUrl, "html");
-  if (!page) {
-    return null;
+  if (page.status === "unavailable") {
+    return { status: "unavailable" };
+  }
+  if (page.status === "skip" || page.status === "miss") {
+    return { status: "absent" };
   }
   // Some sites may serve the icon itself at the page URL.
   if (
@@ -663,7 +712,7 @@ async function fetchBestIconFromHtmlPage(pageUrl: string): Promise<Uint8Array | 
     page.bytes.byteLength >= 48 &&
     page.bytes.byteLength <= MAX_FAVICON_RESPONSE_BYTES
   ) {
-    return page.bytes;
+    return { status: "found", bytes: page.bytes };
   }
 
   const html = new TextDecoder("utf-8", { fatal: false }).decode(page.bytes);
@@ -671,16 +720,29 @@ async function fetchBestIconFromHtmlPage(pageUrl: string): Promise<Uint8Array | 
     .slice()
     .sort((a, b) => scoreHtmlIconCandidate(b) - scoreHtmlIconCandidate(a));
 
+  let sawUnavailable = false;
   for (const candidate of candidates) {
     if (/\.svg(\?|#|$)/i.test(candidate.href)) {
       continue;
     }
-    const bytes = await fetchImageBytes(candidate.href);
-    if (bytes && bytes.byteLength >= 48) {
-      return bytes;
+    const image = await fetchImageBytes(candidate.href);
+    if (image.status === "ok" && image.bytes.byteLength >= 48) {
+      return { status: "found", bytes: image.bytes };
+    }
+    if (image.status === "unavailable") {
+      sawUnavailable = true;
     }
   }
-  return null;
+  // Page HTML was reachable; missing/broken candidate icons are absence, not outage —
+  // unless every candidate fetch failed with a network/5xx error and none succeeded.
+  if (sawUnavailable && candidates.length > 0) {
+    const nonSvg = candidates.filter((c) => !/\.svg(\?|#|$)/i.test(c.href));
+    if (nonSvg.length > 0) {
+      // At least one candidate was tried; HTML itself proved reachability → absent.
+      return { status: "absent" };
+    }
+  }
+  return { status: "absent" };
 }
 
 function isOriginRootUrl(urlString: string): boolean {
@@ -715,10 +777,11 @@ async function loadGenericFaviconSignatures(): Promise<Uint8Array[]> {
   const seen = new Set<string>();
 
   for (const host of GENERIC_FAVICON_SENTINEL_HOSTS) {
-    const bytes = await fetchImageBytes(buildGoogleFaviconUrl(host));
-    if (!bytes) {
+    const fetched = await fetchImageBytes(buildGoogleFaviconUrl(host));
+    if (fetched.status !== "ok") {
       continue;
     }
+    const bytes = fetched.bytes;
     const key = `${bytes.byteLength}:${bytes[0] ?? 0}:${bytes[bytes.byteLength - 1] ?? 0}`;
     if (seen.has(key)) {
       continue;
@@ -746,62 +809,79 @@ export async function isGenericOrEmptyFavicon(bytes: Uint8Array): Promise<boolea
   return signatures.some((signature) => bytesEqual(bytes, signature));
 }
 
-async function fetchDirectWellKnownFaviconBytes(host: string): Promise<Uint8Array | null> {
+async function fetchDirectWellKnownFaviconBytes(host: string): Promise<FaviconRemoteLookupResult> {
+  let sawUnavailable = false;
+  let sawMiss = false;
   for (const url of buildDirectFaviconUrls(host)) {
-    const bytes = await fetchImageBytes(url);
-    if (bytes && bytes.byteLength >= 48) {
-      return bytes;
+    const image = await fetchImageBytes(url);
+    if (image.status === "ok" && image.bytes.byteLength >= 48) {
+      return { status: "found", bytes: image.bytes };
+    }
+    if (image.status === "unavailable") {
+      sawUnavailable = true;
+    } else if (image.status === "miss") {
+      sawMiss = true;
     }
   }
-  return null;
+  if (sawMiss) {
+    return { status: "absent" };
+  }
+  if (sawUnavailable) {
+    return { status: "unavailable" };
+  }
+  return { status: "absent" };
 }
 
 /**
  * Direct provider for one probe URL:
  * HTML `<link rel=icon>` (and related) first, then well-known origin paths for root probes.
  */
-async function fetchDirectFaviconForProbeUrl(probeUrl: string): Promise<Uint8Array | null> {
+async function fetchDirectFaviconForProbeUrl(probeUrl: string): Promise<FaviconRemoteLookupResult> {
   const fromHtml = await fetchBestIconFromHtmlPage(probeUrl);
-  if (fromHtml) {
+  if (fromHtml.status === "found") {
     return fromHtml;
   }
 
   if (!isOriginRootUrl(probeUrl)) {
-    return null;
+    return fromHtml;
   }
 
   let host: string;
   try {
     host = new URL(probeUrl).hostname.replace(/^www\./i, "");
   } catch {
-    return null;
+    return fromHtml;
   }
-  return fetchDirectWellKnownFaviconBytes(host);
+  const wellKnown = await fetchDirectWellKnownFaviconBytes(host);
+  return combineLookupProgress(fromHtml, wellKnown);
 }
 
-async function fetchGoogleFaviconBytes(host: string): Promise<Uint8Array | null> {
-  const bytes = await fetchImageBytes(buildGoogleFaviconUrl(host));
-  if (!bytes) {
-    return null;
+async function fetchGoogleFaviconBytes(host: string): Promise<FaviconRemoteLookupResult> {
+  const fetched = await fetchImageBytes(buildGoogleFaviconUrl(host));
+  if (fetched.status === "unavailable") {
+    return { status: "unavailable" };
   }
-  if (await isGenericOrEmptyFavicon(bytes)) {
-    return null;
+  if (fetched.status !== "ok") {
+    return { status: "absent" };
   }
-  return bytes;
+  if (await isGenericOrEmptyFavicon(fetched.bytes)) {
+    return { status: "absent" };
+  }
+  return { status: "found", bytes: fetched.bytes };
 }
 
 export async function fetchRemoteFaviconBytes(
   host: string,
   options: FaviconFetchOptions = {},
-): Promise<Uint8Array | null> {
+): Promise<FaviconRemoteLookupResult> {
   const provider = options.provider ?? "direct";
   if (provider === "off") {
-    return null;
+    return { status: "absent" };
   }
 
   const normalized = host.trim().toLowerCase().replace(/^www\./i, "");
   if (!normalized || !isHostSuitableForFaviconLookup(normalized)) {
-    return null;
+    return { status: "absent" };
   }
 
   if (provider === "google") {
@@ -819,11 +899,13 @@ export async function fetchRemoteFaviconBytes(
 export async function fetchRemoteFaviconBytesFromUrls(
   urls: readonly string[],
   options: FaviconFetchOptions = {},
-): Promise<Uint8Array | null> {
+): Promise<FaviconRemoteLookupResult> {
   const provider = options.provider ?? "direct";
   if (provider === "off") {
-    return null;
+    return { status: "absent" };
   }
+
+  let aggregate: FaviconRemoteLookupResult | null = null;
 
   for (const rawUrl of urls) {
     const probes = expandFaviconProbeUrls(rawUrl);
@@ -843,20 +925,22 @@ export async function fetchRemoteFaviconBytesFromUrls(
         hosts.push(host);
       }
       for (const host of hosts) {
-        const bytes = await fetchGoogleFaviconBytes(host);
-        if (bytes) {
-          return bytes;
+        const result = await fetchGoogleFaviconBytes(host);
+        aggregate = combineLookupProgress(aggregate, result);
+        if (aggregate.status === "found") {
+          return aggregate;
         }
       }
       continue;
     }
 
     for (const probe of probes) {
-      const bytes = await fetchDirectFaviconForProbeUrl(probe);
-      if (bytes) {
-        return bytes;
+      const result = await fetchDirectFaviconForProbeUrl(probe);
+      aggregate = combineLookupProgress(aggregate, result);
+      if (aggregate.status === "found") {
+        return aggregate;
       }
     }
   }
-  return null;
+  return aggregate ?? { status: "absent" };
 }

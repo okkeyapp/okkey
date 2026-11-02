@@ -76,6 +76,12 @@ Note: the storage layer needs `pg` and `redis` dependencies to run.
 - `google` — explicit opt-in; sends login-item website domains to Google's favicon
   service. Prefer `direct` or `off` for self-hosted deployments.
 
+Response status:
+
+- `200` — favicon image bytes
+- `404 NOT_FOUND` — site was reachable but no favicon was found (clients may clear a previous icon)
+- `503 FAVICON_UNAVAILABLE` — DNS / connection refused / timeout / upstream 5xx (clients must keep a previous icon)
+
 ## Email providers
 
 Transports (`EMAIL_PROVIDER`) are protocols, not named vendors. See [`docs/backend-email.md`](../../docs/backend-email.md) and `services/api/.env.example` for presets.
