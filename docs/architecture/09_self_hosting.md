@@ -188,6 +188,8 @@ Tag scheme (see [`deploy/docker/README.md`](../../deploy/docker/README.md) and `
 
 On API (and worker) start, SQL files under `services/api/migrations/` are applied in order and recorded in `schema_migrations`.
 
+A database created by v1.0.0-beta.1 has no `schema_migrations` table (that release applied `0001`–`0034` with `psql` and had no migrator). On first start the API recognizes that schema from `user_totp_credentials.backup_codes_exported_at` and the absence of later columns, records `0001`–`0034` as already applied, and runs only the migrations after `0034`. It does not mark every file applied. An existing database that matches no known checkpoint is refused instead of skipping SQL.
+
 ### Item templates structure-only (`0037` / `0038`)
 
 Workspace item templates store form structure only (section/field layout). Pre-filled field values are not kept on the server.
