@@ -23,7 +23,7 @@ export default defineConfig(({ mode }) => {
   // Fail closed: env alone is not enough — sibling path must be loadable.
   const enterpriseModules = enterpriseModulesRequested && isEnterpriseWebLoadable(enterpriseRoot);
 
-  /** SaaS / legal env lives in okkey-enterprise/web/.env — not in public Core examples. */
+  /** SaaS / legal env is loaded from the enterprise web env overlay, not from public Core examples. */
   const enterpriseWebEnvOverlay = enterpriseModules
     ? loadEnterpriseWebViteEnv(mode, enterpriseWebEnvDir)
     : {};

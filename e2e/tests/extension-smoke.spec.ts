@@ -5,7 +5,7 @@ import { expect, test } from "@playwright/test";
 import { extensionBuildReady, launchExtensionContext } from "../helpers/extension";
 
 /**
- * qa/extension smoke (enterprise#110 scenario 5): load unpacked Chromium extension.
+ * Extension smoke: load the unpacked Chromium extension.
  *
  * CI runs this under xvfb with E2E_EXTENSION=1 after `yarn build:extension:chromium`.
  * Full PKCE → autofill → lock-timeout is out of scope for this harness (follow-up).
