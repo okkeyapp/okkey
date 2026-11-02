@@ -78,13 +78,13 @@ On startup the API runs any migration files that are not yet listed in `schema_m
 
 ## Restore volume archives
 
-Stop the stack. Remove the volume, create it again, and extract the archive. Then start with the matching `.env`.
+Stop the stack, delete the old volume, and let Compose create a new one. A volume made with `docker volume create` has no Compose labels, and the next `up` warns that the volume already exists. `docker compose create` writes those labels.
 
 ```bash
 cd ~/okkey
 docker compose -p okkey -f docker-compose.prod.yml --env-file .env down
 docker volume rm okkey_okkey-minio
-docker volume create okkey_okkey-minio
+docker compose -p okkey -f docker-compose.prod.yml --env-file .env create minio
 docker run --rm \
   -v okkey_okkey-minio:/volume \
   -v "$HOME":/backup \
@@ -92,7 +92,7 @@ docker run --rm \
   tar -C /volume -xzf /backup/okkey-minio.tgz
 ```
 
-Repeat for `okkey_okkey-postgres` and `okkey_okkey-redis` if you archived them. Restoring the Postgres volume restores the password that was initialized with that volume. The `POSTGRES_PASSWORD` in `.env` must be the one from that same install. Then:
+Repeat for `okkey_okkey-postgres` (`docker compose ... create postgres`) and `okkey_okkey-redis` (`docker compose ... create redis`) if you archived them. Restoring the Postgres volume restores the password that was initialized with that volume. The `POSTGRES_PASSWORD` in `.env` must be the one from that same install. Then:
 
 ```bash
 docker compose -p okkey -f docker-compose.prod.yml --env-file .env up -d

@@ -12,7 +12,7 @@ File bytes attached to items are encrypted in the browser with a separate key, t
 
 The account private key (an Ed25519 signing key and an ML-KEM-768 decapsulation key) is encrypted in the browser before registration. The server stores the ciphertext and the two public keys.
 
-The recovery key wraps the account vault key in the browser. The server stores that wrapped blob. The recovery secret itself is shown in the browser so you can copy it or download a PDF. It is not sent as a stored plaintext field.
+The recovery key wraps the account vault key in the browser. The server stores that wrapped blob and a public possession key derived from the recovery key. The recovery secret is shown in the browser so you can copy it or download a PDF. The server does not store that secret.
 
 Folder names and which item sits in which folder are encrypted in the browser and stored in a personal event log.
 
@@ -36,25 +36,25 @@ Favicon preview defaults to `FAVICON_PROVIDER=direct`. The API then requests ico
 
 The account vault key is a 32-byte value. It is not stored whole. The browser rebuilds it as the XOR of three 32-byte shares:
 
-- the server share, read from the API
-- the device share, saved in this browser's `localStorage`
+- the server share, stored on the server and also copied into this browser's `localStorage`
+- the device share, saved in the same `localStorage` entry
 - the password share, derived with Argon2id from the **Master password** and the salt stored on the server
 
-The device signing key is a non-extractable WebCrypto key in IndexedDB. The device share used in the XOR above is the `localStorage` value, not that signing key.
+The device signing key is a non-extractable WebCrypto key in IndexedDB. The two shares used in the XOR above are the `localStorage` values, not that signing key.
 
 **PIN code** and **Biometric unlock** are unlock methods on this browser. They do not replace the recovery key.
 
-A person who has only the database has the server share and the ciphertext. Rebuilding the vault key still takes the device share and the master password, or the recovery key.
+A person who has only the database has the server share and the ciphertext. Rebuilding the vault key from that copy still takes the device share and the master password, or the recovery key.
 
-A person who can read this browser's site data can read the device share. Together with the server share and the master password, that rebuilds the vault key.
+Local unlock keeps both the server share and the device share in this site's browser data. With the master password, that data rebuilds the vault key on the device, without a new request to the server. The master password strength and the security of the device are what protect that copy.
 
 ## Account recovery
 
 Registration ends on **Save your recovery key**. The vault stays blocked until you copy the key or download the PDF. The screen tells you the key is shown once, and that anyone with the key can restore the vault.
 
-**Forgot master password?** can restore the account with that **Recovery key**, including in a browser that has no local vault data. Restoring rotates the recovery key. You have to save the new one.
+**Forgot master password?** can restore the account with that **Recovery key**, including in a browser that has no local vault data. The new browser is registered as a pending device. It receives a one-time challenge and signs that challenge with the possession key derived from the recovery key. The server checks the signature against the stored public possession key. After 5 failed attempts on the session, or 10 on the account, within 15 minutes, further attempts receive HTTP 429 for 15 minutes. The screen says "Too many attempts. Try again later." Restoring rotates the recovery key. You have to save the new one.
 
-**Trusted devices** and **Trusted contacts** are not available on a default self-hosted server. The restore screen says web recovery through a remote trusted device is not available yet, and that interactive contact recovery is not available yet.
+**Trusted devices** and **Trusted contacts** are unavailable in the web app. The restore screen says web recovery via a remote trusted device is not available yet, and interactive contact recovery in the web app is not available yet.
 
 If you lose the master password and the recovery key, this server cannot rebuild the vault key.
 
@@ -63,6 +63,7 @@ If you lose the master password and the recovery key, this server cannot rebuild
 The protections in this release are aimed at these cases:
 
 - The server, or a person who can read Postgres and MinIO, sees ciphertext for vault items and files, plus the server share, and does not see the master password.
+- This browser's site data holds the server share and the device share. With the master password, that copy rebuilds the vault key on the device. The strength of the master password and the security of the device protect it.
 - A client that submits a lower crypto version than the vault already uses is rejected.
 - A malformed encrypted blob is rejected instead of being stored as a successful write.
 - Public capsule links do not carry the decryption key in the URL query string or path. The API refuses that placement.
@@ -82,6 +83,6 @@ The default `.env` from the installer sets `DEPLOY_ENV=dev`, `CRYPTO_ALLOWED_PRO
 - A person with access to the host can read `~/okkey/.env`, the database, the object store, and the worker logs.
 - **Create vault** for a shared vault, and inviting more members, are unavailable on a default self-hosted server.
 - Capsule **Advanced settings** show "Not available on your current plan" on a default self-hosted server.
-- **Trusted devices** and **Trusted contacts** recovery are not available in the web app in this release.
+- **Trusted devices** and **Trusted contacts** are unavailable in the web app. The restore screen says web recovery via a remote trusted device is not available yet, and interactive contact recovery in the web app is not available yet.
 - Compromised-password checks contact Have I Been Pwned, as described above.
-- Clearing this browser's site data removes the device share. You then need the recovery key, or a browser that still has the device share, to unlock the same account.
+- Clearing this browser's site data removes the local copies of the server share and the device share. The server still stores the server share. Unlocking again on this browser takes the recovery key, or another browser that still has the site data.

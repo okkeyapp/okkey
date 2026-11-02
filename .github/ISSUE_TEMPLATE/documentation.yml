@@ -1,5 +1,6 @@
 name: Documentation
 description: Report a mistake or a gap in the public docs.
+labels: ["documentation"]
 title: "docs: "
 body:
   - type: markdown
