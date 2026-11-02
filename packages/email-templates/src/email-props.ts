@@ -329,7 +329,7 @@ export const previewSampleDeviceApproval: DeviceApprovalRequestVariables = {
   requestIp: "203.0.113.9",
   country: "Singapore",
   city: "Singapore",
-  helpUrl: "https://app.okkey.local/items?popup=settings|devices",
+  helpUrl: "https://app.okkey.local/items?popup=settings%7Cdevices&lng=en",
   requestedAtIso: "2026-01-15T10:00:00.000Z",
   expiresAtIso: "2026-01-15T10:10:00.000Z",
 };
@@ -337,22 +337,22 @@ export const previewSampleDeviceApproval: DeviceApprovalRequestVariables = {
 export const previewSampleWorkspaceInvite: WorkspaceInviteVariables = {
   inviterDisplayName: "Alex",
   workspaceName: "Design",
-  inviteUrl: "https://app.okkey.local/invite/sample-token",
+  inviteUrl: "https://app.okkey.local/invite/sample-token?lng=en",
 };
 
 export const previewSampleTwoFactor: TwoFactorNoticeVariables = {
   occurredAtIso: "2026-01-15T10:00:00.000Z",
-  securitySettingsUrl: "https://app.okkey.local/items?popup=settings|twoFactor",
+  securitySettingsUrl: "https://app.okkey.local/items?popup=settings%7CtwoFactor&lng=en",
 };
 
 export const previewSampleAccountEmailChanged: AccountEmailChangedVariables = {
   newEmailMasked: "n***@example.com",
   occurredAtIso: "2026-01-15T10:00:00.000Z",
-  securitySettingsUrl: "https://app.okkey.local/items?popup=settings|twoFactor",
+  securitySettingsUrl: "https://app.okkey.local/items?popup=settings%7CtwoFactor&lng=en",
 };
 
 export const previewSampleTrustedContactInvite: TrustedContactInviteVariables = {
   inviterDisplayName: "Alex Okkey",
   inviterEmail: "alex@example.com",
-  helpUrl: "https://app.okkey.local/items?popup=settings|recovery",
+  helpUrl: "https://app.okkey.local/items?popup=settings%7Crecovery&lng=en",
 };

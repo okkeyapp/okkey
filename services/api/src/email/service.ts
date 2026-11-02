@@ -62,13 +62,65 @@ export interface EmailTemplateServiceOptions {
   logger?: Pick<Logger, "warn" | "error">;
 }
 
-export function buildEmailAppPathUrl(publicAppBaseUrl: string, path: string): string {
+/**
+ * Build an absolute app URL for email CTAs.
+ * Query values are percent-encoded (RFC 3986), so settings deep-links use
+ * `popup=settings%7Cdevices` instead of a raw `|` that some mail clients truncate.
+ * Optional `locale` is exposed as `lng` for the web app.
+ */
+export function buildEmailAppPathUrl(
+  publicAppBaseUrl: string,
+  path: string,
+  options?: { locale?: string | null },
+): string {
   const base = publicAppBaseUrl.trim().replace(/\/$/, "");
   if (!base) {
     return "";
   }
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
-  return `${base}${normalizedPath}`;
+  const qIndex = normalizedPath.indexOf("?");
+  const pathname = qIndex === -1 ? normalizedPath : normalizedPath.slice(0, qIndex);
+  const rawQuery = qIndex === -1 ? "" : normalizedPath.slice(qIndex + 1);
+  const params = new URLSearchParams(rawQuery);
+  const locale = options?.locale?.trim();
+  if (locale) {
+    params.set("lng", locale);
+  }
+  const qs = params.toString();
+  return qs ? `${base}${pathname}?${qs}` : `${base}${pathname}`;
+}
+
+const EMAIL_APP_DEEP_LINK_KEYS = ["helpUrl", "securitySettingsUrl", "inviteUrl"] as const;
+
+/**
+ * Re-encode app deep-link fields and attach `lng` so CTAs match the email locale.
+ * No-op when `publicAppBaseUrl` is empty or a field is not an app URL.
+ */
+export function applyEmailAppUrlLocale<T extends Record<string, unknown>>(
+  variables: T,
+  publicAppBaseUrl: string,
+  locale: string,
+): T {
+  const base = publicAppBaseUrl.trim().replace(/\/$/, "");
+  if (!base) {
+    return variables;
+  }
+  let changed = false;
+  const next: Record<string, unknown> = { ...variables };
+  for (const key of EMAIL_APP_DEEP_LINK_KEYS) {
+    const value = next[key];
+    if (typeof value !== "string" || !value.startsWith(base)) {
+      continue;
+    }
+    const suffix = value.slice(base.length);
+    const path = suffix.startsWith("/") ? suffix : `/${suffix}`;
+    const updated = buildEmailAppPathUrl(base, path, { locale });
+    if (updated !== value) {
+      next[key] = updated;
+      changed = true;
+    }
+  }
+  return (changed ? next : variables) as T;
 }
 
 export type LoggerEmailSenderOptions = {
@@ -455,6 +507,15 @@ export class EmailTemplateService {
     return resolveEmailLocaleForRecipient(toHintsInput(hints, this.defaultLocale));
   }
 
+  /** Encode deep-link query values and attach `lng` for the resolved template locale. */
+  private withLocalizedAppUrls<T extends object>(variables: T, locale: string): T {
+    return applyEmailAppUrlLocale(
+      variables as T & Record<string, unknown>,
+      this.publicAppBaseUrl,
+      locale,
+    );
+  }
+
   private async dispatchRendered(to: string, rendered: { subject: string; text: string; html: string }): Promise<void> {
     try {
       await this.sender.send({
@@ -512,7 +573,7 @@ export class EmailTemplateService {
     const rendered = await renderEmailTemplate(
       "device_approval_request",
       locale,
-      input.variables,
+      this.withLocalizedAppUrls(input.variables, locale),
     );
     await this.dispatchRendered(input.to, rendered);
   }
@@ -523,7 +584,11 @@ export class EmailTemplateService {
     variables: WorkspaceInviteVariables;
   }): Promise<void> {
     const locale = this.resolveLocale(input.localeHints);
-    const rendered = await renderEmailTemplate("workspace_invite", locale, input.variables);
+    const rendered = await renderEmailTemplate(
+      "workspace_invite",
+      locale,
+      this.withLocalizedAppUrls(input.variables, locale),
+    );
     await this.dispatchRendered(input.to, rendered);
   }
 
@@ -543,7 +608,11 @@ export class EmailTemplateService {
     variables: TwoFactorNoticeVariables;
   }): Promise<void> {
     const locale = this.resolveLocale(input.localeHints);
-    const rendered = await renderEmailTemplate("two_factor_enabled", locale, input.variables);
+    const rendered = await renderEmailTemplate(
+      "two_factor_enabled",
+      locale,
+      this.withLocalizedAppUrls(input.variables, locale),
+    );
     await this.dispatchRendered(input.to, rendered);
   }
 
@@ -553,7 +622,11 @@ export class EmailTemplateService {
     variables: TwoFactorNoticeVariables;
   }): Promise<void> {
     const locale = this.resolveLocale(input.localeHints);
-    const rendered = await renderEmailTemplate("two_factor_disabled", locale, input.variables);
+    const rendered = await renderEmailTemplate(
+      "two_factor_disabled",
+      locale,
+      this.withLocalizedAppUrls(input.variables, locale),
+    );
     await this.dispatchRendered(input.to, rendered);
   }
 
@@ -566,7 +639,7 @@ export class EmailTemplateService {
     const rendered = await renderEmailTemplate(
       "two_factor_backup_codes_regenerated",
       locale,
-      input.variables,
+      this.withLocalizedAppUrls(input.variables, locale),
     );
     await this.dispatchRendered(input.to, rendered);
   }
@@ -626,7 +699,11 @@ export class EmailTemplateService {
     variables: AccountEmailChangedVariables;
   }): Promise<void> {
     const locale = this.resolveLocale(input.localeHints);
-    const rendered = await renderEmailTemplate("account_email_changed", locale, input.variables);
+    const rendered = await renderEmailTemplate(
+      "account_email_changed",
+      locale,
+      this.withLocalizedAppUrls(input.variables, locale),
+    );
     await this.dispatchRendered(input.to, rendered);
   }
 
@@ -656,7 +733,7 @@ export class EmailTemplateService {
     const rendered = await renderEmailTemplate(
       "device_recovery_approval_request",
       locale,
-      input.variables,
+      this.withLocalizedAppUrls(input.variables, locale),
     );
     await this.dispatchRendered(input.to, rendered);
   }
@@ -684,7 +761,7 @@ export class EmailTemplateService {
     const rendered = await renderEmailTemplate(
       "contact_recovery_release_request",
       locale,
-      input.variables,
+      this.withLocalizedAppUrls(input.variables, locale),
     );
     await this.dispatchRendered(input.to, rendered);
   }
@@ -712,7 +789,7 @@ export class EmailTemplateService {
     const rendered = await renderEmailTemplate(
       "trusted_contact_invite",
       locale,
-      input.variables,
+      this.withLocalizedAppUrls(input.variables, locale),
     );
     await this.dispatchRendered(input.to, rendered);
   }

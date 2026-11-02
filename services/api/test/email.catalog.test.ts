@@ -16,7 +16,7 @@ const deviceVars = {
   platform: "Mobile · App",
   osName: "Android",
   requestIp: "198.51.100.2",
-  helpUrl: "https://app.example/items?popup=settings|devices",
+  helpUrl: "https://app.example/items?popup=settings%7Cdevices",
   requestedAtIso: "2026-10-16T07:09:00.000Z",
   expiresAtIso: "2026-10-16T07:19:00.000Z",
 } as const;
@@ -29,7 +29,7 @@ const workspaceVars = {
 
 const twoFactorVars = {
   occurredAtIso: "2026-01-01T12:00:00.000Z",
-  securitySettingsUrl: "https://app.example/items?popup=settings|twoFactor",
+  securitySettingsUrl: "https://app.example/items?popup=settings%7CtwoFactor",
 } as const;
 
 function assertNoMustachePlaceholders(s: string): void {
@@ -367,8 +367,8 @@ test("renderEmailTemplate two_factor_enabled en and ru", async () => {
   assert.equal(ru.subject, formatEmailMessage("ru", "email.twoFactor.enabled.subject", {}));
   assert.match(ru.text, /12:00 UTC/);
   assert.equal(ru.text.includes("UTC UTC"), false);
-  assert.match(ru.html, /popup=settings\|twoFactor/);
-  assert.match(ru.text, /popup=settings\|twoFactor/);
+  assert.match(ru.html, /popup=settings%7CtwoFactor/);
+  assert.match(ru.text, /popup=settings%7CtwoFactor/);
   assertNoMustachePlaceholders(ru.text);
   assertNoNulBytes(ru.html);
   assertNoNulBytes(ru.text);
@@ -388,8 +388,8 @@ test("renderEmailTemplate two_factor_disabled en and ru", async () => {
   assert.equal(ru.subject, formatEmailMessage("ru", "email.twoFactor.disabled.subject", {}));
   assert.match(ru.text, /12:00 UTC/);
   assert.equal(ru.text.includes("UTC UTC"), false);
-  assert.match(ru.html, /popup=settings\|twoFactor/);
-  assert.match(ru.text, /popup=settings\|twoFactor/);
+  assert.match(ru.html, /popup=settings%7CtwoFactor/);
+  assert.match(ru.text, /popup=settings%7CtwoFactor/);
   assertSharedEmailFooter("ru", ru);
   assert.match(ru.html, /администратору/);
   assertNoMustachePlaceholders(ru.text);
@@ -418,7 +418,7 @@ test("renderEmailTemplate two_factor_backup_codes_regenerated en and ru", async 
   assert.ok(ru.text.includes(formatEmailMessage("ru", "email.twoFactor.backupRegen.line2", {})));
   assert.match(ru.text, /12:00 UTC/);
   assert.equal(ru.text.includes("UTC UTC"), false);
-  assert.match(ru.html, /popup=settings\|twoFactor/);
+  assert.match(ru.html, /popup=settings%7CtwoFactor/);
   assertNoMustachePlaceholders(ru.text);
   assertNoNulBytes(ru.html);
   assertNoNulBytes(ru.text);
@@ -458,7 +458,7 @@ test("rendered email HTML and plain text have no NUL bytes", async () => {
 const accountEmailChangedVars = {
   newEmailMasked: "n***@example.com",
   occurredAtIso: "2026-01-01T12:00:00.000Z",
-  securitySettingsUrl: "https://app.example/items?popup=settings|twoFactor",
+  securitySettingsUrl: "https://app.example/items?popup=settings%7CtwoFactor",
 } as const;
 
 test("renderEmailTemplate account_email_changed en and ru", async () => {
@@ -473,8 +473,8 @@ test("renderEmailTemplate account_email_changed en and ru", async () => {
   assert.equal(en.text.includes("UTC UTC"), false);
   assertSharedEmailFooter("en", en);
   assert.match(en.text, /contact your administrator/i);
-  assert.match(en.html, /popup=settings\|twoFactor/);
-  assert.match(en.text, /popup=settings\|twoFactor/);
+  assert.match(en.html, /popup=settings%7CtwoFactor/);
+  assert.match(en.text, /popup=settings%7CtwoFactor/);
   assert.equal(en.html.includes("/settings/security"), false);
   assertNoMustachePlaceholders(en.text);
 
@@ -489,7 +489,7 @@ test("renderEmailTemplate account_email_changed en and ru", async () => {
   assert.equal(ru.text.includes("UTC UTC"), false);
   assertSharedEmailFooter("ru", ru);
   assert.match(ru.html, /администратору/);
-  assert.match(ru.html, /popup=settings\|twoFactor/);
+  assert.match(ru.html, /popup=settings%7CtwoFactor/);
   assertNoMustachePlaceholders(ru.text);
 });
 
@@ -512,11 +512,11 @@ test("renderEmailTemplate throws EMAIL_TEMPLATE_MISSING_VARIABLE when code missi
 test("two_factor_enabled template body contains no backup codes or totp secrets", async () => {
   const rendered = await renderEmailTemplate("two_factor_enabled", "en", {
     occurredAtIso: "2026-01-01T12:00:00.000Z",
-    securitySettingsUrl: "https://app.example/items?popup=settings|twoFactor",
+    securitySettingsUrl: "https://app.example/items?popup=settings%7CtwoFactor",
   });
   assert.equal(rendered.text.toLowerCase().includes("backup"), false);
   assert.equal(rendered.html.toLowerCase().includes("totp"), false);
-  assert.match(rendered.html, /popup=settings\|twoFactor/);
+  assert.match(rendered.html, /popup=settings%7CtwoFactor/);
 });
 
 test("resolveEmailLocaleForRecipient prefers user locale over Accept-Language", () => {
@@ -697,7 +697,8 @@ test("EmailTemplateService device and contact recovery request emails render CTA
   });
   assert.equal(sent.length, 2);
   assert.equal(sent[0].subject, formatEmailMessage("en", "email.device.recovery.subject", {}));
-  assert.match(sent[0].html, /popup=settings\|recovery/);
+  assert.match(sent[0].html, /popup=settings%7Crecovery/);
+  assert.match(sent[0].html, /lng=en/);
   assert.match(sent[0].html, /Web · Chrome · macOS/);
   assert.match(sent[0].html, /Settings → Recovery/);
   assertSharedEmailFooter("en", sent[0]);
@@ -710,7 +711,7 @@ test("EmailTemplateService device and contact recovery request emails render CTA
   assert.match(sent[1].text, /подтвердить помощь в восстановлении/);
   assert.equal(/выдать долю/i.test(sent[1].text), false);
   assert.equal(/долю восстановления/i.test(sent[1].text), false);
-  assert.match(sent[1].html, /https:\/\/app\.example\/items/);
+  assert.match(sent[1].html, /https:\/\/app\.example\/items\?lng=ru/);
   assert.equal(sent[1].html.includes("popup=settings"), false);
   assert.equal(sent[1].text.includes("{{"), false);
 });
@@ -742,7 +743,8 @@ test("EmailTemplateService sendTrustedContactInvite renders inviter details", as
   assert.match(sent[0].text, /приглашает вас стать доверенным контактом/);
   assert.equal(/пригласил вас/i.test(sent[0].text), false);
   assert.match(sent[0].text, /alex@example.com/);
-  assert.match(sent[0].html, /popup=settings\|recovery/);
+  assert.match(sent[0].html, /popup=settings%7Crecovery/);
+  assert.match(sent[0].html, /lng=ru/);
   assert.equal(sent[0].text.includes("{{"), false);
   // Footnotes must appear after the body separator (auth-code pattern).
   const ignore = formatEmailMessage("ru", "email.common.ignoreIfMistake", {});
