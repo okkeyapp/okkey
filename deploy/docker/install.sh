@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Okkey Core — one-command self-host installer (Docker Compose).
 #
-# Tracking / QA (default image tag `dev`):
-#   curl -fsSL https://raw.githubusercontent.com/okkeyapp/okkey/dev/deploy/docker/install.sh | bash
+# Default git ref `v1.0.0-beta.2` (compose/config). Image pin is OKKEY_IMAGE_TAG.
+#   curl -fsSL https://raw.githubusercontent.com/okkeyapp/okkey/v1.0.0-beta.2/deploy/docker/install.sh | bash
 #
 # Production — pin a SemVer image (never `:latest`):
-#   curl -fsSL https://raw.githubusercontent.com/okkeyapp/okkey/dev/deploy/docker/install.sh \
+#   curl -fsSL https://raw.githubusercontent.com/okkeyapp/okkey/v1.0.0-beta.2/deploy/docker/install.sh \
 #     | OKKEY_IMAGE_TAG=1.0.0-beta.2 bash
 #
 # Env must be on the right of `|` so bash sees it (`VAR=x curl | bash` does not).
@@ -20,9 +20,9 @@ if [[ -n "${OKKEY_RAW_BASE:-}" ]]; then
   OKKEY_REPO_RAW_BASE="${OKKEY_RAW_BASE}"
 fi
 OKKEY_REPO_RAW_BASE="${OKKEY_REPO_RAW_BASE:-https://raw.githubusercontent.com/okkeyapp/okkey}"
-# Git ref for raw file downloads (branch, tag, or commit SHA). Default `dev`.
+# Git ref for raw file downloads (branch, tag, or commit SHA). Default `v1.0.0-beta.2`.
 # Not the same as OKKEY_IMAGE_TAG (GHCR container tag; see .env.example).
-OKKEY_REF="${OKKEY_REF:-dev}"
+OKKEY_REF="${OKKEY_REF:-v1.0.0-beta.2}"
 # Historical production pin name (first planned SemVer). Not published in GHCR yet —
 # OKKEY_CHANNEL=prod is refused until a SemVer exists (or OKKEY_PROD_CHANNEL_FORCE=1).
 # Used only when OKKEY_CHANNEL=prod is forced and OKKEY_IMAGE_TAG is unset. Never `:latest`.
@@ -378,8 +378,8 @@ fetch_file() {
 tried:
   ${url}
 hint: set OKKEY_REF on the right of \`|\` so bash sees it, e.g.
-  curl -fsSL https://raw.githubusercontent.com/okkeyapp/okkey/dev/deploy/docker/install.sh \\
-    | OKKEY_REF=dev bash"
+  curl -fsSL https://raw.githubusercontent.com/okkeyapp/okkey/v1.0.0-beta.2/deploy/docker/install.sh \\
+    | OKKEY_REF=v1.0.0-beta.2 bash"
 }
 
 need_cmd docker
