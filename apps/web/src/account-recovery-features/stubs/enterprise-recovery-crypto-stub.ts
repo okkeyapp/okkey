@@ -1,4 +1,4 @@
-/** Core-only stub for `@okkey-enterprise/recovery-crypto` when enterprise repo is absent. */
+/** Core-only stub for the enterprise recovery crypto package when enterprise modules are absent. */
 
 function unavailable(): never {
   throw new Error("enterprise recovery crypto is not available in Core self-host builds");
