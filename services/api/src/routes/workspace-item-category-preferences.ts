@@ -59,6 +59,9 @@ export function createWorkspaceItemCategoryPreferencesRoute(
         return;
       }
 
+      // Authorize before body validation so foreign workspaces cannot be probed via 400s.
+      await service.ensureWorkspaceAccess(workspaceId, userId);
+
       const body = await readJsonBody<ItemCategoryPreferencesBody>(ctx.req);
       const hasFavoritesUpdate = body.favorite_category_ids !== undefined;
       const hasDismissUpdate = body.personal_data_bootstrap_dismissed !== undefined;

@@ -228,28 +228,53 @@ export class AttachmentService {
     await this.deleteStorageRecords(removed);
   }
 
-  /** Remove template/item attachments by scope and any ids referenced in persisted metadata. */
-  async purgeForTemplate(templateId: string, referencedAttachmentIds: Iterable<string>): Promise<void> {
-    await this.purgeForItemId(templateId);
-
-    const seen = new Set<string>();
-    for (const rawId of referencedAttachmentIds) {
-      const attachmentId = rawId.trim();
-      if (!attachmentId || seen.has(attachmentId)) {
-        continue;
-      }
-      seen.add(attachmentId);
-
-      const existing = await this.attachments.findById(attachmentId);
-      if (!existing) {
-        continue;
-      }
-
-      const removed = await this.attachments.deleteById(attachmentId);
-      if (removed) {
-        await this.storage.deleteByStorageKey(removed.storageKey).catch(() => undefined);
-      }
+  /**
+   * True when the attachment exists in `vaultId` and that vault belongs to `workspaceId`.
+   * Missing and out-of-scope ids both return false so callers can use one client error.
+   */
+  async attachmentBelongsToVault(
+    attachmentId: string,
+    vaultId: string,
+    workspaceId: string,
+  ): Promise<boolean> {
+    const normalizedAttachmentId = attachmentId.trim();
+    const normalizedVaultId = vaultId.trim();
+    const normalizedWorkspaceId = workspaceId.trim();
+    if (!normalizedAttachmentId || !normalizedVaultId || !normalizedWorkspaceId) {
+      return false;
     }
+
+    const existing = await this.attachments.findById(normalizedAttachmentId);
+    if (!existing || existing.vaultId !== normalizedVaultId) {
+      return false;
+    }
+
+    const vault = await this.vaults.findById(normalizedVaultId);
+    return Boolean(vault && vault.workspaceId === normalizedWorkspaceId);
+  }
+
+  /**
+   * Remove attachments for a template, scoped to the template's vault/workspace.
+   * Never deletes by bare attachment id — only rows with matching vault_id + item_id.
+   */
+  async purgeForTemplate(
+    templateId: string,
+    scope: { vaultId: string; workspaceId: string },
+  ): Promise<void> {
+    const normalizedTemplateId = templateId.trim();
+    const vaultId = scope.vaultId.trim();
+    const workspaceId = scope.workspaceId.trim();
+    if (!normalizedTemplateId || !vaultId || !workspaceId) {
+      return;
+    }
+
+    const vault = await this.vaults.findById(vaultId);
+    if (!vault || vault.workspaceId !== workspaceId) {
+      return;
+    }
+
+    const removed = await this.attachments.deleteByVaultAndItem(vaultId, normalizedTemplateId);
+    await this.deleteStorageRecords(removed);
   }
 
   private async deleteStorageRecords(records: AttachmentRecord[]): Promise<void> {

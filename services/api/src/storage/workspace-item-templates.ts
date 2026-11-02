@@ -1,4 +1,5 @@
 import type { QueryExecutor } from "./postgres.ts";
+import { UniqueConstraintError } from "./errors.ts";
 
 export type WorkspaceItemTemplateRecord = {
   id: string;
@@ -36,6 +37,22 @@ function mapTemplateRow(row: TemplateRow): WorkspaceItemTemplateRecord {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
+}
+
+function isPgUniqueViolation(error: unknown): boolean {
+  if (typeof error !== "object" || error === null) {
+    return false;
+  }
+  if ("code" in error && (error as { code?: string }).code === "23505") {
+    return true;
+  }
+  if ("details" in error) {
+    return isPgUniqueViolation((error as { details: unknown }).details);
+  }
+  if ("cause" in error) {
+    return isPgUniqueViolation((error as { cause: unknown }).cause);
+  }
+  return false;
 }
 
 export class WorkspaceItemTemplatesRepository {
@@ -79,25 +96,32 @@ export class WorkspaceItemTemplatesRepository {
     faviconId?: string | null;
     createdBy: string;
   }): Promise<WorkspaceItemTemplateRecord> {
-    const rows = await this.db.query<TemplateRow>(
-      `
-        INSERT INTO workspace_item_templates (
-          id, workspace_id, name, category_id, payload_json, favicon_id, created_by
-        )
-        VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7)
-        RETURNING id, workspace_id, name, category_id, payload_json, favicon_id, created_by, created_at, updated_at
-      `,
-      [
-        input.id,
-        input.workspaceId,
-        input.name,
-        input.categoryId,
-        JSON.stringify(input.payloadJson),
-        input.faviconId ?? null,
-        input.createdBy,
-      ],
-    );
-    return mapTemplateRow(rows[0]);
+    try {
+      const rows = await this.db.query<TemplateRow>(
+        `
+          INSERT INTO workspace_item_templates (
+            id, workspace_id, name, category_id, payload_json, favicon_id, created_by
+          )
+          VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7)
+          RETURNING id, workspace_id, name, category_id, payload_json, favicon_id, created_by, created_at, updated_at
+        `,
+        [
+          input.id,
+          input.workspaceId,
+          input.name,
+          input.categoryId,
+          JSON.stringify(input.payloadJson),
+          input.faviconId ?? null,
+          input.createdBy,
+        ],
+      );
+      return mapTemplateRow(rows[0]);
+    } catch (error) {
+      if (isPgUniqueViolation(error)) {
+        throw new UniqueConstraintError("unique constraint violated");
+      }
+      throw error;
+    }
   }
 
   async delete(workspaceId: string, templateId: string): Promise<boolean> {
