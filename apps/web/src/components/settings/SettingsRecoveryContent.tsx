@@ -2,6 +2,7 @@ import { ApiRequestError } from "@okkey/api";
 import {
   generateRecoverySecret,
   initCrypto,
+  recoveryPossessionPublicKey,
   wrapVaultKeyWithRecoverySecret,
 } from "@okkey/crypto";
 import type { WebMessageValues } from "@okkey/i18n";
@@ -316,9 +317,10 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
       const secret = await generateRecoverySecret();
       const secretBytes = new TextEncoder().encode(secret);
       const encryptedBlob = await wrapVaultKeyWithRecoverySecret(vaultKey, secretBytes);
+      const possessionPublicKey = await recoveryPossessionPublicKey(secretBytes);
       const result = rotate
-        ? await core.rotateAccountRecoveryKey({ encryptedBlob })
-        : await core.enrollAccountRecoveryKey({ encryptedBlob });
+        ? await core.rotateAccountRecoveryKey({ encryptedBlob, possessionPublicKey })
+        : await core.enrollAccountRecoveryKey({ encryptedBlob, possessionPublicKey });
       setSessionKey(secret);
       setStatus((prev) =>
         prev

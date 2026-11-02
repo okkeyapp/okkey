@@ -5,6 +5,7 @@ declare module "@okkey/crypto-wasm" {
   export function aead_encrypt(alg: string, key: Uint8Array, nonce: Uint8Array, aad: Uint8Array, plaintext: Uint8Array): Uint8Array;
   export function aead_decrypt(alg: string, key: Uint8Array, nonce: Uint8Array, aad: Uint8Array, ciphertext: Uint8Array): Uint8Array;
   export function ed25519_keypair(): Uint8Array;
+  export function ed25519_public_key(seed: Uint8Array): Uint8Array;
   export function ed25519_sign(privateKey: Uint8Array, message: Uint8Array): Uint8Array;
   export function ed25519_verify(publicKey: Uint8Array, message: Uint8Array, signature: Uint8Array): boolean;
   export function hybrid_sign_v1(

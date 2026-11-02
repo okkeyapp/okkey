@@ -47,6 +47,11 @@ pub fn ed25519_keypair() -> Vec<u8> {
 }
 
 #[wasm_bindgen]
+pub fn ed25519_public_key(seed: &[u8]) -> Result<Vec<u8>, JsValue> {
+  sign::public_key(seed).map_err(|e| JsValue::from_str(&e))
+}
+
+#[wasm_bindgen]
 pub fn ed25519_sign(private_key: &[u8], message: &[u8]) -> Result<Vec<u8>, JsValue> {
   sign::sign(private_key, message).map_err(|e| JsValue::from_str(&e))
 }

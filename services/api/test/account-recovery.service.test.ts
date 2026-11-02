@@ -338,6 +338,50 @@ test("enrollKey forbidRotate rejects when a wrap already exists", async () => {
   );
 });
 
+test("getRecoveryPossession reports a public key or a legacy wrap and never returns ciphertext", async () => {
+  const publicKey = Buffer.alloc(32, 4).toString("base64");
+  const blob = {
+    crypto_version: 2,
+    algorithm: "xchacha20-poly1305",
+    payload: "abc",
+    meta: { entity: "vault_key_recovery_wrap", key_scope: "account" },
+  };
+  const ready = createService({
+    recovery: {
+      getWrap: async () => ({
+        userId: "u1",
+        encryptedBlob: blob,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        rotatedAt: null,
+        exportedAt: null,
+        possessionPublicKey: publicKey,
+      }),
+    },
+  });
+  const readyState = await ready.getRecoveryPossession("u1");
+  assert.equal(readyState.kind, "ready");
+  if (readyState.kind === "ready") {
+    assert.equal(readyState.publicKey, publicKey);
+    assert.equal("encryptedBlob" in readyState, false);
+  }
+
+  const legacy = createService({
+    recovery: {
+      getWrap: async () => ({
+        userId: "u1",
+        encryptedBlob: blob,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        rotatedAt: null,
+        exportedAt: null,
+        possessionPublicKey: null,
+      }),
+    },
+  });
+  const legacyState = await legacy.getRecoveryPossession("u1");
+  assert.equal(legacyState.kind, "legacy");
+  assert.equal(JSON.stringify(legacyState).includes("abc"), false);
+});
+
 test("enrollKey persists wrap and enables key settings", async () => {
   const service = createService({ workspaces: [{ planTier: "PREMIUM" }] });
   assert.equal(await service.hasEnrolledRecoveryKey("u1"), false);

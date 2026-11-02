@@ -1355,6 +1355,11 @@ export class DevicesRepository {
     userAgent: string;
     requestIp: string;
     now: string;
+    /**
+     * Recovery restore on a browser that lost its signing key. Insert a pending
+     * row for the new public key without changing the trusted row.
+     */
+    allowPendingAlongsideTrusted?: boolean;
   }): Promise<DeviceRecord & { sendApprovalEmail: boolean; created: boolean }> {
     try {
       return await withUserDeviceLock(input.userId, () => this.db.transaction(async (tx) => {
@@ -1443,7 +1448,137 @@ export class DevicesRepository {
         }
         if (current.status === "trusted") {
           if (current.device_public_key.trim() !== input.devicePublicKey.trim()) {
-            throw new TrustedDeviceKeyConflictError();
+            if (!input.allowPendingAlongsideTrusted) {
+              throw new TrustedDeviceKeyConflictError();
+            }
+            const siblingId = generateEntityId();
+            const sibling = await tx.query<{
+              id: string;
+              user_id: string;
+              device_fingerprint: string;
+              device_name: string;
+              device_public_key: string;
+              device_share: Buffer;
+              platform: string;
+              os_name: string;
+              os_version: string;
+              app_version: string;
+              client_type: string;
+              user_agent: string;
+              ip_first: string;
+              ip_last: string;
+              status: "trusted" | "pending" | "revoked" | "blocked";
+              created_at: string | Date;
+              last_seen_at: string | Date | null;
+              approved_by: string | null;
+              approved_at: string | Date | null;
+              rejected_at: string | Date | null;
+              rejection_reason: string | null;
+              revoked_at: string | Date | null;
+              inserted: boolean;
+            }>(
+              `
+                INSERT INTO devices (
+                  id,
+                  user_id,
+                  device_fingerprint,
+                  device_name,
+                  device_public_key,
+                  device_share,
+                  platform,
+                  os_name,
+                  os_version,
+                  app_version,
+                  client_type,
+                  user_agent,
+                  ip_first,
+                  ip_last,
+                  status,
+                  created_at
+                )
+                VALUES (
+                  $1,
+                  $2::bigint,
+                  $3,
+                  $4,
+                  $5,
+                  $6,
+                  $7,
+                  $8,
+                  $9,
+                  $10,
+                  $11,
+                  $12,
+                  $13,
+                  $13,
+                  'pending',
+                  $14::timestamptz
+                )
+                ON CONFLICT (user_id, device_fingerprint, device_public_key)
+                DO UPDATE SET
+                  device_name = EXCLUDED.device_name,
+                  platform = EXCLUDED.platform,
+                  os_name = EXCLUDED.os_name,
+                  os_version = EXCLUDED.os_version,
+                  app_version = EXCLUDED.app_version,
+                  client_type = EXCLUDED.client_type,
+                  user_agent = EXCLUDED.user_agent,
+                  ip_last = EXCLUDED.ip_last,
+                  status = CASE
+                    WHEN devices.status = 'revoked' THEN 'pending'
+                    ELSE devices.status
+                  END
+                RETURNING
+                  id,
+                  user_id,
+                  device_fingerprint,
+                  device_name,
+                  device_public_key,
+                  device_share,
+                  platform,
+                  os_name,
+                  os_version,
+                  app_version,
+                  client_type,
+                  user_agent,
+                  ip_first,
+                  ip_last,
+                  status,
+                  created_at,
+                  last_seen_at,
+                  approved_by,
+                  approved_at,
+                  rejected_at,
+                  rejection_reason,
+                  revoked_at,
+                  (xmax = 0) AS inserted
+              `,
+              [
+                siblingId,
+                input.userId,
+                input.deviceFingerprint,
+                input.deviceName,
+                input.devicePublicKey,
+                Buffer.from(input.deviceShare),
+                input.platform,
+                input.osName,
+                input.osVersion,
+                input.appVersion,
+                input.clientType,
+                input.userAgent,
+                input.requestIp,
+                input.now,
+              ],
+            );
+            const row = sibling[0];
+            if (!row || row.status === "trusted") {
+              throw new TrustedDeviceKeyConflictError();
+            }
+            return {
+              ...mapDevice(row),
+              sendApprovalEmail: false,
+              created: row.inserted === true,
+            };
           }
           await tx.query(
             `
@@ -3493,6 +3628,9 @@ export class SessionsRepository {
     deviceId: string | null;
     scope: string | null;
     expiresAt: string;
+    recoveryProvedAt: string | null;
+    recoveryChallenge: string | null;
+    recoveryChallengeExpiresAt: string | null;
   } | null> {
     const rows = await this.db.query<{
       id: string;
@@ -3500,9 +3638,13 @@ export class SessionsRepository {
       device_id: string | null;
       scope: string | null;
       expires_at: string | Date;
+      recovery_proved_at: string | Date | null;
+      recovery_challenge: string | null;
+      recovery_challenge_expires_at: string | Date | null;
     }>(
       `
-        SELECT id, user_id, device_id, scope, expires_at
+        SELECT id, user_id, device_id, scope, expires_at,
+               recovery_proved_at, recovery_challenge, recovery_challenge_expires_at
         FROM sessions
         WHERE token_hash = $1 AND expires_at > $2::timestamptz
         LIMIT 1
@@ -3517,12 +3659,26 @@ export class SessionsRepository {
       row.expires_at instanceof Date
         ? row.expires_at.toISOString()
         : new Date(row.expires_at).toISOString();
+    const provedAt = row.recovery_proved_at;
     return {
       id: row.id,
       userId: row.user_id,
       deviceId: row.device_id,
       scope: row.scope,
       expiresAt,
+      recoveryProvedAt:
+        provedAt == null
+          ? null
+          : provedAt instanceof Date
+            ? provedAt.toISOString()
+            : new Date(provedAt).toISOString(),
+      recoveryChallenge: row.recovery_challenge,
+      recoveryChallengeExpiresAt:
+        row.recovery_challenge_expires_at == null
+          ? null
+          : row.recovery_challenge_expires_at instanceof Date
+            ? row.recovery_challenge_expires_at.toISOString()
+            : new Date(row.recovery_challenge_expires_at).toISOString(),
     };
   }
 
@@ -3530,6 +3686,8 @@ export class SessionsRepository {
     tokenHash: string;
     userId: string;
     deviceId: string;
+    /** Recovery claim replaces a session still bound to the pre-claim device. */
+    replaceExistingDevice?: boolean;
   }): Promise<boolean> {
     const db = this.db as QueryExecutor & {
       transaction<T>(fn: (tx: QueryExecutor) => Promise<T>): Promise<T>;
@@ -3556,10 +3714,15 @@ export class SessionsRepository {
           WHERE token_hash = $1
             AND user_id = $2
             AND expires_at > now()
-            AND (device_id IS NULL OR device_id = $3)
+            AND ($4::boolean OR device_id IS NULL OR device_id = $3)
           RETURNING id
         `,
-        [input.tokenHash, input.userId, input.deviceId],
+        [
+          input.tokenHash,
+          input.userId,
+          input.deviceId,
+          input.replaceExistingDevice === true,
+        ],
       );
       return rows.length > 0;
     }));
@@ -3575,6 +3738,69 @@ export class SessionsRepository {
       [input.userId, input.deviceId],
     );
     return rows.length;
+  }
+
+  async markRecoveryProved(input: { tokenHash: string; userId: string }): Promise<boolean> {
+    const rows = await this.db.query<{ id: string }>(
+      `
+        UPDATE sessions
+        SET recovery_proved_at = now(),
+            recovery_challenge = NULL,
+            recovery_challenge_expires_at = NULL
+        WHERE token_hash = $1
+          AND user_id = $2
+          AND expires_at > now()
+        RETURNING id
+      `,
+      [input.tokenHash, input.userId],
+    );
+    return Boolean(rows[0]);
+  }
+
+  async setRecoveryChallenge(input: {
+    tokenHash: string;
+    userId: string;
+    challenge: string;
+    expiresAtIso: string;
+  }): Promise<boolean> {
+    const rows = await this.db.query<{ id: string }>(
+      `
+        UPDATE sessions
+        SET recovery_challenge = $3,
+            recovery_challenge_expires_at = $4::timestamptz
+        WHERE token_hash = $1
+          AND user_id = $2
+          AND device_id IS NOT NULL
+          AND expires_at > now()
+          AND recovery_proved_at IS NULL
+        RETURNING id
+      `,
+      [input.tokenHash, input.userId, input.challenge, input.expiresAtIso],
+    );
+    return Boolean(rows[0]);
+  }
+
+  /** Single-use: clear the challenge only if it is still the one presented. */
+  async consumeRecoveryChallenge(input: {
+    tokenHash: string;
+    userId: string;
+    challenge: string;
+  }): Promise<boolean> {
+    const rows = await this.db.query<{ id: string }>(
+      `
+        UPDATE sessions
+        SET recovery_challenge = NULL,
+            recovery_challenge_expires_at = NULL
+        WHERE token_hash = $1
+          AND user_id = $2
+          AND device_id IS NOT NULL
+          AND recovery_challenge = $3
+          AND expires_at > now()
+        RETURNING id
+      `,
+      [input.tokenHash, input.userId, input.challenge],
+    );
+    return Boolean(rows[0]);
   }
 
   async deleteByTokenHash(tokenHash: string): Promise<boolean> {

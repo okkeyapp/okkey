@@ -68,6 +68,7 @@ vi.mock("@okkey/crypto", () => ({
     password_kdf_params_version: 2,
   })),
   generateRecoverySecret: vi.fn(async () => "ABCD-EFGH-IJKM"),
+  recoveryPossessionPublicKey: vi.fn(async () => "cG9zc2Vzc2lvbi1wdWJsaWMta2V5LWJhc2U2NA=="),
   wrapVaultKeyWithRecoverySecret: vi.fn(async () => ({
     crypto_version: 2,
     algorithm: "xchacha20poly1305",

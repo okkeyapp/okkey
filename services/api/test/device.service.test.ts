@@ -178,6 +178,33 @@ test("registerDevice claimAfterRecovery becomes sole trusted without pending", a
   assert.equal(result.deviceId, "d-fresh");
 });
 
+test("registerDevice recoveryPending keeps a pending sibling and does not claim", async () => {
+  let allowPending: boolean | undefined;
+  const service = createService({
+    registerOrUpdate: async (input: { allowPendingAlongsideTrusted?: boolean }) => {
+      allowPending = input.allowPendingAlongsideTrusted;
+      return {
+        ...createDeviceRecord({ id: "d-sibling", status: "pending" }),
+        sendApprovalEmail: false,
+        created: true,
+      };
+    },
+    claimTrustedAfterRecovery: async () => {
+      throw new Error("claim must not run for recoveryPending");
+    },
+  });
+
+  const result = await service.registerDevice(
+    "u1",
+    "127.0.0.1",
+    createInput({ recoveryPending: true }),
+  );
+  assert.equal(allowPending, true);
+  assert.equal(result.deviceId, "d-sibling");
+  assert.equal(result.status, "pending_approval");
+  assert.equal(result.created, true);
+});
+
 test("registerDevice does not accept new keys for an existing trusted fingerprint", async () => {
   const service = createService({
     registerOrUpdate: async () => {

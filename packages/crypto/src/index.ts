@@ -246,9 +246,19 @@ export {
 
 export {
   generateRecoverySecret,
+  recoveryPossessionPublicKey,
+  signRecoveryPossessionMessage,
   wrapVaultKeyWithRecoverySecret,
   unwrapVaultKeyWithRecoverySecret,
 } from "./vault-recovery-key.js";
+
+export {
+  RECOVERY_POSSESSION_PROOF_PURPOSE,
+  recoveryPossessionProofMessageBytes,
+  recoveryPossessionPublicKeyB64,
+  signRecoveryPossessionProof,
+  type RecoveryPossessionProofMessage,
+} from "./recovery-possession.js";
 
 export {
   wrapUnlockMaterialWithPin,
