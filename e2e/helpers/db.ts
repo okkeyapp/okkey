@@ -1,6 +1,65 @@
+import net from "node:net";
+
 import pg from "pg";
 
 import { E2E_DATABASE_URL } from "./env";
+
+const E2E_REDIS_URL = process.env.E2E_REDIS_URL ?? process.env.REDIS_URL ?? "redis://127.0.0.1:6379";
+
+function redisCommand(urlString: string, args: string[]): Promise<void> {
+  const url = new URL(urlString);
+  const payload =
+    `*${args.length}\r\n` +
+    args.map((arg) => `$${Buffer.byteLength(arg)}\r\n${arg}\r\n`).join("");
+  return new Promise((resolve, reject) => {
+    const socket = net.connect({
+      host: url.hostname,
+      port: Number(url.port || 6379),
+    });
+    let buf = "";
+    const finish = (error?: Error) => {
+      socket.destroy();
+      if (error) {
+        reject(error);
+      } else {
+        resolve();
+      }
+    };
+    socket.setTimeout(3_000, () => finish(new Error("redis command timed out")));
+    socket.on("error", (error) => finish(error));
+    socket.on("data", (chunk) => {
+      buf += chunk.toString("utf8");
+      if (!buf.includes("\r\n")) {
+        return;
+      }
+      if (buf.startsWith("-")) {
+        finish(new Error(buf.trim()));
+        return;
+      }
+      finish();
+    });
+    socket.on("connect", () => {
+      socket.write(payload);
+    });
+  });
+}
+
+/**
+ * Each browser spec starts and ends on an empty account catalog.
+ * Bootstrap registration is only offered when no user exists, and the first-run
+ * claim lives in Redis, so both stores are cleared. Specs do not share users.
+ */
+export async function resetE2eCatalog(): Promise<void> {
+  const client = new pg.Client({ connectionString: E2E_DATABASE_URL });
+  client.on("error", () => {});
+  await client.connect();
+  try {
+    await client.query("TRUNCATE TABLE users RESTART IDENTITY CASCADE");
+  } finally {
+    await client.end();
+  }
+  await redisCommand(E2E_REDIS_URL, ["FLUSHDB"]);
+}
 
 /** Legacy wraps have no possession public key, so proof must refuse them. */
 export async function clearRecoveryPossessionPublicKey(email: string): Promise<void> {
