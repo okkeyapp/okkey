@@ -6,7 +6,7 @@ import {
   initCrypto,
   registrationArtifactsToWire,
   wipeBytes,
-  recoveryPossessionVerifier,
+  recoveryPossessionPublicKey,
   wrapVaultKeyWithRecoverySecret,
 } from "@okkey/crypto";
 import type { RegisterCompleteRequestDto } from "@okkey/types";
@@ -269,10 +269,10 @@ export default function AuthRegistrationPage() {
     const secret = await generateRecoverySecret();
     const secretBytes = new TextEncoder().encode(secret);
     const encryptedBlob = await wrapVaultKeyWithRecoverySecret(vaultKey, secretBytes);
-    const possessionVerifier = await recoveryPossessionVerifier(secretBytes);
+    const possessionPublicKey = await recoveryPossessionPublicKey(secretBytes);
     wipeBytes(secretBytes);
     const core = createAuthenticatedCoreClient(token);
-    await core.enrollAccountRecoveryKey({ encryptedBlob, possessionVerifier });
+    await core.enrollAccountRecoveryKey({ encryptedBlob, possessionPublicKey });
     return secret;
   }
 

@@ -1305,9 +1305,9 @@ paths:
                   $ref: "#/components/schemas/EncryptedBlob"
                 encrypted_blob:
                   $ref: "#/components/schemas/EncryptedBlob"
-                possessionVerifier:
+                possessionPublicKey:
                   type: string
-                  description: Base64 SHA-256 possession tag of the wrap key.
+                  description: Base64 Ed25519 verifying key derived from the recovery secret. Not a bearer token.
       responses:
         "200":
           description: Wrap stored; key marked enrolled
@@ -1374,11 +1374,10 @@ paths:
       tags: [Account]
       summary: Prove recovery-key possession for this session
       description: >
-        Full Bearer, including a pending device. A stored possession tag must match
-        before the wrap is returned (`proved: true`, no ciphertext). A wrap enrolled
-        before tags existed returns ciphertext only in the `attestation_required`
-        response; the session is granted after the identity attestation verifies.
-        Vault keys, shares, and events stay limited to a trusted device.
+        Full Bearer bound to a device. An empty object returns a single-use challenge
+        and no ciphertext. A signature over that challenge grants the session.
+        Legacy wraps without a possession public key are refused. Failed signatures
+        are rate-limited per session and per account.
       security:
         - bearerAuth: []
       requestBody:
@@ -1387,35 +1386,26 @@ paths:
           application/json:
             schema:
               type: object
-              required: [possessionVerifier]
               properties:
-                possessionVerifier:
+                challenge:
                   type: string
-                attestation:
-                  type: object
-                  properties:
-                    purpose:
-                      type: string
-                      enum: [account.recovery_possession]
-                    user_id:
-                      type: string
-                    recorded_at:
-                      type: string
-                    challenge:
-                      type: string
-                    signature:
-                      type: string
+                signature:
+                  type: string
       responses:
         "200":
-          description: Proof accepted, or a legacy attestation challenge
+          description: Challenge issued, or proof accepted. Never includes wrap or identity ciphertext.
         "400":
           description: RECOVERY_BAD_REQUEST
         "401":
           description: AUTH_REQUIRED
         "403":
-          description: RECOVERY_PROOF_INVALID
+          description: RECOVERY_PROOF_INVALID or RECOVERY_PROOF_REQUIRES_DEVICE
         "404":
           description: RECOVERY_KEY_NOT_AVAILABLE
+        "409":
+          description: RECOVERY_PROOF_UNAVAILABLE
+        "429":
+          description: RECOVERY_PROOF_LIMITED
 
   /auth/email/confirm:
     post:

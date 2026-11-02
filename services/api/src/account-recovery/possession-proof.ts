@@ -1,40 +1,15 @@
-import { createPublicKey, timingSafeEqual, verify as verifyEd25519 } from "node:crypto";
+import { createPublicKey, verify as verifyEd25519 } from "node:crypto";
 
-/** Must match `RECOVERY_POSSESSION_ATTESTATION_PURPOSE` in `@okkey/crypto`. */
-export const RECOVERY_POSSESSION_ATTESTATION_PURPOSE = "account.recovery_possession";
+/** Must match `RECOVERY_POSSESSION_PROOF_PURPOSE` in `@okkey/crypto`. */
+export const RECOVERY_POSSESSION_PROOF_PURPOSE = "account.recovery_possession";
 
-/** Must match `RECOVERY_POSSESSION_ATTESTATION_MAX_AGE_MS` in `@okkey/crypto`. */
-export const RECOVERY_POSSESSION_ATTESTATION_MAX_AGE_MS = 5 * 60 * 1000;
+/** How long an issued challenge can be signed. */
+export const RECOVERY_PROOF_CHALLENGE_TTL_MS = 2 * 60 * 1000;
 
 /** SPKI DER prefix for a raw 32-byte Ed25519 public key. */
 const ED25519_SPKI_PREFIX = Buffer.from("302a300506032b6570032100", "hex");
 
-export type RecoveryPossessionAttestationInput = {
-  purpose?: string;
-  userId: string;
-  recordedAt: string;
-  challenge: string;
-  signature: string;
-};
-
-/** Canonical bytes. Key order must match the client signer. */
-export function recoveryPossessionAttestationMessage(input: {
-  userId: string;
-  recordedAt: string;
-  challenge: string;
-}): Buffer {
-  return Buffer.from(
-    JSON.stringify({
-      challenge: input.challenge,
-      purpose: RECOVERY_POSSESSION_ATTESTATION_PURPOSE,
-      recorded_at: input.recordedAt,
-      user_id: input.userId,
-    }),
-    "utf8",
-  );
-}
-
-export function decodePossessionVerifier(value: string): Buffer | null {
+export function decodePossessionPublicKey(value: string): Buffer | null {
   const trimmed = value.trim();
   if (!trimmed || trimmed.length > 88) {
     return null;
@@ -50,36 +25,31 @@ export function decodePossessionVerifier(value: string): Buffer | null {
   }
 }
 
-export function possessionVerifiersEqual(stored: string, given: string): boolean {
-  const left = decodePossessionVerifier(stored);
-  const right = decodePossessionVerifier(given);
-  if (!left || !right) {
-    return false;
-  }
-  return timingSafeEqual(left, right);
+/** Canonical bytes. Key order must match the client signer. */
+export function recoveryPossessionProofMessage(input: {
+  userId: string;
+  deviceId: string;
+  challenge: string;
+}): Buffer {
+  return Buffer.from(
+    JSON.stringify({
+      challenge: input.challenge,
+      device_id: input.deviceId,
+      purpose: RECOVERY_POSSESSION_PROOF_PURPOSE,
+      user_id: input.userId,
+    }),
+    "utf8",
+  );
 }
 
-export function verifyRecoveryPossessionAttestation(input: {
+export function verifyRecoveryPossessionProof(input: {
   userId: string;
+  deviceId: string;
+  challenge: string;
   publicKeyBase64: string;
-  expectedChallenge: string;
-  attestation: RecoveryPossessionAttestationInput;
-  now: number;
+  signatureBase64: string;
 }): boolean {
-  if (input.attestation.purpose !== RECOVERY_POSSESSION_ATTESTATION_PURPOSE) {
-    return false;
-  }
-  if (input.attestation.userId !== input.userId) {
-    return false;
-  }
-  if (input.attestation.challenge !== input.expectedChallenge) {
-    return false;
-  }
-  const recordedMs = Date.parse(input.attestation.recordedAt);
-  if (Number.isNaN(recordedMs)) {
-    return false;
-  }
-  if (Math.abs(input.now - recordedMs) > RECOVERY_POSSESSION_ATTESTATION_MAX_AGE_MS) {
+  if (!input.deviceId || !input.challenge) {
     return false;
   }
   try {
@@ -87,14 +57,14 @@ export function verifyRecoveryPossessionAttestation(input: {
     if (publicKeyRaw.length !== 32) {
       return false;
     }
-    const signature = Buffer.from(input.attestation.signature, "base64");
+    const signature = Buffer.from(input.signatureBase64, "base64");
     if (signature.length !== 64) {
       return false;
     }
-    const message = recoveryPossessionAttestationMessage({
-      userId: input.attestation.userId,
-      recordedAt: input.attestation.recordedAt,
-      challenge: input.attestation.challenge,
+    const message = recoveryPossessionProofMessage({
+      userId: input.userId,
+      deviceId: input.deviceId,
+      challenge: input.challenge,
     });
     const keyObject = createPublicKey({
       key: Buffer.concat([ED25519_SPKI_PREFIX, publicKeyRaw]),

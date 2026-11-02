@@ -189,6 +189,7 @@ import {
 } from "./routes/attachments.ts";
 import { createItemFaviconPreviewRoute } from "./routes/item-favicons.ts";
 import { requireEnrolledRecoveryKey } from "./routes/require-recovery-key.ts";
+import { createRecoveryProofAttemptStore } from "./account-recovery/recovery-proof-attempts.ts";
 
 export interface CreateApiAppOptions {
   enterprisePlugins?: ApiEnterprisePlugin[];
@@ -204,6 +205,8 @@ export interface CreateApiAppOptions {
   publicAppBaseUrl?: string;
   redis?: ApiEnterprisePluginContext["redis"];
   geoIp?: ApiEnterprisePluginContext["geoIp"];
+  /** Test clock for recovery-proof lockouts. */
+  recoveryProofNow?: () => number;
 }
 
 export interface AppDeps {
@@ -927,8 +930,20 @@ export function createApiApp(
           },
           {
             resolveSession: resolveFullSession,
-            users: deps.usersRepository,
             sessionService: deps.sessionService,
+            now: options.recoveryProofNow,
+            attemptStore: createRecoveryProofAttemptStore(
+              options.redis &&
+                typeof (options.redis as { get?: unknown }).get === "function" &&
+                typeof (options.redis as { setWithTtl?: unknown }).setWithTtl === "function" &&
+                typeof (options.redis as { del?: unknown }).del === "function"
+                ? (options.redis as {
+                    get(key: string): Promise<string | null>;
+                    setWithTtl(key: string, value: string, ttlSeconds: number): Promise<void>;
+                    del(key: string): Promise<number>;
+                  })
+                : undefined,
+            ),
           },
         ),
       );
@@ -945,6 +960,9 @@ export function createApiApp(
         deps.accountRecoveryService,
         resolveUserIdForRegistrationRecovery,
         resolveSessionForRegistrationRecovery,
+        {
+          allowRotate: async (req) => (await resolveUserIdForRestore(req)) != null,
+        },
       ),
     );
     app.route(

@@ -13,10 +13,7 @@ import {
 } from "@okkey/types";
 
 import { generateEntityId } from "../entity-id.ts";
-import {
-  decodePossessionVerifier,
-  possessionVerifiersEqual,
-} from "./possession-proof.ts";
+import { decodePossessionPublicKey } from "./possession-proof.ts";
 import { decodeEncryptedBlobFromStorage } from "../crypto/encrypted-blob.ts";
 import { buildEmailAppPathUrl, type EmailTemplateService } from "../email/service.ts";
 import {
@@ -331,10 +328,10 @@ export class AccountRecoveryService {
   async enrollKey(
     userId: string,
     encryptedBlob: EncryptedBlobDto,
-    options?: { rotate?: boolean; forbidRotate?: boolean; possessionVerifier?: string | null },
+    options?: { rotate?: boolean; forbidRotate?: boolean; possessionPublicKey?: string | null },
   ): Promise<AccountRecoveryKeyEnrollResponseDto> {
     this.assertValidRecoveryWrap(encryptedBlob);
-    const possessionVerifier = this.normalizePossessionVerifier(options?.possessionVerifier);
+    const possessionPublicKey = this.normalizePossessionPublicKey(options?.possessionPublicKey);
     const entitlements = await this.resolveEntitlements(userId);
     const existing = await this.recovery.getWrap(userId);
     const rotate = Boolean(options?.rotate) || Boolean(existing);
@@ -352,7 +349,7 @@ export class AccountRecoveryService {
       const inserted = await this.recovery.insertWrapIfAbsent(
         userId,
         encryptedBlob,
-        possessionVerifier,
+        possessionPublicKey,
       );
       if (!inserted) {
         throw new AccountRecoveryError(
@@ -363,7 +360,7 @@ export class AccountRecoveryService {
       }
       wrap = inserted;
     } else {
-      wrap = await this.recovery.upsertWrap(userId, encryptedBlob, rotate, possessionVerifier);
+      wrap = await this.recovery.upsertWrap(userId, encryptedBlob, rotate, possessionPublicKey);
     }
 
     const settingsRow = await this.recovery.getSettings(userId);
@@ -419,32 +416,12 @@ export class AccountRecoveryService {
   }
 
   /**
-   * Compare a client possession tag with the stored tag.
-   * Legacy wraps (no tag yet) return the ciphertext the client needs to build
-   * an identity attestation. A stored tag that does not match never falls through
-   * to that path.
+   * Whether this account can be proved from an untrusted device.
+   * Legacy wraps have no verifying key. This method never returns ciphertext.
    */
-  async checkRecoveryPossession(
+  async getRecoveryPossession(
     userId: string,
-    possessionVerifier: string,
-  ): Promise<
-    | { kind: "match" }
-    | { kind: "mismatch" }
-    | {
-        kind: "legacy";
-        encryptedBlob: EncryptedBlobDto;
-        encryptedPrivateKey: EncryptedBlobDto;
-      }
-    | { kind: "unavailable" }
-  > {
-    const verifier = this.normalizePossessionVerifier(possessionVerifier);
-    if (!verifier) {
-      throw new AccountRecoveryError(
-        "RECOVERY_BAD_REQUEST",
-        400,
-        "possessionVerifier is required",
-      );
-    }
+  ): Promise<{ kind: "unavailable" } | { kind: "legacy" } | { kind: "ready"; publicKey: string }> {
     const status = await this.getStatus(userId);
     if (!status.settings.keyEnabled || !status.key.enrolled) {
       return { kind: "unavailable" };
@@ -453,26 +430,10 @@ export class AccountRecoveryService {
     if (!wrap) {
       return { kind: "unavailable" };
     }
-    if (wrap.possessionVerifier) {
-      return possessionVerifiersEqual(wrap.possessionVerifier, verifier)
-        ? { kind: "match" }
-        : { kind: "mismatch" };
+    if (!wrap.possessionPublicKey) {
+      return { kind: "legacy" };
     }
-    const identity = await this.getIdentityEncryptedKey(userId);
-    return {
-      kind: "legacy",
-      encryptedBlob: wrap.encryptedBlob,
-      encryptedPrivateKey: identity.encryptedPrivateKey,
-    };
-  }
-
-  /** Persist the tag after a legacy attestation. Does not replace an existing tag. */
-  async storePossessionVerifierIfAbsent(userId: string, possessionVerifier: string): Promise<boolean> {
-    const verifier = this.normalizePossessionVerifier(possessionVerifier);
-    if (!verifier) {
-      throw new AccountRecoveryError("RECOVERY_BAD_REQUEST", 400, "possessionVerifier is required");
-    }
-    return this.recovery.setPossessionVerifier(userId, verifier);
+    return { kind: "ready", publicKey: wrap.possessionPublicKey };
   }
 
   /**
@@ -690,16 +651,16 @@ export class AccountRecoveryService {
     });
   }
 
-  private normalizePossessionVerifier(value: string | null | undefined): string | null {
+  private normalizePossessionPublicKey(value: string | null | undefined): string | null {
     if (value == null || value.trim() === "") {
       return null;
     }
-    const decoded = decodePossessionVerifier(value);
+    const decoded = decodePossessionPublicKey(value);
     if (!decoded) {
       throw new AccountRecoveryError(
         "RECOVERY_BAD_REQUEST",
         400,
-        "possessionVerifier must be a base64 SHA-256 tag",
+        "possessionPublicKey must be a base64 Ed25519 public key",
       );
     }
     return decoded.toString("base64");

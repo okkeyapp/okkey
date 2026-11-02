@@ -2,7 +2,15 @@
  * Wrap the 32-byte account `VaultKey` with a high-entropy recovery secret (UTF-8 bytes).
  * Used by account recovery flows; wire format is a versioned `EncryptedBlob`.
  */
-import { aead_decrypt, aead_encrypt, kdf_derive, random_bytes, sha256 } from "@okkey/crypto-wasm";
+import {
+  aead_decrypt,
+  aead_encrypt,
+  ed25519_public_key,
+  ed25519_sign,
+  kdf_derive,
+  random_bytes,
+  sha256,
+} from "@okkey/crypto-wasm";
 import { ensureWasm } from "./wasm-init.js";
 import type { EncryptedBlobDto } from "@okkey/types";
 import { getCryptoConfig } from "./config/index.js";
@@ -23,8 +31,8 @@ if (RECOVERY_SECRET_KDF_SALT.length !== KDF_SALT_LEN) {
 }
 
 const RECOVERY_WRAP_AAD = new TextEncoder().encode("okkey-vault-recovery-wrap-v1");
-/** Domain separator for the one-way possession tag. Not a key and not the wrap. */
-const RECOVERY_POSSESSION_LABEL = new TextEncoder().encode("okkey-recovery-possession-v1");
+/** Domain separator for the Ed25519 seed derived from the wrap key. The seed never leaves this module. */
+const RECOVERY_POSSESSION_SEED_LABEL = new TextEncoder().encode("okkey-recovery-possession-seed-v1");
 
 const RECOVERY_WRITE_CONFIG = getCryptoConfig(2);
 
@@ -94,21 +102,40 @@ export async function generateRecoverySecret(): Promise<string> {
   }
 }
 
-/**
- * One-way tag of the recovery wrap key (SHA-256 over a domain label and the key).
- * The server stores this and compares it; it cannot unwrap the vault key.
- */
-export async function recoveryPossessionVerifier(recoverySecretUtf8: Uint8Array): Promise<string> {
+async function recoveryPossessionSeed(recoverySecretUtf8: Uint8Array): Promise<Uint8Array> {
   await ensureWasm();
   const wrapKey = deriveRecoveryWrapKey(recoverySecretUtf8);
-  const material = new Uint8Array(RECOVERY_POSSESSION_LABEL.length + wrapKey.length);
-  material.set(RECOVERY_POSSESSION_LABEL, 0);
-  material.set(wrapKey, RECOVERY_POSSESSION_LABEL.length);
+  const material = new Uint8Array(RECOVERY_POSSESSION_SEED_LABEL.length + wrapKey.length);
+  material.set(RECOVERY_POSSESSION_SEED_LABEL, 0);
+  material.set(wrapKey, RECOVERY_POSSESSION_SEED_LABEL.length);
   try {
-    return uint8ToStandardBase64(sha256(material));
+    return sha256(material);
   } finally {
     wipeBytes(wrapKey);
     wipeBytes(material);
+  }
+}
+
+/** Ed25519 verifying key for challenge signatures. Safe to store on the server; it cannot sign. */
+export async function recoveryPossessionPublicKey(recoverySecretUtf8: Uint8Array): Promise<string> {
+  const seed = await recoveryPossessionSeed(recoverySecretUtf8);
+  try {
+    return uint8ToStandardBase64(ed25519_public_key(seed));
+  } finally {
+    wipeBytes(seed);
+  }
+}
+
+/** Sign canonical proof bytes with the possession key derived from the recovery secret. */
+export async function signRecoveryPossessionMessage(
+  recoverySecretUtf8: Uint8Array,
+  message: Uint8Array,
+): Promise<string> {
+  const seed = await recoveryPossessionSeed(recoverySecretUtf8);
+  try {
+    return uint8ToStandardBase64(ed25519_sign(seed, message));
+  } finally {
+    wipeBytes(seed);
   }
 }
 

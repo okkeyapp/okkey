@@ -459,21 +459,23 @@ No wrap, identity key, or other secret material is included.
 
 ### `POST /account/recovery/key/prove`
 
-Proves possession of the recovery key for the current full session, including a pending device.
+Proves possession of the recovery key for the current full session, including a pending device. The response never contains a wrap, an identity key, or other secret material.
 
-**Auth:** Full Bearer. Not `registration_recovery`.
+**Auth:** Full Bearer bound to a device. Not `registration_recovery`. A session with no `device_id` is `403 RECOVERY_PROOF_REQUIRES_DEVICE`.
 
-**Request body:** `{ "possessionVerifier": "<base64 SHA-256 tag>" }`. After a legacy challenge, the same body plus `attestation` (`purpose: account.recovery_possession`, `user_id`, `recorded_at`, `challenge`, `signature`).
+**Start:** `{}` returns `{ "proved": false, "challenge", "deviceId", "expiresAt" }`. The challenge is random, single-use, short-lived, and stored only for this session. It is not a credential.
 
-The tag is a one-way image of the wrap key. The server compares it to the tag stored at enroll or rotate. A match marks this session as proved and returns `{ "proved": true }` with no ciphertext.
+**Finish:** `{ "challenge", "signature" }`. `signature` is an Ed25519 signature over the canonical message `{ challenge, device_id, purpose: "account.recovery_possession", user_id }` using a key derived from the recovery secret. The server checks it with the **public** key stored at enroll or rotate. A match sets `recovery_proved_at` on this session and returns `{ "proved": true }`.
 
-When the wrap was enrolled before tags existed, the first call returns `{ "proved": false, "status": "attestation_required", "challenge", "encryptedBlob", "encryptedPrivateKey" }`. That is the only place those blobs are returned before proof. The client unwraps locally, signs `challenge` with the identity key, and posts the attestation. The session is granted only after the signature verifies. `GET /account/recovery/key/wrap` stays unauthorized until then.
+The public key cannot produce a signature. Replaying a signature on another session or device fails because the challenge and `device_id` are part of the signed message and the challenge is consumed on use.
 
-A wrong tag is `403 RECOVERY_PROOF_INVALID` and does not return ciphertext.
+Wraps enrolled before a possession public key existed cannot be proved from an untrusted device (`409 RECOVERY_PROOF_UNAVAILABLE`). Ciphertext is not returned. A trusted device can rotate the recovery key, which stores a new public key.
 
-After proof, this session may read the wrap, the identity ciphertext, workspace list, and change the master password, and may `POST /devices/register` with `claim_after_recovery`. Vault keys, shares, and events stay limited to a trusted device. Approving the device is the other way to open those routes.
+Failed signatures count toward a per-session limit (5) and a per-account limit (10) inside 15 minutes, then `429 RECOVERY_PROOF_LIMITED`. A lockout rejects even a correct signature until it expires. `null` or non-object JSON is `400 RECOVERY_BAD_REQUEST`.
 
-**Errors:** `AUTH_REQUIRED` 401, `RECOVERY_BAD_REQUEST` 400, `RECOVERY_KEY_NOT_AVAILABLE` 404, `RECOVERY_PROOF_INVALID` 403.
+After proof, this session may read the wrap, the identity ciphertext, and the workspace list, change the master password, and `POST /devices/register` with `claim_after_recovery`. Vault keys, shares, events, and profile stay limited to a trusted device.
+
+**Errors:** `AUTH_REQUIRED` 401, `RECOVERY_BAD_REQUEST` 400, `RECOVERY_PROOF_REQUIRES_DEVICE` 403, `RECOVERY_PROOF_INVALID` 403, `RECOVERY_PROOF_UNAVAILABLE` 409, `RECOVERY_KEY_NOT_AVAILABLE` 404, `RECOVERY_PROOF_LIMITED` 429.
 
 ---
 

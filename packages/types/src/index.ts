@@ -990,48 +990,34 @@ export interface AccountRecoverySettingsUpdateRequestDto {
 export interface AccountRecoveryKeyEnrollRequestDto {
   encryptedBlob: EncryptedBlobDto;
   /**
-   * Base64 SHA-256 possession tag of the wrap key.
-   * Stored so a later session can prove the recovery key without receiving the wrap first.
+   * Base64 Ed25519 verifying key derived from the recovery secret.
+   * The server stores this public key only. It cannot sign or unwrap the vault key.
    */
-  possessionVerifier?: string;
+  possessionPublicKey?: string;
 }
 
-/** `POST /account/recovery/key/prove` attestation for a wrap that has no stored tag yet. */
-export interface AccountRecoveryKeyProveAttestationDto {
-  purpose: "account.recovery_possession";
-  user_id: string;
-  recorded_at: string;
-  challenge: string;
-  signature: string;
-}
-
-/** `POST /account/recovery/key/prove` request. */
+/** `POST /account/recovery/key/prove` request. Empty object asks for a challenge. */
 export interface AccountRecoveryKeyProveRequestDto {
-  possessionVerifier: string;
-  attestation?: AccountRecoveryKeyProveAttestationDto;
+  challenge?: string;
+  signature?: string;
 }
 
-/** Stored tag matched, or a legacy attestation was accepted. */
+/** Challenge signature accepted. No ciphertext. */
 export interface AccountRecoveryKeyProvedResponseDto {
   proved: true;
 }
 
-/**
- * Wrap enrolled before possession tags existed.
- * Ciphertext is returned only here so the client can sign an identity attestation.
- * The session is not granted until that attestation succeeds.
- */
-export interface AccountRecoveryKeyAttestationChallengeResponseDto {
+/** Server-issued single-use challenge bound to this session and device. */
+export interface AccountRecoveryKeyProveChallengeResponseDto {
   proved: false;
-  status: "attestation_required";
   challenge: string;
-  encryptedBlob: EncryptedBlobDto;
-  encryptedPrivateKey: EncryptedBlobDto;
+  deviceId: string;
+  expiresAt: string;
 }
 
 export type AccountRecoveryKeyProveResponseDto =
   | AccountRecoveryKeyProvedResponseDto
-  | AccountRecoveryKeyAttestationChallengeResponseDto;
+  | AccountRecoveryKeyProveChallengeResponseDto;
 
 export interface AccountRecoveryKeyEnrollResponseDto {
   key: AccountRecoveryKeyMetaDto;

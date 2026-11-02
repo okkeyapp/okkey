@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   generateRecoverySecret,
   initCrypto,
-  recoveryPossessionVerifier,
+  recoveryPossessionPublicKey,
   wrapVaultKeyWithRecoverySecret,
 } from "@okkey/crypto";
 import {
@@ -60,9 +60,9 @@ export default function RecoveryKeyRequiredScreen(props: {
       const nextSecret = await generateRecoverySecret();
       const secretBytes = new TextEncoder().encode(nextSecret);
       const encryptedBlob = await wrapVaultKeyWithRecoverySecret(vaultKey, secretBytes);
-      const possessionVerifier = await recoveryPossessionVerifier(secretBytes);
+      const possessionPublicKey = await recoveryPossessionPublicKey(secretBytes);
       const core = createAuthenticatedCoreClient(accessToken);
-      await core.enrollAccountRecoveryKey({ encryptedBlob, possessionVerifier });
+      await core.enrollAccountRecoveryKey({ encryptedBlob, possessionPublicKey });
       setSecret(nextSecret);
       setStep("secret");
     } catch (enrollErr) {
