@@ -933,7 +933,7 @@ test("POST /devices/register binds the access-token session to the device", asyn
   assert.deepEqual(bound, [{ token: "tok-register", userId: "u1", deviceId: DEVICE_A }]);
 });
 
-test("POST /devices/:id/revoke treats a leading-zero id as the current device", async () => {
+test("POST /devices/:id/revoke rejects a leading-zero device id without revoking", async () => {
   let revoked = false;
   const res = await dispatch({
     method: "POST",
@@ -955,9 +955,9 @@ test("POST /devices/:id/revoke treats a leading-zero id as the current device", 
       }),
     }),
   });
-  assert.equal(res.statusCode, 403);
+  assert.equal(res.statusCode, 400);
   const payload = JSON.parse(res.body) as { error: string };
-  assert.equal(payload.error, "DEVICE_REVOKE_CURRENT_FORBIDDEN");
+  assert.equal(payload.error, "DEVICE_BAD_REQUEST");
   assert.equal(revoked, false);
 });
 
