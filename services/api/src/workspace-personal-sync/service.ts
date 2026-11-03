@@ -144,7 +144,7 @@ export class WorkspacePersonalSyncService {
     this.events = deps.events;
     this.users = deps.users;
     this.config = {
-      allowedCryptoProfileVersions: [1, 2],
+      allowedCryptoProfileVersions: [2],
       deployEnv: "dev",
       cryptoRolloutMode: "compat",
       cryptoRolloutEnabled: true,

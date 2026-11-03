@@ -1,6 +1,5 @@
 import type { WebMessageValues } from "@okkey/i18n";
 import type { Vault } from "@okkey/types";
-import { generateEntityId } from "@okkey/types";
 import { Button, Popup, type KeyFieldFileValue } from "@okkey/ui";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
@@ -18,8 +17,9 @@ import {
   syncTemplateFaviconForSnapshot,
 } from "../../items/itemTemplateHelpers";
 import {
-  attachWebsiteFaviconFromNetwork,
+  applyFaviconToItem,
   keyFieldFileValueFromFaviconId,
+  lookupWebsiteFaviconFromNetwork,
   seedFaviconUrlCacheAfterUpload,
   shouldAttachWebsiteFaviconInBackground,
   syncItemFaviconForPlaintext,
@@ -171,19 +171,19 @@ export default function EditItemPopup({
           error: t("web.saveItemTemplatePopup.saveErrorGeneric"),
         },
         async () => {
-          const draftTemplateId = generateEntityId();
           // Templates store structure only — skip field-file uploads.
-          // Create the template first so item-favicon uploads can target an existing row.
+          // Create first so item-favicon uploads can target the server-allocated id.
           const response = await core.createWorkspaceItemTemplate(
             workspaceId,
-            buildTemplateCreatePayload(draftTemplateId, snapshot, templateName),
+            buildTemplateCreatePayload(snapshot, templateName),
           );
+          const createdTemplateId = response.template.id;
           let uploadedFavicon: KeyFieldFileValue | undefined;
           try {
             const favicon = await syncTemplateFaviconForSnapshot(
               accessToken,
               vaultKey,
-              draftTemplateId,
+              createdTemplateId,
               snapshot,
               faviconSyncInput,
             );
@@ -191,7 +191,7 @@ export default function EditItemPopup({
             if (favicon.faviconId || favicon.faviconSource) {
               await core.updateWorkspaceItemTemplate(
                 workspaceId,
-                draftTemplateId,
+                createdTemplateId,
                 buildTemplateUpdatePayload(
                   snapshot,
                   templateName,
@@ -205,7 +205,7 @@ export default function EditItemPopup({
               await deleteKeyFieldFileAttachment({
                 accessToken,
                 vaultId: snapshot.vaultId,
-                itemId: draftTemplateId,
+                itemId: createdTemplateId,
                 file: uploadedFavicon,
               }).catch(() => undefined);
             }
@@ -290,27 +290,56 @@ export default function EditItemPopup({
                 uploadedPngBytes: faviconSync.uploadedPngBytes,
               });
               await updateItem(updatedItem);
-              if (shouldAttachWebsiteFaviconInBackground(updatedItem, faviconSyncInput)) {
-                void attachWebsiteFaviconFromNetwork(accessToken, itemVaultKey, updatedItem)
-                  .then(async (attached) => {
-                    if (!attached?.item.faviconId) {
+              // Only drop the previous attachment after a successful replacement upload in this save.
+              // Clearing without a new upload is reserved for a positive background "absent" result.
+              if (
+                uploadedFavicon &&
+                item.faviconId &&
+                item.faviconId !== updatedItem.faviconId
+              ) {
+                await deleteKeyFieldFileAttachment({
+                  accessToken,
+                  vaultId: item.vaultId,
+                  itemId: item.itemId,
+                  file: keyFieldFileValueFromFaviconId(item.faviconId),
+                }).catch(() => undefined);
+              }
+              if (
+                shouldAttachWebsiteFaviconInBackground(updatedItem, faviconSyncInput, faviconSync)
+              ) {
+                const keptFaviconId = updatedItem.faviconId;
+                const clearIfAbsent = Boolean(faviconSync.clearFaviconIfBackgroundAbsent);
+                void lookupWebsiteFaviconFromNetwork(accessToken, itemVaultKey, updatedItem)
+                  .then(async (lookup) => {
+                    if (lookup.status === "found") {
+                      seedFaviconUrlCacheAfterUpload({
+                        vaultId: uploadedPayload.vaultId,
+                        itemId: uploadedPayload.itemId,
+                        uploadedFavicon: lookup.sync.uploadedFavicon,
+                        uploadedPngBytes: lookup.sync.uploadedPngBytes,
+                      });
+                      await updateItem(lookup.sync.item);
+                      if (keptFaviconId && keptFaviconId !== lookup.sync.item.faviconId) {
+                        await deleteKeyFieldFileAttachment({
+                          accessToken,
+                          vaultId: item.vaultId,
+                          itemId: item.itemId,
+                          file: keyFieldFileValueFromFaviconId(keptFaviconId),
+                        }).catch(() => undefined);
+                      }
                       return;
                     }
-                    seedFaviconUrlCacheAfterUpload({
-                      vaultId: uploadedPayload.vaultId,
-                      itemId: uploadedPayload.itemId,
-                      uploadedFavicon: attached.uploadedFavicon,
-                      uploadedPngBytes: attached.uploadedPngBytes,
-                    });
-                    await updateItem(attached.item);
-                    if (updatedItem.faviconId && updatedItem.faviconId !== attached.item.faviconId) {
+                    if (lookup.status === "absent" && clearIfAbsent && keptFaviconId) {
+                      // URL changed and the new site positively has no icon — clear the kept previous.
+                      await updateItem(applyFaviconToItem(updatedItem, undefined, undefined));
                       await deleteKeyFieldFileAttachment({
                         accessToken,
                         vaultId: item.vaultId,
                         itemId: item.itemId,
-                        file: keyFieldFileValueFromFaviconId(updatedItem.faviconId),
+                        file: keyFieldFileValueFromFaviconId(keptFaviconId),
                       }).catch(() => undefined);
                     }
+                    // "unavailable" (network/timeout/5xx): keep the previous favicon as-is.
                   })
                   .catch(() => undefined);
               }
@@ -328,14 +357,6 @@ export default function EditItemPopup({
               uploadedPayload.sections,
               (file) => deleteKeyFieldFileAttachment({ accessToken, vaultId: uploadedPayload.vaultId, itemId: uploadedPayload.itemId, file }),
             );
-            if (item.faviconId && item.faviconId !== updatedItem.faviconId) {
-              await deleteKeyFieldFileAttachment({
-                accessToken,
-                vaultId: item.vaultId,
-                itemId: item.itemId,
-                file: keyFieldFileValueFromFaviconId(item.faviconId),
-              });
-            }
           }
           if (folderChanged) {
             await assignItemToFolder(

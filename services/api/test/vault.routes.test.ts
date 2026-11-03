@@ -85,7 +85,7 @@ function createSessionServiceStub(): SessionService {
   return {
     async resolveAccessToken(token: string) {
       if (token.trim() === "test-access-token") {
-        return { userId: "u1" };
+        return { userId: "u1", deviceId: "d1", scope: null, tokenHash: "hash" };
       }
       return null;
     },
@@ -164,6 +164,20 @@ test("GET /workspaces/:workspaceId/vaults accepts Authorization Bearer", async (
   const payload = JSON.parse(res.body) as Array<{ id: string; cryptoVersion: number }>;
   assert.equal(payload[0].id, "v1");
   assert.equal(payload[0].cryptoVersion, 2);
+});
+
+test("GET /workspaces/:workspaceId/vaults rejects an unbound full Bearer session", async () => {
+  const res = await dispatch({
+    method: "GET",
+    url: "/workspaces/w1/vaults",
+    headers: { authorization: "Bearer test-access-token" },
+    sessionService: {
+      async resolveAccessToken() {
+        return { userId: "u1", deviceId: null, scope: null, tokenHash: "hash" };
+      },
+    } as unknown as SessionService,
+  });
+  assert.equal(res.statusCode, 401);
 });
 
 test("GET /vaults/:vaultId returns vault", async () => {

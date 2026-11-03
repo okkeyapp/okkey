@@ -6,6 +6,7 @@ import { RegistrationService } from "./registration/service.ts";
 import { createServer } from "node:http";
 import { createApiApp } from "./app.ts";
 import { isEnterpriseBackendLoadable, loadConfig } from "./config.ts";
+import { RedisDeviceBindChallengeStore } from "./device/bind-challenge-store.ts";
 import { DeviceService } from "./device/service.ts";
 import { json } from "./http.ts";
 import {
@@ -228,6 +229,7 @@ async function main(): Promise<void> {
     emailTemplates,
     geoIp,
     log: logger,
+    bindChallenges: new RedisDeviceBindChallengeStore(storage.redis),
   });
   const accountRecoveryService = new AccountRecoveryService({
     recovery: storage.repositories.accountRecovery,

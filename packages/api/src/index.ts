@@ -15,6 +15,9 @@ import type {
   ClientCryptoCapabilities,
   CoreApiErrorBody,
   CryptoRolloutMode,
+  DeviceBindChallengeResponseDto,
+  DeviceBindSessionRequestDto,
+  DeviceKeyRebindRequestDto,
   DeviceRegisterRequestDto,
   DeviceRegisterResponseDto,
   DeviceRejectResponseDto,
@@ -25,6 +28,7 @@ import type {
   DeviceListResponseDto,
   DevicePatchRequestDto,
   DevicePatchResponseDto,
+  DeviceRevokeRequestDto,
   DeviceRevokeResponseDto,
   EncryptedBlobDto,
   SyncAppendEventRequestDto,
@@ -54,6 +58,8 @@ import type {
   AccountLoginMethodsPrimaryPatchDto,
   AccountLoginMethodsResponseDto,
   AccountRecoveryKeyEnrollRequestDto,
+  AccountRecoveryKeyProveRequestDto,
+  AccountRecoveryKeyProveResponseDto,
   AccountRecoveryKeyEnrollResponseDto,
   AccountRecoveryKeyWrapResponseDto,
   AccountRecoverySettingsUpdateRequestDto,
@@ -842,6 +848,38 @@ export class CoreApiClient {
     return this.api.post<DeviceRegisterResponseDto>("/devices/register", body);
   }
 
+  createDeviceBindChallenge(deviceId: string): Promise<DeviceBindChallengeResponseDto> {
+    return this.api.post<DeviceBindChallengeResponseDto>(
+      `/devices/${encodeURIComponent(deviceId)}/bind-challenge`,
+      {},
+    );
+  }
+
+  /** Attach the current session after a device-key signature or a legacy share proof. */
+  bindDeviceSession(
+    deviceId: string,
+    body: DeviceBindSessionRequestDto,
+  ): Promise<DeviceRegisterResponseDto> {
+    return this.api.post<DeviceRegisterResponseDto>(
+      `/devices/${encodeURIComponent(deviceId)}/bind-session`,
+      body,
+    );
+  }
+
+  /**
+   * Replace lost device signing keys and demote to pending for another trusted
+   * device to approve. Sole-device accounts get `DEVICE_REBIND_REQUIRES_RECOVERY`.
+   */
+  requestDeviceKeyRebind(
+    deviceId: string,
+    body: DeviceKeyRebindRequestDto,
+  ): Promise<DeviceRegisterResponseDto> {
+    return this.api.post<DeviceRegisterResponseDto>(
+      `/devices/${encodeURIComponent(deviceId)}/request-key-rebind`,
+      body,
+    );
+  }
+
   listDevices(currentFingerprint?: string): Promise<DeviceListResponseDto> {
     const query = currentFingerprint
       ? `?device_fingerprint=${encodeURIComponent(currentFingerprint)}`
@@ -877,6 +915,13 @@ export class CoreApiClient {
     body: AccountRecoveryKeyEnrollRequestDto,
   ): Promise<AccountRecoveryKeyEnrollResponseDto> {
     return this.api.post<AccountRecoveryKeyEnrollResponseDto>("/account/recovery/key/rotate", body);
+  }
+
+  /** Prove the recovery key. A pending device may call this before any wrap is readable. */
+  proveAccountRecoveryKey(
+    body: AccountRecoveryKeyProveRequestDto,
+  ): Promise<AccountRecoveryKeyProveResponseDto> {
+    return this.api.post<AccountRecoveryKeyProveResponseDto>("/account/recovery/key/prove", body);
   }
 
   ackAccountRecoveryKeyExport(): Promise<AccountRecoveryStatusResponseDto> {
@@ -934,10 +979,26 @@ export class CoreApiClient {
     );
   }
 
-  revokeDevice(deviceId: string, reason?: string): Promise<DeviceRevokeResponseDto> {
+  revokeDevice(
+    deviceId: string,
+    reason?: string,
+    options?: { signOut?: boolean; callerDeviceId?: string },
+  ): Promise<DeviceRevokeResponseDto> {
+    const body: DeviceRevokeRequestDto = {};
+    if (reason !== undefined) {
+      body.reason = reason;
+    }
+    if (options?.signOut) {
+      body.sign_out = true;
+    }
+    const headers =
+      options?.callerDeviceId !== undefined
+        ? { "X-Device-Id": options.callerDeviceId }
+        : undefined;
     return this.api.post<DeviceRevokeResponseDto>(
       `/devices/${encodeURIComponent(deviceId)}/revoke`,
-      reason !== undefined ? { reason } : {},
+      body,
+      headers ? { headers } : undefined,
     );
   }
 

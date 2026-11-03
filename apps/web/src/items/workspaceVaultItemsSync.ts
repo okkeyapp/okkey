@@ -20,6 +20,7 @@ import { resolveVaultItemEncryptionKey } from "./resolveVaultItemEncryptionKey";
 const CACHE_DB = "okkey-workspace-vault-items-sync";
 const CACHE_STORE = "materialized_state";
 const ITEM_EVENT_TYPES = new Set(["ITEM_CREATE", "ITEM_UPDATE", "ITEM_DELETE"]);
+/** Plaintext item schema versions. Not the crypto profile (vault items require qday v2). */
 const SUPPORTED_PAYLOAD_SCHEMA_VERSIONS = new Set([1, 2]);
 
 type VaultItemsMaterializedState = {

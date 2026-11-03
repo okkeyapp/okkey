@@ -20,7 +20,7 @@ Full guide, manual compose, TLS notes, and image tags:
 
 **First-run:** on self-hosted installs with an empty `users` table, email login may skip OTP for one exclusive first-admin claim (`bootstrapRequired` on `POST /auth/email/start`) so that admin can register without SMTP. Overlapping empty-catalog starts still require OTP for non-claimants. Once any user exists, normal email OTP applies.
 
-**Crypto policy:** self-host compose defaults to `DEPLOY_ENV=dev` and `CRYPTO_ALLOWED_PROFILE_VERSIONS=1,2` so web registration (`password_kdf_params_version=1`) succeeds. `DEPLOY_ENV=prod` only allows profile `2` and returns `CRYPTO_PROFILE_NOT_ALLOWED`. See [`deploy/docker/README.md`](../../deploy/docker/README.md).
+**Crypto policy:** self-host compose defaults to `DEPLOY_ENV=dev` and `CRYPTO_ALLOWED_PROFILE_VERSIONS=2`. Vault items require profile `v2` for read and write. Profile `v1` is forbidden in every environment, and `CRYPTO_ALLOWED_PROFILE_VERSIONS` can only narrow that allowlist. New registration uses `password_kdf_params_version=2`. See [`deploy/docker/README.md`](../../deploy/docker/README.md).
 
 ---
 
@@ -111,6 +111,12 @@ Set `FAVICON_PROVIDER=off` to disable remote preview (clients fall back to monog
 `FAVICON_PROVIDER=google` is an explicit opt-in that sends login-item website domains
 to Google's favicon service. Prefer `direct` or `off` for self-hosted deployments.
 
+`POST /favicon/preview` status codes:
+
+- `200` — favicon image bytes
+- `404` — site reachable, no favicon found (clients may clear a previous icon)
+- `503 FAVICON_UNAVAILABLE` — DNS / refused / timeout / upstream 5xx (clients keep a previous icon)
+
 Record favicon attachments (upload purpose `item-favicon`) are stored on any plan and are
 not gated by the workspace `filesInItems` entitlement or attachment size limits. The API keeps
 at most one `item-favicon` attachment per record/template (new upload replaces the previous
@@ -187,6 +193,8 @@ Tag scheme (see [`deploy/docker/README.md`](../../deploy/docker/README.md) and `
 ## Database Migrations
 
 On API (and worker) start, SQL files under `services/api/migrations/` are applied in order and recorded in `schema_migrations`.
+
+A database created by v1.0.0-beta.1 has no `schema_migrations` table (that release applied `0001`–`0034` with `psql` and had no migrator). On first start the API recognizes that schema from `user_totp_credentials.backup_codes_exported_at` and the absence of later columns, records `0001`–`0034` as already applied, and runs only the migrations after `0034`. It does not mark every file applied. An existing database that matches no known checkpoint is refused instead of skipping SQL.
 
 ### Item templates structure-only (`0037` / `0038`)
 

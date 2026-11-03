@@ -40,7 +40,7 @@ ENV YARN_CACHE_FOLDER=/usr/local/share/.cache/yarn
 ENV YARN_NETWORK_TIMEOUT=600000
 
 # --ignore-scripts: avoid @okkey/extension `wxt prepare` (entrypoints not in image).
-# vite build only: Core image has no okkey-enterprise sibling; tsc -b would fail on
+# vite build only: Core image has no enterprise module sibling; tsc -b would fail on
 # enterprise path aliases that Vite stubs at bundle time.
 RUN --mount=type=cache,target=/usr/local/share/.cache/yarn \
   --mount=type=cache,target=/root/.cargo/registry \

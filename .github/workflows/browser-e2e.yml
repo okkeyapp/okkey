@@ -1,10 +1,24 @@
 name: Browser E2E
 
 on:
+  pull_request:
+    branches:
+      - dev
+      - "release/**"
+      - "hotfix/**"
+      - main
   push:
+    branches:
+      - "release/**"
+      - "hotfix/**"
   schedule:
     - cron: "17 4 * * 1"
   workflow_dispatch:
+
+# Cancel superseded PR runs. Pushes, the weekly cron, and manual runs are left running.
+concurrency:
+  group: browser-e2e-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   browser-e2e:
@@ -57,7 +71,7 @@ jobs:
       EMAIL_SMTP_HOST: 127.0.0.1
       EMAIL_SMTP_PORT: "1025"
       EMAIL_SMTP_SECURE: "false"
-      CRYPTO_ALLOWED_PROFILE_VERSIONS: 1,2
+      CRYPTO_ALLOWED_PROFILE_VERSIONS: "2"
       CRYPTO_ROLLOUT_MODE: compat
       CRYPTO_ROLLOUT_ENABLED: "true"
       CRYPTO_ROLLOUT_STATE: resume

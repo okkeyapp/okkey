@@ -11,7 +11,7 @@ import PrivacyPolicyHtml from "./PrivacyPolicyHtml";
 
 /**
  * Short self-hosted / OSS privacy policy (no company legal-entity fields).
- * Enterprise builds may replace this page via `@okkey-enterprise/legal`.
+ * Enterprise builds may replace this page via the enterprise legal package.
  */
 export default function PrivacyPolicyPage() {
   const { t, locale } = useLocale();

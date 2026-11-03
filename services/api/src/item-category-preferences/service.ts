@@ -129,6 +129,11 @@ export class ItemCategoryPreferencesService {
     this.templates = deps.templates;
   }
 
+  /** Public access check so routes can authorize before body validation. */
+  async ensureWorkspaceAccess(workspaceId: string, userId: string): Promise<void> {
+    await this.assertWorkspaceAccess(workspaceId, userId);
+  }
+
   async getPreferences(workspaceId: string, userId: string): Promise<{
     favoriteCategoryIds: string[];
     favoriteTemplateIds: string[];

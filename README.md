@@ -1,78 +1,56 @@
-# Okkey Core
+# Okkey
 
-## Self-host in 5 minutes
+Okkey is a password manager you run on your own server. The browser encrypts vault items before they are stored. The source is open, under the [GNU Affero General Public License v3.0 or later](LICENSE), and development happens in this public repository.
 
-One-command Docker install (no monorepo clone):
+Run Okkey when you want the server under your control, and when you want to read the code that handles your vault.
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/okkeyapp/okkey/dev/deploy/docker/install.sh | bash
-```
+## Status
 
-Details: [`deploy/docker/README.md`](deploy/docker/README.md) · architecture notes: [`docs/architecture/09_self_hosting.md`](docs/architecture/09_self_hosting.md)
+[v1.0.0-beta.2](CHANGELOG.md#v1.0.0-beta.2) is the first public beta. It is not production-ready. An independent security audit has not been done. The browser extension is not part of this release. Published container images are the web app, the API, and the worker.
 
-## Quickstart (Hybrid dev)
+## Quick start
 
-1. Copy root environment file for infrastructure.
+You need Docker Engine 28.0 or newer, the Docker Compose plugin, and [cosign](https://docs.sigstore.dev/cosign/system_config/installation/) on your `PATH`. Full steps are in [docs/install.md](docs/install.md).
 
-```bash
-cp .env.example .env
-```
-
-2. Copy service/app environment files you run locally.
+On tag v1.0.0-beta.2 the installer defaults `OKKEY_REF` to `v1.0.0-beta.2`. The command below pins the script, the files it downloads, and the container tag. Put the variables on the right side of `|`.
 
 ```bash
-cp services/api/.env.example services/api/.env
-cp services/worker/.env.example services/worker/.env
-cp apps/web/.env.example apps/web/.env
+curl -fsSL https://raw.githubusercontent.com/okkeyapp/okkey/v1.0.0-beta.2/deploy/docker/install.sh \
+  | OKKEY_REF=v1.0.0-beta.2 OKKEY_IMAGE_TAG=1.0.0-beta.2 bash
 ```
 
-3. Start local infrastructure.
+The installer asks for an email address and saves it as `OKKEY_SALES_EMAIL`. On a machine with no terminal, set that variable on the right side of `|` as well. The container tag `1.0.0-beta.2` is published when the git tag `v1.0.0-beta.2` is created.
 
-```bash
-yarn infra:up
-```
+When the installer finishes, open the printed web URL. The default is <http://localhost:8080>.
 
-4. Verify containers are healthy.
+## What you can use
 
-```bash
-yarn infra:ps
-```
+Names below are the English labels in the web app.
 
-5. Use local wrappers for DB/Redis if you do not have native CLIs.
+- **All items** in a **Personal vault**, organized with **Folders**
+- Item types: **Login / Password**, **Secure note**, **Credit card**, **Personal data**, **Passport**, **Secure files**, **API credentials**, **Database**, **Server**, **Wi-Fi router**, **Bank account**, **Crypto wallet**
+- **Capsules** are encrypted records for secure sharing via email or chat. On a default self-hosted server, **Advanced settings** (**Views**, **Time**, **Access**, **Password**, **Approval**) show "Not available on your current plan"
+- **Monitoring** calculates a security score from records you can access in the current workspace. Analysis runs locally
+- **Tools**: **Generator** (**Password**, **Passphrase**, **Username**), **Import**, **Export**
+- **Master password**, **PIN code**, and **Biometric unlock** on this browser
+- Sign-in: **Email confirmation**, **Passkey**, **Hardware key**
+- **Two-factor authentication** with an **Authenticator app** and **Backup codes**
+- **Recovery key**
 
-```bash
-./scripts/psql --help
-./scripts/redis-cli --help
-```
+**Create vault** for a shared vault, and inviting more workspace members, are unavailable on a default self-hosted server. **Trusted devices** and **Trusted contacts** are unavailable in the web app. The restore screen says web recovery via a remote trusted device is not available yet, and interactive contact recovery in the web app is not available yet.
 
-6. Start apps locally (Node/Rust on host).
+## How to help
 
-```bash
-yarn dev:web
-yarn dev:api
-yarn dev:worker
-```
+Read [CONTRIBUTING.md](CONTRIBUTING.md) for local setup, tests, and pull requests. The community standard is [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
 
-`yarn dev:api` and `yarn dev:worker` each run `scripts/ensure-api-dev-deps.mjs` first (WASM if missing, then TS SDK + email; first run needs `wasm-pack`). Concurrent starts share a lock so the ensure step does not race.
+Bug reports, feature requests, and documentation issues use the templates in this repository. Report vulnerabilities in private, as described in [SECURITY.md](SECURITY.md). Do not open a public issue for a vulnerability.
 
-## Env policy
+## Documentation
 
-- Root `.env` is for infrastructure only (`docker-compose` ports/credentials).
-- Runtime configs must live in service/app folders:
-  - `services/api/.env`
-  - `services/worker/.env`
-  - `apps/*/.env`
-- Do not duplicate runtime variables in root `.env`.
-
-## Local services
-
-- Postgres: `localhost:${POSTGRES_PORT}`
-- Redis: `localhost:${REDIS_PORT}`
-- MinIO: `http://localhost:${MINIO_PORT}`
-- MinIO Console: `http://localhost:${MINIO_CONSOLE_PORT}`
-
-## Stop infrastructure
-
-```bash
-yarn infra:down
-```
+- [Install](docs/install.md)
+- [Upgrade](docs/upgrade.md)
+- [Backup and restore](docs/backup.md)
+- [Security model](docs/security-model.md)
+- [Security policy](SECURITY.md)
+- [Changelog](CHANGELOG.md)
+- [License](LICENSE)

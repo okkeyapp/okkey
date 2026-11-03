@@ -380,7 +380,7 @@ export function loadConfig(): ApiConfig {
   const enterpriseModulesEnabled =
     enterpriseModulesRequested && isEnterpriseBackendLoadable(enterpriseModulesPath);
 
-  // SaaS deployment mode lives in okkey-enterprise/backend/.env (not public Core examples).
+  // SaaS deployment mode is loaded from the enterprise backend env overlay, not from Core examples.
   if (enterpriseModulesEnabled) {
     const enterpriseBackendEnvDir = path.join(enterpriseModulesPath, "backend");
     applyEnterpriseBackendEnvToProcess(loadEnterpriseBackendEnv(enterpriseBackendEnvDir));

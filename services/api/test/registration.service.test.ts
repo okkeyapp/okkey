@@ -21,7 +21,7 @@ function baseInput() {
     },
     serverKeyShare: new Uint8Array(32).fill(2),
     passwordKdfSalt: new Uint8Array(16).fill(3),
-    passwordKdfParamsVersion: 1,
+    passwordKdfParamsVersion: 2,
     deviceFingerprint: "b".repeat(64),
     deviceName: "d",
     devicePublicKey: Buffer.from("pk").toString("base64"),

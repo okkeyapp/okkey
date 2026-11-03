@@ -81,6 +81,25 @@ export class RedisCache {
     }
   }
 
+  /** Atomic get-and-delete when the driver supports it; otherwise get then del. */
+  async getDel(key: string): Promise<string | null> {
+    try {
+      const withGetDel = this.client as RedisClientLike & {
+        getDel?: (key: string) => Promise<string | null>;
+      };
+      if (typeof withGetDel.getDel === "function") {
+        return await withGetDel.getDel(key);
+      }
+      const value = await this.client.get(key);
+      if (value !== null) {
+        await this.client.del(key);
+      }
+      return value;
+    } catch (error) {
+      throw new StorageQueryError("redis getDel failed", error);
+    }
+  }
+
   async set(key: string, value: string): Promise<void> {
     try {
       await this.client.set(key, value);
