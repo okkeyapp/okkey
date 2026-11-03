@@ -169,7 +169,7 @@ test("GET /workspaces/:workspaceId/vaults accepts Authorization Bearer", async (
 test("GET /workspaces/:workspaceId/vaults rejects an unbound full Bearer session", async () => {
   const res = await dispatch({
     method: "GET",
-    url: "/workspaces/w1/vaults",
+    url: "/workspaces/1000000000000000001/vaults",
     headers: { authorization: "Bearer test-access-token" },
     sessionService: {
       async resolveAccessToken() {

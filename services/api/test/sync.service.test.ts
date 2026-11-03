@@ -908,11 +908,11 @@ test("appendEvent rejects crypto profile v1 with the default allowlist", async (
   const service = new SyncService({
     vaults: {
       findById: async () => ({
-        id: "v1",
-        workspaceId: "w1",
+        id: "1000000000000000002",
+        workspaceId: "1000000000000000001",
         name: "Vault",
         isPersonal: false,
-        ownerId: "u1",
+        ownerId: "1000000000000000003",
         cryptoVersion: 2,
         createdAt: "",
         updatedAt: "",
@@ -929,7 +929,7 @@ test("appendEvent rejects crypto profile v1 with the default allowlist", async (
 
   await assert.rejects(
     () =>
-      service.appendEvent("v1", "u1", {
+      service.appendEvent("1000000000000000002", "1000000000000000003", {
         eventType: "ITEM_UPDATE",
         encryptedBlob: mkBlob("x", 1),
         baseVersion: 0,
