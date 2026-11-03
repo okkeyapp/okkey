@@ -282,7 +282,7 @@ test("POST /devices/register returns 409 when trusted fingerprint keys differ", 
 test("POST /devices/:id/approve requires trusted approver headers", async () => {
   const res = await dispatch({
     method: "POST",
-    url: "/devices/d-pending/approve",
+    url: "/devices/1000000000000000001/approve",
     headers: { "x-user-id": "u1" },
   });
 
@@ -294,7 +294,7 @@ test("POST /devices/:id/approve requires trusted approver headers", async () => 
 test("POST /devices/:id/approve returns trusted status", async () => {
   const res = await dispatch({
     method: "POST",
-    url: "/devices/d-pending/approve",
+    url: "/devices/1000000000000000001/approve",
     headers: { "x-user-id": "u1", "x-device-id": "d-trusted" },
     deviceService: createDeviceServiceStub({
       approveDevice: async () => ({ deviceId: "d-pending", status: "trusted" }),
@@ -310,7 +310,7 @@ test("POST /devices/:id/approve returns trusted status", async () => {
 test("POST /devices/:id/reject returns revoked status", async () => {
   const res = await dispatch({
     method: "POST",
-    url: "/devices/d-pending/reject",
+    url: "/devices/1000000000000000001/reject",
     headers: { "x-user-id": "u1", "x-device-id": "d-trusted" },
     body: { reason: "unknown login" },
     deviceService: createDeviceServiceStub({
@@ -327,7 +327,7 @@ test("POST /devices/:id/reject returns revoked status", async () => {
 test("device approval routes map DEVICE_APPROVAL_EXPIRED", async () => {
   const res = await dispatch({
     method: "POST",
-    url: "/devices/d-pending/approve",
+    url: "/devices/1000000000000000001/approve",
     headers: { "x-user-id": "u1", "x-device-id": "d-trusted" },
     deviceService: createDeviceServiceStub({
       approveDevice: async () => {
@@ -450,7 +450,7 @@ test("GET /devices accepts device_fingerprint query when header is absent", asyn
 test("PATCH /devices/:id renames device", async () => {
   const res = await dispatch({
     method: "PATCH",
-    url: "/devices/d1",
+    url: "/devices/1000000000000000002",
     headers: { "x-user-id": "u1" },
     body: { device_name: "Office laptop" },
     deviceService: createDeviceServiceStub({
@@ -493,7 +493,7 @@ test("POST /devices/:id/revoke rejects invalid device id with 400", async () => 
   });
   assert.equal(res.statusCode, 400);
   const payload = JSON.parse(res.body) as { error: string };
-  assert.equal(payload.error, "DEVICE_BAD_REQUEST");
+  assert.equal(payload.error, "INVALID_DEVICE_ID");
   assert.equal(revoked, false);
 });
 
@@ -507,7 +507,7 @@ test("POST /devices/:id/revoke rejects oversized device id with 400", async () =
   });
   assert.equal(res.statusCode, 400);
   const payload = JSON.parse(res.body) as { error: string };
-  assert.equal(payload.error, "DEVICE_BAD_REQUEST");
+  assert.equal(payload.error, "INVALID_DEVICE_ID");
 });
 
 test("POST /devices/:id/revoke rejects revoking the caller device via header", async () => {
@@ -957,7 +957,7 @@ test("POST /devices/:id/revoke rejects a leading-zero device id without revoking
   });
   assert.equal(res.statusCode, 400);
   const payload = JSON.parse(res.body) as { error: string };
-  assert.equal(payload.error, "DEVICE_BAD_REQUEST");
+  assert.equal(payload.error, "INVALID_DEVICE_ID");
   assert.equal(revoked, false);
 });
 

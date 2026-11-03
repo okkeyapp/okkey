@@ -42,11 +42,11 @@ function createSyncServiceWithLogger(config: {
   const service = new SyncService({
     vaults: {
       findById: async () => ({
-        id: "v1",
-        workspaceId: "w1",
+        id: "1000000000000000002",
+        workspaceId: "1000000000000000001",
         name: "Vault",
         isPersonal: false,
-        ownerId: "u1",
+        ownerId: "1000000000000000003",
         cryptoVersion: 2,
         createdAt: "",
         updatedAt: "",
@@ -110,7 +110,7 @@ test("sync append is blocked when rollout state is stop for path", async () => {
 
   await assert.rejects(
     () =>
-      service.appendEvent("v1", "u1", {
+      service.appendEvent("1000000000000000002", "1000000000000000003", {
         eventType: "ITEM_UPDATE",
         encryptedBlob: mkBlob("x", 2),
         baseVersion: 0,
@@ -136,7 +136,7 @@ test("stop/resume drill: sync write recovers after rollout resume", async () => 
   });
   await assert.rejects(
     () =>
-      blocked.service.appendEvent("v1", "u1", {
+      blocked.service.appendEvent("1000000000000000002", "1000000000000000003", {
         eventType: "ITEM_UPDATE",
         encryptedBlob: mkBlob("x", 2),
         baseVersion: 0,
@@ -149,7 +149,7 @@ test("stop/resume drill: sync write recovers after rollout resume", async () => 
     cryptoRolloutState: "resume",
     cryptoRolloutStopWritePaths: ["sync.append"],
   });
-  const result = await resumed.service.appendEvent("v1", "u1", {
+  const result = await resumed.service.appendEvent("1000000000000000002", "1000000000000000003", {
     eventType: "ITEM_UPDATE",
     encryptedBlob: mkBlob("x", 2),
     baseVersion: 0,

@@ -3,8 +3,10 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { testEntityId } from "./test-entity-id.ts";
 import test from "node:test";
 import { createApiApp } from "../src/app.ts";
+import type { AccountRecoveryService } from "../src/account-recovery/service.ts";
 import { CapsuleServiceError, type CapsuleService } from "../src/capsule/service.ts";
 import type { ApiConfig } from "../src/config.ts";
+import type { SessionService } from "../src/session/service.ts";
 import { createTestApiConfig } from "./test-api-config.ts";
 
 class MockResponse {
@@ -94,10 +96,16 @@ async function dispatch(input: {
   headers?: Record<string, string>;
   body?: unknown;
   capsuleService?: CapsuleService;
+  sessionService?: SessionService;
+  accountRecoveryService?: AccountRecoveryService;
   logs?: Array<Record<string, unknown>>;
 }) {
   const app = createApiApp(config, loggerStub(input.logs), {
     capsuleService: input.capsuleService ?? createCapsuleServiceStub(),
+    ...(input.sessionService ? { sessionService: input.sessionService } : {}),
+    ...(input.accountRecoveryService
+      ? { accountRecoveryService: input.accountRecoveryService }
+      : {}),
   });
   const req = {
     method: input.method,
@@ -164,7 +172,7 @@ test("GET /capsules/:capsuleId/owner returns owner detail", async () => {
 test("POST /workspaces/:workspaceId/capsules requires auth", async () => {
   const res = await dispatch({
     method: "POST",
-    url: "/workspaces/w1/capsules",
+    url: `/workspaces/${testEntityId()}/capsules`,
     body: { type: "item", encryptedPayload: mkBlob("x") },
   });
   assert.equal(res.statusCode, 401);
@@ -219,6 +227,89 @@ test("capsules routes reject unsafe key transport in URL query", async () => {
   assert.equal(res.statusCode, 400);
   const payload = JSON.parse(res.body) as { error: string };
   assert.equal(payload.error, "CAPSULE_UNSAFE_KEY_TRANSPORT");
+});
+
+test("GET /capsule-approval-requests/:id rejects a malformed guestSessionId before lookup", async () => {
+  const requestId = testEntityId();
+  const lookups = { session: 0, recovery: 0, status: 0 };
+  const malformed = [
+    "%00",
+    "not-a-session",
+    "guest",
+    "bad%20id",
+    "%0A",
+  ];
+  for (const guestSessionId of malformed) {
+    const res = await dispatch({
+      method: "GET",
+      url: `/capsule-approval-requests/${requestId}?guestSessionId=${guestSessionId}`,
+      headers: { authorization: "Bearer tok" },
+      capsuleService: createCapsuleServiceStub({
+        getApprovalStatus: async () => {
+          lookups.status += 1;
+          throw new Error("should not query");
+        },
+      }),
+      sessionService: {
+        resolveAccessToken: async () => {
+          lookups.session += 1;
+          return null;
+        },
+      } as unknown as SessionService,
+      accountRecoveryService: {
+        hasExportedRecoveryKey: async () => {
+          lookups.recovery += 1;
+          return false;
+        },
+      } as unknown as AccountRecoveryService,
+    });
+    assert.equal(res.statusCode, 400, guestSessionId);
+    const payload = JSON.parse(res.body) as { error: string };
+    assert.equal(payload.error, "INVALID_GUEST_SESSION_ID", guestSessionId);
+  }
+  assert.equal(lookups.session, 0);
+  assert.equal(lookups.recovery, 0);
+  assert.equal(lookups.status, 0);
+});
+
+test("GET /capsule-approval-requests/:id accepts a guest session token and still requires one", async () => {
+  const requestId = testEntityId();
+  const guestSessionId = "550e8400-e29b-41d4-a716-446655440000";
+  let seenGuest: string | undefined;
+  const ok = await dispatch({
+    method: "GET",
+    url: `/capsule-approval-requests/${requestId}?guestSessionId=${encodeURIComponent(`  ${guestSessionId}  `)}`,
+    capsuleService: createCapsuleServiceStub({
+      getApprovalStatus: async (_requestId, _userId, guest) => {
+        seenGuest = guest;
+        return { requestId, status: "pending" };
+      },
+    }),
+  });
+  assert.equal(ok.statusCode, 200);
+  assert.equal(seenGuest, guestSessionId);
+
+  const guestToken = `guest-session-${testEntityId()}`;
+  let seenToken: string | undefined;
+  const tokenRes = await dispatch({
+    method: "GET",
+    url: `/capsule-approval-requests/${requestId}?guestSessionId=${encodeURIComponent(guestToken)}`,
+    capsuleService: createCapsuleServiceStub({
+      getApprovalStatus: async (_requestId, _userId, guest) => {
+        seenToken = guest;
+        return { requestId, status: "pending" };
+      },
+    }),
+  });
+  assert.equal(tokenRes.statusCode, 200);
+  assert.equal(seenToken, guestToken);
+
+  const missing = await dispatch({
+    method: "GET",
+    url: `/capsule-approval-requests/${requestId}`,
+  });
+  assert.equal(missing.statusCode, 401);
+  assert.equal(JSON.parse(missing.body).error, "AUTH_REQUIRED");
 });
 
 test("request logger redacts sensitive key transport query values", async () => {

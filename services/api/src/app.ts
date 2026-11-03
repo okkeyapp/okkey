@@ -85,6 +85,7 @@ import {
   createCapsuleApprovalEligibilityRoute,
   createCapsuleApprovalResolveRoute,
   createCapsuleApprovalStatusRoute,
+  guardGuestSessionIdQuery,
   createCapsuleCreateRoute,
   createCapsuleDeleteRoute,
   createCapsuleMetadataRoute,
@@ -1080,7 +1081,9 @@ export function createApiApp(
     app.route(
       "GET",
       "/capsule-approval-requests/:requestId",
-      gateVaultUse(createCapsuleApprovalStatusRoute(deps.capsuleService, resolveUserId)),
+      guardGuestSessionIdQuery(
+        gateVaultUse(createCapsuleApprovalStatusRoute(deps.capsuleService, resolveUserId)),
+      ),
     );
     app.route(
       "GET",

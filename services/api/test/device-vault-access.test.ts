@@ -30,6 +30,8 @@ function loggerStub() {
 
 const SESSION_FP = "web_app-chrome-macos-14.5";
 const OTHER_FP = "web_app-firefox-linux-6.1";
+const WORKSPACE_ID = "1000000000000000001";
+const VAULT_ID = "1000000000000000002";
 
 test("vault routes reject pending, revoked, and blocked devices and keep device list open", async () => {
   let deviceStatus = "trusted";
@@ -114,13 +116,13 @@ test("vault routes reject pending, revoked, and blocked devices and keep device 
 
   const paths: Array<{ method: string; url: string; body?: unknown }> = [
     { method: "GET", url: "/workspaces" },
-    { method: "GET", url: "/workspaces/w1/vaults" },
-    { method: "GET", url: "/vaults/v1" },
-    { method: "GET", url: "/vaults/v1/key" },
-    { method: "GET", url: "/vaults/v1/events" },
+    { method: "GET", url: `/workspaces/${WORKSPACE_ID}/vaults` },
+    { method: "GET", url: `/vaults/${VAULT_ID}` },
+    { method: "GET", url: `/vaults/${VAULT_ID}/key` },
+    { method: "GET", url: `/vaults/${VAULT_ID}/events` },
     {
       method: "POST",
-      url: "/vaults/v1/events",
+      url: `/vaults/${VAULT_ID}/events`,
       body: { eventType: "ITEM_UPDATE", encryptedBlob: { payload: "aa" }, baseVersion: 0 },
     },
     { method: "GET", url: "/account/recovery/key/wrap" },

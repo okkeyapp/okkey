@@ -28,7 +28,7 @@ test("createCapsule rejects disallowed crypto profile", async () => {
 
   await assert.rejects(
     () =>
-      service.createCapsule("w1", "u1", {
+      service.createCapsule("1000000000000000001", "1000000000000000003", {
         type: "item",
         encryptedPayload: {
           crypto_version: 1,
@@ -67,7 +67,7 @@ test("createCapsule rejects unsafe key transport mode", async () => {
 
   await assert.rejects(
     () =>
-      service.createCapsule("w1", "u1", {
+      service.createCapsule("1000000000000000001", "1000000000000000003", {
         type: "item",
         keyTransportMode: "query",
         encryptedPayload: {
@@ -107,7 +107,7 @@ test("createCapsule rejects hybrid-KEM guest key transport (q2-5 claim-reduce)",
 
   await assert.rejects(
     () =>
-      service.createCapsule("w1", "u1", {
+      service.createCapsule("1000000000000000001", "1000000000000000003", {
         type: "item",
         keyTransportMode: "hybrid_ecc_pq_v1" as "fragment",
         encryptedPayload: {
@@ -169,7 +169,7 @@ test("createCapsule strict mode rejects actor without PQ capability", async () =
     },
     users: {
       findById: async () => ({
-        id: "u1",
+        id: "1000000000000000003",
         email: "u1@okkey.local",
         publicKey: "pk",
         publicPqKey: null,
@@ -194,7 +194,7 @@ test("createCapsule strict mode rejects actor without PQ capability", async () =
 
   await assert.rejects(
     () =>
-      service.createCapsule("w1", "u1", {
+      service.createCapsule("1000000000000000001", "1000000000000000003", {
         type: "item",
         encryptedPayload: {
           crypto_version: 2,
@@ -220,7 +220,7 @@ test("createCapsule compat mode continues when actor has no PQ capability", asyn
     },
     users: {
       findById: async () => ({
-        id: "u1",
+        id: "1000000000000000003",
         email: "u1@okkey.local",
         publicKey: "pk",
         publicPqKey: null,
@@ -245,7 +245,7 @@ test("createCapsule compat mode continues when actor has no PQ capability", asyn
 
   await assert.rejects(
     () =>
-      service.createCapsule("w1", "u1", {
+      service.createCapsule("1000000000000000001", "1000000000000000003", {
         type: "item",
         encryptedPayload: {
           crypto_version: 2,

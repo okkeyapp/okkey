@@ -136,7 +136,7 @@ test("capsule gate blocks create path and emits blocked metric", async () => {
 
   await assert.rejects(
     () =>
-      service.createCapsule("w1", "u1", {
+      service.createCapsule("1000000000000000001", "1000000000000000003", {
         type: "item",
         encryptedPayload: {
           crypto_version: 2,
@@ -180,7 +180,7 @@ test("vault share gate blocks write path and emits blocked metric", async () => 
 
   await assert.rejects(
     () =>
-      service.shareVault("v1", "u1", {
+      service.shareVault("1000000000000000002", "1000000000000000003", {
         recipientUserId: "1156820912149401",
         encryptedVaultKey: {
           crypto_version: 2,

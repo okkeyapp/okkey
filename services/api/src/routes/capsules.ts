@@ -38,6 +38,7 @@ interface OpenCapsuleBody {
 }
 
 import { isEntityId } from "../entity-id.ts";
+import { readGuestSessionIdQuery } from "../capsule/guest-session-id.ts";
 
 export function createCapsuleCreateRoute(
   capsuleService: CapsuleService,
@@ -437,19 +438,53 @@ export function createCapsuleApprovalEligibilityRoute(
   };
 }
 
+function rejectInvalidGuestSessionIdQuery(ctx: {
+  req: IncomingMessage;
+  res: Parameters<typeof json>[0];
+  requestId: string;
+}): boolean {
+  if (readGuestSessionIdQuery(ctx.req.url).kind !== "invalid") {
+    return false;
+  }
+  json(
+    ctx.res,
+    400,
+    errorPayload("INVALID_GUEST_SESSION_ID", "guestSessionId is invalid", ctx.requestId),
+  );
+  return true;
+}
+
+/** Format-check `guestSessionId` before auth or recovery lookups. */
+export function guardGuestSessionIdQuery(handler: RouteHandler): RouteHandler {
+  return async (ctx) => {
+    if (rejectInvalidGuestSessionIdQuery(ctx)) {
+      return;
+    }
+    await handler(ctx);
+  };
+}
+
 export function createCapsuleApprovalStatusRoute(
   capsuleService: CapsuleService,
   resolveUserId: (req: IncomingMessage) => Promise<string | null>,
 ): RouteHandler {
   return async (ctx) => {
+    const guestSession = readGuestSessionIdQuery(ctx.req.url);
+    if (guestSession.kind === "invalid") {
+      json(
+        ctx.res,
+        400,
+        errorPayload("INVALID_GUEST_SESSION_ID", "guestSessionId is invalid", ctx.requestId),
+      );
+      return;
+    }
     const userId = await resolveUserId(ctx.req);
+    const guestSessionId = guestSession.kind === "value" ? guestSession.id : undefined;
+    if (!userId && !guestSessionId) {
+      json(ctx.res, 401, errorPayload("AUTH_REQUIRED", "auth required", ctx.requestId));
+      return;
+    }
     try {
-      const url = new URL(ctx.req.url ?? "/", "http://localhost");
-      const guestSessionId = url.searchParams.get("guestSessionId")?.trim() || undefined;
-      if (!userId && !guestSessionId) {
-        json(ctx.res, 401, errorPayload("AUTH_REQUIRED", "auth required", ctx.requestId));
-        return;
-      }
       json(
         ctx.res,
         200,

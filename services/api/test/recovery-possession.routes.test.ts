@@ -270,7 +270,7 @@ test("pending session proves with a device-bound challenge and does not receive 
     "/account/recovery/identity-encrypted-key",
     "/workspaces",
     "/account/profile",
-    "/vaults/v1/key",
+    "/vaults/1000000000000000002/key",
   ]) {
     const blocked = await call(app, "GET", url);
     assert.equal(blocked.statusCode, 401, url);
@@ -354,7 +354,7 @@ test("pending session proves with a device-bound challenge and does not receive 
     200,
   );
   assert.equal((await call(app, "GET", "/account/profile")).statusCode, 401);
-  assert.equal((await call(app, "GET", "/vaults/v1/key")).statusCode, 401);
+  assert.equal((await call(app, "GET", "/vaults/1000000000000000002/key")).statusCode, 401);
 
   const claim = await call(app, "POST", "/devices/register", {
     device_public_key: Buffer.alloc(32, 3).toString("base64"),
@@ -365,7 +365,7 @@ test("pending session proves with a device-bound challenge and does not receive 
   });
   assert.equal(claim.statusCode, 200);
   assert.equal(claim.json.status, "trusted");
-  assert.equal((await call(app, "GET", "/vaults/v1/key")).statusCode, 200);
+  assert.equal((await call(app, "GET", "/vaults/1000000000000000002/key")).statusCode, 200);
 });
 
 test("legacy wrap and a session with no device do not receive ciphertext", async () => {

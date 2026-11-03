@@ -180,6 +180,9 @@ export class VaultSharingService {
   }
 
   async getUserVaultKey(vaultId: string, userId: string): Promise<{ encryptedVaultKey: EncryptedBlob }> {
+    if (!isEntityId(vaultId.trim())) {
+      throw new VaultSharingServiceError("INVALID_VAULT_ID", 400, "vaultId must be a snowflake entity id");
+    }
     await this.ensureVaultReadable(vaultId, userId);
     const rows = await this.db.query<{ encrypted_vault_key: Buffer }>(
       "SELECT encrypted_vault_key FROM vault_keys WHERE vault_id = $1 AND user_id = $2",

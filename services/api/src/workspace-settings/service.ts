@@ -1,4 +1,4 @@
-import type { WorkspacesRepository } from "../storage/repositories.ts";
+import type { VaultsRepository, WorkspacesRepository } from "../storage/repositories.ts";
 import type { QueryExecutor } from "../storage/postgres.ts";
 import type { ApiConfig } from "../config.ts";
 import { workspaceHasPlanFeature } from "../plan-entitlements.ts";
@@ -71,17 +71,20 @@ export interface WorkspaceSettingsServiceDeps {
     WorkspacesRepository,
     "findById" | "hasAccess" | "updateGeneralSettings" | "deleteOwnedWorkspace"
   >;
+  vaults: Pick<VaultsRepository, "findById">;
   db: QueryExecutor;
   config: Pick<ApiConfig, "deploymentMode" | "enterpriseModulesEnabled">;
 }
 
 export class WorkspaceSettingsService {
   private readonly workspaces: WorkspaceSettingsServiceDeps["workspaces"];
+  private readonly vaults: WorkspaceSettingsServiceDeps["vaults"];
   private readonly db: QueryExecutor;
   private readonly config: WorkspaceSettingsServiceDeps["config"];
 
   constructor(deps: WorkspaceSettingsServiceDeps) {
     this.workspaces = deps.workspaces;
+    this.vaults = deps.vaults;
     this.db = deps.db;
     this.config = deps.config;
   }
@@ -136,6 +139,9 @@ export class WorkspaceSettingsService {
       update.tileColor = patch.tileColor === null ? null : sanitizeTileColor(patch.tileColor);
     }
     if (patch.logoVaultId !== undefined) {
+      if (patch.logoVaultId !== null) {
+        await this.requireWorkspaceLogoVault(workspaceId, patch.logoVaultId);
+      }
       update.logoVaultId = patch.logoVaultId;
     }
     if (patch.logoAttachmentId !== undefined) {
@@ -236,6 +242,18 @@ export class WorkspaceSettingsService {
       );
     }
     return workspace;
+  }
+
+  /** Reject missing / foreign vaults before the `logo_vault_id` FK can surface as a 500. */
+  private async requireWorkspaceLogoVault(workspaceId: string, logoVaultId: string): Promise<void> {
+    const vault = await this.vaults.findById(logoVaultId);
+    if (!vault || vault.workspaceId !== workspaceId) {
+      throw new WorkspaceSettingsServiceError(
+        "LOGO_VAULT_NOT_FOUND",
+        404,
+        "logo vault not found",
+      );
+    }
   }
 }
 
