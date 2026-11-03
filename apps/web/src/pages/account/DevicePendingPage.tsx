@@ -158,6 +158,10 @@ export default function DevicePendingPage() {
                   {t("web.devicePending.retry")}
                 </Button>
               )
+            ) : mode === "pending" ? (
+              <Button type="button" variant="outline" asChild>
+                <Link to={ACCOUNT_RESTORE_PATH}>{t("web.devicePending.recoveryRequiredCta")}</Link>
+              </Button>
             ) : null
           }
         />

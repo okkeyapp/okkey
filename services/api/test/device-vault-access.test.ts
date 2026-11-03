@@ -35,6 +35,7 @@ const VAULT_ID = "1000000000000000002";
 
 test("vault routes reject pending, revoked, and blocked devices and keep device list open", async () => {
   let deviceStatus = "trusted";
+  let sessionDeviceId: string | null = "d1";
   const deviceService = new DeviceService({
     devices: {
       isTrustedDevice: async () => deviceStatus === "trusted",
@@ -46,11 +47,18 @@ test("vault routes reject pending, revoked, and blocked devices and keep device 
   const sessionService = {
     resolveAccessToken: async () => ({
       userId: "u1",
-      deviceId: "d1",
+      deviceId: sessionDeviceId,
       scope: null,
       tokenHash: "hash",
       expiresAt: "2099-01-01T00:00:00.000Z",
+      recoveryProvedAt: null,
+      recoveryChallenge: null,
+      recoveryChallengeExpiresAt: null,
     }),
+    hashAccessToken: () => "hash",
+    setRecoveryChallenge: async () => sessionDeviceId != null,
+    consumeRecoveryChallenge: async () => false,
+    markRecoveryProved: async () => false,
   } as unknown as SessionService;
   const identityBlob = Buffer.from(
     JSON.stringify({
@@ -96,7 +104,26 @@ test("vault routes reject pending, revoked, and blocked devices and keep device 
     } as unknown as VaultSharingService,
     accountRecoveryService: {
       hasExportedRecoveryKey: async () => true,
-      getKeyWrap: async () => ({ ok: true }),
+      getKeyWrap: async () => ({ encryptedBlob: { payload: "wrap-secret" } }),
+      getIdentityEncryptedKey: async () => ({
+        encrypted_private_key: { payload: "identity-secret" },
+      }),
+      getRecoveryPossession: async () => ({ kind: "ready" as const, publicKey: "cHVibGlj" }),
+      getStatus: async () => ({
+        entitlements: { recoveryKey: true, trustedDevices: false, trustedContacts: true },
+        settings: { keyEnabled: true, devicesEnabled: false, contactsEnabled: true },
+        key: {
+          enrolled: true,
+          createdAt: "2026-01-01T00:00:00.000Z",
+          rotatedAt: null,
+          exportedAt: "2026-01-02T00:00:00.000Z",
+        },
+        contacts: [{ id: "c1", email: "hidden@example.com", status: "confirmed" }],
+        confirmedContactCount: 1,
+        minConfirmedContacts: 3,
+        pendingInvites: [],
+        servingAsContact: [],
+      }),
     } as unknown as AccountRecoveryService,
     usersRepository: {
       loadAccountProfile: async () => ({
@@ -126,6 +153,7 @@ test("vault routes reject pending, revoked, and blocked devices and keep device 
       body: { eventType: "ITEM_UPDATE", encryptedBlob: { payload: "aa" }, baseVersion: 0 },
     },
     { method: "GET", url: "/account/recovery/key/wrap" },
+    { method: "GET", url: "/account/recovery/identity-encrypted-key" },
     { method: "GET", url: "/account/profile" },
     { method: "GET", url: "/account/vault-unlock/status" },
     {
@@ -143,34 +171,64 @@ test("vault routes reject pending, revoked, and blocked devices and keep device 
     } as IncomingMessage;
     const res = new MockResponse();
     await app.handler()(req, res as unknown as ServerResponse);
-    return res.statusCode;
+    return { statusCode: res.statusCode, body: res.body };
+  }
+
+  async function assertRecoveryMethodsOpen(label: string) {
+    const methods = await call("GET", "/account/recovery");
+    assert.equal(methods.statusCode, 200, `${label} GET /account/recovery`);
+    assert.equal(methods.body.includes("hidden@example.com"), false, `${label} contact directory`);
+    assert.equal(methods.body.includes("wrap-secret"), false, `${label} wrap material`);
+    const started = await call("POST", "/account/recovery/key/prove", {});
+    if (sessionDeviceId) {
+      assert.equal(started.statusCode, 200, `${label} recovery challenge`);
+      assert.equal(started.body.includes("wrap-secret"), false);
+      assert.equal(started.body.includes("identity-secret"), false);
+    } else {
+      assert.equal(started.statusCode, 403, `${label} recovery challenge without a device`);
+      assert.equal(started.body.includes("RECOVERY_PROOF_REQUIRES_DEVICE"), true);
+      assert.equal(started.body.includes("wrap-secret"), false);
+    }
   }
 
   for (const status of ["pending", "revoked", "blocked"]) {
     deviceStatus = status;
+    sessionDeviceId = "d1";
     for (const path of paths) {
-      const code = await call(path.method, path.url, path.body);
+      const code = (await call(path.method, path.url, path.body)).statusCode;
       assert.equal(code, 401, `${status} ${path.method} ${path.url} -> ${code}`);
     }
-    const devices = await call("GET", "/devices");
+    const devices = (await call("GET", "/devices")).statusCode;
     assert.equal(devices, 200, `${status} GET /devices`);
+    await assertRecoveryMethodsOpen(status);
   }
+
+  sessionDeviceId = null;
+  deviceStatus = "pending";
+  for (const path of paths) {
+    const code = (await call(path.method, path.url, path.body)).statusCode;
+    assert.equal(code, 401, `unbound ${path.method} ${path.url} -> ${code}`);
+  }
+  assert.equal((await call("GET", "/devices")).statusCode, 200);
+  await assertRecoveryMethodsOpen("unbound");
 
   deviceStatus = "trusted";
+  sessionDeviceId = "d1";
   for (const path of paths.filter((path) => !path.url.includes("unlock-bootstrap"))) {
-    const code = await call(path.method, path.url, path.body);
+    const code = (await call(path.method, path.url, path.body)).statusCode;
     assert.notEqual(code, 401, `trusted ${path.method} ${path.url}`);
   }
+  const trustedMethods = await call("GET", "/account/recovery");
+  assert.equal(trustedMethods.statusCode, 200);
+  assert.equal(trustedMethods.body.includes("hidden@example.com"), true);
 
-  const foreign = await call(
-    "GET",
-    `/vault/unlock-bootstrap?device_fingerprint=${OTHER_FP}`,
-  );
+  const foreign = (
+    await call("GET", `/vault/unlock-bootstrap?device_fingerprint=${OTHER_FP}`)
+  ).statusCode;
   assert.equal(foreign, 200);
 
-  const own = await call(
-    "GET",
-    `/vault/unlock-bootstrap?device_fingerprint=${SESSION_FP}`,
-  );
+  const own = (
+    await call("GET", `/vault/unlock-bootstrap?device_fingerprint=${SESSION_FP}`)
+  ).statusCode;
   assert.equal(own, 200);
 });
