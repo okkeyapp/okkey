@@ -5,7 +5,7 @@ import {
   type WorkspaceSettingsResponseDto,
 } from "@okkey/types";
 
-export const DEFAULT_WORKSPACE_TILE_COLOR = "#3b82f6";
+export { DEFAULT_WORKSPACE_TILE_COLOR } from "@okkey/ui";
 
 export const DELETED_ITEMS_RETENTION_DAY_OPTIONS = [1, 3, 7, 14, 30] as const;
 
@@ -54,18 +54,6 @@ export type WorkspaceSettingsSectionId =
   | "billing";
 
 export const DEFAULT_WORKSPACE_SETTINGS_SECTION: WorkspaceSettingsSectionId = "general";
-
-/** Nested under General in the settings sidebar (same permissions as `general`). */
-export const WORKSPACE_SETTINGS_GENERAL_SUBSECTIONS: readonly WorkspaceSettingsSectionId[] = [
-  "items",
-  "capsules",
-];
-
-export function isWorkspaceSettingsGeneralSubsection(
-  section: WorkspaceSettingsSectionId,
-): boolean {
-  return WORKSPACE_SETTINGS_GENERAL_SUBSECTIONS.includes(section);
-}
 
 export function isWorkspaceSettingsSectionId(value: string): value is WorkspaceSettingsSectionId {
   return [

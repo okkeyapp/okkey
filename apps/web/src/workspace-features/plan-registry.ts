@@ -6,13 +6,15 @@ export type WorkspaceSettingsPlanSectionProps = {
   planTier: string | null | undefined;
   t: (messageKey: string, values?: WebMessageValues) => string;
   canRequest: boolean;
+  /** Workspace display name for license-request auto fields (optional). */
+  workspaceName?: string;
 };
 
 /**
  * Enterprise may replace Core’s self-hosted FREE plan notice.
- * - SaaS: full catalog + change-plan popup
- * - Self-hosted licensed: active license notice
- * Stub / open-core: null → Core FREE notice
+ * - SaaS: full catalog + change-plan popup (`plan_tier`)
+ * - Self-hosted with modules: EE plan section (effective ENTERPRISE)
+ * - Self-hosted without modules: Core FREE notice + sales request
  */
 export type WorkspaceSettingsPlanModule = {
   PlanSection: ComponentType<WorkspaceSettingsPlanSectionProps> | null;

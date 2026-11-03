@@ -238,6 +238,11 @@ export type KeyFieldProps = Omit<
   fileUploadConstraints?: KeyFieldFileUploadConstraints;
   onFileUpload?: KeyFieldFileUploadHandler;
   onFileOpen?: (file: KeyFieldFileValue) => Promise<string>;
+  /**
+   * When set, view-mode file click/open uses this instead of download + lightbox.
+   * Extension uses it to deep-link into web; leave unset on web so onFileOpen runs.
+   */
+  onFileActivate?: (file: KeyFieldFileValue) => void;
   autoFocusValue?: boolean;
   /** Bumps when the parent requests value focus again for the same field. */
   autoFocusValueRequest?: number;
@@ -281,6 +286,8 @@ export type KeyFieldProps = Omit<
   controlButtonClassName?: string;
   dragHandleProps?: React.HTMLAttributes<HTMLSpanElement>;
   addressFieldPlaceholders?: {
+    apartment: string;
+    house: string;
     street: string;
     city: string;
     state: string;
@@ -289,6 +296,8 @@ export type KeyFieldProps = Omit<
   };
   addressSearchCountriesPlaceholder?: string;
   addressNoCountriesFoundMessage?: string;
+  /** BCP 47 locale for address country labels (Intl.DisplayNames region). */
+  countryLocale?: string;
   recoveryCodesPlaceholder?: string;
   fileUploadLabel?: string;
   fileClearLabel?: string;
@@ -324,6 +333,7 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
       fileUploadConstraints = defaultKeyFieldFileUploadConstraints,
       onFileUpload,
       onFileOpen,
+      onFileActivate,
       autoFocusValue = false,
       autoFocusValueRequest = 0,
       reorderable = false,
@@ -362,6 +372,7 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
       addressFieldPlaceholders,
       addressSearchCountriesPlaceholder,
       addressNoCountriesFoundMessage,
+      countryLocale = "en",
       recoveryCodesPlaceholder,
       fileUploadLabel,
       fileClearLabel = "Delete file",
@@ -416,7 +427,7 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
       : (children ?? value);
     const formattedAddressValue =
       addressValue && typeof stringValue === "string"
-        ? formatKeyFieldAddressCopyValue(parseKeyFieldAddressValue(stringValue))
+        ? formatKeyFieldAddressCopyValue(parseKeyFieldAddressValue(stringValue), countryLocale)
         : "";
     const parsedRecoveryCodesValue =
       recoveryCodesValue && typeof stringValue === "string"
@@ -925,6 +936,11 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
         return;
       }
 
+      if (onFileActivate) {
+        onFileActivate(parsedFileValue);
+        return;
+      }
+
       void (async () => {
         const url = await resolveFileUrl(parsedFileValue);
         if (!url) {
@@ -1303,6 +1319,7 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
                       addressSearchCountriesPlaceholder
                     }
                     noCountriesFoundMessage={addressNoCountriesFoundMessage}
+                    countryLocale={countryLocale}
                   />
                 ) : dateValue ? (
                   <KeyFieldDateInput
@@ -1315,6 +1332,8 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
                     onFocus={handleDateInputFocus}
                     onBlur={handleDateInputBlur}
                     placeholder={valuePlaceholder}
+                    aria-label={label}
+                    autoComplete={/bday|birth|рожд|dob/i.test(label) ? "bday" : undefined}
                   />
                 ) : (
                   <input

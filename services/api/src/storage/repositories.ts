@@ -20,6 +20,7 @@ import {
   type WorkspaceMonitoringCardSettingsDto,
 } from "@okkey/types";
 import type { QueryExecutor } from "./postgres.ts";
+import { lockUserDevices, withUserDeviceLock } from "./user-device-lock.ts";
 import {
   EntityNotFoundError,
   UniqueConstraintError,
@@ -127,6 +128,14 @@ export class UsersRepository {
       [email],
     );
     return rows[0] ? mapUser(rows[0]) : null;
+  }
+
+  /** True when at least one user row exists (self-host first-run uses the inverse). */
+  async hasAnyUsers(): Promise<boolean> {
+    const rows = await this.db.query<{ exists: boolean }>(
+      "SELECT EXISTS(SELECT 1 FROM users LIMIT 1) AS exists",
+    );
+    return Boolean(rows[0]?.exists);
   }
 
   async updateEmail(userId: string, email: string): Promise<UserRecord | null> {
@@ -376,15 +385,17 @@ export interface WorkspaceRecord {
   tileColor: string | null;
   logoVaultId: string | null;
   logoAttachmentId: string | null;
+  /** ISO timestamp when a plan-change / license request email was sent; null if never. */
+  planChangeRequestSentAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
 
 const WORKSPACE_SELECT_COLUMNS =
-  "id, name, owner_id, plan_tier, plan_custom_override, plan_feature_overrides, deleted_items_retention_days, allowed_file_extensions, max_file_size_mb, files_in_items_enabled, capsule_policies, monitoring_card_settings, tile_color, logo_vault_id, logo_attachment_id, created_at, updated_at";
+  "id, name, owner_id, plan_tier, plan_custom_override, plan_feature_overrides, deleted_items_retention_days, allowed_file_extensions, max_file_size_mb, files_in_items_enabled, capsule_policies, monitoring_card_settings, tile_color, logo_vault_id, logo_attachment_id, plan_change_request_sent_at, created_at, updated_at";
 
 const WORKSPACE_SELECT_COLUMNS_W =
-  "w.id, w.name, w.owner_id, w.plan_tier, w.plan_custom_override, w.plan_feature_overrides, w.deleted_items_retention_days, w.allowed_file_extensions, w.max_file_size_mb, w.files_in_items_enabled, w.capsule_policies, w.monitoring_card_settings, w.tile_color, w.logo_vault_id, w.logo_attachment_id, w.created_at, w.updated_at";
+  "w.id, w.name, w.owner_id, w.plan_tier, w.plan_custom_override, w.plan_feature_overrides, w.deleted_items_retention_days, w.allowed_file_extensions, w.max_file_size_mb, w.files_in_items_enabled, w.capsule_policies, w.monitoring_card_settings, w.tile_color, w.logo_vault_id, w.logo_attachment_id, w.plan_change_request_sent_at, w.created_at, w.updated_at";
 
 type WorkspaceRow = BaseRow & {
   name: string;
@@ -401,6 +412,7 @@ type WorkspaceRow = BaseRow & {
   tile_color: string | null;
   logo_vault_id: string | null;
   logo_attachment_id: string | null;
+  plan_change_request_sent_at?: string | Date | null;
 };
 
 export class WorkspacesRepository {
@@ -441,6 +453,31 @@ export class WorkspacesRepository {
       [id],
     );
     return rows[0] ? mapWorkspace(rows[0]) : null;
+  }
+
+  async countMembers(workspaceId: string): Promise<number> {
+    const rows = await this.db.query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count FROM workspace_members WHERE workspace_id = $1`,
+      [workspaceId],
+    );
+    return Number(rows[0]?.count ?? 0);
+  }
+
+  /**
+   * Marks (or refreshes) the workspace plan-change request sent timestamp.
+   * @returns true when a matching workspace row was updated.
+   */
+  async markPlanChangeRequestSent(workspaceId: string): Promise<boolean> {
+    const rows = await this.db.query<{ id: string }>(
+      `
+        UPDATE workspaces
+        SET plan_change_request_sent_at = now(), updated_at = now()
+        WHERE id = $1
+        RETURNING id
+      `,
+      [workspaceId],
+    );
+    return rows.length > 0;
   }
 
   async getDeletedItemsRetentionDays(id: string): Promise<number | null> {
@@ -517,6 +554,30 @@ export class WorkspacesRepository {
       [workspaceId, userId],
     );
     return Boolean(rows[0]?.can_access);
+  }
+
+  /** Workspace owner or member with builtin owner/admin role. */
+  async isOwnerOrAdmin(workspaceId: string, userId: string): Promise<boolean> {
+    const rows = await this.db.query<{ ok: boolean }>(
+      `
+        SELECT EXISTS (
+          SELECT 1
+          FROM workspaces w
+          LEFT JOIN workspace_members wm
+            ON wm.workspace_id = w.id
+           AND wm.user_id = $2
+          LEFT JOIN roles r
+            ON r.id = wm.role_id
+          WHERE w.id = $1
+            AND (
+              w.owner_id = $2
+              OR COALESCE(r.builtin_key, '') IN ('owner', 'admin')
+            )
+        ) AS ok
+      `,
+      [workspaceId, userId],
+    );
+    return Boolean(rows[0]?.ok);
   }
 
   async updateGeneralSettings(
@@ -930,6 +991,25 @@ export interface DeviceApprovalState {
   device: DeviceRecord | null;
 }
 
+async function deleteSessionsForDevices(
+  db: Pick<QueryExecutor, "query">,
+  deviceIds: string[],
+): Promise<void> {
+  const ids = [...new Set(deviceIds.filter((id) => id.length > 0))];
+  if (ids.length === 0) {
+    return;
+  }
+  await db.query(`DELETE FROM sessions WHERE device_id = ANY($1::bigint[])`, [ids]);
+}
+
+/** Presented public key does not match the trusted device that already owns this fingerprint. */
+export class TrustedDeviceKeyConflictError extends Error {
+  constructor() {
+    super("trusted device keys cannot be replaced");
+    this.name = "TrustedDeviceKeyConflictError";
+  }
+}
+
 export class DevicesRepository {
   private readonly db: QueryExecutor & {
     transaction<T>(fn: (tx: QueryExecutor) => Promise<T>): Promise<T>;
@@ -1091,8 +1171,9 @@ export class DevicesRepository {
     requestIp: string;
     now: string;
   }): Promise<DeviceRecord> {
-    return this.db.transaction(async (tx) => {
-      await tx.query(
+    return withUserDeviceLock(input.userId, () => this.db.transaction(async (tx) => {
+      await lockUserDevices(tx, input.userId);
+      const revokedDevices = await tx.query<{ id: string }>(
         `
           UPDATE devices
           SET
@@ -1101,8 +1182,13 @@ export class DevicesRepository {
           WHERE user_id = $1::bigint
             AND status = 'trusted'
             AND device_fingerprint <> $3
+          RETURNING id
         `,
         [input.userId, input.now, input.deviceFingerprint],
+      );
+      await deleteSessionsForDevices(
+        tx,
+        revokedDevices.map((row) => row.id),
       );
 
       await tx.query(
@@ -1252,7 +1338,7 @@ export class DevicesRepository {
         ],
       );
       return mapDevice(rows[0]!);
-    });
+    }));
   }
 
   async registerOrUpdate(input: {
@@ -1269,11 +1355,22 @@ export class DevicesRepository {
     userAgent: string;
     requestIp: string;
     now: string;
-  }): Promise<DeviceRecord> {
+    /**
+     * Recovery restore on a browser that lost its signing key. Insert a pending
+     * row for the new public key without changing the trusted row.
+     */
+    allowPendingAlongsideTrusted?: boolean;
+  }): Promise<DeviceRecord & { sendApprovalEmail: boolean; created: boolean }> {
     try {
+      return await withUserDeviceLock(input.userId, () => this.db.transaction(async (tx) => {
+      await lockUserDevices(tx, input.userId);
+      // Serialize parallel registers of the same fingerprint so only one approval email is sent.
+      await tx.query(`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, [
+        `okkey-device-register:${input.userId}:${input.deviceFingerprint}`,
+      ]);
       // Prefer upsert by fingerprint so the same browser (structured id) does not spawn
       // a second row when the local device public key was regenerated.
-      const existingByFingerprint = await this.db.query<{
+      const existingByFingerprint = await tx.query<{
         id: string;
         user_id: string;
         device_fingerprint: string;
@@ -1339,17 +1436,169 @@ export class DevicesRepository {
         const current = existingByFingerprint[0];
         if (current.status === "blocked") {
           if (current.blocked_until === null) {
-            return mapDevice(current);
+            return { ...mapDevice(current), sendApprovalEmail: false, created: false };
           }
           const blockedUntilMs =
             current.blocked_until instanceof Date
               ? current.blocked_until.getTime()
               : new Date(current.blocked_until).getTime();
           if (blockedUntilMs > new Date(input.now).getTime()) {
-            return mapDevice(current);
+            return { ...mapDevice(current), sendApprovalEmail: false, created: false };
           }
         }
-        const hasOtherTrusted = await this.db.query<{ n: string }>(
+        if (current.status === "trusted") {
+          if (current.device_public_key.trim() !== input.devicePublicKey.trim()) {
+            if (!input.allowPendingAlongsideTrusted) {
+              throw new TrustedDeviceKeyConflictError();
+            }
+            const siblingId = generateEntityId();
+            const sibling = await tx.query<{
+              id: string;
+              user_id: string;
+              device_fingerprint: string;
+              device_name: string;
+              device_public_key: string;
+              device_share: Buffer;
+              platform: string;
+              os_name: string;
+              os_version: string;
+              app_version: string;
+              client_type: string;
+              user_agent: string;
+              ip_first: string;
+              ip_last: string;
+              status: "trusted" | "pending" | "revoked" | "blocked";
+              created_at: string | Date;
+              last_seen_at: string | Date | null;
+              approved_by: string | null;
+              approved_at: string | Date | null;
+              rejected_at: string | Date | null;
+              rejection_reason: string | null;
+              revoked_at: string | Date | null;
+              inserted: boolean;
+            }>(
+              `
+                INSERT INTO devices (
+                  id,
+                  user_id,
+                  device_fingerprint,
+                  device_name,
+                  device_public_key,
+                  device_share,
+                  platform,
+                  os_name,
+                  os_version,
+                  app_version,
+                  client_type,
+                  user_agent,
+                  ip_first,
+                  ip_last,
+                  status,
+                  created_at
+                )
+                VALUES (
+                  $1,
+                  $2::bigint,
+                  $3,
+                  $4,
+                  $5,
+                  $6,
+                  $7,
+                  $8,
+                  $9,
+                  $10,
+                  $11,
+                  $12,
+                  $13,
+                  $13,
+                  'pending',
+                  $14::timestamptz
+                )
+                ON CONFLICT (user_id, device_fingerprint, device_public_key)
+                DO UPDATE SET
+                  device_name = EXCLUDED.device_name,
+                  platform = EXCLUDED.platform,
+                  os_name = EXCLUDED.os_name,
+                  os_version = EXCLUDED.os_version,
+                  app_version = EXCLUDED.app_version,
+                  client_type = EXCLUDED.client_type,
+                  user_agent = EXCLUDED.user_agent,
+                  ip_last = EXCLUDED.ip_last,
+                  status = CASE
+                    WHEN devices.status = 'revoked' THEN 'pending'
+                    ELSE devices.status
+                  END
+                RETURNING
+                  id,
+                  user_id,
+                  device_fingerprint,
+                  device_name,
+                  device_public_key,
+                  device_share,
+                  platform,
+                  os_name,
+                  os_version,
+                  app_version,
+                  client_type,
+                  user_agent,
+                  ip_first,
+                  ip_last,
+                  status,
+                  created_at,
+                  last_seen_at,
+                  approved_by,
+                  approved_at,
+                  rejected_at,
+                  rejection_reason,
+                  revoked_at,
+                  (xmax = 0) AS inserted
+              `,
+              [
+                siblingId,
+                input.userId,
+                input.deviceFingerprint,
+                input.deviceName,
+                input.devicePublicKey,
+                Buffer.from(input.deviceShare),
+                input.platform,
+                input.osName,
+                input.osVersion,
+                input.appVersion,
+                input.clientType,
+                input.userAgent,
+                input.requestIp,
+                input.now,
+              ],
+            );
+            const row = sibling[0];
+            if (!row || row.status === "trusted") {
+              throw new TrustedDeviceKeyConflictError();
+            }
+            return {
+              ...mapDevice(row),
+              sendApprovalEmail: false,
+              created: row.inserted === true,
+            };
+          }
+          await tx.query(
+            `
+              UPDATE devices
+              SET last_seen_at = $3::timestamptz, ip_last = $4
+              WHERE id = $1 AND user_id = $2::bigint AND status = 'trusted'
+            `,
+            [current.id, input.userId, input.now, input.requestIp],
+          );
+          return {
+            ...mapDevice({
+              ...current,
+              last_seen_at: input.now,
+              ip_last: input.requestIp,
+            }),
+            sendApprovalEmail: false,
+            created: false,
+          };
+        }
+        const hasOtherTrusted = await tx.query<{ n: string }>(
           `
             SELECT COUNT(*)::text AS n
             FROM devices
@@ -1363,7 +1612,7 @@ export class DevicesRepository {
         const nextStatus =
           current.status === "trusted" ? "trusted" : otherTrusted ? "pending" : "trusted";
 
-        const updated = await this.db.query<{
+        const updated = await tx.query<{
           id: string;
           user_id: string;
           device_fingerprint: string;
@@ -1462,11 +1711,17 @@ export class DevicesRepository {
             input.requestIp,
           ],
         );
-        return mapDevice(updated[0]);
+        const updatedDevice = mapDevice(updated[0]);
+        return {
+          ...updatedDevice,
+          sendApprovalEmail:
+            updatedDevice.status === "pending" && current.status !== "pending",
+          created: false,
+        };
       }
 
       const id = generateEntityId();
-      const rows = await this.db.query<{
+      const rows = await tx.query<{
         id: string;
         user_id: string;
         device_fingerprint: string;
@@ -1654,45 +1909,39 @@ export class DevicesRepository {
         ],
       );
 
-      return mapDevice(rows[0]);
+      const inserted = mapDevice(rows[0]);
+      return {
+        ...inserted,
+        sendApprovalEmail: inserted.status === "pending",
+        created: true,
+      };
+      }));
     } catch (error) {
+      if (error instanceof TrustedDeviceKeyConflictError) {
+        throw error;
+      }
       throw toUniqueError(error);
     }
   }
 
-  /**
-   * Trusted device_share (B) for unlock bootstrap.
-   * Only returns a share when `fingerprint` matches a trusted device row.
-   * No sole-device fallback — a new browser fingerprint must register and be approved first.
-   */
-  async findTrustedDeviceShareForUnlock(
+  /** Share of the trusted device bound to the session. Does not search by fingerprint. */
+  async findTrustedDeviceShareById(
     userId: string,
-    fingerprint: string | null,
+    deviceId: string,
   ): Promise<Uint8Array | null> {
-    const norm = fingerprint?.trim().toLowerCase() ?? null;
-    if (
-      !norm ||
-      !(
-        /^[0-9a-f]{32,128}$/i.test(norm) ||
-        /^(web_app|mobile_app|desktop_app|extension)-[a-z0-9]+-[a-z0-9]+-[a-z0-9.]+$/i.test(norm)
-      )
-    ) {
-      return null;
-    }
-
     const rows = await this.db.query<{ device_share: Buffer }>(
       `
         SELECT device_share
         FROM devices
-        WHERE user_id = $1::bigint
-          AND device_fingerprint = $2
+        WHERE id = $1
+          AND user_id = $2::bigint
           AND status = 'trusted'
-        ORDER BY last_seen_at DESC NULLS LAST, created_at DESC
         LIMIT 1
       `,
-      [userId, norm],
+      [deviceId, userId],
     );
-    return rows[0] ? Uint8Array.from(rows[0].device_share) : null;
+    const row = rows[0];
+    return row ? Uint8Array.from(row.device_share) : null;
   }
 
   async isTrustedDevice(userId: string, deviceId: string): Promise<boolean> {
@@ -1722,7 +1971,8 @@ export class DevicesRepository {
     approverDeviceId?: string;
     rejectReason?: string;
   }): Promise<DeviceApprovalState> {
-    return this.db.transaction(async (tx) => {
+    return withUserDeviceLock(input.userId, () => this.db.transaction(async (tx) => {
+      await lockUserDevices(tx, input.userId);
       const rows = await tx.query<{
         id: string;
         user_id: string;
@@ -1852,6 +2102,7 @@ export class DevicesRepository {
           `,
           [input.deviceId, input.now],
         );
+        await deleteSessionsForDevices(tx, [input.deviceId]);
         return { kind: "expired", device: mapDevice(expiredRows[0]) };
       }
 
@@ -1989,8 +2240,343 @@ export class DevicesRepository {
         `,
         [input.deviceId, input.now, input.rejectReason ?? "rejected by user"],
       );
+      await deleteSessionsForDevices(tx, [input.deviceId]);
       return { kind: "rejected", device: mapDevice(rejectedRows[0]) };
-    });
+    }));
+  }
+
+  async findOwnedDeviceAuth(
+    userId: string,
+    deviceId: string,
+  ): Promise<{
+    id: string;
+    status: string;
+    devicePublicKey: string;
+    deviceShare: Uint8Array;
+    deviceFingerprint: string;
+  } | null> {
+    const rows = await this.db.query<{
+      id: string;
+      status: string;
+      device_public_key: string;
+      device_share: Buffer;
+      device_fingerprint: string;
+    }>(
+      `
+        SELECT id, status, device_public_key, device_share, device_fingerprint
+        FROM devices
+        WHERE id = $1 AND user_id = $2
+        LIMIT 1
+      `,
+      [deviceId, userId],
+    );
+    const row = rows[0];
+    if (!row) {
+      return null;
+    }
+    return {
+      id: row.id,
+      status: row.status,
+      devicePublicKey: row.device_public_key,
+      deviceShare: Uint8Array.from(row.device_share),
+      deviceFingerprint: row.device_fingerprint,
+    };
+  }
+
+  /**
+   * Replace only the signing public key after a device-share proof.
+   * The vault device share stays on the row. Status stays trusted or pending.
+   */
+  async rotateActiveDevicePublicKey(input: {
+    userId: string;
+    deviceId: string;
+    devicePublicKey: string;
+    now: string;
+  }): Promise<DeviceRecord | null> {
+    return withUserDeviceLock(input.userId, () => this.db.transaction(async (tx) => {
+      await lockUserDevices(tx, input.userId);
+      const rows = await tx.query<{
+        id: string;
+        user_id: string;
+        device_fingerprint: string;
+        device_name: string;
+        device_public_key: string;
+        device_share: Buffer;
+        platform: string;
+        os_name: string;
+        os_version: string;
+        app_version: string;
+        client_type: string;
+        user_agent: string;
+        ip_first: string;
+        ip_last: string;
+        status: "trusted" | "pending" | "revoked" | "blocked";
+        created_at: string | Date;
+        last_seen_at: string | Date | null;
+        approved_by: string | null;
+        approved_at: string | Date | null;
+        rejected_at: string | Date | null;
+        rejection_reason: string | null;
+        revoked_at: string | Date | null;
+        blocked_until: string | Date | null;
+      }>(
+        `
+          UPDATE devices
+          SET device_public_key = $3,
+              last_seen_at = $4::timestamptz
+          WHERE id = $1
+            AND user_id = $2
+            AND status IN ('trusted', 'pending')
+          RETURNING
+            id, user_id, device_fingerprint, device_name, device_public_key, device_share,
+            platform, os_name, os_version, app_version, client_type, user_agent,
+            ip_first, ip_last, status, created_at, last_seen_at, approved_by, approved_at,
+            rejected_at, rejection_reason, revoked_at, blocked_until
+        `,
+        [input.deviceId, input.userId, input.devicePublicKey, input.now],
+      );
+      return rows[0] ? mapDevice(rows[0]) : null;
+    }));
+  }
+
+  /**
+   * Lost device-key seed on an already-trusted install: replace the public key and
+   * demote to pending so another trusted device must approve. Never silent-trust.
+   */
+  async requestKeyRebind(input: {
+    userId: string;
+    deviceId: string;
+    devicePublicKey: string;
+    deviceShare: Uint8Array;
+    deviceName?: string;
+    platform?: string;
+    osName?: string;
+    osVersion?: string;
+    appVersion?: string;
+    clientType?: string;
+    userAgent?: string;
+    requestIp?: string;
+    now: string;
+  }): Promise<
+    | { kind: "not_found" }
+    | { kind: "requires_recovery" }
+    | { kind: "pending"; device: DeviceRecord; sendApprovalEmail: boolean }
+  > {
+    return withUserDeviceLock(input.userId, () => this.db.transaction(async (tx) => {
+      await lockUserDevices(tx, input.userId);
+      const rows = await tx.query<{
+        id: string;
+        user_id: string;
+        device_fingerprint: string;
+        device_name: string;
+        device_public_key: string;
+        device_share: Buffer;
+        platform: string;
+        os_name: string;
+        os_version: string;
+        app_version: string;
+        client_type: string;
+        user_agent: string;
+        ip_first: string;
+        ip_last: string;
+        status: "trusted" | "pending" | "revoked" | "blocked";
+        created_at: string | Date;
+        last_seen_at: string | Date | null;
+        approved_by: string | null;
+        approved_at: string | Date | null;
+        rejected_at: string | Date | null;
+        rejection_reason: string | null;
+        revoked_at: string | Date | null;
+        blocked_until: string | Date | null;
+      }>(
+        `
+          SELECT
+            id, user_id, device_fingerprint, device_name, device_public_key, device_share,
+            platform, os_name, os_version, app_version, client_type, user_agent,
+            ip_first, ip_last, status, created_at, last_seen_at, approved_by, approved_at,
+            rejected_at, rejection_reason, revoked_at, blocked_until
+          FROM devices
+          WHERE id = $1 AND user_id = $2::bigint
+          FOR UPDATE
+        `,
+        [input.deviceId, input.userId],
+      );
+      const current = rows[0];
+      if (!current || (current.status !== "trusted" && current.status !== "pending")) {
+        return { kind: "not_found" };
+      }
+
+      const otherTrusted = await tx.query<{ n: string }>(
+        `
+          SELECT COUNT(*)::text AS n
+          FROM devices
+          WHERE user_id = $1::bigint
+            AND status = 'trusted'
+            AND id <> $2
+        `,
+        [input.userId, input.deviceId],
+      );
+      if (Number(otherTrusted[0]?.n ?? 0) < 1) {
+        return { kind: "requires_recovery" };
+      }
+
+      const updated = await tx.query<{
+        id: string;
+        user_id: string;
+        device_fingerprint: string;
+        device_name: string;
+        device_public_key: string;
+        device_share: Buffer;
+        platform: string;
+        os_name: string;
+        os_version: string;
+        app_version: string;
+        client_type: string;
+        user_agent: string;
+        ip_first: string;
+        ip_last: string;
+        status: "trusted" | "pending" | "revoked" | "blocked";
+        created_at: string | Date;
+        last_seen_at: string | Date | null;
+        approved_by: string | null;
+        approved_at: string | Date | null;
+        rejected_at: string | Date | null;
+        rejection_reason: string | null;
+        revoked_at: string | Date | null;
+        blocked_until: string | Date | null;
+      }>(
+        `
+          UPDATE devices
+          SET
+            device_public_key = $3,
+            device_share = $4,
+            device_name = COALESCE($5, device_name),
+            platform = COALESCE($6, platform),
+            os_name = COALESCE($7, os_name),
+            os_version = COALESCE($8, os_version),
+            app_version = COALESCE($9, app_version),
+            client_type = COALESCE($10, client_type),
+            user_agent = COALESCE($11, user_agent),
+            ip_last = COALESCE($12, ip_last),
+            status = 'pending',
+            approved_by = NULL,
+            approved_at = NULL,
+            rejected_at = NULL,
+            rejection_reason = NULL,
+            revoked_at = NULL,
+            blocked_until = NULL,
+            created_at = $13::timestamptz,
+            last_seen_at = $13::timestamptz
+          WHERE id = $1 AND user_id = $2::bigint
+          RETURNING
+            id, user_id, device_fingerprint, device_name, device_public_key, device_share,
+            platform, os_name, os_version, app_version, client_type, user_agent,
+            ip_first, ip_last, status, created_at, last_seen_at, approved_by, approved_at,
+            rejected_at, rejection_reason, revoked_at, blocked_until
+        `,
+        [
+          input.deviceId,
+          input.userId,
+          input.devicePublicKey.trim(),
+          Buffer.from(input.deviceShare),
+          input.deviceName ?? null,
+          input.platform ?? null,
+          input.osName ?? null,
+          input.osVersion ?? null,
+          input.appVersion ?? null,
+          input.clientType ?? null,
+          input.userAgent ?? null,
+          input.requestIp ?? null,
+          input.now,
+        ],
+      );
+      await deleteSessionsForDevices(tx, [input.deviceId]);
+      return {
+        kind: "pending",
+        device: mapDevice(updated[0]),
+        sendApprovalEmail: true,
+      };
+    }));
+  }
+
+  /** Name and client metadata only. Caller must already have verified device-key possession. */
+  async updateActiveDeviceMetadata(input: {
+    userId: string;
+    deviceId: string;
+    now: string;
+    deviceName?: string;
+    platform?: string;
+    osName?: string;
+    osVersion?: string;
+    appVersion?: string;
+    clientType?: string;
+    userAgent?: string;
+    requestIp?: string;
+  }): Promise<DeviceRecord | null> {
+    return withUserDeviceLock(input.userId, () => this.db.transaction(async (tx) => {
+      await lockUserDevices(tx, input.userId);
+      const rows = await tx.query<{
+        id: string;
+        user_id: string;
+        device_fingerprint: string;
+        device_name: string;
+        device_public_key: string;
+        device_share: Buffer;
+        platform: string;
+        os_name: string;
+        os_version: string;
+        app_version: string;
+        client_type: string;
+        user_agent: string;
+        ip_first: string;
+        ip_last: string;
+        status: "trusted" | "pending" | "revoked" | "blocked";
+        created_at: string | Date;
+        last_seen_at: string | Date | null;
+        approved_by: string | null;
+        approved_at: string | Date | null;
+        rejected_at: string | Date | null;
+        rejection_reason: string | null;
+        revoked_at: string | Date | null;
+        blocked_until: string | Date | null;
+      }>(
+        `
+          UPDATE devices
+          SET
+            device_name = COALESCE($3, device_name),
+            platform = COALESCE($4, platform),
+            os_name = COALESCE($5, os_name),
+            os_version = COALESCE($6, os_version),
+            app_version = COALESCE($7, app_version),
+            client_type = COALESCE($8, client_type),
+            user_agent = COALESCE($9, user_agent),
+            ip_last = COALESCE($10, ip_last),
+            last_seen_at = $11::timestamptz
+          WHERE id = $1
+            AND user_id = $2
+            AND status IN ('trusted', 'pending')
+          RETURNING
+            id, user_id, device_fingerprint, device_name, device_public_key, device_share,
+            platform, os_name, os_version, app_version, client_type, user_agent,
+            ip_first, ip_last, status, created_at, last_seen_at, approved_by, approved_at,
+            rejected_at, rejection_reason, revoked_at, blocked_until
+        `,
+        [
+          input.deviceId,
+          input.userId,
+          input.deviceName ?? null,
+          input.platform ?? null,
+          input.osName ?? null,
+          input.osVersion ?? null,
+          input.appVersion ?? null,
+          input.clientType ?? null,
+          input.userAgent ?? null,
+          input.requestIp ?? null,
+          input.now,
+        ],
+      );
+      return rows[0] ? mapDevice(rows[0]) : null;
+    }));
   }
 
   async listByUser(
@@ -2133,7 +2719,13 @@ export class DevicesRepository {
     now: string;
     reason?: string;
   }): Promise<DeviceRecord | null> {
-    const rows = await this.db.query<{
+    return withUserDeviceLock(input.userId, () => this.db.transaction(async (tx) => {
+      await lockUserDevices(tx, input.userId);
+      await tx.query(
+        `SELECT id FROM devices WHERE id = $1 AND user_id = $2 FOR UPDATE`,
+        [input.deviceId, input.userId],
+      );
+    const rows = await tx.query<{
       id: string;
       user_id: string;
       device_fingerprint: string;
@@ -2197,7 +2789,12 @@ export class DevicesRepository {
       `,
       [input.deviceId, input.userId, input.now, input.reason ?? ""],
     );
-    return rows[0] ? mapDevice(rows[0]) : null;
+    if (!rows[0]) {
+      return null;
+    }
+    await deleteSessionsForDevices(tx, [input.deviceId]);
+    return mapDevice(rows[0]);
+    }));
   }
 
   async blockPending(input: {
@@ -2208,7 +2805,13 @@ export class DevicesRepository {
     blockedUntil: string | null;
     reason?: string;
   }): Promise<DeviceRecord | null> {
-    const rows = await this.db.query<{
+    return withUserDeviceLock(input.userId, () => this.db.transaction(async (tx) => {
+      await lockUserDevices(tx, input.userId);
+      await tx.query(
+        `SELECT id FROM devices WHERE id = $1 AND user_id = $2 AND status = 'pending' FOR UPDATE`,
+        [input.deviceId, input.userId],
+      );
+    const rows = await tx.query<{
       id: string;
       user_id: string;
       device_fingerprint: string;
@@ -2283,7 +2886,12 @@ export class DevicesRepository {
         input.approverDeviceId,
       ],
     );
-    return rows[0] ? mapDevice(rows[0]) : null;
+    if (!rows[0]) {
+      return null;
+    }
+    await deleteSessionsForDevices(tx, [input.deviceId]);
+    return mapDevice(rows[0]);
+    }));
   }
 
   async unblockDevice(input: {
@@ -2502,6 +3110,9 @@ export interface EventRecord {
   payloadSchemaVersion: number;
   idempotencyKey: string | null;
   clientCreatedAt: string | null;
+  referencedItemId: string | null;
+  /** Per-event soft-delete hint; null for legacy rows written before the column existed. */
+  itemSoftDeleted: boolean | null;
   version: number;
   createdAt: string;
 }
@@ -2529,6 +3140,7 @@ export class EventsRepository {
     idempotencyKey?: string | null;
     clientCreatedAt?: string | null;
     referencedItemId?: string | null;
+    itemSoftDeleted?: boolean | null;
   }): Promise<EventRecord> {
     return this.db.transaction(async (tx) => {
       const vaultRows = await tx.query<{ id: string; crypto_version: number }>(
@@ -2550,12 +3162,15 @@ export class EventsRepository {
           payload_schema_version: number;
           idempotency_key: string | null;
           client_created_at: string | null;
+          referenced_item_id: string | null;
+          item_soft_deleted: boolean | null;
           version: number;
           created_at: string;
         }>(
           `
             SELECT id, vault_id, actor_id, event_type, encrypted_payload,
-                   payload_schema_version, idempotency_key, client_created_at, version, created_at
+                   payload_schema_version, idempotency_key, client_created_at,
+                   referenced_item_id::text AS referenced_item_id, item_soft_deleted, version, created_at
             FROM events
             WHERE vault_id = $1 AND idempotency_key = $2::bigint
             FOR UPDATE
@@ -2597,6 +3212,8 @@ export class EventsRepository {
         payload_schema_version: number;
         idempotency_key: string | null;
         client_created_at: string | null;
+        referenced_item_id: string | null;
+        item_soft_deleted: boolean | null;
         version: number;
         created_at: string;
       };
@@ -2605,7 +3222,8 @@ export class EventsRepository {
         tx.query<EventRow>(
           `
             SELECT id, vault_id, actor_id, event_type, encrypted_payload,
-                   payload_schema_version, idempotency_key, client_created_at, version, created_at
+                   payload_schema_version, idempotency_key, client_created_at,
+                   referenced_item_id::text AS referenced_item_id, item_soft_deleted, version, created_at
             FROM events
             WHERE vault_id = $1 AND idempotency_key = $2::bigint
             FOR UPDATE
@@ -2620,11 +3238,13 @@ export class EventsRepository {
           `
           INSERT INTO events (
             id, vault_id, actor_id, event_type, encrypted_payload, version,
-            payload_schema_version, idempotency_key, client_created_at, referenced_item_id
+            payload_schema_version, idempotency_key, client_created_at, referenced_item_id,
+            item_soft_deleted
           )
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
           RETURNING id, vault_id, actor_id, event_type, encrypted_payload,
-                    payload_schema_version, idempotency_key, client_created_at, version, created_at
+                    payload_schema_version, idempotency_key, client_created_at,
+                    referenced_item_id::text AS referenced_item_id, item_soft_deleted, version, created_at
         `,
           [
             eventId,
@@ -2637,6 +3257,8 @@ export class EventsRepository {
             input.idempotencyKey ?? null,
             input.clientCreatedAt ?? null,
             input.referencedItemId ?? null,
+            // Column is NOT NULL after migration 0042; omit/null → false (DEFAULT).
+            input.itemSoftDeleted ?? false,
           ],
         );
       } catch (error) {
@@ -2681,6 +3303,69 @@ export class EventsRepository {
     return rows.length;
   }
 
+  /** True when the vault event log has referenced this client item id (create/update/delete). */
+  async hasReferencedItemId(vaultId: string, referencedItemId: string): Promise<boolean> {
+    const rows = await this.db.query<{ exists: boolean }>(
+      `
+        SELECT EXISTS (
+          SELECT 1
+          FROM events
+          WHERE vault_id = $1 AND referenced_item_id = $2::bigint
+        ) AS exists
+      `,
+      [vaultId, referencedItemId],
+    );
+    return Boolean(rows[0]?.exists);
+  }
+
+  /** True when an ITEM_CREATE already exists for this vault + item id. */
+  async hasItemCreateEvent(vaultId: string, referencedItemId: string): Promise<boolean> {
+    const rows = await this.db.query<{ exists: boolean }>(
+      `
+        SELECT EXISTS (
+          SELECT 1
+          FROM events
+          WHERE vault_id = $1
+            AND referenced_item_id = $2::bigint
+            AND event_type = 'ITEM_CREATE'
+        ) AS exists
+      `,
+      [vaultId, referencedItemId],
+    );
+    return Boolean(rows[0]?.exists);
+  }
+
+  async findByIdempotencyKey(
+    vaultId: string,
+    idempotencyKey: string,
+  ): Promise<EventRecord | null> {
+    const rows = await this.db.query<{
+      id: string;
+      vault_id: string;
+      actor_id: string | null;
+      event_type: string;
+      encrypted_payload: Buffer;
+      payload_schema_version: number;
+      idempotency_key: string | null;
+      client_created_at: string | null;
+      referenced_item_id: string | null;
+      item_soft_deleted: boolean | null;
+      version: number;
+      created_at: string;
+    }>(
+      `
+        SELECT id, vault_id, actor_id, event_type, encrypted_payload,
+               payload_schema_version, idempotency_key, client_created_at,
+               referenced_item_id::text AS referenced_item_id, item_soft_deleted, version, created_at
+        FROM events
+        WHERE vault_id = $1 AND idempotency_key = $2::bigint
+        LIMIT 1
+      `,
+      [vaultId, idempotencyKey],
+    );
+    return rows[0] ? mapEvent(rows[0]) : null;
+  }
+
   async listAfterVersion(vaultId: string, afterVersion: number): Promise<EventRecord[]> {
     const rows = await this.db.query<{
       id: string;
@@ -2691,12 +3376,15 @@ export class EventsRepository {
       payload_schema_version: number;
       idempotency_key: string | null;
       client_created_at: string | null;
+      referenced_item_id: string | null;
+      item_soft_deleted: boolean | null;
       version: number;
       created_at: string;
     }>(
       `
         SELECT id, vault_id, actor_id, event_type, encrypted_payload,
-               payload_schema_version, idempotency_key, client_created_at, version, created_at
+               payload_schema_version, idempotency_key, client_created_at,
+               referenced_item_id::text AS referenced_item_id, item_soft_deleted, version, created_at
         FROM events
         WHERE vault_id = $1 AND version > $2
         ORDER BY version ASC
@@ -2897,15 +3585,24 @@ export class SessionsRepository {
     userId: string;
     tokenHash: string;
     expiresAtIso: string;
+    deviceId?: string | null;
+    scope?: string | null;
   }): Promise<{ id: string }> {
     const id = generateEntityId();
     const rows = await this.db.query<{ id: string }>(
       `
-        INSERT INTO sessions (id, user_id, device_id, token_hash, expires_at)
-        VALUES ($1, $2, NULL, $3, $4::timestamptz)
+        INSERT INTO sessions (id, user_id, device_id, token_hash, expires_at, scope)
+        VALUES ($1, $2, $3, $4, $5::timestamptz, $6)
         RETURNING id
       `,
-      [id, input.userId, input.tokenHash, input.expiresAtIso],
+      [
+        id,
+        input.userId,
+        input.deviceId ?? null,
+        input.tokenHash,
+        input.expiresAtIso,
+        input.scope ?? null,
+      ],
     );
     const row = rows[0];
     if (!row) {
@@ -2925,10 +3622,29 @@ export class SessionsRepository {
   async findValidByTokenHash(
     tokenHash: string,
     nowIso: string,
-  ): Promise<{ id: string; userId: string } | null> {
-    const rows = await this.db.query<{ id: string; user_id: string }>(
+  ): Promise<{
+    id: string;
+    userId: string;
+    deviceId: string | null;
+    scope: string | null;
+    expiresAt: string;
+    recoveryProvedAt: string | null;
+    recoveryChallenge: string | null;
+    recoveryChallengeExpiresAt: string | null;
+  } | null> {
+    const rows = await this.db.query<{
+      id: string;
+      user_id: string;
+      device_id: string | null;
+      scope: string | null;
+      expires_at: string | Date;
+      recovery_proved_at: string | Date | null;
+      recovery_challenge: string | null;
+      recovery_challenge_expires_at: string | Date | null;
+    }>(
       `
-        SELECT id, user_id
+        SELECT id, user_id, device_id, scope, expires_at,
+               recovery_proved_at, recovery_challenge, recovery_challenge_expires_at
         FROM sessions
         WHERE token_hash = $1 AND expires_at > $2::timestamptz
         LIMIT 1
@@ -2936,7 +3652,167 @@ export class SessionsRepository {
       [tokenHash, nowIso],
     );
     const row = rows[0];
-    return row ? { id: row.id, userId: row.user_id } : null;
+    if (!row) {
+      return null;
+    }
+    const expiresAt =
+      row.expires_at instanceof Date
+        ? row.expires_at.toISOString()
+        : new Date(row.expires_at).toISOString();
+    const provedAt = row.recovery_proved_at;
+    return {
+      id: row.id,
+      userId: row.user_id,
+      deviceId: row.device_id,
+      scope: row.scope,
+      expiresAt,
+      recoveryProvedAt:
+        provedAt == null
+          ? null
+          : provedAt instanceof Date
+            ? provedAt.toISOString()
+            : new Date(provedAt).toISOString(),
+      recoveryChallenge: row.recovery_challenge,
+      recoveryChallengeExpiresAt:
+        row.recovery_challenge_expires_at == null
+          ? null
+          : row.recovery_challenge_expires_at instanceof Date
+            ? row.recovery_challenge_expires_at.toISOString()
+            : new Date(row.recovery_challenge_expires_at).toISOString(),
+    };
+  }
+
+  async bindDevice(input: {
+    tokenHash: string;
+    userId: string;
+    deviceId: string;
+    /** Recovery claim replaces a session still bound to the pre-claim device. */
+    replaceExistingDevice?: boolean;
+  }): Promise<boolean> {
+    const db = this.db as QueryExecutor & {
+      transaction<T>(fn: (tx: QueryExecutor) => Promise<T>): Promise<T>;
+    };
+    return withUserDeviceLock(input.userId, () => db.transaction(async (tx) => {
+      await lockUserDevices(tx, input.userId);
+      const devices = await tx.query<{ status: string }>(
+        `
+          SELECT status
+          FROM devices
+          WHERE id = $1 AND user_id = $2
+          FOR UPDATE
+        `,
+        [input.deviceId, input.userId],
+      );
+      const status = devices[0]?.status;
+      if (status !== "trusted" && status !== "pending") {
+        return false;
+      }
+      const rows = await tx.query<{ id: string }>(
+        `
+          UPDATE sessions
+          SET device_id = $3
+          WHERE token_hash = $1
+            AND user_id = $2
+            AND expires_at > now()
+            AND ($4::boolean OR device_id IS NULL OR device_id = $3)
+          RETURNING id
+        `,
+        [
+          input.tokenHash,
+          input.userId,
+          input.deviceId,
+          input.replaceExistingDevice === true,
+        ],
+      );
+      return rows.length > 0;
+    }));
+  }
+
+  async deleteByDeviceId(input: { userId: string; deviceId: string }): Promise<number> {
+    const rows = await this.db.query<{ id: string }>(
+      `
+        DELETE FROM sessions
+        WHERE user_id = $1 AND device_id = $2
+        RETURNING id
+      `,
+      [input.userId, input.deviceId],
+    );
+    return rows.length;
+  }
+
+  async markRecoveryProved(input: { tokenHash: string; userId: string }): Promise<boolean> {
+    const rows = await this.db.query<{ id: string }>(
+      `
+        UPDATE sessions
+        SET recovery_proved_at = now(),
+            recovery_challenge = NULL,
+            recovery_challenge_expires_at = NULL
+        WHERE token_hash = $1
+          AND user_id = $2
+          AND expires_at > now()
+        RETURNING id
+      `,
+      [input.tokenHash, input.userId],
+    );
+    return Boolean(rows[0]);
+  }
+
+  async setRecoveryChallenge(input: {
+    tokenHash: string;
+    userId: string;
+    challenge: string;
+    expiresAtIso: string;
+  }): Promise<boolean> {
+    const rows = await this.db.query<{ id: string }>(
+      `
+        UPDATE sessions
+        SET recovery_challenge = $3,
+            recovery_challenge_expires_at = $4::timestamptz
+        WHERE token_hash = $1
+          AND user_id = $2
+          AND device_id IS NOT NULL
+          AND expires_at > now()
+          AND recovery_proved_at IS NULL
+        RETURNING id
+      `,
+      [input.tokenHash, input.userId, input.challenge, input.expiresAtIso],
+    );
+    return Boolean(rows[0]);
+  }
+
+  /** Single-use: clear the challenge only if it is still the one presented. */
+  async consumeRecoveryChallenge(input: {
+    tokenHash: string;
+    userId: string;
+    challenge: string;
+  }): Promise<boolean> {
+    const rows = await this.db.query<{ id: string }>(
+      `
+        UPDATE sessions
+        SET recovery_challenge = NULL,
+            recovery_challenge_expires_at = NULL
+        WHERE token_hash = $1
+          AND user_id = $2
+          AND device_id IS NOT NULL
+          AND recovery_challenge = $3
+          AND expires_at > now()
+        RETURNING id
+      `,
+      [input.tokenHash, input.userId, input.challenge],
+    );
+    return Boolean(rows[0]);
+  }
+
+  async deleteByTokenHash(tokenHash: string): Promise<boolean> {
+    const rows = await this.db.query<{ id: string }>(
+      `
+        DELETE FROM sessions
+        WHERE token_hash = $1
+        RETURNING id
+      `,
+      [tokenHash],
+    );
+    return Boolean(rows[0]);
   }
 }
 
@@ -2960,6 +3836,7 @@ function mapUser(
 }
 
 function mapWorkspace(row: WorkspaceRow): WorkspaceRecord {
+  const sentAt = row.plan_change_request_sent_at;
   return {
     id: row.id,
     name: row.name,
@@ -2982,6 +3859,12 @@ function mapWorkspace(row: WorkspaceRow): WorkspaceRecord {
     tileColor: row.tile_color,
     logoVaultId: row.logo_vault_id,
     logoAttachmentId: row.logo_attachment_id,
+    planChangeRequestSentAt:
+      sentAt == null
+        ? null
+        : typeof sentAt === "string"
+          ? sentAt
+          : sentAt.toISOString(),
     createdAt: row.created_at,
     updatedAt: row.updated_at ?? row.created_at,
   };
@@ -3098,6 +3981,8 @@ function mapEvent(row: {
   payload_schema_version?: number;
   idempotency_key?: string | null;
   client_created_at?: string | null;
+  referenced_item_id?: string | null;
+  item_soft_deleted?: boolean | null;
   version: number;
   created_at: string;
 }): EventRecord {
@@ -3110,6 +3995,13 @@ function mapEvent(row: {
     payloadSchemaVersion: row.payload_schema_version ?? 2,
     idempotencyKey: row.idempotency_key ?? null,
     clientCreatedAt: row.client_created_at ?? null,
+    referencedItemId: row.referenced_item_id ?? null,
+    itemSoftDeleted:
+      row.item_soft_deleted === true
+        ? true
+        : row.item_soft_deleted === false
+          ? false
+          : null,
     version: row.version,
     createdAt: row.created_at,
   };

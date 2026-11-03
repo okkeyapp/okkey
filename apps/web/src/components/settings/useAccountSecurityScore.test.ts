@@ -192,7 +192,9 @@ describe("useAccountSecurityScore devices + vault plumbing", () => {
     expect(result.current.result?.factorPoints.vaultBiometricOrPin).toBe(0);
     expect(result.current.result!.recommendations.length).toBeLessThanOrEqual(4);
     expect(
-      result.current.result?.recommendations.every((r) => r.target === "vault"),
+      result.current.result?.recommendations.every(
+        (r) => r.target === "vault" || r.target === "deviceSecurity" || r.target === "deviceUnlock",
+      ),
     ).toBe(true);
   });
 });

@@ -50,8 +50,8 @@ const t = (key: string, values?: Record<string, string | number>) => {
 function trustedDevice(overrides?: Record<string, unknown>) {
   return {
     device_id: "d-current",
-    device_name: "Web macOS - Chrome",
-    device_fingerprint: "a".repeat(64),
+    device_name: "Web Chrome",
+    device_fingerprint: "web_app-chrome-macos-14",
     status: "trusted",
     platform: "desktop",
     os_name: "macOS",
@@ -73,7 +73,7 @@ function trustedDevice(overrides?: Record<string, unknown>) {
 function pendingDevice(overrides?: Record<string, unknown>) {
   return {
     device_id: "d-pending",
-    device_name: "Desktop Windows 11 - App",
+    device_name: "Desktop Windows 11",
     device_fingerprint: "b".repeat(64),
     status: "pending_approval",
     platform: "desktop",
@@ -134,8 +134,8 @@ describe("SettingsDevicesContent", () => {
   it("renders pending banner and trusted list", async () => {
     render(<SettingsDevicesContent t={t} />);
 
-    expect(await screen.findByText("Desktop Windows 11 - App")).toBeTruthy();
-    expect(screen.getByText("Web macOS - Chrome")).toBeTruthy();
+    expect(await screen.findByText("Desktop Windows 11")).toBeTruthy();
+    expect(screen.getByText("Web Chrome")).toBeTruthy();
     expect(screen.getByText("web.settingsPopup.devices.pending.trust")).toBeTruthy();
     expect(screen.getByText("web.settingsPopup.devices.list.currentBadge")).toBeTruthy();
   });
@@ -157,7 +157,7 @@ describe("SettingsDevicesContent", () => {
     render(<SettingsDevicesContent t={t} />);
 
     expect(await screen.findByText("Web · Chrome · macOS")).toBeTruthy();
-    expect(screen.getByText("Web macOS - Chrome")).toBeTruthy();
+    expect(screen.getByText("Web Chrome")).toBeTruthy();
   });
 
   it("marks device current via fingerprint when API is_current is false", async () => {
@@ -180,7 +180,7 @@ describe("SettingsDevicesContent", () => {
 
     render(<SettingsDevicesContent t={t} />);
 
-    expect(await screen.findByText("Web macOS - Chrome")).toBeTruthy();
+    expect(await screen.findByText("Web Chrome")).toBeTruthy();
     expect(screen.getByText("web.settingsPopup.devices.list.currentBadge")).toBeTruthy();
     // Current + other device both expose the actions menu (current: rename only).
     expect(screen.getAllByLabelText("web.settingsPopup.devices.actions.menu")).toHaveLength(2);
@@ -201,7 +201,7 @@ describe("SettingsDevicesContent", () => {
 
     render(<SettingsDevicesContent t={t} />);
 
-    expect(await screen.findByText("Web macOS - Chrome")).toBeTruthy();
+    expect(await screen.findByText("Web Chrome")).toBeTruthy();
     expect(screen.queryByText("web.settingsPopup.devices.list.currentBadge")).toBeNull();
     expect(screen.getByLabelText("web.settingsPopup.devices.actions.menu")).toBeTruthy();
   });
@@ -223,7 +223,7 @@ describe("SettingsDevicesContent", () => {
 
     render(<SettingsDevicesContent t={t} />);
 
-    expect(await screen.findByText("Web macOS - Chrome")).toBeTruthy();
+    expect(await screen.findByText("Web Chrome")).toBeTruthy();
     expect(screen.getByText("web.settingsPopup.devices.list.currentBadge")).toBeTruthy();
     expect(screen.getAllByLabelText("web.settingsPopup.devices.actions.menu")).toHaveLength(2);
   });
@@ -242,7 +242,7 @@ describe("SettingsDevicesContent", () => {
       });
 
     render(<SettingsDevicesContent t={t} />);
-    await screen.findByText("Desktop Windows 11 - App");
+    await screen.findByText("Desktop Windows 11");
 
     fireEvent.click(screen.getByText("web.settingsPopup.devices.pending.trust"));
 
@@ -265,7 +265,7 @@ describe("SettingsDevicesContent", () => {
       });
 
     render(<SettingsDevicesContent t={t} />);
-    await screen.findByText("Desktop Windows 11 - App");
+    await screen.findByText("Desktop Windows 11");
 
     fireEvent.click(screen.getByText("web.settingsPopup.devices.pending.notNow"));
 
@@ -292,7 +292,7 @@ describe("SettingsDevicesContent", () => {
     expect(await screen.findByText("web.settingsPopup.devices.error.generic")).toBeTruthy();
     fireEvent.click(screen.getByText("web.settingsPopup.devices.retry"));
 
-    expect(await screen.findByText("Web macOS - Chrome")).toBeTruthy();
+    expect(await screen.findByText("Web Chrome")).toBeTruthy();
     expect(coreMocks.listDevices).toHaveBeenCalledTimes(2);
   });
 });

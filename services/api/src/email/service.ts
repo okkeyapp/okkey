@@ -2,6 +2,7 @@ import type { Logger } from "../logger.ts";
 import type { ApiConfig } from "../config.ts";
 import {
   renderEmailTemplate,
+  type AccountEmailChangedVariables,
   type AuthEmailCodeVariables,
   type ContactRecoveryReleaseRequestVariables,
   type DeviceApprovalRequestVariables,
@@ -10,9 +11,24 @@ import {
   type WorkspaceInviteVariables,
   type TwoFactorNoticeVariables,
 } from "./catalog.ts";
-import { EmailTemplateError } from "./errors.ts";
+import { EmailTemplateError, sanitizeEmailSubjectForLogs } from "./errors.ts";
 import { resolveEmailLocaleForRecipient, type EmailLocaleHintsInput } from "./locale.ts";
+import {
+  QueuedEmailSender,
+  type EmailDeliveryMode,
+  type EmailQueueRedis,
+} from "./queue.ts";
+import { withOkkeyMarkInlineAttachment } from "./inline-attachments.ts";
 import { SesEmailSender } from "./ses-sender.ts";
+
+/** Inline (CID) attachment referenced from HTML as `cid:<cid>`. */
+export interface EmailInlineAttachment {
+  cid: string;
+  filename: string;
+  contentType: string;
+  /** Raw base64 of file bytes (no data: URI prefix). */
+  contentBase64: string;
+}
 
 export interface EmailMessage {
   to: string;
@@ -20,6 +36,8 @@ export interface EmailMessage {
   subject: string;
   text: string;
   html: string;
+  /** Optional; transports also inject the Okkey mark when HTML uses its CID. */
+  inlineAttachments?: EmailInlineAttachment[];
 }
 
 export interface EmailSender {
@@ -88,31 +106,36 @@ export class LoggerEmailSender implements EmailSender {
     this.logger.info("email sent", {
       to: message.to,
       from: message.from,
-      subject: message.subject,
+      subject: sanitizeEmailSubjectForLogs(message.subject),
       ...(this.includePlainTextBody ? { plainText: message.text } : {}),
     });
   }
 }
 
+type NodemailerAttachment = {
+  filename: string;
+  content: Buffer;
+  cid: string;
+  contentType: string;
+  contentDisposition: "inline";
+};
+
+type NodemailerSendMailOptions = {
+  from: string;
+  to: string;
+  subject: string;
+  text: string;
+  html: string;
+  attachments?: NodemailerAttachment[];
+};
+
 export class SmtpEmailSender implements EmailSender {
   private readonly transport: {
-    sendMail(options: {
-      from: string;
-      to: string;
-      subject: string;
-      text: string;
-      html: string;
-    }): Promise<unknown>;
+    sendMail(options: NodemailerSendMailOptions): Promise<unknown>;
   };
 
   constructor(transport: {
-    sendMail(options: {
-      from: string;
-      to: string;
-      subject: string;
-      text: string;
-      html: string;
-    }): Promise<unknown>;
+    sendMail(options: NodemailerSendMailOptions): Promise<unknown>;
   }) {
     this.transport = transport;
   }
@@ -125,13 +148,7 @@ export class SmtpEmailSender implements EmailSender {
         secure: boolean;
         auth?: { user: string; pass: string };
       }): {
-        sendMail(options: {
-          from: string;
-          to: string;
-          subject: string;
-          text: string;
-          html: string;
-        }): Promise<unknown>;
+        sendMail(options: NodemailerSendMailOptions): Promise<unknown>;
       };
     };
 
@@ -152,13 +169,25 @@ export class SmtpEmailSender implements EmailSender {
   }
 
   async send(message: EmailMessage): Promise<void> {
+    const prepared = withOkkeyMarkInlineAttachment(message);
+    const attachments: NodemailerAttachment[] | undefined =
+      prepared.inlineAttachments && prepared.inlineAttachments.length > 0
+        ? prepared.inlineAttachments.map((item) => ({
+            filename: item.filename,
+            content: Buffer.from(item.contentBase64, "base64"),
+            cid: item.cid,
+            contentType: item.contentType,
+            contentDisposition: "inline",
+          }))
+        : undefined;
     try {
       await this.transport.sendMail({
-        from: message.from,
-        to: message.to,
-        subject: message.subject,
-        text: message.text,
-        html: message.html,
+        from: prepared.from,
+        to: prepared.to,
+        subject: prepared.subject,
+        text: prepared.text,
+        html: prepared.html,
+        ...(attachments ? { attachments } : {}),
       });
     } catch (cause) {
       throw new EmailTemplateError(
@@ -182,6 +211,7 @@ export class HttpApiEmailSender implements EmailSender {
   }
 
   async send(message: EmailMessage): Promise<void> {
+    const prepared = withOkkeyMarkInlineAttachment(message);
     const controller = new AbortController();
     const timeout = setTimeout(() => {
       controller.abort();
@@ -194,7 +224,7 @@ export class HttpApiEmailSender implements EmailSender {
           "Content-Type": "application/json",
           Authorization: `Bearer ${this.apiKey}`,
         },
-        body: JSON.stringify(message),
+        body: JSON.stringify(prepared),
         signal: controller.signal,
       });
 
@@ -220,17 +250,27 @@ export class HttpApiEmailSender implements EmailSender {
   }
 }
 
-export async function createEmailSender(
-  config: ApiConfig,
-  logger: Logger,
-): Promise<EmailSender> {
+export type CreateEmailSenderOptions = {
+  /**
+   * `transport` — real provider (SMTP/SES/logger/http-api). Used by the worker consumer.
+   * `outbound` — API path: Redis queue when `emailDeliveryMode=queue`, else same as transport.
+   */
+  role?: "transport" | "outbound";
+  redis?: EmailQueueRedis;
+  /** Override config.emailDeliveryMode (tests). */
+  deliveryMode?: EmailDeliveryMode;
+};
+
+/**
+ * Fail-fast config checks for the configured EMAIL_PROVIDER.
+ * Used by the worker transport and by the API even in `queue` mode, so a bad
+ * SES/http-api env cannot leave the process healthy while mail piles up.
+ */
+export function assertEmailTransportConfig(config: ApiConfig): void {
   switch (config.emailProvider) {
     case "logger":
-      return new LoggerEmailSender(logger, {
-        includePlainTextBody: shouldLogPlainTextForLoggerProvider(config),
-      });
     case "smtp":
-      return SmtpEmailSender.fromConfig(config);
+      return;
     case "http-api":
       if (!config.emailApiEndpoint) {
         throw new Error("EMAIL_API_ENDPOINT is required for EMAIL_PROVIDER=http-api");
@@ -238,11 +278,7 @@ export async function createEmailSender(
       if (!config.emailApiKey) {
         throw new Error("EMAIL_API_KEY is required for EMAIL_PROVIDER=http-api");
       }
-      return new HttpApiEmailSender(
-        config.emailApiEndpoint,
-        config.emailApiKey,
-        config.emailApiTimeoutMs,
-      );
+      return;
     case "ses":
       if (!config.sesRegion) {
         throw new Error("EMAIL_SES_REGION is required for EMAIL_PROVIDER=ses");
@@ -253,6 +289,56 @@ export async function createEmailSender(
       if (!config.sesSecretAccessKey) {
         throw new Error("EMAIL_SES_SECRET_ACCESS_KEY is required for EMAIL_PROVIDER=ses");
       }
+      return;
+    default:
+      throw new Error(`unsupported email provider: ${config.emailProvider}`);
+  }
+}
+
+/**
+ * Whether outbound mail can actually leave the instance (not `logger`-only).
+ * Used by sales / license-request UX so the web app can fall back to `mailto:`
+ * instead of pretending a logger send succeeded.
+ */
+export function isOutboundEmailDeliverable(config: ApiConfig): boolean {
+  switch (config.emailProvider) {
+    case "logger":
+      return false;
+    case "smtp":
+      return Boolean(config.smtpHost.trim());
+    case "http-api":
+      return Boolean(config.emailApiEndpoint.trim() && config.emailApiKey.trim());
+    case "ses":
+      return Boolean(
+        config.sesRegion.trim() &&
+          config.sesAccessKeyId.trim() &&
+          config.sesSecretAccessKey.trim(),
+      );
+    default:
+      return false;
+  }
+}
+
+/** Create the provider that actually delivers mail (SMTP / SES / logger / http-api). */
+export async function createTransportEmailSender(
+  config: ApiConfig,
+  logger: Logger,
+): Promise<EmailSender> {
+  assertEmailTransportConfig(config);
+  switch (config.emailProvider) {
+    case "logger":
+      return new LoggerEmailSender(logger, {
+        includePlainTextBody: shouldLogPlainTextForLoggerProvider(config),
+      });
+    case "smtp":
+      return SmtpEmailSender.fromConfig(config);
+    case "http-api":
+      return new HttpApiEmailSender(
+        config.emailApiEndpoint,
+        config.emailApiKey,
+        config.emailApiTimeoutMs,
+      );
+    case "ses":
       return new SesEmailSender({
         region: config.sesRegion,
         accessKeyId: config.sesAccessKeyId,
@@ -263,6 +349,44 @@ export async function createEmailSender(
     default:
       throw new Error(`unsupported email provider: ${config.emailProvider}`);
   }
+}
+
+/**
+ * Outbound sender for the API process.
+ * In `queue` mode enqueues rendered messages to Redis; worker delivers via transport.
+ * In `sync` mode (default outside production) sends immediately — fine for local logger + tests.
+ * Transport config is always validated so queue mode cannot accept mail with a broken provider env.
+ */
+export async function createOutboundEmailSender(
+  config: ApiConfig,
+  logger: Logger,
+  redis: EmailQueueRedis,
+): Promise<EmailSender> {
+  assertEmailTransportConfig(config);
+  if (config.emailDeliveryMode === "queue") {
+    return new QueuedEmailSender(redis, logger);
+  }
+  return createTransportEmailSender(config, logger);
+}
+
+/** @deprecated Prefer {@link createTransportEmailSender} or {@link createOutboundEmailSender}. */
+export async function createEmailSender(
+  config: ApiConfig,
+  logger: Logger,
+  options: CreateEmailSenderOptions = {},
+): Promise<EmailSender> {
+  const role = options.role ?? "transport";
+  if (role === "outbound") {
+    if (!options.redis) {
+      throw new Error("redis is required when createEmailSender role=outbound");
+    }
+    const mode = options.deliveryMode ?? config.emailDeliveryMode;
+    if (mode === "queue") {
+      return new QueuedEmailSender(options.redis, logger);
+    }
+    return createTransportEmailSender(config, logger);
+  }
+  return createTransportEmailSender(config, logger);
 }
 
 function toHintsInput(
@@ -311,16 +435,28 @@ export class EmailTemplateService {
       if (cause instanceof EmailTemplateError) {
         const code: EmailTemplateError["code"] =
           cause.code === "EMAIL_TRANSPORT_ERROR" ? "EMAIL_SEND_FAILED" : cause.code;
-        throw new EmailTemplateError(code, cause.message, {
+        const wrapped = new EmailTemplateError(code, cause.message, {
           ...cause.details,
           originalCode: cause.code,
         });
+        this.logger?.error("email send failed", {
+          code: wrapped.code,
+          message: wrapped.message,
+          ...(typeof wrapped.details?.cause === "string"
+            ? { cause: wrapped.details.cause }
+            : {}),
+        });
+        throw wrapped;
       }
-      throw new EmailTemplateError(
-        "EMAIL_SEND_FAILED",
-        "email transport failed",
-        { cause: cause instanceof Error ? cause.message : String(cause) },
-      );
+      const reason = cause instanceof Error ? cause.message : String(cause);
+      this.logger?.error("email send failed", {
+        code: "EMAIL_SEND_FAILED",
+        message: "email transport failed",
+        cause: reason,
+      });
+      throw new EmailTemplateError("EMAIL_SEND_FAILED", "email transport failed", {
+        cause: reason,
+      });
     }
   }
 
@@ -378,6 +514,16 @@ export class EmailTemplateService {
     await this.dispatchRendered(input.to, rendered);
   }
 
+  async sendTwoFactorDisabled(input: {
+    to: string;
+    localeHints: EmailLocaleHints;
+    variables: TwoFactorNoticeVariables;
+  }): Promise<void> {
+    const locale = this.resolveLocale(input.localeHints);
+    const rendered = await renderEmailTemplate("two_factor_disabled", locale, input.variables);
+    await this.dispatchRendered(input.to, rendered);
+  }
+
   async sendTwoFactorBackupCodesRegenerated(input: {
     to: string;
     localeHints: EmailLocaleHints;
@@ -408,6 +554,23 @@ export class EmailTemplateService {
   }
 
   /**
+   * Same as {@link sendTwoFactorDisabled} but never throws: API success should not depend on mail.
+   */
+  async sendTwoFactorDisabledBestEffort(
+    input: Parameters<EmailTemplateService["sendTwoFactorDisabled"]>[0],
+  ): Promise<void> {
+    try {
+      await this.sendTwoFactorDisabled(input);
+    } catch (error) {
+      const code = error instanceof EmailTemplateError ? error.code : "EMAIL_SEND_FAILED";
+      this.logger?.warn("two_factor_disabled email skipped", {
+        code,
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  /**
    * Same as {@link sendTwoFactorBackupCodesRegenerated} but never throws.
    */
   async sendTwoFactorBackupCodesRegeneratedBestEffort(
@@ -418,6 +581,33 @@ export class EmailTemplateService {
     } catch (error) {
       const code = error instanceof EmailTemplateError ? error.code : "EMAIL_SEND_FAILED";
       this.logger?.warn("two_factor_backup_codes_regenerated email skipped", {
+        code,
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  async sendAccountEmailChanged(input: {
+    to: string;
+    localeHints: EmailLocaleHints;
+    variables: AccountEmailChangedVariables;
+  }): Promise<void> {
+    const locale = this.resolveLocale(input.localeHints);
+    const rendered = await renderEmailTemplate("account_email_changed", locale, input.variables);
+    await this.dispatchRendered(input.to, rendered);
+  }
+
+  /**
+   * Same as {@link sendAccountEmailChanged} but never throws: confirm must succeed even if mail fails.
+   */
+  async sendAccountEmailChangedBestEffort(
+    input: Parameters<EmailTemplateService["sendAccountEmailChanged"]>[0],
+  ): Promise<void> {
+    try {
+      await this.sendAccountEmailChanged(input);
+    } catch (error) {
+      const code = error instanceof EmailTemplateError ? error.code : "EMAIL_SEND_FAILED";
+      this.logger?.warn("account_email_changed email skipped", {
         code,
         message: error instanceof Error ? error.message : String(error),
       });

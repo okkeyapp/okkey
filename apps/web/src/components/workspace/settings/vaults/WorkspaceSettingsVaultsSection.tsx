@@ -5,7 +5,9 @@ import type {
   WorkspaceProfileSummary,
   WorkspaceResourcePermissionDto,
 } from "@okkey/types";
-import { hasPlanFeature, permissionAllowsMutate } from "@okkey/types";
+import { permissionAllowsMutate } from "@okkey/types";
+
+import { workspaceHasPlanFeature } from "../../../../workspace/planEntitlements";
 import type { WebMessageValues } from "@okkey/i18n";
 import { useMemo } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
@@ -22,6 +24,7 @@ import {
   popupQuerySearch,
 } from "../../../../routes/popupQuery";
 
+import RemnantSharedVaultsSection from "./RemnantSharedVaultsSection";
 import SharedVaultsUpsell from "./SharedVaultsUpsell";
 import VaultListRow from "./VaultListRow";
 import VaultsSectionHeader from "./VaultsSectionHeader";
@@ -57,14 +60,20 @@ export default function WorkspaceSettingsVaultsSection({
   const location = useLocation();
   const [searchParams] = useSearchParams();
 
-  const canManageSharedPlan = hasPlanFeature(workspace?.planTier, "sharedVaults");
+  const canManageSharedPlan = workspaceHasPlanFeature(workspace, "sharedVaults");
   const SharedVaultsSection = enterpriseSharedVaultsModule.SharedVaultsSection;
   const PersonalVaultCardPopup = enterpriseSharedVaultsModule.PersonalVaultCardPopup;
-  const showEnterpriseShared = Boolean(canManageSharedPlan && SharedVaultsSection);
+  const showEnterpriseShared = Boolean(SharedVaultsSection);
+  const sharedVaultsReadOnly = !canManageSharedPlan;
   /** Personal vault rename/edit needs the enterprise popup module only — not `sharedVaults` plan. */
   const canOpenPersonalVault = Boolean(PersonalVaultCardPopup);
 
   const personalVault = useMemo(() => vaults.find((vault) => vault.isPersonal) ?? null, [vaults]);
+  const remnantSharedVaults = useMemo(
+    () => vaults.filter((vault) => !vault.isPersonal),
+    [vaults],
+  );
+  const showRemnantShared = !showEnterpriseShared && remnantSharedVaults.length > 0;
   const canPutPersonal = permissionAllowsMutate(resourcePermissions?.put ?? 0);
 
   const popupRaw = searchParams.get(POPUP_QUERY_PARAM);
@@ -74,6 +83,20 @@ export default function WorkspaceSettingsVaultsSection({
   const editingVault = editVaultId ? vaults.find((vault) => vault.id === editVaultId) : undefined;
   const editingPersonal =
     editingVault && editingVault.isPersonal && canOpenPersonalVault ? editingVault : undefined;
+
+  const sharedVaultsUpsell = (
+    <section className="flex flex-col gap-4">
+      <div className="flex min-w-0 flex-col gap-1">
+        <h3 className="text-sm font-medium text-foreground">
+          {t("web.workspaceSettings.vaults.shared.title")}
+        </h3>
+        <p className="text-sm text-muted-foreground">
+          {t("web.workspaceSettings.vaults.shared.subtitle")}
+        </p>
+      </div>
+      <SharedVaultsUpsell t={t} />
+    </section>
+  );
 
   function openPopup(value: string) {
     navigate(
@@ -136,19 +159,19 @@ export default function WorkspaceSettingsVaultsSection({
           onVaultsChanged={onVaultsChanged}
           personalVaultId={personalVault?.id ?? null}
           resourcePermissions={resourcePermissions}
+          readOnly={sharedVaultsReadOnly}
+          emptyFallback={sharedVaultsReadOnly ? sharedVaultsUpsell : undefined}
+        />
+      ) : showRemnantShared ? (
+        <RemnantSharedVaultsSection
+          vaults={vaults}
+          vaultsListReady={vaultsListReady}
+          t={t}
+          onVaultsChanged={onVaultsChanged}
+          resourcePermissions={resourcePermissions}
         />
       ) : (
-        <section className="flex flex-col gap-4">
-          <div className="flex min-w-0 flex-col gap-1">
-            <h3 className="text-sm font-medium text-foreground">
-              {t("web.workspaceSettings.vaults.shared.title")}
-            </h3>
-            <p className="text-sm text-muted-foreground">
-              {t("web.workspaceSettings.vaults.shared.subtitle")}
-            </p>
-          </div>
-          <SharedVaultsUpsell t={t} />
-        </section>
+        sharedVaultsUpsell
       )}
 
       {showPersonalEdit && editingPersonal && core && userId && PersonalVaultCardPopup ? (

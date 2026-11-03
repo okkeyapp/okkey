@@ -51,6 +51,7 @@ function vaultPrefsFingerprint(userId: string | null): string {
   const prefs = readVaultDevicePrefs(userId);
   return [
     prefs.lockOnDeviceSleep,
+    prefs.idleLockSeconds ?? "",
     prefs.clipboardClearSeconds,
     prefs.requireReauthZones.join(","),
     prefs.pinEnabled,

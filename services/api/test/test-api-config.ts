@@ -5,11 +5,12 @@ import type { SessionService } from "../src/session/service.ts";
 export function createMockSessionService(): Pick<SessionService, "createSession"> {
   let seq = 0;
   return {
-    async createSession(userId: string) {
+    async createSession(userId: string, options = {}) {
       seq += 1;
       return {
         accessToken: `mock-access-token-${userId}-${seq}`,
         expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+        scope: options.scope ?? null,
       };
     },
   };
@@ -22,6 +23,7 @@ export function createTestApiConfig(overrides: Partial<ApiConfig> = {}): ApiConf
     deployEnv: "dev",
     deploymentMode: "self_hosted",
     defaultWorkspacePlanTier: "FREE",
+    enterpriseModulesRequested: false,
     enterpriseModulesEnabled: false,
     enterpriseModulesPath: "",
     snowflakeNodeId: 1,
@@ -36,10 +38,14 @@ export function createTestApiConfig(overrides: Partial<ApiConfig> = {}): ApiConf
     authRateLimitWindowSeconds: 600,
     authRateLimitStartPerEmail: 5,
     authRateLimitStartPerIp: 10,
+    invitePreviewRateLimitPerIp: 60,
     authRateLimitConfirmPerIp: 30,
     authRateLimitResendPerIp: 10,
+    authRateLimitRegisterCompletePerIp: 100_000,
+    authRateLimitRegisterCompletePerEmail: 100_000,
     registrationAuthStateTtlSeconds: 3600,
     registrationResultTtlSeconds: 604800,
+    registrationBootstrapSessionTtlSeconds: 900,
     deviceApprovalTtlSeconds: 600,
     sessionSecret: "test-session-secret-key-min-32-chars",
     sessionTtlSeconds: 3600,
@@ -53,7 +59,9 @@ export function createTestApiConfig(overrides: Partial<ApiConfig> = {}): ApiConf
     defaultEmailLocale: "en",
     publicAppBaseUrl: "https://app.okkey.test",
     emailFrom: "no-reply@okkey.local",
+    salesEmail: "sales@okkey.test",
     emailProvider: "logger",
+    emailDeliveryMode: "sync",
     smtpHost: "localhost",
     smtpPort: 1025,
     smtpSecure: false,
@@ -83,6 +91,7 @@ export function createTestApiConfig(overrides: Partial<ApiConfig> = {}): ApiConf
     webauthnRpName: "Okkey",
     webauthnOrigins: ["http://localhost:5173"],
     webauthnChallengeTtlSeconds: 300,
+    faviconProvider: "direct",
     ...overrides,
   };
 }

@@ -2,6 +2,7 @@ pub mod kdf;
 pub mod aead;
 pub mod sign;
 pub mod x25519;
+pub mod ed25519_x25519;
 pub mod encoding;
 pub mod mlkem768;
 pub mod hybrid;

@@ -212,15 +212,31 @@ describe("App", () => {
       PROFILE_STORAGE_KEY,
       JSON.stringify({ email: "user@okkey.local" }),
     );
+    // Unlock bootstraps A+B from the API when the local bundle is missing.
+    // Fail account calls so bootstrap finishes empty and unlock surfaces no-bundle.
+    const fetchMock = vi.fn(async () => {
+      return new Response(
+        JSON.stringify({ error: "NOT_FOUND", message: "not found", requestId: "t" }),
+        { status: 404, headers: { "Content-Type": "application/json" } },
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
     renderWithRouter(<App />, [ACCOUNT_LOCK_PATH]);
     await waitFor(() => {
       expect(screen.getByLabelText(/^master password$/i)).toBeInTheDocument();
     });
     fireEvent.change(screen.getByLabelText(/^master password$/i), { target: { value: "any" } });
+    // Password alone is not enough while vaultUnlockBootstrapLoading is true.
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /^unlock$/i })).toBeEnabled();
+    });
     fireEvent.click(screen.getByRole("button", { name: /^unlock$/i }));
     await waitFor(() => {
       expect(screen.getByRole("alert")).toBeInTheDocument();
     });
+    expect(screen.getByRole("alert")).toHaveTextContent(/no vault key data/i);
+    vi.unstubAllGlobals();
     clearBearerAndSession();
   });
 

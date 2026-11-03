@@ -15,6 +15,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "./dropdown-menu.js";
 import { ScrollArea } from "./scroll-area.js";
@@ -158,11 +159,18 @@ function PopupMobileSheetHandle({
 
 export type PopupMenuItem = {
   id: string;
-  label: React.ReactNode;
+  label?: React.ReactNode;
   icon?: React.ReactNode;
   active?: boolean;
   disabled?: boolean;
   onSelect?: () => void;
+  /** When true, renders a visual separator; label/icon/onSelect are ignored. */
+  separator?: boolean;
+  /**
+   * When true, renders a non-interactive group heading (same style as `PopupMenu.label`).
+   * Useful for a second group mid-list after a separator.
+   */
+  groupLabel?: boolean;
 };
 
 export type PopupMenu = {
@@ -187,6 +195,11 @@ export type PopupProps = Omit<React.ComponentPropsWithoutRef<"div">, "title"> & 
   closeDisabled?: boolean;
   panelClassName?: string;
   contentClassName?: string;
+  /**
+   * `responsive` (default): mobile bottom sheet below `md`.
+   * `desktop`: always centered panel (for narrow hosts like the extension popup).
+   */
+  layout?: "responsive" | "desktop";
 };
 
 function popupWidthToCssValue(width: PopupWidth): string {
@@ -194,6 +207,9 @@ function popupWidthToCssValue(width: PopupWidth): string {
 }
 
 function isActiveMenuItem(menu: PopupMenu, item: PopupMenuItem) {
+  if (item.separator || item.groupLabel) {
+    return false;
+  }
   return item.active ?? menu.activeItemId === item.id;
 }
 
@@ -230,32 +246,55 @@ function PopupDescription({ description }: { description: React.ReactNode }) {
   return <>{description}</>;
 }
 
-const popupHeaderPaddingClassName = (withMenu: boolean) =>
+const popupHeaderPaddingClassName = (withMenu: boolean, desktopLayout: boolean) =>
   cn(
-    withMenu ? "px-4 pt-4 pb-4 md:pr-12" : "px-6 pt-6 pb-4 md:pr-12 max-md:px-4 max-md:pt-4 max-md:pb-4",
+    withMenu
+      ? desktopLayout
+        ? "px-4 pt-4 pb-4 pr-12"
+        : "px-4 pt-4 pb-4 md:pr-12"
+      : desktopLayout
+        ? "px-6 pt-6 pb-4 pr-12"
+        : "px-6 pt-6 pb-4 md:pr-12 max-md:px-4 max-md:pt-4 max-md:pb-4",
   );
 
-const popupDescriptionPaddingClassName = (withMenu: boolean) =>
-  cn(withMenu ? "px-4 md:pr-12" : "px-6 max-md:px-4 md:pr-12", "pb-6");
-
-const popupContentPaddingClassName = (withMenu: boolean, hasDescription: boolean) =>
+const popupDescriptionPaddingClassName = (withMenu: boolean, desktopLayout: boolean) =>
   cn(
-    withMenu ? "px-4" : "px-6 max-md:px-4",
+    withMenu
+      ? desktopLayout
+        ? "px-4 pr-12"
+        : "px-4 md:pr-12"
+      : desktopLayout
+        ? "px-6 pr-12"
+        : "px-6 max-md:px-4 md:pr-12",
+    "pb-6",
+  );
+
+const popupContentPaddingClassName = (withMenu: boolean, hasDescription: boolean, desktopLayout: boolean) =>
+  cn(
+    withMenu ? "px-4" : desktopLayout ? "px-6" : "px-6 max-md:px-4",
     hasDescription ? "pb-4 pt-0" : "py-4",
   );
 
-const popupFooterPaddingClassName = (withMenu: boolean) =>
-  withMenu ? "px-4 pt-4 pb-4 max-md:pt-3" : "px-6 pt-4 pb-6 max-md:px-4 max-md:pt-3 max-md:pb-4";
+const popupFooterPaddingClassName = (withMenu: boolean, desktopLayout: boolean) =>
+  withMenu
+    ? desktopLayout
+      ? "px-4 pt-4 pb-4"
+      : "px-4 pt-4 pb-4 max-md:pt-3"
+    : desktopLayout
+      ? "px-6 pt-4 pb-6"
+      : "px-6 pt-4 pb-6 max-md:px-4 max-md:pt-3 max-md:pb-4";
 
 function PopupTitleSection({
   header,
   withMenu,
   showScrollShadow,
+  desktopLayout = false,
   className,
 }: {
   header: React.ReactNode;
   withMenu: boolean;
   showScrollShadow: boolean;
+  desktopLayout?: boolean;
   className?: string;
 }) {
   return (
@@ -263,7 +302,7 @@ function PopupTitleSection({
       className={cn(
         popupChromeSurfaceClassName,
         popupHeaderShadowClassName(showScrollShadow),
-        popupHeaderPaddingClassName(withMenu),
+        popupHeaderPaddingClassName(withMenu, desktopLayout),
         className,
       )}
     >
@@ -279,14 +318,16 @@ function PopupTitleSection({
 function PopupDescriptionSection({
   description,
   withMenu,
+  desktopLayout = false,
   className,
 }: {
   description: React.ReactNode;
   withMenu: boolean;
+  desktopLayout?: boolean;
   className?: string;
 }) {
   return (
-    <div className={cn(popupDescriptionPaddingClassName(withMenu), className)}>
+    <div className={cn(popupDescriptionPaddingClassName(withMenu, desktopLayout), className)}>
       <PopupDescription description={description} />
     </div>
   );
@@ -302,10 +343,42 @@ function PopupMenuItems({ menu, surface }: { menu: PopupMenu; surface: "sidebar"
       ) : null}
       <div className="flex min-w-0 flex-col gap-1">
         {menu.items.map((item) => {
+          if (item.separator) {
+            if (surface === "dropdown") {
+              return <DropdownMenuSeparator key={item.id} className="my-1" />;
+            }
+            return (
+              <div
+                key={item.id}
+                role="separator"
+                className="my-1 h-px shrink-0 bg-sidebar-border"
+                aria-hidden
+              />
+            );
+          }
+
+          if (item.groupLabel) {
+            return (
+              <div
+                key={item.id}
+                className={cn(
+                  "h-8 min-w-0 px-2 text-xs font-medium leading-8 text-muted-foreground",
+                  surface === "sidebar" && "text-sidebar-foreground/50",
+                )}
+              >
+                <span className="block truncate">{item.label}</span>
+              </div>
+            );
+          }
+
           const active = isActiveMenuItem(menu, item);
           const content = (
             <>
-              {item.icon ? <span className="flex size-4 shrink-0 items-center justify-center">{item.icon}</span> : null}
+              {item.icon ? (
+                <span className="flex size-4 shrink-0 items-center justify-center overflow-visible">
+                  {item.icon}
+                </span>
+              ) : null}
               <span className="min-w-0 flex-1 truncate">{item.label}</span>
             </>
           );
@@ -433,6 +506,7 @@ export const Popup = React.forwardRef<HTMLDivElement, PopupProps>(
       onCloseRequest,
       closeLabel = "Close popup",
       closeDisabled = false,
+      layout = "responsive",
       children,
       style,
       onClick,
@@ -441,6 +515,7 @@ export const Popup = React.forwardRef<HTMLDivElement, PopupProps>(
     },
     ref,
   ) => {
+    const isDesktopLayout = layout === "desktop";
     const [isClosing, setIsClosing] = React.useState(false);
     const [sheetDragOffset, setSheetDragOffset] = React.useState(0);
     const [isSheetDragging, setIsSheetDragging] = React.useState(false);
@@ -508,7 +583,7 @@ export const Popup = React.forwardRef<HTMLDivElement, PopupProps>(
         data-state={isClosing ? "closing" : "open"}
         className={cn(
           "okkey-popup-overlay fixed inset-0 z-popup !m-0 flex items-center justify-center overflow-hidden bg-black/30 p-4 text-foreground",
-          "max-md:items-end max-md:p-0",
+          !isDesktopLayout && "max-md:items-end max-md:p-0",
           className,
         )}
         onClick={(event) => {
@@ -520,13 +595,23 @@ export const Popup = React.forwardRef<HTMLDivElement, PopupProps>(
         style={popupStyle}
         {...props}
       >
-        <div className="pointer-events-none relative flex max-h-[calc(100dvh-32px)] w-[min(var(--okkey-popup-width),calc(100vw-32px))] max-md:max-h-none max-md:w-full">
+        <div
+          className={cn(
+            // Overlay already has p-4; 100% is the padded host (extension shell is 600px).
+            "pointer-events-none relative flex max-h-[calc(100dvh-32px)] max-w-full",
+            isDesktopLayout
+              ? "w-[min(var(--okkey-popup-width),100%)]"
+              : "w-[min(var(--okkey-popup-width),calc(100vw-32px))] max-md:max-h-none max-md:w-full",
+          )}
+        >
           <div
+            data-layout={layout}
             data-state={isClosing ? "closing" : "open"}
             className={cn(
-              "okkey-popup-sheet pointer-events-auto flex w-full min-h-0 flex-col max-md:w-full max-md:min-h-[88dvh] max-md:max-h-[calc(100dvh-16px)]",
-              (isSheetDragging || sheetDragOffset > 0) && "max-md:[animation:none]",
-              sheetDragOffset > 0 && !isClosing && "max-md:transition-none",
+              "okkey-popup-sheet pointer-events-auto flex w-full min-h-0 flex-col",
+              !isDesktopLayout && "max-md:w-full max-md:min-h-[88dvh] max-md:max-h-[calc(100dvh-16px)]",
+              !isDesktopLayout && (isSheetDragging || sheetDragOffset > 0) && "max-md:[animation:none]",
+              !isDesktopLayout && sheetDragOffset > 0 && !isClosing && "max-md:transition-none",
             )}
             style={{
               ...((isSheetDragging || sheetDragOffset > 0) && !isClosing ? { animation: "none" } : {}),
@@ -537,7 +622,7 @@ export const Popup = React.forwardRef<HTMLDivElement, PopupProps>(
                   : {}),
             }}
           >
-            {onClose ? (
+            {onClose && !isDesktopLayout ? (
               <PopupMobileSheetHandle
                 closeLabel={closeLabel}
                 closeDisabled={closeDisabled || isClosing}
@@ -551,8 +636,9 @@ export const Popup = React.forwardRef<HTMLDivElement, PopupProps>(
               data-state={isClosing ? "closing" : "open"}
               className={cn(
                 "okkey-popup-panel relative flex min-h-0 w-full max-h-[calc(100dvh-32px)] flex-col overflow-hidden rounded-2xl bg-background",
-                menu && "md:flex-row",
-                "max-md:w-full max-md:min-h-0 max-md:flex-1 max-md:max-h-none max-md:flex-col max-md:rounded-b-none max-md:rounded-t-2xl",
+                menu && (isDesktopLayout ? "flex-row" : "md:flex-row"),
+                !isDesktopLayout &&
+                  "max-md:w-full max-md:min-h-0 max-md:flex-1 max-md:max-h-none max-md:flex-col max-md:rounded-b-none max-md:rounded-t-2xl",
                 panelClassName,
               )}
               onClick={(event) => event.stopPropagation()}
@@ -564,7 +650,7 @@ export const Popup = React.forwardRef<HTMLDivElement, PopupProps>(
                   className={cn(
                     "absolute z-20 flex size-8 items-center justify-center rounded-md outline-none transition-[background-color,color]",
                     "right-4 top-4 text-foreground/70 hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring",
-                    "max-md:hidden",
+                    !isDesktopLayout && "max-md:hidden",
                   )}
                   onClick={requestClose}
                 >
@@ -572,7 +658,12 @@ export const Popup = React.forwardRef<HTMLDivElement, PopupProps>(
                 </button>
               ) : null}
           {menu ? (
-            <aside className="hidden w-60 min-h-0 shrink-0 overflow-hidden bg-secondary p-2 md:block">
+            <aside
+              className={cn(
+                "w-60 min-h-0 shrink-0 overflow-hidden bg-secondary p-2",
+                isDesktopLayout ? "block" : "hidden md:block",
+              )}
+            >
               <ScrollArea className="h-full max-h-[inherit]">
                 <PopupMenuItems menu={menu} surface="sidebar" />
               </ScrollArea>
@@ -584,10 +675,11 @@ export const Popup = React.forwardRef<HTMLDivElement, PopupProps>(
               header={header}
               withMenu={hasMenu}
               showScrollShadow={scrollEdges.fromTop}
-              className="shrink-0 max-md:hidden"
+              desktopLayout={isDesktopLayout}
+              className={cn("shrink-0", !isDesktopLayout && "max-md:hidden")}
             />
 
-            {menu ? (
+            {menu && !isDesktopLayout ? (
               <div
                 className={cn(
                   popupChromeSurfaceClassName,
@@ -600,16 +692,31 @@ export const Popup = React.forwardRef<HTMLDivElement, PopupProps>(
             ) : null}
 
             <ScrollArea ref={contentScrollAreaRef} className="min-h-0 flex-1 max-h-full">
-              <PopupTitleSection
-                header={header}
-                withMenu={hasMenu}
-                showScrollShadow={false}
-                className="md:hidden"
-              />
+              {!isDesktopLayout ? (
+                <PopupTitleSection
+                  header={header}
+                  withMenu={hasMenu}
+                  showScrollShadow={false}
+                  className="md:hidden"
+                />
+              ) : null}
 
-              {description ? <PopupDescriptionSection description={description} withMenu={hasMenu} /> : null}
+              {description ? (
+                <PopupDescriptionSection
+                  description={description}
+                  withMenu={hasMenu}
+                  desktopLayout={isDesktopLayout}
+                />
+              ) : null}
 
-              <div className={cn(popupContentPaddingClassName(hasMenu, hasDescription), contentClassName)}>{children}</div>
+              <div
+                className={cn(
+                  popupContentPaddingClassName(hasMenu, hasDescription, isDesktopLayout),
+                  contentClassName,
+                )}
+              >
+                {children}
+              </div>
             </ScrollArea>
 
             {footer ? (
@@ -618,7 +725,7 @@ export const Popup = React.forwardRef<HTMLDivElement, PopupProps>(
                   popupChromeSurfaceClassName,
                   popupFooterShadowClassName(scrollEdges.fromBottom),
                   "flex shrink-0 items-center justify-end gap-2",
-                  popupFooterPaddingClassName(hasMenu),
+                  popupFooterPaddingClassName(hasMenu, isDesktopLayout),
                 )}
               >
                 {footer}

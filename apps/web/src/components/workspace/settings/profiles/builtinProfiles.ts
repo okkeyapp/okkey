@@ -1,9 +1,17 @@
 import {
-  hasPlanFeature,
+  type PlanFeatureOverrides,
   type WorkspaceBuiltInProfileId,
-  type WorkspaceBuiltInProfileDto,
+  type WorkspaceProfileListItemDto,
   type WorkspaceProfileSummary,
 } from "@okkey/types";
+
+import { workspaceHasPlanFeature } from "../../../../workspace/planEntitlements";
+
+type WorkspacePlanLike = {
+  planTier?: string | null;
+  planCustomOverride?: boolean | null;
+  planFeatureOverrides?: PlanFeatureOverrides | null;
+};
 
 export type BuiltInProfileDefinition = {
   builtinId: WorkspaceBuiltInProfileId;
@@ -35,13 +43,18 @@ export function buildBuiltInProfileSummaries(
   }));
 }
 
-/** Custom profiles require the ENTERPRISE plan feature (module presence is checked separately). */
-export function canManageCustomWorkspaceProfiles(planTier: string | undefined): boolean {
-  return hasPlanFeature(planTier, "customWorkspaceProfiles");
+/**
+ * Custom profiles: SaaS `plan_tier` (+ `planFeatureOverrides` when custom override is on)
+ * / self-host enterprise modules.
+ */
+export function canManageCustomWorkspaceProfiles(
+  workspace: WorkspacePlanLike | null | undefined,
+): boolean {
+  return workspaceHasPlanFeature(workspace, "customWorkspaceProfiles");
 }
 
 export function extractBuiltInApplicationCounts(
-  profiles: WorkspaceBuiltInProfileDto[],
+  profiles: readonly WorkspaceProfileListItemDto[],
 ): Partial<Record<WorkspaceBuiltInProfileId, number>> {
   const counts: Partial<Record<WorkspaceBuiltInProfileId, number>> = {};
   for (const profile of profiles) {

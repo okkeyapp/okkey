@@ -58,7 +58,9 @@ export async function buildItemCreateAppendRequest(
   let encrypted: Uint8Array | undefined;
   try {
     plaintext = await encodeItemPlaintextUtf8(item);
-    encrypted = await encryptVaultItemPayload(vaultKey, plaintext);
+    encrypted = await encryptVaultItemPayload(vaultKey, plaintext, 2, {
+      itemId: item.itemId,
+    });
     return {
       eventType: "ITEM_CREATE",
       encryptedBlob: toEncryptedBlob(
@@ -91,7 +93,9 @@ export async function buildItemUpdateAppendRequest(
   let encrypted: Uint8Array | undefined;
   try {
     plaintext = await encodeItemPlaintextUtf8(item);
-    encrypted = await encryptVaultItemPayload(vaultKey, plaintext);
+    encrypted = await encryptVaultItemPayload(vaultKey, plaintext, 2, {
+      itemId: item.itemId,
+    });
     return {
       eventType: "ITEM_UPDATE",
       encryptedBlob: toEncryptedBlob(
@@ -149,7 +153,10 @@ export async function buildItemDeleteAppendRequest(
   let encrypted: Uint8Array | undefined;
   try {
     plaintext = await encodeItemPlaintextUtf8(tombstone);
-    encrypted = await encryptVaultItemPayload(vaultKey, plaintext);
+    encrypted = await encryptVaultItemPayload(vaultKey, plaintext, 2, {
+      itemId,
+    });
+    const deletedAtMs = tombstone.deletedAtMs ?? tombstone.updatedAtMs;
     return {
       eventType: "ITEM_DELETE",
       encryptedBlob: toEncryptedBlob(
@@ -157,6 +164,9 @@ export async function buildItemDeleteAppendRequest(
         ITEM_PLAINTEXT_SCHEMA_VERSION_LATEST,
       ),
       baseVersion,
+      referencedItemId: itemId,
+      itemSoftDeleted: true,
+      itemDeletedAtMs: deletedAtMs,
       ...(idempotencyKey ? { idempotencyKey } : {}),
       clientCreatedAt,
     };

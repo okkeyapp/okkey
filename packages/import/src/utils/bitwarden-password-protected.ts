@@ -129,15 +129,19 @@ async function hkdfExpand(prk: Uint8Array, info: string, length: number): Promis
   const infoBytes = new TextEncoder().encode(info);
   let prev = new Uint8Array(0);
   const out = new Uint8Array(n * hashLen);
-  const key = await crypto.subtle.importKey("raw", prk, { name: "HMAC", hash: "SHA-256" }, false, [
-    "sign",
-  ]);
+  const key = await crypto.subtle.importKey(
+    "raw",
+    prk as BufferSource,
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
   for (let i = 0; i < n; i += 1) {
     const input = new Uint8Array(prev.length + infoBytes.length + 1);
     input.set(prev, 0);
     input.set(infoBytes, prev.length);
     input[prev.length + infoBytes.length] = i + 1;
-    const block = new Uint8Array(await crypto.subtle.sign("HMAC", key, input));
+    const block = new Uint8Array(await crypto.subtle.sign("HMAC", key, input as BufferSource));
     out.set(block, i * hashLen);
     prev = block;
   }
@@ -176,21 +180,33 @@ async function encryptEncString(plaintext: string, stretchedKey: Uint8Array): Pr
   const encKey = stretchedKey.slice(0, 32);
   const macKey = stretchedKey.slice(32, 64);
   const iv = crypto.getRandomValues(new Uint8Array(16));
-  const aesKey = await crypto.subtle.importKey("raw", encKey, { name: "AES-CBC" }, false, ["encrypt"]);
+  const aesKey = await crypto.subtle.importKey(
+    "raw",
+    encKey as BufferSource,
+    { name: "AES-CBC" },
+    false,
+    ["encrypt"],
+  );
   const cipher = new Uint8Array(
-    await crypto.subtle.encrypt({ name: "AES-CBC", iv }, aesKey, new TextEncoder().encode(plaintext)),
+    await crypto.subtle.encrypt(
+      { name: "AES-CBC", iv: iv as BufferSource },
+      aesKey,
+      new TextEncoder().encode(plaintext),
+    ),
   );
   const macData = new Uint8Array(iv.length + cipher.length);
   macData.set(iv, 0);
   macData.set(cipher, iv.length);
   const macCryptoKey = await crypto.subtle.importKey(
     "raw",
-    macKey,
+    macKey as BufferSource,
     { name: "HMAC", hash: "SHA-256" },
     false,
     ["sign"],
   );
-  const mac = new Uint8Array(await crypto.subtle.sign("HMAC", macCryptoKey, macData));
+  const mac = new Uint8Array(
+    await crypto.subtle.sign("HMAC", macCryptoKey, macData as BufferSource),
+  );
   return `${ENC_TYPE_AES_CBC_256_HMAC_SHA256}.${bytesToB64(iv)}|${bytesToB64(cipher)}|${bytesToB64(mac)}`;
 }
 
@@ -228,20 +244,30 @@ async function decryptEncString(encryptedString: string, stretchedKey: Uint8Arra
   macData.set(data, iv.length);
   const macCryptoKey = await crypto.subtle.importKey(
     "raw",
-    macKey,
+    macKey as BufferSource,
     { name: "HMAC", hash: "SHA-256" },
     false,
     ["sign"],
   );
-  const computedMac = new Uint8Array(await crypto.subtle.sign("HMAC", macCryptoKey, macData));
+  const computedMac = new Uint8Array(
+    await crypto.subtle.sign("HMAC", macCryptoKey, macData as BufferSource),
+  );
   if (!timingSafeEqual(computedMac, mac)) {
     throw new Error("MAC validation failed");
   }
 
-  const aesKey = await crypto.subtle.importKey("raw", encKey, { name: "AES-CBC" }, false, [
-    "decrypt",
-  ]);
-  const plain = await crypto.subtle.decrypt({ name: "AES-CBC", iv }, aesKey, data);
+  const aesKey = await crypto.subtle.importKey(
+    "raw",
+    encKey as BufferSource,
+    { name: "AES-CBC" },
+    false,
+    ["decrypt"],
+  );
+  const plain = await crypto.subtle.decrypt(
+    { name: "AES-CBC", iv: iv as BufferSource },
+    aesKey,
+    data as BufferSource,
+  );
   return new TextDecoder().decode(plain);
 }
 

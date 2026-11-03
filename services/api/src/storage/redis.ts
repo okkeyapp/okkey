@@ -13,6 +13,30 @@ type RedisClientLike = {
   del(key: string): Promise<number>;
   incr(key: string): Promise<number>;
   expire(key: string, seconds: number): Promise<boolean>;
+  ttl(key: string): Promise<number>;
+  lPush(key: string, ...values: string[]): Promise<number>;
+  rPop(key: string): Promise<string | null>;
+  lRem(key: string, count: number, element: string): Promise<number>;
+  brPop(
+    key: string,
+    timeoutSeconds: number,
+  ): Promise<{ key: string; element: string } | null>;
+  zAdd(key: string, members: { score: number; value: string } | Array<{ score: number; value: string }>): Promise<number>;
+  zRangeByScore(
+    key: string,
+    min: number | string,
+    max: number | string,
+    options?: { LIMIT?: { offset: number; count: number } },
+  ): Promise<string[]>;
+  zRangeByScoreWithScores(
+    key: string,
+    min: number | string,
+    max: number | string,
+    options?: { LIMIT?: { offset: number; count: number } },
+  ): Promise<Array<{ value: string; score: number }>>;
+  zRemRangeByScore(key: string, min: number | string, max: number | string): Promise<number>;
+  zCard(key: string): Promise<number>;
+  zRem(key: string, ...members: string[]): Promise<number>;
 };
 
 export class RedisCache {
@@ -54,6 +78,25 @@ export class RedisCache {
       return await this.client.get(key);
     } catch (error) {
       throw new StorageQueryError("redis get failed", error);
+    }
+  }
+
+  /** Atomic get-and-delete when the driver supports it; otherwise get then del. */
+  async getDel(key: string): Promise<string | null> {
+    try {
+      const withGetDel = this.client as RedisClientLike & {
+        getDel?: (key: string) => Promise<string | null>;
+      };
+      if (typeof withGetDel.getDel === "function") {
+        return await withGetDel.getDel(key);
+      }
+      const value = await this.client.get(key);
+      if (value !== null) {
+        await this.client.del(key);
+      }
+      return value;
+    } catch (error) {
+      throw new StorageQueryError("redis getDel failed", error);
     }
   }
 
@@ -113,8 +156,116 @@ export class RedisCache {
     }
   }
 
+  /** Remaining TTL in seconds; `-1` no expiry, `-2` missing key (Redis semantics). */
+  async ttl(key: string): Promise<number> {
+    try {
+      return await this.client.ttl(key);
+    } catch (error) {
+      throw new StorageQueryError("redis ttl failed", error);
+    }
+  }
+
   async close(): Promise<void> {
     await this.client.disconnect();
+  }
+
+  async lPush(key: string, ...values: string[]): Promise<number> {
+    try {
+      return await this.client.lPush(key, ...values);
+    } catch (error) {
+      throw new StorageQueryError("redis lPush failed", error);
+    }
+  }
+
+  async rPop(key: string): Promise<string | null> {
+    try {
+      return await this.client.rPop(key);
+    } catch (error) {
+      throw new StorageQueryError("redis rPop failed", error);
+    }
+  }
+
+  async lRem(key: string, count: number, element: string): Promise<number> {
+    try {
+      return await this.client.lRem(key, count, element);
+    } catch (error) {
+      throw new StorageQueryError("redis lRem failed", error);
+    }
+  }
+
+  async brPop(key: string, timeoutSeconds: number): Promise<string | null> {
+    try {
+      const result = await this.client.brPop(key, timeoutSeconds);
+      return result?.element ?? null;
+    } catch (error) {
+      throw new StorageQueryError("redis brPop failed", error);
+    }
+  }
+
+  async zAdd(key: string, score: number, member: string): Promise<number> {
+    try {
+      return await this.client.zAdd(key, { score, value: member });
+    } catch (error) {
+      throw new StorageQueryError("redis zAdd failed", error);
+    }
+  }
+
+  async zRangeByScore(
+    key: string,
+    min: number | string,
+    max: number | string,
+    limit: number,
+  ): Promise<string[]> {
+    try {
+      return await this.client.zRangeByScore(key, min, max, {
+        LIMIT: { offset: 0, count: limit },
+      });
+    } catch (error) {
+      throw new StorageQueryError("redis zRangeByScore failed", error);
+    }
+  }
+
+  async zRangeByScoreWithScores(
+    key: string,
+    min: number | string,
+    max: number | string,
+    limit: number,
+  ): Promise<Array<{ value: string; score: number }>> {
+    try {
+      return await this.client.zRangeByScoreWithScores(key, min, max, {
+        LIMIT: { offset: 0, count: limit },
+      });
+    } catch (error) {
+      throw new StorageQueryError("redis zRangeByScoreWithScores failed", error);
+    }
+  }
+
+  async zRemRangeByScore(
+    key: string,
+    min: number | string,
+    max: number | string,
+  ): Promise<number> {
+    try {
+      return await this.client.zRemRangeByScore(key, min, max);
+    } catch (error) {
+      throw new StorageQueryError("redis zRemRangeByScore failed", error);
+    }
+  }
+
+  async zCard(key: string): Promise<number> {
+    try {
+      return await this.client.zCard(key);
+    } catch (error) {
+      throw new StorageQueryError("redis zCard failed", error);
+    }
+  }
+
+  async zRem(key: string, ...members: string[]): Promise<number> {
+    try {
+      return await this.client.zRem(key, ...members);
+    } catch (error) {
+      throw new StorageQueryError("redis zRem failed", error);
+    }
   }
 }
 

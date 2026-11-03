@@ -1,6 +1,6 @@
 {
   "name": "okkey",
-  "version": "1.0.0-beta.1",
+  "version": "1.0.0-beta.2",
   "private": true,
   "description": "Okkey Core",
   "homepage": "https://github.com/okkeyapp/okkey#readme",
@@ -24,11 +24,13 @@
   },
   "packageManager": "yarn@1.22.22",
   "resolutions": {
-    "vite": "6.1.0"
+    "vite": "6.3.5"
   },
   "workspaces": [
     "packages/*",
-    "apps/web"
+    "apps/web",
+    "apps/extension",
+    "e2e"
   ],
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1075.0",
@@ -40,7 +42,8 @@
     "nodemailer": "^7.0.5",
     "pg": "^8.16.3",
     "redis": "^5.9.0",
-    "smtp-server": "^3.14.0"
+    "smtp-server": "^3.14.0",
+    "tldts": "^6.1.86"
   },
   "devDependencies": {
     "concurrently": "^9.2.1",
@@ -50,11 +53,12 @@
     "build:wasm": "PATH=\"$HOME/.cargo/bin:$PATH\" node packages/crypto/scripts/build.mjs && node scripts/verify-crypto-bootstrap.mjs",
     "check:all": "yarn check:crypto && yarn build:wasm && yarn check:sdk && yarn check:i18n && yarn check:email-templates",
     "check:crypto": "cargo test --locked --manifest-path rust/crypto-engine/Cargo.toml",
-    "check:sdk": "yarn check:sdk:id && yarn check:sdk:types && yarn check:sdk:import && yarn check:sdk:api && yarn check:sdk:auth && yarn check:sdk:vault && yarn check:sdk:sync && yarn check:sdk:ui",
+    "check:sdk": "yarn check:sdk:id && yarn check:sdk:types && yarn check:sdk:import && yarn check:sdk:api && yarn check:sdk:auth && yarn check:sdk:crypto && yarn check:sdk:sync && yarn check:sdk:ui && yarn check:sdk:vault",
     "check:sdk:api": "yarn tsc -p packages/api/tsconfig.json",
     "check:sdk:auth": "yarn tsc -p packages/auth/tsconfig.json",
+    "check:sdk:crypto": "yarn tsc -p packages/crypto/tsconfig.json",
     "check:sdk:sync": "yarn tsc -p packages/sync/tsconfig.json",
-    "build:ts-sdk": "yarn tsc -p packages/id/tsconfig.json && yarn tsc -p packages/types/tsconfig.json && yarn tsc -p packages/sync/tsconfig.json",
+    "build:ts-sdk": "yarn tsc -p packages/id/tsconfig.json && yarn tsc -p packages/types/tsconfig.json && yarn tsc -p packages/crypto/tsconfig.json && yarn tsc -p packages/sync/tsconfig.json",
     "check:sdk:id": "yarn tsc -p packages/id/tsconfig.json",
     "check:sdk:types": "yarn tsc -p packages/types/tsconfig.json",
     "check:sdk:import": "yarn tsc -p packages/import/tsconfig.json",
@@ -65,17 +69,24 @@
     "build:i18n": "yarn --cwd packages/i18n build",
     "build:email-templates": "yarn --cwd packages/email-templates build",
     "build:email": "yarn build:i18n && yarn build:email-templates",
-    "fuzz:crypto:install": "PATH=\"$HOME/.cargo/bin:$PATH\" cargo install cargo-fuzz --version ${CARGO_FUZZ_VERSION:-0.12.0} --locked",
+    "fuzz:crypto:install": "CARGO_NET_RETRY=\"${CARGO_NET_RETRY:-10}\" PATH=\"$HOME/.cargo/bin:$PATH\" bash scripts/ci/cargo-install-retry.sh cargo-fuzz --version ${CARGO_FUZZ_VERSION:-0.12.0} --locked",
     "fuzz:crypto:quick": "PATH=\"$HOME/.cargo/bin:$PATH\" RUST_NIGHTLY_TOOLCHAIN=\"${RUST_NIGHTLY_TOOLCHAIN:-nightly-2026-03-20}\" rustup toolchain install \"${RUST_NIGHTLY_TOOLCHAIN:-nightly-2026-03-20}\" --profile minimal && cd rust/crypto-engine && PATH=\"$HOME/.cargo/bin:$PATH\" cargo +\"${RUST_NIGHTLY_TOOLCHAIN:-nightly-2026-03-20}\" fuzz run hybrid_decode -- -seed=1337 -max_total_time=20 && PATH=\"$HOME/.cargo/bin:$PATH\" cargo +\"${RUST_NIGHTLY_TOOLCHAIN:-nightly-2026-03-20}\" fuzz run hybrid_decrypt -- -seed=1338 -max_total_time=20 && PATH=\"$HOME/.cargo/bin:$PATH\" cargo +\"${RUST_NIGHTLY_TOOLCHAIN:-nightly-2026-03-20}\" fuzz run signature_verify -- -seed=1339 -max_total_time=20",
     "fuzz:crypto:extended": "PATH=\"$HOME/.cargo/bin:$PATH\" RUST_NIGHTLY_TOOLCHAIN=\"${RUST_NIGHTLY_TOOLCHAIN:-nightly-2026-03-20}\" rustup toolchain install \"${RUST_NIGHTLY_TOOLCHAIN:-nightly-2026-03-20}\" --profile minimal && cd rust/crypto-engine && PATH=\"$HOME/.cargo/bin:$PATH\" cargo +\"${RUST_NIGHTLY_TOOLCHAIN:-nightly-2026-03-20}\" fuzz run hybrid_decode -- -seed=202601 -max_total_time=300 && PATH=\"$HOME/.cargo/bin:$PATH\" cargo +\"${RUST_NIGHTLY_TOOLCHAIN:-nightly-2026-03-20}\" fuzz run hybrid_decrypt -- -seed=202602 -max_total_time=300 && PATH=\"$HOME/.cargo/bin:$PATH\" cargo +\"${RUST_NIGHTLY_TOOLCHAIN:-nightly-2026-03-20}\" fuzz run signature_verify -- -seed=202603 -max_total_time=300",
-    "dev": "yarn build:email && concurrently -n api,web -c blue,green \"yarn dev:api:serve\" \"yarn dev:web\"",
+    "dev": "node scripts/ensure-api-dev-deps.mjs && concurrently -n api,web -c blue,green \"yarn dev:api:serve\" \"yarn dev:web\"",
     "dev:email": "yarn --cwd packages/email-templates dev",
     "dev:api:serve": "node --experimental-strip-types services/api/src/index.ts",
-    "dev:api": "yarn build:email && yarn dev:api:serve",
+    "dev:api": "node scripts/ensure-api-dev-deps.mjs && yarn dev:api:serve",
     "dev:web": "yarn --cwd apps/web dev",
     "build:web": "yarn --cwd apps/web build",
     "test:web": "yarn --cwd apps/web test",
-    "dev:worker": "echo 'TODO: add worker dev command' && exit 1",
+    "dev:extension": "yarn --cwd apps/extension dev",
+    "build:extension": "yarn --cwd apps/extension build",
+    "build:extension:chromium": "yarn --cwd apps/extension build:chromium",
+    "build:extension:firefox": "yarn --cwd apps/extension build:firefox",
+    "zip:extension:chromium": "yarn --cwd apps/extension zip:chromium",
+    "zip:extension:firefox": "yarn --cwd apps/extension zip:firefox",
+    "zip:extension:store": "yarn --cwd apps/extension zip:store",
+    "dev:worker": "node scripts/ensure-api-dev-deps.mjs && node --experimental-strip-types services/api/src/worker.ts",
     "infra:down": "./scripts/infra.sh down",
     "infra:logs": "./scripts/infra.sh logs",
     "infra:ps": "./scripts/infra.sh ps",
@@ -87,6 +98,8 @@
     "test:crypto:contracts": "yarn build:wasm && node --test packages/crypto/test/hybrid.contracts.test.mjs && cargo test --locked --manifest-path rust/crypto-engine/Cargo.toml hybrid_golden_layout_sha256_matches_cross_layer_fixture",
     "test:security": "yarn build:wasm && yarn build:ts-sdk && yarn build:email && node --experimental-strip-types --test --test-force-exit --test-concurrency=1 --test-timeout=180000 services/api/test/security-qday-downgrade-strip.test.ts services/api/test/security-qday-missing-pq-malformed-envelope.test.ts services/api/test/security-qday-mixed-device-replay-rollback.test.ts",
     "test:e2e": "yarn build:email && node --experimental-strip-types --test services/api/test/*.e2e.test.ts",
+    "test:browser": "yarn --cwd e2e test",
+    "test:browser:install": "yarn --cwd e2e install:browsers",
     "verify:crypto:bootstrap": "node scripts/verify-crypto-bootstrap.mjs",
     "verify:crypto:repro": "node scripts/verify-crypto-reproducibility.mjs",
     "build:crypto:provenance": "node scripts/generate-crypto-provenance.mjs",

@@ -1,0 +1,23 @@
+@import "./extension.css";
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+    min-height: 100%;
+    min-height: 100dvh;
+    width: 100%;
+  }
+
+  body {
+    display: flex;
+    flex-direction: column;
+  }
+
+  #root {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+  }
+}

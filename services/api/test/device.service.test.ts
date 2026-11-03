@@ -7,13 +7,14 @@ import {
 } from "../src/device/service.ts";
 import type { EmailTemplateService } from "../src/email/service.ts";
 import { UniqueConstraintError } from "../src/storage/errors.ts";
+import { TrustedDeviceKeyConflictError } from "../src/storage/repositories.ts";
 import type { DeviceApprovalState } from "../src/storage/repositories.ts";
 
 function createInput(overrides?: Partial<RegisterDeviceInput>): RegisterDeviceInput {
   return {
     deviceFingerprint: "a".repeat(64),
     devicePublicKey: Buffer.from("public-key").toString("base64"),
-    deviceShare: Buffer.from("share").toString("base64"),
+    deviceShare: Buffer.alloc(32, 5).toString("base64"),
     deviceName: "MacBook Pro",
     platform: "desktop",
     osName: "macOS",
@@ -32,7 +33,7 @@ function createDeviceRecord(overrides?: Record<string, unknown>) {
     deviceFingerprint: "a".repeat(64),
     deviceName: "MacBook Pro",
     devicePublicKey: Buffer.from("public-key").toString("base64"),
-    deviceShare: new Uint8Array([1, 2]),
+    deviceShare: new Uint8Array(32).fill(1),
     platform: "desktop",
     osName: "macOS",
     osVersion: "14.5",
@@ -121,6 +122,40 @@ test("registerDevice returns pending_approval for new device", async () => {
   assert.equal(result.deviceId, "d1");
 });
 
+test("q2-6: registerDevice rejects non-opaque device_share (not hybrid KEM)", async () => {
+  const service = createService({
+    registerOrUpdate: async () => {
+      throw new Error("registerOrUpdate must not run for invalid share");
+    },
+  });
+
+  await assert.rejects(
+    () =>
+      service.registerDevice(
+        "u1",
+        "127.0.0.1",
+        createInput({ deviceShare: Buffer.from("share").toString("base64") }),
+      ),
+    (err: unknown) =>
+      err instanceof DeviceServiceError &&
+      err.code === "DEVICE_BAD_REQUEST" &&
+      /32 opaque bytes|not hybrid KEM/u.test(err.message),
+  );
+
+  await assert.rejects(
+    () =>
+      service.registerDevice(
+        "u1",
+        "127.0.0.1",
+        createInput({ deviceShare: Buffer.alloc(1216, 9).toString("base64") }),
+      ),
+    (err: unknown) =>
+      err instanceof DeviceServiceError &&
+      err.code === "DEVICE_BAD_REQUEST" &&
+      /32 opaque bytes|not hybrid KEM/u.test(err.message),
+  );
+});
+
 test("registerDevice claimAfterRecovery becomes sole trusted without pending", async () => {
   let claimed = false;
   const service = createService({
@@ -141,6 +176,96 @@ test("registerDevice claimAfterRecovery becomes sole trusted without pending", a
   assert.equal(claimed, true);
   assert.equal(result.status, "trusted");
   assert.equal(result.deviceId, "d-fresh");
+});
+
+test("registerDevice recoveryPending keeps a pending sibling and does not claim", async () => {
+  let allowPending: boolean | undefined;
+  const service = createService({
+    registerOrUpdate: async (input: { allowPendingAlongsideTrusted?: boolean }) => {
+      allowPending = input.allowPendingAlongsideTrusted;
+      return {
+        ...createDeviceRecord({ id: "d-sibling", status: "pending" }),
+        sendApprovalEmail: false,
+        created: true,
+      };
+    },
+    claimTrustedAfterRecovery: async () => {
+      throw new Error("claim must not run for recoveryPending");
+    },
+  });
+
+  const result = await service.registerDevice(
+    "u1",
+    "127.0.0.1",
+    createInput({ recoveryPending: true }),
+  );
+  assert.equal(allowPending, true);
+  assert.equal(result.deviceId, "d-sibling");
+  assert.equal(result.status, "pending_approval");
+  assert.equal(result.created, true);
+});
+
+test("registerDevice does not accept new keys for an existing trusted fingerprint", async () => {
+  const service = createService({
+    registerOrUpdate: async () => {
+      throw new TrustedDeviceKeyConflictError();
+    },
+  });
+  await assert.rejects(
+    () => service.registerDevice("u1", "127.0.0.1", createInput()),
+    (error: unknown) =>
+      error instanceof DeviceServiceError &&
+      error.code === "DEVICE_FINGERPRINT_ALREADY_TRUSTED" &&
+      error.statusCode === 409,
+  );
+});
+
+test("registerDevice skips a second approval email for an existing pending device", async () => {
+  let sends = 0;
+  const service = new DeviceService({
+    devices: {
+      registerOrUpdate: async () => ({
+        ...createDeviceRecord(),
+        sendApprovalEmail: false,
+      }),
+      reclaimSoleTrusted: async () => null,
+      claimTrustedAfterRecovery: async () => createDeviceRecord({ status: "trusted" }),
+      isTrustedDevice: async () => true,
+      resolveApproval: async () => ({
+        kind: "approved",
+        device: createDeviceRecord({ status: "trusted" }),
+      }),
+      listByUser: async () => [],
+      renameDevice: async () => null,
+      revokeOwned: async () => null,
+      blockPending: async () => null,
+      unblockDevice: async () => null,
+      clearExpiredBlocks: async () => undefined,
+    },
+    config: {
+      deviceApprovalTtlSeconds: 60,
+      publicAppBaseUrl: "https://app.test",
+    },
+    users: {
+      findById: async () => ({
+        id: "u1",
+        email: "owner@test.local",
+        publicKey: "pk",
+        locale: "en",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      }),
+    },
+    emailTemplates: {
+      sendDeviceApprovalRequest: async () => {
+        sends += 1;
+      },
+    },
+  });
+
+  const result = await service.registerDevice("u1", "127.0.0.1", createInput());
+  assert.equal(result.status, "pending_approval");
+  assert.equal(sends, 0);
 });
 
 test("registerDevice sends device_approval_request when pending and email deps configured", async () => {
@@ -191,6 +316,7 @@ test("registerDevice sends device_approval_request when pending and email deps c
   assert.equal(sends.length, 1);
   assert.equal(sends[0].to, "owner@test.local");
   assert.equal(sends[0].localeHints.acceptLanguage, "ru-RU");
+  assert.equal(sends[0].localeHints.explicitLocale, undefined);
   assert.equal(sends[0].variables.deviceName, "Pixel");
   assert.equal(sends[0].variables.platform, "Desktop · App");
   assert.equal(sends[0].variables.osName, "macOS");
@@ -200,6 +326,118 @@ test("registerDevice sends device_approval_request when pending and email deps c
     /^https:\/\/app\.test\/items\?popup=settings\|devices$/,
   );
   assert.ok(typeof sends[0].variables.requestedAtIso === "string");
+  assert.ok(typeof sends[0].variables.expiresAtIso === "string");
+  const requestedMs = Date.parse(sends[0].variables.requestedAtIso!);
+  const expiresMs = Date.parse(sends[0].variables.expiresAtIso!);
+  assert.equal(expiresMs - requestedMs, 60_000);
+});
+
+test("registerDevice approval email prefers explicit locale over Accept-Language", async () => {
+  const sends: Array<Parameters<EmailTemplateService["sendDeviceApprovalRequest"]>[0]> = [];
+  const service = new DeviceService({
+    devices: {
+      registerOrUpdate: async () => createDeviceRecord(),
+      reclaimSoleTrusted: async () => null,
+      claimTrustedAfterRecovery: async () => createDeviceRecord({ status: "trusted" }),
+      isTrustedDevice: async () => true,
+      resolveApproval: async () => ({
+        kind: "approved",
+        device: createDeviceRecord({ status: "trusted" }),
+      }),
+      listByUser: async () => [],
+      renameDevice: async () => null,
+      revokeOwned: async () => null,
+      blockPending: async () => null,
+      unblockDevice: async () => null,
+      clearExpiredBlocks: async () => undefined,
+    },
+    config: {
+      deviceApprovalTtlSeconds: 60,
+      publicAppBaseUrl: "https://app.test",
+    },
+    users: {
+      findById: async () => ({
+        id: "u1",
+        email: "owner@test.local",
+        publicKey: "pk",
+        locale: null,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      }),
+    },
+    emailTemplates: {
+      sendDeviceApprovalRequest: async (input) => {
+        sends.push(input);
+      },
+    },
+  });
+
+  await service.registerDevice(
+    "u1",
+    "203.0.113.9",
+    createInput({
+      deviceName: "Chrome",
+      locale: "en",
+      acceptLanguage: "ru-RU,ru;q=0.9",
+    }),
+  );
+  assert.equal(sends.length, 1);
+  assert.equal(sends[0].localeHints.userLocale, null);
+  assert.equal(sends[0].localeHints.explicitLocale, "en");
+  assert.equal(sends[0].localeHints.acceptLanguage, "ru-RU,ru;q=0.9");
+});
+
+test("registerDevice approval email maps desktop_app clientType to Desktop · App", async () => {
+  const sends: Array<Parameters<EmailTemplateService["sendDeviceApprovalRequest"]>[0]> = [];
+  const service = new DeviceService({
+    devices: {
+      registerOrUpdate: async () => createDeviceRecord({ clientType: "desktop_app" }),
+      reclaimSoleTrusted: async () => null,
+      claimTrustedAfterRecovery: async () => createDeviceRecord({ status: "trusted" }),
+      isTrustedDevice: async () => true,
+      resolveApproval: async () => ({
+        kind: "approved",
+        device: createDeviceRecord({ status: "trusted" }),
+      }),
+      listByUser: async () => [],
+      renameDevice: async () => null,
+      revokeOwned: async () => null,
+      blockPending: async () => null,
+      unblockDevice: async () => null,
+      clearExpiredBlocks: async () => undefined,
+    },
+    config: {
+      deviceApprovalTtlSeconds: 60,
+      publicAppBaseUrl: "https://app.test",
+    },
+    users: {
+      findById: async () => ({
+        id: "u1",
+        email: "owner@test.local",
+        publicKey: "pk",
+        locale: "en",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      }),
+    },
+    emailTemplates: {
+      sendDeviceApprovalRequest: async (input) => {
+        sends.push(input);
+      },
+    },
+  });
+
+  await service.registerDevice(
+    "u1",
+    "203.0.113.9",
+    createInput({
+      deviceName: "Okkey Desktop",
+      clientType: "desktop_app",
+      deviceFingerprint: "desktop_app-desktop-macos-14.5",
+    }),
+  );
+  assert.equal(sends.length, 1);
+  assert.equal(sends[0].variables.platform, "Desktop · App");
 });
 
 test("registerDevice returns trusted for trusted device", async () => {

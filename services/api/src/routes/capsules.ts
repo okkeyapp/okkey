@@ -1,6 +1,7 @@
 import type { IncomingMessage } from "node:http";
 import { getHeader, json, readJsonBody, type RouteHandler } from "../http.ts";
 import { CapsuleService, CapsuleServiceError } from "../capsule/service.ts";
+import { clientIpFromTrustedProxy } from "../capsule/geoip.ts";
 import {
   CAPSULE_UNSAFE_KEY_TRANSPORT,
   hasUnsafeKeyTransportInUrl,
@@ -542,7 +543,11 @@ async function resolveRequesterContext(capsuleService: CapsuleService, req: Inco
     });
   }
   return {
-    ipAddress: getHeader(req, "x-forwarded-for")?.split(",")[0]?.trim() || "unknown",
+    ipAddress: clientIpFromTrustedProxy(
+      req.socket?.remoteAddress,
+      getHeader(req, "x-forwarded-for"),
+      0,
+    ),
     deviceLabel: "Unknown device",
     platform: "Unknown",
     location: { country: null, city: null },

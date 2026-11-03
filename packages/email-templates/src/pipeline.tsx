@@ -1,5 +1,9 @@
-import { formatEmailMessage, type EmailLocale } from "@okkey/i18n";
-import { render } from "@react-email/render";
+import {
+  buildLicenseRequestEmailCopy,
+  formatEmailMessage,
+  type EmailLocale,
+} from "@okkey/i18n";
+import { renderEmailHtml, renderEmailPlainText } from "./render-email.js";
 import * as React from "react";
 import { AuthSignInCodeEmail } from "./components/AuthSignInCodeEmail.js";
 import { DeviceApprovalEmail } from "./components/DeviceApprovalEmail.js";
@@ -8,18 +12,25 @@ import { WorkspaceInviteEmail } from "./components/WorkspaceInviteEmail.js";
 import { PlanChangeRequestEmail } from "./components/PlanChangeRequestEmail.js";
 import { RecoveryActionEmail } from "./components/RecoveryActionEmail.js";
 import {
+  buildAccountEmailChangedEmailProps,
   buildAuthSignInCodeEmailProps,
   buildContactRecoveryReleaseEmailProps,
   buildDeviceApprovalEmailProps,
   buildDeviceRecoveryApprovalEmailProps,
   buildTrustedContactInviteEmailProps,
   buildTwoFactorBackupRegeneratedEmailProps,
+  buildTwoFactorDisabledEmailProps,
   buildTwoFactorEnabledEmailProps,
   buildWorkspaceInviteEmailProps,
 } from "./email-props.js";
 import { EmailRenderError } from "./errors.js";
 import type { RenderedEmail } from "./rendered.js";
+import {
+  appendStandardFooterPlain,
+  buildEmailStandardFooterCopy,
+} from "./standard-footer.js";
 import type {
+  AccountEmailChangedVariables,
   AuthEmailCodeVariables,
   ContactRecoveryReleaseRequestVariables,
   DeviceApprovalRequestVariables,
@@ -68,15 +79,26 @@ export async function renderAuthEmailCode(
     });
   }
   const minutes = Math.ceil(variables.ttlSeconds / 60);
-  const subject = formatEmailMessage(locale, "email.auth.signInCode.subject", {});
-  const props = buildAuthSignInCodeEmailProps(locale, variables);
-  const plainText = formatEmailMessage(locale, "email.auth.signInCode.plain", {
+  const messagePrefix =
+    variables.purpose === "email_change"
+      ? "email.auth.emailChangeCode"
+      : "email.auth.signInCode";
+  const subject = formatEmailMessage(locale, `${messagePrefix}.subject`, {
     code: variables.code,
-    minutes,
   });
+  const props = buildAuthSignInCodeEmailProps(locale, variables);
+  const standard = buildEmailStandardFooterCopy(locale);
+  const plainText = appendStandardFooterPlain(
+    formatEmailMessage(locale, `${messagePrefix}.plain`, {
+      code: variables.code,
+      minutes,
+    }),
+    standard,
+  );
   const element = <AuthSignInCodeEmail {...props} />;
-  const html = await render(element);
-  return { subject, html, text: plainText };
+  const html = renderEmailHtml(element);
+  const text = renderEmailPlainText(element);
+  return { subject, html, text: text.trim().length > 0 ? text : plainText };
 }
 
 export async function renderDeviceApprovalRequest(
@@ -100,32 +122,36 @@ export async function renderDeviceApprovalRequest(
   const {
     lead,
     deviceLine,
-    platformLine,
     whenLine,
+    expiresLine,
     ipLine,
     locationLine,
+    noteConfirmWhere,
     noteNoUrl,
     noteBlockIfNotYou,
-    noteIgnoreIfMistake,
   } = props;
   const footer = helpUrl
     ? formatEmailMessage(locale, "email.device.approval.textFooterWithUrl", { helpUrl })
     : noteNoUrl;
-  const plainText = formatEmailMessage(locale, "email.device.approval.plain", {
-    lead,
-    deviceLine,
-    platformLine,
-    whenLine: whenLine || "",
-    ipLine,
-    locationLine: locationLine || "",
-    footer,
-    noteBlockIfNotYou,
-    noteIgnoreIfMistake,
-  });
+  const standard = buildEmailStandardFooterCopy(locale);
+  const plainText = appendStandardFooterPlain(
+    formatEmailMessage(locale, "email.device.approval.plain", {
+      lead,
+      deviceLine,
+      whenLine: whenLine || "",
+      expiresLine: expiresLine || "",
+      ipLine,
+      locationLine: locationLine || "",
+      noteConfirmWhere,
+      footer,
+      noteBlockIfNotYou,
+    }),
+    standard,
+  );
   const subject = formatEmailMessage(locale, "email.device.approval.subject", {});
   const element = <DeviceApprovalEmail {...props} />;
-  const html = await render(element);
-  const text = await render(element, { plainText: true });
+  const html = renderEmailHtml(element);
+  const text = renderEmailPlainText(element);
   return { subject, html, text: text.trim().length > 0 ? text : plainText };
 }
 
@@ -148,21 +174,30 @@ export async function renderWorkspaceInvite(
     workspaceName: variables.workspaceName,
   });
   const props = buildWorkspaceInviteEmailProps(locale, variables);
-  const plainText = formatEmailMessage(locale, "email.workspaceInvite.plain", {
-    inviter: variables.inviterDisplayName,
-    workspaceName: variables.workspaceName,
-    inviteUrl,
-  });
+  const standard = buildEmailStandardFooterCopy(locale);
+  const plainText = appendStandardFooterPlain(
+    formatEmailMessage(locale, "email.workspaceInvite.plain", {
+      inviter: variables.inviterDisplayName,
+      workspaceName: variables.workspaceName,
+      inviteUrl,
+    }),
+    standard,
+  );
   const element = <WorkspaceInviteEmail {...props} />;
-  const html = await render(element);
-  const text = await render(element, { plainText: true });
+  const html = renderEmailHtml(element);
+  const text = renderEmailPlainText(element);
   return { subject, html, text: text.trim().length > 0 ? text : plainText };
 }
+
+type TwoFactorNoticeTemplateId =
+  | "two_factor_enabled"
+  | "two_factor_disabled"
+  | "two_factor_backup_codes_regenerated";
 
 async function renderTwoFactorNotice(
   locale: EmailLocale,
   variables: TwoFactorNoticeVariables,
-  templateId: "two_factor_enabled" | "two_factor_backup_codes_regenerated",
+  templateId: TwoFactorNoticeTemplateId,
   keys: {
     subject: string;
     plain: string;
@@ -183,20 +218,26 @@ async function renderTwoFactorNotice(
   const props =
     templateId === "two_factor_enabled"
       ? buildTwoFactorEnabledEmailProps(locale, variables)
-      : buildTwoFactorBackupRegeneratedEmailProps(locale, variables);
+      : templateId === "two_factor_disabled"
+        ? buildTwoFactorDisabledEmailProps(locale, variables)
+        : buildTwoFactorBackupRegeneratedEmailProps(locale, variables);
   const { line1, line2 } = props;
   const subject = formatEmailMessage(locale, keys.subject, {});
   const footer = securityUrl
     ? formatEmailMessage(locale, keys.plainFooterUrl, { url: securityUrl })
     : "";
-  const plainText = formatEmailMessage(locale, keys.plain, {
-    line1,
-    line2,
-    footer,
-  });
+  const standard = buildEmailStandardFooterCopy(locale);
+  const plainText = appendStandardFooterPlain(
+    formatEmailMessage(locale, keys.plain, {
+      line1,
+      line2,
+      footer,
+    }),
+    standard,
+  );
   const element = <TwoFactorNoticeEmail {...props} />;
-  const html = await render(element);
-  const text = await render(element, { plainText: true });
+  const html = renderEmailHtml(element);
+  const text = renderEmailPlainText(element);
   return { subject, html, text: text.trim().length > 0 ? text : plainText };
 }
 
@@ -211,6 +252,17 @@ export function renderTwoFactorEnabled(
   });
 }
 
+export function renderTwoFactorDisabled(
+  locale: EmailLocale,
+  variables: TwoFactorNoticeVariables,
+): Promise<RenderedEmail> {
+  return renderTwoFactorNotice(locale, variables, "two_factor_disabled", {
+    subject: "email.twoFactor.disabled.subject",
+    plain: "email.twoFactor.disabled.plain",
+    plainFooterUrl: "email.twoFactor.disabled.plainFooterUrl",
+  });
+}
+
 export function renderTwoFactorBackupRegenerated(
   locale: EmailLocale,
   variables: TwoFactorNoticeVariables,
@@ -220,6 +272,47 @@ export function renderTwoFactorBackupRegenerated(
     plain: "email.twoFactor.backupRegen.plain",
     plainFooterUrl: "email.twoFactor.backupRegen.plainFooterUrl",
   });
+}
+
+export async function renderAccountEmailChanged(
+  locale: EmailLocale,
+  variables: AccountEmailChangedVariables,
+): Promise<RenderedEmail> {
+  assertRequired("account_email_changed", variables as unknown as Record<string, unknown>, [
+    "newEmailMasked",
+    "occurredAtIso",
+  ]);
+  if (
+    variables.securitySettingsUrl === undefined ||
+    variables.securitySettingsUrl === null
+  ) {
+    throw new EmailRenderError("EMAIL_TEMPLATE_MISSING_VARIABLE", "missing: securitySettingsUrl", {
+      templateId: "account_email_changed",
+      details: { key: "securitySettingsUrl" },
+    });
+  }
+  const securityUrl = variables.securitySettingsUrl.trim();
+  const props = buildAccountEmailChangedEmailProps(locale, variables);
+  const { line1, line2 } = props;
+  const subject = formatEmailMessage(locale, "email.account.emailChanged.subject", {});
+  const footer = securityUrl
+    ? formatEmailMessage(locale, "email.account.emailChanged.plainFooterUrl", {
+        url: securityUrl,
+      })
+    : "";
+  const standard = buildEmailStandardFooterCopy(locale);
+  const plainText = appendStandardFooterPlain(
+    formatEmailMessage(locale, "email.account.emailChanged.plain", {
+      line1,
+      line2,
+      footer,
+    }),
+    standard,
+  );
+  const element = <TwoFactorNoticeEmail {...props} />;
+  const html = renderEmailHtml(element);
+  const text = renderEmailPlainText(element);
+  return { subject, html, text: text.trim().length > 0 ? text : plainText };
 }
 
 export async function renderDeviceRecoveryApprovalRequest(
@@ -245,34 +338,36 @@ export async function renderDeviceRecoveryApprovalRequest(
   const {
     lead,
     deviceLine,
-    platformLine,
     whenLine,
     expiresLine,
     ipLine,
     locationLine,
+    noteConfirmWhere,
     noteNoUrl,
     noteBlockIfNotYou,
-    noteIgnoreIfMistake,
   } = props;
   const footer = helpUrl
     ? formatEmailMessage(locale, "email.device.recovery.textFooterWithUrl", { helpUrl })
     : noteNoUrl;
-  const plainText = formatEmailMessage(locale, "email.device.recovery.plain", {
-    lead,
-    deviceLine,
-    platformLine,
-    whenLine: whenLine || "",
-    expiresLine: expiresLine || "",
-    ipLine,
-    locationLine: locationLine || "",
-    footer,
-    noteBlockIfNotYou,
-    noteIgnoreIfMistake,
-  });
+  const standard = buildEmailStandardFooterCopy(locale);
+  const plainText = appendStandardFooterPlain(
+    formatEmailMessage(locale, "email.device.recovery.plain", {
+      lead,
+      deviceLine,
+      whenLine: whenLine || "",
+      expiresLine: expiresLine || "",
+      ipLine,
+      locationLine: locationLine || "",
+      noteConfirmWhere,
+      footer,
+      noteBlockIfNotYou,
+    }),
+    standard,
+  );
   const subject = formatEmailMessage(locale, "email.device.recovery.subject", {});
   const element = <DeviceApprovalEmail {...props} />;
-  const html = await render(element);
-  const text = await render(element, { plainText: true });
+  const html = renderEmailHtml(element);
+  const text = renderEmailPlainText(element);
   return { subject, html, text: text.trim().length > 0 ? text : plainText };
 }
 
@@ -296,18 +391,22 @@ export async function renderContactRecoveryReleaseRequest(
   const footer = helpUrl
     ? formatEmailMessage(locale, "email.contacts.recovery.textFooterWithUrl", { helpUrl })
     : props.noteNoUrl;
-  const plainText = formatEmailMessage(locale, "email.contacts.recovery.plain", {
-    lead: props.lead,
-    detailLine: props.detailLine,
-    requestLine: props.requestLine ?? "",
-    expiresLine: props.expiresLine,
-    footer,
-    noteIgnore: props.noteIgnore,
-  });
+  const standard = buildEmailStandardFooterCopy(locale);
+  const plainText = appendStandardFooterPlain(
+    formatEmailMessage(locale, "email.contacts.recovery.plain", {
+      lead: props.lead,
+      detailLine: props.detailLine,
+      requestLine: props.requestLine ?? "",
+      expiresLine: props.expiresLine,
+      footer,
+      noteIgnore: props.noteIgnore,
+    }),
+    standard,
+  );
   const subject = formatEmailMessage(locale, "email.contacts.recovery.subject", {});
   const element = <RecoveryActionEmail {...props} />;
-  const html = await render(element);
-  const text = await render(element, { plainText: true });
+  const html = renderEmailHtml(element);
+  const text = renderEmailPlainText(element);
   return { subject, html, text: text.trim().length > 0 ? text : plainText };
 }
 
@@ -330,17 +429,21 @@ export async function renderTrustedContactInvite(
   const footer = helpUrl
     ? formatEmailMessage(locale, "email.contacts.invite.textFooterWithUrl", { helpUrl })
     : props.noteNoUrl;
-  const plainText = formatEmailMessage(locale, "email.contacts.invite.plain", {
-    lead: props.lead,
-    detailLine: props.detailLine,
-    whatToDo: props.expiresLine,
-    footer,
-    noteIgnore: props.noteIgnore,
-  });
+  const standard = buildEmailStandardFooterCopy(locale);
+  const plainText = appendStandardFooterPlain(
+    formatEmailMessage(locale, "email.contacts.invite.plain", {
+      lead: props.lead,
+      detailLine: props.detailLine,
+      whatToDo: props.expiresLine,
+      footer,
+      noteIgnore: props.noteIgnore,
+    }),
+    standard,
+  );
   const subject = formatEmailMessage(locale, "email.contacts.invite.subject", {});
   const element = <RecoveryActionEmail {...props} />;
-  const html = await render(element);
-  const text = await render(element, { plainText: true });
+  const html = renderEmailHtml(element);
+  const text = renderEmailPlainText(element);
   return { subject, html, text: text.trim().length > 0 ? text : plainText };
 }
 
@@ -356,48 +459,40 @@ export async function renderPlanChangeRequest(
     "contactEmail",
     "accountEmail",
     "locale",
+    "workspaceMemberCount",
     "deploymentMode",
     "actorUserId",
   ]);
-  const subject = formatEmailMessage(locale, "email.planChangeRequest.subject", {
-    plan: variables.requestedPlanTier,
+  // Same subject/lead/field list as mailto (logger): shared builder keeps SMTP ≡ mailto.
+  // workspaceUrl may be empty when PUBLIC_APP_URL is unset; rendered as "—".
+  const copy = buildLicenseRequestEmailCopy(locale, {
     workspaceName: variables.workspaceName,
+    workspaceUrl: variables.workspaceUrl,
+    currentPlanTier: variables.currentPlanTier,
+    requestedPlanTier: variables.requestedPlanTier,
+    deploymentMode: variables.deploymentMode,
+    memberCount: variables.workspaceMemberCount,
+    region: variables.region.trim() || null,
+    locale: variables.locale,
+    senderEmail: variables.accountEmail,
+    replyEmail: variables.contactEmail,
   });
-  const lead = formatEmailMessage(locale, "email.planChangeRequest.lead", {});
-  const lines = [
-    formatEmailMessage(locale, "email.planChangeRequest.workspace", {
-      workspaceName: variables.workspaceName,
-      workspaceId: variables.workspaceId,
-    }),
-    formatEmailMessage(locale, "email.planChangeRequest.deploymentMode", {
-      mode: variables.deploymentMode,
-    }),
-    formatEmailMessage(locale, "email.planChangeRequest.currentPlan", {
-      plan: variables.currentPlanTier,
-    }),
-    formatEmailMessage(locale, "email.planChangeRequest.requestedPlan", {
-      plan: variables.requestedPlanTier,
-    }),
-    formatEmailMessage(locale, "email.planChangeRequest.contactEmail", {
-      email: variables.contactEmail,
-    }),
-    formatEmailMessage(locale, "email.planChangeRequest.accountEmail", {
-      email: variables.accountEmail,
-    }),
-    formatEmailMessage(locale, "email.planChangeRequest.locale", {
-      locale: variables.locale,
-    }),
-    formatEmailMessage(locale, "email.planChangeRequest.region", {
-      region: variables.region.trim() || "—",
-    }),
-    formatEmailMessage(locale, "email.planChangeRequest.actor", {
-      userId: variables.actorUserId,
-    }),
-  ];
-  const plainText = [lead, ...lines].join("\n");
-  const element = <PlanChangeRequestEmail lead={lead} lines={lines} />;
-  const html = await render(element);
-  return { subject, html, text: plainText };
+  const standard = buildEmailStandardFooterCopy(locale);
+  const element = (
+    <PlanChangeRequestEmail
+      lang={locale}
+      title={copy.subject}
+      lead={copy.lead}
+      lines={copy.lines}
+      noReply={standard.noReply}
+      ignoreIfMistake={standard.ignoreIfMistake}
+    />
+  );
+  const html = renderEmailHtml(element);
+  // SMTP text includes chrome + shared two-line footer; mailto body stays field-list only.
+  const plainText = appendStandardFooterPlain(copy.body, standard);
+  const text = renderEmailPlainText(element);
+  return { subject: copy.subject, html, text: text.trim().length > 0 ? text : plainText };
 }
 
 export async function renderEmailTemplate<Id extends EmailTemplateId>(
@@ -418,10 +513,17 @@ export async function renderEmailTemplate<Id extends EmailTemplateId>(
         return await renderWorkspaceInvite(locale, variables as WorkspaceInviteVariables);
       case "two_factor_enabled":
         return await renderTwoFactorEnabled(locale, variables as TwoFactorNoticeVariables);
+      case "two_factor_disabled":
+        return await renderTwoFactorDisabled(locale, variables as TwoFactorNoticeVariables);
       case "two_factor_backup_codes_regenerated":
         return await renderTwoFactorBackupRegenerated(
           locale,
           variables as TwoFactorNoticeVariables,
+        );
+      case "account_email_changed":
+        return await renderAccountEmailChanged(
+          locale,
+          variables as AccountEmailChangedVariables,
         );
       case "device_recovery_approval_request":
         return await renderDeviceRecoveryApprovalRequest(

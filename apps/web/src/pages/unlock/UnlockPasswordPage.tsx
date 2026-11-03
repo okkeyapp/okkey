@@ -19,6 +19,14 @@ import OkkeyLogoMark from "../../components/app-shell/OkkeyLogoMark";
 import { ACCOUNT_RESTORE_PATH, AUTH_EMAIL_PATH, DEFAULT_AUTHENTICATED_PATH, accountDevicePendingWithRedirectQuery } from "../../routes/paths";
 import { useAuthVault } from "../../auth/AuthVaultContext";
 import { tryUnlockWithBiometrics, biometricErrorMessageKey } from "../../auth/biometricUnlock";
+import { hasExtensionAuthPending } from "../../auth/extensionAuthPendingStorage";
+import { createAuthenticatedCoreClient } from "../../api/client";
+import {
+  applyMasterPasswordServerStatus,
+  clearMasterPasswordFailures,
+  isMasterPasswordLocked,
+  recordMasterPasswordFailure,
+} from "../../auth/masterPasswordRateLimit";
 import { clearPinFailures, isPinLocked, recordPinFailure } from "../../auth/pinRateLimit";
 import { safeRedirectPath } from "../../auth/safeRedirect";
 import { readVaultDevicePrefs } from "../../auth/vaultDevicePrefs";
@@ -77,6 +85,9 @@ export default function UnlockPasswordPage() {
   const [pinDigits, setPinDigits] = useState(emptyPinDigits);
   const [masterPassword, setMasterPassword] = useState("");
   const [showUnlockError, setShowUnlockError] = useState(false);
+  const [masterPasswordLocked, setMasterPasswordLocked] = useState(
+    () => userId !== null && isMasterPasswordLocked(userId),
+  );
   const [noBundleError, setNoBundleError] = useState(false);
   const [pinError, setPinError] = useState<string | null>(null);
   const [pinSubmitting, setPinSubmitting] = useState(false);
@@ -91,6 +102,28 @@ export default function UnlockPasswordPage() {
     const q = searchParams.toString();
     return q ? `${ACCOUNT_RESTORE_PATH}?${q}` : ACCOUNT_RESTORE_PATH;
   }, [searchParams]);
+
+  useEffect(() => {
+    if (!accessToken || !userId || vaultUnlocked) {
+      return;
+    }
+    let cancelled = false;
+    void createAuthenticatedCoreClient(accessToken)
+      .getVaultUnlockAttemptStatus()
+      .then((status) => {
+        if (cancelled) {
+          return;
+        }
+        const applied = applyMasterPasswordServerStatus(userId, status);
+        setMasterPasswordLocked(applied.locked);
+      })
+      .catch(() => {
+        /* offline / best-effort — local cache still applies */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [accessToken, userId, vaultUnlocked]);
 
   useEffect(() => {
     if (mode !== "biometric" || !userId || vaultUnlocked) {
@@ -282,10 +315,60 @@ export default function UnlockPasswordPage() {
     await initCrypto();
     const ok = await tryUnlockWithMasterPassword(masterPassword);
     if (!ok) {
+      if (userId) {
+        const local = recordMasterPasswordFailure(userId);
+        setMasterPasswordLocked(local.locked);
+        if (accessToken) {
+          try {
+            const server = await createAuthenticatedCoreClient(accessToken).reportVaultUnlockFailure();
+            if (server.locked) {
+              const applied = applyMasterPasswordServerStatus(userId, {
+                locked: true,
+                remaining_ms: typeof server.remaining_ms === "number" ? server.remaining_ms : 0,
+              });
+              setMasterPasswordLocked(applied.locked || local.locked);
+            } else {
+              setMasterPasswordLocked(local.locked);
+            }
+          } catch (err: unknown) {
+            const status =
+              err && typeof err === "object" && "status" in err
+                ? Number((err as { status?: unknown }).status)
+                : NaN;
+            if (status === 429) {
+              try {
+                const lockedStatus = await createAuthenticatedCoreClient(
+                  accessToken,
+                ).getVaultUnlockAttemptStatus();
+                const applied = applyMasterPasswordServerStatus(userId, lockedStatus);
+                setMasterPasswordLocked(applied.locked);
+              } catch {
+                const applied = applyMasterPasswordServerStatus(userId, {
+                  locked: true,
+                  remaining_ms: local.remainingMs > 0 ? local.remainingMs : 5 * 60 * 1000,
+                });
+                setMasterPasswordLocked(applied.locked);
+              }
+            }
+          }
+        }
+      }
       setShowUnlockError(true);
       return;
     }
+    if (userId) {
+      clearMasterPasswordFailures(userId);
+      setMasterPasswordLocked(false);
+    }
     touchActivity();
+  }
+
+  if (hasExtensionAuthPending()) {
+    return (
+      <AppShellLayout title={t("unlock.title")} busy>
+        <Spinner />
+      </AppShellLayout>
+    );
   }
 
   if (vaultUnlocked) {
@@ -313,14 +396,8 @@ export default function UnlockPasswordPage() {
 
   if (deviceTrustStatus === "checking" || deviceTrustStatus === "idle") {
     return (
-      <AppShellLayout
-        title={t("unlock.title")}
-        description={t("unlock.description")}
-        logo={<OkkeyLogoMark className="h-[60px] w-[61px]" />}
-      >
-        <div className="flex flex-col items-center gap-3 py-8" role="status" aria-busy="true">
-          <Spinner />
-        </div>
+      <AppShellLayout title={t("unlock.title")} busy>
+        <Spinner />
       </AppShellLayout>
     );
   }
@@ -329,7 +406,8 @@ export default function UnlockPasswordPage() {
     bioBusy ||
     vaultUnlockBootstrapLoading ||
     pinSubmitting ||
-    (mode === "pin" && userId !== null && isPinLocked(userId));
+    (mode === "pin" && userId !== null && isPinLocked(userId)) ||
+    (mode === "master" && masterPasswordLocked);
   const submitDisabled =
     fieldsDisabled ||
     (mode === "pin" ? pinValue.length !== PIN_LENGTH : masterPassword.length === 0);
@@ -455,11 +533,15 @@ export default function UnlockPasswordPage() {
           </Alert>
         ) : null}
 
-        {showUnlockError ? (
+        {showUnlockError || masterPasswordLocked ? (
           <Alert variant="error">
             <AlertErrorIcon className="size-4" />
             <AlertTitle>{t("unlock.errorTitle")}</AlertTitle>
-            <AlertDescription>{t("unlock.errorIncorrectPassword")}</AlertDescription>
+            <AlertDescription>
+              {masterPasswordLocked
+                ? t("unlock.masterPasswordLocked")
+                : t("unlock.errorIncorrectPassword")}
+            </AlertDescription>
           </Alert>
         ) : null}
 

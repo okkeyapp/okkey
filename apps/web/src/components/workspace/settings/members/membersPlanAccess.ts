@@ -1,6 +1,19 @@
-import { hasPlanFeature } from "@okkey/types";
+import type { PlanFeatureOverrides } from "@okkey/types";
 
-/** Inviting / managing non-owner members requires the ENTERPRISE plan feature. */
-export function canInviteAdditionalWorkspaceMembers(planTier: string | undefined): boolean {
-  return hasPlanFeature(planTier, "additionalWorkspaceMembers");
+import { workspaceHasPlanFeature } from "../../../../workspace/planEntitlements";
+
+type WorkspacePlanLike = {
+  planTier?: string | null;
+  planCustomOverride?: boolean | null;
+  planFeatureOverrides?: PlanFeatureOverrides | null;
+};
+
+/**
+ * Inviting / managing non-owner members: SaaS `plan_tier`
+ * (+ `planFeatureOverrides` when custom override is on) / self-host enterprise modules.
+ */
+export function canInviteAdditionalWorkspaceMembers(
+  workspace: WorkspacePlanLike | null | undefined,
+): boolean {
+  return workspaceHasPlanFeature(workspace, "additionalWorkspaceMembers");
 }

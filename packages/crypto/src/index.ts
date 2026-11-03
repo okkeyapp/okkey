@@ -1,4 +1,4 @@
-import initWasm, {
+import {
   random_bytes,
   kdf_derive,
   aead_encrypt,
@@ -10,6 +10,8 @@ import initWasm, {
   hybrid_verify_v1,
   x25519_keypair,
   x25519_shared,
+  ed25519_secret_to_x25519,
+  ed25519_public_to_x25519,
   b64_encode,
   b64_decode,
   sha256,
@@ -25,6 +27,8 @@ import initWasm, {
   decrypt_hybrid,
 } from "@okkey/crypto-wasm";
 import { CryptoSdkError, mapWasmError } from "./errors.js";
+export { initCrypto } from "./wasm-init.js";
+export { registerWasmModulePath, ensureWasm } from "./wasm-init.js";
 import {
   decodeHybridEnvelopeV1,
   encodeHybridEnvelopeV1,
@@ -34,16 +38,6 @@ import {
 
 export type AeadAlg = "aes-256-gcm" | "xchacha20-poly1305";
 
-let wasmReady: Promise<void> | undefined;
-
-export async function initCrypto(moduleOrPath?: unknown): Promise<void> {
-  if (!wasmReady) {
-    wasmReady = initWasm(
-      moduleOrPath as Parameters<typeof initWasm>[0],
-    ).then(() => undefined);
-  }
-  return wasmReady;
-}
 
 function withWasmError<T>(op: string, fn: () => T): T {
   try {
@@ -110,6 +104,14 @@ export function x25519Shared(privateKey: Uint8Array, peerPublicKey: Uint8Array):
   return withWasmError("x25519Shared", () => x25519_shared(privateKey, peerPublicKey));
 }
 
+export function ed25519SecretToX25519(ed25519Seed: Uint8Array): Uint8Array {
+  return withWasmError("ed25519SecretToX25519", () => ed25519_secret_to_x25519(ed25519Seed));
+}
+
+export function ed25519PublicToX25519(ed25519Public: Uint8Array): Uint8Array {
+  return withWasmError("ed25519PublicToX25519", () => ed25519_public_to_x25519(ed25519Public));
+}
+
 export function b64Encode(data: Uint8Array): string {
   return b64_encode(data);
 }
@@ -120,6 +122,16 @@ export function b64Decode(s: string): Uint8Array {
 
 export function sha256Digest(data: Uint8Array): Uint8Array {
   return sha256(data);
+}
+
+/** SHA-256 proof that the caller holds the vault device share for a bind challenge. */
+export function deviceBindShareProof(deviceShare: Uint8Array, message: Uint8Array): Uint8Array {
+  const prefix = new TextEncoder().encode("okkey-device-bind-share-v1\n");
+  const payload = new Uint8Array(prefix.length + deviceShare.length + message.length);
+  payload.set(prefix, 0);
+  payload.set(deviceShare, prefix.length);
+  payload.set(message, prefix.length + deviceShare.length);
+  return sha256Digest(payload);
 }
 
 export function generatePQKeys(): Uint8Array {
@@ -234,9 +246,19 @@ export {
 
 export {
   generateRecoverySecret,
+  recoveryPossessionPublicKey,
+  signRecoveryPossessionMessage,
   wrapVaultKeyWithRecoverySecret,
   unwrapVaultKeyWithRecoverySecret,
 } from "./vault-recovery-key.js";
+
+export {
+  RECOVERY_POSSESSION_PROOF_PURPOSE,
+  recoveryPossessionProofMessageBytes,
+  recoveryPossessionPublicKeyB64,
+  signRecoveryPossessionProof,
+  type RecoveryPossessionProofMessage,
+} from "./recovery-possession.js";
 
 export {
   wrapUnlockMaterialWithPin,
@@ -250,6 +272,8 @@ export {
 export {
   HYBRID_VAULT_KEY_WRAP_SCHEME,
   VAULT_KEY_WRAP_AAD,
+  PER_USER_ECC_MODE,
+  INTERIM_STATIC_ECC_MODE,
   generateSharedVaultKey,
   wrapVaultKeyForRecipient,
   unwrapVaultKeyForSelf,
@@ -285,3 +309,11 @@ export {
 
 export { getCryptoConfig, listCryptoConfigs, type CryptoConfig } from "./config/index.js";
 export { wipeBytes, withSensitiveBytes, withSensitiveBytesAsync } from "./secret-buffer.js";
+
+export {
+  VAULT_UNLOCK_ATTESTATION_PURPOSE,
+  VAULT_UNLOCK_ATTESTATION_MAX_AGE_MS,
+  vaultUnlockAttestationMessageBytes,
+  buildVaultUnlockAttestation,
+  type VaultUnlockAttestation,
+} from "./vault-unlock-attestation.js";

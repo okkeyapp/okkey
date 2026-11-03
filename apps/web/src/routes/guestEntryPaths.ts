@@ -4,6 +4,7 @@ import {
   ACCOUNT_NEW_PATH,
   ACCOUNT_RESTORE_PATH,
   AUTH_EMAIL_PATH,
+  AUTH_EXTENSION_START_PATH,
   AUTH_OTP_PATH,
   AUTH_REGISTRATION_LEGACY_PATH,
   AUTH_TWO_FACTOR_PATH,
@@ -33,6 +34,9 @@ export function isAllowedPathWithoutBearerSession(pathname: string, ctx: GuestEn
     return true;
   }
   if (pathname === AUTH_EMAIL_PATH) {
+    return true;
+  }
+  if (pathname === AUTH_EXTENSION_START_PATH) {
     return true;
   }
   if (pathname === AUTH_WEBAUTHN_PATH) {

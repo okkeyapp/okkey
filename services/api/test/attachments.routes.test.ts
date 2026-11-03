@@ -41,7 +41,9 @@ function loggerStub() {
 function createSessionServiceStub(): SessionService {
   return {
     async resolveAccessToken(token: string) {
-      return token.trim() === "test-access-token" ? { userId: "1000000000000000009" } : null;
+      return token.trim() === "test-access-token"
+        ? { userId: "1000000000000000009", deviceId: "1000000000000000008", scope: null, tokenHash: "hash" }
+        : null;
     },
   } as unknown as SessionService;
 }
@@ -116,6 +118,7 @@ test("POST /vaults/:vaultId/items/:itemId/attachments requires auth", async () =
 test("POST /vaults/:vaultId/items/:itemId/attachments uploads encrypted body", async () => {
   let seenUserId = "";
   let seenBody = new Uint8Array();
+  let seenPurpose: string | undefined;
   const res = await dispatch({
     method: "POST",
     url: "/vaults/1000000000000000001/items/1000000000000000002/attachments",
@@ -125,12 +128,14 @@ test("POST /vaults/:vaultId/items/:itemId/attachments uploads encrypted body", a
       "x-file-name": encodeURIComponent("secret.pdf"),
       "x-file-mime-type": "application/pdf",
       "x-file-size": "123",
+      "x-attachment-purpose": "item-favicon",
     },
     body: Uint8Array.from([4, 5, 6]),
     attachmentService: createAttachmentServiceStub({
       upload: async (input) => {
         seenUserId = input.userId;
         seenBody = input.encryptedBody;
+        seenPurpose = input.purpose;
         return {
           attachmentId: "1000000000000000003",
           name: input.fileName,
@@ -144,6 +149,7 @@ test("POST /vaults/:vaultId/items/:itemId/attachments uploads encrypted body", a
   assert.equal(res.statusCode, 201);
   assert.equal(seenUserId, "1000000000000000009");
   assert.deepEqual(seenBody, Uint8Array.from([4, 5, 6]));
+  assert.equal(seenPurpose, "item-favicon");
   assert.equal(JSON.parse(res.body.toString()).attachmentId, "1000000000000000003");
 });
 

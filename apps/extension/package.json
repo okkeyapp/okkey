@@ -1,0 +1,45 @@
+{
+  "name": "@okkey/extension",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Okkey browser extension (MV3)",
+  "scripts": {
+    "dev": "wxt",
+    "dev:firefox": "wxt -b firefox",
+    "build": "wxt build",
+    "build:chromium": "wxt build -b chrome",
+    "build:firefox": "wxt build -b firefox",
+    "zip": "wxt zip",
+    "zip:chromium": "wxt zip -b chrome",
+    "zip:firefox": "wxt zip -b firefox",
+    "zip:store": "wxt zip -b chrome && wxt zip -b firefox",
+    "compile": "tsc --noEmit",
+    "test": "node --experimental-strip-types --test src/lib/*.test.ts",
+    "postinstall": "wxt prepare"
+  },
+  "dependencies": {
+    "@okkey/api": "0.0.1",
+    "@okkey/auth": "0.0.1",
+    "@okkey/crypto": "0.0.1",
+    "@okkey/i18n": "0.0.1",
+    "@okkey/sync": "0.0.1",
+    "@okkey/types": "0.0.1",
+    "@okkey/ui": "0.0.1",
+    "@okkey/vault": "0.0.1",
+    "@okkey/vault-ui": "0.0.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "sonner": "^2.0.7"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "@wxt-dev/module-react": "1.1.5",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.10",
+    "typescript": "~5.7.3",
+    "wxt": "^0.20.27"
+  }
+}

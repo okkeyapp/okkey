@@ -1,5 +1,4 @@
 import type { Workspace, WorkspaceResourcePermissionDto } from "@okkey/types";
-import { hasPlanFeature } from "@okkey/types";
 import type { WebMessageValues } from "@okkey/i18n";
 import { Link } from "react-router-dom";
 
@@ -11,6 +10,7 @@ import { canManageCustomWorkspaceProfiles } from "./builtinProfiles";
 import BuiltInProfilesLoader from "./BuiltInProfilesLoader";
 import CustomProfilesUpsell from "./CustomProfilesUpsell";
 import ProfilesSectionHeader from "./ProfilesSectionHeader";
+import RemnantCustomProfilesList from "./RemnantCustomProfilesList";
 
 type WorkspaceSettingsProfilesSectionProps = {
   workspaceId: string;
@@ -26,8 +26,7 @@ export default function WorkspaceSettingsProfilesSection({
   resourcePermissions = null,
 }: WorkspaceSettingsProfilesSectionProps) {
   const core = useAuthenticatedCoreClient();
-  const canManageCustom = canManageCustomWorkspaceProfiles(workspace?.planTier);
-  const canOpenBuiltInCards = hasPlanFeature(workspace?.planTier, "customWorkspaceProfiles");
+  const canManageCustom = canManageCustomWorkspaceProfiles(workspace);
   const EnterpriseProfilesSection = enterpriseProfilesModule.EnterpriseProfilesSection;
   const BuiltInProfileCardPopup = enterpriseProfilesModule.BuiltInProfileCardPopup;
   if (!core) {
@@ -41,6 +40,7 @@ export default function WorkspaceSettingsProfilesSection({
       {t("web.workspaceSettings.sections.roles")}
     </Link>
   );
+  const customProfilesUpsell = <CustomProfilesUpsell t={t} />;
 
   return (
     <div className="flex flex-col gap-9">
@@ -50,9 +50,9 @@ export default function WorkspaceSettingsProfilesSection({
         core={core}
         t={t}
         rolesLink={rolesLink}
-        ProfileCardPopup={canOpenBuiltInCards ? BuiltInProfileCardPopup ?? undefined : undefined}
+        ProfileCardPopup={BuiltInProfileCardPopup ?? undefined}
       />
-      {canManageCustom && EnterpriseProfilesSection ? (
+      {EnterpriseProfilesSection ? (
         <EnterpriseProfilesSection
           workspaceId={workspaceId}
           workspace={workspace}
@@ -60,9 +60,18 @@ export default function WorkspaceSettingsProfilesSection({
           rolesLink={rolesLink}
           t={t}
           resourcePermissions={resourcePermissions}
+          readOnly={!canManageCustom}
+          emptyFallback={!canManageCustom ? customProfilesUpsell : undefined}
         />
       ) : (
-        <CustomProfilesUpsell t={t} />
+        <CustomProfilesUpsell t={t}>
+          <RemnantCustomProfilesList
+            workspaceId={workspaceId}
+            core={core}
+            t={t}
+            resourcePermissions={resourcePermissions}
+          />
+        </CustomProfilesUpsell>
       )}
     </div>
   );

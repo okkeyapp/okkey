@@ -3,7 +3,7 @@ import type { AuthService } from "./auth/service.ts";
 import type { RegistrationService } from "./registration/service.ts";
 import type { ApiConfig } from "./config.ts";
 import type { DeviceService } from "./device/service.ts";
-import { getHeader, HttpApp } from "./http.ts";
+import { getHeader, HttpApp, type RouteHandler } from "./http.ts";
 import type { Logger } from "./logger.ts";
 import { createCorsMiddleware } from "./middleware/cors.ts";
 import { createErrorHandlerMiddleware } from "./middleware/error-handler.ts";
@@ -13,9 +13,18 @@ import {
   createAuthEmailResendRoute,
   createAuthEmailStartRoute,
 } from "./routes/auth-email.ts";
-import { createResolveAuthenticatedUserId } from "./routes/auth-context.ts";
+import {
+  createResolveAuthenticatedSession,
+  createResolveAuthenticatedUserId,
+} from "./routes/auth-context.ts";
+import { isFullSessionScope, REGISTRATION_RECOVERY_ALLOWED_SCOPES } from "./session/scopes.ts";
 import { createRegisterCompleteRoute } from "./routes/auth-register-complete.ts";
 import { createAuthSessionBootstrapRoute } from "./routes/auth-session.ts";
+import {
+  createExtensionAuthIssueCodeRoute,
+  createExtensionAuthTokenRoute,
+} from "./routes/auth-extension.ts";
+import type { ExtensionAuthService } from "./extension-auth/service.ts";
 import { healthRouteHandler } from "./routes/health.ts";
 import { createReadyRouteHandler } from "./routes/ready.ts";
 import {
@@ -23,6 +32,9 @@ import {
   createBlockDeviceRoute,
   createListDevicesRoute,
   createPatchDeviceRoute,
+  createBindDeviceSessionRoute,
+  createDeviceBindChallengeRoute,
+  createRequestDeviceKeyRebindRoute,
   createRegisterDeviceRoute,
   createRejectDeviceRoute,
   createRevokeDeviceRoute,
@@ -36,6 +48,7 @@ import {
   createAccountRecoveryMembershipLeaveRoute,
   createAccountRecoveryKeyAckExportRoute,
   createAccountRecoveryKeyEnrollRoute,
+  createAccountRecoveryKeyProveRoute,
   createAccountRecoveryKeyRotateRoute,
   createAccountRecoveryKeyWrapRoute,
   createAccountRecoveryIdentityEncryptedKeyRoute,
@@ -94,9 +107,18 @@ import {
   createWorkspaceItemTemplatesUpdateRoute,
 } from "./routes/workspace-item-templates.ts";
 import { createWorkspaceSettingsRoute } from "./routes/workspace-settings.ts";
-import { createWorkspacePlanChangeRequestRoute } from "./routes/workspace-plan-change-request.ts";
-import { createWorkspaceBuiltInRolesListRoute } from "./routes/workspace-built-in-roles.ts";
-import { createWorkspaceBuiltInProfilesListRoute } from "./routes/workspace-built-in-profiles.ts";
+import {
+  createWorkspacePlanChangeRequestRoute,
+  createWorkspacePlanChangeRequestStatusRoute,
+} from "./routes/workspace-plan-change-request.ts";
+import {
+  createWorkspaceBuiltInRolesListRoute,
+  createWorkspaceCustomRoleDeleteRoute,
+} from "./routes/workspace-built-in-roles.ts";
+import {
+  createWorkspaceBuiltInProfilesListRoute,
+  createWorkspaceCustomProfileDeleteRoute,
+} from "./routes/workspace-built-in-profiles.ts";
 import type { ApiEnterprisePlugin, ApiEnterprisePluginContext } from "./plugins/types.ts";
 import type { QueryExecutor } from "./storage/postgres.ts";
 import type { WorkspaceBuiltInRolesService } from "./workspace-roles/list-service.ts";
@@ -109,11 +131,17 @@ import {
 } from "./routes/workspace-personal-sync.ts";
 import { createWorkspacesListRoute } from "./routes/workspaces-list.ts";
 import {
+  createVaultDeleteRoute,
   createVaultGetRoute,
   createVaultUpdateRoute,
   createWorkspaceVaultsListRoute,
 } from "./routes/vault.ts";
-import { createWorkspaceMembersListRoute, createWorkspaceMemberDirectoryRoute } from "./routes/workspace-members.ts";
+import {
+  createWorkspaceInvitationDeleteRoute,
+  createWorkspaceMemberDeleteRoute,
+  createWorkspaceMembersListRoute,
+  createWorkspaceMemberDirectoryRoute,
+} from "./routes/workspace-members.ts";
 import { createWorkspaceMePermissionsRoute } from "./routes/workspace-me-permissions.ts";
 import {
   createWorkspaceMeVaultProfilesRoute,
@@ -121,7 +149,14 @@ import {
 } from "./routes/workspace-me-vault-profiles.ts";
 import type { WorkspaceMembersService } from "./workspace-members/service.ts";
 import { createVaultUnlockBootstrapRoute } from "./routes/vault-unlock-bootstrap.ts";
-import { createAccountVaultUnlockRoute } from "./routes/account-vault-unlock.ts";
+import {
+  createAccountVaultUnlockRoute,
+  createAccountVaultUnlockStatusRoute,
+} from "./routes/account-vault-unlock.ts";
+import {
+  createVaultUnlockAttemptStore,
+  type VaultUnlockAttemptRedis,
+} from "./account/vault-unlock-attempts.ts";
 import { createAccountMasterPasswordChangeRoute } from "./routes/account-master-password-change.ts";
 import { createAccountProfileRoute } from "./routes/account-profile.ts";
 import {
@@ -153,6 +188,8 @@ import {
   createAttachmentUploadRoute,
 } from "./routes/attachments.ts";
 import { createItemFaviconPreviewRoute } from "./routes/item-favicons.ts";
+import { requireEnrolledRecoveryKey } from "./routes/require-recovery-key.ts";
+import { createRecoveryProofAttemptStore } from "./account-recovery/recovery-proof-attempts.ts";
 
 export interface CreateApiAppOptions {
   enterprisePlugins?: ApiEnterprisePlugin[];
@@ -168,6 +205,8 @@ export interface CreateApiAppOptions {
   publicAppBaseUrl?: string;
   redis?: ApiEnterprisePluginContext["redis"];
   geoIp?: ApiEnterprisePluginContext["geoIp"];
+  /** Test clock for recovery-proof lockouts. */
+  recoveryProofNow?: () => number;
 }
 
 export interface AppDeps {
@@ -177,13 +216,18 @@ export interface AppDeps {
   vaultService?: VaultService;
   vaultUnlockBootstrapService?: VaultUnlockBootstrapService;
   /** When set with `sessionService`, exposes account profile routes (Bearer). */
-  usersRepository?: Pick<UsersRepository, "loadAccountProfile" | "updateAccountProfile">;
+  usersRepository?: Pick<
+    UsersRepository,
+    "loadAccountProfile" | "updateAccountProfile" | "recordVaultUnlock" | "findById"
+  >;
   emailChangeService?: EmailChangeService;
   vaultSharingService?: VaultSharingService;
   syncService?: SyncService;
   deviceService?: DeviceService;
   accountRecoveryService?: AccountRecoveryService;
   sessionService?: SessionService;
+  /** Browser extension PKCE session handoff (issue code + token exchange). */
+  extensionAuthService?: ExtensionAuthService;
   twoFactorService?: TwoFactorService;
   webauthnService?: WebAuthnService;
   capsuleService?: CapsuleService;
@@ -214,30 +258,175 @@ export function createApiApp(
   app.use(createCorsMiddleware(config.corsOrigin));
   app.use(createRequestLoggerMiddleware(logger));
 
-  const resolveUserId: (req: IncomingMessage) => Promise<string | null> =
+  const resolveSessionStrict =
     deps.sessionService !== undefined
-      ? createResolveAuthenticatedUserId(config, deps.sessionService)
-      : async (req) => {
-          const header = getHeader(req, "x-user-id");
-          return header?.trim() ?? null;
-        };
+      ? createResolveAuthenticatedSession(config, deps.sessionService)
+      : null;
+  const sessionIfDeviceTrusted = async (
+    req: IncomingMessage,
+  ): Promise<{ userId: string; deviceId: string | null } | null> => {
+    if (!resolveSessionStrict) {
+      const header = getHeader(req, "x-user-id")?.trim();
+      return header ? { userId: header, deviceId: null } : null;
+    }
+    const session = await resolveSessionStrict(req);
+    if (!session) {
+      return null;
+    }
+    if (session.deviceId && deps.deviceService?.isSessionDeviceTrusted) {
+      const trusted = await deps.deviceService.isSessionDeviceTrusted(
+        session.userId,
+        session.deviceId,
+      );
+      if (!trusted) {
+        return null;
+      }
+    }
+    return { userId: session.userId, deviceId: session.deviceId };
+  };
+  const resolveUserId: (req: IncomingMessage) => Promise<string | null> = async (req) => {
+    const session = await sessionIfDeviceTrusted(req);
+    return session?.userId ?? null;
+  };
+  /** Device list/register and the revoke guard must see an unbound Bearer so it can bind or return 403. */
+  const resolveUserIdAllowUnboundDevice: (req: IncomingMessage) => Promise<string | null> =
+    deps.sessionService !== undefined
+      ? createResolveAuthenticatedUserId(config, deps.sessionService, undefined, {
+          allowUnboundDevice: true,
+        })
+      : resolveUserId;
+  const resolveSessionAllowUnboundDevice =
+    deps.sessionService !== undefined
+      ? createResolveAuthenticatedSession(config, deps.sessionService, undefined, {
+          allowUnboundDevice: true,
+        })
+      : undefined;
+  /**
+   * Pending and other untrusted full sessions. Vault ciphertext stays on `resolveUserId`
+   * until the session proves the recovery key or the device is approved.
+   */
+  const resolveFullSession =
+    resolveSessionAllowUnboundDevice ??
+    (async (req: IncomingMessage) => {
+      const session = await sessionIfDeviceTrusted(req);
+      if (!session) {
+        return null;
+      }
+      return {
+        userId: session.userId,
+        deviceId: session.deviceId,
+        scope: null as string | null,
+        tokenHash: "",
+        expiresAt: null as string | null,
+        recoveryProvedAt: null as string | null,
+        recoveryChallenge: null as string | null,
+      };
+    });
+  const resolveRecoveryStatusAccess = async (
+    req: IncomingMessage,
+  ): Promise<{ userId: string; includeDirectory: boolean } | null> => {
+    const trusted = await sessionIfDeviceTrusted(req);
+    if (trusted) {
+      return { userId: trusted.userId, includeDirectory: true };
+    }
+    const session = await resolveFullSession(req);
+    if (!session || !isFullSessionScope(session.scope)) {
+      return null;
+    }
+    return {
+      userId: session.userId,
+      includeDirectory: Boolean(session.recoveryProvedAt),
+    };
+  };
+  /** Trusted device, or a full session that has proved the recovery key. */
+  const resolveUserIdForRestore: (req: IncomingMessage) => Promise<string | null> = async (req) => {
+    const trusted = await resolveUserId(req);
+    if (trusted) {
+      return trusted;
+    }
+    const session = await resolveFullSession(req);
+    if (!session || !isFullSessionScope(session.scope) || !session.recoveryProvedAt) {
+      return null;
+    }
+    return session.userId;
+  };
+  const mayClaimAfterRecovery = async (req: IncomingMessage): Promise<boolean> => {
+    if (await resolveUserId(req)) {
+      return true;
+    }
+    const session = await resolveFullSession(req);
+    return Boolean(session && isFullSessionScope(session.scope) && session.recoveryProvedAt);
+  };
+  /** Full session or post-register recovery bootstrap (enroll + ack-export only). */
+  const resolveUserIdForRegistrationRecovery: (req: IncomingMessage) => Promise<string | null> =
+    deps.sessionService !== undefined
+      ? createResolveAuthenticatedUserId(
+          config,
+          deps.sessionService,
+          REGISTRATION_RECOVERY_ALLOWED_SCOPES,
+        )
+      : resolveUserId;
+  const resolveSessionForRegistrationRecovery =
+    deps.sessionService !== undefined
+      ? createResolveAuthenticatedSession(
+          config,
+          deps.sessionService,
+          REGISTRATION_RECOVERY_ALLOWED_SCOPES,
+        )
+      : undefined;
+
+  const gateVaultUse = (handler: RouteHandler): RouteHandler =>
+    deps.accountRecoveryService
+      ? requireEnrolledRecoveryKey(deps.accountRecoveryService, resolveUserId, handler)
+      : handler;
 
   app.route("GET", "/health", healthRouteHandler);
   app.route("GET", "/ready", createReadyRouteHandler(readyCheck));
   if (deps.authService) {
-    app.route("POST", "/auth/email/start", createAuthEmailStartRoute(deps.authService));
-    app.route("POST", "/auth/email/resend", createAuthEmailResendRoute(deps.authService));
+    app.route(
+      "POST",
+      "/auth/email/start",
+      createAuthEmailStartRoute(deps.authService, config.trustedProxyHops),
+    );
+    app.route(
+      "POST",
+      "/auth/email/resend",
+      createAuthEmailResendRoute(deps.authService, config.trustedProxyHops),
+    );
     app.route(
       "POST",
       "/auth/email/confirm",
-      createAuthEmailConfirmRoute(deps.authService),
+      createAuthEmailConfirmRoute(deps.authService, config.trustedProxyHops),
     );
   }
   if (deps.registrationService) {
     app.route(
       "POST",
       "/auth/register/complete",
-      createRegisterCompleteRoute(deps.registrationService),
+      createRegisterCompleteRoute(deps.registrationService, config.trustedProxyHops),
+    );
+  }
+  if (deps.extensionAuthService) {
+    app.route(
+      "POST",
+      "/auth/extension/code",
+      // Email login has not bound a device yet; PKCE handoff must still mint a code.
+      createExtensionAuthIssueCodeRoute(
+        deps.extensionAuthService,
+        resolveSessionAllowUnboundDevice ??
+          (async () => null),
+        async (userId, deviceId) => {
+          if (!deps.deviceService?.isSessionDeviceTrusted) {
+            return false;
+          }
+          return deps.deviceService.isSessionDeviceTrusted(userId, deviceId);
+        },
+      ),
+    );
+    app.route(
+      "POST",
+      "/auth/extension/token",
+      createExtensionAuthTokenRoute(deps.extensionAuthService),
     );
   }
   if (deps.twoFactorService) {
@@ -249,7 +438,7 @@ export function createApiApp(
     app.route(
       "POST",
       "/auth/two-factor/verify",
-      createTwoFactorVerifyRoute(deps.twoFactorService),
+      createTwoFactorVerifyRoute(deps.twoFactorService, config.trustedProxyHops),
     );
     app.route(
       "GET",
@@ -291,7 +480,7 @@ export function createApiApp(
     app.route(
       "POST",
       "/auth/webauthn/login/options",
-      createWebAuthnLoginOptionsRoute(deps.webauthnService),
+      createWebAuthnLoginOptionsRoute(deps.webauthnService, config.trustedProxyHops),
     );
     app.route(
       "POST",
@@ -335,7 +524,7 @@ export function createApiApp(
     app.route(
       "GET",
       "/vault/unlock-bootstrap",
-      createVaultUnlockBootstrapRoute(deps.vaultUnlockBootstrapService, resolveUserId),
+      createVaultUnlockBootstrapRoute(deps.vaultUnlockBootstrapService, sessionIfDeviceTrusted),
     );
   }
   if (deps.sessionService !== undefined && deps.usersRepository) {
@@ -349,32 +538,63 @@ export function createApiApp(
       "/account/profile",
       createAccountProfileRoute(deps.usersRepository, resolveUserId),
     );
-    app.route(
-      "POST",
-      "/account/vault-unlock",
-      createAccountVaultUnlockRoute(deps.usersRepository, resolveUserId),
-    );
+    {
+      const unlockAttemptRedis =
+        options.redis &&
+        typeof (options.redis as VaultUnlockAttemptRedis).get === "function" &&
+        typeof (options.redis as VaultUnlockAttemptRedis).setWithTtl === "function" &&
+        typeof (options.redis as VaultUnlockAttemptRedis).del === "function"
+          ? (options.redis as VaultUnlockAttemptRedis)
+          : undefined;
+      const unlockAttemptStore = createVaultUnlockAttemptStore(unlockAttemptRedis);
+      app.route(
+        "GET",
+        "/account/vault-unlock/status",
+        createAccountVaultUnlockStatusRoute(resolveUserId, {
+          attemptStore: unlockAttemptStore,
+        }),
+      );
+      app.route(
+        "POST",
+        "/account/vault-unlock",
+        createAccountVaultUnlockRoute(deps.usersRepository, resolveUserId, {
+          attemptStore: unlockAttemptStore,
+        }),
+      );
+    }
     app.route(
       "POST",
       "/account/master-password/change",
-      createAccountMasterPasswordChangeRoute(deps.usersRepository, resolveUserId),
+      createAccountMasterPasswordChangeRoute(deps.usersRepository, resolveUserIdForRestore),
     );
   }
   if (deps.sessionService !== undefined && deps.emailChangeService) {
     app.route(
       "POST",
       "/account/email-change/start",
-      createAccountEmailChangeStartRoute(deps.emailChangeService, resolveUserId),
+      createAccountEmailChangeStartRoute(
+        deps.emailChangeService,
+        resolveUserId,
+        config.trustedProxyHops,
+      ),
     );
     app.route(
       "POST",
       "/account/email-change/resend",
-      createAccountEmailChangeResendRoute(deps.emailChangeService, resolveUserId),
+      createAccountEmailChangeResendRoute(
+        deps.emailChangeService,
+        resolveUserId,
+        config.trustedProxyHops,
+      ),
     );
     app.route(
       "POST",
       "/account/email-change/confirm",
-      createAccountEmailChangeConfirmRoute(deps.emailChangeService, resolveUserId),
+      createAccountEmailChangeConfirmRoute(
+        deps.emailChangeService,
+        resolveUserId,
+        config.trustedProxyHops,
+      ),
     );
   }
   const enterprisePlugins = options.enterprisePlugins ?? [];
@@ -383,12 +603,12 @@ export function createApiApp(
     app.route(
       "GET",
       "/workspaces",
-      createWorkspacesListRoute(deps.vaultService, resolveUserId),
+      createWorkspacesListRoute(deps.vaultService, resolveUserIdForRestore),
     );
     app.route(
       "GET",
       "/workspaces/:workspaceId/vaults",
-      createWorkspaceVaultsListRoute(deps.vaultService, resolveUserId),
+      gateVaultUse(createWorkspaceVaultsListRoute(deps.vaultService, resolveUserId)),
     );
     if (options.postgres) {
       app.route(
@@ -416,7 +636,23 @@ export function createApiApp(
         "/workspaces/:workspaceId/member-directory",
         createWorkspaceMemberDirectoryRoute(deps.workspaceMembersService, resolveUserId),
       );
-      // Invite / member mutation / vault-access routes: enterprise `workspace-members` plugin only.
+      // Invite / member edit / vault-access routes: enterprise `workspace-members` plugin only.
+      // Without it, Core still lets downgraded workspaces revoke invitations and remove members.
+      const hasEnterpriseWorkspaceMembers = enterprisePlugins.some(
+        (plugin) => plugin.id === "workspace-members",
+      );
+      if (!hasEnterpriseWorkspaceMembers) {
+        app.route(
+          "DELETE",
+          "/workspaces/:workspaceId/invitations/:invitationId",
+          createWorkspaceInvitationDeleteRoute(deps.workspaceMembersService, resolveUserId),
+        );
+        app.route(
+          "DELETE",
+          "/workspaces/:workspaceId/members/:userId",
+          createWorkspaceMemberDeleteRoute(deps.workspaceMembersService, resolveUserId),
+        );
+      }
     }
     if (deps.itemCategoryPreferencesService) {
       app.route(
@@ -434,12 +670,16 @@ export function createApiApp(
       app.route(
         "GET",
         "/workspaces/:workspaceId/capsule-defaults",
-        createWorkspaceCapsuleDefaultsRoute(deps.capsuleDefaultsService, resolveUserId),
+        gateVaultUse(
+          createWorkspaceCapsuleDefaultsRoute(deps.capsuleDefaultsService, resolveUserId),
+        ),
       );
       app.route(
         "PUT",
         "/workspaces/:workspaceId/capsule-defaults",
-        createWorkspaceCapsuleDefaultsRoute(deps.capsuleDefaultsService, resolveUserId),
+        gateVaultUse(
+          createWorkspaceCapsuleDefaultsRoute(deps.capsuleDefaultsService, resolveUserId),
+        ),
       );
     }
     if (deps.itemTemplatesService) {
@@ -483,6 +723,14 @@ export function createApiApp(
     }
     if (deps.planChangeRequestService) {
       app.route(
+        "GET",
+        "/workspaces/:workspaceId/plan-change-requests",
+        createWorkspacePlanChangeRequestStatusRoute(
+          deps.planChangeRequestService,
+          resolveUserId,
+        ),
+      );
+      app.route(
         "POST",
         "/workspaces/:workspaceId/plan-change-requests",
         createWorkspacePlanChangeRequestRoute(deps.planChangeRequestService, resolveUserId),
@@ -497,6 +745,11 @@ export function createApiApp(
         "/workspaces/:workspaceId/roles",
         createWorkspaceBuiltInRolesListRoute(deps.workspaceBuiltInRolesService, resolveUserId),
       );
+      app.route(
+        "DELETE",
+        "/workspaces/:workspaceId/roles/:roleId",
+        createWorkspaceCustomRoleDeleteRoute(deps.workspaceBuiltInRolesService, resolveUserId),
+      );
     }
     const hasEnterpriseWorkspaceProfiles = enterprisePlugins.some(
       (plugin) => plugin.id === "workspace-profiles",
@@ -507,36 +760,56 @@ export function createApiApp(
         "/workspaces/:workspaceId/profiles",
         createWorkspaceBuiltInProfilesListRoute(deps.workspaceBuiltInProfilesService, resolveUserId),
       );
+      app.route(
+        "DELETE",
+        "/workspaces/:workspaceId/profiles/:profileId",
+        createWorkspaceCustomProfileDeleteRoute(deps.workspaceBuiltInProfilesService, resolveUserId),
+      );
     }
     if (deps.workspacePersonalSyncService) {
       app.route(
         "GET",
         "/workspaces/:workspaceId/personal-events",
-        createWorkspacePersonalEventsListRoute(deps.workspacePersonalSyncService, resolveUserId),
+        gateVaultUse(
+          createWorkspacePersonalEventsListRoute(deps.workspacePersonalSyncService, resolveUserId),
+        ),
       );
       app.route(
         "POST",
         "/workspaces/:workspaceId/personal-events",
-        createWorkspacePersonalEventsAppendRoute(deps.workspacePersonalSyncService, resolveUserId),
+        gateVaultUse(
+          createWorkspacePersonalEventsAppendRoute(deps.workspacePersonalSyncService, resolveUserId),
+        ),
       );
     }
     app.route(
       "GET",
       "/vaults/:vaultId",
-      createVaultGetRoute(deps.vaultService, resolveUserId),
+      gateVaultUse(createVaultGetRoute(deps.vaultService, resolveUserId)),
     );
     app.route(
       "PATCH",
       "/vaults/:vaultId",
-      createVaultUpdateRoute(deps.vaultService, resolveUserId),
+      gateVaultUse(createVaultUpdateRoute(deps.vaultService, resolveUserId)),
     );
-    // Shared vault delete / access routes: enterprise `workspace-shared-vaults` plugin only.
+    const hasEnterpriseWorkspaceSharedVaults = enterprisePlugins.some(
+      (plugin) => plugin.id === "workspace-shared-vaults",
+    );
+    if (!hasEnterpriseWorkspaceSharedVaults) {
+      // Remnant shared vaults after modules off: allow delete without EE plugin.
+      app.route(
+        "DELETE",
+        "/vaults/:vaultId",
+        gateVaultUse(createVaultDeleteRoute(deps.vaultService, resolveUserId)),
+      );
+    }
+    // Shared vault access routes: enterprise `workspace-shared-vaults` plugin only.
   }
   if (deps.vaultSharingService) {
     app.route(
       "GET",
       "/vaults/:vaultId/key",
-      createVaultKeyGetRoute(deps.vaultSharingService, resolveUserId),
+      gateVaultUse(createVaultKeyGetRoute(deps.vaultSharingService, resolveUserId)),
     );
     // Shares / rotate / member-role routes: enterprise `workspace-shared-vaults` plugin only.
   }
@@ -544,24 +817,62 @@ export function createApiApp(
     app.route(
       "GET",
       "/vaults/:vaultId/events",
-      createSyncEventsListRoute(deps.syncService, resolveUserId),
+      gateVaultUse(createSyncEventsListRoute(deps.syncService, resolveUserId)),
     );
     app.route(
       "POST",
       "/vaults/:vaultId/events",
-      createSyncEventsAppendRoute(deps.syncService, resolveUserId),
+      gateVaultUse(createSyncEventsAppendRoute(deps.syncService, resolveUserId)),
     );
   }
   if (deps.deviceService) {
     app.route(
       "GET",
       "/devices",
-      createListDevicesRoute(deps.deviceService, resolveUserId),
+      createListDevicesRoute(
+        deps.deviceService,
+        resolveUserIdAllowUnboundDevice,
+        resolveSessionAllowUnboundDevice,
+      ),
     );
     app.route(
       "POST",
       "/devices/register",
-      createRegisterDeviceRoute(deps.deviceService, resolveUserId, config.trustedProxyHops),
+        createRegisterDeviceRoute(
+        deps.deviceService,
+        resolveUserIdAllowUnboundDevice,
+        config.trustedProxyHops,
+        deps.sessionService,
+        mayClaimAfterRecovery,
+      ),
+    );
+    app.route(
+      "POST",
+      "/devices/:deviceId/bind-challenge",
+      createDeviceBindChallengeRoute(
+        deps.deviceService,
+        resolveUserIdAllowUnboundDevice,
+        deps.sessionService,
+      ),
+    );
+    app.route(
+      "POST",
+      "/devices/:deviceId/bind-session",
+      createBindDeviceSessionRoute(
+        deps.deviceService,
+        resolveUserIdAllowUnboundDevice,
+        deps.sessionService,
+      ),
+    );
+    app.route(
+      "POST",
+      "/devices/:deviceId/request-key-rebind",
+      createRequestDeviceKeyRebindRoute(
+        deps.deviceService,
+        resolveUserIdAllowUnboundDevice,
+        config.trustedProxyHops,
+        deps.sessionService,
+      ),
     );
     app.route(
       "PATCH",
@@ -571,7 +882,11 @@ export function createApiApp(
     app.route(
       "POST",
       "/devices/:deviceId/revoke",
-      createRevokeDeviceRoute(deps.deviceService, resolveUserId),
+      createRevokeDeviceRoute(
+        deps.deviceService,
+        resolveUserIdAllowUnboundDevice,
+        deps.sessionService,
+      ),
     );
     app.route(
       "POST",
@@ -581,12 +896,12 @@ export function createApiApp(
     app.route(
       "POST",
       "/devices/:deviceId/reject",
-      createRejectDeviceRoute(deps.deviceService, resolveUserId),
+      createRejectDeviceRoute(deps.deviceService, resolveUserId, deps.sessionService),
     );
     app.route(
       "POST",
       "/devices/:deviceId/block",
-      createBlockDeviceRoute(deps.deviceService, resolveUserId),
+      createBlockDeviceRoute(deps.deviceService, resolveUserId, deps.sessionService),
     );
     app.route(
       "POST",
@@ -598,8 +913,41 @@ export function createApiApp(
     app.route(
       "GET",
       "/account/recovery",
-      createAccountRecoveryStatusRoute(deps.accountRecoveryService, resolveUserId),
+      createAccountRecoveryStatusRoute(deps.accountRecoveryService, resolveRecoveryStatusAccess),
     );
+    if (deps.sessionService && deps.usersRepository) {
+      app.route(
+        "POST",
+        "/account/recovery/key/prove",
+        createAccountRecoveryKeyProveRoute(
+          deps.accountRecoveryService,
+          async (req) => {
+            const session = await resolveFullSession(req);
+            if (!session || !isFullSessionScope(session.scope)) {
+              return null;
+            }
+            return session.userId;
+          },
+          {
+            resolveSession: resolveFullSession,
+            sessionService: deps.sessionService,
+            now: options.recoveryProofNow,
+            attemptStore: createRecoveryProofAttemptStore(
+              options.redis &&
+                typeof (options.redis as { get?: unknown }).get === "function" &&
+                typeof (options.redis as { setWithTtl?: unknown }).setWithTtl === "function" &&
+                typeof (options.redis as { del?: unknown }).del === "function"
+                ? (options.redis as {
+                    get(key: string): Promise<string | null>;
+                    setWithTtl(key: string, value: string, ttlSeconds: number): Promise<void>;
+                    del(key: string): Promise<number>;
+                  })
+                : undefined,
+            ),
+          },
+        ),
+      );
+    }
     app.route(
       "PATCH",
       "/account/recovery/settings",
@@ -608,27 +956,44 @@ export function createApiApp(
     app.route(
       "POST",
       "/account/recovery/key/enroll",
-      createAccountRecoveryKeyEnrollRoute(deps.accountRecoveryService, resolveUserId),
+      createAccountRecoveryKeyEnrollRoute(
+        deps.accountRecoveryService,
+        resolveUserIdForRegistrationRecovery,
+        resolveSessionForRegistrationRecovery,
+        {
+          allowRotate: async (req) => (await resolveUserIdForRestore(req)) != null,
+        },
+      ),
     );
     app.route(
       "POST",
       "/account/recovery/key/rotate",
-      createAccountRecoveryKeyRotateRoute(deps.accountRecoveryService, resolveUserId),
+      createAccountRecoveryKeyRotateRoute(deps.accountRecoveryService, resolveUserIdForRestore),
     );
     app.route(
       "POST",
       "/account/recovery/key/ack-export",
-      createAccountRecoveryKeyAckExportRoute(deps.accountRecoveryService, resolveUserId),
+      createAccountRecoveryKeyAckExportRoute(
+        deps.accountRecoveryService,
+        resolveUserIdForRegistrationRecovery,
+        {
+          resolveSession: resolveSessionForRegistrationRecovery,
+          sessionService: deps.sessionService,
+        },
+      ),
     );
     app.route(
       "GET",
       "/account/recovery/key/wrap",
-      createAccountRecoveryKeyWrapRoute(deps.accountRecoveryService, resolveUserId),
+      createAccountRecoveryKeyWrapRoute(deps.accountRecoveryService, resolveUserIdForRestore),
     );
     app.route(
       "GET",
       "/account/recovery/identity-encrypted-key",
-      createAccountRecoveryIdentityEncryptedKeyRoute(deps.accountRecoveryService, resolveUserId),
+      createAccountRecoveryIdentityEncryptedKeyRoute(
+        deps.accountRecoveryService,
+        resolveUserIdForRestore,
+      ),
     );
     app.route(
       "POST",
@@ -660,85 +1025,89 @@ export function createApiApp(
     app.route(
       "GET",
       "/workspaces/:workspaceId/capsules",
-      createCapsuleOwnerListRoute(deps.capsuleService, resolveUserId),
+      gateVaultUse(createCapsuleOwnerListRoute(deps.capsuleService, resolveUserId)),
     );
     app.route(
       "POST",
       "/workspaces/:workspaceId/capsules",
-      createCapsuleCreateRoute(deps.capsuleService, resolveUserId),
+      gateVaultUse(createCapsuleCreateRoute(deps.capsuleService, resolveUserId)),
     );
-    app.route("GET", "/capsules/:capsuleId", createCapsuleMetadataRoute(deps.capsuleService));
+    app.route(
+      "GET",
+      "/capsules/:capsuleId",
+      gateVaultUse(createCapsuleMetadataRoute(deps.capsuleService)),
+    );
     app.route(
       "GET",
       "/capsules/:capsuleId/owner",
-      createCapsuleOwnerDetailRoute(deps.capsuleService, resolveUserId),
+      gateVaultUse(createCapsuleOwnerDetailRoute(deps.capsuleService, resolveUserId)),
     );
     app.route(
       "PUT",
       "/capsules/:capsuleId",
-      createCapsuleUpdateRoute(deps.capsuleService, resolveUserId),
+      gateVaultUse(createCapsuleUpdateRoute(deps.capsuleService, resolveUserId)),
     );
     app.route(
       "POST",
       "/capsules/:capsuleId/open",
-      createCapsuleOpenRoute(deps.capsuleService, resolveUserId),
+      gateVaultUse(createCapsuleOpenRoute(deps.capsuleService, resolveUserId)),
     );
     app.route(
       "POST",
       "/capsules/:capsuleId/revoke",
-      createCapsuleRevokeRoute(deps.capsuleService, resolveUserId),
+      gateVaultUse(createCapsuleRevokeRoute(deps.capsuleService, resolveUserId)),
     );
     app.route(
       "PATCH",
       "/capsules/:capsuleId/state",
-      createCapsuleStateRoute(deps.capsuleService, resolveUserId),
+      gateVaultUse(createCapsuleStateRoute(deps.capsuleService, resolveUserId)),
     );
     app.route(
       "DELETE",
       "/capsules/:capsuleId",
-      createCapsuleDeleteRoute(deps.capsuleService, resolveUserId),
+      gateVaultUse(createCapsuleDeleteRoute(deps.capsuleService, resolveUserId)),
     );
     app.route(
       "POST",
       "/capsules/:capsuleId/approval-requests",
-      createCapsuleApprovalRequestRoute(deps.capsuleService, resolveUserId),
+      gateVaultUse(createCapsuleApprovalRequestRoute(deps.capsuleService, resolveUserId)),
     );
     app.route(
       "GET",
       "/capsules/:capsuleId/approval-eligibility",
-      createCapsuleApprovalEligibilityRoute(deps.capsuleService, resolveUserId),
+      gateVaultUse(createCapsuleApprovalEligibilityRoute(deps.capsuleService, resolveUserId)),
     );
     app.route(
       "GET",
       "/capsule-approval-requests/:requestId",
-      createCapsuleApprovalStatusRoute(deps.capsuleService, resolveUserId),
+      gateVaultUse(createCapsuleApprovalStatusRoute(deps.capsuleService, resolveUserId)),
     );
     app.route(
       "GET",
       "/capsule-approval-requests",
-      createCapsulePendingApprovalsRoute(deps.capsuleService, resolveUserId),
+      gateVaultUse(createCapsulePendingApprovalsRoute(deps.capsuleService, resolveUserId)),
     );
     app.route(
       "POST",
       "/capsule-approval-requests/:requestId/resolve",
-      createCapsuleApprovalResolveRoute(deps.capsuleService, resolveUserId),
+      gateVaultUse(createCapsuleApprovalResolveRoute(deps.capsuleService, resolveUserId)),
     );
   }
   if (deps.attachmentService) {
     app.route(
       "POST",
       "/vaults/:vaultId/items/:itemId/attachments",
-      createAttachmentUploadRoute(deps.attachmentService, resolveUserId),
+      gateVaultUse(createAttachmentUploadRoute(deps.attachmentService, resolveUserId)),
     );
     app.route(
       "GET",
       "/vaults/:vaultId/items/:itemId/attachments/:attachmentId",
-      createAttachmentDownloadRoute(deps.attachmentService, resolveUserId),
+      gateVaultUse(createAttachmentDownloadRoute(deps.attachmentService, resolveUserId)),
     );
     app.route(
       "DELETE",
       "/vaults/:vaultId/items/:itemId/attachments/:attachmentId",
-      createAttachmentDeleteRoute(deps.attachmentService, resolveUserId),
+      gateVaultUse(createAttachmentDeleteRoute(deps.attachmentService, resolveUserId)),
     );
   }
 

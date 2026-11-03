@@ -11,7 +11,12 @@ import {
   writePendingLoginDiscover,
 } from "../../auth/loginMethodStorage";
 import { ACCOUNT_LOGIN_METHODS_UI_ENABLED } from "../../auth/accountLoginMethodsFeature";
-import { AUTH_OTP_PATH, AUTH_WEBAUTHN_PATH, PRIVACY_POLICY_PATH } from "../../routes/paths";
+import {
+  ACCOUNT_NEW_PATH,
+  AUTH_OTP_PATH,
+  AUTH_WEBAUTHN_PATH,
+  PRIVACY_POLICY_PATH,
+} from "../../routes/paths";
 import { useLocale } from "../../locale/LocaleContext";
 import { emailStartErrorI18nKey } from "./emailStartErrors";
 
@@ -22,7 +27,8 @@ export default function AuthEmailPage() {
   const invitedEmail = searchParams.get("email")?.trim() ?? "";
   const returnTo = searchParams.get("returnTo")?.trim() ?? "";
   const forceEmail = searchParams.get("method") === "email";
-  const { authClient, setEmailChallenge, updateLocalProfile } = useAuthVault();
+  const { authClient, setEmailChallenge, setRegistrationAuthStateId, updateLocalProfile } =
+    useAuthVault();
   const [email, setEmail] = useState(() => invitedEmail || readLastLoginMethodHint()?.email || "");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -42,6 +48,12 @@ export default function AuthEmailPage() {
   async function startEmailOtp(trimmed: string) {
     const start = await authClient.startEmailLogin(trimmed, locale);
     updateLocalProfile({ email: trimmed });
+    // Self-host first-run: empty DB → skip OTP, go straight to registration.
+    if (start.bootstrapRequired && start.authStateId) {
+      setRegistrationAuthStateId(start.authStateId);
+      navigate(ACCOUNT_NEW_PATH, { replace: true });
+      return;
+    }
     setEmailChallenge(trimmed, start.challengeId, start.resendAvailableAt);
     navigate(AUTH_OTP_PATH, { replace: true });
   }

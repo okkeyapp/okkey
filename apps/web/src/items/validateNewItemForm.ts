@@ -122,7 +122,7 @@ export function validateNewItemForm(input: {
   } else if (input.categoryId === "crypto_wallet") {
     appendFlexiblePresetSectionIssues(CRYPTO_WALLET_SECTION_ID, input.sections ?? [], issues);
   } else if (input.categoryId === "personal_data") {
-    appendPersonalDataNameIssues(input.sections ?? [], issues);
+    appendPersonalDataNameIssues(input.sections ?? [], (issue) => issues.push(issue));
   } else if (input.categoryId === "passport") {
     appendFlexiblePresetSectionIssues(PASSPORT_SECTION_ID, input.sections ?? [], issues);
   } else if (input.categoryId === "secure_files") {

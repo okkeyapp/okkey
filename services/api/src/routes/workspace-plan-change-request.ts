@@ -14,7 +14,50 @@ type PlanChangeRequestBody = {
   contact_email?: unknown;
   locale?: unknown;
   region?: unknown;
+  workspace_member_count?: unknown;
 };
+
+export function createWorkspacePlanChangeRequestStatusRoute(
+  service: PlanChangeRequestService,
+  resolveUserId: (req: IncomingMessage) => Promise<string | null>,
+): RouteHandler {
+  return async (ctx) => {
+    const userId = await resolveUserId(ctx.req);
+    if (!userId) {
+      json(ctx.res, 401, errorPayload("AUTH_REQUIRED", "auth required", ctx.requestId));
+      return;
+    }
+
+    const workspaceId = ctx.params.workspaceId?.trim() ?? "";
+    if (!workspaceId) {
+      json(
+        ctx.res,
+        400,
+        errorPayload("INVALID_WORKSPACE_ID", "workspace id is required", ctx.requestId),
+      );
+      return;
+    }
+
+    try {
+      const result = await service.getStatus({
+        workspaceId,
+        actorUserId: userId,
+      });
+      json(ctx.res, 200, {
+        submitted: result.submitted,
+        sent_at: result.sentAt,
+        sales_email_deliverable: result.salesEmailDeliverable,
+        sales_email: result.salesEmail,
+      });
+    } catch (error) {
+      if (error instanceof PlanChangeRequestServiceError) {
+        json(ctx.res, error.status, errorPayload(error.code, error.message, ctx.requestId));
+        return;
+      }
+      throw error;
+    }
+  };
+}
 
 export function createWorkspacePlanChangeRequestRoute(
   service: PlanChangeRequestService,
@@ -57,6 +100,13 @@ export function createWorkspacePlanChangeRequestRoute(
           ? body.region.trim().toUpperCase()
           : "";
     const region = regionRaw === "" ? null : regionRaw;
+    const workspaceMemberCountRaw = body.workspace_member_count;
+    let workspaceMemberCount: number | undefined;
+    if (typeof workspaceMemberCountRaw === "number") {
+      workspaceMemberCount = workspaceMemberCountRaw;
+    } else if (typeof workspaceMemberCountRaw === "string" && workspaceMemberCountRaw.trim()) {
+      workspaceMemberCount = Number(workspaceMemberCountRaw.trim());
+    }
 
     try {
       const result = await service.submit({
@@ -66,11 +116,19 @@ export function createWorkspacePlanChangeRequestRoute(
         contactEmail,
         locale,
         region,
+        workspaceMemberCount,
       });
       json(ctx.res, 200, result);
     } catch (error) {
       if (error instanceof PlanChangeRequestServiceError) {
-        json(ctx.res, error.status, errorPayload(error.code, error.message, ctx.requestId));
+        const retryAfter = error.details?.retryAfterSeconds;
+        if (error.code === "RATE_LIMITED" && typeof retryAfter === "number" && retryAfter > 0) {
+          ctx.res.setHeader("Retry-After", String(retryAfter));
+        }
+        json(ctx.res, error.status, {
+          ...errorPayload(error.code, error.message, ctx.requestId),
+          ...(retryAfter != null ? { details: { retryAfterSeconds: retryAfter } } : {}),
+        });
         return;
       }
       throw error;

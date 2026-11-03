@@ -1,7 +1,6 @@
 import { ApiRequestError } from "@okkey/api";
 import type { Vault, Workspace, WorkspacePermissionsMatrixDto } from "@okkey/types";
 import {
-  hasPlanFeature,
   normalizeWorkspacePermissionsMatrix,
   permissionAllowsPost,
 } from "@okkey/types";
@@ -12,6 +11,7 @@ import {
   DEFAULT_WORKSPACE_CAPSULE_POLICIES,
   isCapsuleAllowedForMember,
 } from "@okkey/types";
+import { webEnterpriseModulesActive, workspaceHasPlanFeature } from "./planEntitlements";
 import {
   cn,
   DropdownMenuItem,
@@ -25,7 +25,12 @@ import {
 import { useEffect, useMemo, useRef, useState, useCallback, type ComponentProps, type PointerEvent } from "react";
 import { Outlet, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import workspaceTenancyModule from "@okkey-enterprise/workspace-tenancy";
-import { tryCompletePendingVaultWraps } from "@okkey-enterprise/workspace-members";
+import {
+  canCompletePendingVaultWraps,
+  tryCompletePendingVaultWraps,
+} from "@okkey-enterprise/workspace-members";
+import { refreshWorkspaceFoldersCachesForIds } from "@okkey/vault";
+import { toast } from "sonner";
 
 import AppShellNavLink from "../components/workspace/AppShellNavLink";
 import { useAuthVault, useAuthenticatedCoreClient } from "../auth/AuthVaultContext";
@@ -40,13 +45,15 @@ import { ItemCategoryPreferencesProvider } from "../components/items/ItemCategor
 import { toSidebarFolderTree, workspaceFolderIdExists } from "../folders/workspaceFolderTree";
 import { isItemCategoryId } from "../components/items/itemCategoryCatalog";
 import FoldersSettingsPopup from "../components/folders/FoldersSettingsPopup";
-import SettingsPopup from "../components/settings/SettingsPopup";
+import SettingsPopup, { DEFAULT_DEVICE_SETTINGS_ITEM_ID } from "../components/settings/SettingsPopup";
+import DeviceSettingsIcon from "../components/settings/DeviceSettingsIcon";
 import { SectionReauthProvider, useSectionReauth } from "../auth/SectionReauthContext";
 import WorkspaceErrorState from "../pages/workspace/WorkspaceErrorState";
 import CreateWorkspacePopup from "../pages/workspaces/CreateWorkspacePopup";
 import { createWorkspaceRequest, toastWorkspaceCreated } from "../pages/workspaces/createWorkspaceFlow";
 import NewItemPopup from "../components/items/NewItemPopup";
 import EditItemPopup from "../components/items/EditItemPopup";
+import PersonalDataBootstrapController from "../components/items/PersonalDataBootstrapController";
 import NewCapsulePopup from "../components/capsules/NewCapsulePopup";
 import CapsuleApprovalController from "../components/capsules/CapsuleApprovalController";
 import DeviceApprovalController from "../components/devices/DeviceApprovalController";
@@ -102,6 +109,7 @@ import {
   WORKSPACES_PATH,
   type WorkspaceAppShellPath,
 } from "../routes/paths";
+import { webDisplayPlanTier } from "./planEntitlements";
 import { planTierLabel } from "./planTierLabel";
 
 function SharedVaultMembersIcon({ className }: { className?: string }) {
@@ -231,13 +239,71 @@ export default function WorkspaceRoutesLayout() {
     if (!core || !userId || !vaultKey || !vaultUnlocked || !resolvedWorkspaceId) {
       return;
     }
+    // EE route `/pending-vault-wraps` — skip entirely when modules are off (avoid 404 spam).
+    if (!webEnterpriseModulesActive()) {
+      return;
+    }
+    // Contract requires `members:get`; builtin user role has none — do not probe (403 spam).
+    if (!workspacePermissionsReady || !canCompletePendingVaultWraps(workspacePermissions)) {
+      return;
+    }
     void tryCompletePendingVaultWraps({
       core,
       workspaceId: resolvedWorkspaceId,
       userId,
       accountVaultKey: vaultKey,
-    }).catch(() => undefined);
-  }, [core, resolvedWorkspaceId, userId, vaultKey, vaultUnlocked]);
+    })
+      .then((result) => {
+        if (result.skippedInvalidKeys > 0) {
+          toast.warning(
+            t("web.workspace.pendingVaultWraps.skippedInvalidKeys", {
+              count: result.skippedInvalidKeys,
+            }),
+          );
+        }
+      })
+      .catch(() => undefined);
+  }, [
+    core,
+    resolvedWorkspaceId,
+    t,
+    userId,
+    vaultKey,
+    vaultUnlocked,
+    workspacePermissions,
+    workspacePermissionsReady,
+  ]);
+
+  // API-first rematerialize personal folders for every workspace after unlock
+  // (personal-events from version 0 → decrypt → tree). Same path as active
+  // workspace refresh; IndexedDB is only written after a successful API sync.
+  const workspaceIdsKey = workspaceList.map((workspace) => workspace.id).join("\0");
+  useEffect(() => {
+    if (!core || !userId || !vaultUnlocked || !passwordShareC || !workspaceIdsKey) {
+      return;
+    }
+    let cancelled = false;
+    const shareC = new Uint8Array(passwordShareC);
+    const workspaceIds = workspaceIdsKey.split("\0").filter(Boolean);
+    void (async () => {
+      try {
+        if (cancelled) {
+          return;
+        }
+        await refreshWorkspaceFoldersCachesForIds({
+          core,
+          userId,
+          passwordShareC: shareC,
+          workspaceIds,
+        });
+      } catch {
+        // best-effort
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [core, userId, vaultUnlocked, passwordShareC, workspaceIdsKey]);
 
   const patchWorkspace = useCallback((workspaceId: string, patch: Partial<Workspace>) => {
     setWorkspaceList((previous) =>
@@ -673,7 +739,7 @@ export default function WorkspaceRoutesLayout() {
               {currentWorkspace?.name ?? "…"}
             </p>
             <p className="truncate text-xs font-normal leading-4 text-muted-foreground">
-              {currentWorkspace ? planTierLabel(currentWorkspace.planTier, t) : ""}
+              {currentWorkspace ? planTierLabel(webDisplayPlanTier(currentWorkspace), t) : ""}
             </p>
           </div>
         ) : null}
@@ -708,7 +774,9 @@ export default function WorkspaceRoutesLayout() {
                 <WorkspaceTileAvatar workspace={ws} sizeClass="size-8" />
                 <div className="min-w-0 flex-1 text-left">
                   <p className="truncate text-sm font-semibold leading-5 text-foreground">{ws.name}</p>
-                  <p className="truncate text-xs leading-4 text-muted-foreground">{planTierLabel(ws.planTier, t)}</p>
+                  <p className="truncate text-xs leading-4 text-muted-foreground">
+                    {planTierLabel(webDisplayPlanTier(ws), t)}
+                  </p>
                 </div>
                 {active ? <span className="shrink-0 text-primary">✓</span> : null}
               </DropdownMenuItem>
@@ -818,8 +886,11 @@ export default function WorkspaceRoutesLayout() {
                 lastName: profile?.lastName,
                 email,
                 settingsLabel: t("web.accountMenu.settings"),
+                deviceSettingsLabel: t("web.accountMenu.deviceSettings"),
                 logoutLabel: t("web.accountMenu.logout"),
-                onSettings: openSettingsPopup,
+                onSettings: () => openSettingsPopup(),
+                onDeviceSettings: () => openSettingsPopup(DEFAULT_DEVICE_SETTINGS_ITEM_ID),
+                deviceSettingsIcon: <DeviceSettingsIcon className="size-4" />,
                 onLogout: logout,
               }
             : undefined;
@@ -953,7 +1024,7 @@ function WorkspaceShellWithItems({
   const { itemFolderByItemId, itemFavoriteByItemId } = useWorkspaceFolders();
   const { isContentBlocked, requestAccess } = useSectionReauth();
   const canShowVaultHeaderPlus = useMemo(() => {
-    if (!hasPlanFeature(currentWorkspace?.planTier, "sharedVaults")) {
+    if (!workspaceHasPlanFeature(currentWorkspace, "sharedVaults")) {
       return false;
     }
     if (!enterpriseSharedVaultsModule.SharedVaultCardPopup) {
@@ -961,7 +1032,7 @@ function WorkspaceShellWithItems({
     }
     const vaultPermissions = settingsSectionPermissionCell(workspacePermissions, "vaults");
     return permissionAllowsPost(vaultPermissions?.post ?? 0);
-  }, [currentWorkspace?.planTier, workspacePermissions]);
+  }, [currentWorkspace, workspacePermissions]);
   const workspaceItemsState = useWorkspaceItemsState({
     userId,
     workspaceId: resolvedWorkspaceId,
@@ -995,6 +1066,7 @@ function WorkspaceShellWithItems({
       ? { ...item, onAddPointerDown: undefined }
       : item,
   );
+  const enterpriseModulesOn = webEnterpriseModulesActive();
 
   return (
     <WorkspaceItemTemplatesProvider workspaceId={resolvedWorkspaceId}>
@@ -1015,14 +1087,21 @@ function WorkspaceShellWithItems({
           />
           <CapsuleApprovalController />
           <DeviceApprovalController />
-          <DeviceRecoveryApprovalController />
+          {enterpriseModulesOn ? <DeviceRecoveryApprovalController /> : null}
           <TrustedContactInviteController />
-          <ContactsShareReleaseController />
-          {ContactsShareAutoEnrollController ? <ContactsShareAutoEnrollController /> : null}
+          {enterpriseModulesOn ? <ContactsShareReleaseController /> : null}
+          {ContactsShareAutoEnrollController && enterpriseModulesOn ? (
+            <ContactsShareAutoEnrollController />
+          ) : null}
           <EditItemPopup
             t={t}
             workspaceId={resolvedWorkspaceId}
             workspaceName={currentWorkspaceName}
+            vaults={vaults}
+            vaultsListReady={vaultsListReady}
+          />
+          <PersonalDataBootstrapController
+            workspaceId={resolvedWorkspaceId}
             vaults={vaults}
             vaultsListReady={vaultsListReady}
           />

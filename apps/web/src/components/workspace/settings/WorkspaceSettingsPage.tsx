@@ -29,6 +29,7 @@ import WorkspaceSettingsProfilesSection from "./profiles/WorkspaceSettingsProfil
 import WorkspaceSettingsVaultsSection from "./vaults/WorkspaceSettingsVaultsSection";
 import WorkspaceSettingsMembersSection from "./members/WorkspaceSettingsMembersSection";
 import workspacePlanModule from "@okkey-enterprise/workspace-plan";
+import { webDeploymentMode, webDisplayPlanTier } from "../../../workspace/planEntitlements";
 import SelfHostedFreePlanSection from "./plan/SelfHostedFreePlanSection";
 import WorkspaceSettingsMobileHeader from "./WorkspaceSettingsMobileHeader";
 import WorkspaceSettingsSidebar from "./WorkspaceSettingsSidebar";
@@ -85,7 +86,12 @@ export default function WorkspaceSettingsPage({
   const sectionAllowed = canGetSettingsSection(workspacePermissions, requestedSection);
   const activeSection = requestedSection;
   const sectionPermissions = settingsSectionPermissionCell(workspacePermissions, activeSection);
-  const PlanSection = workspacePlanModule.PlanSection ?? SelfHostedFreePlanSection;
+  const displayPlanTier = webDisplayPlanTier(workspace);
+  // Self-hosted without modules → Core FREE notice + sales; with modules → EE plan section.
+  const PlanSection =
+    webDeploymentMode() === "self_hosted" && displayPlanTier === "FREE"
+      ? SelfHostedFreePlanSection
+      : (workspacePlanModule.PlanSection ?? SelfHostedFreePlanSection);
 
   const workspaceName = workspace?.name ?? "…";
   const itemsHref = itemsPathAllWorkspaceMerged(searchParams);
@@ -199,7 +205,8 @@ export default function WorkspaceSettingsPage({
             ) : activeSection === "plan" ? (
               <PlanSection
                 workspaceId={workspaceId}
-                planTier={workspace?.planTier}
+                planTier={displayPlanTier}
+                workspaceName={workspace?.name}
                 t={t}
                 canRequest={Boolean(sectionPermissions && sectionPermissions.put >= 1)}
               />

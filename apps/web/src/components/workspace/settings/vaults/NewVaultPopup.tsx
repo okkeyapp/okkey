@@ -4,7 +4,9 @@ import type {
   WorkspacePermissionsMatrixDto,
   WorkspaceProfileSummary,
 } from "@okkey/types";
-import { hasPlanFeature, permissionAllowsPost } from "@okkey/types";
+import { permissionAllowsPost } from "@okkey/types";
+
+import { workspaceHasPlanFeature } from "../../../../workspace/planEntitlements";
 import type { WebMessageValues } from "@okkey/i18n";
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
@@ -43,7 +45,7 @@ export default function NewVaultPopup({
   const [searchParams] = useSearchParams();
 
   const SharedVaultCardPopup = enterpriseSharedVaultsModule.SharedVaultCardPopup;
-  const canManageSharedPlan = hasPlanFeature(workspace?.planTier, "sharedVaults");
+  const canManageSharedPlan = workspaceHasPlanFeature(workspace, "sharedVaults");
   const vaultPermissions = settingsSectionPermissionCell(workspacePermissions, "vaults");
   const canPost = permissionAllowsPost(vaultPermissions?.post ?? 0);
 

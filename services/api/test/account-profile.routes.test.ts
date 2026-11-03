@@ -50,7 +50,7 @@ function createSessionServiceStub(): SessionService {
   return {
     async resolveAccessToken(token: string) {
       if (token.trim() === "test-access-token") {
-        return { userId: "u1" };
+        return { userId: "u1", deviceId: "d1", scope: null, tokenHash: "hash" };
       }
       return null;
     },

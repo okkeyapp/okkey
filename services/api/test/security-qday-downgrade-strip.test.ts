@@ -54,21 +54,26 @@ function createSyncService(
     },
     events: {
       listAfterVersion: async () => [],
+      hasItemCreateEvent: async () => true,
+      findByIdempotencyKey: async () => null,
       append: async (input) => {
-        await appendImpl({ payloadSchemaVersion: input.payloadSchemaVersion });
+        await appendImpl({ payloadSchemaVersion: input.payloadSchemaVersion ?? 2 });
         return {
           id: "e-security",
           vaultId: "v-security",
           actorId: "u-owner",
           eventType: input.eventType,
           encryptedPayload: input.encryptedPayload,
-          payloadSchemaVersion: input.payloadSchemaVersion,
+          payloadSchemaVersion: input.payloadSchemaVersion ?? 2,
           idempotencyKey: input.idempotencyKey ?? null,
           clientCreatedAt: input.clientCreatedAt ?? null,
+          referencedItemId: input.referencedItemId ?? null,
+          itemSoftDeleted: input.itemSoftDeleted ?? null,
           version: 1,
           createdAt: "2026-01-01T00:00:00.000Z",
         };
       },
+      deleteByVaultAndReferencedItemId: async () => 0,
     },
     config: {
       allowedCryptoProfileVersions,

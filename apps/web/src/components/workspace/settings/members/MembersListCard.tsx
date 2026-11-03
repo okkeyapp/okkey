@@ -1,7 +1,7 @@
 import type { WorkspaceMemberDto } from "@okkey/types";
 import type { WebMessageValues } from "@okkey/i18n";
 import { Button, cn } from "@okkey/ui";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 
 import ListScrollSentinel from "../../../../lists/ListScrollSentinel";
 import { useListWindow } from "../../../../lists/useListWindow";
@@ -18,6 +18,7 @@ type MembersListCardProps = {
     onClick: () => void;
     disabled?: boolean;
   };
+  renderTrailing?: (member: WorkspaceMemberDto) => ReactNode;
   /**
    * Resets the infinite-scroll window (e.g. members search query).
    * Omit for tiny owner-only lists — window still applies but stays under one page.
@@ -62,6 +63,7 @@ export default function MembersListCard({
   t,
   onMemberClick,
   footerAction,
+  renderTrailing,
   listWindowResetKey = "",
   className,
 }: MembersListCardProps) {
@@ -133,9 +135,10 @@ export default function MembersListCard({
                   {member.email}
                 </p>
               </div>
-              <span className="shrink-0 text-sm leading-5 text-muted-foreground">
-                {roleLabel(member, t)}
-              </span>
+              <div className="flex shrink-0 items-center gap-1">
+                <span className="text-sm leading-5 text-muted-foreground">{roleLabel(member, t)}</span>
+                {renderTrailing?.(member)}
+              </div>
             </>
           );
 

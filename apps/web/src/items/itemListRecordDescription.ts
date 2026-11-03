@@ -34,7 +34,7 @@ function selectFieldDisplayValue(field: ItemFieldV2): string {
   return label || value;
 }
 
-function itemFieldDisplayValue(field: ItemFieldV2): string {
+function itemFieldDisplayValue(field: ItemFieldV2, locale = "en"): string {
   switch (field.value.kind) {
     case "text":
       return field.value.text.trim();
@@ -56,6 +56,7 @@ function itemFieldDisplayValue(field: ItemFieldV2): string {
       ) {
         return formatKeyFieldAddressCopyValue(
           parseKeyFieldAddressValue(field.value.raw),
+          locale,
         );
       }
       return "";
@@ -97,13 +98,14 @@ function orderedItemFields(item: ItemPlaintextV2): ItemFieldV2[] {
 
 export function readFirstNonSecretFilledFieldDescription(
   item: ItemPlaintextV2,
+  locale = "en",
 ): string {
   for (const field of orderedItemFields(item)) {
     if (!isItemFieldFilled(field) || isSecretItemField(field)) {
       continue;
     }
 
-    const displayValue = itemFieldDisplayValue(field);
+    const displayValue = itemFieldDisplayValue(field, locale);
     if (displayValue.length > 0) {
       return displayValue;
     }
@@ -128,7 +130,10 @@ function joinFilledParts(parts: string[]): string {
   return parts.filter((part) => part.length > 0).join(" ");
 }
 
-export function readPersonalDataListDescription(item: ItemPlaintextV2): string {
+export function readPersonalDataListDescription(
+  item: ItemPlaintextV2,
+  locale = "en",
+): string {
   const firstName = readTextFieldValueById(item, "first-name");
   const lastName = readTextFieldValueById(item, "last-name");
   const middleName = readTextFieldValueById(item, "middle-name");
@@ -142,19 +147,23 @@ export function readPersonalDataListDescription(item: ItemPlaintextV2): string {
     return joinFilledParts([firstName, middleName]);
   }
 
+  // Legacy initials field (removed from default template; still shown if stored).
   if (lastName && initials) {
     return joinFilledParts([lastName, initials]);
   }
 
-  return readFirstNonSecretFilledFieldDescription(item);
+  return readFirstNonSecretFilledFieldDescription(item, locale);
 }
 
-export function readItemListRecordDescription(item: ItemPlaintextV2): string {
+export function readItemListRecordDescription(
+  item: ItemPlaintextV2,
+  locale = "en",
+): string {
   if (item.categoryId === "personal_data") {
-    return readPersonalDataListDescription(item);
+    return readPersonalDataListDescription(item, locale);
   }
 
-  return readFirstNonSecretFilledFieldDescription(item);
+  return readFirstNonSecretFilledFieldDescription(item, locale);
 }
 
 /** Match needle against non-secret values in primary (white / preset) sections. */

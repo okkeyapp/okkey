@@ -33,7 +33,7 @@ export const ITEM_CATEGORY_DEFINITIONS: Record<string, CategoryDefinition> = {
     fieldTemplates: [
       { id: "login", type: "text", sectionId: SEC_LOGIN_CREDENTIALS, order: 0, label: "Login" },
       { id: "password", type: "password", sectionId: SEC_LOGIN_CREDENTIALS, order: 1, label: "Password" },
-      { id: "website-1", type: "url", sectionId: SEC_LOGIN_WEBSITES, order: 0, label: "Website" },
+      { id: "website-1", type: "url", sectionId: SEC_LOGIN_WEBSITES, order: 0, label: "website URL" },
     ],
   },
   [ITEM_CATEGORY_SECURE_NOTE]: {

@@ -45,9 +45,21 @@ export type PlanQuotaLimits = {
   maxAttachmentStorageMb: number | null;
 };
 
+/** Product deployment mode (API `OKKEY_DEPLOYMENT_MODE` / web `VITE_DEPLOYMENT_MODE`). */
+export type DeploymentMode = "self_hosted" | "saas";
+
 export type PlanEntitlementOptions = {
   customOverride?: boolean | null;
   featureOverrides?: PlanFeatureOverrides | null;
+  /**
+   * Self-hosted:
+   * - modules off → FREE matrix (plus {@link SELF_HOSTED_FREE_EXTRA})
+   * - modules on → ENTERPRISE matrix (workspace `plan_tier` ignored)
+   * SaaS / omitted mode: catalog `plan_tier` as today.
+   */
+  deploymentMode?: DeploymentMode | null;
+  /** True only when enterprise modules were requested and successfully loaded. */
+  enterpriseModulesActive?: boolean | null;
 };
 
 export const PLAN_TIERS: readonly PlanTier[] = [
@@ -116,7 +128,9 @@ const BUSINESS_PAID = {
  * New catalog tiers or features = matrix cells only; call sites stay on {@link hasPlanFeature}.
  *
  * Mapping notes (APP.md + Figma SaaS cards):
- * - FREE: capsules without access settings; no files / monitoring / recovery / shared vaults / seats.
+ * - FREE (SaaS catalog): capsules without access settings; no files / monitoring / recovery / shared vaults / seats.
+ * - Self-hosted modules off → FREE matrix plus {@link SELF_HOSTED_FREE_EXTRA} (`filesInItems`).
+ *   Self-hosted modules on → ENTERPRISE matrix (`plan_tier` ignored).
  * - PREMIUM: personal paid (files, monitoring, recovery, capsule access settings).
  * - FAMILY: PREMIUM + seats / shared vaults / custom roles & profiles (multi-user personal).
  * - TEAM / ENTERPRISE: full business matrix (same feature set today; ENTERPRISE reserved for future extras).
@@ -127,6 +141,14 @@ export const PLAN_FEATURE_MATRIX: Record<PlanTier, Record<PlanFeature, boolean>>
   FAMILY: { ...FAMILY_PAID },
   TEAM: { ...BUSINESS_PAID },
   ENTERPRISE: { ...BUSINESS_PAID },
+};
+
+/**
+ * Features kept free on self-hosted OSS (modules off), while SaaS FREE stays on the catalog matrix.
+ * Attachments / file fields stay PREMIUM+ on SaaS only.
+ */
+export const SELF_HOSTED_FREE_EXTRA: Readonly<Partial<Record<PlanFeature, boolean>>> = {
+  filesInItems: true,
 };
 
 /**
@@ -200,15 +222,39 @@ export function sanitizePlanFeatureOverrides(
 }
 
 /**
+ * Effective catalog tier used for feature / quota checks.
+ * Self-hosted: modules off → FREE; modules on → ENTERPRISE (`plan_tier` ignored).
+ * SaaS / omitted mode: workspace `plan_tier`.
+ */
+export function resolveEntitlementPlanTier(
+  workspacePlanTier: string | null | undefined,
+  options?: Pick<PlanEntitlementOptions, "deploymentMode" | "enterpriseModulesActive">,
+): PlanTier {
+  if (options?.deploymentMode === "self_hosted") {
+    return options.enterpriseModulesActive ? "ENTERPRISE" : "FREE";
+  }
+  return normalizePlanTier(workspacePlanTier);
+}
+
+/**
  * Resolve whether a plan grants a feature.
  * When custom override is enabled, explicit featureOverrides win over the catalog matrix.
+ * Self-hosted modules-off (effective FREE) also applies {@link SELF_HOSTED_FREE_EXTRA}.
  */
 export function hasPlanFeature(
   planTier: string | null | undefined,
   feature: PlanFeature,
   options?: PlanEntitlementOptions,
 ): boolean {
-  const base = PLAN_FEATURE_MATRIX[normalizePlanTier(planTier)][feature];
+  const effectiveTier = resolveEntitlementPlanTier(planTier, options);
+  let base = PLAN_FEATURE_MATRIX[effectiveTier][feature];
+  if (
+    options?.deploymentMode === "self_hosted" &&
+    effectiveTier === "FREE" &&
+    SELF_HOSTED_FREE_EXTRA[feature] === true
+  ) {
+    base = true;
+  }
   if (!options?.customOverride) {
     return base;
   }
@@ -221,8 +267,9 @@ export function hasPlanFeature(
 
 export function getPlanQuotaLimits(
   planTier: string | null | undefined,
+  options?: Pick<PlanEntitlementOptions, "deploymentMode" | "enterpriseModulesActive">,
 ): PlanQuotaLimits {
-  return PLAN_QUOTA_LIMITS[normalizePlanTier(planTier)];
+  return PLAN_QUOTA_LIMITS[resolveEntitlementPlanTier(planTier, options)];
 }
 
 /** All feature flags for a tier (after optional custom overrides). */

@@ -15,6 +15,9 @@ import type {
   ClientCryptoCapabilities,
   CoreApiErrorBody,
   CryptoRolloutMode,
+  DeviceBindChallengeResponseDto,
+  DeviceBindSessionRequestDto,
+  DeviceKeyRebindRequestDto,
   DeviceRegisterRequestDto,
   DeviceRegisterResponseDto,
   DeviceRejectResponseDto,
@@ -25,6 +28,7 @@ import type {
   DeviceListResponseDto,
   DevicePatchRequestDto,
   DevicePatchResponseDto,
+  DeviceRevokeRequestDto,
   DeviceRevokeResponseDto,
   EncryptedBlobDto,
   SyncAppendEventRequestDto,
@@ -43,6 +47,9 @@ import type {
   AccountProfileUpdateRequestDto,
   AccountMasterPasswordChangeRequestDto,
   AccountMasterPasswordChangeResponseDto,
+  VaultUnlockAttestationDto,
+  VaultUnlockAttemptStatusDto,
+  VaultUnlockRecordResponseDto,
   AccountEmailChangeConfirmRequestDto,
   AccountEmailChangeConfirmResponseDto,
   AccountEmailChangeResendRequestDto,
@@ -51,6 +58,8 @@ import type {
   AccountLoginMethodsPrimaryPatchDto,
   AccountLoginMethodsResponseDto,
   AccountRecoveryKeyEnrollRequestDto,
+  AccountRecoveryKeyProveRequestDto,
+  AccountRecoveryKeyProveResponseDto,
   AccountRecoveryKeyEnrollResponseDto,
   AccountRecoveryKeyWrapResponseDto,
   AccountRecoverySettingsUpdateRequestDto,
@@ -73,8 +82,9 @@ import type {
   WorkspaceDeleteRequestDto,
   WorkspacePlanChangeRequestDto,
   WorkspacePlanChangeRequestResponseDto,
+  WorkspacePlanChangeRequestStatusDto,
   WorkspaceRolesListResponseDto,
-  WorkspaceBuiltInProfilesListResponseDto,
+  WorkspaceProfilesListResponseDto,
   VaultCreateRequestDto,
   VaultUpdateRequestDto,
   WorkspaceMembersListResponseDto,
@@ -94,8 +104,8 @@ import type {
   PendingVaultWrapsResponseDto,
   VaultAccessResponseDto,
   VaultAccessUpdateRequestDto,
-} from "../../types/src/index.js";
-import { isClientPqCapable } from "../../types/src/index.js";
+} from "@okkey/types";
+import { isClientPqCapable } from "@okkey/types";
 
 export interface ApiClientOptions {
   baseUrl: string;
@@ -333,9 +343,19 @@ export class CoreApiClient {
     return this.api.post<AccountMasterPasswordChangeResponseDto>("/account/master-password/change", body);
   }
 
-  /** Reports a successful master-password vault unlock (no secrets in the body). */
-  recordVaultUnlock(): Promise<{ recorded: true }> {
-    return this.api.post<{ recorded: true }>("/account/vault-unlock", {});
+  /** Reports a successful vault unlock with a signed attestation (no secrets). */
+  recordVaultUnlock(attestation: VaultUnlockAttestationDto): Promise<VaultUnlockRecordResponseDto> {
+    return this.api.post<VaultUnlockRecordResponseDto>("/account/vault-unlock", { attestation });
+  }
+
+  /** Reports a failed local unlock attempt (increments server-side attempt budget). */
+  reportVaultUnlockFailure(): Promise<VaultUnlockRecordResponseDto> {
+    return this.api.post<VaultUnlockRecordResponseDto>("/account/vault-unlock", { failure: true });
+  }
+
+  /** Server-authoritative unlock attempt lockout status. */
+  getVaultUnlockAttemptStatus(): Promise<VaultUnlockAttemptStatusDto> {
+    return this.api.get<VaultUnlockAttemptStatusDto>("/account/vault-unlock/status");
   }
 
   startAccountEmailChange(
@@ -580,6 +600,14 @@ export class CoreApiClient {
     );
   }
 
+  getWorkspacePlanChangeRequestStatus(
+    workspaceId: string,
+  ): Promise<WorkspacePlanChangeRequestStatusDto> {
+    return this.api.get<WorkspacePlanChangeRequestStatusDto>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/plan-change-requests`,
+    );
+  }
+
   requestWorkspacePlanChange(
     workspaceId: string,
     body: WorkspacePlanChangeRequestDto,
@@ -596,9 +624,21 @@ export class CoreApiClient {
     );
   }
 
-  listWorkspaceProfiles(workspaceId: string): Promise<WorkspaceBuiltInProfilesListResponseDto> {
-    return this.api.get<WorkspaceBuiltInProfilesListResponseDto>(
+  deleteWorkspaceRole(workspaceId: string, roleId: string): Promise<{ ok: true }> {
+    return this.api.delete<{ ok: true }>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/roles/${encodeURIComponent(roleId)}`,
+    );
+  }
+
+  listWorkspaceProfiles(workspaceId: string): Promise<WorkspaceProfilesListResponseDto> {
+    return this.api.get<WorkspaceProfilesListResponseDto>(
       `/workspaces/${encodeURIComponent(workspaceId)}/profiles`,
+    );
+  }
+
+  deleteWorkspaceProfile(workspaceId: string, profileId: string): Promise<{ ok: true }> {
+    return this.api.delete<{ ok: true }>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/profiles/${encodeURIComponent(profileId)}`,
     );
   }
 
@@ -808,6 +848,38 @@ export class CoreApiClient {
     return this.api.post<DeviceRegisterResponseDto>("/devices/register", body);
   }
 
+  createDeviceBindChallenge(deviceId: string): Promise<DeviceBindChallengeResponseDto> {
+    return this.api.post<DeviceBindChallengeResponseDto>(
+      `/devices/${encodeURIComponent(deviceId)}/bind-challenge`,
+      {},
+    );
+  }
+
+  /** Attach the current session after a device-key signature or a legacy share proof. */
+  bindDeviceSession(
+    deviceId: string,
+    body: DeviceBindSessionRequestDto,
+  ): Promise<DeviceRegisterResponseDto> {
+    return this.api.post<DeviceRegisterResponseDto>(
+      `/devices/${encodeURIComponent(deviceId)}/bind-session`,
+      body,
+    );
+  }
+
+  /**
+   * Replace lost device signing keys and demote to pending for another trusted
+   * device to approve. Sole-device accounts get `DEVICE_REBIND_REQUIRES_RECOVERY`.
+   */
+  requestDeviceKeyRebind(
+    deviceId: string,
+    body: DeviceKeyRebindRequestDto,
+  ): Promise<DeviceRegisterResponseDto> {
+    return this.api.post<DeviceRegisterResponseDto>(
+      `/devices/${encodeURIComponent(deviceId)}/request-key-rebind`,
+      body,
+    );
+  }
+
   listDevices(currentFingerprint?: string): Promise<DeviceListResponseDto> {
     const query = currentFingerprint
       ? `?device_fingerprint=${encodeURIComponent(currentFingerprint)}`
@@ -825,8 +897,12 @@ export class CoreApiClient {
 
   patchAccountRecoverySettings(
     body: AccountRecoverySettingsUpdateRequestDto,
+    options?: { currentFingerprint?: string },
   ): Promise<AccountRecoveryStatusResponseDto> {
-    return this.api.patch<AccountRecoveryStatusResponseDto>("/account/recovery/settings", body);
+    const fingerprint = options?.currentFingerprint?.trim();
+    return this.api.patch<AccountRecoveryStatusResponseDto>("/account/recovery/settings", body, {
+      headers: fingerprint ? { "X-Device-Fingerprint": fingerprint } : undefined,
+    });
   }
 
   enrollAccountRecoveryKey(
@@ -839,6 +915,13 @@ export class CoreApiClient {
     body: AccountRecoveryKeyEnrollRequestDto,
   ): Promise<AccountRecoveryKeyEnrollResponseDto> {
     return this.api.post<AccountRecoveryKeyEnrollResponseDto>("/account/recovery/key/rotate", body);
+  }
+
+  /** Prove the recovery key. A pending device may call this before any wrap is readable. */
+  proveAccountRecoveryKey(
+    body: AccountRecoveryKeyProveRequestDto,
+  ): Promise<AccountRecoveryKeyProveResponseDto> {
+    return this.api.post<AccountRecoveryKeyProveResponseDto>("/account/recovery/key/prove", body);
   }
 
   ackAccountRecoveryKeyExport(): Promise<AccountRecoveryStatusResponseDto> {
@@ -896,10 +979,26 @@ export class CoreApiClient {
     );
   }
 
-  revokeDevice(deviceId: string, reason?: string): Promise<DeviceRevokeResponseDto> {
+  revokeDevice(
+    deviceId: string,
+    reason?: string,
+    options?: { signOut?: boolean; callerDeviceId?: string },
+  ): Promise<DeviceRevokeResponseDto> {
+    const body: DeviceRevokeRequestDto = {};
+    if (reason !== undefined) {
+      body.reason = reason;
+    }
+    if (options?.signOut) {
+      body.sign_out = true;
+    }
+    const headers =
+      options?.callerDeviceId !== undefined
+        ? { "X-Device-Id": options.callerDeviceId }
+        : undefined;
     return this.api.post<DeviceRevokeResponseDto>(
       `/devices/${encodeURIComponent(deviceId)}/revoke`,
-      reason !== undefined ? { reason } : {},
+      body,
+      headers ? { headers } : undefined,
     );
   }
 

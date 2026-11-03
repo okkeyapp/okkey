@@ -1,5 +1,6 @@
 import type { SyncAppendEventRequestDto, SyncEventWireDto, SyncEventsListResponseDto } from "@okkey/types";
 import { generateEntityId } from "@okkey/id";
+import { eventsListHasMore } from "./events-list-page.js";
 import { replayVaultEvents, type ReplayEngineOptions, type SyncMaterializedState } from "./replay-engine.js";
 
 export type OutboxEntryStatus = "pending" | "sending" | "failed" | "dead";
@@ -47,6 +48,9 @@ export interface OutboxHooks {
   onQueueStalled?: (entries: OutboxEntry[]) => void;
 }
 
+/** Marked dead when a peer already wrote the same item since our stale baseVersion. */
+export const ITEM_UPDATE_CONFLICT = "ITEM_UPDATE_CONFLICT";
+
 export interface OutboxClientOptions {
   maxAttempts?: number;
   baseDelayMs?: number;
@@ -56,6 +60,15 @@ export interface OutboxClientOptions {
   nowMs?: () => number;
   random?: () => number;
   replayOptions?: Omit<ReplayEngineOptions, "vaultId" | "initialLastAppliedVersion">;
+  /**
+   * Decrypt item ciphertext for a vault during VERSION_MISMATCH replay.
+   * Required to detect same-item concurrent edits (without this, updates may last-writer-wins).
+   */
+  decryptItemPayloadForVault?: (
+    vaultId: string,
+    encryptedPayloadBase64: string,
+    itemId?: string | null,
+  ) => Promise<Uint8Array>;
   rebaseItemUpdate?: (
     context: ItemUpdateRebaseContext,
   ) => Promise<Pick<SyncAppendEventRequestDto, "encryptedBlob">>;
@@ -72,45 +85,56 @@ function isObject(v: unknown): v is Record<string, unknown> {
   return !!v && typeof v === "object" && !Array.isArray(v);
 }
 
+function versionMismatchFromDetails(
+  details: Record<string, unknown>,
+): VersionMismatchDetails | undefined {
+  if (
+    typeof details.expectedBaseVersion === "number" &&
+    typeof details.latestVersion === "number"
+  ) {
+    return {
+      code: "VERSION_MISMATCH",
+      expectedBaseVersion: details.expectedBaseVersion,
+      latestVersion: details.latestVersion,
+    };
+  }
+  return undefined;
+}
+
+/**
+ * Recognise Core API 409 VERSION_MISMATCH shapes:
+ * - `{ code, details: { expectedBaseVersion, latestVersion } }` (optionally `details.code`)
+ * - `{ error: "VERSION_MISMATCH", details: { ... } }`
+ * - `ApiRequestError`-like `{ body: { error: "VERSION_MISMATCH", details: { ... } } }`
+ *
+ * Do not require `details.code`; the server puts the code on `error` / top-level `code`.
+ */
 function toOutboxError(err: unknown): { code: string; message: string; versionMismatch?: VersionMismatchDetails } {
   if (isObject(err)) {
     const directCode = typeof err.code === "string" ? err.code : undefined;
     const directMsg = typeof err.message === "string" ? err.message : "unknown error";
+
     if (directCode === "VERSION_MISMATCH" && isObject(err.details)) {
-      const d = err.details;
-      if (
-        d.code === "VERSION_MISMATCH" &&
-        typeof d.expectedBaseVersion === "number" &&
-        typeof d.latestVersion === "number"
-      ) {
-        return {
-          code: "VERSION_MISMATCH",
-          message: directMsg,
-          versionMismatch: {
-            code: "VERSION_MISMATCH",
-            expectedBaseVersion: d.expectedBaseVersion,
-            latestVersion: d.latestVersion,
-          },
-        };
+      const mismatch = versionMismatchFromDetails(err.details);
+      if (mismatch) {
+        return { code: "VERSION_MISMATCH", message: directMsg, versionMismatch: mismatch };
       }
     }
 
-    if (isObject(err.body) && isObject(err.body.details)) {
-      const details = err.body.details;
-      if (
-        details.code === "VERSION_MISMATCH" &&
-        typeof details.expectedBaseVersion === "number" &&
-        typeof details.latestVersion === "number"
-      ) {
-        return {
-          code: "VERSION_MISMATCH",
-          message: directMsg,
-          versionMismatch: {
-            code: "VERSION_MISMATCH",
-            expectedBaseVersion: details.expectedBaseVersion,
-            latestVersion: details.latestVersion,
-          },
-        };
+    if (typeof err.error === "string" && err.error === "VERSION_MISMATCH" && isObject(err.details)) {
+      const mismatch = versionMismatchFromDetails(err.details);
+      if (mismatch) {
+        return { code: "VERSION_MISMATCH", message: directMsg, versionMismatch: mismatch };
+      }
+    }
+
+    if (isObject(err.body) && typeof err.body.error === "string" && err.body.error === "VERSION_MISMATCH") {
+      const details = isObject(err.body.details) ? err.body.details : undefined;
+      if (details) {
+        const mismatch = versionMismatchFromDetails(details);
+        if (mismatch) {
+          return { code: "VERSION_MISMATCH", message: directMsg, versionMismatch: mismatch };
+        }
       }
     }
 
@@ -242,17 +266,52 @@ export class SyncOutboxClient {
       const next = page.events[page.events.length - 1]?.version ?? cursor;
       if (next <= cursor) break;
       cursor = next;
+      if (!eventsListHasMore(page)) break;
     }
     return out;
   }
 
+  private remoteEventsTouchItem(events: SyncEventWireDto[], itemId: string): boolean {
+    const itemTypes = new Set(["ITEM_CREATE", "ITEM_UPDATE", "ITEM_DELETE"]);
+    return events.some(
+      (event) => itemTypes.has(event.eventType) && event.referencedItemId === itemId,
+    );
+  }
+
   private async handleVersionMismatch(entry: OutboxEntry, conflict: VersionMismatchDetails): Promise<void> {
     const remoteEvents = await this.fetchAllAfterVersion(entry.vaultId, conflict.expectedBaseVersion);
+    const decryptItemPayload =
+      this.options.decryptItemPayloadForVault != null
+        ? (encryptedPayloadBase64: string, itemId?: string | null) =>
+            this.options.decryptItemPayloadForVault!(entry.vaultId, encryptedPayloadBase64, itemId)
+        : this.options.replayOptions?.decryptItemPayload;
     const replay = await replayVaultEvents(remoteEvents, {
       vaultId: entry.vaultId,
       initialLastAppliedVersion: conflict.expectedBaseVersion,
       ...this.options.replayOptions,
+      ...(decryptItemPayload ? { decryptItemPayload } : {}),
     });
+
+    const referencedItemId = entry.request.referencedItemId;
+    const isSameItemMutation =
+      (entry.request.eventType === "ITEM_UPDATE" || entry.request.eventType === "ITEM_DELETE") &&
+      typeof referencedItemId === "string" &&
+      referencedItemId.length > 0;
+    // Peer already wrote this item since our baseVersion — do not last-writer-wins overwrite.
+    const touchedViaWire =
+      isSameItemMutation && referencedItemId
+        ? this.remoteEventsTouchItem(remoteEvents, referencedItemId)
+        : false;
+    const touchedViaReplay =
+      isSameItemMutation && referencedItemId ? replay.items.has(referencedItemId) : false;
+    if (touchedViaWire || touchedViaReplay) {
+      entry.status = "dead";
+      entry.lastErrorCode = ITEM_UPDATE_CONFLICT;
+      entry.lastErrorMessage = "item was updated concurrently";
+      entry.nextAttemptAtMs = Number.MAX_SAFE_INTEGER;
+      entry.updatedAtMs = this.nowMs();
+      return;
+    }
 
     if (entry.request.eventType === "ITEM_UPDATE" && this.options.rebaseItemUpdate) {
       const rebased = await this.options.rebaseItemUpdate({
@@ -282,8 +341,14 @@ export class SyncOutboxClient {
     this.options.hooks?.onConflictResolved?.(entry);
   }
 
-  async drain(vaultId?: string): Promise<void> {
+  /**
+   * Drain pending appends. Returns successfully appended wire events in order
+   * so callers can materialize local state without a follow-up list GET when
+   * versions are contiguous from the last applied tip.
+   */
+  async drain(vaultId?: string): Promise<SyncEventWireDto[]> {
     await this.ensureLoaded();
+    const appended: SyncEventWireDto[] = [];
 
     // eslint-disable-next-line no-constant-condition
     while (true) {
@@ -294,7 +359,7 @@ export class SyncOutboxClient {
           this.options.hooks?.onQueueStalled?.(stalled.map((e) => ({ ...e, request: { ...e.request } })));
         }
         await this.flush();
-        return;
+        return appended;
       }
 
       entry.status = "sending";
@@ -302,7 +367,8 @@ export class SyncOutboxClient {
       await this.flush();
 
       try {
-        await this.transport.appendVaultEvent(entry.vaultId, entry.request);
+        const created = await this.transport.appendVaultEvent(entry.vaultId, entry.request);
+        appended.push(created);
         this.entries = this.entries.filter((e) => e.id !== entry.id);
         await this.flush();
         continue;

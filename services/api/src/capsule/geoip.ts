@@ -67,8 +67,9 @@ export class MmdbGeoIpLookup implements GeoIpLookup {
 }
 
 /**
- * Prefer X-Forwarded-For when the TCP peer is loopback (local reverse proxy / tunnel),
- * even if TRUSTED_PROXY_HOPS is 0. Otherwise only honor forwarded headers when hops > 0.
+ * Resolve client IP for rate limits and audit.
+ * Honor X-Forwarded-For only when TRUSTED_PROXY_HOPS > 0 (including loopback peers).
+ * Otherwise always use the TCP remote address.
  */
 export function clientIpFromTrustedProxy(
   remoteAddress: string | undefined,
@@ -76,13 +77,6 @@ export function clientIpFromTrustedProxy(
   trustedProxyHops: number,
 ): string {
   const remote = normalizeIp(remoteAddress);
-
-  if (isLoopbackIp(remote) && forwardedFor) {
-    const first = normalizeIp(forwardedFor.split(",")[0]);
-    if (first !== "unknown" && !isLoopbackIp(first)) {
-      return first;
-    }
-  }
 
   if (trustedProxyHops <= 0 || !forwardedFor) {
     return remote;

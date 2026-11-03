@@ -32,6 +32,17 @@ Minimal backend scaffold for Okkey Core.
   - `GET /vaults/:vaultId/events?afterVersion=0` (same)
   - `POST /vaults/:vaultId/events` (same)
 
+## Worker / background jobs
+
+Production self-host runs jobs in a separate process (`services/api/src/worker.ts`, image `ghcr.io/okkeyapp/worker`):
+
+- soft-deleted item hard-purge (hourly)
+- expired capsule cleanup (every 60s)
+
+Locally: `yarn dev:worker` (same ensure step as `dev:api`). See [`services/worker/README.md`](../worker/README.md).
+
+SQL migrations under `migrations/` apply automatically on API (and worker) start via `schema_migrations`, serialized with a Postgres advisory lock.
+
 ## Local run
 
 1. Prepare env:
@@ -49,9 +60,21 @@ The API reads only `services/api/.env` and `services/api/.env.local`.
 yarn dev:api
 ```
 
+This runs `scripts/ensure-api-dev-deps.mjs` first: builds WASM crypto when missing, then `build:ts-sdk` (`@okkey/id` / `@okkey/types` / `@okkey/sync`) and `build:email`.
+
 By default the API listens on `http://localhost:4000`.
 
 Note: the storage layer needs `pg` and `redis` dependencies to run.
+
+## Favicon preview
+
+`POST /favicon/preview` resolves website icons for login-item forms. Provider is controlled by
+`FAVICON_PROVIDER` (see `.env.example` and [`docs/architecture/09_self_hosting.md`](../../docs/architecture/09_self_hosting.md)):
+
+- `direct` (default) — fetch from the site origin only
+- `off` — disable remote preview
+- `google` — explicit opt-in; sends login-item website domains to Google's favicon
+  service. Prefer `direct` or `off` for self-hosted deployments.
 
 ## Email providers
 

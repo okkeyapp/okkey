@@ -23,6 +23,7 @@ Core requires these services in all environments:
 
 Tested and supported for the first stable release:
 
+- Docker Engine: ≥ 28.0 (self-host Compose; required for true `127.0.0.1` port publish — see [moby#45610](https://github.com/moby/moby/issues/45610))
 - PostgreSQL: 16.x
 - Redis: 7.x
 - Object storage: S3-compatible (MinIO tested)
@@ -30,7 +31,7 @@ Tested and supported for the first stable release:
 Docker images used in local dev:
 - Postgres: `postgres:16-alpine`
 - Redis: `redis:7-alpine`
-- MinIO: `minio/minio:RELEASE.2024-07-16T23-46-41Z`
+- MinIO: `pgsty/minio:RELEASE.2026-08-04T00-00-00Z`
 
 ## Minimum Resource Baseline
 
@@ -90,6 +91,7 @@ Self-hosted recommendations:
 - Metrics and alerting for API latency, error rate, DB health, and Redis memory.
 - Daily Postgres backups with retention policy.
 - Object storage backups or replication if available.
+- After applying migrations `0037`/`0038` (item templates structure-only): templates no longer store pre-filled field values (existing templates become empty forms). Cleared data can remain in `pg_wal`, WAL archives/PITR, replicas, snapshots, and older backups — run `VACUUM (FULL) workspace_item_templates` in a maintenance window (exclusive table lock) and rotate backups. See `docs/architecture/09_self_hosting.md`.
 
 SaaS recommendations:
 - Multi-zone database backups and point-in-time recovery.

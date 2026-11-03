@@ -1,23 +1,25 @@
 export type { EntityId, UUID } from "./entity-id.js";
 export {
   ENTITY_ID_RE,
+  MAX_ENTITY_ID,
   assertEntityId,
   entityIdFromDb,
   generateEntityId,
   isEntityId,
 } from "./entity-id.js";
 import type { EntityId } from "./entity-id.js";
+import type { EncryptedBlobDto, HybridSignatureEnvelopeDto } from "./crypto-wire.js";
 import type { PlanFeatureOverrides, PlanTier } from "./plan-features.js";
-import type {
-  WorkspaceBuiltInRoleDto,
-  WorkspaceBuiltInRolesListResponseDto,
-} from "./workspace-roles.js";
+import type { WorkspaceBuiltInRoleDto } from "./workspace-roles.js";
 import type { WorkspaceCapsulePolicies } from "./workspace-capsule-policies.js";
 import type { WorkspaceCapsulePoliciesDto } from "./workspace-capsule-policies.js";
 import type { WorkspaceMonitoringCardSettings } from "./workspace-monitoring-card-settings.js";
 import type { WorkspaceMonitoringCardSettingsDto } from "./workspace-monitoring-card-settings.js";
 
+export type { EncryptedBlobDto, HybridSignatureEnvelopeDto } from "./crypto-wire.js";
+
 export type {
+  DeploymentMode,
   PlanCatalogGroup,
   PlanCustomOverride,
   PlanEntitlementOptions,
@@ -34,6 +36,7 @@ export {
   PLAN_QUOTA_LIMITS,
   PLAN_TIER_RANK,
   PLAN_TIERS,
+  SELF_HOSTED_FREE_EXTRA,
   canRequestPlanUpgrade,
   comparePlanTiers,
   emptyPlanFeatureOverrides,
@@ -44,6 +47,7 @@ export {
   planCatalogGroupForTier,
   planEntitlementOptionsFromWorkspace,
   planTiersForCatalogGroup,
+  resolveEntitlementPlanTier,
   resolvePlanFeatures,
   sanitizePlanFeatureOverrides,
 } from "./plan-features.js";
@@ -137,6 +141,11 @@ export interface Workspace {
   logoVaultId?: string | null;
   /** Encrypted logo attachment id. */
   logoAttachmentId?: string | null;
+  /**
+   * When set, a plan-change / license purchase request email was already sent for this workspace.
+   * ISO timestamp string from the API.
+   */
+  planChangeRequestSentAt?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -414,10 +423,22 @@ export interface PendingVaultWrapDto {
   publicPqKey: string | null;
 }
 
+/**
+ * Staged grant that cannot be wrapped because the recipient public key is invalid.
+ * Returned so the client can notify the admin (wraps list omits these rows).
+ */
+export interface PendingVaultWrapSkippedDto {
+  userId: EntityId;
+  vaultId: EntityId;
+  profileId: EntityId;
+}
+
 /** `GET /workspaces/:workspaceId/pending-vault-wraps` success body. */
 export interface PendingVaultWrapsResponseDto {
   workspaceId: EntityId;
   wraps: PendingVaultWrapDto[];
+  /** Recipients skipped server-side due to invalid Ed25519 / ML-KEM public keys. */
+  skippedInvalidKeyRecipients: PendingVaultWrapSkippedDto[];
 }
 
 /** `POST /workspaces/:workspaceId/invitations` body. */
@@ -525,6 +546,8 @@ export interface VaultAccessResponseDto {
   vaultId: EntityId;
   members: VaultAccessMemberDto[];
   invitations: VaultAccessInvitationDto[];
+  /** Current vault event-log head (`MAX(events.version)`). Used as `baseVersion` for revokes. */
+  latestVersion?: number;
 }
 
 /**
@@ -579,7 +602,14 @@ export {
 } from "./item-plaintext-v1.js";
 
 import type { ItemFaviconSource, ItemPlaintextV2 } from "./item-schema/types.js";
-export type { FieldValueV2, ItemFieldV2, ItemSectionV2 } from "./item-schema/types.js";
+export type {
+  FieldValueV2,
+  FieldValueTotp,
+  ItemFieldV2,
+  ItemSectionV2,
+  TotpAlgorithm,
+  UrlAutofillScope,
+} from "./item-schema/types.js";
 export type { ItemPlaintextV2, ItemFaviconSource };
 export {
   ITEM_PLAINTEXT_SCHEMA_VERSION_V1,
@@ -593,6 +623,7 @@ export {
   migrateItemPlaintextV1ToV2,
   validateItemPlaintextV2,
   normalizeItemPlaintextV2,
+  parseUrlAutofillScope,
   createItemDeleteTombstoneV2,
   listCategoryIds,
   getCategoryDefinition,
@@ -755,6 +786,9 @@ export type {
   WorkspaceBuiltInRoleDto,
   WorkspaceBuiltInRoleId,
   WorkspaceBuiltInRolesListResponseDto,
+  WorkspaceCustomRoleRemnantDto,
+  WorkspaceRoleListItemDto,
+  WorkspaceRolesListResponseDto,
   WorkspaceRoleSummary,
 } from "./workspace-roles.js";
 export type {
@@ -778,6 +812,9 @@ export type {
   WorkspaceBuiltInProfileDto,
   WorkspaceBuiltInProfileId,
   WorkspaceBuiltInProfilesListResponseDto,
+  WorkspaceCustomProfileRemnantDto,
+  WorkspaceProfileListItemDto,
+  WorkspaceProfilesListResponseDto,
   WorkspaceProfileSummary,
 } from "./workspace-profiles.js";
 export {
@@ -807,33 +844,6 @@ export {
   profileAllowsItemView,
 } from "./workspace-profiles.js";
 
-/** Canonical encrypted wire/storage envelope for all ciphertext artifacts. */
-export interface EncryptedBlobDto {
-  crypto_version: number;
-  algorithm: string;
-  payload: string;
-  meta: Record<string, unknown>;
-}
-
-/** Canonical hybrid signature envelope for integrity-critical artifacts. */
-export interface HybridSignatureEnvelopeDto {
-  version: 1;
-  algorithm: "hybrid_ed25519_pq_bind_v1";
-  key_id: string;
-  context:
-    | "sync.append"
-    | "vault.share"
-    | "vault.revoke"
-    | "vault.rotate"
-    | "vault.member_role_update"
-    | "vault.create"
-    | "vault.access_update";
-  signer_pq_public_key: string;
-  payload_hash: string;
-  signature: string;
-  created_at: string;
-}
-
 /** @deprecated Use {@link CoreApiErrorBody}; the wire field is `error`, not `code`. */
 export type ApiError = CoreApiErrorBody;
 
@@ -842,6 +852,14 @@ export interface EmailAuthStartResponse {
   challengeId: string;
   expiresAt: string;
   resendAvailableAt: string;
+  /**
+   * When true (self-hosted empty catalog with exclusive claim), skip OTP and open
+   * registration with `authStateId`. Omitted on saas, after any user exists, or when
+   * another first-run claim is already held (normal email OTP).
+   */
+  bootstrapRequired?: boolean;
+  authStateId?: string;
+  nextStep?: "registration";
 }
 
 /** `POST /auth/email/confirm` success body. */
@@ -857,6 +875,28 @@ export interface AccessTokenResponseDto {
   expires_at: string;
   user_id: EntityId;
   token_type: "Bearer";
+}
+
+/** `POST /auth/extension/code` — short-lived PKCE auth code for browser extension session handoff. */
+export interface ExtensionAuthCodeIssueRequestDto {
+  client_id: string;
+  redirect_uri: string;
+  code_challenge: string;
+  code_challenge_method?: "S256";
+}
+
+export interface ExtensionAuthCodeIssueResponseDto {
+  code: string;
+  expires_at: string;
+  expires_in: number;
+}
+
+/** `POST /auth/extension/token` — exchange auth_code + PKCE verifier for Bearer session. */
+export interface ExtensionAuthTokenRequestDto {
+  client_id: string;
+  redirect_uri: string;
+  code: string;
+  code_verifier: string;
 }
 
 /** `GET /auth/two-factor/status` success body. */
@@ -949,7 +989,35 @@ export interface AccountRecoverySettingsUpdateRequestDto {
 /** `POST /account/recovery/key/enroll` and rotate request. */
 export interface AccountRecoveryKeyEnrollRequestDto {
   encryptedBlob: EncryptedBlobDto;
+  /**
+   * Base64 Ed25519 verifying key derived from the recovery secret.
+   * The server stores this public key only. It cannot sign or unwrap the vault key.
+   */
+  possessionPublicKey?: string;
 }
+
+/** `POST /account/recovery/key/prove` request. Empty object asks for a challenge. */
+export interface AccountRecoveryKeyProveRequestDto {
+  challenge?: string;
+  signature?: string;
+}
+
+/** Challenge signature accepted. No ciphertext. */
+export interface AccountRecoveryKeyProvedResponseDto {
+  proved: true;
+}
+
+/** Server-issued single-use challenge bound to this session and device. */
+export interface AccountRecoveryKeyProveChallengeResponseDto {
+  proved: false;
+  challenge: string;
+  deviceId: string;
+  expiresAt: string;
+}
+
+export type AccountRecoveryKeyProveResponseDto =
+  | AccountRecoveryKeyProvedResponseDto
+  | AccountRecoveryKeyProveChallengeResponseDto;
 
 export interface AccountRecoveryKeyEnrollResponseDto {
   key: AccountRecoveryKeyMetaDto;
@@ -1099,6 +1167,17 @@ export interface SyncEventWireDto {
   signature?: HybridSignatureEnvelopeDto;
   idempotencyKey: EntityId | null;
   clientCreatedAt: string | null;
+  /**
+   * Server-side item id for ITEM_* events (retention + client integrity checks).
+   * Clients must ignore ITEM_* events whose decrypted plaintext.itemId differs.
+   */
+  referencedItemId?: EntityId | null;
+  /**
+   * Server-persisted soft-delete hint for ITEM_* events.
+   * Clients must apply plaintext `deleted` on ITEM_UPDATE only when this is true
+   * (or when unset on legacy events). `false` means the update is not a soft-delete.
+   */
+  itemSoftDeleted?: boolean | null;
   version: number;
   createdAt: string;
 }
@@ -1108,6 +1187,13 @@ export interface SyncEventsListResponseDto {
   vaultId: EntityId;
   afterVersion: number;
   events: SyncEventWireDto[];
+  /** Highest version in this response, or `afterVersion` when `events` is empty. */
+  latestVersion: number;
+  /**
+   * When false, this page is the full remainder after `afterVersion`.
+   * Clients must not issue another GET just to observe an empty page.
+   */
+  hasMore: boolean;
 }
 
 /** Workspace personal metadata event on the wire. */
@@ -1129,6 +1215,13 @@ export interface WorkspacePersonalEventsListResponseDto {
   userId: EntityId;
   afterVersion: number;
   events: WorkspacePersonalEventWireDto[];
+  /** Highest version in this response, or `afterVersion` when `events` is empty. */
+  latestVersion: number;
+  /**
+   * When false, this page is the full remainder after `afterVersion`.
+   * Clients must not issue another GET just to observe an empty page.
+   */
+  hasMore: boolean;
 }
 
 /** `POST /vaults/:vaultId/events` request body. */
@@ -1188,10 +1281,18 @@ export interface WorkspacePlanChangeRequestDto {
   requested_plan_tier: PlanTier;
   /** Contact email for sales follow-up (defaults to account email when omitted). */
   contact_email: string;
-  /** UI locale (`en` | `ru`). */
+  /** UI locale (`en` | `ru`); server may also use account locale. */
   locale: string;
-  /** Billing region ISO 3166-1 alpha-2, or empty when unset. */
+  /**
+   * Billing region ISO 3166-1 alpha-2 hint from the client (browser detect).
+   * Server prefers the account billing region when set.
+   */
   region: string | null;
+  /**
+   * Expected workspace member / seat count from the license request form (integer ≥ 1).
+   * Required for self-hosted license purchase requests; SaaS may omit (server counts members).
+   */
+  workspace_member_count?: number;
 }
 
 /** `POST /workspaces/:workspaceId/plan-change-requests` success body. */
@@ -1199,11 +1300,24 @@ export interface WorkspacePlanChangeRequestResponseDto {
   submitted: true;
 }
 
+/** `GET /workspaces/:workspaceId/plan-change-requests` status body. */
+export interface WorkspacePlanChangeRequestStatusDto {
+  submitted: boolean;
+  /** ISO timestamp when the request email was sent; null if never submitted. */
+  sent_at: string | null;
+  /**
+   * True when the API can deliver the sales/license request email via a real
+   * transport (`smtp` | `ses` | `http-api` with valid config). False for
+   * `EMAIL_PROVIDER=logger` or incomplete provider config — clients should
+   * open `mailto:` instead of the in-app form.
+   */
+  sales_email_deliverable: boolean;
+  /** Sales inbox for mailto fallback (`OKKEY_SALES_EMAIL`; required server setting, no default). */
+  sales_email: string;
+}
+
 /** @deprecated Use WorkspaceBuiltInRoleDto */
 export type WorkspaceRoleDto = WorkspaceBuiltInRoleDto;
-
-/** @deprecated Use WorkspaceBuiltInRolesListResponseDto */
-export type WorkspaceRolesListResponseDto = WorkspaceBuiltInRolesListResponseDto;
 
 /** `GET /vaults/:vaultId/key` success body. */
 export interface VaultKeyGetResponseDto {
@@ -1232,7 +1346,7 @@ export interface VaultShareUpsertRequestDto {
   recipientUserId: EntityId;
   /**
    * Recipient wrapped vault key.
-   * Production hybrid-by-default contract expects:
+   * Hybrid-by-default contract (every `DEPLOY_ENV`) expects:
    * - `crypto_version >= 2`
    * - `meta.key_wrap_scheme = "hybrid_ecc_pq_v1"`
    */
@@ -1319,6 +1433,12 @@ export interface RegisterCompleteMetadataDto {
    * device with the provided device_share and revoke other trusted devices.
    */
   claim_after_recovery?: boolean;
+  /**
+   * When true on `POST /devices/register` before recovery-key proof: if this
+   * fingerprint is already trusted, insert a pending device for the new public
+   * key and bind the unbound session to that pending device only.
+   */
+  recovery_pending?: boolean;
 }
 
 /** `POST /devices/register` request body (snake_case on wire). */
@@ -1333,7 +1453,63 @@ export interface DeviceRegisterRequestDto {
   app_version?: string;
   client_type?: string;
   user_agent?: string;
+  /**
+   * UI locale (`en` | `ru`), same pattern as auth email codes.
+   * Prefer this over `Accept-Language` — browsers forbid overriding that header from fetch.
+   */
+  locale?: string;
   metadata?: RegisterCompleteMetadataDto;
+}
+
+/** `POST /devices/:deviceId/bind-challenge` success body. */
+export interface DeviceBindChallengeResponseDto {
+  challenge_id: string;
+  /** Base64 of the exact bytes the device private key must sign. */
+  challenge: string;
+  expires_at: string;
+}
+
+/** `POST /devices/:deviceId/bind-session` request body. */
+export interface DeviceBindSessionRequestDto {
+  challenge_id: string;
+  /**
+   * Base64 Ed25519 signature of `challenge` by the device private key.
+   * Required unless `share_proof` and `new_device_public_key` are both set.
+   */
+  signature?: string;
+  /**
+   * Base64 SHA-256 of `okkey-device-bind-share-v1\\n || device_share || challenge`.
+   * Browsers that never stored a signing seed prove the local vault share and
+   * install a new signing key. Does not replace `device_share` and does not register.
+   */
+  share_proof?: string;
+  /** Base64 32-byte Ed25519 public key installed when `share_proof` succeeds. */
+  new_device_public_key?: string;
+  device_name?: string;
+  platform?: string;
+  os_name?: string;
+  os_version?: string;
+  app_version?: string;
+  client_type?: string;
+  user_agent?: string;
+}
+
+/**
+ * `POST /devices/:deviceId/request-key-rebind` — replace lost signing keys and
+ * demote the device to pending for approval by another trusted device.
+ */
+export interface DeviceKeyRebindRequestDto {
+  device_public_key: string;
+  device_share: string;
+  device_fingerprint?: string;
+  device_name?: string;
+  platform?: string;
+  os_name?: string;
+  os_version?: string;
+  app_version?: string;
+  client_type?: string;
+  user_agent?: string;
+  locale?: string;
 }
 
 /** `POST /devices/register` success body (snake_case on wire). */
@@ -1420,6 +1596,16 @@ export interface DevicePatchResponseDto {
   device_name: string;
 }
 
+/** `POST /devices/:deviceId/revoke` request body. */
+export interface DeviceRevokeRequestDto {
+  reason?: string;
+  /**
+   * When true, allows revoking the caller device identified by `X-Device-Id`
+   * (sign-out / logout path). Omitted or false rejects that case with 403.
+   */
+  sign_out?: boolean;
+}
+
 /** `POST /devices/:deviceId/revoke` success body. */
 export interface DeviceRevokeResponseDto {
   device_id: EntityId;
@@ -1428,7 +1614,8 @@ export interface DeviceRevokeResponseDto {
 
 /** `POST /auth/register/complete` request body (snake_case on wire). */
 export interface RegisterCompleteRequestDto {
-  auth_state_id: EntityId;
+  /** Opaque auth state id from email confirm (CSPRNG hex; not a snowflake entity id). */
+  auth_state_id: string;
   user_public_key: string;
   /** ML-KEM-768 encapsulation key (1184 raw bytes), standard base64. */
   user_public_pq_key: string;
@@ -1466,9 +1653,15 @@ export interface RegisterCompleteResponseDto {
   vault_id: EntityId;
   device_id: EntityId;
   device_status: "trusted";
-  access_token: string;
-  expires_at: string;
-  token_type: "Bearer";
+  /**
+   * Short-lived bootstrap Bearer for recovery key enroll + export ack only.
+   * Present on the first successful completion; omitted on idempotent replay.
+   */
+  access_token?: string;
+  expires_at?: string;
+  token_type?: "Bearer";
+  /** When `access_token` is present: `registration_recovery`. */
+  scope?: "registration_recovery";
 }
 
 /** `GET /account/profile` (Bearer) — non-sensitive display fields for UI. */
@@ -1504,6 +1697,37 @@ export interface AccountMasterPasswordChangeRequestDto {
 /** `POST /account/master-password/change` success body. */
 export interface AccountMasterPasswordChangeResponseDto {
   master_password_changed_at: string;
+}
+
+/** Signed proof for `POST /account/vault-unlock` (identity Ed25519). */
+export interface VaultUnlockAttestationDto {
+  purpose: "account.vault_unlock";
+  user_id: string;
+  recorded_at: string;
+  signature: string;
+}
+
+/** `POST /account/vault-unlock` with a signed attestation. */
+export interface VaultUnlockRecordRequestDto {
+  attestation: VaultUnlockAttestationDto;
+}
+
+/** `POST /account/vault-unlock` failure report (no secrets). */
+export interface VaultUnlockFailureRequestDto {
+  failure: true;
+}
+
+/** `POST /account/vault-unlock` success / failure-ack body. */
+export interface VaultUnlockRecordResponseDto {
+  recorded: boolean;
+  locked?: boolean;
+  remaining_ms?: number;
+}
+
+/** `GET /account/vault-unlock/status` body. */
+export interface VaultUnlockAttemptStatusDto {
+  locked: boolean;
+  remaining_ms: number;
 }
 
 /** `POST /account/email-change/start` and `/resend` success body. */
@@ -1550,13 +1774,19 @@ export interface WorkspaceItemCategoryPreferencesResponseDto {
   favorite_category_ids: string[];
   favorite_template_ids: string[];
   favorite_order: string[];
+  /** When true, skip auto-creating personal_data after unlock (deleted or legacy member). */
+  personal_data_bootstrap_dismissed: boolean;
 }
 
-/** `PUT /workspaces/:workspaceId/item-category-preferences` (Bearer). */
+/**
+ * `PUT /workspaces/:workspaceId/item-category-preferences` (Bearer).
+ * Favorites fields update favorites; `personal_data_bootstrap_dismissed` alone is enough to set the flag.
+ */
 export interface WorkspaceItemCategoryPreferencesUpdateRequestDto {
-  favorite_category_ids: string[];
-  favorite_template_ids: string[];
-  favorite_order: string[];
+  favorite_category_ids?: string[];
+  favorite_template_ids?: string[];
+  favorite_order?: string[];
+  personal_data_bootstrap_dismissed?: boolean;
 }
 
 export interface WorkspaceItemTemplatePayloadDto {
@@ -1583,7 +1813,8 @@ export interface WorkspaceItemTemplatesListResponseDto {
 }
 
 export interface WorkspaceItemTemplateCreateRequestDto {
-  id: EntityId;
+  /** Optional; ignored by the API. Template ids are always allocated server-side. */
+  id?: EntityId;
   name: string;
   category_id: string;
   payload: WorkspaceItemTemplatePayloadDto;

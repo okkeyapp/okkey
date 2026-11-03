@@ -12,6 +12,7 @@
 import {
   hasPlanFeature,
   planEntitlementOptionsFromWorkspace,
+  type PlanEntitlementOptions,
   type PlanFeatureOverrides,
 } from "./plan-features.js";
 
@@ -66,14 +67,19 @@ export function canEnableTrustedDevicesRecovery(
 /**
  * Resolve account-level recovery method entitlements from the user's
  * accessible workspaces (owner or member). Empty list → FREE-only (key only).
+ * Pass deployment runtime in `options` so self-hosted gates on modules, not `plan_tier`.
  */
 export function resolveAccountRecoveryEntitlements(
   workspaces: readonly AccountRecoveryWorkspaceLike[],
+  runtime?: Pick<PlanEntitlementOptions, "deploymentMode" | "enterpriseModulesActive">,
 ): AccountRecoveryEntitlements {
   let trustedDevices = false;
   let trustedContacts = false;
   for (const workspace of workspaces) {
-    const options = planEntitlementOptionsFromWorkspace(workspace);
+    const options: PlanEntitlementOptions = {
+      ...planEntitlementOptionsFromWorkspace(workspace),
+      ...runtime,
+    };
     if (!trustedDevices && hasPlanFeature(workspace.planTier, "accountRecovery", options)) {
       trustedDevices = true;
     }

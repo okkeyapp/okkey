@@ -3,12 +3,10 @@ import type { PopupMenu } from "@okkey/ui";
 
 import type { WorkspaceSettingsSectionId } from "./workspaceSettingsCatalog";
 import {
-  isWorkspaceSettingsGeneralSubsection,
-  WORKSPACE_SETTINGS_GENERAL_SUBSECTIONS,
-} from "./workspaceSettingsCatalog";
-import {
   BillingIcon,
+  CapsulesIcon,
   GeneralIcon,
+  ItemsIcon,
   MembersIcon,
   PlanIcon,
   ProfilesIcon,
@@ -42,21 +40,18 @@ export function isWorkspaceSettingsSectionVisible(
   return !WORKSPACE_SETTINGS_HIDDEN_SECTIONS.includes(section);
 }
 
-/** Top-level sidebar entries (general subsections are nested under general). */
+/** Top-level sidebar / mobile menu entries. */
 export const WORKSPACE_SETTINGS_TOP_LEVEL_SECTIONS: WorkspaceSettingsSectionId[] =
-  WORKSPACE_SETTINGS_SECTIONS.filter(
-    (section) =>
-      !isWorkspaceSettingsGeneralSubsection(section) && isWorkspaceSettingsSectionVisible(section),
-  );
-
-export { WORKSPACE_SETTINGS_GENERAL_SUBSECTIONS, isWorkspaceSettingsGeneralSubsection };
+  WORKSPACE_SETTINGS_SECTIONS.filter(isWorkspaceSettingsSectionVisible);
 
 export function workspaceSettingsSectionIcon(section: WorkspaceSettingsSectionId) {
   switch (section) {
     case "general":
-    case "items":
-    case "capsules":
       return GeneralIcon;
+    case "items":
+      return ItemsIcon;
+    case "capsules":
+      return CapsulesIcon;
     case "roles":
       return RolesIcon;
     case "profiles":

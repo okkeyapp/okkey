@@ -79,7 +79,9 @@ async function inflateRaw(input: Uint8Array, expectedSize: number): Promise<Uint
     return input.slice();
   }
 
-  const stream = new Blob([input]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
+  const stream = new Blob([input as BlobPart])
+    .stream()
+    .pipeThrough(new DecompressionStream("deflate-raw"));
   const inflated = new Uint8Array(await new Response(stream).arrayBuffer());
   if (expectedSize > 0 && inflated.byteLength !== expectedSize) {
     throw new Error(

@@ -6,7 +6,64 @@ import {
 } from "../device/service.ts";
 import { resolveClientIpForGeo } from "../capsule/geoip.ts";
 import type { ApiConfig } from "../config.ts";
+import { isEntityId } from "../entity-id.ts";
 import { getHeader, json, readJsonBody, type RouteHandler } from "../http.ts";
+import type { SessionService } from "../session/service.ts";
+import { isFullSessionScope } from "../session/scopes.ts";
+
+/** PostgreSQL `bigint` max (signed). Reject larger snowflake strings before querying. */
+const MAX_PG_BIGINT = 9223372036854775807n;
+
+type SessionDeviceBinding = Pick<
+  SessionService,
+  | "bindAccessTokenDevice"
+  | "resolveAccessToken"
+  | "revokeSessionsForDevice"
+  | "revokeAccessToken"
+  | "hashAccessToken"
+>;
+
+function getBearerToken(req: IncomingMessage): string | null {
+  const auth = getHeader(req, "authorization");
+  if (!auth || !auth.toLowerCase().startsWith("bearer ")) {
+    return null;
+  }
+  const token = auth.slice(7).trim();
+  return token || null;
+}
+
+function isValidDeviceIdParam(value: string): boolean {
+  if (!isEntityId(value)) {
+    return false;
+  }
+  try {
+    return BigInt(value) > 0n && BigInt(value) <= MAX_PG_BIGINT;
+  } catch {
+    return false;
+  }
+}
+
+/** Decimal form without leading zeros. Snowflake ids compare equal as integers. */
+function canonicalDeviceId(value: string): string | null {
+  if (!isValidDeviceIdParam(value)) {
+    return null;
+  }
+  return BigInt(value).toString();
+}
+
+function sameDeviceId(left: string, right: string): boolean {
+  if (left === right) {
+    return true;
+  }
+  if (!/^\d+$/.test(left) || !/^\d+$/.test(right)) {
+    return false;
+  }
+  try {
+    return BigInt(left) === BigInt(right);
+  } catch {
+    return false;
+  }
+}
 
 interface RegisterDeviceMetadataBody {
   platform?: string;
@@ -16,6 +73,9 @@ interface RegisterDeviceMetadataBody {
   client_type?: string;
   user_agent?: string;
   reclaim_sole_trusted?: boolean;
+  claim_after_recovery?: boolean;
+  /** Pending sibling for recovery proof. Does not replace a trusted device. */
+  recovery_pending?: boolean;
 }
 
 interface RegisterDeviceBody extends RegisterDeviceMetadataBody {
@@ -23,6 +83,11 @@ interface RegisterDeviceBody extends RegisterDeviceMetadataBody {
   device_share?: string;
   device_fingerprint?: string;
   device_name?: string;
+  challenge_id?: string;
+  signature?: string;
+  share_proof?: string;
+  /** UI locale for approval email templates (`en` | `ru`). */
+  locale?: string;
   metadata?: RegisterDeviceMetadataBody;
 }
 
@@ -45,6 +110,8 @@ interface PatchDeviceBody {
 
 interface RevokeDeviceBody {
   reason?: string;
+  /** Explicit sign-out path may revoke the caller device (e.g. extension logout). */
+  sign_out?: boolean;
 }
 
 async function getRequestIp(
@@ -110,6 +177,8 @@ export function createRegisterDeviceRoute(
   deviceService: DeviceService,
   resolveUserId: (req: IncomingMessage) => Promise<string | null>,
   trustedProxyHops = 0,
+  sessionService?: Pick<SessionDeviceBinding, "bindAccessTokenDevice">,
+  mayClaimAfterRecovery?: (req: IncomingMessage) => Promise<boolean>,
 ): RouteHandler {
   return async (ctx) => {
     let body: RegisterDeviceBody;
@@ -151,6 +220,27 @@ export function createRegisterDeviceRoute(
       const claimAfterRecovery = Boolean(
         body.metadata?.claim_after_recovery ?? (body as { claim_after_recovery?: boolean }).claim_after_recovery,
       );
+      const recoveryPending =
+        !claimAfterRecovery &&
+        Boolean(
+          body.metadata?.recovery_pending ??
+            (body as { recovery_pending?: boolean }).recovery_pending,
+        );
+      if (claimAfterRecovery && mayClaimAfterRecovery) {
+        const allowed = await mayClaimAfterRecovery(ctx.req);
+        if (!allowed) {
+          json(
+            ctx.res,
+            403,
+            errorPayload(
+              "RECOVERY_PROOF_REQUIRED",
+              "recovery key proof is required before claiming this device",
+              ctx.requestId,
+            ),
+          );
+          return;
+        }
+      }
       const requestIp = await getRequestIp(ctx.req, { trustedProxyHops });
       const result = await deviceService.registerDevice(userId, requestIp, {
         deviceFingerprint: body.device_fingerprint,
@@ -163,10 +253,24 @@ export function createRegisterDeviceRoute(
         appVersion: metadata.app_version ?? "unknown",
         clientType: metadata.client_type ?? "unknown",
         userAgent: metadata.user_agent ?? getHeader(ctx.req, "user-agent") ?? "unknown",
+        locale: typeof body.locale === "string" ? body.locale : undefined,
         acceptLanguage: getHeader(ctx.req, "accept-language"),
         reclaimSoleTrusted,
         claimAfterRecovery,
+        recoveryPending,
       });
+
+      const accessToken = getBearerToken(ctx.req);
+      const bindCreated =
+        result.created &&
+        (result.status === "trusted" || result.status === "pending_approval");
+      // Rebind only the new pending row. Never attach this session to the existing trusted device.
+      const bindRecoveryPending = recoveryPending && result.status === "pending_approval";
+      if (accessToken && sessionService && (bindCreated || bindRecoveryPending)) {
+        await sessionService.bindAccessTokenDevice(accessToken, userId, result.deviceId, {
+          replaceExistingDevice: claimAfterRecovery,
+        });
+      }
 
       json(ctx.res, 200, {
         device_id: result.deviceId,
@@ -181,9 +285,316 @@ export function createRegisterDeviceRoute(
   };
 }
 
+interface BindDeviceSessionBody {
+  challenge_id?: string;
+  signature?: string;
+  share_proof?: string;
+  new_device_public_key?: string;
+  device_name?: string;
+  platform?: string;
+  os_name?: string;
+  os_version?: string;
+  app_version?: string;
+  client_type?: string;
+  user_agent?: string;
+}
+
+export function createDeviceBindChallengeRoute(
+  deviceService: DeviceService,
+  resolveUserId: (req: IncomingMessage) => Promise<string | null>,
+  sessionService?: Pick<SessionDeviceBinding, "hashAccessToken">,
+): RouteHandler {
+  return async (ctx) => {
+    const deviceId = canonicalDeviceId(ctx.params.deviceId ?? "");
+    if (!deviceId) {
+      json(ctx.res, 400, errorPayload("DEVICE_BAD_REQUEST", "deviceId is invalid", ctx.requestId));
+      return;
+    }
+    try {
+      const userId = await resolveUserId(ctx.req);
+      const accessToken = getBearerToken(ctx.req);
+      if (!userId || !accessToken || !sessionService) {
+        json(ctx.res, 401, errorPayload("AUTH_REQUIRED", "auth required", ctx.requestId));
+        return;
+      }
+      const issued = await deviceService.issueDeviceBindChallenge({
+        userId,
+        deviceId,
+        tokenHash: sessionService.hashAccessToken(accessToken),
+      });
+      json(ctx.res, 200, {
+        challenge_id: issued.challengeId,
+        challenge: issued.challengeB64,
+        expires_at: issued.expiresAt,
+      });
+    } catch (error) {
+      handleDeviceError(ctx.requestId, ctx.res, error);
+    }
+  };
+}
+
+export function createRequestDeviceKeyRebindRoute(
+  deviceService: DeviceService,
+  resolveUserId: (req: IncomingMessage) => Promise<string | null>,
+  trustedProxyHops = 0,
+  sessionService?: Pick<SessionDeviceBinding, "hashAccessToken">,
+): RouteHandler {
+  return async (ctx) => {
+    const deviceId = canonicalDeviceId(ctx.params.deviceId ?? "");
+    if (!deviceId) {
+      json(
+        ctx.res,
+        400,
+        errorPayload("DEVICE_BAD_REQUEST", "deviceId is invalid", ctx.requestId),
+      );
+      return;
+    }
+    let body: RegisterDeviceBody;
+    try {
+      body = await readJsonBody<RegisterDeviceBody>(ctx.req);
+    } catch {
+      json(ctx.res, 400, errorPayload("DEVICE_BAD_REQUEST", "invalid json", ctx.requestId));
+      return;
+    }
+    const headerFingerprint = getHeader(ctx.req, "x-device-fingerprint")?.trim() ?? "";
+    const bodyFingerprint =
+      typeof body.device_fingerprint === "string" ? body.device_fingerprint.trim() : "";
+    if (
+      typeof body.device_public_key !== "string" ||
+      typeof body.device_share !== "string" ||
+      typeof body.challenge_id !== "string" ||
+      !body.device_public_key.trim() ||
+      !body.device_share.trim() ||
+      !body.challenge_id.trim()
+    ) {
+      json(
+        ctx.res,
+        400,
+        errorPayload(
+          "DEVICE_BAD_REQUEST",
+          "device_public_key, device_share and challenge_id are required",
+          ctx.requestId,
+        ),
+      );
+      return;
+    }
+    if (body.signature != null && typeof body.signature !== "string") {
+      json(
+        ctx.res,
+        400,
+        errorPayload("DEVICE_BAD_REQUEST", "signature must be a string", ctx.requestId),
+      );
+      return;
+    }
+    if (body.share_proof != null && typeof body.share_proof !== "string") {
+      json(
+        ctx.res,
+        400,
+        errorPayload("DEVICE_BAD_REQUEST", "share_proof must be a string", ctx.requestId),
+      );
+      return;
+    }
+    const signature = typeof body.signature === "string" ? body.signature.trim() : "";
+    const shareProof = typeof body.share_proof === "string" ? body.share_proof.trim() : "";
+    if (!signature && !shareProof) {
+      json(
+        ctx.res,
+        400,
+        errorPayload(
+          "DEVICE_BAD_REQUEST",
+          "device key rebind requires a signature or share_proof",
+          ctx.requestId,
+        ),
+      );
+      return;
+    }
+    if (!headerFingerprint && !bodyFingerprint) {
+      json(
+        ctx.res,
+        400,
+        errorPayload("DEVICE_BAD_REQUEST", "device_fingerprint is required", ctx.requestId),
+      );
+      return;
+    }
+    if (
+      headerFingerprint &&
+      bodyFingerprint &&
+      headerFingerprint.toLowerCase() !== bodyFingerprint.toLowerCase()
+    ) {
+      json(
+        ctx.res,
+        400,
+        errorPayload(
+          "DEVICE_BAD_REQUEST",
+          "device_fingerprint does not match this session",
+          ctx.requestId,
+        ),
+      );
+      return;
+    }
+    try {
+      const userId = await resolveUserId(ctx.req);
+      const accessToken = getBearerToken(ctx.req);
+      if (!userId || !accessToken || !sessionService) {
+        json(ctx.res, 401, errorPayload("AUTH_REQUIRED", "auth required", ctx.requestId));
+        return;
+      }
+      const metadata = resolveMetadata(body);
+      const requestIp = await getRequestIp(ctx.req, { trustedProxyHops });
+      const result = await deviceService.requestDeviceKeyRebind(userId, requestIp, {
+        deviceId,
+        deviceFingerprint: headerFingerprint || bodyFingerprint,
+        tokenHash: sessionService.hashAccessToken(accessToken),
+        challengeId: body.challenge_id.trim(),
+        signatureB64: signature,
+        shareProofB64: shareProof,
+        devicePublicKey: body.device_public_key.trim(),
+        deviceShare: body.device_share.trim(),
+        deviceName: body.device_name?.trim() || "Unknown device",
+        platform: metadata.platform ?? "unknown",
+        osName: metadata.os_name ?? "unknown",
+        osVersion: metadata.os_version ?? "unknown",
+        appVersion: metadata.app_version ?? "unknown",
+        clientType: metadata.client_type ?? "unknown",
+        userAgent:
+          metadata.user_agent?.trim() || getHeader(ctx.req, "user-agent") || "unknown",
+        locale: typeof body.locale === "string" ? body.locale : undefined,
+        acceptLanguage: getHeader(ctx.req, "accept-language") ?? undefined,
+      });
+      json(ctx.res, 200, {
+        device_id: result.deviceId,
+        status: result.status,
+      });
+    } catch (error) {
+      handleDeviceError(ctx.requestId, ctx.res, error);
+    }
+  };
+}
+
+export function createBindDeviceSessionRoute(
+  deviceService: DeviceService,
+  resolveUserId: (req: IncomingMessage) => Promise<string | null>,
+  sessionService?: Pick<SessionDeviceBinding, "bindAccessTokenDevice" | "hashAccessToken">,
+): RouteHandler {
+  return async (ctx) => {
+    const deviceId = canonicalDeviceId(ctx.params.deviceId ?? "");
+    if (!deviceId) {
+      json(
+        ctx.res,
+        400,
+        errorPayload("DEVICE_BAD_REQUEST", "deviceId is invalid", ctx.requestId),
+      );
+      return;
+    }
+    let body: BindDeviceSessionBody;
+    try {
+      body = await readJsonBody<BindDeviceSessionBody>(ctx.req);
+    } catch {
+      json(ctx.res, 400, errorPayload("DEVICE_BAD_REQUEST", "invalid json", ctx.requestId));
+      return;
+    }
+    if (typeof body.challenge_id !== "string") {
+      json(
+        ctx.res,
+        400,
+        errorPayload("DEVICE_BAD_REQUEST", "challenge_id must be a string", ctx.requestId),
+      );
+      return;
+    }
+    if (body.signature != null && typeof body.signature !== "string") {
+      json(
+        ctx.res,
+        400,
+        errorPayload("DEVICE_BAD_REQUEST", "signature must be a string", ctx.requestId),
+      );
+      return;
+    }
+    if (body.share_proof != null && typeof body.share_proof !== "string") {
+      json(
+        ctx.res,
+        400,
+        errorPayload("DEVICE_BAD_REQUEST", "share_proof must be a string", ctx.requestId),
+      );
+      return;
+    }
+    if (body.new_device_public_key != null && typeof body.new_device_public_key !== "string") {
+      json(
+        ctx.res,
+        400,
+        errorPayload("DEVICE_BAD_REQUEST", "new_device_public_key must be a string", ctx.requestId),
+      );
+      return;
+    }
+    const signature = typeof body.signature === "string" ? body.signature.trim() : "";
+    const shareProof = typeof body.share_proof === "string" ? body.share_proof.trim() : "";
+    const nextPublicKey =
+      typeof body.new_device_public_key === "string" ? body.new_device_public_key.trim() : "";
+    if (!body.challenge_id.trim() || (!signature && !(shareProof && nextPublicKey))) {
+      json(
+        ctx.res,
+        400,
+        errorPayload(
+          "DEVICE_BAD_REQUEST",
+          "challenge_id and a device proof are required",
+          ctx.requestId,
+        ),
+      );
+      return;
+    }
+    try {
+      const userId = await resolveUserId(ctx.req);
+      const accessToken = getBearerToken(ctx.req);
+      if (!userId || !accessToken || !sessionService) {
+        json(ctx.res, 401, errorPayload("AUTH_REQUIRED", "auth required", ctx.requestId));
+        return;
+      }
+      const proof = await deviceService.acceptDeviceBindProof({
+        userId,
+        deviceId,
+        tokenHash: sessionService.hashAccessToken(accessToken),
+        challengeId: body.challenge_id.trim(),
+        signatureB64: signature,
+        shareProofB64: shareProof,
+        newDevicePublicKeyB64: nextPublicKey,
+      });
+      const bound = await sessionService.bindAccessTokenDevice(accessToken, userId, deviceId);
+      if (!bound) {
+        json(
+          ctx.res,
+          409,
+          errorPayload("DEVICE_NOT_ACTIVE", "device is not active", ctx.requestId),
+        );
+        return;
+      }
+      await deviceService.applyProvenDeviceMetadata({
+        userId,
+        deviceId,
+        deviceName: body.device_name?.trim() || undefined,
+        platform: body.platform?.trim() || undefined,
+        osName: body.os_name?.trim() || undefined,
+        osVersion: body.os_version?.trim() || undefined,
+        appVersion: body.app_version?.trim() || undefined,
+        clientType: body.client_type?.trim() || undefined,
+        userAgent: body.user_agent?.trim() || undefined,
+        requestIp: await getRequestIp(ctx.req, { trustedProxyHops: 0 }),
+      });
+      json(ctx.res, 200, {
+        device_id: proof.deviceId,
+        status: proof.status,
+      });
+    } catch (error) {
+      handleDeviceError(ctx.requestId, ctx.res, error);
+    }
+  };
+}
+
 export function createListDevicesRoute(
   deviceService: DeviceService,
   resolveUserId: (req: IncomingMessage) => Promise<string | null>,
+  resolveSession?: (req: IncomingMessage) => Promise<{
+    deviceId: string | null;
+    tokenHash: string;
+  } | null>,
 ): RouteHandler {
   return async (ctx) => {
     try {
@@ -198,10 +609,32 @@ export function createListDevicesRoute(
         url.searchParams.get("device_fingerprint") ??
         undefined;
       const result = await deviceService.listDevices(userId, currentFingerprint);
+      const session = resolveSession ? await resolveSession(ctx.req) : null;
+      const sessionDeviceId = session?.deviceId?.trim() ?? "";
+      const realBearer = session != null && session.tokenHash !== "";
+      const unboundBearer = realBearer && sessionDeviceId === "";
+      const sessionDeviceIsTrusted =
+        realBearer &&
+        sessionDeviceId !== "" &&
+        result.devices.some((row) => sameDeviceId(row.deviceId, sessionDeviceId));
+      const ownDeviceOnly = realBearer && sessionDeviceId !== "" && !sessionDeviceIsTrusted;
+      const fingerprint = (currentFingerprint ?? "").trim().toLowerCase();
+      const visible = <T extends { deviceId: string; deviceFingerprint: string }>(rows: T[]): T[] => {
+        if (unboundBearer) {
+          if (!fingerprint) {
+            return [];
+          }
+          return rows.filter((row) => row.deviceFingerprint.trim().toLowerCase() === fingerprint);
+        }
+        if (ownDeviceOnly) {
+          return rows.filter((row) => sameDeviceId(row.deviceId, sessionDeviceId));
+        }
+        return rows;
+      };
       json(ctx.res, 200, {
-        devices: result.devices.map(toWireDevice),
-        pending: result.pending.map(toWireDevice),
-        blocked: (result.blocked ?? []).map(toWireDevice),
+        devices: visible(result.devices).map(toWireDevice),
+        pending: visible(result.pending).map(toWireDevice),
+        blocked: visible(result.blocked ?? []).map(toWireDevice),
       });
     } catch (error) {
       handleDeviceError(ctx.requestId, ctx.res, error);
@@ -261,6 +694,10 @@ export function createPatchDeviceRoute(
 export function createRevokeDeviceRoute(
   deviceService: DeviceService,
   resolveUserId: (req: IncomingMessage) => Promise<string | null>,
+  sessionService?: Pick<
+    SessionDeviceBinding,
+    "resolveAccessToken" | "revokeSessionsForDevice" | "revokeAccessToken"
+  >,
 ): RouteHandler {
   return async (ctx) => {
     const deviceId = ctx.params.deviceId;
@@ -269,6 +706,15 @@ export function createRevokeDeviceRoute(
         ctx.res,
         400,
         errorPayload("DEVICE_BAD_REQUEST", "deviceId is required", ctx.requestId),
+      );
+      return;
+    }
+    const targetDeviceId = canonicalDeviceId(deviceId);
+    if (!targetDeviceId) {
+      json(
+        ctx.res,
+        400,
+        errorPayload("DEVICE_BAD_REQUEST", "deviceId is invalid", ctx.requestId),
       );
       return;
     }
@@ -287,7 +733,49 @@ export function createRevokeDeviceRoute(
         json(ctx.res, 401, errorPayload("AUTH_REQUIRED", "auth required", ctx.requestId));
         return;
       }
-      const result = await deviceService.revokeDevice(userId, deviceId, body.reason);
+      const accessToken = getBearerToken(ctx.req);
+      let sessionDeviceId: string | null = null;
+      let fullSessionUnbound = false;
+      if (accessToken && sessionService) {
+        const resolved = await sessionService.resolveAccessToken(accessToken);
+        sessionDeviceId = resolved?.deviceId ?? null;
+        fullSessionUnbound = Boolean(
+          resolved &&
+            isFullSessionScope(resolved.scope) &&
+            (sessionDeviceId == null || sessionDeviceId === ""),
+        );
+      }
+      // Prefer session binding; fall back to X-Device-Id (header-auth only).
+      const currentDeviceId = sessionDeviceId ?? getHeader(ctx.req, "x-device-id") ?? null;
+      const allowCurrent = body.sign_out === true;
+      if (fullSessionUnbound && !allowCurrent) {
+        throw new DeviceServiceError(
+          "DEVICE_REVOKE_CURRENT_FORBIDDEN",
+          403,
+          "cannot revoke the current device",
+        );
+      }
+      if (currentDeviceId && sameDeviceId(currentDeviceId, targetDeviceId) && !allowCurrent) {
+        throw new DeviceServiceError(
+          "DEVICE_REVOKE_CURRENT_FORBIDDEN",
+          403,
+          "cannot revoke the current device",
+        );
+      }
+      const result = await deviceService.revokeDevice(userId, targetDeviceId, body.reason);
+      if (sessionService) {
+        await sessionService.revokeSessionsForDevice(userId, targetDeviceId);
+        // sign_out ends the caller's session only when they revoke themselves (or
+        // an unbound full session that used sign_out to revoke). Revoking another
+        // device must not log the approver out.
+        const signingOutSelf =
+          allowCurrent &&
+          (fullSessionUnbound ||
+            (currentDeviceId != null && sameDeviceId(currentDeviceId, targetDeviceId)));
+        if (signingOutSelf && accessToken) {
+          await sessionService.revokeAccessToken(accessToken);
+        }
+      }
       json(ctx.res, 200, {
         device_id: result.deviceId,
         status: result.status,
@@ -334,6 +822,7 @@ export function createApproveDeviceRoute(
 export function createRejectDeviceRoute(
   deviceService: DeviceService,
   resolveUserId: (req: IncomingMessage) => Promise<string | null>,
+  sessionService?: Pick<SessionDeviceBinding, "revokeSessionsForDevice">,
 ): RouteHandler {
   return async (ctx) => {
     const deviceId = ctx.params.deviceId;
@@ -367,6 +856,12 @@ export function createRejectDeviceRoute(
         deviceId,
         body.reason,
       );
+      if (sessionService) {
+        await sessionService.revokeSessionsForDevice(
+          userId,
+          canonicalDeviceId(deviceId) ?? result.deviceId,
+        );
+      }
       json(ctx.res, 200, {
         device_id: result.deviceId,
         status: result.status,
@@ -382,6 +877,7 @@ const BLOCK_DURATIONS = new Set(["1h", "1d", "1w", "forever"]);
 export function createBlockDeviceRoute(
   deviceService: DeviceService,
   resolveUserId: (req: IncomingMessage) => Promise<string | null>,
+  sessionService?: Pick<SessionDeviceBinding, "revokeSessionsForDevice">,
 ): RouteHandler {
   return async (ctx) => {
     const deviceId = ctx.params.deviceId;
@@ -430,6 +926,12 @@ export function createBlockDeviceRoute(
         duration as "1h" | "1d" | "1w" | "forever",
         body.reason,
       );
+      if (sessionService) {
+        await sessionService.revokeSessionsForDevice(
+          userId,
+          canonicalDeviceId(deviceId) ?? result.deviceId,
+        );
+      }
       json(ctx.res, 200, {
         device_id: result.deviceId,
         status: result.status,

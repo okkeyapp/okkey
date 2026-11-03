@@ -7,8 +7,8 @@
   "types": "dist/index.d.ts",
   "files": ["dist"],
   "dependencies": {
-    "@okkey/api": "file:../api",
-    "@okkey/types": "file:../types"
+    "@okkey/api": "0.0.1",
+    "@okkey/types": "0.0.1"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json"

@@ -14,6 +14,8 @@ import {
   applyEnterpriseBackendEnvToProcess,
   loadEnterpriseBackendEnv,
 } from "./enterpriseEnv.ts";
+import { resolveEmailDeliveryMode, type EmailDeliveryMode } from "./email/queue.ts";
+import { parseFaviconProvider, type FaviconProvider } from "./favicon/fetch-remote.ts";
 
 type NodeEnv = "development" | "test" | "production";
 type EmailProvider = "logger" | "smtp" | "http-api" | "ses";
@@ -27,8 +29,8 @@ export interface ApiConfig {
   /** Product deployment: self_hosted (default OSS) vs saas (multi-workspace via enterprise plugin). */
   deploymentMode: DeploymentMode;
   /**
-   * Plan assigned to newly created workspaces.
-   * ENTERPRISE when enterprise modules are enabled (dev convenience — not a payment flow).
+   * Plan assigned to newly created workspaces (catalog / billing display).
+   * Always FREE. Self-hosted paid features unlock from loaded modules, not this column.
    */
   defaultWorkspacePlanTier: PlanTier;
   port: number;
@@ -42,10 +44,24 @@ export interface ApiConfig {
   authRateLimitWindowSeconds: number;
   authRateLimitStartPerEmail: number;
   authRateLimitStartPerIp: number;
+  /**
+   * Public invite preview (`GET /invitations/:token`) per-IP budget.
+   * Separate from email-start: each invite open can issue several GETs.
+   */
+  invitePreviewRateLimitPerIp: number;
   authRateLimitConfirmPerIp: number;
   authRateLimitResendPerIp: number;
+  /** POST /auth/register/complete per-IP budget within `authRateLimitWindowSeconds`. */
+  authRateLimitRegisterCompletePerIp: number;
+  /** Same window; keyed by email from the auth state (normalized). */
+  authRateLimitRegisterCompletePerEmail: number;
   registrationAuthStateTtlSeconds: number;
   registrationResultTtlSeconds: number;
+  /**
+   * TTL for the post-registration bootstrap Bearer (`registration_recovery` scope).
+   * Default 900s (15 minutes). Full sessions use `sessionTtlSeconds`.
+   */
+  registrationBootstrapSessionTtlSeconds: number;
   deviceApprovalTtlSeconds: number;
   /** Server secret: AES key for TOTP at rest, backup-code pepper, session binding */
   sessionSecret: string;
@@ -59,6 +75,8 @@ export interface ApiConfig {
   twoFactorBackupCodesCount: number;
   /** In production, only Bearer sessions authenticate; X-User-Id is ignored */
   allowHeaderUserIdAuth: boolean;
+  /** Raw env request: `ENTERPRISE_MODULES=true` (may still fail closed if path unloadable). */
+  enterpriseModulesRequested: boolean;
   /** Load enterprise backend plugins from `enterpriseModulesPath`. */
   enterpriseModulesEnabled: boolean;
   enterpriseModulesPath: string;
@@ -67,11 +85,22 @@ export interface ApiConfig {
   publicAppBaseUrl: string;
   emailFrom: string;
   /**
-   * Sales inbox for workspace plan-change requests (manual fulfillment).
-   * Override with `OKKEY_SALES_EMAIL`. Defaults: local/dev → aleksandr-zoryn@ya.ru; else hello@okkey.io.
+   * Sales inbox for workspace plan-change / license purchase requests (manual fulfillment).
+   * Required via `OKKEY_SALES_EMAIL` in every environment (no built-in default).
    */
   salesEmail: string;
   emailProvider: EmailProvider;
+  /**
+   * `sync` — send in-process (local/dev default).
+   * `queue` — API enqueues to Redis; worker delivers (production / self-host default).
+   */
+  emailDeliveryMode: EmailDeliveryMode;
+  /**
+   * Secret for sealing verification-code payloads in the email dead-letter queue.
+   * Prefer dedicated `EMAIL_DEAD_LETTER_SEAL_KEY` (install.sh generates it); falls back to
+   * `SESSION_SECRET` so upgrades without a reinstall keep a stable key across restarts.
+   */
+  emailDeadLetterSealSecret: string;
   smtpHost: string;
   smtpPort: number;
   smtpSecure: boolean;
@@ -107,6 +136,13 @@ export interface ApiConfig {
   /** Allowed browser origins for WebAuthn ceremonies (comma-separated env). */
   webauthnOrigins: string[];
   webauthnChallengeTtlSeconds: number;
+  /**
+   * How `/favicon/preview` resolves website icons.
+   * - `direct` (default): fetch from the site origin only.
+   * - `google`: explicit opt-in; uses Google's favicon service.
+   * - `off`: disable remote favicon preview.
+   */
+  faviconProvider: FaviconProvider;
 }
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -260,6 +296,11 @@ function resolveEnterpriseModulesPath(explicitPath: string | undefined): string 
   return path.resolve(servicesApiDir, "../../../../okkey-enterprise");
 }
 
+/** Fail-closed: sibling (or explicit) path must expose the API plugin entry. */
+export function isEnterpriseBackendLoadable(enterpriseModulesPath: string): boolean {
+  return existsSync(path.join(enterpriseModulesPath, "backend/api-plugin/index.ts"));
+}
+
 function parseDeploymentMode(value: string | undefined): DeploymentMode {
   const normalized = (value ?? "self_hosted").trim().toLowerCase();
   if (normalized === "saas") {
@@ -271,16 +312,21 @@ function parseDeploymentMode(value: string | undefined): DeploymentMode {
   throw new Error(`OKKEY_DEPLOYMENT_MODE must be "self_hosted" or "saas", got: ${value}`);
 }
 
-/** Sales inbox for plan-change request emails (`OKKEY_SALES_EMAIL`). */
-function resolveSalesEmail(nodeEnv: NodeEnv, raw: string | undefined): string {
-  const trimmed = raw?.trim() ?? "";
-  if (trimmed) {
-    return trimmed;
+/**
+ * Sales inbox for plan-change / license purchase request emails (`OKKEY_SALES_EMAIL`).
+ * Required in production, development, and test — no hardcoded fallback addresses.
+ */
+export function resolveSalesEmail(raw: string | undefined): string {
+  const trimmed = (raw ?? "").trim();
+  if (!trimmed) {
+    throw new Error(
+      "OKKEY_SALES_EMAIL is required (license / plan-change request recipient). Set it explicitly; there is no default address.",
+    );
   }
-  if (nodeEnv === "development" || nodeEnv === "test") {
-    return "aleksandr-zoryn@ya.ru";
+  if (!trimmed.includes("@") || trimmed.length > 320) {
+    throw new Error("OKKEY_SALES_EMAIL must be a valid email address");
   }
-  return "hello@okkey.io";
+  return trimmed;
 }
 
 export function loadConfig(): ApiConfig {
@@ -290,17 +336,20 @@ export function loadConfig(): ApiConfig {
 
   const nodeEnv = (process.env.NODE_ENV ?? "development") as NodeEnv;
   const deployEnv = resolveDeployEnv(nodeEnv, process.env.DEPLOY_ENV);
-  const enterpriseModulesEnabled = parseBoolean(process.env.ENTERPRISE_MODULES, false);
+  const enterpriseModulesRequested = parseBoolean(process.env.ENTERPRISE_MODULES, false);
   const enterpriseModulesPath = resolveEnterpriseModulesPath(process.env.ENTERPRISE_MODULES_PATH);
+  // Fail closed: env alone is not enough — sibling (or ENTERPRISE_MODULES_PATH) must be loadable.
+  const enterpriseModulesEnabled =
+    enterpriseModulesRequested && isEnterpriseBackendLoadable(enterpriseModulesPath);
 
-  // SaaS deployment mode lives in okkey-enterprise/backend/.env (not public Core examples).
+  // SaaS deployment mode is loaded from the enterprise backend env overlay, not from Core examples.
   if (enterpriseModulesEnabled) {
     const enterpriseBackendEnvDir = path.join(enterpriseModulesPath, "backend");
     applyEnterpriseBackendEnvToProcess(loadEnterpriseBackendEnv(enterpriseBackendEnvDir));
   }
 
   const deploymentMode = parseDeploymentMode(process.env.OKKEY_DEPLOYMENT_MODE);
-  const defaultWorkspacePlanTier = enterpriseModulesEnabled ? "ENTERPRISE" : "FREE";
+  const defaultWorkspacePlanTier: PlanTier = "FREE";
   const allowedCryptoProfileVersions = parseProfileVersions(
     process.env.CRYPTO_ALLOWED_PROFILE_VERSIONS,
     getAllowedCryptoProfileVersionsByEnv(deployEnv),
@@ -352,6 +401,10 @@ export function loadConfig(): ApiConfig {
       process.env.AUTH_RATE_LIMIT_START_PER_IP,
       10,
     ),
+    invitePreviewRateLimitPerIp: parsePositiveInt(
+      process.env.INVITE_PREVIEW_RATE_LIMIT_PER_IP,
+      60,
+    ),
     authRateLimitConfirmPerIp: parsePositiveInt(
       process.env.AUTH_RATE_LIMIT_CONFIRM_PER_IP,
       30,
@@ -360,6 +413,14 @@ export function loadConfig(): ApiConfig {
       process.env.AUTH_RATE_LIMIT_RESEND_PER_IP,
       10,
     ),
+    authRateLimitRegisterCompletePerIp: parsePositiveInt(
+      process.env.AUTH_RATE_LIMIT_REGISTER_COMPLETE_PER_IP,
+      10,
+    ),
+    authRateLimitRegisterCompletePerEmail: parsePositiveInt(
+      process.env.AUTH_RATE_LIMIT_REGISTER_COMPLETE_PER_EMAIL,
+      5,
+    ),
     registrationAuthStateTtlSeconds: parsePositiveInt(
       process.env.REGISTRATION_AUTH_STATE_TTL_SECONDS,
       3600,
@@ -367,6 +428,10 @@ export function loadConfig(): ApiConfig {
     registrationResultTtlSeconds: parsePositiveInt(
       process.env.REGISTRATION_RESULT_TTL_SECONDS,
       604800,
+    ),
+    registrationBootstrapSessionTtlSeconds: parsePositiveInt(
+      process.env.REGISTRATION_BOOTSTRAP_SESSION_TTL_SECONDS,
+      900,
     ),
     deviceApprovalTtlSeconds: parsePositiveInt(
       process.env.DEVICE_APPROVAL_TTL_SECONDS,
@@ -401,13 +466,17 @@ export function loadConfig(): ApiConfig {
     allowHeaderUserIdAuth:
       nodeEnv !== "production" ||
       parseBoolean(process.env.ALLOW_HEADER_USER_ID_AUTH, false),
+    enterpriseModulesRequested,
     enterpriseModulesEnabled,
     enterpriseModulesPath,
     defaultEmailLocale: process.env.EMAIL_DEFAULT_LOCALE ?? "en",
     publicAppBaseUrl: (process.env.PUBLIC_APP_URL ?? "").trim(),
     emailFrom: process.env.EMAIL_FROM ?? "no-reply@okkey.local",
-    salesEmail: resolveSalesEmail(nodeEnv, process.env.OKKEY_SALES_EMAIL),
+    salesEmail: resolveSalesEmail(process.env.OKKEY_SALES_EMAIL),
     emailProvider: (process.env.EMAIL_PROVIDER ?? "logger") as EmailProvider,
+    emailDeliveryMode: resolveEmailDeliveryMode(nodeEnv, process.env.EMAIL_DELIVERY_MODE),
+    emailDeadLetterSealSecret:
+      (process.env.EMAIL_DEAD_LETTER_SEAL_KEY ?? "").trim() || sessionSecret,
     smtpHost: process.env.EMAIL_SMTP_HOST ?? "localhost",
     smtpPort: parsePositiveInt(process.env.EMAIL_SMTP_PORT, 1025),
     smtpSecure: parseBoolean(process.env.EMAIL_SMTP_SECURE, false),
@@ -443,6 +512,7 @@ export function loadConfig(): ApiConfig {
       process.env.WEBAUTHN_CHALLENGE_TTL_SECONDS,
       300,
     ),
+    faviconProvider: parseFaviconProvider(process.env.FAVICON_PROVIDER),
     allowedCryptoProfileVersions,
     cryptoRolloutMode,
     cryptoRolloutEnabled,

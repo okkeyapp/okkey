@@ -19,10 +19,16 @@ import {
 } from "@okkey/types";
 
 import type { ItemsListRecord } from "../components/workspace/ItemsListLeftPane";
+import { useLocale } from "../locale/LocaleContext";
 import type { ItemActivityWireEntry } from "./buildItemActivityEntries";
 import { itemPlaintextToListRecord } from "./itemPlaintextToListRecord";
 import { withItemArchivedState } from "./itemArchive";
 import { withItemDeletedState } from "./itemDelete";
+import {
+  isPersonalDataBootstrapDismissed,
+  markPersonalDataBootstrapDismissed,
+  shouldPutPersonalDataBootstrapDismissed,
+} from "./personalDataBootstrapDismissal";
 import {
   createWorkspaceVaultItemsSyncController,
   type WorkspaceVaultItemsSyncController,
@@ -86,6 +92,7 @@ export function useWorkspaceItemsState(input: {
     maxFileSizeMb = DEFAULT_MAX_FILE_SIZE_MB,
     filesInItemsEnabled = true,
   } = input;
+  const { locale } = useLocale();
   const fileUploadConstraints = useMemo(
     () => buildKeyFieldFileUploadConstraints(allowedFileExtensions, maxFileSizeMb),
     [allowedFileExtensions, maxFileSizeMb],
@@ -128,11 +135,12 @@ export function useWorkspaceItemsState(input: {
         itemPlaintextToListRecord(item, {
           folderId: itemFolderRef.current.get(item.itemId) ?? null,
           favorite: itemFavoriteRef.current.has(item.itemId),
+          locale,
         }),
       ),
     );
     setSyncVersion((version) => version + 1);
-  }, [isDeletedItemWithinRetention]);
+  }, [isDeletedItemWithinRetention, locale]);
 
   useEffect(() => {
     controllerRef.current?.dispose();
@@ -306,6 +314,26 @@ export function useWorkspaceItemsState(input: {
     [runMutation],
   );
 
+  const persistPersonalDataBootstrapDismissed = useCallback(() => {
+    // Local cache mirrors the server flag after GET / prior PUT. Skip PUT when
+    // the known value is already true (e.g. soft-deleted path already synced).
+    const knownDismissed = isPersonalDataBootstrapDismissed(userId, workspaceId);
+    markPersonalDataBootstrapDismissed(userId, workspaceId);
+    if (!core || !workspaceId) {
+      return;
+    }
+    if (!shouldPutPersonalDataBootstrapDismissed(knownDismissed, true)) {
+      return;
+    }
+    void core
+      .updateWorkspaceItemCategoryPreferences(workspaceId, {
+        personal_data_bootstrap_dismissed: true,
+      })
+      .catch(() => {
+        /* server flag is authoritative once synced; local cache still set */
+      });
+  }, [core, userId, workspaceId]);
+
   const setItemDeleted = useCallback(
     async (itemId: string, deleted: boolean) => {
       await runMutation(async (controller) => {
@@ -316,10 +344,13 @@ export function useWorkspaceItemsState(input: {
         if (Boolean(item.deleted) === deleted) {
           return;
         }
+        if (deleted && item.categoryId === "personal_data") {
+          persistPersonalDataBootstrapDismissed();
+        }
         await controller.updateItem(withItemDeletedState(item, deleted));
       });
     },
-    [runMutation],
+    [persistPersonalDataBootstrapDismissed, runMutation],
   );
 
   const setItemsDeleted = useCallback(
@@ -335,11 +366,14 @@ export function useWorkspaceItemsState(input: {
           if (!item || Boolean(item.deleted) === deleted) {
             continue;
           }
+          if (deleted && item.categoryId === "personal_data") {
+            persistPersonalDataBootstrapDismissed();
+          }
           await controller.updateItem(withItemDeletedState(item, deleted));
         }
       });
     },
-    [runMutation],
+    [persistPersonalDataBootstrapDismissed, runMutation],
   );
 
   const refreshItems = useCallback(async () => {

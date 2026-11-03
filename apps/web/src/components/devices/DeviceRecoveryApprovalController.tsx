@@ -23,6 +23,7 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "reac
 import { toast } from "sonner";
 
 import accountRecoveryModule from "@okkey-enterprise/account-recovery";
+import { getApiBaseUrl } from "../../api/client";
 import { useAuthVault, useAuthenticatedCoreClient } from "../../auth/AuthVaultContext";
 import { formatDeviceClientOs, formatDeviceTitle } from "../../auth/browserEnvironment";
 import { IconCheck16, IconNotNow16 } from "../items/itemCategoryIcons";
@@ -36,6 +37,7 @@ import {
   subscribeSettingsPopupCache,
 } from "../settings/settingsPopupCache";
 import { useLocale } from "../../locale/LocaleContext";
+import { webEnterpriseModulesActive } from "../../workspace/planEntitlements";
 import { emitDevicesChanged } from "./devicesEvents";
 
 function formatAbsoluteDate(iso: string, locale: string): string {
@@ -53,11 +55,7 @@ function formatAbsoluteDate(iso: string, locale: string): string {
 }
 
 function apiBase(): string {
-  const raw = import.meta.env.VITE_API_BASE_URL;
-  if (typeof raw === "string" && raw.trim() && raw !== "undefined") {
-    return raw.trim().replace(/\/$/, "");
-  }
-  return "http://localhost:4000";
+  return getApiBaseUrl();
 }
 
 function isForbiddenRecoveryError(err: unknown): boolean {
@@ -72,7 +70,9 @@ function isForbiddenRecoveryError(err: unknown): boolean {
  * approver list endpoint returns 403 — avoids spamming the API.
  */
 export default function DeviceRecoveryApprovalController() {
-  const enterpriseEnabled = Boolean(accountRecoveryModule.DevicesRestorePanel);
+  // Vite may load EE UI while API modules are off — gate polls on /public/features.
+  const enterpriseEnabled =
+    Boolean(accountRecoveryModule.DevicesRestorePanel) && webEnterpriseModulesActive();
   const { t, locale } = useLocale();
   const core = useAuthenticatedCoreClient();
   const { accessToken, currentDeviceId, vaultUnlocked, vaultKey } = useAuthVault();
@@ -202,6 +202,7 @@ export default function DeviceRecoveryApprovalController() {
     os_name: current.osName,
     platform: current.platform,
     user_agent: current.userAgent,
+    device_fingerprint: current.deviceFingerprint,
   };
 
   const dismissRequest = (requestId: string) => {

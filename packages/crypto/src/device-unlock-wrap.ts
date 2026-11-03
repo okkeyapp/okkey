@@ -2,7 +2,8 @@
  * Wrap vault unlock material (VaultKey + password share C) for PIN / biometric device unlock.
  * Secrets never leave the client; wrap keys are derived locally (PIN) or via WebAuthn PRF/raw key.
  */
-import initWasm, { aead_decrypt, aead_encrypt, kdf_derive, random_bytes } from "@okkey/crypto-wasm";
+import { aead_decrypt, aead_encrypt, kdf_derive, random_bytes } from "@okkey/crypto-wasm";
+import { ensureWasm } from "./wasm-init.js";
 import { OKKEY_PASSWORD_KDF_PARAMS_V1 } from "./registration.js";
 import { wipeBytes } from "./secret-buffer.js";
 
@@ -14,14 +15,6 @@ const UNLOCK_BLOB_VERSION = 1;
 const PIN_WRAP_AAD = new TextEncoder().encode("okkey-device-unlock-pin-wrap-v1");
 const BIO_WRAP_AAD = new TextEncoder().encode("okkey-device-unlock-bio-wrap-v1");
 
-let wasmReady: Promise<void> | undefined;
-
-async function ensureWasm(): Promise<void> {
-  if (!wasmReady) {
-    wasmReady = initWasm().then(() => undefined);
-  }
-  await wasmReady;
-}
 
 function encodeUnlockPlaintext(vaultKey: Uint8Array, passwordShareC: Uint8Array): Uint8Array {
   if (vaultKey.length !== SHARE_LEN || passwordShareC.length !== SHARE_LEN) {

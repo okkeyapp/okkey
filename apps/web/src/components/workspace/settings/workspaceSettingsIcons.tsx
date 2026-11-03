@@ -52,6 +52,41 @@ export function GeneralIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
+/** Same glyph as shell sidebar Records (`NavRecordsIcon`). */
+export function ItemsIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg width={16} height={16} viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" {...iconProps(props.className)} {...props}>
+      <path
+        d="M2.50001 3.83334C2.50001 3.47972 2.64048 3.14058 2.89053 2.89054C3.14058 2.64049 3.47972 2.50001 3.83334 2.50001L12.1667 2.49999C12.5203 2.49999 12.8594 2.64047 13.1095 2.89052C13.3595 3.14056 13.5 3.4797 13.5 3.83333V5.16666C13.5 5.52028 13.3595 5.85942 13.1095 6.10947C12.8594 6.35952 12.5203 6.49999 12.1667 6.49999L3.83334 6.50001C3.47972 6.50001 3.14058 6.35954 2.89053 6.10949C2.64048 5.85944 2.50001 5.5203 2.50001 5.16668V3.83334Z"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M2.37801 10.8333C2.37801 10.4797 2.51848 10.1406 2.76853 9.89052C3.01858 9.64048 3.35772 9.5 3.71134 9.5L12.1667 9.5C12.5203 9.5 12.8594 9.64048 13.1095 9.89052C13.3595 10.1406 13.5 10.4797 13.5 10.8333V12.1667C13.5 12.5203 13.3595 12.8594 13.1095 13.1095C12.8594 13.3595 12.5203 13.5 12.1667 13.5H3.71134C3.35772 13.5 3.01858 13.3595 2.76853 13.1095C2.51848 12.8594 2.37801 12.5203 2.37801 12.1667V10.8333Z"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+/** Same glyph as shell sidebar Capsules (`NavCapsulesIcon`). */
+export function CapsulesIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg width={16} height={16} viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" {...iconProps(props.className)} {...props}>
+      <path
+        d="M6.40001 3.2C7.2487 2.35131 8.39977 1.87452 9.60001 1.87452C10.8002 1.87452 11.9513 2.35131 12.8 3.2C13.6487 4.04869 14.1255 5.19977 14.1255 6.4C14.1255 7.60023 13.6487 8.75131 12.8 9.6L9.60001 12.8C8.75131 13.6487 7.60024 14.1255 6.4 14.1255C5.19977 14.1255 4.0487 13.6487 3.2 12.8C2.35131 11.9513 1.87452 10.8002 1.87452 9.6C1.87452 8.39977 2.35131 7.24869 3.2 6.4L6.40001 3.2Z"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <line x1="5.03648" y1="4.56353" x2="11.5926" y2="11.1196" stroke="currentColor" />
+    </svg>
+  );
+}
+
 export function RolesIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <svg width={16} height={16} viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" {...iconProps(props.className)} {...props}>

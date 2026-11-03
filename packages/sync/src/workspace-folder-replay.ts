@@ -77,6 +77,10 @@ function sortEvents(events: WorkspacePersonalEventWireDto[]): WorkspacePersonalE
 
 /**
  * Deterministic replay of workspace personal folder metadata for one user stream.
+ *
+ * Undecryptable / unparseable events still advance `lastAppliedVersion`. Otherwise a
+ * later success (or page-cursor pagination) can permanently skip a decryptable
+ * FOLDER_DELETE that sat in a failed gap — zombie folders on every client.
  */
 export async function replayWorkspaceFolderEvents(
   events: WorkspacePersonalEventWireDto[],
@@ -96,10 +100,12 @@ export async function replayWorkspaceFolderEvents(
     if (ev.workspaceId !== workspaceId) {
       continue;
     }
-    if (!FOLDER_AND_ASSIGN_TYPES.has(ev.eventType)) {
+    if (ev.version <= state.lastAppliedVersion) {
       continue;
     }
-    if (ev.version <= state.lastAppliedVersion) {
+
+    if (!FOLDER_AND_ASSIGN_TYPES.has(ev.eventType)) {
+      state.lastAppliedVersion = ev.version;
       continue;
     }
 
@@ -107,15 +113,18 @@ export async function replayWorkspaceFolderEvents(
     try {
       plaintextBytes = await decryptWirePayload(getEventBlob(ev).payload);
     } catch {
+      state.lastAppliedVersion = ev.version;
       continue;
     }
 
     if (ev.eventType === "ITEM_FOLDER_ASSIGN") {
       if (!SUPPORTED_ITEM_FOLDER_ASSIGN_ENVELOPE_VERSIONS.has(getEventBlob(ev).crypto_version)) {
+        state.lastAppliedVersion = ev.version;
         continue;
       }
       const assign = parseItemFolderAssignPlaintextV2Utf8(plaintextBytes);
       if (!assign || assign.workspaceId !== workspaceId) {
+        state.lastAppliedVersion = ev.version;
         continue;
       }
       state.itemFolder.set(assign.itemId, assign.folderId);
@@ -125,10 +134,12 @@ export async function replayWorkspaceFolderEvents(
 
     if (ev.eventType === "ITEM_FAVORITE_SET") {
       if (!SUPPORTED_ITEM_FAVORITE_SET_ENVELOPE_VERSIONS.has(getEventBlob(ev).crypto_version)) {
+        state.lastAppliedVersion = ev.version;
         continue;
       }
       const favoriteSet = parseItemFavoriteSetPlaintextV2Utf8(plaintextBytes);
       if (!favoriteSet || favoriteSet.workspaceId !== workspaceId) {
+        state.lastAppliedVersion = ev.version;
         continue;
       }
       if (favoriteSet.favorite) {
@@ -141,11 +152,13 @@ export async function replayWorkspaceFolderEvents(
     }
 
     if (!SUPPORTED_FOLDER_METADATA_ENVELOPE_VERSIONS.has(getEventBlob(ev).crypto_version)) {
+      state.lastAppliedVersion = ev.version;
       continue;
     }
 
     const row = parseFolderPlaintextV2Utf8(plaintextBytes);
     if (!row || row.workspaceId !== workspaceId) {
+      state.lastAppliedVersion = ev.version;
       continue;
     }
 

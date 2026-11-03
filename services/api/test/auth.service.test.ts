@@ -23,6 +23,20 @@ class InMemoryRedis {
     this.expirations.set(key, this.nowMs + ttlSeconds * 1000);
   }
 
+  async setIfNotExistsWithTtl(
+    key: string,
+    value: string,
+    ttlSeconds: number,
+  ): Promise<boolean> {
+    this.purgeIfExpired(key);
+    if (this.values.has(key)) {
+      return false;
+    }
+    this.values.set(key, value);
+    this.expirations.set(key, this.nowMs + ttlSeconds * 1000);
+    return true;
+  }
+
   async get(key: string): Promise<string | null> {
     this.purgeIfExpired(key);
     return this.values.get(key) ?? null;
@@ -62,6 +76,8 @@ const baseConfig: ApiConfig = createTestApiConfig();
 function setupAuthService(params?: {
   configOverrides?: Partial<ApiConfig>;
   existingUser?: boolean;
+  /** When false, mimics fresh self-host install (zero users). Default: true (SaaS / subsequent users). */
+  hasAnyUsers?: boolean;
   twoFactorEnabledForExisting?: boolean;
   generatedCode?: string;
 }) {
@@ -71,6 +87,7 @@ function setupAuthService(params?: {
   const sentEmails: Array<{ to: string; code: string; locale?: string }> = [];
   const config = { ...baseConfig, ...(params?.configOverrides ?? {}) };
   const generatedCode = params?.generatedCode ?? "123456";
+  const hasAnyUsers = params?.hasAnyUsers ?? true;
 
   let nextId = 1;
   const service = new AuthService({
@@ -93,6 +110,7 @@ function setupAuthService(params?: {
             params?.twoFactorEnabledForExisting &&
             userId === "u1",
         ),
+      hasAnyUsers: async () => hasAnyUsers,
     },
     emailTemplates: {
       sendAuthEmailCode: async (input) => {
@@ -107,6 +125,7 @@ function setupAuthService(params?: {
     now: () => redis.now(),
     generateCode: () => generatedCode,
     generateId: () => `id-${nextId++}`,
+    generateAuthStateId: () => `auth-state-${nextId++}`,
   });
 
   return { service, sentEmails, redis };
@@ -125,6 +144,84 @@ test("startEmailLogin sends normalized email and 6-digit code", async () => {
   assert.equal(sentEmails.length, 1);
   assert.equal(sentEmails[0].to, "user@example.com");
   assert.equal(sentEmails[0].code, "654321");
+  assert.equal(result.bootstrapRequired, undefined);
+});
+
+test("startEmailLogin first-run (empty DB, self_hosted) skips OTP and returns bootstrapRequired", async () => {
+  const { service, sentEmails, redis } = setupAuthService({ hasAnyUsers: false });
+
+  const result = await service.startEmailLogin({
+    email: "Admin@Example.com",
+    requestIp: "127.0.0.1",
+  });
+
+  assert.equal(result.bootstrapRequired, true);
+  assert.equal(result.nextStep, "registration");
+  assert.ok(result.authStateId);
+  assert.equal(result.challengeId, "");
+  assert.equal(sentEmails.length, 0);
+
+  const raw = await redis.get(`auth:state:${result.authStateId}`);
+  assert.ok(raw);
+  const state = JSON.parse(raw) as { email: string; userId: string | null };
+  assert.equal(state.email, "admin@example.com");
+  assert.equal(state.userId, null);
+  assert.equal(await redis.get("auth:bootstrap:first-user"), "admin@example.com");
+});
+
+test("startEmailLogin empty catalog on saas still requires email OTP", async () => {
+  const { service, sentEmails } = setupAuthService({
+    hasAnyUsers: false,
+    configOverrides: { deploymentMode: "saas" },
+  });
+
+  const result = await service.startEmailLogin({
+    email: "first@example.com",
+    requestIp: "127.0.0.1",
+  });
+
+  assert.equal(result.bootstrapRequired, undefined);
+  assert.ok(result.challengeId);
+  assert.equal(sentEmails.length, 1);
+  assert.equal(sentEmails[0].to, "first@example.com");
+});
+
+test("startEmailLogin first-run claim is idempotent for the same email", async () => {
+  const { service, sentEmails } = setupAuthService({ hasAnyUsers: false });
+
+  const first = await service.startEmailLogin({
+    email: "admin@example.com",
+    requestIp: "127.0.0.1",
+  });
+  const second = await service.startEmailLogin({
+    email: "admin@example.com",
+    requestIp: "127.0.0.1",
+  });
+
+  assert.equal(first.bootstrapRequired, true);
+  assert.equal(second.bootstrapRequired, true);
+  assert.ok(second.authStateId);
+  assert.notEqual(second.authStateId, first.authStateId);
+  assert.equal(sentEmails.length, 0);
+});
+
+test("startEmailLogin second empty-catalog email requires OTP while claim is held", async () => {
+  const { service, sentEmails } = setupAuthService({ hasAnyUsers: false });
+
+  const first = await service.startEmailLogin({
+    email: "admin@example.com",
+    requestIp: "127.0.0.1",
+  });
+  const second = await service.startEmailLogin({
+    email: "other@example.com",
+    requestIp: "127.0.0.1",
+  });
+
+  assert.equal(first.bootstrapRequired, true);
+  assert.equal(second.bootstrapRequired, undefined);
+  assert.ok(second.challengeId);
+  assert.equal(sentEmails.length, 1);
+  assert.equal(sentEmails[0].to, "other@example.com");
 });
 
 test("startEmailLogin reuses active challenge for same email without sending again", async () => {
@@ -144,6 +241,62 @@ test("startEmailLogin reuses active challenge for same email without sending aga
   assert.equal(second.challengeId, first.challengeId);
   assert.equal(second.expiresAt, first.expiresAt);
   assert.equal(second.resendAvailableAt, first.resendAvailableAt);
+  assert.equal(sentEmails.length, 1);
+});
+
+test("startEmailLogin mints a new challenge when remaining TTL is low", async () => {
+  const { service, sentEmails, redis } = setupAuthService({
+    generatedCode: "222000",
+    configOverrides: {
+      authCodeTtlSeconds: 300,
+      authResendCooldownSeconds: 60,
+    },
+  });
+
+  const first = await service.startEmailLogin({
+    email: "near-expiry@example.com",
+    requestIp: "127.0.0.1",
+  });
+  assert.equal(sentEmails.length, 1);
+  assert.equal(first.challengeId, "id-1");
+
+  // Leave ~15s of TTL — below reuse threshold (authResendCooldownSeconds).
+  redis.setNow(Date.UTC(2026, 0, 1, 12, 0, 0) + (300 - 15) * 1000);
+
+  const second = await service.startEmailLogin({
+    email: "near-expiry@example.com",
+    requestIp: "127.0.0.1",
+  });
+
+  assert.notEqual(second.challengeId, first.challengeId);
+  assert.equal(second.challengeId, "id-2");
+  assert.equal(sentEmails.length, 2);
+  assert.ok(new Date(second.expiresAt).getTime() > new Date(first.expiresAt).getTime());
+});
+
+test("startEmailLogin still reuses when remaining TTL is above cooldown", async () => {
+  const { service, sentEmails, redis } = setupAuthService({
+    generatedCode: "333000",
+    configOverrides: {
+      authCodeTtlSeconds: 300,
+      authResendCooldownSeconds: 60,
+    },
+  });
+
+  const first = await service.startEmailLogin({
+    email: "still-fresh@example.com",
+    requestIp: "127.0.0.1",
+  });
+
+  // 61s remaining → still above reuse threshold.
+  redis.setNow(Date.UTC(2026, 0, 1, 12, 0, 0) + (300 - 61) * 1000);
+
+  const second = await service.startEmailLogin({
+    email: "still-fresh@example.com",
+    requestIp: "127.0.0.1",
+  });
+
+  assert.equal(second.challengeId, first.challengeId);
   assert.equal(sentEmails.length, 1);
 });
 

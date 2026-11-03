@@ -5,11 +5,18 @@ import { MmdbGeoIpLookup } from "./capsule/geoip.ts";
 import { RegistrationService } from "./registration/service.ts";
 import { createServer } from "node:http";
 import { createApiApp } from "./app.ts";
-import { loadConfig } from "./config.ts";
+import { isEnterpriseBackendLoadable, loadConfig } from "./config.ts";
+import { RedisDeviceBindChallengeStore } from "./device/bind-challenge-store.ts";
 import { DeviceService } from "./device/service.ts";
-import { createEmailSender, EmailTemplateService } from "./email/service.ts";
+import { json } from "./http.ts";
+import {
+  createOutboundEmailSender,
+  EmailTemplateService,
+  isOutboundEmailDeliverable,
+} from "./email/service.ts";
 import { createLogger } from "./logger.ts";
 import { SessionService } from "./session/service.ts";
+import { ExtensionAuthService } from "./extension-auth/service.ts";
 import { createStorageLayer } from "./storage/index.ts";
 import { SyncService } from "./sync/service.ts";
 import { WorkspacePersonalSyncService } from "./workspace-personal-sync/service.ts";
@@ -23,6 +30,10 @@ import { ItemCategoryPreferencesService } from "./item-category-preferences/serv
 import { CapsuleDefaultsService } from "./capsule-defaults/service.ts";
 import { ItemTemplatesService } from "./item-templates/service.ts";
 import { ItemPurgeService } from "./item-purge/service.ts";
+import {
+  shouldRunBackgroundJobsInApiProcess,
+  startBackgroundJobs,
+} from "./jobs/background-jobs.ts";
 import { WorkspaceSettingsService } from "./workspace-settings/service.ts";
 import { PlanChangeRequestService } from "./plan-change-request/service.ts";
 import { WorkspaceBuiltInRolesService } from "./workspace-roles/list-service.ts";
@@ -34,22 +45,32 @@ import {
   KeyFieldFileStorage,
   loadKeyFieldFileStorageConfigFromEnv,
 } from "./storage/key-field-file-storage.ts";
+import { applySqlMigrations } from "./storage/migrate.ts";
 import { ItemFaviconService } from "./favicon/service.ts";
 import { AttachmentService } from "./attachments/service.ts";
+import {
+  resolveWorkspacePermissions,
+  WorkspacePermissionError,
+} from "./workspace-roles/permissions.ts";
 import { AccountRecoveryService } from "./account-recovery/service.ts";
 import { initEntityIdGenerator } from "./entity-id.ts";
 
 async function main(): Promise<void> {
-  const config = loadConfig();
+  let config = loadConfig();
   initEntityIdGenerator(config.snowflakeNodeId);
   const logger = createLogger();
   const storage = await createStorageLayer(config, logger);
-  const emailSender = await createEmailSender(config, logger);
+  await applySqlMigrations(storage.postgres, { logger });
+  const emailSender = await createOutboundEmailSender(config, logger, storage.redis);
   const emailTemplates = new EmailTemplateService(emailSender, {
     from: config.emailFrom,
     defaultLocale: config.defaultEmailLocale,
     publicAppBaseUrl: config.publicAppBaseUrl,
     logger,
+  });
+  logger.info("email outbound ready", {
+    provider: config.emailProvider,
+    deliveryMode: config.emailDeliveryMode,
   });
   const authService = new AuthService({
     redis: storage.redis,
@@ -66,6 +87,10 @@ async function main(): Promise<void> {
   const sessionService = new SessionService({
     sessions: storage.repositories.sessions,
     config,
+  });
+  const extensionAuthService = new ExtensionAuthService({
+    redis: storage.redis,
+    sessionService,
   });
   const twoFactorService = new TwoFactorService({
     redis: storage.redis,
@@ -101,6 +126,7 @@ async function main(): Promise<void> {
   const vaultService = new VaultService({
     vaults: storage.repositories.vaults,
     workspaces: storage.repositories.workspaces,
+    config,
     db: storage.postgres,
   });
   const itemCategoryPreferencesService = new ItemCategoryPreferencesService({
@@ -115,14 +141,18 @@ async function main(): Promise<void> {
   const workspaceSettingsService = new WorkspaceSettingsService({
     workspaces: storage.repositories.workspaces,
     db: storage.postgres,
+    config,
   });
   const planChangeRequestService = new PlanChangeRequestService({
     db: storage.postgres,
     workspaces: storage.repositories.workspaces,
     users: storage.repositories.users,
     emailTemplates,
+    redis: storage.redis,
     salesEmail: config.salesEmail,
+    salesEmailDeliverable: isOutboundEmailDeliverable(config),
     deploymentMode: config.deploymentMode,
+    publicAppBaseUrl: config.publicAppBaseUrl,
   });
   const workspaceBuiltInRolesService = new WorkspaceBuiltInRolesService({
     roles: storage.repositories.workspaceRoles,
@@ -143,7 +173,24 @@ async function main(): Promise<void> {
     db: storage.postgres,
     workspaces: storage.repositories.workspaces,
   });
-  const enterprisePlugins = await loadEnterprisePlugins(config);
+  if (config.enterpriseModulesRequested && !config.enterpriseModulesEnabled) {
+    logger.warn(
+      "ENTERPRISE_MODULES=true but enterprise backend is not loadable; continuing as FREE",
+      {
+        enterpriseModulesPath: config.enterpriseModulesPath,
+        loadable: isEnterpriseBackendLoadable(config.enterpriseModulesPath),
+      },
+    );
+  }
+  const enterpriseLoad = await loadEnterprisePlugins(config);
+  if (config.enterpriseModulesEnabled && !enterpriseLoad.enterpriseModulesActive) {
+    logger.warn("enterprise modules requested but plugin import failed; continuing without them", {
+      enterpriseModulesPath: config.enterpriseModulesPath,
+      error: enterpriseLoad.loadError,
+    });
+    config = { ...config, enterpriseModulesEnabled: false };
+  }
+  const enterprisePlugins = enterpriseLoad.plugins;
   const vaultUnlockBootstrapService = new VaultUnlockBootstrapService({
     users: storage.repositories.users,
     devices: storage.repositories.devices,
@@ -153,6 +200,7 @@ async function main(): Promise<void> {
     events: storage.repositories.events,
     softDeletes: storage.repositories.vaultItemSoftDeletes,
     users: storage.repositories.users,
+    workspaces: storage.repositories.workspaces,
     config,
     log: logger,
   });
@@ -180,13 +228,16 @@ async function main(): Promise<void> {
     emailTemplates,
     geoIp,
     log: logger,
+    bindChallenges: new RedisDeviceBindChallengeStore(storage.redis),
   });
   const accountRecoveryService = new AccountRecoveryService({
     recovery: storage.repositories.accountRecovery,
     workspaces: storage.repositories.workspaces,
     users: storage.repositories.users,
+    devices: storage.repositories.devices,
     emailTemplates,
     publicAppBaseUrl: config.publicAppBaseUrl,
+    config,
   });
   const keyFieldFileStorageConfig = loadKeyFieldFileStorageConfigFromEnv();
   const keyFieldFileStorage = keyFieldFileStorageConfig
@@ -199,18 +250,40 @@ async function main(): Promise<void> {
       endpoint: keyFieldFileStorageConfig?.endpoint,
     });
   }
-  const itemFaviconService = new ItemFaviconService();
+  const itemFaviconService = new ItemFaviconService({
+    provider: config.faviconProvider,
+  });
   const attachmentService = keyFieldFileStorage
     ? new AttachmentService({
         storage: keyFieldFileStorage,
         attachments: storage.repositories.attachments,
         vaults: storage.repositories.vaults,
         workspaces: storage.repositories.workspaces,
+        events: storage.repositories.events,
+        softDeletes: storage.repositories.vaultItemSoftDeletes,
+        templates: storage.repositories.workspaceItemTemplates,
+        config,
+        canUpdateWorkspaceBranding: async (workspaceId, userId) => {
+          try {
+            const matrix = await resolveWorkspacePermissions(
+              storage.postgres,
+              workspaceId,
+              userId,
+            );
+            return matrix.settings.put >= 1;
+          } catch (error) {
+            if (error instanceof WorkspacePermissionError) {
+              return false;
+            }
+            throw error;
+          }
+        },
       })
     : undefined;
   const itemTemplatesService = new ItemTemplatesService({
     templates: storage.repositories.workspaceItemTemplates,
     workspaces: storage.repositories.workspaces,
+    vaults: storage.repositories.vaults,
     attachments: attachmentService,
   });
   const itemPurgeService = new ItemPurgeService({
@@ -246,6 +319,7 @@ async function main(): Promise<void> {
     deviceService,
     accountRecoveryService,
     sessionService,
+    extensionAuthService,
     twoFactorService,
     webauthnService,
     capsuleService,
@@ -262,38 +336,45 @@ async function main(): Promise<void> {
     geoIp,
   });
 
+  // Public capability probe for web/UI flag sync (registered here to avoid touching app.ts).
+  const enterpriseModulesActive = config.enterpriseModulesEnabled;
+  app.route("GET", "/public/features", async (ctx) => {
+    json(ctx.res, 200, {
+      enterpriseModulesActive,
+      deploymentMode: config.deploymentMode,
+      requestId: ctx.requestId,
+    });
+  });
+
   const server = createServer(app.handler());
   server.listen(config.port, () => {
     logger.info("api server started", {
       nodeEnv: config.nodeEnv,
       port: config.port,
       logLevel: config.logLevel,
+      enterpriseModulesActive,
+      enterpriseModulesRequested: config.enterpriseModulesRequested,
     });
   });
 
-  const purgeIntervalMs = 60 * 60 * 1000;
-  const purgeTimer = setInterval(() => {
-    void itemPurgeService.purgeExpiredSoftDeletes().catch((error: unknown) => {
-      logger.error("deleted items purge failed", {
-        error: error instanceof Error ? error.message : "unknown error",
-      });
+  const runJobsInApi = shouldRunBackgroundJobsInApiProcess(config.nodeEnv);
+  const backgroundJobs = runJobsInApi
+    ? startBackgroundJobs({
+        itemPurgeService,
+        capsuleService,
+        logger,
+        runImmediately: false,
+      })
+    : null;
+  if (!runJobsInApi) {
+    logger.info("background jobs disabled in API process (use okkey-worker)", {
+      hint: "Set RUN_BACKGROUND_JOBS=true to run jobs in-process, or start the worker container",
     });
-  }, purgeIntervalMs);
-  purgeTimer.unref();
-
-  const capsuleCleanupTimer = setInterval(() => {
-    void capsuleService.purgeDueCapsules().catch((error: unknown) => {
-      logger.error("capsule cleanup failed", {
-        error: error instanceof Error ? error.message : "unknown error",
-      });
-    });
-  }, 60_000);
-  capsuleCleanupTimer.unref();
+  }
 
   const shutdown = async () => {
     logger.info("api server stopping");
-    clearInterval(purgeTimer);
-    clearInterval(capsuleCleanupTimer);
+    backgroundJobs?.stop();
     server.close();
     await storage.close();
   };
@@ -311,5 +392,6 @@ void main().catch((error: unknown) => {
   logger.error("api server failed to start", {
     error: error instanceof Error ? error.message : "unknown error",
   });
-  process.exitCode = 1;
+  // Force exit: open storage sockets keep the event loop alive if we only set exitCode.
+  process.exit(1);
 });

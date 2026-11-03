@@ -36,13 +36,20 @@ Commercial workspace plan is `workspace.plan_tier` (catalog):
 
 Catalog `plan_tier` stays for display/billing; when custom override is on, overrides win in `hasPlanFeature(..., { customOverride, featureOverrides })`.
 
-Entitlements are resolved only via `hasPlanFeature` in `@okkey/types` (`PLAN_FEATURE_MATRIX`). Soft numeric limits live in `PLAN_QUOTA_LIMITS` / `getPlanQuotaLimits`.
+Entitlements are resolved via `hasPlanFeature` in `@okkey/types` (`PLAN_FEATURE_MATRIX`), with deployment context:
+
+| Deployment | Paid-feature source |
+|---|---|
+| **SaaS** | `workspace.plan_tier` (+ optional custom overrides) |
+| **Self-hosted** | enterprise modules active (env ∧ loadable sibling) → ENTERPRISE matrix; otherwise FREE + `SELF_HOSTED_FREE_EXTRA`. **Do not** use `plan_tier` for gating. |
+
+Soft numeric limits live in `PLAN_QUOTA_LIMITS` / `getPlanQuotaLimits` (same self-host rule).
 
 | Feature | FREE | PREMIUM | FAMILY | TEAM | ENTERPRISE |
 |---|---|---|---|---|---|
 | `capsules` | yes | yes | yes | yes | yes |
 | `capsuleAccessSettings` | no | yes | yes | yes | yes |
-| `filesInItems` | no | yes | yes | yes | yes |
+| `filesInItems` | no† | yes | yes | yes | yes |
 | `monitoring` | no | yes | yes | yes | yes |
 | `accountRecovery` | no | yes | yes | yes | yes |
 | `trustedContacts` | no | yes | yes | yes | yes |
@@ -53,22 +60,41 @@ Entitlements are resolved only via `hasPlanFeature` in `@okkey/types` (`PLAN_FEA
 | `customWorkspaceProfiles` | no | no | yes | yes | yes |
 | `paidPlanBadge` | no | yes | yes | yes | yes |
 
+† SaaS FREE keeps `filesInItems` off (PREMIUM+). Self-hosted FREE enables `filesInItems` via `SELF_HOSTED_FREE_EXTRA` — attachments stay free on-prem.
+
 Do **not** confuse `plan_tier` with `ENTERPRISE_MODULES` (plugin loading).
+
+### Self-host enterprise enablement vs `plan_tier`
+
+Two gates on self-hosted:
+
+| Gate | Meaning |
+|---|---|
+| Enterprise modules on? | `ENTERPRISE_MODULES` / `VITE_ENTERPRISE_MODULES=true` **and** loadable sibling `okkey-enterprise` → EE UI/plugins available. Without modules, paid routes are absent (404) and matrix is FREE even if SQL says ENTERPRISE. |
+| Workspace feature matrix | With modules loaded → ENTERPRISE matrix via `resolveEntitlementPlanTier` / `hasPlanFeature` (`plan_tier` ignored). Modules off → FREE + `SELF_HOSTED_FREE_EXTRA`. |
+
+Setting `plan_tier=ENTERPRISE` alone does **not** load modules. Future signed license from **`okkey-license`** may bind instance claims; interim self-host paid access is modules-only.
+
+Canonical contract: Project store `docs/license-and-updates.md`. Enterprise docs: `okkey-enterprise/docs/architecture/04_feature_gating.md`, `10_license_enforcement.md`.
 
 ### How `plan_tier` changes (SaaS vs Self-hosted)
 
 | Deployment | Who changes `plan_tier` | Mechanism (future product surfaces) |
 |---|---|---|
 | **SaaS** | Subscription / billing lifecycle | Checkout → payment webhook → update `plan_tier` (and seats). Self-serve “Сменить тариф”. |
-| **Self-hosted** | License / specialist activation | Specialist request or license key → `validateLicense()` + set `plan_tier` / custom overrides. **No** self-serve Stripe on self-hosted. |
+| **Self-hosted** | Display / catalog only | Modules decide paid create/edit. `plan_tier` stays FREE for new workspaces and does not gate features. **No** self-serve Stripe on self-hosted. |
 
-Core stores the tier and matrix; commercial write paths (subscribe, invoices, license blob) live in `okkey-enterprise`.
+Core stores the tier and matrix; commercial write paths (subscribe, invoices) live in `okkey-enterprise`. Self-host license issuance lives in **`okkey-license`**.
+
+### Enterprise modules fail-closed
+
+`ENTERPRISE_MODULES=true` / `VITE_ENTERPRISE_MODULES=true` enables plugins **only** when the sibling `okkey-enterprise` path exists and is loadable. Otherwise modules stay off (FREE matrix on self-host), even if SQL has `plan_tier=ENTERPRISE`.
 
 ### Existing `ENTERPRISE` rows (dev strategy)
 
 - Rows already on `ENTERPRISE` **stay** `ENTERPRISE` — no remapping to `TEAM` / `PREMIUM`.
-- With `ENTERPRISE_MODULES=true`, new workspaces still default to `ENTERPRISE` (local full-feature convenience, not a payment flow).
-- Optional local upgrade of FREE/personal tiers when developing with modules:
+- New workspaces always default to `plan_tier=FREE` (including when modules are on). On self-host, paid create/edit require modules only (`plan_tier` ignored).
+- Optional local display upgrade (does not change self-host gating when modules are on):
 
 ```sql
 UPDATE workspaces
@@ -97,7 +123,7 @@ List / switch / delete stay in Core. **`POST /workspaces` is not a Core route.**
 
 The open-source Core provides the FREE plan baseline:
 
-- Upgrade to paid tiers is available only in SaaS or self-hosted deployments with a license / enterprise build.
+- Upgrade to paid **SaaS** tiers uses `plan_tier`. Self-hosted enterprise uses modules + sibling (interim) or a signed license token (future) — not `plan_tier` as the enablement gate.
 - Authentication via email + email code.
 - 2FA: authenticator app and backup codes.
 - Self-hosted: only one workspace; enterprise feature modules unavailable in OSS builds.
@@ -112,7 +138,7 @@ The open-source Core provides the FREE plan baseline:
 - Workspace settings: profiles view-only for default profiles.
 - Workspace settings: members — owner only in OSS; inviting additional members requires enterprise `workspace-members` plugin **and** `additionalWorkspaceMembers` plan feature.
 - Workspace settings: vaults — personal vault metadata editable when `workspace-shared-vaults` module is injected (popup); default name is set only at create/register. Shared vaults require the same plugin **and** `sharedVaults` plan feature.
-- Files in items require `filesInItems` plan feature (and workspace toggle).
+- Files in items: enabled on self-hosted FREE (`SELF_HOSTED_FREE_EXTRA`); on SaaS require PREMIUM+ `filesInItems` (and workspace toggle either way).
 - Workspace settings: change plan / payments / license surfaces exist as product shells.
 - Personal settings: main settings available.
 - Personal settings: storage available except confidential sections, biometrics, and PIN.
@@ -180,8 +206,8 @@ Enterprise / SaaS build:
 
 - includes enterprise plugins
 - ships as `okkey-enterprise/*` images
-- SaaS: deployment mode `saas` (from enterprise env when modules load) + `ENTERPRISE_MODULES=true`
-- Self-hosted enterprise: `self_hosted` + enterprise modules (1 workspace, ENTERPRISE plan features)
+- SaaS: deployment mode `saas` (from enterprise env when modules load) + `ENTERPRISE_MODULES=true` (workspace features via `plan_tier`)
+- Self-hosted enterprise: `self_hosted` + enterprise modules / loadable sibling. Modules unlock EE UI and paid create/edit (`plan_tier` ignored). Modules off → FREE + `SELF_HOSTED_FREE_EXTRA`.
 
 ---
 
@@ -191,12 +217,6 @@ Core schema is stable and public.
 Enterprise migrations **only add** tables and indexes.
 No core table is altered or removed by enterprise code.
 
-Local upgrade of legacy / FREE rows when developing with enterprise modules (optional; existing ENTERPRISE rows are left as-is):
-
-```sql
-UPDATE workspaces
-SET plan_tier = 'ENTERPRISE'
-WHERE plan_tier IN ('FREE', 'TEAM', 'PREMIUM', 'FAMILY');
-```
+On self-hosted with modules loaded, entitlements are ENTERPRISE regardless of `plan_tier`. SaaS uses catalog tiers / billing webhooks.
 
 Custom selective plans use `plan_custom_override` + `plan_feature_overrides` (migration `0031_workspace_plan_custom_override.sql`) instead of inventing a `CUSTOM` tier string.

@@ -2,7 +2,12 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 
 import { getHeader, json, type RouteHandler } from "../http.ts";
 import { isEntityId } from "../entity-id.ts";
-import { AttachmentService, AttachmentServiceError } from "../attachments/service.ts";
+import {
+  ATTACHMENT_PURPOSE_ITEM_FAVICON,
+  AttachmentService,
+  AttachmentServiceError,
+  type AttachmentUploadPurpose,
+} from "../attachments/service.ts";
 
 async function readRawBody(req: IncomingMessage): Promise<Uint8Array> {
   const mockedBody = (req as IncomingMessage & { body?: unknown }).body;
@@ -56,6 +61,14 @@ function parseSizeHeader(raw: string | undefined, fallback: number): number {
   }
   const parsed = Number(raw);
   return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : fallback;
+}
+
+function parseAttachmentPurposeHeader(raw: string | undefined): AttachmentUploadPurpose | undefined {
+  const value = raw?.trim().toLowerCase();
+  if (value === ATTACHMENT_PURPOSE_ITEM_FAVICON) {
+    return ATTACHMENT_PURPOSE_ITEM_FAVICON;
+  }
+  return undefined;
 }
 
 function validateAttachmentParams(ctx: Parameters<RouteHandler>[0]): { vaultId: string; itemId: string; attachmentId?: string } | null {
@@ -138,6 +151,7 @@ export function createAttachmentUploadRoute(
     const fileName = decodeFileName(getHeader(ctx.req, "x-file-name"));
     const mimeType = getHeader(ctx.req, "x-file-mime-type") ?? "application/octet-stream";
     const sizeBytes = parseSizeHeader(getHeader(ctx.req, "x-file-size"), encryptedBody.byteLength);
+    const purpose = parseAttachmentPurposeHeader(getHeader(ctx.req, "x-attachment-purpose"));
 
     try {
       const result = await service.upload({
@@ -149,6 +163,7 @@ export function createAttachmentUploadRoute(
         encryptedBody,
         encryptedKey,
         sizeBytes,
+        purpose,
       });
       json(ctx.res, 201, result);
     } catch (error) {

@@ -162,7 +162,7 @@ The request fingerprint is stored in `EncryptedBlob.meta.rotation_request_finger
 
 ## Transport
 
-- **HTTP contract (implemented):** see [`docs/api_contracts.md`](../api_contracts.md) and [`docs/openapi/core-api.yaml`](../openapi/core-api.yaml) for `GET/POST /vaults/:vaultId/events` — responses include `payloadSchemaVersion`, `idempotencyKey`, and `clientCreatedAt`; append accepts optional idempotency (required for `ITEM_CREATE` and `FOLDER_CREATE`) and enforces a maximum ciphertext size.
+- **HTTP contract (implemented):** see [`docs/api_contracts.md`](../api_contracts.md) and [`docs/openapi/core-api.yaml`](../openapi/core-api.yaml) for `GET/POST /vaults/:vaultId/events` — responses include `payloadSchemaVersion`, `idempotencyKey`, and `clientCreatedAt`; append accepts optional idempotency (required for `ITEM_CREATE` and `FOLDER_CREATE`) and enforces a maximum ciphertext size. List responses include `latestVersion` and `hasMore` so clients stop paging without an empty confirmation GET; after a clean append, clients may apply the POST body locally when versions are contiguous from the last applied tip.
 - Realtime channel: WebSocket (event push)
 - Fallback: HTTP pull (`fetch events after version`)
 - Both transports use the same event envelope and ordering guarantees

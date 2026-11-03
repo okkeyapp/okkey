@@ -76,3 +76,53 @@ export function createWorkspaceMemberDirectoryRoute(
     }
   };
 }
+
+export function createWorkspaceInvitationDeleteRoute(
+  membersService: WorkspaceMembersService,
+  resolveUserId: ResolveUserId,
+): RouteHandler {
+  return async (ctx) => {
+    const workspaceId = ctx.params.workspaceId;
+    const invitationId = ctx.params.invitationId;
+    if (!workspaceId || !invitationId) {
+      json(ctx.res, 400, errorPayload("BAD_REQUEST", "workspaceId and invitationId are required", ctx.requestId));
+      return;
+    }
+    try {
+      const userId = await resolveUserId(ctx.req);
+      if (!userId) {
+        json(ctx.res, 401, errorPayload("AUTH_REQUIRED", "auth required", ctx.requestId));
+        return;
+      }
+      await membersService.revokeInvitation(workspaceId, userId, invitationId);
+      json(ctx.res, 200, { revoked: true });
+    } catch (error) {
+      handleMembersError(ctx.requestId, ctx.res, error);
+    }
+  };
+}
+
+export function createWorkspaceMemberDeleteRoute(
+  membersService: WorkspaceMembersService,
+  resolveUserId: ResolveUserId,
+): RouteHandler {
+  return async (ctx) => {
+    const workspaceId = ctx.params.workspaceId;
+    const targetUserId = ctx.params.userId;
+    if (!workspaceId || !targetUserId) {
+      json(ctx.res, 400, errorPayload("BAD_REQUEST", "workspaceId and userId are required", ctx.requestId));
+      return;
+    }
+    try {
+      const userId = await resolveUserId(ctx.req);
+      if (!userId) {
+        json(ctx.res, 401, errorPayload("AUTH_REQUIRED", "auth required", ctx.requestId));
+        return;
+      }
+      await membersService.removeMember(workspaceId, userId, targetUserId);
+      json(ctx.res, 200, { deleted: true });
+    } catch (error) {
+      handleMembersError(ctx.requestId, ctx.res, error);
+    }
+  };
+}

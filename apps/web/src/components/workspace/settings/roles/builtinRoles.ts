@@ -1,9 +1,17 @@
 import {
-  hasPlanFeature,
+  type PlanFeatureOverrides,
   type WorkspaceBuiltInRoleId,
-  type WorkspaceBuiltInRoleDto,
+  type WorkspaceRoleListItemDto,
   type WorkspaceRoleSummary,
 } from "@okkey/types";
+
+import { workspaceHasPlanFeature } from "../../../../workspace/planEntitlements";
+
+type WorkspacePlanLike = {
+  planTier?: string | null;
+  planCustomOverride?: boolean | null;
+  planFeatureOverrides?: PlanFeatureOverrides | null;
+};
 
 export type BuiltInRoleDefinition = {
   builtinId: WorkspaceBuiltInRoleId;
@@ -44,13 +52,18 @@ export function buildBuiltInRoleSummaries(
   }));
 }
 
-/** Custom roles require the ENTERPRISE plan feature (module presence is checked separately). */
-export function canManageCustomWorkspaceRoles(planTier: string | undefined): boolean {
-  return hasPlanFeature(planTier, "customWorkspaceRoles");
+/**
+ * Custom roles: SaaS `plan_tier` (+ `planFeatureOverrides` when custom override is on)
+ * / self-host enterprise modules (checked separately for UI module).
+ */
+export function canManageCustomWorkspaceRoles(
+  workspace: WorkspacePlanLike | null | undefined,
+): boolean {
+  return workspaceHasPlanFeature(workspace, "customWorkspaceRoles");
 }
 
 export function extractBuiltInMemberCounts(
-  roles: WorkspaceBuiltInRoleDto[],
+  roles: readonly WorkspaceRoleListItemDto[],
 ): Partial<Record<WorkspaceBuiltInRoleId, number>> {
   const counts: Partial<Record<WorkspaceBuiltInRoleId, number>> = {};
   for (const role of roles) {

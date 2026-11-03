@@ -75,10 +75,13 @@ test("security: mixed-device stale session resolves VERSION_MISMATCH after remot
       return mkEvent(vaultId, 4, body.eventType);
     },
     async listVaultEvents(vId, afterVersion): Promise<SyncEventsListResponseDto> {
+      const events = remoteEvents.filter((event) => event.version > afterVersion);
       return {
         vaultId: vId,
         afterVersion,
-        events: remoteEvents.filter((event) => event.version > afterVersion),
+        events,
+        latestVersion: events.length > 0 ? (events[events.length - 1]?.version ?? afterVersion) : afterVersion,
+        hasMore: false,
       };
     },
   };

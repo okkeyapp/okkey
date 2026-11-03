@@ -1,0 +1,531 @@
+import { ApiRequestError, type CoreClient } from "@okkey/api";
+import { decryptVaultItemPayload } from "@okkey/crypto";
+import {
+  IndexedDbOutboxStore,
+  SyncOutboxClient,
+  applyItemPlaintextToReplayMap,
+  areContiguousEventVersions,
+  eventsListHasMore,
+} from "@okkey/sync";
+import {
+  buildItemCreateAppendRequest,
+  buildItemSyncMetadataFromPlaintext,
+  buildItemUpdateAppendRequest,
+} from "@okkey/sync/item-sync";
+import type { ItemPlaintextV2, SyncAppendEventRequestDto, SyncEventWireDto, Vault } from "@okkey/types";
+import { generateEntityId, parseAndNormalizeItemPlaintextUtf8 } from "@okkey/types";
+
+import { base64ToBytes } from "./base64.js";
+import { resolveVaultItemEncryptionKey } from "./resolve-vault-item-key.js";
+
+const CACHE_DB = "okkey-workspace-vault-items-sync";
+const CACHE_STORE = "materialized_state";
+const ITEM_EVENT_TYPES = new Set(["ITEM_CREATE", "ITEM_UPDATE", "ITEM_DELETE"]);
+const SUPPORTED_PAYLOAD_SCHEMA_VERSIONS = new Set([1, 2]);
+
+/** Wire activity entry — same shape as web / `@okkey/vault-ui` ItemActivityWireEntry. */
+export type VaultItemActivityWireEntry = {
+  id: string;
+  actionKey: "created" | "updated" | "archived" | "unarchived" | "deleted" | "restored";
+  atMs: number;
+  actorId: string | null;
+};
+
+type VaultItemsMaterializedState = {
+  items: Map<string, ItemPlaintextV2>;
+  itemActivity: Map<string, VaultItemActivityWireEntry[]>;
+  /** First ITEM_CREATE actorId per item (for profile `own` scope). */
+  itemCreatedByUserId: Map<string, string | null>;
+  lastAppliedVersion: number;
+};
+
+type CachedWorkspaceVaultItemsState = {
+  key: string;
+  vaults: Array<
+    [
+      string,
+      {
+        items: Array<[string, ItemPlaintextV2]>;
+        itemActivity?: Array<[string, VaultItemActivityWireEntry[]]>;
+        itemCreatedByUserId?: Array<[string, string | null]>;
+        lastAppliedVersion: number;
+      },
+    ]
+  >;
+};
+
+function cacheKey(userId: string, workspaceId: string): string {
+  return `okkey.workspace-vault-items.v4.u.${userId}.w.${workspaceId}`;
+}
+
+function openCacheDb(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    if (!globalThis.indexedDB) {
+      reject(new Error("INDEXEDDB_UNAVAILABLE"));
+      return;
+    }
+    const req = globalThis.indexedDB.open(CACHE_DB, 1);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(CACHE_STORE)) {
+        db.createObjectStore(CACHE_STORE, { keyPath: "key" });
+      }
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error ?? new Error("INDEXEDDB_OPEN_FAILED"));
+  });
+}
+
+async function readCachedState(
+  userId: string,
+  workspaceId: string,
+): Promise<Map<string, VaultItemsMaterializedState> | null> {
+  try {
+    const db = await openCacheDb();
+    const tx = db.transaction(CACHE_STORE, "readonly");
+    const store = tx.objectStore(CACHE_STORE);
+    const req = store.get(cacheKey(userId, workspaceId));
+    const row = await new Promise<CachedWorkspaceVaultItemsState | undefined>((resolve, reject) => {
+      req.onsuccess = () => resolve(req.result as CachedWorkspaceVaultItemsState | undefined);
+      req.onerror = () => reject(req.error);
+    });
+    db.close();
+    if (!row) {
+      return null;
+    }
+    const vaults = new Map<string, VaultItemsMaterializedState>();
+    for (const [vaultId, snapshot] of row.vaults) {
+      // Caches written before activity tracking lack itemActivity — force full replay.
+      const hasActivity = Array.isArray(snapshot.itemActivity);
+      vaults.set(vaultId, {
+        items: hasActivity ? new Map(snapshot.items) : new Map(),
+        itemActivity: new Map(snapshot.itemActivity ?? []),
+        itemCreatedByUserId: hasActivity ? new Map(snapshot.itemCreatedByUserId ?? []) : new Map(),
+        lastAppliedVersion: hasActivity ? snapshot.lastAppliedVersion : 0,
+      });
+    }
+    return vaults;
+  } catch {
+    return null;
+  }
+}
+
+async function writeCachedState(
+  userId: string,
+  workspaceId: string,
+  vaults: Map<string, VaultItemsMaterializedState>,
+): Promise<void> {
+  try {
+    const db = await openCacheDb();
+    const tx = db.transaction(CACHE_STORE, "readwrite");
+    const store = tx.objectStore(CACHE_STORE);
+    store.put({
+      key: cacheKey(userId, workspaceId),
+      vaults: [...vaults.entries()].map(([vaultId, snapshot]) => [
+        vaultId,
+        {
+          items: [...snapshot.items.entries()],
+          itemActivity: [...snapshot.itemActivity.entries()],
+          itemCreatedByUserId: [...snapshot.itemCreatedByUserId.entries()],
+          lastAppliedVersion: snapshot.lastAppliedVersion,
+        },
+      ]),
+    } satisfies CachedWorkspaceVaultItemsState);
+    await new Promise<void>((resolve, reject) => {
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+    db.close();
+  } catch {
+    // cache is best-effort
+  }
+}
+
+function emptyVaultState(): VaultItemsMaterializedState {
+  return { items: new Map(), itemActivity: new Map(), itemCreatedByUserId: new Map(), lastAppliedVersion: 0 };
+}
+
+function resolveItemUpdateActivityKey(
+  previous: ItemPlaintextV2 | undefined,
+  next: ItemPlaintextV2,
+): VaultItemActivityWireEntry["actionKey"] {
+  const wasDeleted = Boolean(previous?.deleted);
+  const isDeleted = Boolean(next.deleted);
+  if (!wasDeleted && isDeleted) {
+    return "deleted";
+  }
+  if (wasDeleted && !isDeleted) {
+    return "restored";
+  }
+  const wasArchived = Boolean(previous?.archived);
+  const isArchived = Boolean(next.archived);
+  if (!wasArchived && isArchived) {
+    return "archived";
+  }
+  if (wasArchived && !isArchived) {
+    return "unarchived";
+  }
+  return "updated";
+}
+
+function appendItemActivity(
+  itemActivity: Map<string, VaultItemActivityWireEntry[]>,
+  itemId: string,
+  event: SyncEventWireDto,
+  actionKey: VaultItemActivityWireEntry["actionKey"],
+  atMsOverride?: number,
+  idSuffix?: string,
+): void {
+  const list = itemActivity.get(itemId) ?? [];
+  const entryId = idSuffix ? `${event.id}:${idSuffix}` : event.id;
+  if (list.some((entry) => entry.id === entryId)) {
+    return;
+  }
+  const parsedEventAt = Date.parse(event.createdAt);
+  list.push({
+    id: entryId,
+    actionKey,
+    atMs: atMsOverride ?? (Number.isFinite(parsedEventAt) ? parsedEventAt : Date.now()),
+    actorId: event.actorId,
+  });
+  itemActivity.set(itemId, list);
+}
+
+function getEventBlob(event: SyncEventWireDto): { crypto_version: number; payload: string } {
+  const maybe = event as SyncEventWireDto & {
+    encryptedBlob?: { crypto_version?: number; payload?: string };
+    payloadSchemaVersion?: number;
+    encryptedPayload?: string;
+  };
+  if (maybe.encryptedBlob?.payload) {
+    return {
+      crypto_version: maybe.encryptedBlob.crypto_version ?? 2,
+      payload: maybe.encryptedBlob.payload,
+    };
+  }
+  return {
+    crypto_version: maybe.payloadSchemaVersion ?? 2,
+    payload: maybe.encryptedPayload ?? "",
+  };
+}
+
+async function applyVaultItemEvents(
+  state: VaultItemsMaterializedState,
+  events: SyncEventWireDto[],
+  decryptWirePayload: (
+    encryptedPayloadBase64: string,
+    itemId?: string | null,
+  ) => Promise<Uint8Array>,
+): Promise<VaultItemsMaterializedState> {
+  const items = new Map(state.items);
+  const itemActivity = new Map(state.itemActivity);
+  const itemCreatedByUserId = new Map(state.itemCreatedByUserId);
+  let lastAppliedVersion = state.lastAppliedVersion;
+
+  for (const event of events) {
+    if (event.version <= lastAppliedVersion) {
+      continue;
+    }
+
+    if (!ITEM_EVENT_TYPES.has(event.eventType)) {
+      lastAppliedVersion = event.version;
+      continue;
+    }
+
+    const blob = getEventBlob(event);
+    if (!SUPPORTED_PAYLOAD_SCHEMA_VERSIONS.has(blob.crypto_version) || !blob.payload) {
+      lastAppliedVersion = event.version;
+      continue;
+    }
+
+    let plaintextBytes: Uint8Array;
+    try {
+      plaintextBytes = await decryptWirePayload(blob.payload, event.referencedItemId);
+    } catch {
+      lastAppliedVersion = event.version;
+      continue;
+    }
+    const parsed = parseAndNormalizeItemPlaintextUtf8(plaintextBytes);
+    if (!parsed) {
+      lastAppliedVersion = event.version;
+      continue;
+    }
+    if (
+      event.referencedItemId &&
+      parsed.itemId !== event.referencedItemId
+    ) {
+      lastAppliedVersion = event.version;
+      continue;
+    }
+
+    if (event.eventType === "ITEM_CREATE") {
+      appendItemActivity(itemActivity, parsed.itemId, event, "created", parsed.createdAtMs);
+      if (parsed.updatedAtMs > parsed.createdAtMs) {
+        appendItemActivity(
+          itemActivity,
+          parsed.itemId,
+          event,
+          "updated",
+          parsed.updatedAtMs,
+          "updated",
+        );
+      }
+      if (!itemCreatedByUserId.has(parsed.itemId)) {
+        itemCreatedByUserId.set(parsed.itemId, event.actorId);
+      }
+    } else if (event.eventType === "ITEM_UPDATE") {
+      const previous = items.get(parsed.itemId);
+      appendItemActivity(
+        itemActivity,
+        parsed.itemId,
+        event,
+        resolveItemUpdateActivityKey(previous, parsed),
+      );
+    } else if (event.eventType === "ITEM_DELETE") {
+      appendItemActivity(itemActivity, parsed.itemId, event, "deleted");
+    }
+
+    applyItemPlaintextToReplayMap(items, parsed, event);
+    lastAppliedVersion = event.version;
+  }
+
+  return { items, itemActivity, itemCreatedByUserId, lastAppliedVersion };
+}
+
+export type WorkspaceVaultItemsReadController = {
+  refresh: () => Promise<void>;
+  getAllItems: () => ItemPlaintextV2[];
+  getItemsByVault: (vaultId: string) => ItemPlaintextV2[];
+  getItemById: (itemId: string) => ItemPlaintextV2 | null;
+  getItemActivityById: (itemId: string) => VaultItemActivityWireEntry[];
+  getItemCreatedByUserId: (itemId: string) => string | null | undefined;
+  /** Soft-delete / archive / field updates via ITEM_UPDATE append. */
+  updateItem: (item: ItemPlaintextV2) => Promise<string>;
+  /** Create login (and other) items via ITEM_CREATE append. */
+  createItem: (item: ItemPlaintextV2) => Promise<string>;
+  dispose: () => void;
+};
+
+/** Read already-materialized vault items from IndexedDB (autofill; no network). */
+export async function listCachedWorkspaceVaultItems(input: {
+  userId: string;
+  workspaceId: string;
+}): Promise<ItemPlaintextV2[]> {
+  const cached = await readCachedState(input.userId, input.workspaceId);
+  if (!cached) {
+    return [];
+  }
+  return [...cached.values()].flatMap((state) => [...state.items.values()]);
+}
+
+/** Vault items sync (event log replay + IndexedDB cache) with update mutations for E3+. */
+export function createWorkspaceVaultItemsReadController(input: {
+  core: CoreClient;
+  userId: string;
+  workspaceId: string;
+  vaults: readonly Vault[];
+  accountVaultKey: Uint8Array;
+  encryptedPrivateKeyPayload?: string;
+}): WorkspaceVaultItemsReadController {
+  let vaultStates = new Map<string, VaultItemsMaterializedState>();
+  const vaultKeyCache = new Map<string, Uint8Array>();
+
+  const outbox = new SyncOutboxClient(
+    new IndexedDbOutboxStore({
+      dbName: `okkey-ws-vault-items-outbox.u.${input.userId}.w.${input.workspaceId}`,
+    }),
+    {
+      appendVaultEvent: (vaultId, body) => input.core.appendVaultEvent(vaultId, body),
+      listVaultEvents: (vaultId, afterVersion) => input.core.listVaultEvents(vaultId, afterVersion),
+    },
+    {
+      decryptItemPayloadForVault: async (vaultId, encryptedPayloadBase64, itemId) => {
+        const vaultKey = await resolveVaultKey(vaultId);
+        return decryptVaultItemPayload(vaultKey, base64ToBytes(encryptedPayloadBase64), 2, {
+          itemId,
+        });
+      },
+    },
+  );
+
+  function ensureVaultState(vaultId: string): VaultItemsMaterializedState {
+    const existing = vaultStates.get(vaultId);
+    if (existing) {
+      return existing;
+    }
+    const created = emptyVaultState();
+    vaultStates.set(vaultId, created);
+    return created;
+  }
+
+  async function resolveVaultKey(vaultId: string): Promise<Uint8Array> {
+    const cached = vaultKeyCache.get(vaultId);
+    if (cached) {
+      return cached;
+    }
+    const vault = input.vaults.find((candidate) => candidate.id === vaultId);
+    if (!vault) {
+      throw new Error("VAULT_NOT_FOUND");
+    }
+    const key = await resolveVaultItemEncryptionKey({
+      vault,
+      accountVaultKey: input.accountVaultKey,
+      core: input.core,
+      encryptedPrivateKeyPayload: input.encryptedPrivateKeyPayload,
+    });
+    vaultKeyCache.set(vaultId, key);
+    return key;
+  }
+
+  async function replayVaultIncremental(vaultId: string): Promise<void> {
+    let state = ensureVaultState(vaultId);
+    const vaultKey = await resolveVaultKey(vaultId);
+    const decryptWirePayload = async (
+      encryptedPayloadBase64: string,
+      itemId?: string | null,
+    ) =>
+      decryptVaultItemPayload(vaultKey, base64ToBytes(encryptedPayloadBase64), 2, {
+        itemId,
+      });
+
+    while (true) {
+      const page = await input.core.listVaultEvents(vaultId, state.lastAppliedVersion);
+      if (!page.events.length) {
+        break;
+      }
+      state = await applyVaultItemEvents(state, page.events, decryptWirePayload);
+      vaultStates.set(vaultId, state);
+      // Stop when the server reports a complete page — avoids the always-empty follow-up GET.
+      if (!eventsListHasMore(page)) {
+        break;
+      }
+    }
+  }
+
+  async function refresh(): Promise<void> {
+    const cached = await readCachedState(input.userId, input.workspaceId);
+    if (cached) {
+      vaultStates = cached;
+    }
+    const failures: string[] = [];
+    for (const vault of input.vaults) {
+      try {
+        await replayVaultIncremental(vault.id);
+      } catch (error: unknown) {
+        // Auth failures must not be collapsed into VAULT_ITEMS_SYNC_FAILED —
+        // callers wipe unlock session on 401.
+        if (error instanceof ApiRequestError && error.status === 401) {
+          throw error;
+        }
+        failures.push(vault.id);
+      }
+    }
+    await writeCachedState(input.userId, input.workspaceId, vaultStates);
+    if (failures.length > 0 && failures.length === input.vaults.length) {
+      throw new Error("VAULT_ITEMS_SYNC_FAILED");
+    }
+  }
+
+  async function enqueue(request: SyncAppendEventRequestDto, vaultId: string): Promise<void> {
+    const queued = await outbox.enqueue({ vaultId, request });
+    const stateBefore = ensureVaultState(vaultId);
+    const tipBefore = stateBefore.lastAppliedVersion;
+    const appended = await outbox.drain(vaultId);
+    const remaining = (await outbox.list()).find((entry) => entry.id === queued.id);
+    if (remaining) {
+      try {
+        await replayVaultIncremental(vaultId);
+        await writeCachedState(input.userId, input.workspaceId, vaultStates);
+      } catch {
+        // Best-effort; surface the append failure either way.
+      }
+      throw new Error(
+        remaining.lastErrorCode
+          ? `OUTBOX_ENTRY_NOT_APPENDED:${remaining.lastErrorCode}`
+          : "OUTBOX_ENTRY_NOT_APPENDED",
+      );
+    }
+    // Clean write: apply POST response locally and skip list GET (incl. empty tail).
+    // After VERSION_MISMATCH rebase, versions may gap — fall back to incremental replay.
+    if (areContiguousEventVersions(appended, tipBefore)) {
+      const vaultKey = await resolveVaultKey(vaultId);
+      const decryptWirePayload = async (
+        encryptedPayloadBase64: string,
+        itemId?: string | null,
+      ) =>
+        decryptVaultItemPayload(vaultKey, base64ToBytes(encryptedPayloadBase64), 2, {
+          itemId,
+        });
+      const next = await applyVaultItemEvents(stateBefore, appended, decryptWirePayload);
+      vaultStates.set(vaultId, next);
+    } else {
+      await replayVaultIncremental(vaultId);
+    }
+    await writeCachedState(input.userId, input.workspaceId, vaultStates);
+  }
+
+  return {
+    refresh,
+    getAllItems: () => [...vaultStates.values()].flatMap((state) => [...state.items.values()]),
+    getItemsByVault: (vaultId) => [...(vaultStates.get(vaultId)?.items.values() ?? [])],
+    getItemById: (itemId) => {
+      for (const state of vaultStates.values()) {
+        const item = state.items.get(itemId);
+        if (item) {
+          return item;
+        }
+      }
+      return null;
+    },
+    getItemActivityById: (itemId) => {
+      for (const state of vaultStates.values()) {
+        const entries = state.itemActivity.get(itemId);
+        if (entries && entries.length > 0) {
+          return [...entries].sort((a, b) => b.atMs - a.atMs);
+        }
+      }
+      return [];
+    },
+    getItemCreatedByUserId: (itemId) => {
+      for (const state of vaultStates.values()) {
+        if (state.itemCreatedByUserId.has(itemId)) {
+          return state.itemCreatedByUserId.get(itemId);
+        }
+      }
+      return undefined;
+    },
+    updateItem: async (item) => {
+      const state = ensureVaultState(item.vaultId);
+      const vaultKey = await resolveVaultKey(item.vaultId);
+      const request = buildItemSyncMetadataFromPlaintext(
+        await buildItemUpdateAppendRequest(
+          vaultKey,
+          item,
+          state.lastAppliedVersion,
+          generateEntityId(),
+        ),
+        item,
+      );
+      await enqueue(request, item.vaultId);
+      return item.itemId;
+    },
+    createItem: async (item) => {
+      const state = ensureVaultState(item.vaultId);
+      const vaultKey = await resolveVaultKey(item.vaultId);
+      const request = buildItemSyncMetadataFromPlaintext(
+        await buildItemCreateAppendRequest(
+          vaultKey,
+          item,
+          state.lastAppliedVersion,
+          generateEntityId(),
+        ),
+        item,
+      );
+      await enqueue(request, item.vaultId);
+      return item.itemId;
+    },
+    dispose: () => {
+      vaultKeyCache.clear();
+    },
+  };
+}

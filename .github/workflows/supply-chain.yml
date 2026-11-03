@@ -21,6 +21,7 @@ jobs:
     env:
       RUST_TOOLCHAIN: 1.86.0
       WASM_PACK_VERSION: 0.13.1
+      CARGO_NET_RETRY: "10"
       PROVENANCE_OUT_DIR: .artifacts/crypto-provenance
     steps:
       - name: Checkout
@@ -42,7 +43,7 @@ jobs:
           targets: wasm32-unknown-unknown
 
       - name: Install wasm-pack
-        run: PATH="$HOME/.cargo/bin:$PATH" cargo install wasm-pack --version $WASM_PACK_VERSION --locked
+        run: bash scripts/ci/install-wasm-pack.sh
 
       - name: Install dependencies
         run: yarn install --frozen-lockfile

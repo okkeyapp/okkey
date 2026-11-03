@@ -2,6 +2,7 @@ import { ApiRequestError } from "@okkey/api";
 import {
   generateRecoverySecret,
   initCrypto,
+  recoveryPossessionPublicKey,
   wrapVaultKeyWithRecoverySecret,
 } from "@okkey/crypto";
 import type { WebMessageValues } from "@okkey/i18n";
@@ -117,6 +118,8 @@ function recoveryErrorMessage(err: unknown, t: SettingsRecoveryContentProps["t"]
         return t("web.settingsPopup.recovery.error.entitlement");
       case "RECOVERY_CONTACTS_INSUFFICIENT":
         return t("web.settingsPopup.recovery.error.contactsInsufficient");
+      case "RECOVERY_DEVICES_INSUFFICIENT":
+        return t("web.settingsPopup.recovery.error.devicesInsufficient");
       case "RECOVERY_CONTACT_NOT_FOUND":
         return t("web.settingsPopup.recovery.error.contactNotFound");
       case "RECOVERY_CONTACT_EXISTS":
@@ -314,9 +317,10 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
       const secret = await generateRecoverySecret();
       const secretBytes = new TextEncoder().encode(secret);
       const encryptedBlob = await wrapVaultKeyWithRecoverySecret(vaultKey, secretBytes);
+      const possessionPublicKey = await recoveryPossessionPublicKey(secretBytes);
       const result = rotate
-        ? await core.rotateAccountRecoveryKey({ encryptedBlob })
-        : await core.enrollAccountRecoveryKey({ encryptedBlob });
+        ? await core.rotateAccountRecoveryKey({ encryptedBlob, possessionPublicKey })
+        : await core.enrollAccountRecoveryKey({ encryptedBlob, possessionPublicKey });
       setSessionKey(secret);
       setStatus((prev) =>
         prev
@@ -360,27 +364,8 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
       }
       return;
     }
-    setBusy(true);
-    setStatus((prev) =>
-      prev
-        ? {
-            ...prev,
-            settings: { ...prev.settings, keyEnabled: false },
-            key: { enrolled: false, createdAt: null, rotatedAt: null, exportedAt: null },
-          }
-        : prev,
-    );
-    setSessionKey(null);
-    try {
-      const next = await core.patchAccountRecoverySettings({ keyEnabled: false });
-      setStatus(next);
-      notifySaved();
-    } catch (err) {
-      setError(recoveryErrorMessage(err, t));
-      void refreshStatus();
-    } finally {
-      setBusy(false);
-    }
+    // Recovery key is mandatory — disabling (and deleting the wrap) is not allowed.
+    return;
   }
 
   async function handleDevicesSwitch(checked: boolean) {
@@ -396,7 +381,11 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
       prev ? { ...prev, settings: { ...prev.settings, devicesEnabled: checked } } : prev,
     );
     try {
-      const next = await core.patchAccountRecoverySettings({ devicesEnabled: checked });
+      const fingerprint = await getOrCreateDeviceFingerprint();
+      const next = await core.patchAccountRecoverySettings(
+        { devicesEnabled: checked },
+        { currentFingerprint: fingerprint },
+      );
       setStatus((prev) =>
         prev
           ? {
@@ -752,7 +741,7 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
         <Switch
           size="lg"
           checked={keyEnabled}
-          disabled={!core || busy || initialLoading}
+          disabled={!core || busy || initialLoading || keyEnabled}
           onCheckedChange={(checked) => void handleKeySwitch(checked)}
           aria-label={t("web.settingsPopup.recovery.key.label")}
         />

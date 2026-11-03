@@ -1,6 +1,6 @@
 import type { WebMessageValues } from "@okkey/i18n";
 import { Alert, AlertDescription, AlertTitle } from "@okkey/ui";
-import type { SVGProps } from "react";
+import type { ReactNode, SVGProps } from "react";
 import { Link } from "react-router-dom";
 
 import { settingsPath } from "../../../../routes/paths";
@@ -26,9 +26,11 @@ function AlertInfoIcon(props: SVGProps<SVGSVGElement>) {
 
 type CustomRolesUpsellProps = {
   t: (messageKey: string, values?: WebMessageValues) => string;
+  /** Rendered below the note, e.g. custom roles that remain after a downgrade. */
+  children?: ReactNode;
 };
 
-export default function CustomRolesUpsell({ t }: CustomRolesUpsellProps) {
+export default function CustomRolesUpsell({ t, children }: CustomRolesUpsellProps) {
   return (
     <section className="flex flex-col gap-4">
       <div className="flex min-w-0 flex-col gap-1">
@@ -50,6 +52,7 @@ export default function CustomRolesUpsell({ t }: CustomRolesUpsellProps) {
           {t("web.workspaceSettings.roles.upsellSuffix")}
         </AlertDescription>
       </Alert>
+      {children}
     </section>
   );
 }

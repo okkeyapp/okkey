@@ -9,6 +9,7 @@ export type WorkspaceProfileRecord = {
   isSystem: boolean;
   builtinKey: string | null;
   applicationCount: number;
+  createdBy: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -22,6 +23,7 @@ type ProfileRow = {
   is_system: boolean;
   builtin_key: string | null;
   application_count: number;
+  created_by: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -35,6 +37,7 @@ const PROFILE_SELECT = `
   p.is_system,
   p.builtin_key,
   COALESCE(ac.application_count, 0)::int AS application_count,
+  p.created_by,
   p.created_at,
   p.updated_at
 `;
@@ -60,6 +63,7 @@ function mapProfileRow(row: ProfileRow): WorkspaceProfileRecord {
     isSystem: row.is_system,
     builtinKey: row.builtin_key,
     applicationCount: row.application_count,
+    createdBy: row.created_by,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -70,6 +74,65 @@ export class WorkspaceProfilesRepository {
 
   constructor(db: QueryExecutor) {
     this.db = db;
+  }
+
+  /** System profiles first, then custom profiles (remnants after an enterprise downgrade). */
+  async listByWorkspace(workspaceId: string): Promise<WorkspaceProfileRecord[]> {
+    const rows = await this.db.query<ProfileRow>(
+      `
+        SELECT ${PROFILE_SELECT}
+        FROM profiles p
+        ${APPLICATION_COUNT_JOIN}
+        WHERE p.workspace_id = $1
+        ORDER BY p.is_system DESC, p.builtin_key ASC NULLS LAST, p.name ASC, p.id ASC
+      `,
+      [workspaceId],
+    );
+    return rows.map(mapProfileRow);
+  }
+
+  async findById(workspaceId: string, profileId: string): Promise<WorkspaceProfileRecord | null> {
+    const rows = await this.db.query<ProfileRow>(
+      `
+        SELECT ${PROFILE_SELECT}
+        FROM profiles p
+        ${APPLICATION_COUNT_JOIN}
+        WHERE p.workspace_id = $1
+          AND p.id = $2
+        LIMIT 1
+      `,
+      [workspaceId, profileId],
+    );
+    return rows[0] ? mapProfileRow(rows[0]) : null;
+  }
+
+  /**
+   * `vault_profiles.profile_id` is ON DELETE SET NULL (assignees lose vault access);
+   * `workspace_invitation_vault_access.profile_id` is ON DELETE RESTRICT, so pending grants are dropped first.
+   */
+  async deleteCustom(workspaceId: string, profileId: string): Promise<boolean> {
+    await this.db.query(
+      `
+        DELETE FROM workspace_invitation_vault_access iva
+        USING profiles p
+        WHERE p.id = iva.profile_id
+          AND p.workspace_id = $1
+          AND p.id = $2
+          AND p.is_system = false
+      `,
+      [workspaceId, profileId],
+    );
+    const rows = await this.db.query<{ id: string }>(
+      `
+        DELETE FROM profiles
+        WHERE workspace_id = $1
+          AND id = $2
+          AND is_system = false
+        RETURNING id
+      `,
+      [workspaceId, profileId],
+    );
+    return Boolean(rows[0]);
   }
 
   async listBuiltInByWorkspace(workspaceId: string): Promise<WorkspaceProfileRecord[]> {

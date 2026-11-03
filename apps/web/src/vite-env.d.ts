@@ -22,21 +22,31 @@ declare module "@okkey-enterprise/workspace-profiles" {
 
 declare module "@okkey-enterprise/workspace-members" {
   import type { CoreApiClient } from "@okkey/api";
+  import type { WorkspacePermissionsMatrixDto } from "@okkey/types";
   import type { WorkspaceSettingsMembersModule } from "./workspace-features/registry";
   const workspaceMembersModule: WorkspaceSettingsMembersModule;
   export default workspaceMembersModule;
+  export function canCompletePendingVaultWraps(
+    permissions: WorkspacePermissionsMatrixDto | null | undefined,
+  ): boolean;
   export function tryCompletePendingVaultWraps(input: {
     core: CoreApiClient;
     workspaceId: string;
     userId: string;
     accountVaultKey: Uint8Array;
-  }): Promise<void>;
+  }): Promise<{ skippedInvalidKeys: number }>;
 }
 
 declare module "@okkey-enterprise/workspace-shared-vaults" {
   import type { WorkspaceSettingsSharedVaultsModule } from "./workspace-features/registry";
   const enterpriseSharedVaultsModule: WorkspaceSettingsSharedVaultsModule;
   export default enterpriseSharedVaultsModule;
+}
+
+declare module "@okkey-enterprise/workspace-capsules" {
+  import type { WorkspaceSettingsCapsulesModule } from "./workspace-features/registry";
+  const enterpriseCapsulesModule: WorkspaceSettingsCapsulesModule;
+  export default enterpriseCapsulesModule;
 }
 
 declare module "@okkey-enterprise/legal" {
@@ -65,13 +75,25 @@ interface ImportMetaEnv {
   readonly VITE_API_BASE_URL?: string;
   /** Set to "true" to show dev-only nav links in production builds. */
   readonly VITE_SHOW_DEV_LINKS?: string;
-  /** Load enterprise web modules from okkey-enterprise (default: false). */
+  /** Load enterprise web modules (default: false). */
   readonly VITE_ENTERPRISE_MODULES?: string;
+  /**
+   * Effective modules flag after Vite fail-closed sibling resolve.
+   * Prefer this over `VITE_ENTERPRISE_MODULES` for entitlements.
+   */
+  readonly VITE_ENTERPRISE_MODULES_ACTIVE?: string;
+  /** self_hosted (default) | saas — usually from the enterprise web env overlay. */
+  readonly VITE_DEPLOYMENT_MODE?: string;
   /** GitHub repo slug for domain capabilities catalog (default: okkeyapp/domain-capabilities). */
   readonly VITE_DOMAIN_CAPABILITIES_REPO?: string;
   readonly VITE_DOMAIN_CAPABILITIES_BRANCH?: string;
   readonly VITE_DOMAIN_CAPABILITIES_MANIFEST_URL?: string;
   readonly VITE_DOMAIN_CAPABILITIES_CATALOG_URL?: string;
+  /**
+   * Browser e2e only: skip personal-data bootstrap edit popup so smoke can
+   * create Login items without racing `#editItem`.
+   */
+  readonly VITE_E2E_DISABLE_PERSONAL_DATA_BOOTSTRAP?: string;
 }
 
 interface ImportMeta {

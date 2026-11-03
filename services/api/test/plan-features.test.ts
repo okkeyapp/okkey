@@ -11,6 +11,7 @@ import {
   isPlanTier,
   normalizePlanTier,
   planEntitlementOptionsFromWorkspace,
+  resolveEntitlementPlanTier,
   resolvePlanFeatures,
   sanitizePlanFeatureOverrides,
 } from "../../../packages/types/src/plan-features.ts";
@@ -160,4 +161,109 @@ test("PLAN_QUOTA_LIMITS: FREE zeros; ENTERPRISE unlimited", () => {
     maxAttachmentStorageMb: null,
   });
   assert.equal(getPlanQuotaLimits("unknown").maxAdditionalMembers, 0);
+});
+
+test("self_hosted entitlements: modules off → FREE; modules on → ENTERPRISE (ignore plan_tier)", () => {
+  assert.equal(
+    resolveEntitlementPlanTier("ENTERPRISE", {
+      deploymentMode: "self_hosted",
+      enterpriseModulesActive: false,
+    }),
+    "FREE",
+  );
+  assert.equal(
+    resolveEntitlementPlanTier("FREE", {
+      deploymentMode: "self_hosted",
+      enterpriseModulesActive: true,
+    }),
+    "ENTERPRISE",
+  );
+  assert.equal(
+    resolveEntitlementPlanTier("ENTERPRISE", {
+      deploymentMode: "self_hosted",
+      enterpriseModulesActive: true,
+    }),
+    "ENTERPRISE",
+  );
+  assert.equal(
+    hasPlanFeature("ENTERPRISE", "sharedVaults", {
+      deploymentMode: "self_hosted",
+      enterpriseModulesActive: false,
+    }),
+    false,
+  );
+  assert.equal(
+    hasPlanFeature("FREE", "sharedVaults", {
+      deploymentMode: "self_hosted",
+      enterpriseModulesActive: true,
+    }),
+    true,
+  );
+  assert.equal(
+    hasPlanFeature("ENTERPRISE", "sharedVaults", {
+      deploymentMode: "self_hosted",
+      enterpriseModulesActive: true,
+    }),
+    true,
+  );
+  assert.equal(
+    hasPlanFeature("FREE", "filesInItems", {
+      deploymentMode: "self_hosted",
+      enterpriseModulesActive: false,
+    }),
+    true,
+  );
+  assert.equal(
+    hasPlanFeature("FREE", "filesInItems", {
+      deploymentMode: "self_hosted",
+      enterpriseModulesActive: true,
+    }),
+    true,
+  );
+  assert.equal(
+    hasPlanFeature("ENTERPRISE", "filesInItems", {
+      deploymentMode: "self_hosted",
+      enterpriseModulesActive: false,
+    }),
+    true,
+  );
+  assert.equal(
+    getPlanQuotaLimits("FREE", {
+      deploymentMode: "self_hosted",
+      enterpriseModulesActive: true,
+    }).maxAdditionalMembers,
+    null,
+  );
+  assert.equal(
+    getPlanQuotaLimits("ENTERPRISE", {
+      deploymentMode: "self_hosted",
+      enterpriseModulesActive: true,
+    }).maxAdditionalMembers,
+    null,
+  );
+});
+
+test("saas entitlements still use plan_tier", () => {
+  assert.equal(
+    hasPlanFeature("FREE", "filesInItems", {
+      deploymentMode: "saas",
+      enterpriseModulesActive: false,
+    }),
+    false,
+  );
+  assert.equal(
+    hasPlanFeature("FREE", "sharedVaults", {
+      deploymentMode: "saas",
+      enterpriseModulesActive: true,
+    }),
+    false,
+  );
+  assert.equal(
+    hasPlanFeature("ENTERPRISE", "sharedVaults", {
+      deploymentMode: "saas",
+      enterpriseModulesActive: false,
+    }),
+    true,
+  );
+  assert.equal(resolveEntitlementPlanTier("TEAM", { deploymentMode: "saas" }), "TEAM");
 });

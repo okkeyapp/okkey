@@ -38,3 +38,39 @@ export function createWorkspaceBuiltInRolesListRoute(
     }
   };
 }
+
+/** Deletes a custom-role remnant; create/update stay enterprise-only. */
+export function createWorkspaceCustomRoleDeleteRoute(
+  service: WorkspaceBuiltInRolesService,
+  resolveUserId: (req: IncomingMessage) => Promise<string | null>,
+): RouteHandler {
+  return async (ctx) => {
+    const userId = await resolveUserId(ctx.req);
+    if (!userId) {
+      json(ctx.res, 401, errorPayload("AUTH_REQUIRED", "auth required", ctx.requestId));
+      return;
+    }
+
+    const workspaceId = ctx.params.workspaceId?.trim() ?? "";
+    if (!workspaceId) {
+      json(ctx.res, 400, errorPayload("INVALID_WORKSPACE_ID", "workspace id is required", ctx.requestId));
+      return;
+    }
+    const roleId = ctx.params.roleId?.trim() ?? "";
+    if (!roleId) {
+      json(ctx.res, 400, errorPayload("INVALID_ROLE_ID", "role id is required", ctx.requestId));
+      return;
+    }
+
+    try {
+      await service.deleteCustomRole(workspaceId, userId, roleId);
+      json(ctx.res, 200, { ok: true });
+    } catch (error) {
+      if (error instanceof WorkspaceBuiltInRolesServiceError) {
+        json(ctx.res, error.statusCode, errorPayload(error.code, error.message, ctx.requestId));
+        return;
+      }
+      json(ctx.res, 500, errorPayload("INTERNAL_ERROR", "internal error", ctx.requestId));
+    }
+  };
+}

@@ -371,7 +371,7 @@ function setLoginUris(
       type: "url",
       sectionId,
       order: index,
-      label: "Website",
+      label: "website URL",
       value: { kind: "url", url: cleaned[index] ?? "" },
     });
   }

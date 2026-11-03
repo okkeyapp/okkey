@@ -82,6 +82,31 @@ export function createVaultUpdateRoute(
   };
 }
 
+export function createVaultDeleteRoute(
+  vaultService: VaultService,
+  resolveUserId: (req: IncomingMessage) => Promise<string | null>,
+): RouteHandler {
+  return async (ctx) => {
+    const vaultId = ctx.params.vaultId;
+    if (!vaultId) {
+      json(ctx.res, 400, errorPayload("BAD_REQUEST", "vaultId is required", ctx.requestId));
+      return;
+    }
+
+    try {
+      const userId = await resolveUserId(ctx.req);
+      if (!userId) {
+        json(ctx.res, 401, errorPayload("AUTH_REQUIRED", "auth required", ctx.requestId));
+        return;
+      }
+      await vaultService.deleteVault(vaultId, userId);
+      json(ctx.res, 200, { deleted: true });
+    } catch (error) {
+      handleVaultError(ctx.requestId, ctx.res, error);
+    }
+  };
+}
+
 function handleVaultError(
   requestId: string,
   res: Parameters<typeof json>[0],

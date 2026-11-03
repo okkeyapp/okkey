@@ -1,6 +1,6 @@
 import type { Workspace, WorkspaceResourcePermissionDto } from "@okkey/types";
-import { hasPlanFeature } from "@okkey/types";
 import type { WebMessageValues } from "@okkey/i18n";
+import { useState } from "react";
 import { Link } from "react-router-dom";
 
 import enterpriseRolesModule from "@okkey-enterprise/workspace-roles";
@@ -10,6 +10,7 @@ import { settingsPath } from "../../../../routes/paths";
 import { canManageCustomWorkspaceRoles } from "./builtinRoles";
 import BuiltInRolesLoader from "./BuiltInRolesLoader";
 import CustomRolesUpsell from "./CustomRolesUpsell";
+import RemnantCustomRolesList from "./RemnantCustomRolesList";
 import RolesSectionHeader from "./RolesSectionHeader";
 
 type WorkspaceSettingsRolesSectionProps = {
@@ -26,8 +27,8 @@ export default function WorkspaceSettingsRolesSection({
   resourcePermissions = null,
 }: WorkspaceSettingsRolesSectionProps) {
   const core = useAuthenticatedCoreClient();
-  const canManageCustom = canManageCustomWorkspaceRoles(workspace?.planTier);
-  const canOpenBuiltInCards = hasPlanFeature(workspace?.planTier, "customWorkspaceRoles");
+  const [builtInReloadKey, setBuiltInReloadKey] = useState(0);
+  const canManageCustom = canManageCustomWorkspaceRoles(workspace);
   const EnterpriseRolesSection = enterpriseRolesModule.EnterpriseRolesSection;
   const BuiltInRoleCardPopup = enterpriseRolesModule.BuiltInRoleCardPopup;
   if (!core) {
@@ -41,6 +42,7 @@ export default function WorkspaceSettingsRolesSection({
       {t("web.workspaceSettings.sections.profiles")}
     </Link>
   );
+  const customRolesUpsell = <CustomRolesUpsell t={t} />;
 
   return (
     <div className="flex flex-col gap-9">
@@ -50,9 +52,10 @@ export default function WorkspaceSettingsRolesSection({
         core={core}
         t={t}
         profilesLink={profilesLink}
-        RoleCardPopup={canOpenBuiltInCards ? BuiltInRoleCardPopup ?? undefined : undefined}
+        RoleCardPopup={BuiltInRoleCardPopup ?? undefined}
+        reloadKey={builtInReloadKey}
       />
-      {canManageCustom && EnterpriseRolesSection ? (
+      {EnterpriseRolesSection ? (
         <EnterpriseRolesSection
           workspaceId={workspaceId}
           workspace={workspace}
@@ -60,9 +63,19 @@ export default function WorkspaceSettingsRolesSection({
           profilesLink={profilesLink}
           t={t}
           resourcePermissions={resourcePermissions}
+          readOnly={!canManageCustom}
+          emptyFallback={!canManageCustom ? customRolesUpsell : undefined}
         />
       ) : (
-        <CustomRolesUpsell t={t} />
+        <CustomRolesUpsell t={t}>
+          <RemnantCustomRolesList
+            workspaceId={workspaceId}
+            core={core}
+            t={t}
+            resourcePermissions={resourcePermissions}
+            onDeleted={() => setBuiltInReloadKey((key) => key + 1)}
+          />
+        </CustomRolesUpsell>
       )}
     </div>
   );

@@ -1,0 +1,80 @@
+# Okkey edge — OPTIONAL classical-only compatibility listeners (q3-4).
+# Enabled only when OKKEY_COMPAT_ENABLED=1 (see docker-entrypoint.sh).
+#
+# Policy (runbook 6.19):
+#   - explicit opt-in (disabled by default)
+#   - isolated: separate server_name hosts (never the default app/api hosts)
+#   - time-boxed: OKKEY_COMPAT_SUNSET (YYYY-MM-DD) required; entrypoint refuses past dates
+#   - classical curves only (X25519) — hybrid group never listed here; no merge onto default route
+#
+# Substituted at container start.
+
+# --- Compat web (classical) ---
+server {
+  listen 443 ssl;
+  listen [::]:443 ssl;
+  http2 on;
+  server_name ${OKKEY_COMPAT_WEB_HOST};
+
+  ssl_certificate     /etc/nginx/certs/fullchain.pem;
+  ssl_certificate_key /etc/nginx/certs/privkey.pem;
+
+  # Classical-only profile (legacy clients). Not hybrid.
+  ssl_protocols TLSv1.2 TLSv1.3;
+  ssl_ecdh_curve X25519;
+  ssl_prefer_server_ciphers off;
+  ssl_session_timeout 1d;
+  ssl_session_cache shared:SSL:10m;
+
+  include /etc/nginx/conf.d/compat-allow.inc;
+
+  add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+  add_header X-Okkey-Tls-Profile "compat-classical" always;
+  add_header X-Okkey-Compat-Sunset "${OKKEY_COMPAT_SUNSET}" always;
+
+  location / {
+    proxy_pass http://${OKKEY_WEB_UPSTREAM};
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto https;
+  }
+}
+
+# --- Compat API (classical) ---
+server {
+  listen 443 ssl;
+  listen [::]:443 ssl;
+  http2 on;
+  server_name ${OKKEY_COMPAT_API_HOST};
+
+  ssl_certificate     /etc/nginx/certs/fullchain.pem;
+  ssl_certificate_key /etc/nginx/certs/privkey.pem;
+
+  ssl_protocols TLSv1.2 TLSv1.3;
+  ssl_ecdh_curve X25519;
+  ssl_prefer_server_ciphers off;
+  ssl_session_timeout 1d;
+  ssl_session_cache shared:SSL:10m;
+
+  include /etc/nginx/conf.d/compat-allow.inc;
+
+  add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+  add_header X-Okkey-Tls-Profile "compat-classical" always;
+  add_header X-Okkey-Compat-Sunset "${OKKEY_COMPAT_SUNSET}" always;
+
+  client_max_body_size 64m;
+
+  location / {
+    proxy_pass http://${OKKEY_API_UPSTREAM};
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto https;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection $connection_upgrade;
+    proxy_read_timeout 3600s;
+  }
+}

@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { FAVICON_IMAGE_SIZE_PX, isAcceptedFaviconImageFile } from "./resizeFaviconImage";
+import {
+  FAVICON_IMAGE_SIZE_PX,
+  FAVICON_MIN_SIZE_PX,
+  isAcceptedFaviconImageFile,
+} from "./resizeFaviconImage";
 
 describe("resizeFaviconImage", () => {
   it("accepts jpg and png mime types", () => {
@@ -9,7 +13,9 @@ describe("resizeFaviconImage", () => {
     expect(isAcceptedFaviconImageFile(new File(["x"], "icon.gif", { type: "image/gif" }))).toBe(false);
   });
 
-  it("exports favicon size constant", () => {
+  it("exports favicon size constants meeting the 60px minimum", () => {
     expect(FAVICON_IMAGE_SIZE_PX).toBe(80);
+    expect(FAVICON_MIN_SIZE_PX).toBe(60);
+    expect(FAVICON_IMAGE_SIZE_PX).toBeGreaterThanOrEqual(FAVICON_MIN_SIZE_PX);
   });
 });

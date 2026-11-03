@@ -1,8 +1,8 @@
 import { createHash, createHmac, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import {
-  hasPlanFeature,
   isCapsuleAllowedForMember,
-  planEntitlementOptionsFromWorkspace,
+  isCapsuleTypeAllowed,
+  resolveEffectiveCapsulePolicies,
   sanitizePlanFeatureOverrides,
   workspaceCapsulePoliciesFromDto,
   type CapsuleApprovalRequestDto,
@@ -20,6 +20,7 @@ import {
 } from "@okkey/types";
 import { generateEntityId } from "../entity-id.ts";
 import type { ApiConfig } from "../config.ts";
+import { workspaceHasPlanFeature } from "../plan-entitlements.ts";
 import {
   CRYPTO_CAPABILITY_REQUIRED,
   CRYPTO_CAPABILITY_REQUIRED_STATUS_CODE,
@@ -97,6 +98,8 @@ export interface CapsuleServiceDeps {
     | "cryptoRolloutState"
     | "cryptoRolloutStopWritePaths"
     | "trustedProxyHops"
+    | "deploymentMode"
+    | "enterpriseModulesEnabled"
   >;
   users?: Pick<UsersRepository, "findById">;
   objectStorage: Pick<ObjectStorage, "putObject" | "getObject" | "deleteObject">;
@@ -312,19 +315,31 @@ export class CapsuleService {
     if (!workspace.canAccess) {
       throw new CapsuleServiceError("ACCESS_DENIED", 403, "access denied");
     }
-    if (!hasPlanFeature(workspace.planTier, "capsules", planEntitlementOptionsFromWorkspace(workspace))) {
+    if (!workspaceHasPlanFeature(this.config, workspace, "capsules")) {
       throw new CapsuleServiceError("FEATURE_NOT_AVAILABLE", 403, "capsules are unavailable");
     }
-    if (!isCapsuleAllowedForMember(workspace.capsulePolicies, creatorId)) {
+    const accessSettingsEnabled = workspaceHasPlanFeature(
+      this.config,
+      workspace,
+      "capsuleAccessSettings",
+    );
+    const capsulePolicies = resolveEffectiveCapsulePolicies(
+      workspace.capsulePolicies,
+      accessSettingsEnabled,
+    );
+    if (!isCapsuleAllowedForMember(capsulePolicies, creatorId)) {
       throw new CapsuleServiceError("FEATURE_NOT_AVAILABLE", 403, "capsules are unavailable");
+    }
+    if (!isCapsuleTypeAllowed(capsulePolicies, input.type)) {
+      throw new CapsuleServiceError(
+        "CAPSULE_BAD_REQUEST",
+        400,
+        `capsule type "${input.type}" is not allowed by workspace policy`,
+      );
     }
     if (
-      requestsCapsuleAccessSettings(input) &&
-      !hasPlanFeature(
-        workspace.planTier,
-        "capsuleAccessSettings",
-        planEntitlementOptionsFromWorkspace(workspace),
-      )
+      requestsCapsuleAccessSettings(input, capsulePolicies, accessSettingsEnabled) &&
+      !accessSettingsEnabled
     ) {
       throw new CapsuleServiceError(
         "FEATURE_NOT_AVAILABLE",
@@ -332,7 +347,7 @@ export class CapsuleService {
         "capsule access settings are unavailable on this plan",
       );
     }
-    enforceCapsulePoliciesOnWrite(workspace.capsulePolicies, input);
+    enforceCapsulePoliciesOnWrite(capsulePolicies, input);
 
     const activateAt = normalizeOptionalIsoDate(input.activateAt);
     const deactivateAt = normalizeOptionalIsoDate(input.deactivateAt ?? input.expiresAt);
@@ -626,16 +641,33 @@ export class CapsuleService {
       if (!workspace.canAccess) {
         throw new CapsuleServiceError("ACCESS_DENIED", 403, "access denied");
       }
-      if (!isCapsuleAllowedForMember(workspace.capsulePolicies, creatorId)) {
+      const accessSettingsEnabled = workspaceHasPlanFeature(
+        this.config,
+        workspace,
+        "capsuleAccessSettings",
+      );
+      const capsulePolicies = resolveEffectiveCapsulePolicies(
+        workspace.capsulePolicies,
+        accessSettingsEnabled,
+      );
+      if (!isCapsuleAllowedForMember(capsulePolicies, creatorId)) {
         throw new CapsuleServiceError("FEATURE_NOT_AVAILABLE", 403, "capsules are unavailable");
       }
+      // Existing capsules of a now-disabled type stay visible but are not editable.
+      const existingType = existing.type as CapsuleType;
       if (
-        requestsCapsuleAccessSettings(input) &&
-        !hasPlanFeature(
-          workspace.planTier,
-          "capsuleAccessSettings",
-          planEntitlementOptionsFromWorkspace(workspace),
-        )
+        !isCapsuleTypeAllowed(capsulePolicies, existingType) ||
+        !isCapsuleTypeAllowed(capsulePolicies, input.type)
+      ) {
+        throw new CapsuleServiceError(
+          "CAPSULE_BAD_REQUEST",
+          400,
+          `capsule type "${existingType}" is not allowed by workspace policy`,
+        );
+      }
+      if (
+        requestsCapsuleAccessSettings(input, capsulePolicies, accessSettingsEnabled) &&
+        !accessSettingsEnabled
       ) {
         throw new CapsuleServiceError(
           "FEATURE_NOT_AVAILABLE",
@@ -643,7 +675,7 @@ export class CapsuleService {
           "capsule access settings are unavailable on this plan",
         );
       }
-      enforceCapsulePoliciesOnWrite(workspace.capsulePolicies, input);
+      enforceCapsulePoliciesOnWrite(capsulePolicies, input);
 
       const activateAt = normalizeOptionalIsoDate(input.activateAt);
       const deactivateAt = normalizeOptionalIsoDate(input.deactivateAt ?? input.expiresAt);
@@ -1682,28 +1714,49 @@ export class CapsuleService {
   }
 }
 
-function requestsCapsuleAccessSettings(input: {
-  expiresAt?: string;
-  activateAt?: string;
-  deactivateAt?: string;
-  deleteAt?: string;
-  maxViews?: number;
-  passwordAttemptLimit?: number;
-  password?: string;
-  allowedRecipientEmails?: string[];
-  approvalRequired?: boolean;
-}): boolean {
-  return Boolean(
-    input.expiresAt ||
-      input.activateAt ||
-      input.deactivateAt ||
-      input.deleteAt ||
-      input.maxViews !== undefined ||
-      input.passwordAttemptLimit !== undefined ||
-      (input.password && input.password.length > 0) ||
-      (input.allowedRecipientEmails && input.allowedRecipientEmails.length > 0) ||
-      input.approvalRequired,
-  );
+function requestsCapsuleAccessSettings(
+  input: {
+    expiresAt?: string;
+    activateAt?: string;
+    deactivateAt?: string;
+    deleteAt?: string;
+    maxViews?: number;
+    viewLimitAction?: CapsuleViewLimitAction;
+    passwordAttemptLimit?: number;
+    password?: string;
+    allowedRecipientEmails?: string[];
+    approvalRequired?: boolean;
+  },
+  policies: WorkspaceCapsulePolicies,
+  accessSettingsEnabled: boolean,
+): boolean {
+  const hasNonViewAccess =
+    Boolean(input.expiresAt) ||
+    Boolean(input.activateAt) ||
+    Boolean(input.deactivateAt) ||
+    Boolean(input.deleteAt) ||
+    input.passwordAttemptLimit !== undefined ||
+    Boolean(input.password && input.password.length > 0) ||
+    Boolean(input.allowedRecipientEmails && input.allowedRecipientEmails.length > 0) ||
+    Boolean(input.approvalRequired);
+
+  if (hasNonViewAccess) {
+    return true;
+  }
+
+  // Core "Limit views" may force maxViews on FREE; that alone is not an EE access setting.
+  if (input.maxViews !== undefined || input.viewLimitAction !== undefined) {
+    if (
+      !accessSettingsEnabled &&
+      policies.forceMaxViews > 0 &&
+      input.maxViews === policies.forceMaxViews
+    ) {
+      return false;
+    }
+    return true;
+  }
+
+  return false;
 }
 
 function enforceCapsulePoliciesOnWrite(

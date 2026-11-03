@@ -7,7 +7,7 @@ import {
   ITEM_FOLDER_ASSIGN_SCHEMA_VERSION_V2,
 } from "../../../packages/types/dist/index.js";
 import { loadConfig } from "../src/config.ts";
-import { createStorageLayer } from "../src/storage/index.ts";
+import { createIntegrationStorage } from "./integration-env.ts";
 import {
   WorkspacePersonalSyncService,
   WorkspacePersonalSyncServiceError,
@@ -15,7 +15,6 @@ import {
 import {
   applyMigrations,
   cleanupUserData,
-  createLoggerStub,
   registerUser,
 } from "./two-factor-test-helpers.ts";
 
@@ -62,7 +61,10 @@ function toWireEvents(
 
 test("integration: workspace personal folder events append, idempotency, list, replay", async (t) => {
   const config = loadConfig();
-  const storage = await createStorageLayer(config, createLoggerStub());
+  const storage = await createIntegrationStorage(t, config);
+  if (!storage) {
+    return;
+  }
   await applyMigrations(storage);
 
   const suffix = testEntityId();
@@ -159,7 +161,10 @@ test("integration: workspace personal folder events append, idempotency, list, r
 
 test("integration: nested workspace folders and VERSION_MISMATCH on stale baseVersion", async (t) => {
   const config = loadConfig();
-  const storage = await createStorageLayer(config, createLoggerStub());
+  const storage = await createIntegrationStorage(t, config);
+  if (!storage) {
+    return;
+  }
   await applyMigrations(storage);
 
   const suffix = testEntityId();

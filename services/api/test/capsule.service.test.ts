@@ -82,6 +82,46 @@ test("createCapsule rejects unsafe key transport mode", async () => {
   );
 });
 
+test("createCapsule rejects hybrid-KEM guest key transport (q2-5 claim-reduce)", async () => {
+  const service = new CapsuleService({
+    db: {
+      transaction: async () => {
+        throw new Error("db should not be called");
+      },
+      query: async () => {
+        throw new Error("db should not be called");
+      },
+    },
+    redis: {
+      incr: async () => 1,
+      expire: async () => true,
+    },
+    objectStorage: {
+      putObject: async () => {},
+      getObject: async () => null,
+    },
+    config: createTestApiConfig({
+      allowedCryptoProfileVersions: [2],
+    }),
+  });
+
+  await assert.rejects(
+    () =>
+      service.createCapsule("w1", "u1", {
+        type: "item",
+        keyTransportMode: "hybrid_ecc_pq_v1" as "fragment",
+        encryptedPayload: {
+          crypto_version: 2,
+          algorithm: "opaque",
+          payload: Buffer.from("cipher").toString("base64"),
+          meta: {},
+        },
+      }),
+    (err: unknown) =>
+      err instanceof CapsuleServiceError && err.code === "CAPSULE_UNSAFE_KEY_TRANSPORT",
+  );
+});
+
 test("openCapsule rejects unsafe key transport mode before storage access", async () => {
   const service = new CapsuleService({
     db: {

@@ -1,17 +1,21 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  assertEmailTransportConfig,
   createEmailSender,
+  createOutboundEmailSender,
   HttpApiEmailSender,
+  isOutboundEmailDeliverable,
   LoggerEmailSender,
   type EmailMessage,
 } from "../src/email/service.ts";
 import type { ApiConfig } from "../src/config.ts";
+import { MemoryEmailQueueRedis, QueuedEmailSender } from "../src/email/queue.ts";
 import { createTestApiConfig } from "./test-api-config.ts";
 
 const baseConfig: ApiConfig = createTestApiConfig({ emailApiTimeoutMs: 1000 });
 
-test("LoggerEmailSender info log omits text and html bodies (no secret leakage)", async () => {
+test("LoggerEmailSender info log omits text/html and redacts digits in subject", async () => {
   const entries: Array<{ message: string; extra: Record<string, unknown> }> = [];
   const logger = {
     info(message: string, extra?: Record<string, unknown>) {
@@ -24,13 +28,14 @@ test("LoggerEmailSender info log omits text and html bodies (no secret leakage)"
   const payload: EmailMessage = {
     to: "user@example.com",
     from: "no-reply@okkey.local",
-    subject: "Your code",
+    subject: "123456 is your Okkey sign-in code",
     text: "SECRET_PLAIN_BODY_123456",
     html: "<p>SECRET_HTML_123456</p>",
   };
   await sender.send(payload);
   const row = entries.find((e) => e.message === "email sent");
   assert.ok(row);
+  assert.equal(row.extra.subject, "****** is your Okkey sign-in code");
   assert.equal(row.extra.plainText, undefined);
   assert.equal(row.extra.text, undefined);
   assert.equal(row.extra.html, undefined);
@@ -204,6 +209,92 @@ test("createEmailSender validates http-api config", async () => {
   );
 });
 
+test("assertEmailTransportConfig rejects incomplete ses env", () => {
+  assert.throws(
+    () =>
+      assertEmailTransportConfig({
+        ...baseConfig,
+        emailProvider: "ses",
+        sesRegion: "",
+        sesAccessKeyId: "id",
+        sesSecretAccessKey: "secret",
+      }),
+    /EMAIL_SES_REGION is required/,
+  );
+});
+
+test("isOutboundEmailDeliverable is false for logger and incomplete providers", () => {
+  assert.equal(
+    isOutboundEmailDeliverable({ ...baseConfig, emailProvider: "logger" }),
+    false,
+  );
+  assert.equal(
+    isOutboundEmailDeliverable({
+      ...baseConfig,
+      emailProvider: "smtp",
+      smtpHost: "smtp.example.com",
+    }),
+    true,
+  );
+  assert.equal(
+    isOutboundEmailDeliverable({ ...baseConfig, emailProvider: "smtp", smtpHost: "  " }),
+    false,
+  );
+  assert.equal(
+    isOutboundEmailDeliverable({
+      ...baseConfig,
+      emailProvider: "ses",
+      sesRegion: "",
+      sesAccessKeyId: "id",
+      sesSecretAccessKey: "secret",
+    }),
+    false,
+  );
+  assert.equal(
+    isOutboundEmailDeliverable({
+      ...baseConfig,
+      emailProvider: "http-api",
+      emailApiEndpoint: "https://mail.example/send",
+      emailApiKey: "k",
+    }),
+    true,
+  );
+});
+
+test("createOutboundEmailSender validates transport even in queue mode", async () => {
+  const redis = new MemoryEmailQueueRedis();
+  await assert.rejects(
+    () =>
+      createOutboundEmailSender(
+        {
+          ...baseConfig,
+          emailProvider: "ses",
+          emailDeliveryMode: "queue",
+          sesRegion: "",
+          sesAccessKeyId: "id",
+          sesSecretAccessKey: "secret",
+        },
+        { info() {}, warn() {}, error() {} },
+        redis,
+      ),
+    /EMAIL_SES_REGION is required/,
+  );
+});
+
+test("createOutboundEmailSender returns QueuedEmailSender when queue mode is valid", async () => {
+  const redis = new MemoryEmailQueueRedis();
+  const sender = await createOutboundEmailSender(
+    {
+      ...baseConfig,
+      emailProvider: "logger",
+      emailDeliveryMode: "queue",
+    },
+    { info() {}, warn() {}, error() {} },
+    redis,
+  );
+  assert.ok(sender instanceof QueuedEmailSender);
+});
+
 test("HttpApiEmailSender posts payload to configured endpoint", async () => {
   const originalFetch = globalThis.fetch;
   const calls: Array<{ url: string; body: string | null }> = [];
@@ -262,11 +353,24 @@ test("SesEmailSender posts SigV4-signed SES v2 payload", async () => {
     from: "no-reply@okkey.local",
     subject: "Code",
     text: "123456",
-    html: "<p>123456</p>",
+    html: '<p><img src="cid:okkey-mark" alt="Okkey" />123456</p>',
   });
 
   assert.equal(calls.length, 1);
   assert.equal(calls[0].url, "https://email.eu-west-1.amazonaws.com/v2/email/outbound-emails");
   assert.match(calls[0].authorization ?? "", /^AWS4-HMAC-SHA256 Credential=AKIAEXAMPLE\//);
   assert.match(calls[0].body ?? "", /"FromEmailAddress":"no-reply@okkey.local"/);
+  assert.match(calls[0].body ?? "", /"Raw":\{"Data":"/);
+  assert.equal((calls[0].body ?? "").includes('"Simple"'), false);
+  const parsed = JSON.parse(calls[0].body ?? "{}") as {
+    Content?: { Raw?: { Data?: string } };
+  };
+  const raw = Buffer.from(parsed.Content?.Raw?.Data ?? "", "base64").toString("utf8");
+  assert.match(raw, /Content-ID: <okkey-mark>/);
+  assert.match(raw, /image\/png/);
+  const htmlB64 = Buffer.from(
+    '<p><img src="cid:okkey-mark" alt="Okkey" />123456</p>',
+    "utf8",
+  ).toString("base64");
+  assert.ok(raw.includes(htmlB64), "raw MIME must include base64 HTML with cid:okkey-mark");
 });

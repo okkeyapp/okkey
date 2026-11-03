@@ -16,6 +16,11 @@ pub fn generate_keypair() -> (Vec<u8>, Vec<u8>) {
   (signing_key.to_bytes().to_vec(), verify_key.to_bytes().to_vec())
 }
 
+pub fn public_key(seed: &[u8]) -> Result<Vec<u8>, String> {
+  let signing_key = SigningKey::from_bytes(seed.try_into().map_err(|_| "invalid private key")?);
+  Ok(signing_key.verifying_key().to_bytes().to_vec())
+}
+
 pub fn sign(private_key: &[u8], message: &[u8]) -> Result<Vec<u8>, String> {
   let signing_key = SigningKey::from_bytes(private_key.try_into().map_err(|_| "invalid private key")?);
   let signature: Signature = signing_key.sign(message);

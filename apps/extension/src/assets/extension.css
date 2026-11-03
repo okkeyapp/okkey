@@ -1,0 +1,314 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --radius: 0.5rem;
+
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --primary: 217.2 91.2% 59.8%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 217.2 91.2% 59.8%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 222.2 84% 4.9%;
+
+    /* shadcn-style sidebar (matches web) */
+    --sidebar-background: 210 40% 98%;
+    --sidebar-foreground: 222.2 84% 4.9%;
+    --sidebar-primary: var(--primary);
+    --sidebar-primary-foreground: var(--primary-foreground);
+    --sidebar-accent: 210 38% 96%;
+    --sidebar-accent-foreground: 222.2 47.4% 11.2%;
+    --sidebar-border: var(--border);
+    --sidebar-ring: var(--accent);
+
+    /* Stacking scale (see packages/ui/src/lib/z-index.ts) */
+    --okkey-z-sticky: 40;
+    --okkey-z-sidebar-overlay: 50;
+    --okkey-z-sidebar: 60;
+    --okkey-z-popup: 70;
+    --okkey-z-popup-nested: 80;
+    --okkey-z-popup-nested-high: 90;
+    --okkey-z-floating: 100;
+    --okkey-z-tooltip: 110;
+    --okkey-z-lightbox: 120;
+
+    /* Extension vault shell header gradient (to-right) */
+    --extension-shell-header-from: #eaf0fa;
+    --extension-shell-header-to: #f5f4f4;
+  }
+
+  .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 217.2 91.2% 59.8%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 217.2 32.6% 13.5%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+    --accent: 217.2 91.2% 59.8%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 72.2% 50.6%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 212.7 26.8% 83.9%;
+
+    --sidebar-background: 222.2 84% 6%;
+    --sidebar-foreground: 210 40% 98%;
+    --sidebar-primary: var(--primary);
+    --sidebar-primary-foreground: var(--primary-foreground);
+    --sidebar-accent: 217.2 32.6% 20%;
+    --sidebar-accent-foreground: 210 40% 98%;
+    --sidebar-border: var(--border);
+    --sidebar-ring: var(--accent);
+
+    /* Extension vault shell header gradient (to-right) */
+    --extension-shell-header-from: #090f1e;
+    --extension-shell-header-to: #161a26;
+  }
+
+  /* Accent overrides (7 variants) — keep in sync with apps/web/src/index.css */
+  :root[data-accent="a1"] {
+    --primary: 215 5.0% 9.0%;
+    --accent: 215 5.0% 9.0%;
+  }
+  :root[data-accent="a2"] {
+    --primary: 217.2 93.2% 59.8%;
+    --accent: 217.2 93.2% 59.8%;
+  }
+  :root[data-accent="a3"] {
+    --primary: 188.7 96.2% 42.7%;
+    --accent: 188.7 96.2% 42.7%;
+  }
+  :root[data-accent="a4"] {
+    --primary: 159.8 83.5% 41.0%;
+    --accent: 159.8 83.5% 41.0%;
+  }
+  :root[data-accent="a5"] {
+    --primary: 24.6 97.0% 53.1%;
+    --accent: 24.6 97.0% 53.1%;
+  }
+  :root[data-accent="a6"] {
+    --primary: 331.0 82.5% 60.4%;
+    --accent: 331.0 82.5% 60.4%;
+  }
+  :root[data-accent="a7"] {
+    --primary: 258.6 90.5% 67.1%;
+    --accent: 258.6 90.5% 67.1%;
+  }
+
+  .dark[data-accent="a1"] {
+    --primary: 215 4.0% 98%;
+    --primary-foreground: 215 5.0% 9%;
+    --accent: 215 4.0% 98%;
+    --accent-foreground: 215 5.0% 9%;
+  }
+  .dark[data-accent="a2"] {
+    --primary: 217.2 93.2% 59.8%;
+    --accent: 217.2 93.2% 59.8%;
+  }
+  .dark[data-accent="a3"] {
+    --primary: 188.7 96.2% 42.7%;
+    --accent: 188.7 96.2% 42.7%;
+  }
+  .dark[data-accent="a4"] {
+    --primary: 159.8 83.5% 41.0%;
+    --accent: 159.8 83.5% 41.0%;
+  }
+  .dark[data-accent="a5"] {
+    --primary: 24.6 97.0% 53.1%;
+    --accent: 24.6 97.0% 53.1%;
+  }
+  .dark[data-accent="a6"] {
+    --primary: 331.0 82.5% 60.4%;
+    --accent: 331.0 82.5% 60.4%;
+  }
+  .dark[data-accent="a7"] {
+    --primary: 258.6 90.5% 67.1%;
+    --accent: 258.6 90.5% 67.1%;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    margin: 0;
+  }
+
+  button {
+    appearance: none;
+    -webkit-appearance: none;
+  }
+}
+
+@layer components {
+  .okkey-heading-xl {
+    @apply text-xl font-semibold leading-7 tracking-normal text-copy-primary;
+  }
+
+  .okkey-body {
+    @apply text-base font-normal leading-relaxed tracking-normal;
+  }
+
+  .okkey-small {
+    @apply text-sm font-normal leading-5 tracking-normal;
+  }
+
+  /* Popup open/close — mirror apps/web/src/index.css */
+  .okkey-popup-overlay {
+    animation: okkey-popup-overlay-in 240ms ease-out;
+    -webkit-backdrop-filter: blur(2px);
+    backdrop-filter: blur(2px);
+  }
+
+  .okkey-popup-overlay[data-state="closing"] {
+    animation: okkey-popup-overlay-out 240ms ease-in forwards;
+  }
+
+  .okkey-popup-panel {
+    animation: okkey-popup-panel-in 240ms cubic-bezier(0.16, 1, 0.3, 1);
+    max-height: calc(100dvh - 32px);
+    box-shadow:
+      0 10px 15px -3px rgb(0 0 0 / 0.1),
+      0 4px 6px -4px rgb(0 0 0 / 0.1);
+  }
+
+  .okkey-popup-panel[data-state="closing"] {
+    animation: okkey-popup-panel-out 200ms ease-in forwards;
+  }
+
+  .dark .okkey-popup-panel {
+    box-shadow: 0 0 0 1px rgb(255 255 255 / 0.12);
+  }
+
+  @media (max-width: 767px) {
+    .okkey-popup-sheet:not([data-layout="desktop"]) {
+      animation: okkey-popup-sheet-in 240ms cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .okkey-popup-sheet:not([data-layout="desktop"])[data-state="closing"] {
+      animation: okkey-popup-sheet-out 200ms ease-in forwards;
+    }
+
+    .okkey-popup-sheet:not([data-layout="desktop"]) .okkey-popup-panel {
+      animation: none;
+    }
+
+    .okkey-popup-sheet:not([data-layout="desktop"]) .okkey-popup-panel[data-state="closing"] {
+      animation: none;
+    }
+  }
+
+  @keyframes okkey-popup-overlay-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes okkey-popup-overlay-out {
+    from {
+      opacity: 1;
+    }
+    to {
+      opacity: 0;
+    }
+  }
+
+  @keyframes okkey-popup-panel-in {
+    from {
+      opacity: 0;
+      transform: scale(0.96);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+
+  @keyframes okkey-popup-panel-out {
+    from {
+      opacity: 1;
+      transform: scale(1);
+    }
+    to {
+      opacity: 0;
+      transform: scale(0.96);
+    }
+  }
+
+  @keyframes okkey-popup-sheet-in {
+    from {
+      transform: translateY(100%);
+    }
+    to {
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes okkey-popup-sheet-out {
+    from {
+      transform: translateY(var(--okkey-sheet-drag-y, 0px));
+    }
+    to {
+      transform: translateY(100%);
+    }
+  }
+
+  /*
+   * Sonner forces full-width toasts under 600px and overflow-wrap:anywhere —
+   * in the narrow extension popup that collapses text to 1 letter/line.
+   * Full-width toaster + centered content-sized toasts.
+   */
+  [data-sonner-toaster][data-x-position="center"] {
+    left: 0 !important;
+    right: 0 !important;
+    width: 100% !important;
+    max-width: none !important;
+    transform: none !important;
+    display: flex !important;
+    flex-direction: column;
+    align-items: center;
+    pointer-events: none;
+  }
+
+  [data-sonner-toaster][data-x-position="center"] [data-sonner-toast] {
+    pointer-events: auto;
+    left: auto !important;
+    right: auto !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+    width: auto !important;
+    min-width: 0 !important;
+    max-width: min(320px, calc(100vw - 24px)) !important;
+    white-space: normal !important;
+    overflow-wrap: break-word !important;
+    word-break: normal !important;
+    padding: 0.5rem 0.75rem !important;
+    gap: 0.5rem !important;
+  }
+}

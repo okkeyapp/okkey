@@ -1,0 +1,20 @@
+{
+  "name": "@okkey/e2e",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "description": "Browser e2e smoke (Playwright) for web + extension",
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "test:ui": "playwright test --ui",
+    "install:browsers": "playwright install chromium --with-deps"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.55.0",
+    "@types/node": "^22.13.10",
+    "@types/pg": "^8.15.5",
+    "pg": "^8.16.3",
+    "typescript": "~5.7.3"
+  }
+}

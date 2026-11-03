@@ -62,9 +62,32 @@ Resolver policy:
 
 ---
 
+## Key-transport claims (Q-Day #2)
+
+Honest inventory lives in `okkey-internal/docs/core/qday-pq-key-transport-claim-map.md`. Summary for Core tip (`dev`):
+
+| Surface | Posture | Claim |
+|---------|---------|-------|
+| Shared vault key wrap / rotate | Hybrid `hybrid_ecc_pq_v1`; ECC = per-user Ed25519→X25519 (`per_user_ed25519_x25519_v1`); legacy Alice unwrap only | «Per-recipient hybrid ECC+PQ vault-key wrap» |
+| Critical signatures | `hybrid_ed25519_pq_bind_v1` | «Critical vault ops signed with Ed25519 + PQ bind» |
+| Capsule guest key | OOB fragment / `out_of_band` — **not** hybrid KEM (`oob_fragment_not_kem`) | «Capsule guest key is OOB in URL fragment, not hybrid KEM» |
+| Split-key / new-device share B | Opaque 32-byte local — **out of hybrid-KEM scope** (`opaque_local_not_hybrid_kem`) | «PQ applies to identity keys, not share-B transport» |
+| Offline recovery secret | Argon2id + AEAD | **not** «PQ-KEM wrapped» |
+
+Enterprise device-recovery + contact-release hops (hybrid via Core `encryptHybrid`, packed recipient 1216 B) are documented in `okkey-enterprise/docs/architecture/11_account_recovery_protocol.md`.
+
+Policy locks: `services/api/src/capsule/key-transport-policy.ts`, `services/api/src/registration/split-key-transport-policy.ts`.
+
 ## Hybrid Sharing Model
 
 Key sharing uses a hybrid envelope containing both ECC and PQ ciphertext components. Decrypt path is selected by verified capabilities, never by silent downgrade.
+
+### Vault key wrap ECC leg
+
+- **New wraps:** recipient X25519 derived from Ed25519 identity (`ed25519_public_to_x25519` / `ed25519_secret_to_x25519`); `meta.ecc_mode = per_user_ed25519_x25519_v1`.
+- **Legacy unwrap only:** `meta.ecc_mode = interim_static_v1` (or missing) → RFC 7748 Alice. Do not write new interim wraps.
+
+Helpers: `packages/crypto/src/vault-key-wrap.ts`.
 
 ### Canonical Hybrid Envelope (v1)
 
@@ -94,14 +117,23 @@ Core primitive entrypoints for hybrid transport:
 
 - `generate_pq_keys()` -> `[mlkem768_decapsulation_key || mlkem768_encapsulation_key]`
 - `encrypt_hybrid(sender_private_key, recipient_public_key, recipient_pq_public_key, aad, plaintext)` -> `hybrid_envelope_v1`
+  - `recipient_public_key` is **X25519**; `sender_private_key` is unused (ephemeral X25519 is generated inside)
 - `decrypt_hybrid(recipient_private_key, recipient_pq_private_key, aad, envelope)` -> `plaintext`
+- `ed25519_secret_to_x25519` / `ed25519_public_to_x25519` — libsodium-compatible conversion so vault wraps bind the ECC leg to existing Ed25519 identity (`users.public_key`) without a separate X25519 column
+
+Vault key wrap (`packages/crypto` `wrapVaultKeyForRecipient` / `unwrapVaultKeyForSelf`):
+
+- New writes: `meta.ecc_mode = "per_user_ed25519_x25519_v1"` (convert recipient Ed25519 → X25519, then hybrid encrypt)
+- Legacy unwrap: `meta.ecc_mode = "interim_static_v1"` (or missing) uses RFC7748 Alice; do not emit new interim wraps
 
 TypeScript wrapper names in `@okkey/crypto`:
 
 - `generatePQKeys()`
 - `encryptHybrid(...)`
 - `decryptHybrid(...)`
+- `ed25519SecretToX25519(...)` / `ed25519PublicToX25519(...)`
 - `hybridEnvelopeFixedHeaderLen()`
+- `wrapVaultKeyForRecipient(...)` / `unwrapVaultKeyForSelf(...)`
 
 ---
 

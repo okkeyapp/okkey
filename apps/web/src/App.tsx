@@ -1,6 +1,7 @@
 import { Fragment } from "react";
 
 import AuthSessionGate from "./auth/AuthSessionGate";
+import ExtensionAuthHandoffGate from "./auth/ExtensionAuthHandoffGate";
 import { AuthVaultProvider } from "./auth/AuthVaultContext";
 import { LocaleProvider } from "./locale/LocaleContext";
 import AppRoutes from "./routes/AppRoutes";
@@ -13,6 +14,7 @@ export default function App() {
         <Fragment>
           <Toaster />
           <AuthSessionGate />
+          <ExtensionAuthHandoffGate />
           <AppRoutes />
         </Fragment>
       </AuthVaultProvider>

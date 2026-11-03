@@ -1,0 +1,282 @@
+import assert from "node:assert/strict";
+import { describe, it } from "node:test";
+
+import { ITEM_PLAINTEXT_SCHEMA_VERSION_V2, type ItemPlaintextV2 } from "@okkey/types";
+
+import {
+  categoriesForFieldKinds,
+  extractAutofillEmailCandidates,
+  extractAutofillValues,
+  suggestionSubtitleFromValues,
+} from "./item-autofill-extract.ts";
+
+function item(partial: Partial<ItemPlaintextV2> & Pick<ItemPlaintextV2, "categoryId" | "fields">): ItemPlaintextV2 {
+  return {
+    schemaVersion: ITEM_PLAINTEXT_SCHEMA_VERSION_V2,
+    itemId: "item_1",
+    vaultId: "vault_1",
+    title: "Test",
+    createdAtMs: 1,
+    updatedAtMs: 1,
+    sections: [],
+    ...partial,
+  };
+}
+
+describe("categoriesForFieldKinds", () => {
+  it("maps page kinds to vault categories", () => {
+    assert.deepEqual(categoriesForFieldKinds(["cc-number"]), ["credit_card"]);
+    assert.ok(categoriesForFieldKinds(["email"]).includes("login"));
+    assert.ok(categoriesForFieldKinds(["email"]).includes("personal_data"));
+    assert.ok(categoriesForFieldKinds(["street-address"]).includes("personal_data"));
+    assert.deepEqual(categoriesForFieldKinds(["iban"]), ["bank_account"]);
+    assert.ok(categoriesForFieldKinds(["passport-number"]).includes("passport"));
+    assert.deepEqual(categoriesForFieldKinds(["db-server"]), ["database"]);
+    assert.deepEqual(categoriesForFieldKinds(["crypto-address"]), ["crypto_wallet"]);
+  });
+
+  it("email primary never mixes credit_card/bank from sibling page kinds", () => {
+    const emailNextToCard = categoriesForFieldKinds([
+      "email",
+      "cc-number",
+      "cc-exp",
+      "cc-csc",
+    ]);
+    assert.deepEqual(emailNextToCard, ["login", "personal_data"]);
+    assert.ok(!emailNextToCard.includes("credit_card"));
+    assert.ok(!emailNextToCard.includes("bank_account"));
+
+    assert.deepEqual(categoriesForFieldKinds(["cc-number", "email", "cc-exp"]), ["credit_card"]);
+    assert.deepEqual(categoriesForFieldKinds(["iban", "email"]), ["bank_account"]);
+  });
+});
+
+describe("extractAutofillValues", () => {
+  it("extracts personal data + address JSON", () => {
+    const values = extractAutofillValues(
+      item({
+        categoryId: "personal_data",
+        fields: [
+          {
+            id: "first-name",
+            type: "text",
+            sectionId: "personal-data",
+            order: 0,
+            value: { kind: "text", text: "Саша" },
+          },
+          {
+            id: "last-name",
+            type: "text",
+            sectionId: "personal-data",
+            order: 1,
+            value: { kind: "text", text: "Иванов" },
+          },
+          {
+            id: "email",
+            type: "email",
+            sectionId: "personal-data",
+            order: 2,
+            value: { kind: "text", text: "a@example.com" },
+          },
+          {
+            id: "address",
+            type: "address",
+            sectionId: "personal-data",
+            order: 3,
+            value: {
+              kind: "unknown",
+              declaredType: "address",
+              raw: JSON.stringify({
+                apartment: "12",
+                house: "1",
+                street: "Tverskaya",
+                city: "Moscow",
+                state: "",
+                postalCode: "101000",
+                country: "RU",
+              }),
+            },
+          },
+        ],
+      }),
+    );
+    assert.equal(values["given-name"], "Саша");
+    assert.equal(values["family-name"], "Иванов");
+    assert.equal(values.email, "a@example.com");
+    assert.equal(suggestionSubtitleFromValues("personal_data", values, "given-name"), "Саша");
+    assert.equal(suggestionSubtitleFromValues("personal_data", values, "email"), "a@example.com");
+    assert.equal(suggestionSubtitleFromValues("personal_data", values), "a@example.com");
+    assert.equal(values["street-address"], "Tverskaya");
+    assert.equal(values["address-house"], "1");
+    assert.equal(values["address-apartment"], "12");
+    assert.equal(values["address-level2"], "Moscow");
+    assert.equal(values["postal-code"], "101000");
+    assert.equal(values.country, "RU");
+    assert.equal(values.address, "Apt 12, 1 Tverskaya, Moscow, 101000, Russia");
+    assert.equal(values.name, "Саша Иванов");
+
+    const ruValues = extractAutofillValues(
+      item({
+        categoryId: "personal_data",
+        fields: [
+          {
+            id: "address",
+            type: "address",
+            sectionId: "personal-data",
+            order: 0,
+            value: {
+              kind: "unknown",
+              declaredType: "address",
+              raw: JSON.stringify({
+                apartment: "187",
+                house: "39A",
+                street: "Октябрьская",
+                city: "Москва",
+                state: "Московская",
+                postalCode: "909123",
+                country: "RU",
+              }),
+            },
+          },
+        ],
+      }),
+      { locale: "ru" },
+    );
+    assert.equal(
+      ruValues.address,
+      "909123, Россия, Московская обл., г. Москва, ул. Октябрьская, д. 39A, кв. 187",
+    );
+  });
+
+  it("maps nickname to username and prefers it in personal_data subtitle fallback", () => {
+    const values = extractAutofillValues(
+      item({
+        categoryId: "personal_data",
+        fields: [
+          {
+            id: "nickname",
+            type: "text",
+            sectionId: "personal-data",
+            order: 0,
+            value: { kind: "text", text: "sasha_n" },
+          },
+          {
+            id: "email",
+            type: "email",
+            sectionId: "personal-data",
+            order: 1,
+            value: { kind: "text", text: "a@example.com" },
+          },
+          {
+            id: "first-name",
+            type: "text",
+            sectionId: "personal-data",
+            order: 2,
+            value: { kind: "text", text: "Александр" },
+          },
+        ],
+      }),
+    );
+    assert.equal(values.username, "sasha_n");
+    assert.equal(values.email, "a@example.com");
+    assert.equal(values["given-name"], "Александр");
+    assert.equal(suggestionSubtitleFromValues("personal_data", values, "username"), "sasha_n");
+    assert.equal(suggestionSubtitleFromValues("personal_data", values, "given-name"), "Александр");
+  });
+
+  it("collects standard + custom email fields as separate candidates", () => {
+    const emails = extractAutofillEmailCandidates(
+      item({
+        categoryId: "personal_data",
+        fields: [
+          {
+            id: "email",
+            type: "email",
+            sectionId: "personal-data",
+            order: 0,
+            value: { kind: "text", text: "a@example.com" },
+          },
+          {
+            id: "fld_custom_1",
+            type: "email",
+            sectionId: "personal-data",
+            order: 1,
+            label: "emeil",
+            value: { kind: "text", text: "work@okkey.app" },
+          },
+          {
+            id: "fld_custom_2",
+            type: "text",
+            sectionId: "personal-data",
+            order: 2,
+            label: "Email secondary",
+            value: { kind: "text", text: "extra@example.org" },
+          },
+          {
+            id: "phone",
+            type: "text",
+            sectionId: "personal-data",
+            order: 3,
+            value: { kind: "text", text: "+79990001122" },
+          },
+        ],
+      }),
+    );
+    assert.deepEqual(emails, ["a@example.com", "work@okkey.app", "extra@example.org"]);
+  });
+
+  it("extracts credit card and bank fields", () => {
+    const card = extractAutofillValues(
+      item({
+        categoryId: "credit_card",
+        fields: [
+          {
+            id: "card-number",
+            type: "card",
+            sectionId: "credit-card",
+            order: 0,
+            value: { kind: "text", text: "4111111111111111" },
+          },
+          {
+            id: "card-expiry",
+            type: "card-expiry",
+            sectionId: "credit-card",
+            order: 1,
+            value: { kind: "text", text: "12/30" },
+          },
+          {
+            id: "card-pin",
+            type: "pin",
+            sectionId: "credit-card",
+            order: 2,
+            value: {
+              kind: "unknown",
+              declaredType: "secret",
+              raw: { secretKind: "password", value: "123" },
+            },
+          },
+        ],
+      }),
+    );
+    assert.equal(card["cc-number"], "4111111111111111");
+    assert.equal(card["cc-exp"], "12/30");
+    assert.equal(card["cc-csc"], "123");
+    assert.equal(suggestionSubtitleFromValues("credit_card", card), "•••• 1111");
+
+    const bank = extractAutofillValues(
+      item({
+        categoryId: "bank_account",
+        fields: [
+          {
+            id: "bank-iban",
+            type: "text",
+            sectionId: "bank-account",
+            order: 0,
+            value: { kind: "text", text: "DE89370400440532013000" },
+          },
+        ],
+      }),
+    );
+    assert.equal(bank.iban, "DE89370400440532013000");
+  });
+});

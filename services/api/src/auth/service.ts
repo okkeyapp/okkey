@@ -1,8 +1,13 @@
-import { createHash, randomInt } from "node:crypto";
+import { createHash, randomBytes, randomInt } from "node:crypto";
 import { generateEntityId } from "../entity-id.ts";
 import type { ApiConfig } from "../config.ts";
 import type { EmailTemplateService } from "../email/service.ts";
 import type { UserRecord, UsersRepository } from "../storage/repositories.ts";
+
+/** 128-bit CSPRNG hex id for intermediate auth states (not a snowflake entity id). */
+export function generateAuthStateId(): string {
+  return randomBytes(16).toString("hex");
+}
 
 interface AuthChallenge {
   id: string;
@@ -44,17 +49,26 @@ export class AuthError extends Error {
 export interface AuthServiceDeps {
   redis: {
     setWithTtl(key: string, value: string, ttlSeconds: number): Promise<void>;
+    /** Atomic SET NX + EX; true when this caller created the key. */
+    setIfNotExistsWithTtl(
+      key: string,
+      value: string,
+      ttlSeconds: number,
+    ): Promise<boolean>;
     get(key: string): Promise<string | null>;
     del(key: string): Promise<number>;
     incr(key: string): Promise<number>;
     expire(key: string, seconds: number): Promise<boolean>;
   };
-  users: Pick<UsersRepository, "findByEmail" | "isTwoFactorEnabled">;
+  users: Pick<UsersRepository, "findByEmail" | "isTwoFactorEnabled" | "hasAnyUsers">;
   emailTemplates: Pick<EmailTemplateService, "sendAuthEmailCode">;
   config: ApiConfig;
   now?: () => Date;
   generateCode?: () => string;
+  /** Challenge / other snowflake ids. */
   generateId?: () => string;
+  /** Intermediate auth_state_id (defaults to 128-bit CSPRNG hex). */
+  generateAuthStateId?: () => string;
 }
 
 export interface EmailStartInput {
@@ -69,6 +83,14 @@ export interface EmailStartResult {
   challengeId: string;
   expiresAt: string;
   resendAvailableAt: string;
+  /**
+   * When true (self-hosted empty catalog, exclusive claim), skip OTP and register
+   * with `authStateId`. Normal email OTP resumes once any user exists, on saas,
+   * or when another first-run claim is already held.
+   */
+  bootstrapRequired?: boolean;
+  authStateId?: string;
+  nextStep?: "registration";
 }
 
 export interface EmailResendInput {
@@ -108,9 +130,21 @@ function challengeKey(id: string): string {
   return `auth:challenge:${id}`;
 }
 
-/** Maps normalized email → active challenge id (same TTL as challenge) to avoid duplicate sends on restart. */
+/**
+ * Maps normalized email → active challenge id (same TTL as challenge).
+ * Restart reuses the challenge while remaining TTL exceeds the resend cooldown;
+ * near expiry mints a fresh challenge and sends a new email.
+ */
 function emailActiveChallengeKey(email: string): string {
   return `auth:email:active-challenge:${email}`;
+}
+
+/**
+ * Exclusive claim for self-host empty-catalog registration (value = normalized email).
+ * TTL matches registration auth-state so an abandoned first-run can be retried later.
+ */
+function firstUserBootstrapClaimKey(): string {
+  return "auth:bootstrap:first-user";
 }
 
 export function authStateRedisKey(id: string): string {
@@ -119,12 +153,16 @@ export function authStateRedisKey(id: string): string {
 
 export class AuthService {
   private readonly redis: AuthServiceDeps["redis"];
-  private readonly users: Pick<UsersRepository, "findByEmail" | "isTwoFactorEnabled">;
+  private readonly users: Pick<
+    UsersRepository,
+    "findByEmail" | "isTwoFactorEnabled" | "hasAnyUsers"
+  >;
   private readonly emailTemplates: Pick<EmailTemplateService, "sendAuthEmailCode">;
   private readonly config: ApiConfig;
   private readonly now: () => Date;
   private readonly generateCode: () => string;
   private readonly generateId: () => string;
+  private readonly generateAuthStateIdFn: () => string;
 
   constructor(deps: AuthServiceDeps) {
     this.redis = deps.redis;
@@ -134,6 +172,7 @@ export class AuthService {
     this.now = deps.now ?? (() => new Date());
     this.generateCode = deps.generateCode ?? createCode;
     this.generateId = deps.generateId ?? generateEntityId;
+    this.generateAuthStateIdFn = deps.generateAuthStateId ?? generateAuthStateId;
   }
 
   async startEmailLogin(input: EmailStartInput): Promise<EmailStartResult> {
@@ -142,15 +181,40 @@ export class AuthService {
       throw new AuthError("AUTH_EMAIL_INVALID", 400, "invalid email");
     }
 
+    // Self-host first-run only: empty users + exclusive claim → skip OTP / SMTP.
+    if (await this.tryClaimEmptyCatalogBootstrap(email)) {
+      await this.consumeStartRateLimits(email, input.requestIp);
+      const authStateId = await this.createRegistrationAuthState(email);
+      const now = this.now();
+      const expiresAt = new Date(
+        now.getTime() + this.config.registrationAuthStateTtlSeconds * 1000,
+      ).toISOString();
+      return {
+        challengeId: "",
+        expiresAt,
+        resendAvailableAt: expiresAt,
+        bootstrapRequired: true,
+        authStateId,
+        nextStep: "registration",
+      };
+    }
+
     const mappedId = await this.redis.get(emailActiveChallengeKey(email));
     if (mappedId) {
       const existing = await this.peekValidChallenge(mappedId);
       if (existing && existing.email === email) {
-        return {
-          challengeId: existing.id,
-          expiresAt: existing.expiresAt,
-          resendAvailableAt: existing.resendAvailableAt,
-        };
+        const remainingSeconds = Math.floor(
+          (new Date(existing.expiresAt).getTime() - this.now().getTime()) / 1000,
+        );
+        // Reuse only while enough TTL remains; near expiry → mint + email below.
+        if (remainingSeconds > this.config.authResendCooldownSeconds) {
+          return {
+            challengeId: existing.id,
+            expiresAt: existing.expiresAt,
+            resendAvailableAt: existing.resendAvailableAt,
+          };
+        }
+        await this.redis.del(challengeKey(existing.id));
       }
       await this.redis.del(emailActiveChallengeKey(email));
     }
@@ -322,21 +386,26 @@ export class AuthService {
     const existingUser: UserRecord | null = await this.users.findByEmail(
       challenge.email,
     );
-    const pendingTwoFactor = Boolean(
-      existingUser && (await this.users.isTwoFactorEnabled(existingUser.id)),
-    );
+    if (!existingUser) {
+      const authStateId = await this.createRegistrationAuthState(challenge.email);
+      return {
+        authStateId,
+        userExists: false,
+        nextStep: "registration",
+      };
+    }
+
+    const pendingTwoFactor = await this.users.isTwoFactorEnabled(existingUser.id);
     const authState: AuthStatePayload = {
-      id: this.generateId(),
+      id: this.generateAuthStateIdFn(),
       email: challenge.email,
-      userId: existingUser?.id ?? null,
+      userId: existingUser.id,
       createdAt: this.now().toISOString(),
       ...(pendingTwoFactor ? { pendingTwoFactor: true } : {}),
     };
-    const authStateTtlSeconds = existingUser
-      ? pendingTwoFactor
-        ? this.config.authPendingTwoFactorTtlSeconds
-        : this.config.authCodeTtlSeconds
-      : this.config.registrationAuthStateTtlSeconds;
+    const authStateTtlSeconds = pendingTwoFactor
+      ? this.config.authPendingTwoFactorTtlSeconds
+      : this.config.authCodeTtlSeconds;
     await this.redis.setWithTtl(
       authStateRedisKey(authState.id),
       JSON.stringify(authState),
@@ -345,13 +414,49 @@ export class AuthService {
 
     return {
       authStateId: authState.id,
-      userExists: Boolean(existingUser),
-      nextStep: existingUser
-        ? pendingTwoFactor
-          ? "two_factor"
-          : "device_check"
-        : "registration",
+      userExists: true,
+      nextStep: pendingTwoFactor ? "two_factor" : "device_check",
     };
+  }
+
+  /**
+   * True when this request may skip email OTP for empty-catalog self-host bootstrap.
+   * SaaS always requires OTP. Concurrent empty-catalog starts: only the claim holder skips.
+   */
+  private async tryClaimEmptyCatalogBootstrap(email: string): Promise<boolean> {
+    if (this.config.deploymentMode !== "self_hosted") {
+      return false;
+    }
+    if (await this.users.hasAnyUsers()) {
+      return false;
+    }
+
+    const claimKey = firstUserBootstrapClaimKey();
+    const ttlSeconds = this.config.registrationAuthStateTtlSeconds;
+    const claimed = await this.redis.setIfNotExistsWithTtl(claimKey, email, ttlSeconds);
+    if (claimed) {
+      return true;
+    }
+
+    // Idempotent retry for the same email that already holds the claim.
+    const holder = await this.redis.get(claimKey);
+    return holder === email;
+  }
+
+  /** Mint Redis auth state for registration (email already trusted — OTP confirm or first-run). */
+  private async createRegistrationAuthState(email: string): Promise<string> {
+    const authState: AuthStatePayload = {
+      id: this.generateAuthStateIdFn(),
+      email,
+      userId: null,
+      createdAt: this.now().toISOString(),
+    };
+    await this.redis.setWithTtl(
+      authStateRedisKey(authState.id),
+      JSON.stringify(authState),
+      this.config.registrationAuthStateTtlSeconds,
+    );
+    return authState.id;
   }
 
   /**
@@ -364,7 +469,7 @@ export class AuthService {
     pendingTwoFactor: boolean;
   }): Promise<{ authStateId: string; nextStep: "device_check" | "two_factor" }> {
     const authState: AuthStatePayload = {
-      id: this.generateId(),
+      id: this.generateAuthStateIdFn(),
       email: params.email,
       userId: params.userId,
       createdAt: this.now().toISOString(),

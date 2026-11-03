@@ -1,6 +1,6 @@
 import type { WebMessageValues } from "@okkey/i18n";
 import { Alert, AlertDescription, AlertTitle } from "@okkey/ui";
-import type { SVGProps } from "react";
+import type { ReactNode, SVGProps } from "react";
 import { Link } from "react-router-dom";
 
 import { settingsPath } from "../../../../routes/paths";
@@ -26,9 +26,11 @@ function AlertInfoIcon(props: SVGProps<SVGSVGElement>) {
 
 type AdditionalMembersUpsellProps = {
   t: (messageKey: string, values?: WebMessageValues) => string;
+  /** Rendered below the note, e.g. members and invitations that remain after a downgrade. */
+  children?: ReactNode;
 };
 
-export default function AdditionalMembersUpsell({ t }: AdditionalMembersUpsellProps) {
+export default function AdditionalMembersUpsell({ t, children }: AdditionalMembersUpsellProps) {
   return (
     <section className="flex flex-col gap-4">
       <div className="flex min-w-0 flex-col gap-1">
@@ -54,6 +56,7 @@ export default function AdditionalMembersUpsell({ t }: AdditionalMembersUpsellPr
           {t("web.workspaceSettings.members.upsellSuffix")}
         </AlertDescription>
       </Alert>
+      {children}
     </section>
   );
 }

@@ -1,4 +1,4 @@
-import { ApiClient } from "../../api/src/index.js";
+import { ApiClient } from "@okkey/api";
 import type {
   AccessTokenResponseDto,
   AccountLoginMethodsPrimaryPatchDto,
@@ -9,6 +9,9 @@ import type {
   BackupCodesRegenerateRequestDto,
   EmailAuthConfirmResponse,
   EmailAuthStartResponse,
+  ExtensionAuthCodeIssueRequestDto,
+  ExtensionAuthCodeIssueResponseDto,
+  ExtensionAuthTokenRequestDto,
   RegisterCompleteRequestDto,
   RegisterCompleteResponseDto,
   TotpEnrollConfirmRequestDto,
@@ -22,7 +25,7 @@ import type {
   WebAuthnRegisterOptionsRequestDto,
   WebAuthnRegisterVerifyRequestDto,
   WebAuthnAuthenticatorAttachment,
-} from "../../types/src/index.js";
+} from "@okkey/types";
 
 export class LoginFlowError extends Error {
   constructor(message: string) {
@@ -72,6 +75,23 @@ export class AuthClient {
     return this.api.post<AccessTokenResponseDto>("/auth/session/bootstrap", {
       authStateId,
     });
+  }
+
+  /**
+   * After web Bearer session: mint a short-lived auth_code for extension PKCE.
+   * Does not unlock vault — session handoff only.
+   */
+  async issueExtensionAuthCode(
+    body: ExtensionAuthCodeIssueRequestDto,
+  ): Promise<ExtensionAuthCodeIssueResponseDto> {
+    return this.api.post<ExtensionAuthCodeIssueResponseDto>("/auth/extension/code", body);
+  }
+
+  /** Exchange extension auth_code + PKCE verifier for a Bearer access token. */
+  async exchangeExtensionAuthToken(
+    body: ExtensionAuthTokenRequestDto,
+  ): Promise<AccessTokenResponseDto> {
+    return this.api.post<AccessTokenResponseDto>("/auth/extension/token", body);
   }
 
   async verifyTwoFactor(authStateId: string, code: string): Promise<AccessTokenResponseDto> {

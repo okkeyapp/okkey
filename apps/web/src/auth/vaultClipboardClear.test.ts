@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("./vaultDevicePrefs", () => ({
   readVaultDevicePrefs: vi.fn(() => ({
     lockOnDeviceSleep: true,
+    lockOnPopupClose: false,
     clipboardClearSeconds: 10,
     requireReauthZones: [],
     pinEnabled: false,

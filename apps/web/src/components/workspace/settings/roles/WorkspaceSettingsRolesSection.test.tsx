@@ -1,8 +1,8 @@
-import { render, screen, waitFor } from "@testing-library/react";
-import type { ComponentType } from "react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import type { ComponentType, ReactNode } from "react";
 import { MemoryRouter } from "react-router-dom";
-import { describe, expect, it, vi } from "vitest";
-import type { PlanTier } from "@okkey/types";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { PlanTier, WorkspaceResourcePermissionDto, WorkspaceRoleListItemDto } from "@okkey/types";
 
 import { LocaleProvider } from "../../../../locale/LocaleContext";
 import WorkspaceSettingsRolesSection from "./WorkspaceSettingsRolesSection";
@@ -12,14 +12,23 @@ const enterpriseModuleMock = vi.hoisted(() => ({
   BuiltInRoleCardPopup: null as ComponentType<unknown> | null,
 }));
 
+const builtInRoles: WorkspaceRoleListItemDto[] = [
+  { id: "1", kind: "builtin", builtin_id: "owner", name: "Owner", description: "", member_count: 1 },
+  { id: "2", kind: "builtin", builtin_id: "admin", name: "Admin", description: "", member_count: 0 },
+  { id: "3", kind: "builtin", builtin_id: "user", name: "User", description: "", member_count: 0 },
+];
+
 const coreMock = vi.hoisted(() => ({
-  listWorkspaceRoles: vi.fn(async () => ({
-    roles: [
-      { id: "1", kind: "builtin" as const, builtin_id: "owner" as const, name: "Owner", description: "", member_count: 1 },
-      { id: "2", kind: "builtin" as const, builtin_id: "admin" as const, name: "Admin", description: "", member_count: 0 },
-      { id: "3", kind: "builtin" as const, builtin_id: "user" as const, name: "User", description: "", member_count: 0 },
-    ],
-  })),
+  listWorkspaceRoles: vi.fn<(workspaceId: string) => Promise<{ roles: WorkspaceRoleListItemDto[] }>>(),
+  deleteWorkspaceRole: vi.fn(async (_workspaceId: string, _roleId: string) => ({ ok: true as const })),
+}));
+
+const reauthMock = vi.hoisted(() => ({
+  requestZoneUnlock: vi.fn(async () => true),
+}));
+
+vi.mock("../../../../auth/SectionReauthContext", () => ({
+  useSectionReauth: () => reauthMock,
 }));
 
 vi.mock("@okkey-enterprise/workspace-roles", () => ({
@@ -35,21 +44,37 @@ vi.mock("@okkey-enterprise/workspace-roles", () => ({
 
 vi.mock("../../../../auth/AuthVaultContext", () => ({
   useAuthenticatedCoreClient: () => coreMock,
+  useAuthVault: () => ({ userId: "user-1" }),
 }));
 
-function renderRolesSection(planTier: PlanTier = "FREE") {
+beforeEach(() => {
+  coreMock.listWorkspaceRoles.mockReset();
+  coreMock.listWorkspaceRoles.mockImplementation(async () => ({ roles: builtInRoles }));
+  coreMock.deleteWorkspaceRole.mockClear();
+  reauthMock.requestZoneUnlock.mockClear();
+});
+
+function renderRolesSection(
+  planTier: PlanTier = "FREE",
+  resourcePermissions: WorkspaceResourcePermissionDto | null = null,
+  planOptions?: {
+    planCustomOverride?: boolean;
+    planFeatureOverrides?: Record<string, boolean>;
+  },
+) {
   return render(
     <MemoryRouter>
       <LocaleProvider>
         <WorkspaceSettingsRolesSection
         workspaceId="ws-1"
+        resourcePermissions={resourcePermissions}
         workspace={{
           id: "ws-1",
           name: "Test",
           ownerId: "user-1",
           planTier,
-          planCustomOverride: false,
-          planFeatureOverrides: {},
+          planCustomOverride: planOptions?.planCustomOverride ?? false,
+          planFeatureOverrides: planOptions?.planFeatureOverrides ?? {},
           deletedItemsRetentionDays: 30,
           allowedFileExtensions: ["jpg", "png", "pdf", "zip", "rar"],
           maxFileSizeMb: 2,
@@ -57,6 +82,7 @@ function renderRolesSection(planTier: PlanTier = "FREE") {
           capsulePolicies: {
             allowMode: "all",
             allowMemberIds: [],
+            allowedCapsuleTypes: ["text", "file", "item"] as const,
             forceMaxViews: 0,
             requireTimeDeactivation: false,
             requireAccess: false,
@@ -103,6 +129,11 @@ function renderRolesSection(planTier: PlanTier = "FREE") {
             "web.workspaceSettings.roles.upsellPlanLink": "Change your plan",
             "web.workspaceSettings.roles.upsellSuffix": " to unlock Custom roles.",
             "web.workspaceSettings.roles.enterpriseLoaded": "Enterprise roles loaded",
+            "web.workspaceSettings.roles.actions.deleteRole": "Delete role",
+            "web.deleteRoleConfirmPopup.title": "Delete role?",
+            "web.deleteRoleConfirmPopup.description": "Members move to User",
+            "web.deleteRoleConfirmPopup.delete": "Confirm delete",
+            "web.newItemPopup.cancel": "Cancel",
           };
           return labels[key] ?? key;
         }}
@@ -130,7 +161,7 @@ describe("WorkspaceSettingsRolesSection", () => {
     expect(screen.getByRole("link", { name: "Change your plan" })).toHaveAttribute("href", "/settings/plan");
   });
 
-  it("keeps built-in roles non-clickable on FREE even when enterprise popups are loaded", async () => {
+  it("makes built-in roles clickable on FREE when enterprise popups are loaded", async () => {
     function BuiltInPopupStub() {
       return <p>Built-in role popup</p>;
     }
@@ -142,8 +173,7 @@ describe("WorkspaceSettingsRolesSection", () => {
     await waitFor(() => {
       expect(screen.getByText("Built-in roles")).toBeInTheDocument();
     });
-    expect(screen.queryByRole("button", { name: /Owner/i })).not.toBeInTheDocument();
-    expect(screen.queryByText("Built-in role popup")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Owner/i })).toBeInTheDocument();
   });
 
   it("renders enterprise custom roles section when module is loaded on paid plan", () => {
@@ -157,5 +187,106 @@ describe("WorkspaceSettingsRolesSection", () => {
 
     expect(screen.getByText("Enterprise roles loaded")).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Change your plan" })).not.toBeInTheDocument();
+  });
+
+  it("mounts enterprise section read-only with upsell on FREE when module is loaded", () => {
+    function EnterpriseStub({
+      readOnly,
+      emptyFallback,
+    }: {
+      readOnly?: boolean;
+      emptyFallback?: ReactNode;
+    }) {
+      return (
+        <>
+          <p>{readOnly ? "Enterprise roles read-only" : "Enterprise roles editable"}</p>
+          {readOnly ? emptyFallback : null}
+        </>
+      );
+    }
+
+    enterpriseModuleMock.EnterpriseRolesSection = EnterpriseStub as ComponentType<unknown>;
+    enterpriseModuleMock.BuiltInRoleCardPopup = null;
+    renderRolesSection("FREE");
+
+    expect(screen.getByText("Enterprise roles read-only")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Change your plan" })).toHaveAttribute("href", "/settings/plan");
+  });
+
+  it("mounts enterprise section read-only when plan override forbids customWorkspaceRoles", () => {
+    function EnterpriseStub({
+      readOnly,
+      emptyFallback,
+    }: {
+      readOnly?: boolean;
+      emptyFallback?: ReactNode;
+    }) {
+      return (
+        <>
+          <p>{readOnly ? "Enterprise roles read-only" : "Enterprise roles editable"}</p>
+          {readOnly ? emptyFallback : null}
+        </>
+      );
+    }
+
+    enterpriseModuleMock.EnterpriseRolesSection = EnterpriseStub as ComponentType<unknown>;
+    enterpriseModuleMock.BuiltInRoleCardPopup = null;
+    renderRolesSection("ENTERPRISE", null, {
+      planCustomOverride: true,
+      planFeatureOverrides: { customWorkspaceRoles: false },
+    });
+
+    expect(screen.getByText("Enterprise roles read-only")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Change your plan" })).toHaveAttribute("href", "/settings/plan");
+  });
+
+  it("FREE + stub: custom role from API appears and delete callable", async () => {
+    enterpriseModuleMock.EnterpriseRolesSection = null;
+    enterpriseModuleMock.BuiltInRoleCardPopup = null;
+    coreMock.listWorkspaceRoles.mockImplementation(async () => ({
+      roles: [
+        ...builtInRoles,
+        {
+          id: "9",
+          kind: "custom",
+          name: "Auditors",
+          description: "Legacy custom role",
+          member_count: 2,
+          created_by: "user-2",
+        },
+      ],
+    }));
+    renderRolesSection("FREE", { get: 1, post: 1, put: 1, delete: 1 });
+
+    expect(await screen.findByText("Auditors")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Change your plan" })).toHaveAttribute("href", "/settings/plan");
+    expect(screen.queryByRole("button", { name: "Create" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete role" }));
+    expect(screen.getAllByText("Delete role?").length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole("button", { name: "Confirm delete" }));
+
+    await waitFor(() => {
+      expect(coreMock.deleteWorkspaceRole).toHaveBeenCalledWith("ws-1", "9");
+    });
+    expect(reauthMock.requestZoneUnlock).toHaveBeenCalledWith("deletion", { persist: false });
+    await waitFor(() => {
+      expect(screen.queryByText("Auditors")).not.toBeInTheDocument();
+    });
+  });
+
+  it("FREE + stub: hides delete for custom role without delete permission", async () => {
+    enterpriseModuleMock.EnterpriseRolesSection = null;
+    enterpriseModuleMock.BuiltInRoleCardPopup = null;
+    coreMock.listWorkspaceRoles.mockImplementation(async () => ({
+      roles: [
+        ...builtInRoles,
+        { id: "9", kind: "custom", name: "Auditors", description: "", member_count: 0, created_by: "user-2" },
+      ],
+    }));
+    renderRolesSection("FREE", { get: 1, post: 0, put: 0, delete: 2 });
+
+    expect(await screen.findByText("Auditors")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Delete role" })).not.toBeInTheDocument();
   });
 });

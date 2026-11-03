@@ -101,15 +101,26 @@ test("POST /auth/email/start maps EmailTemplateError to 503", async () => {
     headers: { "x-forwarded-for": "127.0.0.1" },
     authService: createAuthStub({
       startEmailLogin: async () => {
-        throw new EmailTemplateError("EMAIL_SEND_FAILED", "smtp down", {});
+        throw new EmailTemplateError("EMAIL_SEND_FAILED", "smtp send failed", {
+          cause: "connect ECONNREFUSED 127.0.0.1:4019",
+        });
       },
     }),
   });
 
   assert.equal(res.statusCode, 503);
-  const payload = JSON.parse(res.body) as { error: string };
+  const payload = JSON.parse(res.body) as {
+    error: string;
+    message: string;
+    details?: Record<string, unknown>;
+  };
   assert.equal(payload.error, "EMAIL_SEND_FAILED");
+  assert.equal(payload.message, "email send failed");
+  assert.equal(payload.details, undefined);
+  assert.equal(res.body.includes("ECONNREFUSED"), false);
+  assert.equal(res.body.includes("4019"), false);
 });
+
 
 test("POST /auth/email/start validates email required", async () => {
   const res = await dispatch({

@@ -1,43 +1,70 @@
 import { Section, Text } from "@react-email/components";
 import * as React from "react";
 
-import { EMAIL_CANVAS, EMAIL_PRIMARY_TEXT, EMAIL_SECONDARY_TEXT, EmailShell } from "./EmailShell.js";
+import {
+  EMAIL_CANVAS,
+  EMAIL_CLASS_INK,
+  EMAIL_CLASS_MUTED,
+  EMAIL_CLASS_SURFACE,
+  EMAIL_PRIMARY_TEXT,
+  EMAIL_SECONDARY_TEXT,
+  EmailShell,
+} from "./EmailShell.js";
+import { EmailStandardFooter } from "./EmailStandardFooter.js";
 
 export interface AuthSignInCodeEmailProps {
+  lang: string;
+  title: string;
+  /** Inbox preheader — useful without repeating or revealing the code. */
+  preview: string;
   beforeCode: string;
   code: string;
   line2: string;
-  ignore: string;
+  noReply: string;
+  ignoreIfMistake: string;
 }
 
-function formatOtpDisplay(code: string): string {
-  if (code.length !== 6) {
-    return code;
-  }
-  return `${code.slice(0, 3)} ${code.slice(3)}`;
-}
-
-export function AuthSignInCodeEmail({ beforeCode, code, line2, ignore }: AuthSignInCodeEmailProps) {
-  const displayCode = formatOtpDisplay(code);
+export function AuthSignInCodeEmail({
+  lang,
+  title,
+  preview,
+  beforeCode,
+  code,
+  line2,
+  noReply,
+  ignoreIfMistake,
+}: AuthSignInCodeEmailProps) {
   return (
-    <EmailShell preview={beforeCode} footer={ignore}>
-      <Text style={leadStyle}>{beforeCode}</Text>
+    <EmailShell
+      lang={lang}
+      title={title}
+      preview={preview}
+      footer={<EmailStandardFooter noReply={noReply} ignoreIfMistake={ignoreIfMistake} />}
+    >
+      <Text className={EMAIL_CLASS_INK} style={leadStyle}>
+        {beforeCode}
+      </Text>
       <Section style={codeWrapStyle}>
         <table
           align="center"
           cellPadding={0}
           cellSpacing={0}
           role="presentation"
+          className={EMAIL_CLASS_SURFACE}
           style={codeTableStyle}
         >
           <tr>
             <td style={codeCellStyle}>
-              <span style={codeStyle}>{displayCode}</span>
+              <span className={EMAIL_CLASS_INK} style={codeStyle}>
+                {code}
+              </span>
             </td>
           </tr>
         </table>
       </Section>
-      <Text style={noteStyle}>{line2}</Text>
+      <Text className={EMAIL_CLASS_MUTED} style={noteStyle}>
+        {line2}
+      </Text>
     </EmailShell>
   );
 }

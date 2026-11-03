@@ -2,6 +2,15 @@
 
 SPA on **Vite + React + TypeScript**. Core HTTP API runs separately (`yarn dev:api` from the monorepo root).
 
+## API base URL (runtime)
+
+| Mode | Source |
+|------|--------|
+| Docker / self-host | `GET /config.js` → `window.__OKKEY_RUNTIME__.apiBaseUrl` (written from env **`OKKEY_API_PUBLIC_URL`**) |
+| Local Vite | `VITE_API_BASE_URL` (default `http://localhost:4000`); `public/config.js` is an empty stub |
+
+`getApiBaseUrl()` prefers `__OKKEY_RUNTIME__.apiBaseUrl` over the Vite env. The env name `OKKEY_API_PUBLIC_URL` does **not** appear in `/config.js` — only the `apiBaseUrl` property does. See [`deploy/docker/README.md`](../../deploy/docker/README.md#runtime-config-configjs).
+
 ## Requirements
 
 - Node.js and Yarn as in the [root `package.json`](../package.json) `engines` field.
@@ -119,13 +128,9 @@ yarn dev:api
 yarn dev:web
 ```
 
-With `ENTERPRISE_MODULES=true` (self_hosted), new workspaces from registration still get `plan_tier=ENTERPRISE`. SaaS `POST /workspaces` always creates **FREE**. Upgrade existing local rows:
+New workspaces always get `plan_tier=FREE` (registration and SaaS `POST /workspaces`). On **self-hosted**, enterprise modules must be **requested and loadable** (sibling `okkey-enterprise`) for EE UI and paid create/edit (`plan_tier` ignored). Fail closed if the env flag is set but the sibling path is missing.
 
-```sql
-UPDATE workspaces SET plan_tier = 'ENTERPRISE' WHERE plan_tier IN ('FREE','TEAM','PREMIUM','FAMILY');
-```
-
-Start the API with `ENTERPRISE_MODULES=true`. Put SaaS `OKKEY_DEPLOYMENT_MODE=saas` in **`okkey-enterprise/backend/.env`** (not Core examples); Core loads it when modules are on so `POST /workspaces` and other SaaS routes register. Without that enterprise file / value, the create-workspace UI may appear (Vite) but `POST /workspaces` returns **404**.
+Start the API with `ENTERPRISE_MODULES=true` **and** sibling present. Put SaaS `OKKEY_DEPLOYMENT_MODE=saas` in **`okkey-enterprise/backend/.env`** (not Core examples); Core loads it when modules are on so `POST /workspaces` and other SaaS routes register. Without that enterprise file / value, the create-workspace UI may appear (Vite) but `POST /workspaces` returns **404**.
 
 Custom roles UI loads from `okkey-enterprise/web/workspace-roles/`.  
 Additional members UI: `okkey-enterprise/web/workspace-members/`.  
@@ -133,6 +138,6 @@ Shared vaults UI: `okkey-enterprise/web/workspace-shared-vaults/`.
 SaaS create UI and privacy-policy overlay: see `okkey-enterprise/web/.env.example` and `web/workspace-tenancy/`, `web/legal/`.  
 SaaS API deployment mode: see `okkey-enterprise/backend/.env.example`.
 
-Plan entitlements use `hasPlanFeature` over catalog tiers `FREE` | `PREMIUM` | `FAMILY` | `TEAM` | `ENTERPRISE` (plus optional `plan_custom_override`). Module presence alone does not unlock paid features on a FREE workspace; without modules, paid routes are absent (404).
+Plan entitlements: SaaS → `hasPlanFeature(plan_tier)`; self-hosted without modules → FREE (+ `filesInItems`); self-hosted with modules → ENTERPRISE matrix (`plan_tier` ignored). Without modules, paid routes are absent (404).
 
-SaaS changes `plan_tier` via subscription; self-hosted via license / specialist activation (see `docs/architecture/12_open_core_boundary.md`).
+SaaS changes `plan_tier` via subscription; self-hosted paid access follows loaded modules (see `docs/architecture/12_open_core_boundary.md`).

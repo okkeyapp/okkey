@@ -1,5 +1,5 @@
 import { testEntityId } from "./test-entity-id.ts";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { authStateRedisKey, AuthService } from "../src/auth/service.ts";
@@ -10,8 +10,111 @@ import { EmailTemplateService } from "../src/email/service.ts";
 import { RegistrationService } from "../src/registration/service.ts";
 import { SessionService } from "../src/session/service.ts";
 import { createStorageLayer } from "../src/storage/index.ts";
+import { applySqlMigrations } from "../src/storage/migrate.ts";
 
 const helpersDir = path.dirname(fileURLToPath(import.meta.url));
+const migrationsDir = path.resolve(helpersDir, "../migrations");
+
+/** Numbered SQL files in application order (`0001` … latest). */
+export function listMigrationSqlFiles(): string[] {
+  return readdirSync(migrationsDir)
+    .filter((name) => /^\d{4}_.+\.sql$/.test(name))
+    .sort((left, right) => left.localeCompare(right));
+}
+
+/**
+ * Apply every migration file, in order, on a database that has none of them yet.
+ * Used by isolated-schema tests that cannot use `schema_migrations` on `public`.
+ */
+export async function applyAllMigrationFiles(
+  query: (sql: string) => Promise<unknown>,
+): Promise<string[]> {
+  const files = listMigrationSqlFiles();
+  for (const name of files) {
+    await query(readFileSync(path.join(migrationsDir, name), "utf8"));
+  }
+  return files;
+}
+
+/**
+ * Migrations the hand-written checks below already apply on a non-empty test database.
+ * `0004` is included without re-running it: `0008` drops that table, and creating it again
+ * would resurrect a removed relation.
+ * Newer files (`0011`, `0032`+) are applied via `applySqlMigrations` after this baseline.
+ */
+const LEDGER_BASELINE = new Set([
+  "0001_init.sql",
+  "0002_workspace_personal_events.sql",
+  "0003_deleted_items_retention.sql",
+  "0004_vault_item_favicons.sql",
+  "0005_workspace_item_templates.sql",
+  "0006_favorite_order.sql",
+  "0007_attachments_event_log_items.sql",
+  "0008_drop_vault_item_favicons.sql",
+  "0009_workspace_branding.sql",
+  "0010_workspace_roles.sql",
+  "0012_workspace_file_upload_settings.sql",
+  "0013_workspace_max_file_size_decimal.sql",
+  "0014_workspace_max_file_size_integer.sql",
+  "0015_workspace_files_in_items_enabled.sql",
+  "0016_workspace_profiles.sql",
+  "0017_vault_metadata.sql",
+  "0018_workspace_members_invites.sql",
+  "0019_invitation_vault_access.sql",
+  "0020_invitation_role_changed.sql",
+  "0021_user_last_vault_unlocked_at.sql",
+  "0022_roles_profiles_created_by.sql",
+  "0023_capsules_v2.sql",
+  "0024_workspace_member_capsule_defaults.sql",
+  "0025_capsule_guest_approval.sql",
+  "0026_capsule_approval_blacklist.sql",
+  "0027_workspace_capsule_policies.sql",
+  "0028_workspace_monitoring_card_settings.sql",
+  "0029_master_password_changed_at.sql",
+  "0030_user_webauthn_login.sql",
+  "0031_workspace_plan_custom_override.sql",
+]);
+
+async function ensureMigrationLedger(
+  storage: Awaited<ReturnType<typeof createStorageLayer>>,
+): Promise<void> {
+  await storage.postgres.query(`
+    CREATE TABLE IF NOT EXISTS schema_migrations (
+      filename text PRIMARY KEY,
+      applied_at timestamptz NOT NULL DEFAULT now()
+    )
+  `);
+}
+
+async function recordMigrationFiles(
+  storage: Awaited<ReturnType<typeof createStorageLayer>>,
+  filenames: Iterable<string>,
+): Promise<void> {
+  await ensureMigrationLedger(storage);
+  for (const name of filenames) {
+    await storage.postgres.query(
+      "INSERT INTO schema_migrations (filename) VALUES ($1) ON CONFLICT DO NOTHING",
+      [name],
+    );
+  }
+}
+
+/**
+ * Shared test DBs may predate `schema_migrations`. Seed the legacy helper baseline so
+ * `applySqlMigrations` does not mark every file applied without running newer SQL.
+ */
+async function applyRemainingSqlMigrations(
+  storage: Awaited<ReturnType<typeof createStorageLayer>>,
+): Promise<void> {
+  await ensureMigrationLedger(storage);
+  const rows = await storage.postgres.query<{ filename: string }>(
+    "SELECT filename FROM schema_migrations",
+  );
+  if (rows.length === 0) {
+    await recordMigrationFiles(storage, LEDGER_BASELINE);
+  }
+  await applySqlMigrations(storage.postgres, { logger: createLoggerStub() });
+}
 
 export function createLoggerStub() {
   return {
@@ -50,11 +153,8 @@ export async function applyMigrations(
     "SELECT to_regclass('public.users') IS NOT NULL AS exists",
   );
   if (!baseSchema[0]?.exists) {
-    const migration0001 = readFileSync(
-      path.resolve(helpersDir, "../migrations/0001_init.sql"),
-      "utf8",
-    );
-    await storage.postgres.query(migration0001);
+    await applySqlMigrations(storage.postgres, { logger: createLoggerStub() });
+    return;
   }
 
   const personalEventsTable = await storage.postgres.query<{ exists: boolean }>(
@@ -514,6 +614,8 @@ export async function applyMigrations(
     );
     await storage.postgres.query(migration0026);
   }
+
+  await applyRemainingSqlMigrations(storage);
 }
 
 export async function cleanupUserData(

@@ -1,4 +1,5 @@
 /// <reference types="vitest/config" />
+import fs from "node:fs";
 import path from "node:path";
 import react from "@vitejs/plugin-react";
 import { defineConfig, loadEnv } from "vite";
@@ -9,13 +10,20 @@ import {
   loadEnterpriseWebViteEnv,
 } from "./vite.enterpriseEnv";
 
+/** Fail-closed: sibling must expose at least one web module entry. */
+function isEnterpriseWebLoadable(enterpriseRoot: string): boolean {
+  return fs.existsSync(path.join(enterpriseRoot, "web/workspace-roles/src/index.ts"));
+}
+
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, __dirname, "");
-  const enterpriseModules = env.VITE_ENTERPRISE_MODULES === "true";
   const enterpriseRoot = path.resolve(__dirname, "../../../okkey-enterprise");
   const enterpriseWebEnvDir = path.resolve(enterpriseRoot, "web");
+  const enterpriseModulesRequested = env.VITE_ENTERPRISE_MODULES === "true";
+  // Fail closed: env alone is not enough — sibling path must be loadable.
+  const enterpriseModules = enterpriseModulesRequested && isEnterpriseWebLoadable(enterpriseRoot);
 
-  /** SaaS / legal env lives in okkey-enterprise/web/.env — not in public Core examples. */
+  /** SaaS / legal env is loaded from the enterprise web env overlay, not from public Core examples. */
   const enterpriseWebEnvOverlay = enterpriseModules
     ? loadEnterpriseWebViteEnv(mode, enterpriseWebEnvDir)
     : {};
@@ -63,6 +71,14 @@ export default defineConfig(({ mode }) => {
     __dirname,
     "./src/workspace-features/stubs/enterprise-shared-vaults-stub.ts",
   );
+  const enterpriseCapsulesPath = path.resolve(
+    enterpriseRoot,
+    "web/workspace-capsules/src/index.ts",
+  );
+  const enterpriseCapsulesStubPath = path.resolve(
+    __dirname,
+    "./src/workspace-features/stubs/enterprise-capsules-stub.ts",
+  );
   const enterpriseLegalPath = path.resolve(enterpriseRoot, "web/legal/src/index.ts");
   const enterpriseLegalStubPath = path.resolve(
     __dirname,
@@ -89,10 +105,30 @@ export default defineConfig(({ mode }) => {
     enterpriseRoot,
     "packages/recovery-crypto/dist/okkey_enterprise_recovery_crypto.js",
   );
+  const enterpriseRecoveryCryptoStubPath = path.resolve(
+    __dirname,
+    "./src/account-recovery-features/stubs/enterprise-recovery-crypto-stub.ts",
+  );
+  const enterpriseTypesStubPath = path.resolve(
+    __dirname,
+    "./src/account-recovery-features/stubs/enterprise-types-stub.ts",
+  );
+  const enterpriseApiStubPath = path.resolve(
+    __dirname,
+    "./src/account-recovery-features/stubs/enterprise-api-stub.ts",
+  );
+  const enterpriseTypesPath = path.resolve(enterpriseRoot, "packages/types/src");
+  const enterpriseApiPath = path.resolve(enterpriseRoot, "packages/api/src");
 
   return {
     plugins: [react()],
-    define: enterpriseWebViteEnvDefines(enterpriseWebEnvOverlay),
+    define: {
+      ...enterpriseWebViteEnvDefines(enterpriseWebEnvOverlay),
+      // Effective after fail-closed sibling check (client entitlements / UI).
+      "import.meta.env.VITE_ENTERPRISE_MODULES_ACTIVE": JSON.stringify(
+        enterpriseModules ? "true" : "false",
+      ),
+    },
     assetsInclude: ["**/*.wasm"],
     optimizeDeps: {
       exclude: [
@@ -118,6 +154,7 @@ export default defineConfig(({ mode }) => {
         "@": path.resolve(__dirname, "./src"),
         "@okkey/i18n": path.resolve(__dirname, "../../packages/i18n/src"),
         "@okkey/ui": path.resolve(__dirname, "../../packages/ui/src"),
+        "@okkey/vault-ui": path.resolve(__dirname, "../../packages/vault-ui/src"),
         "@workspace/ui": path.resolve(__dirname, "../../packages/ui/src"),
         "@okkey/import": path.resolve(__dirname, "../../packages/import/src"),
         "@okkey/types": path.resolve(__dirname, "../../packages/types/src"),
@@ -125,6 +162,8 @@ export default defineConfig(({ mode }) => {
         "@okkey/auth": path.resolve(__dirname, "../../packages/auth/src"),
         "@okkey/crypto": path.resolve(__dirname, "../../packages/crypto/src"),
         "@okkey/crypto-wasm": path.resolve(__dirname, "../../packages/crypto/dist/okkey_crypto_engine.js"),
+        "@okkey/vault": path.resolve(__dirname, "../../packages/vault/src"),
+        "@okkey/sync": path.resolve(__dirname, "../../packages/sync/src"),
         "@okkey-enterprise/workspace-roles": enterpriseModules ? enterpriseRolesPath : enterpriseRolesStubPath,
         "@okkey-enterprise/workspace-profiles": enterpriseModules
           ? enterpriseProfilesPath
@@ -138,6 +177,9 @@ export default defineConfig(({ mode }) => {
         "@okkey-enterprise/workspace-shared-vaults": enterpriseModules
           ? enterpriseSharedVaultsPath
           : enterpriseSharedVaultsStubPath,
+        "@okkey-enterprise/workspace-capsules": enterpriseModules
+          ? enterpriseCapsulesPath
+          : enterpriseCapsulesStubPath,
         "@okkey-enterprise/legal": enterpriseModules ? enterpriseLegalPath : enterpriseLegalStubPath,
         "@okkey-enterprise/workspace-plan": enterpriseModules
           ? enterprisePlanPath
@@ -145,10 +187,12 @@ export default defineConfig(({ mode }) => {
         "@okkey-enterprise/account-recovery": enterpriseModules
           ? enterpriseAccountRecoveryPath
           : enterpriseAccountRecoveryStubPath,
-        "@okkey-enterprise/recovery-crypto": enterpriseRecoveryCryptoPath,
+        "@okkey-enterprise/recovery-crypto": enterpriseModules
+          ? enterpriseRecoveryCryptoPath
+          : enterpriseRecoveryCryptoStubPath,
         "@okkey-enterprise/recovery-crypto-wasm": enterpriseRecoveryCryptoWasmPath,
-        "@okkey-enterprise/types": path.resolve(enterpriseRoot, "packages/types/src"),
-        "@okkey-enterprise/api": path.resolve(enterpriseRoot, "packages/api/src"),
+        "@okkey-enterprise/types": enterpriseModules ? enterpriseTypesPath : enterpriseTypesStubPath,
+        "@okkey-enterprise/api": enterpriseModules ? enterpriseApiPath : enterpriseApiStubPath,
         "@okkey/popup-query": path.resolve(__dirname, "./src/routes/popupQuery.ts"),
         "date-fns": path.resolve(__dirname, "../../node_modules/date-fns"),
         "react-router-dom": path.resolve(__dirname, "../../node_modules/react-router-dom"),

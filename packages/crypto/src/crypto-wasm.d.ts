@@ -5,6 +5,7 @@ declare module "@okkey/crypto-wasm" {
   export function aead_encrypt(alg: string, key: Uint8Array, nonce: Uint8Array, aad: Uint8Array, plaintext: Uint8Array): Uint8Array;
   export function aead_decrypt(alg: string, key: Uint8Array, nonce: Uint8Array, aad: Uint8Array, ciphertext: Uint8Array): Uint8Array;
   export function ed25519_keypair(): Uint8Array;
+  export function ed25519_public_key(seed: Uint8Array): Uint8Array;
   export function ed25519_sign(privateKey: Uint8Array, message: Uint8Array): Uint8Array;
   export function ed25519_verify(publicKey: Uint8Array, message: Uint8Array, signature: Uint8Array): boolean;
   export function hybrid_sign_v1(
@@ -22,6 +23,10 @@ declare module "@okkey/crypto-wasm" {
   ): boolean;
   export function x25519_keypair(): Uint8Array;
   export function x25519_shared(privateKey: Uint8Array, peerPublicKey: Uint8Array): Uint8Array;
+  /** Ed25519 SigningKey seed → X25519 private scalar bytes. */
+  export function ed25519_secret_to_x25519(ed25519Seed: Uint8Array): Uint8Array;
+  /** Ed25519 verifying key → X25519 public key. */
+  export function ed25519_public_to_x25519(ed25519Public: Uint8Array): Uint8Array;
   export function b64_encode(data: Uint8Array): string;
   export function b64_decode(s: string): Uint8Array;
   export function sha256(data: Uint8Array): Uint8Array;

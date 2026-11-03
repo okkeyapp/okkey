@@ -7,7 +7,7 @@ export function emptyValueForFieldType(type: FieldTypeId): FieldValueV2 {
     case "password":
       return { kind: "password", password: "" };
     case "totp":
-      return { kind: "totp", secretBase32: "", periodSeconds: 30, digits: 6 };
+      return { kind: "totp", secretBase32: "", periodSeconds: 30, digits: 6, algorithm: "SHA1" };
     case "url":
       return { kind: "url", url: "" };
     case "note":

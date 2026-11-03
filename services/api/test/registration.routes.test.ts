@@ -40,7 +40,7 @@ const config: ApiConfig = createTestApiConfig();
 
 function validRegisterBody() {
   return {
-    auth_state_id: "state-1",
+    auth_state_id: "a".repeat(32),
     user_public_key: Buffer.alloc(32, 1).toString("base64"),
     user_public_pq_key: Buffer.alloc(1184, 8).toString("base64"),
     encrypted_private_key: {
@@ -82,6 +82,7 @@ function createRegistrationStub(
         accessToken: "tok-reg-1",
         expiresAt: "2099-01-01T00:00:00.000Z",
         tokenType: "Bearer" as const,
+        scope: "registration_recovery" as const,
       };
     },
   } as unknown as RegistrationService;
@@ -125,6 +126,22 @@ test("POST /auth/register/complete validates auth_state_id", async () => {
   assert.equal(payload.error, "REGISTRATION_BAD_REQUEST");
 });
 
+test("POST /auth/register/complete rejects non-string auth_state_id", async () => {
+  const body = validRegisterBody();
+  (body as { auth_state_id: unknown }).auth_state_id = 12345;
+  const res = await dispatch({ body });
+  assert.equal(res.statusCode, 400);
+  const payload = JSON.parse(res.body) as { error: string };
+  assert.equal(payload.error, "REGISTRATION_BAD_REQUEST");
+});
+
+test("POST /auth/register/complete accepts legacy snowflake auth_state_id", async () => {
+  const body = validRegisterBody();
+  body.auth_state_id = "1234567890123456789";
+  const res = await dispatch({ body });
+  assert.equal(res.statusCode, 201);
+});
+
 test("POST /auth/register/complete rejects invalid personal_workspace_name", async () => {
   const body = validRegisterBody();
   body.personal_workspace_name = `${"x".repeat(129)}`;
@@ -154,6 +171,7 @@ const REGISTER_SUCCESS_KEYS = new Set([
   "access_token",
   "expires_at",
   "token_type",
+  "scope",
 ]);
 
 test("POST /auth/register/complete success exposes only public ids (no ciphertext shares)", async () => {

@@ -21,7 +21,13 @@ import {
   startCryptoOperationTimer,
 } from "../observability/crypto-rollout.ts";
 import { CryptoDowngradeInvariantError, VersionConflictError } from "../storage/errors.ts";
-import type { EventRecord, EventsRepository, VaultsRepository } from "../storage/repositories.ts";
+import type {
+  EventRecord,
+  EventsRepository,
+  VaultRecord,
+  VaultsRepository,
+  WorkspacesRepository,
+} from "../storage/repositories.ts";
 import type { VaultItemSoftDeletesRepository } from "../storage/vault-item-soft-deletes.ts";
 import type { UsersRepository } from "../storage/repositories.ts";
 import type { ApiConfig } from "../config.ts";
@@ -40,6 +46,8 @@ import {
   verifyHybridSignatureForPayload,
 } from "../crypto/hybrid-signature.ts";
 import { isEntityId } from "../entity-id.ts";
+import { type PlanEntitlementRuntimeConfig } from "../plan-entitlements.ts";
+import { evaluateSharedVaultItemCreateGate } from "./shared-vault-item-create-gate.ts";
 
 const SYNC_EVENT_TYPES = new Set([
   "ITEM_CREATE",
@@ -78,9 +86,18 @@ export class SyncServiceError extends Error {
 
 export interface SyncServiceDeps {
   vaults: Pick<VaultsRepository, "findById" | "canReadVault">;
-  events: Pick<EventsRepository, "listAfterVersion" | "append" | "deleteByVaultAndReferencedItemId">;
+  events: Pick<
+    EventsRepository,
+    | "listAfterVersion"
+    | "append"
+    | "deleteByVaultAndReferencedItemId"
+    | "hasItemCreateEvent"
+    | "findByIdempotencyKey"
+  >;
   softDeletes?: Pick<VaultItemSoftDeletesRepository, "upsert" | "remove">;
   users?: Pick<UsersRepository, "findById">;
+  /** Required in production to gate ITEM_CREATE on shared vaults after EE→FREE. */
+  workspaces?: Pick<WorkspacesRepository, "findById">;
   config?: Partial<
     Pick<
       ApiConfig,
@@ -90,6 +107,8 @@ export interface SyncServiceDeps {
       | "cryptoRolloutEnabled"
       | "cryptoRolloutState"
       | "cryptoRolloutStopWritePaths"
+      | "deploymentMode"
+      | "enterpriseModulesEnabled"
     >
   >;
   log?: Logger;
@@ -104,6 +123,8 @@ export interface SyncEventResponse {
   signature?: unknown;
   idempotencyKey: string | null;
   clientCreatedAt: string | null;
+  referencedItemId?: string | null;
+  itemSoftDeleted?: boolean | null;
   version: number;
   createdAt: string;
 }
@@ -125,6 +146,7 @@ export class SyncService {
   private readonly events: SyncServiceDeps["events"];
   private readonly softDeletes: SyncServiceDeps["softDeletes"];
   private readonly users: SyncServiceDeps["users"];
+  private readonly workspaces: SyncServiceDeps["workspaces"];
   private readonly config: Pick<
     ApiConfig,
     | "allowedCryptoProfileVersions"
@@ -133,6 +155,8 @@ export class SyncService {
     | "cryptoRolloutEnabled"
     | "cryptoRolloutState"
     | "cryptoRolloutStopWritePaths"
+    | "deploymentMode"
+    | "enterpriseModulesEnabled"
   >;
   private readonly log: Logger | undefined;
 
@@ -141,6 +165,7 @@ export class SyncService {
     this.events = deps.events;
     this.softDeletes = deps.softDeletes;
     this.users = deps.users;
+    this.workspaces = deps.workspaces;
     this.config = {
       allowedCryptoProfileVersions: [1, 2],
       deployEnv: "dev",
@@ -148,6 +173,8 @@ export class SyncService {
       cryptoRolloutEnabled: true,
       cryptoRolloutState: "resume",
       cryptoRolloutStopWritePaths: [],
+      deploymentMode: "self_hosted",
+      enterpriseModulesEnabled: false,
       ...deps.config,
     };
     this.log = deps.log;
@@ -199,10 +226,13 @@ export class SyncService {
         rolloutGateViolation.details,
       );
     }
-    await this.ensureVaultReadable(vaultId, userId);
+    const vault = await this.ensureVaultReadable(vaultId, userId);
 
     if (!SYNC_EVENT_TYPES.has(input.eventType)) {
       throw new SyncServiceError("SYNC_INVALID_EVENT_TYPE", 400, "invalid eventType");
+    }
+    if (input.eventType === "ITEM_CREATE") {
+      await this.assertSharedVaultItemCreateAllowed(vault);
     }
     if (!Number.isInteger(input.baseVersion) || input.baseVersion < 0) {
       throw new SyncServiceError(
@@ -356,6 +386,50 @@ export class SyncService {
       );
     }
 
+    if (input.eventType === "ITEM_CREATE" && referencedItemId) {
+      const alreadyCreated = await this.events.hasItemCreateEvent(
+        vaultId,
+        referencedItemId,
+      );
+      if (alreadyCreated) {
+        // Same-key retries must keep returning the original create (append short-circuit).
+        if (input.idempotencyKey) {
+          const existingByKey = await this.events.findByIdempotencyKey(
+            vaultId,
+            input.idempotencyKey,
+          );
+          if (
+            existingByKey &&
+            existingByKey.eventType === "ITEM_CREATE" &&
+            existingByKey.referencedItemId === referencedItemId
+          ) {
+            return mapEventToResponse(existingByKey);
+          }
+        }
+        throw new SyncServiceError(
+          "SYNC_ITEM_ALREADY_EXISTS",
+          409,
+          "ITEM_CREATE already exists for this item id",
+          { referencedItemId },
+        );
+      }
+    }
+
+    if (
+      (input.eventType === "ITEM_UPDATE" || input.eventType === "ITEM_DELETE") &&
+      referencedItemId
+    ) {
+      const hasCreate = await this.events.hasItemCreateEvent(vaultId, referencedItemId);
+      if (!hasCreate) {
+        throw new SyncServiceError(
+          "SYNC_ITEM_NOT_FOUND",
+          404,
+          "ITEM_UPDATE/ITEM_DELETE require an existing ITEM_CREATE for this item id",
+          { referencedItemId },
+        );
+      }
+    }
+
     if (input.itemSoftDeleted === true) {
       if (
         input.itemDeletedAtMs === undefined ||
@@ -383,6 +457,14 @@ export class SyncService {
       clientCreatedAt = new Date(parsed).toISOString();
     }
 
+    // Always persist an explicit boolean for ITEM_* events (never leave unset on new rows).
+    // Omitted UPDATE/CREATE hints default to false; ITEM_DELETE is always soft-delete.
+    let itemSoftDeleted: boolean | null = null;
+    if (itemEventTypes.has(input.eventType)) {
+      itemSoftDeleted =
+        input.eventType === "ITEM_DELETE" ? true : input.itemSoftDeleted === true;
+    }
+
     try {
       const created = await this.events.append({
         vaultId,
@@ -394,18 +476,24 @@ export class SyncService {
         idempotencyKey: input.idempotencyKey,
         clientCreatedAt: clientCreatedAt ?? undefined,
         referencedItemId,
+        itemSoftDeleted,
       });
+      // Drive retention index from the *persisted* event (idempotent retries may
+      // return an older row). Never mark soft-delete in the index without a matching
+      // item_soft_deleted / ITEM_DELETE on that event row.
       if (this.softDeletes && referencedItemId) {
-        if (
-          input.eventType === "ITEM_DELETE" ||
-          (input.eventType === "ITEM_UPDATE" && input.itemSoftDeleted === true)
-        ) {
+        const persistedSoftDelete =
+          created.eventType === "ITEM_DELETE" || created.itemSoftDeleted === true;
+        if (persistedSoftDelete) {
           await this.softDeletes.upsert({
             vaultId,
             itemId: referencedItemId,
             deletedAtMs: Math.trunc(input.itemDeletedAtMs ?? Date.now()),
           });
-        } else if (input.eventType === "ITEM_UPDATE" && input.itemSoftDeleted === false) {
+        } else if (
+          created.eventType === "ITEM_UPDATE" &&
+          created.itemSoftDeleted === false
+        ) {
           await this.softDeletes.remove(vaultId, referencedItemId);
         }
       }
@@ -423,6 +511,7 @@ export class SyncService {
           409,
           "baseVersion is stale",
           {
+            code: "VERSION_MISMATCH",
             expectedBaseVersion: error.expectedVersion,
             latestVersion: error.actualVersion,
           },
@@ -461,7 +550,7 @@ export class SyncService {
     }
   }
 
-  private async ensureVaultReadable(vaultId: string, userId: string): Promise<void> {
+  private async ensureVaultReadable(vaultId: string, userId: string): Promise<VaultRecord> {
     const vault = await this.vaults.findById(vaultId);
     if (!vault) {
       throw new SyncServiceError("VAULT_NOT_FOUND", 404, "vault not found");
@@ -470,6 +559,37 @@ export class SyncService {
     const canRead = await this.vaults.canReadVault(vaultId, userId);
     if (!canRead) {
       throw new SyncServiceError("ACCESS_DENIED", 403, "access denied");
+    }
+    return vault;
+  }
+
+  /**
+   * After EE→FREE (no `sharedVaults`), existing shared vaults stay readable/editable,
+   * but new items / move-into shared must be denied.
+   */
+  private async assertSharedVaultItemCreateAllowed(vault: VaultRecord): Promise<void> {
+    if (vault.isPersonal) {
+      return;
+    }
+    if (!this.workspaces) {
+      throw new SyncServiceError(
+        "PLAN_FEATURE_REQUIRED",
+        403,
+        "shared vaults require a paid plan",
+      );
+    }
+    const planConfig: PlanEntitlementRuntimeConfig = {
+      deploymentMode: this.config.deploymentMode,
+      enterpriseModulesEnabled: this.config.enterpriseModulesEnabled,
+    };
+    const workspace = await this.workspaces.findById(vault.workspaceId);
+    const decision = evaluateSharedVaultItemCreateGate({
+      vault,
+      workspace,
+      config: planConfig,
+    });
+    if (!decision.ok) {
+      throw new SyncServiceError(decision.code, decision.statusCode, decision.message);
     }
   }
 
@@ -537,6 +657,8 @@ function mapEventToResponse(event: EventRecord): SyncEventResponse {
     payloadSchemaVersion: encryptedBlob.crypto_version,
     idempotencyKey: event.idempotencyKey,
     clientCreatedAt: event.clientCreatedAt,
+    referencedItemId: event.referencedItemId,
+    itemSoftDeleted: event.itemSoftDeleted,
     version: event.version,
     createdAt: event.createdAt,
   } as SyncEventResponse;

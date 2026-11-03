@@ -3,11 +3,14 @@ import {
   generateRecoverySecret,
   initCrypto,
   rebalanceServerShareForNewPassword,
+  recoveryPossessionPublicKey,
+  signRecoveryPossessionProof,
   unwrapVaultKeyWithRecoverySecret,
   wipeBytes,
   wrapVaultKeyWithRecoverySecret,
 } from "@okkey/crypto";
-import type { AccountRecoveryStatusResponseDto } from "@okkey/types";
+import { createWorkspaceFoldersSyncController } from "@okkey/vault";
+import type { AccountRecoveryStatusResponseDto, EncryptedBlobDto } from "@okkey/types";
 import {
   Alert,
   AlertDescription,
@@ -260,6 +263,28 @@ export default function AccountRestorePage() {
         userId,
       );
 
+      // Recovery restore has vaultKey but not old passwordShareC, so migratePersonalFolders
+      // cannot decrypt the personal-event stream. Rematerialize each workspace from
+      // personal-events under the new C (API-first; no local-IDB reseal on this path).
+      try {
+        const workspaces = await core.listWorkspaces();
+        for (const workspace of workspaces) {
+          const folders = createWorkspaceFoldersSyncController({
+            core,
+            userId,
+            workspaceId: workspace.id,
+            passwordShareC: rebalanced.passwordShareC,
+          });
+          try {
+            await folders.refresh();
+          } finally {
+            folders.dispose();
+          }
+        }
+      } catch {
+        // Best-effort: unlock must still succeed if folder rematerialize fails.
+      }
+
       if (freshBrowser || mintedFreshShare) {
         await registerCurrentBrowserDevice(core, getOrCreateDeviceFingerprint(), {
           userId,
@@ -270,7 +295,8 @@ export default function AccountRestorePage() {
       const freshSecret = await generateRecoverySecret();
       newSecretBytes = new TextEncoder().encode(freshSecret);
       const encryptedBlob = await wrapVaultKeyWithRecoverySecret(ownedVaultKey, newSecretBytes);
-      await core.rotateAccountRecoveryKey({ encryptedBlob });
+      const possessionPublicKey = await recoveryPossessionPublicKey(newSecretBytes);
+      await core.rotateAccountRecoveryKey({ encryptedBlob, possessionPublicKey });
 
       const previousPending = pendingUnlockRef.current;
       if (previousPending) {
@@ -313,6 +339,28 @@ export default function AccountRestorePage() {
     }
   }
 
+  function restoreErrorMessage(err: unknown): string | null {
+    if (!(err instanceof ApiRequestError)) {
+      return null;
+    }
+    if (err.status === 429 || err.body.error === "RECOVERY_PROOF_LIMITED") {
+      return t("account.restore.error.proofLimited");
+    }
+    if (
+      err.body.error === "RECOVERY_PROOF_REQUIRES_DEVICE" ||
+      err.body.error === "DEVICE_FINGERPRINT_ALREADY_TRUSTED"
+    ) {
+      return t("account.restore.error.proofRequiresDevice");
+    }
+    if (err.body.error === "RECOVERY_PROOF_UNAVAILABLE") {
+      return t("account.restore.error.proofUnavailable");
+    }
+    if (err.body.error === "RECOVERY_KEY_NOT_AVAILABLE") {
+      return t("account.restore.error.keyUnavailable");
+    }
+    return null;
+  }
+
   async function handleKeyRestore(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!accessToken || !userId || !passwordValid || !recoveryKey.trim()) {
@@ -327,13 +375,37 @@ export default function AccountRestorePage() {
     try {
       await initCrypto();
       const core = createAuthenticatedCoreClient(accessToken);
+      // Proof is bound to the session device. After storage is cleared the
+      // session has none, so register a pending sibling before the challenge.
+      await registerCurrentBrowserDevice(core, getOrCreateDeviceFingerprint(), {
+        userId,
+        recoveryPending: true,
+      });
+      const started = await core.proveAccountRecoveryKey({});
+      if (started.proved) {
+        throw new Error("recovery challenge was not issued");
+      }
+      const signature = await signRecoveryPossessionProof(secretBytes, {
+        userId,
+        deviceId: started.deviceId,
+        challenge: started.challenge,
+      });
+      const proof = await core.proveAccountRecoveryKey({
+        challenge: started.challenge,
+        signature,
+      });
+      if (!proof.proved) {
+        throw new Error("recovery proof was not accepted");
+      }
       const wrap = await core.getAccountRecoveryKeyWrap();
-      vaultKey = await unwrapVaultKeyWithRecoverySecret(secretBytes, wrap.encryptedBlob);
+      const wrapBlob: EncryptedBlobDto = wrap.encryptedBlob;
+      vaultKey = await unwrapVaultKeyWithRecoverySecret(secretBytes, wrapBlob);
       await completeRestoreFromVaultKey(vaultKey);
       vaultKey = null;
     } catch (err) {
-      if (err instanceof ApiRequestError && err.body.error === "RECOVERY_KEY_NOT_AVAILABLE") {
-        setFormError(t("account.restore.error.keyUnavailable"));
+      const specific = restoreErrorMessage(err);
+      if (specific) {
+        setFormError(specific);
       } else if (!formError) {
         setFormError(t("account.restore.error.invalidKey"));
       }
@@ -352,9 +424,11 @@ export default function AccountRestorePage() {
     }
     try {
       await navigator.clipboard.writeText(newRecoverySecret);
-      setNewKeyExported(true);
+      // Ack must complete before enabling Continue — otherwise ProtectedVaultLayout
+      // remints RecoveryKeyRequiredScreen (exportedAt still null) after navigate.
       const core = createAuthenticatedCoreClient(accessToken);
       await core.ackAccountRecoveryKeyExport();
+      setNewKeyExported(true);
       toast.success(t("web.toast.save.success"));
     } catch {
       setFormError(t("web.settingsPopup.recovery.error.copyFailed"));
@@ -371,9 +445,9 @@ export default function AccountRestorePage() {
         title: t("account.restore.newKey.pdfTitle"),
         description: t("account.restore.newKey.pdfDescription"),
       });
-      setNewKeyExported(true);
       const core = createAuthenticatedCoreClient(accessToken);
       await core.ackAccountRecoveryKeyExport();
+      setNewKeyExported(true);
     } catch {
       setFormError(t("web.settingsPopup.recovery.error.generic"));
     } finally {

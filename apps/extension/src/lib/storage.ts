@@ -1,0 +1,359 @@
+import { extensionSessionStorage } from "./extensionStorageApi.ts";
+
+/** Broadcast after a full local wipe so the service worker can drop in-memory caches. */
+export const EXTENSION_DATA_WIPED_MSG = "okkey.extension.dataWiped" as const;
+
+/** chrome.storage.local profile + session for the extension (one active profile). */
+
+export const STORAGE_KEYS = {
+  profile: "okkey.extension.profile",
+  session: "okkey.extension.session",
+  pkce: "okkey.extension.pkce",
+  devicePublicKey: "okkey.extension.devicePublicKey",
+  devicePrivateKey: "okkey.extension.devicePrivateKey",
+  deviceFingerprint: "okkey.extension.deviceFingerprint",
+  deviceId: "okkey.extension.deviceId",
+  /**
+   * After trusted device dismisses ("Не сейчас"), stay deferred until explicit retry.
+   * Prevents auto re-register → pending popup loop.
+   */
+  deviceDeferred: "okkey.extension.deviceDeferred",
+  /** Survives logout / wipe — last chosen SaaS vs self-hosted server URL. */
+  lastServer: "okkey.extension.lastServer",
+} as const;
+
+export type ExtensionHostMode = "saas" | "self-hosted";
+
+export type ExtensionLastServer = {
+  hostMode: ExtensionHostMode;
+  /** Normalized web origin when self-hosted; ignored for saas. */
+  webBaseUrl: string;
+  updatedAt: number;
+};
+
+export type ExtensionProfile = {
+  /** Web base URL (origin). SaaS preset or manual. */
+  webBaseUrl: string;
+  /** Resolved API base URL (may differ on localhost). */
+  apiBaseUrl: string;
+  updatedAt: number;
+};
+
+export type ExtensionSession = {
+  access_token: string;
+  user_id: string;
+  expires_at: string;
+};
+
+export type ExtensionPkcePending = {
+  state: string;
+  codeVerifier: string;
+  redirectUri: string;
+  webBaseUrl: string;
+  apiBaseUrl: string;
+  createdAt: number;
+};
+
+function storageArea(): typeof browser.storage.local {
+  return browser.storage.local;
+}
+
+export async function readProfile(): Promise<ExtensionProfile | null> {
+  const result = await storageArea().get(STORAGE_KEYS.profile);
+  const raw = result[STORAGE_KEYS.profile] as ExtensionProfile | undefined;
+  if (!raw?.webBaseUrl?.trim() || !raw?.apiBaseUrl?.trim()) {
+    return null;
+  }
+  return raw;
+}
+
+export async function writeProfile(profile: ExtensionProfile): Promise<void> {
+  await storageArea().set({ [STORAGE_KEYS.profile]: profile });
+}
+
+export async function readSession(): Promise<ExtensionSession | null> {
+  const result = await storageArea().get(STORAGE_KEYS.session);
+  const raw = result[STORAGE_KEYS.session] as ExtensionSession | undefined;
+  if (!raw?.access_token?.trim() || !raw?.user_id?.trim()) {
+    return null;
+  }
+  const exp = Date.parse(raw.expires_at);
+  if (!Number.isFinite(exp) || Date.now() >= exp) {
+    // Expired account token must not leave unlock / pending-save material behind.
+    await wipeAllExtensionData();
+    return null;
+  }
+  return raw;
+}
+
+export async function writeSession(session: ExtensionSession): Promise<void> {
+  await storageArea().set({ [STORAGE_KEYS.session]: session });
+}
+
+export async function clearSession(): Promise<void> {
+  await storageArea().remove(STORAGE_KEYS.session);
+}
+
+export async function readPkcePending(): Promise<ExtensionPkcePending | null> {
+  const result = await storageArea().get(STORAGE_KEYS.pkce);
+  const raw = result[STORAGE_KEYS.pkce] as ExtensionPkcePending | undefined;
+  if (!raw?.state || !raw?.codeVerifier) {
+    return null;
+  }
+  return raw;
+}
+
+export async function writePkcePending(pending: ExtensionPkcePending): Promise<void> {
+  await storageArea().set({ [STORAGE_KEYS.pkce]: pending });
+}
+
+export async function clearPkcePending(): Promise<void> {
+  await storageArea().remove(STORAGE_KEYS.pkce);
+}
+
+export async function readDevicePublicKey(): Promise<string | null> {
+  const result = await storageArea().get(STORAGE_KEYS.devicePublicKey);
+  const value = result[STORAGE_KEYS.devicePublicKey];
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+export async function writeDevicePublicKey(publicKeyB64: string): Promise<void> {
+  await storageArea().set({ [STORAGE_KEYS.devicePublicKey]: publicKeyB64 });
+}
+
+export async function readDevicePrivateKey(): Promise<string | null> {
+  const result = await storageArea().get(STORAGE_KEYS.devicePrivateKey);
+  const value = result[STORAGE_KEYS.devicePrivateKey];
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+export async function writeDevicePrivateKey(privateKeyB64: string): Promise<void> {
+  await storageArea().set({ [STORAGE_KEYS.devicePrivateKey]: privateKeyB64 });
+}
+
+export async function readDeviceFingerprint(): Promise<string | null> {
+  const result = await storageArea().get(STORAGE_KEYS.deviceFingerprint);
+  const value = result[STORAGE_KEYS.deviceFingerprint];
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+export async function writeDeviceFingerprint(fingerprint: string): Promise<void> {
+  await storageArea().set({ [STORAGE_KEYS.deviceFingerprint]: fingerprint });
+}
+
+export async function readDeviceId(): Promise<string | null> {
+  const result = await storageArea().get(STORAGE_KEYS.deviceId);
+  const value = result[STORAGE_KEYS.deviceId];
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+export async function writeDeviceId(deviceId: string): Promise<void> {
+  await storageArea().set({ [STORAGE_KEYS.deviceId]: deviceId });
+}
+
+export type ExtensionDeviceDeferred = {
+  deviceId: string | null;
+  deferredAt: number;
+};
+
+export async function readDeviceDeferred(): Promise<ExtensionDeviceDeferred | null> {
+  const result = await storageArea().get(STORAGE_KEYS.deviceDeferred);
+  const raw = result[STORAGE_KEYS.deviceDeferred] as ExtensionDeviceDeferred | undefined;
+  if (!raw || typeof raw.deferredAt !== "number") {
+    return null;
+  }
+  return {
+    deviceId: typeof raw.deviceId === "string" && raw.deviceId.trim() ? raw.deviceId.trim() : null,
+    deferredAt: raw.deferredAt,
+  };
+}
+
+export async function writeDeviceDeferred(deviceId: string | null): Promise<void> {
+  const next: ExtensionDeviceDeferred = {
+    deviceId: deviceId?.trim() || null,
+    deferredAt: Date.now(),
+  };
+  await storageArea().set({ [STORAGE_KEYS.deviceDeferred]: next });
+}
+
+export async function clearDeviceDeferred(): Promise<void> {
+  await storageArea().remove(STORAGE_KEYS.deviceDeferred);
+}
+
+export async function readLastServer(): Promise<ExtensionLastServer | null> {
+  const result = await storageArea().get(STORAGE_KEYS.lastServer);
+  const raw = result[STORAGE_KEYS.lastServer] as ExtensionLastServer | undefined;
+  if (!raw || (raw.hostMode !== "saas" && raw.hostMode !== "self-hosted")) {
+    return null;
+  }
+  if (raw.hostMode === "self-hosted" && !raw.webBaseUrl?.trim()) {
+    return null;
+  }
+  return {
+    hostMode: raw.hostMode,
+    webBaseUrl: raw.webBaseUrl?.trim() ?? "",
+    updatedAt: Number.isFinite(raw.updatedAt) ? raw.updatedAt : 0,
+  };
+}
+
+export async function writeLastServer(value: Omit<ExtensionLastServer, "updatedAt">): Promise<void> {
+  const next: ExtensionLastServer = {
+    hostMode: value.hostMode,
+    webBaseUrl: value.webBaseUrl.trim(),
+    updatedAt: Date.now(),
+  };
+  await storageArea().set({ [STORAGE_KEYS.lastServer]: next });
+}
+
+/**
+ * Clear chrome.storage.session (unlock session, pending save offers, …) and
+ * notify the service worker to drop in-memory caches. Local account data stays.
+ */
+export async function clearExtensionSessionArea(): Promise<void> {
+  await clearExtensionSessionStorage();
+  notifyExtensionDataWiped();
+}
+
+/**
+ * When a previously known extension device is no longer trusted (revoked,
+ * blocked, or pending re-approval), drop unlock / pending-save session material
+ * so a later re-approval cannot restore vaultKey without master password / PIN.
+ * Account session and local profile are left intact for the pending UX.
+ */
+export async function clearSessionAfterLostDeviceTrust(
+  previousDeviceId: string | null | undefined,
+): Promise<void> {
+  if (typeof previousDeviceId !== "string" || !previousDeviceId.trim()) {
+    return;
+  }
+  await clearExtensionSessionArea();
+}
+
+/**
+ * Clear all extension-owned local state except:
+ * - last-server preference
+ * - device identity (fingerprint + signing keys) so re-login can prove bind-session
+ *
+ * Also clears chrome.storage.session (unlock session, pending save offers, …)
+ * and notifies the service worker to drop in-memory caches.
+ *
+ * Call this before network logout / revoke when the account session ends.
+ * Device signing keys are cleared separately on revoke/block via
+ * `clearExtensionDeviceSigningKey`.
+ */
+export async function wipeAllExtensionData(): Promise<void> {
+  // Keep device identity across account login/logout/401 so bind-session proof still works.
+  const preserve = new Set<string>([
+    STORAGE_KEYS.lastServer,
+    STORAGE_KEYS.deviceFingerprint,
+    STORAGE_KEYS.deviceId,
+    STORAGE_KEYS.devicePublicKey,
+    STORAGE_KEYS.devicePrivateKey,
+    STORAGE_KEYS.deviceDeferred,
+  ]);
+  const all = await storageArea().get(null);
+  const keysToRemove = Object.keys(all).filter((key) => {
+    if (preserve.has(key)) {
+      return false;
+    }
+    return (
+      key.startsWith("okkey.extension.") ||
+      // Device unlock wraps, device prefs, pin attempt counters, etc.
+      key.startsWith("okkey.vault.") ||
+      key === STORAGE_KEYS.profile ||
+      key === STORAGE_KEYS.session ||
+      key === STORAGE_KEYS.pkce
+    );
+  });
+  await Promise.all([
+    keysToRemove.length > 0 ? storageArea().remove(keysToRemove) : Promise.resolve(),
+    clearExtensionSessionStorage(),
+  ]);
+  notifyExtensionDataWiped();
+}
+
+async function clearExtensionSessionStorage(): Promise<void> {
+  const area = extensionSessionStorage();
+  if (!area) return;
+  if (typeof area.clear === "function") {
+    await area.clear();
+    return;
+  }
+  // Fallback when clear() is unavailable (tests / partial APIs).
+  const bag = await area.get(null);
+  const keys = Object.keys(bag);
+  if (keys.length > 0) {
+    await area.remove(keys);
+  }
+}
+
+function notifyExtensionDataWiped(): void {
+  try {
+    const runtime = (globalThis as { browser?: { runtime?: { sendMessage?: (msg: unknown) => unknown } } })
+      .browser?.runtime;
+    if (typeof runtime?.sendMessage === "function") {
+      void Promise.resolve(runtime.sendMessage({ type: EXTENSION_DATA_WIPED_MSG })).catch(() => {
+        /* popup / node tests may have no SW listener */
+      });
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
+ * Resolve API base from a single web Base URL.
+ *
+ * Forces `:4000` only for local loopback web (Vite `:5173` + API `:4000`):
+ * `localhost`, `127.0.0.1`, `[::1]` / `::1`.
+ *
+ * Any other host (custom domain, LAN IP, self-host reverse proxy) → same
+ * origin as the web Base URL — never rewrite to `:4000`.
+ */
+export function isLoopbackHostname(hostname: string): boolean {
+  const host = hostname.trim().toLowerCase();
+  return host === "localhost" || host === "127.0.0.1" || host === "[::1]" || host === "::1";
+}
+
+export function resolveApiBaseFromWebBase(webBaseUrl: string): string {
+  const trimmed = webBaseUrl.trim().replace(/\/$/, "");
+  const url = new URL(trimmed);
+  if (isLoopbackHostname(url.hostname)) {
+    // Keep IPv6 brackets when rewriting the port.
+    const host = url.hostname === "::1" ? "[::1]" : url.hostname;
+    return `${url.protocol}//${host}:4000`;
+  }
+  return url.origin;
+}
+
+/** Thrown when the server URL field is empty. */
+export const WEB_BASE_URL_REQUIRED_ERROR = "Base URL is required";
+/** Thrown when the server URL uses a non-http(s) scheme (or is otherwise invalid). */
+export const WEB_BASE_URL_SCHEME_ERROR = "Base URL must use http or https";
+
+/**
+ * Normalize a user-entered web Base URL to an http(s) origin.
+ * Only prefixes `https://` when the value has no explicit `scheme://` —
+ * otherwise a value like `ftp://host` would become `https://ftp://host`
+ * and parse as origin `https://ftp`.
+ */
+export function normalizeWebBaseUrl(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    throw new Error(WEB_BASE_URL_REQUIRED_ERROR);
+  }
+  // Detect any URI scheme with authority (`scheme://…`). Do not use a bare
+  // `scheme:` match — that would treat `localhost:8080` as a scheme.
+  const hasExplicitScheme = /^[a-z][a-z0-9+.-]*:\/\//iu.test(trimmed);
+  const withScheme = hasExplicitScheme ? trimmed : `https://${trimmed}`;
+  let url: URL;
+  try {
+    url = new URL(withScheme);
+  } catch {
+    throw new Error(WEB_BASE_URL_SCHEME_ERROR);
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw new Error(WEB_BASE_URL_SCHEME_ERROR);
+  }
+  return url.origin;
+}

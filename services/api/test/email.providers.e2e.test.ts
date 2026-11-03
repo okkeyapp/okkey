@@ -21,6 +21,18 @@ class InMemoryRedis {
     this.values.set(key, value);
   }
 
+  async setIfNotExistsWithTtl(
+    key: string,
+    value: string,
+    ttlSeconds: number,
+  ): Promise<boolean> {
+    if (this.values.has(key)) {
+      return false;
+    }
+    await this.setWithTtl(key, value, ttlSeconds);
+    return true;
+  }
+
   async get(key: string): Promise<string | null> {
     return this.values.get(key) ?? null;
   }
@@ -76,6 +88,7 @@ async function startApiForEmailProvider(config: ApiConfig): Promise<{
     users: {
       findByEmail: async () => null,
       isTwoFactorEnabled: async () => false,
+      hasAnyUsers: async () => true,
     },
     emailTemplates: templateService,
     config,
@@ -162,7 +175,7 @@ test("e2e: smtp provider sends auth email via SMTP server", async (t) => {
   });
 
   assert.equal(response.status, 200);
-  assert.match(smtpRaw, /Subject: Your Okkey sign-in code/i);
+  assert.match(smtpRaw, /Subject: 123456 is your Okkey sign-in code/i);
   assert.match(smtpRaw, /123456/);
 });
 
@@ -221,5 +234,8 @@ test("e2e: http-api provider posts email payload to external api", async (t) => 
   assert.equal(providerAuthHeader, "Bearer test-api-key");
   assert.match(providerRequestBody, /"to":"user@example.com"/);
   const parsed = JSON.parse(providerRequestBody) as { subject?: string };
-  assert.equal(parsed.subject, formatEmailMessage("ru", "email.auth.signInCode.subject", {}));
+  assert.equal(
+    parsed.subject,
+    formatEmailMessage("ru", "email.auth.signInCode.subject", { code: "123456" }),
+  );
 });

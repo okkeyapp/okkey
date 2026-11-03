@@ -1,4 +1,5 @@
 import type { AccessTokenResponseDto, DeviceListItemDto } from "@okkey/types";
+import { ApiRequestError } from "@okkey/api";
 import { AuthClient } from "@okkey/auth";
 import {
   createContext,
@@ -9,11 +10,13 @@ import {
   useMemo,
   useRef,
   useState,
+  type Context,
   type MutableRefObject,
   type ReactNode,
 } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
+  buildVaultUnlockAttestation,
   decryptUserIdentityFromEncryptedBlob,
   reconstructVaultKeyWithMasterPassword,
   rebalanceServerShareForNewPassword,
@@ -27,9 +30,10 @@ import { migratePersonalFoldersAfterPasswordChange } from "../folders/migratePer
 import { accountLockWithRedirectQuery } from "../routes/paths";
 import { base64ToBytes, bytesToBase64 } from "./base64";
 import { getOrCreateDeviceFingerprint } from "./deviceFingerprint";
+import { clearDeviceSigningKey } from "./deviceSigningKey";
 import {
+  clearBoundDeviceSession,
   pollDeviceTrust,
-  registerCurrentBrowserDevice,
   resolveDeviceTrust,
   type DeviceTrustStatus,
 } from "./deviceTrust";
@@ -57,7 +61,7 @@ import {
 } from "./sessionAuthStorage";
 import { clearStoredCurrentWorkspaceId } from "./workspaceStorage";
 import { clearDeviceUnlockSecrets } from "./vaultDeviceUnlockStore";
-import { readVaultDevicePrefs } from "./vaultDevicePrefs";
+import { patchVaultDevicePrefs, readVaultDevicePrefs } from "./vaultDevicePrefs";
 import { scheduleClipboardClearAfterCopy } from "./vaultClipboardClear";
 import { DEFAULT_VAULT_IDLE_LOCK_MS, vaultIdleLockMsFromServerSeconds } from "./vaultIdleLockMs";
 import {
@@ -68,6 +72,7 @@ import {
   touchVaultUnlockSession,
   vaultUnlockSessionExceededIdle,
 } from "./vaultUnlockSessionStorage";
+import { useLocale } from "../locale/LocaleContext";
 
 export const DEFAULT_IDLE_MS = DEFAULT_VAULT_IDLE_LOCK_MS;
 
@@ -93,7 +98,7 @@ export type AuthVaultContextValue = {
   setRegistrationAuthStateId: (id: string | null) => void;
   setTwoFactorAuthStateId: (id: string | null) => void;
   applyAccessTokenResponse: (dto: AccessTokenResponseDto) => void;
-  logout: () => void;
+  logout: (options?: { wipeDeviceKey?: boolean }) => void;
   lockVault: () => void;
   touchActivity: () => void;
   saveVaultBundle: (bundle: StoredVaultBundle) => void;
@@ -115,7 +120,7 @@ export type AuthVaultContextValue = {
   hasVaultBundle: boolean;
   /** While true, split-key is being fetched from the API after an empty local vault bundle. */
   vaultUnlockBootstrapLoading: boolean;
-  /** Idle interval before vault locks (ms), from server `vault_idle_lock_seconds`. */
+  /** Idle interval before vault locks (ms), from device-local prefs (migrated from server once). */
   vaultIdleLockMs: number;
   /** Current browser device trust vs account devices (gates unlock). */
   deviceTrustStatus: DeviceTrustStatus | "idle";
@@ -125,6 +130,11 @@ export type AuthVaultContextValue = {
   currentDeviceId: string | null;
   /** Trusted devices that can approve a pending login on this browser. */
   deviceApprovers: DeviceListItemDto[];
+  /**
+   * Sole trusted device lost its signing seed — approval is impossible;
+   * user must restore via account recovery.
+   */
+  deviceNeedsRecovery: boolean;
   /** Re-check pending/rejected device status (poll helper for wait UI). */
   refreshDeviceTrust: () => Promise<void>;
   /** Force local blocked state (e.g. recovery closed_reason=blocked before poll catches up). */
@@ -133,7 +143,41 @@ export type AuthVaultContextValue = {
   retryDeviceRegistration: () => Promise<void>;
 };
 
-const AuthVaultContext = createContext<AuthVaultContextValue | null>(null);
+/**
+ * HMR-safe Context identity. Vite Fast Refresh can re-evaluate this module while
+ * children still hold a stale module binding; a new createContext() then makes
+ * useAuthVault() miss the Provider ("must be used within AuthVaultProvider").
+ * Pin the Context object on globalThis (and import.meta.hot.data) so Provider and
+ * consumers always share the same identity across soft refreshes.
+ */
+const AUTH_VAULT_CONTEXT_GLOBAL_KEY = "__okkey_AuthVaultContext__" as const;
+
+type AuthVaultContextGlobal = typeof globalThis & {
+  [AUTH_VAULT_CONTEXT_GLOBAL_KEY]?: Context<AuthVaultContextValue | null>;
+};
+
+function createAuthVaultContext(): Context<AuthVaultContextValue | null> {
+  const fromHot = import.meta.hot?.data?.authVaultContext as
+    | Context<AuthVaultContextValue | null>
+    | undefined;
+  if (fromHot) {
+    return fromHot;
+  }
+  const g = globalThis as AuthVaultContextGlobal;
+  if (!g[AUTH_VAULT_CONTEXT_GLOBAL_KEY]) {
+    g[AUTH_VAULT_CONTEXT_GLOBAL_KEY] = createContext<AuthVaultContextValue | null>(null);
+  }
+  return g[AUTH_VAULT_CONTEXT_GLOBAL_KEY];
+}
+
+const AuthVaultContext = createAuthVaultContext();
+
+if (import.meta.hot) {
+  // Vitest may expose `import.meta.hot` without initializing `.data`.
+  import.meta.hot.data ??= {};
+  import.meta.hot.data.authVaultContext = AuthVaultContext;
+  (globalThis as AuthVaultContextGlobal)[AUTH_VAULT_CONTEXT_GLOBAL_KEY] = AuthVaultContext;
+}
 
 function useActivityListeners(touch: () => void): void {
   useEffect(() => {
@@ -152,6 +196,33 @@ function useActivityListeners(touch: () => void): void {
       document.removeEventListener("visibilitychange", onVis);
     };
   }, [touch]);
+}
+
+function deviceApproversEqual(a: DeviceListItemDto[], b: DeviceListItemDto[]): boolean {
+  if (a === b) {
+    return true;
+  }
+  if (a.length !== b.length) {
+    return false;
+  }
+  for (let i = 0; i < a.length; i += 1) {
+    const left = a[i];
+    const right = b[i];
+    if (
+      !left ||
+      !right ||
+      left.device_id !== right.device_id ||
+      left.device_name !== right.device_name ||
+      left.status !== right.status ||
+      left.platform !== right.platform ||
+      left.is_current !== right.is_current ||
+      left.approval_expires_at !== right.approval_expires_at ||
+      left.blocked_until !== right.blocked_until
+    ) {
+      return false;
+    }
+  }
+  return true;
 }
 
 function IdleLockWatcher({
@@ -244,6 +315,7 @@ function VaultIdleLockBridge({
 export function AuthVaultProvider({ children }: { children: ReactNode }) {
   const publicApi = useMemo(() => createPublicApiClient(), []);
   const authClient = useMemo(() => createAuthSdk(publicApi), [publicApi]);
+  const { setLocale } = useLocale();
 
   const [accessToken, setAccessToken] = useState<string | null>(() => readStoredSession()?.access_token ?? null);
   const [userId, setUserId] = useState<string | null>(() => readStoredSession()?.user_id ?? null);
@@ -287,10 +359,13 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
   const [deviceBlockedUntil, setDeviceBlockedUntil] = useState<string | null>(null);
   const [currentDeviceId, setCurrentDeviceId] = useState<string | null>(null);
   const [deviceApprovers, setDeviceApprovers] = useState<DeviceListItemDto[]>([]);
+  const [deviceNeedsRecovery, setDeviceNeedsRecovery] = useState(false);
   const pendingDeviceIdRef = useRef<string | null>(null);
   const currentDeviceIdRef = useRef<string | null>(null);
   /** Sticky forever-block so poll cannot bounce back to unlock/restore. */
   const foreverBlockedRef = useRef(false);
+  /** Filled after `logout` is defined; used by earlier effects that clear a dead session. */
+  const logoutRef = useRef<() => void>(() => {});
 
   useEffect(() => {
     vaultUnlockedRef.current = vaultUnlocked;
@@ -345,6 +420,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       setCurrentDeviceId(null);
       currentDeviceIdRef.current = null;
       setDeviceApprovers([]);
+      setDeviceNeedsRecovery(false);
       pendingDeviceIdRef.current = null;
       foreverBlockedRef.current = false;
       setVaultUnlockBootstrapLoading(false);
@@ -354,31 +430,50 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
     setDeviceTrustStatus("checking");
     void (async () => {
-      const client = createAuthenticatedCoreClient(accessToken);
-      const snapshot = await resolveDeviceTrust(client, userId);
-      if (cancelled) {
-        return;
+      try {
+        const client = createAuthenticatedCoreClient(accessToken);
+        const snapshot = await resolveDeviceTrust(client, userId);
+        if (cancelled) {
+          return;
+        }
+        if (snapshot.status === "blocked" && snapshot.blockedUntil == null) {
+          foreverBlockedRef.current = true;
+        } else {
+          foreverBlockedRef.current = false;
+        }
+        pendingDeviceIdRef.current =
+          snapshot.status === "pending" ||
+          snapshot.status === "rejected" ||
+          snapshot.status === "blocked"
+            ? snapshot.deviceId
+            : snapshot.status === "trusted"
+              ? null
+              : pendingDeviceIdRef.current;
+        setDeviceTrustStatus(snapshot.status);
+        setDeviceBlockedUntil(
+          snapshot.status === "blocked" ? (snapshot.blockedUntil ?? null) : null,
+        );
+        setCurrentDeviceId(snapshot.deviceId);
+        currentDeviceIdRef.current = snapshot.deviceId;
+        setDeviceApprovers(snapshot.approverDevices);
+        setDeviceNeedsRecovery(snapshot.needsRecovery === true);
+        if (snapshot.status === "blocked" || snapshot.status === "rejected") {
+          clearBoundDeviceSession();
+          void clearDeviceSigningKey();
+        }
+      } catch (error: unknown) {
+        if (cancelled) {
+          return;
+        }
+        // Session ended by remote revoke/reject/block — go to sign-in, not the
+        // pending "Request approval again" screen (retry would also 401).
+        if (error instanceof ApiRequestError && error.status === 401) {
+          clearBoundDeviceSession();
+          logoutRef.current();
+          return;
+        }
+        setDeviceTrustStatus("error");
       }
-      if (snapshot.status === "blocked" && snapshot.blockedUntil == null) {
-        foreverBlockedRef.current = true;
-      } else {
-        foreverBlockedRef.current = false;
-      }
-      pendingDeviceIdRef.current =
-        snapshot.status === "pending" ||
-        snapshot.status === "rejected" ||
-        snapshot.status === "blocked"
-          ? snapshot.deviceId
-          : snapshot.status === "trusted"
-            ? null
-            : pendingDeviceIdRef.current;
-      setDeviceTrustStatus(snapshot.status);
-      setDeviceBlockedUntil(
-        snapshot.status === "blocked" ? (snapshot.blockedUntil ?? null) : null,
-      );
-      setCurrentDeviceId(snapshot.deviceId);
-      currentDeviceIdRef.current = snapshot.deviceId;
-      setDeviceApprovers(snapshot.approverDevices);
     })();
 
     return () => {
@@ -459,7 +554,19 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
         if (!dto) {
           return;
         }
-        setVaultIdleLockMsState(vaultIdleLockMsFromServerSeconds(dto.vault_idle_lock_seconds));
+        // Locale from account profile must apply before Settings opens (clear-cache → login).
+        if (dto.locale === "en" || dto.locale === "ru") {
+          setLocale(dto.locale);
+        }
+        // Idle lock is device-local; migrate former server value once if unset on this device.
+        const prefs = readVaultDevicePrefs(userId);
+        if (typeof prefs.idleLockSeconds === "number" && Number.isFinite(prefs.idleLockSeconds)) {
+          setVaultIdleLockMsState(vaultIdleLockMsFromServerSeconds(prefs.idleLockSeconds));
+        } else {
+          const migratedSeconds = dto.vault_idle_lock_seconds;
+          patchVaultDevicePrefs(userId, { idleLockSeconds: Math.trunc(migratedSeconds) });
+          setVaultIdleLockMsState(vaultIdleLockMsFromServerSeconds(migratedSeconds));
+        }
         if (dto.master_password_changed_at) {
           setMasterPasswordChangedAt(dto.master_password_changed_at);
         }
@@ -481,7 +588,18 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [accessToken, userId]);
+  }, [accessToken, userId, setLocale]);
+
+  // Prefer already-migrated local idle prefs as soon as userId is known (before profile fetch).
+  useEffect(() => {
+    if (!userId) {
+      return;
+    }
+    const prefs = readVaultDevicePrefs(userId);
+    if (typeof prefs.idleLockSeconds === "number" && Number.isFinite(prefs.idleLockSeconds)) {
+      setVaultIdleLockMsState(vaultIdleLockMsFromServerSeconds(prefs.idleLockSeconds));
+    }
+  }, [userId]);
 
   const setEmailChallenge = useCallback((email: string, challengeId: string, resendAvailableAt?: string) => {
     setPendingEmail(email);
@@ -517,7 +635,10 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
     lastActivityRef.current = Date.now();
   }, [clearPasswordShareSecrets, clearVaultKeySecret]);
 
-  const logout = useCallback(() => {
+  const logout = useCallback((options?: { wipeDeviceKey?: boolean }) => {
+    if (options?.wipeDeviceKey) {
+      void clearDeviceSigningKey();
+    }
     const workspaceUserId = userIdRef.current;
     if (workspaceUserId) {
       clearStoredCurrentWorkspaceId(workspaceUserId);
@@ -528,6 +649,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
     clearSessionLocalProfile();
     clearVaultBundleSessionMirror();
     clearPendingVaultBundle();
+    clearBoundDeviceSession();
     setAccessToken(null);
     setUserId(null);
     vaultUnlockedRef.current = false;
@@ -546,10 +668,12 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
     setCurrentDeviceId(null);
     currentDeviceIdRef.current = null;
     setDeviceApprovers([]);
+    setDeviceNeedsRecovery(false);
     pendingDeviceIdRef.current = null;
     foreverBlockedRef.current = false;
     clearSettingsPopupCache();
   }, [clearPasswordShareSecrets, clearVaultKeySecret]);
+  logoutRef.current = logout;
 
   const lockVault = useCallback(() => {
     clearVaultUnlockSession();
@@ -657,9 +781,15 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       wipeBytes(deviceB);
       wipeBytes(salt);
       const token = accessToken;
-      if (token) {
-        void createAuthenticatedCoreClient(token)
-          .recordVaultUnlock()
+      if (token && userId) {
+        void buildVaultUnlockAttestation({
+          userId,
+          vaultKey,
+          encryptedPrivateKeyPayloadB64: bundle.encrypted_private_key.payload,
+        })
+          .then((attestation) =>
+            createAuthenticatedCoreClient(token).recordVaultUnlock(attestation),
+          )
           .catch(() => {
             /* best-effort: unlock UI must not fail if telemetry POST fails */
           });
@@ -690,9 +820,16 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
         persistVaultUnlockSession(userId, nextVaultKey, nextShareC);
       }
       const token = accessToken;
-      if (token) {
-        void createAuthenticatedCoreClient(token)
-          .recordVaultUnlock()
+      const bundle = userId ? readVaultBundle(userId) : null;
+      if (token && userId && bundle?.encrypted_private_key?.payload) {
+        void buildVaultUnlockAttestation({
+          userId,
+          vaultKey: nextVaultKey,
+          encryptedPrivateKeyPayloadB64: bundle.encrypted_private_key.payload,
+        })
+          .then((attestation) =>
+            createAuthenticatedCoreClient(token).recordVaultUnlock(attestation),
+          )
           .catch(() => {
             /* best-effort */
           });
@@ -858,7 +995,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       const client = createAuthenticatedCoreClient(accessToken);
       const fingerprint = getOrCreateDeviceFingerprint();
       const knownDeviceId = pendingDeviceIdRef.current ?? currentDeviceIdRef.current;
-      const snapshot = await pollDeviceTrust(client, fingerprint, knownDeviceId);
+      const snapshot = await pollDeviceTrust(client, fingerprint, knownDeviceId, userId);
       // Sticky forever-block is optimistic only; clear when server is no longer blocked
       // (Settings unblock / re-trust must leave /account/device-pending without reload).
       if (snapshot.status === "blocked" && snapshot.blockedUntil == null) {
@@ -878,15 +1015,29 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       );
       setCurrentDeviceId(snapshot.deviceId);
       currentDeviceIdRef.current = snapshot.deviceId;
-      setDeviceApprovers(snapshot.approverDevices);
+      setDeviceNeedsRecovery(snapshot.needsRecovery === true);
+      // Poll returns a fresh array every 2s; keep previous reference when equal so
+      // AuthVault context consumers (item forms / datepicker) do not re-render on a tick.
+      setDeviceApprovers((prev) =>
+        deviceApproversEqual(prev, snapshot.approverDevices) ? prev : snapshot.approverDevices,
+      );
       // Revoke/block from another browser must drop local unlock immediately.
       if (snapshot.status !== "trusted" && vaultUnlockedRef.current) {
         lockVault();
       }
-    } catch {
+      if (snapshot.status === "blocked" || snapshot.status === "rejected") {
+        clearBoundDeviceSession();
+        void clearDeviceSigningKey();
+      }
+    } catch (error: unknown) {
+      if (error instanceof ApiRequestError && error.status === 401) {
+        clearBoundDeviceSession();
+        logout();
+        return;
+      }
       // Best-effort; keep last known trust status on transient network errors.
     }
-  }, [accessToken, lockVault, userId]);
+  }, [accessToken, lockVault, logout, userId]);
 
   const markDeviceBlockedForever = useCallback(() => {
     foreverBlockedRef.current = true;
@@ -917,31 +1068,43 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
     setDeviceBlockedUntil(null);
     const client = createAuthenticatedCoreClient(accessToken);
     try {
-      const registered = await registerCurrentBrowserDevice(client);
-      pendingDeviceIdRef.current = registered.device_id;
-      if (registered.status === "trusted") {
-        setDeviceTrustStatus("trusted");
-        setCurrentDeviceId(registered.device_id);
-        const listed = await client.listDevices(getOrCreateDeviceFingerprint()).catch(() => null);
-        setDeviceApprovers(listed?.devices ?? []);
+      // Use full resolve path so lost-seed installs go through key-rebind / recovery
+      // instead of register → 409 DEVICE_FINGERPRINT_ALREADY_TRUSTED.
+      const snapshot = await resolveDeviceTrust(client, userId);
+      if (snapshot.status === "blocked" && snapshot.blockedUntil == null) {
+        foreverBlockedRef.current = true;
+      } else {
+        foreverBlockedRef.current = false;
+      }
+      pendingDeviceIdRef.current =
+        snapshot.status === "pending" ||
+        snapshot.status === "rejected" ||
+        snapshot.status === "blocked"
+          ? snapshot.deviceId
+          : snapshot.status === "trusted"
+            ? null
+            : pendingDeviceIdRef.current;
+      setDeviceTrustStatus(snapshot.status);
+      setDeviceBlockedUntil(
+        snapshot.status === "blocked" ? (snapshot.blockedUntil ?? null) : null,
+      );
+      setCurrentDeviceId(snapshot.deviceId);
+      currentDeviceIdRef.current = snapshot.deviceId;
+      setDeviceApprovers(snapshot.approverDevices);
+      setDeviceNeedsRecovery(snapshot.needsRecovery === true);
+      if (snapshot.status === "blocked" || snapshot.status === "rejected") {
+        clearBoundDeviceSession();
+        void clearDeviceSigningKey();
+      }
+    } catch (error: unknown) {
+      if (error instanceof ApiRequestError && error.status === 401) {
+        clearBoundDeviceSession();
+        logout();
         return;
       }
-      if (registered.status === "blocked") {
-        setDeviceTrustStatus("blocked");
-        setDeviceBlockedUntil(registered.blocked_until ?? null);
-        setCurrentDeviceId(registered.device_id);
-        const listed = await client.listDevices(getOrCreateDeviceFingerprint()).catch(() => null);
-        setDeviceApprovers(listed?.devices ?? []);
-        return;
-      }
-      setDeviceTrustStatus("pending");
-      setCurrentDeviceId(registered.device_id);
-      const listed = await client.listDevices(getOrCreateDeviceFingerprint()).catch(() => null);
-      setDeviceApprovers(listed?.devices ?? []);
-    } catch {
       setDeviceTrustStatus("error");
     }
-  }, [accessToken, userId]);
+  }, [accessToken, logout, userId]);
 
   const hasVaultBundle = readVaultBundle(userId) !== null;
 
@@ -983,6 +1146,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       deviceBlockedUntil,
       currentDeviceId,
       deviceApprovers,
+      deviceNeedsRecovery,
       refreshDeviceTrust,
       markDeviceBlockedForever,
       retryDeviceRegistration,
@@ -1022,6 +1186,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       deviceBlockedUntil,
       currentDeviceId,
       deviceApprovers,
+      deviceNeedsRecovery,
       refreshDeviceTrust,
       markDeviceBlockedForever,
       retryDeviceRegistration,

@@ -1,12 +1,12 @@
-import { useEffect, useMemo, useState, type FormEvent, type SVGProps } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent, type SVGProps } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   buildRegistrationCryptoArtifacts,
-  ed25519Keypair,
   generateRecoverySecret,
   initCrypto,
   registrationArtifactsToWire,
   wipeBytes,
+  recoveryPossessionPublicKey,
   wrapVaultKeyWithRecoverySecret,
 } from "@okkey/crypto";
 import type { RegisterCompleteRequestDto } from "@okkey/types";
@@ -20,7 +20,7 @@ import {
   Input,
   Spinner,
 } from "@okkey/ui";
-import { Copy, Download } from "lucide-react";
+import { Check, Copy, Download } from "lucide-react";
 import { toast } from "sonner";
 
 import AppShellLayout from "../../components/app-shell/AppShellLayout";
@@ -33,17 +33,21 @@ import { finalizePendingVaultBundle } from "../../auth/localVaultBundle";
 import { bytesToBase64 } from "../../auth/base64";
 import { getOrCreateDeviceFingerprint } from "../../auth/deviceFingerprint";
 import { parseBrowserEnvironment } from "../../auth/browserEnvironment";
-import { DEVICE_PUBLIC_KEY_KEY } from "../../auth/storageKeys";
+import { ensureDeviceSigningPublicKey } from "../../auth/deviceSigningKey";
 import { useLocale } from "../../locale/LocaleContext";
-import { ACCOUNT_LOCK_PATH, AUTH_EMAIL_PATH, accountLockWithRedirectQuery, invitePath } from "../../routes/paths";
-import { readPendingInviteToken } from "../../auth/pendingInviteStorage";
+import { AUTH_EMAIL_PATH } from "../../routes/paths";
+import { writeLastLoginMethodHint } from "../../auth/loginMethodStorage";
+import { completeExtensionAuthHandoffIfPending } from "../../auth/completeExtensionAuthHandoff";
 import { registrationErrorI18nKey } from "./registrationErrors";
 import {
+  registrationStepAfterRecoveryEnroll,
   shouldRedirectAwayFromRegistrationForm,
   type RegistrationStep,
 } from "./registrationRecoveryStep";
 
 const MIN_MASTER_PASSWORD_LENGTH = 4;
+/** Match KeyField copy-success feedback duration. */
+const RECOVERY_COPY_SUCCESS_MS = 3000;
 
 function RequirementCheckIcon(props: SVGProps<SVGSVGElement>) {
   return (
@@ -72,7 +76,6 @@ export default function AuthRegistrationPage() {
     saveVaultBundle,
     updateLocalProfile,
     setRegistrationAuthStateId,
-    applyAccessTokenResponse,
     clearEmailLoginFlow,
     logout,
     accessToken,
@@ -89,13 +92,33 @@ export default function AuthRegistrationPage() {
   const [step, setStep] = useState<RegistrationStep>("form");
   const [recoverySecret, setRecoverySecret] = useState<string | null>(null);
   const [recoveryExported, setRecoveryExported] = useState(false);
+  const [recoveryCopied, setRecoveryCopied] = useState(false);
+  const recoveryCopyResetTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Dedupes Copy/Download ack; bootstrap token is revoked after the first success. */
+  const recoveryAckedRef = useRef(false);
+  const recoveryAckInFlightRef = useRef<Promise<void> | null>(null);
+  /** Held only until recovery enroll succeeds; wiped on success or unmount. */
+  const vaultKeyPendingEnrollRef = useRef<Uint8Array | null>(null);
   const [postRegRedirect, setPostRegRedirect] = useState<string | null>(null);
   const [postRegAccessToken, setPostRegAccessToken] = useState<string | null>(null);
 
   useEffect(() => {
+    return () => {
+      if (recoveryCopyResetTimeoutRef.current) {
+        clearTimeout(recoveryCopyResetTimeoutRef.current);
+      }
+      if (vaultKeyPendingEnrollRef.current) {
+        wipeBytes(vaultKeyPendingEnrollRef.current);
+        vaultKeyPendingEnrollRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
     // After completeRegistration we clear registrationAuthStateId and await enroll.
-    // Guard must keep `enrolling` / `recoveryKey` on this page — otherwise the user
-    // is bounced to /auth/email → GuestAuthOnly → lock and never sees the key.
+    // Guard must keep `enrolling` / `enrollFailed` / `recoveryKey` on this page —
+    // otherwise the user is bounced to /auth/email → GuestAuthOnly → lock and never
+    // sees the key (or a blocking enroll error).
     if (
       !shouldRedirectAwayFromRegistrationForm({
         step,
@@ -150,14 +173,8 @@ export default function AuthRegistrationPage() {
         encrypted_private_key: wire.encrypted_private_key,
       });
 
-      const deviceKp = ed25519Keypair();
-      const devicePublicKeyB64 = bytesToBase64(deviceKp.slice(32, 64));
-      wipeBytes(deviceKp);
-      try {
-        window.localStorage.setItem(DEVICE_PUBLIC_KEY_KEY, devicePublicKeyB64);
-      } catch {
-        /* ignore */
-      }
+      // Non-extractable Ed25519 key in IndexedDB — keep seed across reload/re-login.
+      const devicePublicKeyB64 = await ensureDeviceSigningPublicKey();
 
       const personalWorkspaceName = t("auth.registration.personalWorkspaceName");
       const personalVaultName = t("web.workspaceSettings.vaults.personal.title");
@@ -189,18 +206,16 @@ export default function AuthRegistrationPage() {
       };
 
       const reg = await authClient.completeRegistration(body);
-      // Enter post-signup recovery before clearing registrationAuthStateId so the
-      // redirect effect cannot race with async enroll and skip the export screen.
+      if (!reg.access_token?.trim()) {
+        throw new Error("registration bootstrap token missing");
+      }
+      // Bootstrap token is scoped to recovery enroll/ack only — do not persist as a
+      // full Bearer session. Full session requires the normal email login flow.
+      // Keep registrationAuthStateId until finishRegistration so AuthSessionGate /
+      // guestEntryPaths still allow /account/new during enroll + recovery export.
       setStep("enrolling");
       setPostRegAccessToken(reg.access_token);
-      applyAccessTokenResponse({
-        access_token: reg.access_token,
-        expires_at: reg.expires_at,
-        user_id: reg.user_id,
-        token_type: reg.token_type,
-      });
       finalizePendingVaultBundle(reg.user_id);
-      setRegistrationAuthStateId(null);
       clearEmailLoginFlow();
 
       updateLocalProfile({
@@ -208,38 +223,32 @@ export default function AuthRegistrationPage() {
         firstName: firstName.trim(),
         lastName: lastName.trim(),
       });
+      writeLastLoginMethodHint({ email, primary: "email" });
+      // After recovery export, sign in again for a full session (invite handoff survives in storage).
+      setPostRegRedirect(
+        email.trim()
+          ? `${AUTH_EMAIL_PATH}?email=${encodeURIComponent(email.trim())}`
+          : AUTH_EMAIL_PATH,
+      );
 
-      const pendingInvite = readPendingInviteToken();
-      const nextPath = pendingInvite
-        ? accountLockWithRedirectQuery(encodeURIComponent(invitePath(pendingInvite)))
-        : ACCOUNT_LOCK_PATH;
-      setPostRegRedirect(nextPath);
+      // Keep vault key until enroll succeeds (no navigate/handoff).
+      vaultKeyPendingEnrollRef.current = material.vaultKey;
+      wipeBytes(pwd);
+      wipeBytes(material.serverKeyShare);
+      wipeBytes(material.deviceShare);
 
-      let secretForStep: string | null = null;
       try {
-        const secret = await generateRecoverySecret();
-        const secretBytes = new TextEncoder().encode(secret);
-        const encryptedBlob = await wrapVaultKeyWithRecoverySecret(material.vaultKey, secretBytes);
-        const core = createAuthenticatedCoreClient(reg.access_token);
-        await core.enrollAccountRecoveryKey({ encryptedBlob });
-        secretForStep = secret;
+        const secret = await enrollAccountRecoveryKey(material.vaultKey, reg.access_token);
+        wipeBytes(material.vaultKey);
+        vaultKeyPendingEnrollRef.current = null;
+        setRecoverySecret(secret);
+        setStep(registrationStepAfterRecoveryEnroll(true));
       } catch (enrollErr) {
         if (import.meta.env.DEV) {
           console.error("[auth/register/recovery-enroll]", enrollErr);
         }
         setFormError(t("auth.registration.recovery.errorEnroll"));
-      }
-
-      wipeBytes(material.vaultKey);
-      wipeBytes(pwd);
-      wipeBytes(material.serverKeyShare);
-      wipeBytes(material.deviceShare);
-
-      if (secretForStep) {
-        setRecoverySecret(secretForStep);
-        setStep("recoveryKey");
-      } else {
-        navigate(nextPath, { replace: true });
+        setStep(registrationStepAfterRecoveryEnroll(false));
       }
     } catch (err) {
       wipeBytes(pwd);
@@ -256,13 +265,67 @@ export default function AuthRegistrationPage() {
     }
   }
 
+  async function enrollAccountRecoveryKey(vaultKey: Uint8Array, token: string): Promise<string> {
+    const secret = await generateRecoverySecret();
+    const secretBytes = new TextEncoder().encode(secret);
+    const encryptedBlob = await wrapVaultKeyWithRecoverySecret(vaultKey, secretBytes);
+    const possessionPublicKey = await recoveryPossessionPublicKey(secretBytes);
+    wipeBytes(secretBytes);
+    const core = createAuthenticatedCoreClient(token);
+    await core.enrollAccountRecoveryKey({ encryptedBlob, possessionPublicKey });
+    return secret;
+  }
+
+  async function retryRecoveryEnroll() {
+    const vaultKey = vaultKeyPendingEnrollRef.current;
+    const token = postRegAccessToken ?? accessToken;
+    if (!vaultKey || !token) {
+      setFormError(t("auth.registration.recovery.errorEnroll"));
+      setStep("enrollFailed");
+      return;
+    }
+    setSubmitting(true);
+    setFormError(null);
+    setStep("enrolling");
+    try {
+      const secret = await enrollAccountRecoveryKey(vaultKey, token);
+      wipeBytes(vaultKey);
+      vaultKeyPendingEnrollRef.current = null;
+      setRecoverySecret(secret);
+      setStep(registrationStepAfterRecoveryEnroll(true));
+    } catch (enrollErr) {
+      if (import.meta.env.DEV) {
+        console.error("[auth/register/recovery-enroll-retry]", enrollErr);
+      }
+      setFormError(t("auth.registration.recovery.errorEnroll"));
+      setStep(registrationStepAfterRecoveryEnroll(false));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   async function ackRecoveryKeyExport(): Promise<void> {
+    if (recoveryAckedRef.current || recoveryExported) {
+      return;
+    }
+    if (recoveryAckInFlightRef.current) {
+      return recoveryAckInFlightRef.current;
+    }
     const token = postRegAccessToken ?? accessToken;
     if (!token) {
       throw new Error("missing access token for recovery key export ack");
     }
-    const core = createAuthenticatedCoreClient(token);
-    await core.ackAccountRecoveryKeyExport();
+    const run = (async () => {
+      const core = createAuthenticatedCoreClient(token);
+      await core.ackAccountRecoveryKeyExport();
+      recoveryAckedRef.current = true;
+    })();
+    recoveryAckInFlightRef.current = run;
+    try {
+      await run;
+    } finally {
+      recoveryAckInFlightRef.current = null;
+    }
   }
 
   async function handleRecoveryCopy() {
@@ -273,7 +336,15 @@ export default function AuthRegistrationPage() {
       await navigator.clipboard.writeText(recoverySecret);
       await ackRecoveryKeyExport();
       setRecoveryExported(true);
-      toast.success(t("web.toast.save.success"));
+      setRecoveryCopied(true);
+      if (recoveryCopyResetTimeoutRef.current) {
+        clearTimeout(recoveryCopyResetTimeoutRef.current);
+      }
+      recoveryCopyResetTimeoutRef.current = setTimeout(() => {
+        setRecoveryCopied(false);
+        recoveryCopyResetTimeoutRef.current = null;
+      }, RECOVERY_COPY_SUCCESS_MS);
+      toast.success(t("web.keyForm.copied"));
     } catch {
       setFormError(t("web.settingsPopup.recovery.error.copyFailed"));
     }
@@ -299,20 +370,49 @@ export default function AuthRegistrationPage() {
   }
 
   function finishRegistration() {
-    const target = postRegRedirect ?? ACCOUNT_LOCK_PATH;
-    setRecoverySecret(null);
-    navigate(target, { replace: true });
+    void (async () => {
+      // Bootstrap token cannot issue extension auth codes; require full login first.
+      if (await completeExtensionAuthHandoffIfPending()) {
+        return;
+      }
+      setPostRegAccessToken(null);
+      setRegistrationAuthStateId(null);
+      const target = postRegRedirect ?? AUTH_EMAIL_PATH;
+      setRecoverySecret(null);
+      navigate(target, { replace: true });
+    })();
   }
 
   if (step === "enrolling") {
     return (
+      <AppShellLayout title={t("auth.registration.recovery.title")} busy>
+        <Spinner aria-label={t("auth.registration.recovery.preparing")} />
+      </AppShellLayout>
+    );
+  }
+
+  if (step === "enrollFailed") {
+    return (
       <AppShellLayout
         title={t("auth.registration.recovery.title")}
-        description={t("auth.registration.recovery.preparing")}
+        description={t("auth.registration.recovery.errorEnroll")}
         logo={<OkkeyLogoMark className="h-[60px] w-[61px]" />}
       >
-        <div className="flex w-full flex-col items-center justify-center gap-4 rounded-xl border border-border bg-background p-8 shadow-sm">
-          <Spinner aria-label={t("auth.registration.recovery.preparing")} />
+        <div className="flex w-full flex-col gap-6 rounded-xl border border-border bg-background p-4 shadow-sm">
+          {formError ? (
+            <Alert variant="error">
+              <AlertTitle>{t("unlock.errorTitle")}</AlertTitle>
+              <AlertDescription>{formError}</AlertDescription>
+            </Alert>
+          ) : null}
+          <Button
+            type="button"
+            className="w-full"
+            disabled={submitting}
+            onClick={() => void retryRecoveryEnroll()}
+          >
+            {t("auth.registration.recovery.retryEnroll")}
+          </Button>
         </div>
       </AppShellLayout>
     );
@@ -347,8 +447,12 @@ export default function AuthRegistrationPage() {
               className={`${controlGroupItemGrowClassName} h-9 gap-2.5 bg-background`}
               onClick={() => void handleRecoveryCopy()}
             >
-              <Copy className="size-4 shrink-0" />
-              {t("auth.registration.recovery.copy")}
+              {recoveryCopied ? (
+                <Check className="size-4 shrink-0" aria-hidden />
+              ) : (
+                <Copy className="size-4 shrink-0" aria-hidden />
+              )}
+              {recoveryCopied ? t("web.keyForm.copied") : t("auth.registration.recovery.copy")}
             </Button>
             <Button
               type="button"

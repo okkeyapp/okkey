@@ -10,13 +10,13 @@ import {
 } from "react";
 
 import type { CoreClient } from "@okkey/api";
-
 import {
   createWorkspaceFoldersSyncController,
+  flattenWorkspaceFolders,
+  type FlatWorkspaceFolder,
+  type WorkspaceFolderNode,
   type WorkspaceFoldersSyncController,
-} from "./workspaceFoldersSync";
-import type { FlatWorkspaceFolder, WorkspaceFolderNode } from "./workspaceFolderTree";
-import { flattenWorkspaceFolders } from "./workspaceFolderTree";
+} from "@okkey/vault";
 
 export type WorkspaceFoldersContextValue = {
   folderTree: WorkspaceFolderNode[];

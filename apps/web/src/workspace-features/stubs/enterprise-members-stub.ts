@@ -9,5 +9,11 @@ const workspaceMembersModule: WorkspaceSettingsMembersModule = {
 
 export default workspaceMembersModule;
 
-export async function tryCompletePendingVaultWraps(): Promise<void> {}
+export function canCompletePendingVaultWraps(): boolean {
+  return false;
+}
+
+export async function tryCompletePendingVaultWraps(): Promise<{ skippedInvalidKeys: number }> {
+  return { skippedInvalidKeys: 0 };
+}
 

@@ -7,6 +7,7 @@ import App from "./App.tsx";
 import { applyLocaleToDocument, readStoredLocale } from "./locale/localeStorage";
 import { applyStoredTheme } from "./theme/applyTheme";
 import { captureCapsuleFragmentKey } from "./capsules/fragmentKey";
+import { syncBackendEnterpriseModules } from "./workspace/syncBackendEnterpriseModules";
 
 applyStoredTheme();
 applyLocaleToDocument(readStoredLocale());
@@ -18,7 +19,7 @@ if (capsulePathMatch?.[1]) {
 
 const root = document.getElementById("root")!;
 
-void initCrypto().then(() => {
+void Promise.all([initCrypto(), syncBackendEnterpriseModules()]).then(() => {
   createRoot(root).render(
     <StrictMode>
       <BrowserRouter>
