@@ -88,10 +88,9 @@ services:
         condition: service_completed_successfully
     environment:
       NODE_ENV: production
-      # Self-host web registers with password_kdf_params_version=1; prod policy allows only [2].
-      # Default deployEnv=dev so allowed profiles are 1,2 (see CRYPTO_ALLOWED_PROFILE_VERSIONS).
+      # Vault items require crypto profile 2. The allowlist can only narrow.
       DEPLOY_ENV: ${DEPLOY_ENV:-dev}
-      CRYPTO_ALLOWED_PROFILE_VERSIONS: ${CRYPTO_ALLOWED_PROFILE_VERSIONS:-1,2}
+      CRYPTO_ALLOWED_PROFILE_VERSIONS: ${CRYPTO_ALLOWED_PROFILE_VERSIONS:-2}
       CRYPTO_ROLLOUT_MODE: ${CRYPTO_ROLLOUT_MODE:-compat}
       PORT: "4000"
       RUN_BACKGROUND_JOBS: "false"
@@ -160,7 +159,7 @@ services:
     environment:
       NODE_ENV: production
       DEPLOY_ENV: ${DEPLOY_ENV:-dev}
-      CRYPTO_ALLOWED_PROFILE_VERSIONS: ${CRYPTO_ALLOWED_PROFILE_VERSIONS:-1,2}
+      CRYPTO_ALLOWED_PROFILE_VERSIONS: ${CRYPTO_ALLOWED_PROFILE_VERSIONS:-2}
       CRYPTO_ROLLOUT_MODE: ${CRYPTO_ROLLOUT_MODE:-compat}
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       REDIS_URL: redis://redis:6379

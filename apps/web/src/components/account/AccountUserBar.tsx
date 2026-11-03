@@ -11,7 +11,7 @@ export default function AccountUserBar() {
   const { profile, logout } = useAuthVault();
 
   function handleSignOut() {
-    logout();
+    logout({ wipeDeviceKey: true });
     navigate(AUTH_EMAIL_PATH, { replace: true });
   }
 

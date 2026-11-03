@@ -1,6 +1,7 @@
 export type { EntityId, UUID } from "./entity-id.js";
 export {
   ENTITY_ID_RE,
+  MAX_ENTITY_ID,
   assertEntityId,
   entityIdFromDb,
   generateEntityId,
@@ -988,7 +989,35 @@ export interface AccountRecoverySettingsUpdateRequestDto {
 /** `POST /account/recovery/key/enroll` and rotate request. */
 export interface AccountRecoveryKeyEnrollRequestDto {
   encryptedBlob: EncryptedBlobDto;
+  /**
+   * Base64 Ed25519 verifying key derived from the recovery secret.
+   * The server stores this public key only. It cannot sign or unwrap the vault key.
+   */
+  possessionPublicKey?: string;
 }
+
+/** `POST /account/recovery/key/prove` request. Empty object asks for a challenge. */
+export interface AccountRecoveryKeyProveRequestDto {
+  challenge?: string;
+  signature?: string;
+}
+
+/** Challenge signature accepted. No ciphertext. */
+export interface AccountRecoveryKeyProvedResponseDto {
+  proved: true;
+}
+
+/** Server-issued single-use challenge bound to this session and device. */
+export interface AccountRecoveryKeyProveChallengeResponseDto {
+  proved: false;
+  challenge: string;
+  deviceId: string;
+  expiresAt: string;
+}
+
+export type AccountRecoveryKeyProveResponseDto =
+  | AccountRecoveryKeyProvedResponseDto
+  | AccountRecoveryKeyProveChallengeResponseDto;
 
 export interface AccountRecoveryKeyEnrollResponseDto {
   key: AccountRecoveryKeyMetaDto;
@@ -1404,6 +1433,12 @@ export interface RegisterCompleteMetadataDto {
    * device with the provided device_share and revoke other trusted devices.
    */
   claim_after_recovery?: boolean;
+  /**
+   * When true on `POST /devices/register` before recovery-key proof: if this
+   * fingerprint is already trusted, insert a pending device for the new public
+   * key and bind the unbound session to that pending device only.
+   */
+  recovery_pending?: boolean;
 }
 
 /** `POST /devices/register` request body (snake_case on wire). */
@@ -1424,6 +1459,57 @@ export interface DeviceRegisterRequestDto {
    */
   locale?: string;
   metadata?: RegisterCompleteMetadataDto;
+}
+
+/** `POST /devices/:deviceId/bind-challenge` success body. */
+export interface DeviceBindChallengeResponseDto {
+  challenge_id: string;
+  /** Base64 of the exact bytes the device private key must sign. */
+  challenge: string;
+  expires_at: string;
+}
+
+/** `POST /devices/:deviceId/bind-session` request body. */
+export interface DeviceBindSessionRequestDto {
+  challenge_id: string;
+  /**
+   * Base64 Ed25519 signature of `challenge` by the device private key.
+   * Required unless `share_proof` and `new_device_public_key` are both set.
+   */
+  signature?: string;
+  /**
+   * Base64 SHA-256 of `okkey-device-bind-share-v1\\n || device_share || challenge`.
+   * Browsers that never stored a signing seed prove the local vault share and
+   * install a new signing key. Does not replace `device_share` and does not register.
+   */
+  share_proof?: string;
+  /** Base64 32-byte Ed25519 public key installed when `share_proof` succeeds. */
+  new_device_public_key?: string;
+  device_name?: string;
+  platform?: string;
+  os_name?: string;
+  os_version?: string;
+  app_version?: string;
+  client_type?: string;
+  user_agent?: string;
+}
+
+/**
+ * `POST /devices/:deviceId/request-key-rebind` — replace lost signing keys and
+ * demote the device to pending for approval by another trusted device.
+ */
+export interface DeviceKeyRebindRequestDto {
+  device_public_key: string;
+  device_share: string;
+  device_fingerprint?: string;
+  device_name?: string;
+  platform?: string;
+  os_name?: string;
+  os_version?: string;
+  app_version?: string;
+  client_type?: string;
+  user_agent?: string;
+  locale?: string;
 }
 
 /** `POST /devices/register` success body (snake_case on wire). */
@@ -1508,6 +1594,16 @@ export interface DevicePatchRequestDto {
 export interface DevicePatchResponseDto {
   device_id: EntityId;
   device_name: string;
+}
+
+/** `POST /devices/:deviceId/revoke` request body. */
+export interface DeviceRevokeRequestDto {
+  reason?: string;
+  /**
+   * When true, allows revoking the caller device identified by `X-Device-Id`
+   * (sign-out / logout path). Omitted or false rejects that case with 403.
+   */
+  sign_out?: boolean;
 }
 
 /** `POST /devices/:deviceId/revoke` success body. */
@@ -1717,7 +1813,8 @@ export interface WorkspaceItemTemplatesListResponseDto {
 }
 
 export interface WorkspaceItemTemplateCreateRequestDto {
-  id: EntityId;
+  /** Optional; ignored by the API. Template ids are always allocated server-side. */
+  id?: EntityId;
   name: string;
   category_id: string;
   payload: WorkspaceItemTemplatePayloadDto;

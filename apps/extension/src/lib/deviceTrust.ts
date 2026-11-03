@@ -1,9 +1,17 @@
 import type { CoreApiClient } from "@okkey/api";
+import { deviceBindShareProof, initCrypto, wipeBytes } from "@okkey/crypto";
 import type { DeviceListItemDto, DeviceRegisterResponseDto } from "@okkey/types";
 
 import { isUnauthorizedApiError } from "./apiErrors.ts";
 import { parseBrowserEnvironment } from "./browserEnvironment.ts";
-import { randomDevicePublicKeyB64, randomDeviceShareB64 } from "./deviceKeyPlaceholders.ts";
+import { randomDeviceShareB64 } from "./deviceKeyPlaceholders.ts";
+import {
+  clearExtensionDeviceSigningKey,
+  ensureExtensionDeviceSigningPublicKey,
+  hasExtensionDeviceSigningKey,
+  rotateExtensionDeviceSigningKey,
+  signExtensionDeviceBindChallenge,
+} from "./deviceSigningKey.ts";
 import { loadExtensionLocale } from "./locale.ts";
 import {
   clearDeviceDeferred,
@@ -12,11 +20,9 @@ import {
   readDeviceDeferred,
   readDeviceFingerprint,
   readDeviceId,
-  readDevicePublicKey,
   writeDeviceDeferred,
   writeDeviceFingerprint,
   writeDeviceId,
-  writeDevicePublicKey,
 } from "./storage.ts";
 
 export type DeviceTrustStatus =
@@ -33,7 +39,79 @@ export type DeviceTrustSnapshot = {
   approverDevices: DeviceListItemDto[];
   errorMessage?: string;
   blockedUntil?: string | null;
+  needsRecovery?: boolean;
 };
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 1) {
+    binary += String.fromCharCode(bytes[i]!);
+  }
+  return btoa(binary);
+}
+
+async function bindExtensionDeviceWithShareProof(
+  core: CoreApiClient,
+  deviceId: string,
+  shareB64: string,
+): Promise<void> {
+  await initCrypto();
+  const publicKeyB64 = await rotateExtensionDeviceSigningKey();
+  const env = parseBrowserEnvironment(
+    typeof navigator !== "undefined" ? navigator.userAgent : "",
+    { channel: "Extension" },
+  );
+  try {
+    const challenge = await core.createDeviceBindChallenge(deviceId);
+    const message = Uint8Array.from(atob(challenge.challenge), (c) => c.charCodeAt(0));
+    const share = Uint8Array.from(atob(shareB64), (c) => c.charCodeAt(0));
+    const proof = deviceBindShareProof(share, message);
+    wipeBytes(share);
+    await core.bindDeviceSession(deviceId, {
+      challenge_id: challenge.challenge_id,
+      share_proof: bytesToBase64(proof),
+      new_device_public_key: publicKeyB64,
+      device_name: env.deviceName,
+      platform: env.platform,
+      os_name: env.osName,
+      os_version: env.osVersion,
+      app_version: "extension",
+      client_type: env.clientType,
+      user_agent: env.userAgent,
+    });
+  } catch (error) {
+    await clearExtensionDeviceSigningKey();
+    throw error;
+  }
+}
+
+async function bindExtensionDeviceWithProof(
+  core: CoreApiClient,
+  deviceId: string,
+): Promise<void> {
+  if (!(await hasExtensionDeviceSigningKey())) {
+    throw new Error("device private key is missing");
+  }
+  await initCrypto();
+  const env = parseBrowserEnvironment(
+    typeof navigator !== "undefined" ? navigator.userAgent : "",
+    { channel: "Extension" },
+  );
+  const challenge = await core.createDeviceBindChallenge(deviceId);
+  const message = Uint8Array.from(atob(challenge.challenge), (c) => c.charCodeAt(0));
+  const signature = await signExtensionDeviceBindChallenge(message);
+  await core.bindDeviceSession(deviceId, {
+    challenge_id: challenge.challenge_id,
+    signature: bytesToBase64(signature),
+    device_name: env.deviceName,
+    platform: env.platform,
+    os_name: env.osName,
+    os_version: env.osVersion,
+    app_version: "extension",
+    client_type: env.clientType,
+    user_agent: env.userAgent,
+  });
+}
 
 function fingerprintMatch(device: DeviceListItemDto, fingerprint: string): boolean {
   return device.device_fingerprint.trim().toLowerCase() === fingerprint.trim().toLowerCase();
@@ -60,12 +138,8 @@ export async function registerExtensionDevice(
     { channel: "Extension" },
   );
   const fingerprint = await ensureFingerprint();
-
-  let devicePublicKeyB64 = await readDevicePublicKey();
-  if (!devicePublicKeyB64) {
-    devicePublicKeyB64 = randomDevicePublicKeyB64();
-    await writeDevicePublicKey(devicePublicKeyB64);
-  }
+  await initCrypto();
+  const devicePublicKeyB64 = await ensureExtensionDeviceSigningPublicKey();
 
   const locale = await loadExtensionLocale();
   const result = await core.registerDevice({
@@ -100,7 +174,11 @@ export async function revokeExtensionDeviceBestEffort(
     return;
   }
   try {
-    await core.revokeDevice(id, "signed out from extension");
+    // sign_out allows revoking the caller device (blocked by default on the API).
+    await core.revokeDevice(id, "signed out from extension", {
+      signOut: true,
+      callerDeviceId: id,
+    });
   } catch {
     // Ignore — local wipe still proceeds.
   }
@@ -118,7 +196,7 @@ export async function markExtensionDeviceDeferred(deviceId: string | null): Prom
  */
 export async function resolveExtensionDeviceTrust(
   core: CoreApiClient,
-  options?: { forceRegister?: boolean },
+  options?: { forceRegister?: boolean; deviceShareB64?: string },
 ): Promise<DeviceTrustSnapshot> {
   const fingerprint = await ensureFingerprint();
   const deferred = options?.forceRegister ? null : await readDeviceDeferred();
@@ -152,6 +230,7 @@ export async function resolveExtensionDeviceTrust(
       blockedMatch.blocked_until == null ? null : new Date(blockedMatch.blocked_until).getTime();
     if (untilMs === null || untilMs > Date.now()) {
       await clearDeviceDeferred();
+      await clearExtensionDeviceSigningKey();
       // Lost trusted status (blocked) — do not keep vaultKey in session storage.
       await clearSessionAfterLostDeviceTrust(previousDeviceId);
       return {
@@ -164,14 +243,54 @@ export async function resolveExtensionDeviceTrust(
   }
 
   const trustedMatch = listed.devices.find((device) => fingerprintMatch(device, fingerprint));
+
   if (trustedMatch) {
-    await writeDeviceId(trustedMatch.device_id);
-    await clearDeviceDeferred();
-    return {
-      status: "trusted",
-      deviceId: trustedMatch.device_id,
-      approverDevices: listed.devices,
-    };
+    if (!(await hasExtensionDeviceSigningKey())) {
+      const shareB64 = options?.deviceShareB64?.trim() ?? "";
+      if (shareB64) {
+        try {
+          await bindExtensionDeviceWithShareProof(core, trustedMatch.device_id, shareB64);
+          await writeDeviceId(trustedMatch.device_id);
+          await clearDeviceDeferred();
+          return {
+            status: "trusted",
+            deviceId: trustedMatch.device_id,
+            approverDevices: listed.devices,
+          };
+        } catch (error: unknown) {
+          return {
+            status: "error",
+            deviceId: trustedMatch.device_id,
+            approverDevices: listed.devices,
+            errorMessage: error instanceof Error ? error.message : String(error),
+          };
+        }
+      }
+      return {
+        status: "error",
+        deviceId: trustedMatch.device_id,
+        approverDevices: listed.devices,
+        needsRecovery: true,
+        errorMessage: "DEVICE_REBIND_REQUIRES_RECOVERY",
+      };
+    }
+    try {
+      await bindExtensionDeviceWithProof(core, trustedMatch.device_id);
+      await writeDeviceId(trustedMatch.device_id);
+      await clearDeviceDeferred();
+      return {
+        status: "trusted",
+        deviceId: trustedMatch.device_id,
+        approverDevices: listed.devices,
+      };
+    } catch (error: unknown) {
+      return {
+        status: "error",
+        deviceId: trustedMatch.device_id,
+        approverDevices: listed.devices,
+        errorMessage: error instanceof Error ? error.message : String(error),
+      };
+    }
   }
 
   // Previously known install is no longer trusted (revoked / removed). Drop unlock
@@ -181,13 +300,55 @@ export async function resolveExtensionDeviceTrust(
 
   const pendingMatch = listed.pending.find((device) => fingerprintMatch(device, fingerprint));
   if (pendingMatch) {
-    await writeDeviceId(pendingMatch.device_id);
-    await clearDeviceDeferred();
-    return {
-      status: "pending",
-      deviceId: pendingMatch.device_id,
-      approverDevices: listed.devices,
-    };
+    if (!(await hasExtensionDeviceSigningKey())) {
+      const shareB64 = options?.deviceShareB64?.trim() ?? "";
+      if (shareB64) {
+        try {
+          await bindExtensionDeviceWithShareProof(core, pendingMatch.device_id, shareB64);
+          await writeDeviceId(pendingMatch.device_id);
+          await clearDeviceDeferred();
+          return {
+            status: "pending",
+            deviceId: pendingMatch.device_id,
+            approverDevices: listed.devices,
+          };
+        } catch (error: unknown) {
+          await writeDeviceId(pendingMatch.device_id);
+          return {
+            status: "pending",
+            deviceId: pendingMatch.device_id,
+            approverDevices: listed.devices,
+            errorMessage: error instanceof Error ? error.message : String(error),
+          };
+        }
+      }
+      return {
+        status: "pending",
+        deviceId: pendingMatch.device_id,
+        approverDevices: listed.devices,
+        needsRecovery: listed.devices.length < 1,
+        errorMessage: listed.devices.length < 1 ? "DEVICE_REBIND_REQUIRES_RECOVERY" : undefined,
+      };
+    }
+    try {
+      await bindExtensionDeviceWithProof(core, pendingMatch.device_id);
+      await writeDeviceId(pendingMatch.device_id);
+      await clearDeviceDeferred();
+      return {
+        status: "pending",
+        deviceId: pendingMatch.device_id,
+        approverDevices: listed.devices,
+      };
+    } catch (error: unknown) {
+      await writeDeviceId(pendingMatch.device_id);
+      await clearDeviceDeferred();
+      return {
+        status: "pending",
+        deviceId: pendingMatch.device_id,
+        approverDevices: listed.devices,
+        errorMessage: error instanceof Error ? error.message : String(error),
+      };
+    }
   }
 
   // Dismissed on a trusted device — stay deferred until the user requests again.
@@ -209,6 +370,7 @@ export async function resolveExtensionDeviceTrust(
       };
     }
     if (registered.status === "blocked") {
+      await clearExtensionDeviceSigningKey();
       return {
         status: "blocked",
         deviceId: registered.device_id,
@@ -235,9 +397,10 @@ export async function resolveExtensionDeviceTrust(
 /** Explicit re-request after deferred / rejected — same as web retryDeviceRegistration. */
 export async function retryExtensionDeviceRegistration(
   core: CoreApiClient,
+  deviceShareB64?: string,
 ): Promise<DeviceTrustSnapshot> {
   await clearDeviceDeferred();
-  return resolveExtensionDeviceTrust(core, { forceRegister: true });
+  return resolveExtensionDeviceTrust(core, { forceRegister: true, deviceShareB64 });
 }
 
 /**
@@ -276,6 +439,7 @@ export async function probeExtensionDeviceTrusted(
       blockedMatch.blocked_until == null ? null : new Date(blockedMatch.blocked_until).getTime();
     if (untilMs === null || untilMs > Date.now()) {
       await clearDeviceDeferred();
+      await clearExtensionDeviceSigningKey();
       await clearExtensionSessionArea();
       return "untrusted";
     }
@@ -311,6 +475,7 @@ export async function pollExtensionDeviceTrust(
       blockedMatch.blocked_until == null ? null : new Date(blockedMatch.blocked_until).getTime();
     if (untilMs === null || untilMs > Date.now()) {
       await clearDeviceDeferred();
+      await clearExtensionDeviceSigningKey();
       await clearExtensionSessionArea();
       return {
         status: "blocked",
@@ -354,6 +519,9 @@ export async function pollExtensionDeviceTrust(
   const rejectedId = pendingDeviceId ?? deferred?.deviceId ?? null;
   if (rejectedId && !deferred) {
     await writeDeviceDeferred(rejectedId);
+  }
+  if (rejectedId) {
+    await clearExtensionDeviceSigningKey();
   }
 
   return {

@@ -49,7 +49,7 @@ jobs:
       EMAIL_DEFAULT_LOCALE: en
       EMAIL_FROM: no-reply@okkey.local
       OKKEY_SALES_EMAIL: sales@okkey.test
-      CRYPTO_ALLOWED_PROFILE_VERSIONS: 1,2
+      CRYPTO_ALLOWED_PROFILE_VERSIONS: "2"
       CRYPTO_ROLLOUT_MODE: compat
       CRYPTO_ROLLOUT_ENABLED: "true"
       CRYPTO_ROLLOUT_STATE: resume

@@ -1,6 +1,7 @@
 import {
   fetchRemoteFaviconBytesFromUrls,
   type FaviconProvider,
+  type FaviconRemoteLookupResult,
 } from "./fetch-remote.ts";
 
 export class ItemFaviconServiceError extends Error {
@@ -26,8 +27,11 @@ export class ItemFaviconService {
     this.provider = options.provider ?? "direct";
   }
 
-  /** Fetch favicon bytes for form preview; does not write to object storage. */
-  async previewFromUrls(urls: readonly string[]): Promise<Uint8Array | null> {
+  /**
+   * Fetch favicon bytes for form preview; does not write to object storage.
+   * Distinguishes reachable absence from network unavailability.
+   */
+  async previewFromUrls(urls: readonly string[]): Promise<FaviconRemoteLookupResult> {
     return fetchRemoteFaviconBytesFromUrls(urls, { provider: this.provider });
   }
 }

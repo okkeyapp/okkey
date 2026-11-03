@@ -4,6 +4,7 @@ type PgPoolLike = {
   connect(): Promise<PgClientLike>;
   query<T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }>;
   end(): Promise<void>;
+  on(event: "error", listener: (error: Error) => void): void;
 };
 
 type PgClientLike = {
@@ -37,6 +38,10 @@ export class PostgresDatabase implements QueryExecutor {
     }
 
     const pool = new PoolCtor({ connectionString: databaseUrl });
+    // An idle client closed by the server (restart, pg_terminate_backend, DROP
+    // DATABASE) emits `error`. Without a listener the process crashes, including
+    // the next test that happens to be running.
+    pool.on("error", () => {});
     const db = new PostgresDatabase(pool);
     await pingWithRetry(db);
     return db;

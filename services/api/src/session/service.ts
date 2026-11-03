@@ -34,16 +34,33 @@ export interface ResolvedAccessToken {
   scope: string | null;
   /** Present so callers can revoke the exact session (e.g. after recovery ack). */
   tokenHash: string;
+  /** Absolute expiry of this access token. Null for header-user auth. */
+  expiresAt: string | null;
+  /** Set after this session proves the recovery key. Absent on older mocks. */
+  recoveryProvedAt?: string | null;
+  /** Single-use recovery possession challenge. Not a proof by itself. */
+  recoveryChallenge?: string | null;
+  recoveryChallengeExpiresAt?: string | null;
 }
 
 export interface SessionServiceDeps {
-  sessions: SessionsRepository;
+  sessions: Pick<
+    SessionsRepository,
+    | "createSession"
+    | "findValidByTokenHash"
+    | "bindDevice"
+    | "deleteByDeviceId"
+    | "deleteByTokenHash"
+    | "markRecoveryProved"
+    | "setRecoveryChallenge"
+    | "consumeRecoveryChallenge"
+  >;
   config: Pick<ApiConfig, "sessionTtlSeconds">;
   now?: () => Date;
 }
 
 export class SessionService {
-  private readonly sessions: SessionsRepository;
+  private readonly sessions: SessionServiceDeps["sessions"];
   private readonly config: Pick<ApiConfig, "sessionTtlSeconds">;
   private readonly now: () => Date;
 
@@ -99,7 +116,81 @@ export class SessionService {
       deviceId: row.deviceId,
       scope: isFullSessionScope(row.scope) ? null : row.scope,
       tokenHash: this.hashAccessToken(trimmed),
+      expiresAt: row.expiresAt,
+      recoveryProvedAt: row.recoveryProvedAt,
+      recoveryChallenge: row.recoveryChallenge,
+      recoveryChallengeExpiresAt: row.recoveryChallengeExpiresAt,
     };
+  }
+
+  /** Attach a registered device to the caller's current access-token session. */
+  async bindAccessTokenDevice(
+    accessToken: string,
+    userId: string,
+    deviceId: string,
+    options?: { replaceExistingDevice?: boolean },
+  ): Promise<boolean> {
+    const trimmed = accessToken.trim();
+    if (!trimmed || !deviceId) {
+      return false;
+    }
+    return this.sessions.bindDevice({
+      tokenHash: this.hashAccessToken(trimmed),
+      userId,
+      deviceId,
+      replaceExistingDevice: options?.replaceExistingDevice === true,
+    });
+  }
+
+  /** Remember that this access token proved the recovery key. */
+  async markRecoveryProved(accessToken: string, userId: string): Promise<boolean> {
+    const trimmed = accessToken.trim();
+    if (!trimmed || !this.sessions.markRecoveryProved) {
+      return false;
+    }
+    return this.sessions.markRecoveryProved({
+      tokenHash: this.hashAccessToken(trimmed),
+      userId,
+    });
+  }
+
+  async setRecoveryChallenge(
+    accessToken: string,
+    userId: string,
+    challenge: string,
+    expiresAtIso: string,
+  ): Promise<boolean> {
+    const trimmed = accessToken.trim();
+    if (!trimmed || !challenge || !expiresAtIso || !this.sessions.setRecoveryChallenge) {
+      return false;
+    }
+    return this.sessions.setRecoveryChallenge({
+      tokenHash: this.hashAccessToken(trimmed),
+      userId,
+      challenge,
+      expiresAtIso,
+    });
+  }
+
+  async consumeRecoveryChallenge(
+    accessToken: string,
+    userId: string,
+    challenge: string,
+  ): Promise<boolean> {
+    const trimmed = accessToken.trim();
+    if (!trimmed || !challenge || !this.sessions.consumeRecoveryChallenge) {
+      return false;
+    }
+    return this.sessions.consumeRecoveryChallenge({
+      tokenHash: this.hashAccessToken(trimmed),
+      userId,
+      challenge,
+    });
+  }
+
+  /** End all server sessions bound to a device (revoke / sign-out). */
+  async revokeSessionsForDevice(userId: string, deviceId: string): Promise<void> {
+    await this.sessions.deleteByDeviceId({ userId, deviceId });
   }
 
   async revokeAccessToken(token: string): Promise<boolean> {

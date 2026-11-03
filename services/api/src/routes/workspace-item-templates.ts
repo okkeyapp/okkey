@@ -1,6 +1,9 @@
 import type { IncomingMessage } from "node:http";
 import { json, readJsonBody, type RouteHandler } from "../http.ts";
 import { ItemTemplatesService, ItemTemplatesServiceError } from "../item-templates/service.ts";
+import { createLogger } from "../logger.ts";
+
+const logger = createLogger();
 
 function errorPayload(code: string, message: string, requestId: string) {
   return { error: code, message, requestId };
@@ -65,7 +68,11 @@ export function createWorkspaceItemTemplatesCreateRoute(
       return;
     }
 
-    const templateId = typeof body.id === "string" ? body.id : "";
+    if (body.id !== undefined && typeof body.id !== "string") {
+      json(ctx.res, 400, errorPayload("INVALID_TEMPLATE_ID", "template id must be a string", ctx.requestId));
+      return;
+    }
+    const templateId = typeof body.id === "string" ? body.id : undefined;
     const name = typeof body.name === "string" ? body.name : "";
     const categoryId = typeof body.category_id === "string" ? body.category_id : "";
     const payload = body.payload;
@@ -103,6 +110,10 @@ function handleError(requestId: string, res: Parameters<typeof json>[0], error: 
     json(res, error.statusCode, errorPayload(error.code, error.message, requestId));
     return;
   }
+  logger.error("item-templates request failed", {
+    requestId,
+    error: error instanceof Error ? error.message : String(error),
+  });
   json(res, 500, errorPayload("INTERNAL_SERVER_ERROR", "internal server error", requestId));
 }
 

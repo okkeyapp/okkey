@@ -86,7 +86,6 @@ describe("structure-only template payloads", () => {
 
   it("buildTemplateCreatePayload omits record name, tags, and field values", () => {
     const body = buildTemplateCreatePayload(
-      "1000000000000000002",
       {
         ...snapshot([websitesSection("https://example.com")]),
         recordName: "Acme login",
@@ -95,6 +94,7 @@ describe("structure-only template payloads", () => {
       "Shared login form",
     );
 
+    expect(body.id).toBeUndefined();
     expect(body.payload.record_name).toBe("");
     expect(body.payload.tags).toEqual([]);
     expect(body.payload.sections[0]?.fields[0]?.value).toBe("");

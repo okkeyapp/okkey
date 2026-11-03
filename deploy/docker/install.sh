@@ -421,7 +421,7 @@ if [[ ! -f .env ]]; then
     log "==> OKKEY_IMAGE_TAG=${resolved_tag}"
   fi
 
-  # Persist installer-provided ports / public URLs into .env (enterprise#38 / #56).
+  # Persist installer-provided ports / public URLs into .env.
   # Process env wins; when only WEB_PORT / API_PORT are set, derive matching URL defaults
   # so config.js and a later `compose --env-file .env` stay consistent.
   if [[ -n "${WEB_PORT:-}" ]]; then

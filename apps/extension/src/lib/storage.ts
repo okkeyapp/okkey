@@ -10,6 +10,7 @@ export const STORAGE_KEYS = {
   session: "okkey.extension.session",
   pkce: "okkey.extension.pkce",
   devicePublicKey: "okkey.extension.devicePublicKey",
+  devicePrivateKey: "okkey.extension.devicePrivateKey",
   deviceFingerprint: "okkey.extension.deviceFingerprint",
   deviceId: "okkey.extension.deviceId",
   /**
@@ -120,6 +121,16 @@ export async function writeDevicePublicKey(publicKeyB64: string): Promise<void> 
   await storageArea().set({ [STORAGE_KEYS.devicePublicKey]: publicKeyB64 });
 }
 
+export async function readDevicePrivateKey(): Promise<string | null> {
+  const result = await storageArea().get(STORAGE_KEYS.devicePrivateKey);
+  const value = result[STORAGE_KEYS.devicePrivateKey];
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+export async function writeDevicePrivateKey(privateKeyB64: string): Promise<void> {
+  await storageArea().set({ [STORAGE_KEYS.devicePrivateKey]: privateKeyB64 });
+}
+
 export async function readDeviceFingerprint(): Promise<string | null> {
   const result = await storageArea().get(STORAGE_KEYS.deviceFingerprint);
   const value = result[STORAGE_KEYS.deviceFingerprint];
@@ -219,16 +230,30 @@ export async function clearSessionAfterLostDeviceTrust(
 }
 
 /**
- * Clear all extension-owned local state except the last-server preference.
+ * Clear all extension-owned local state except:
+ * - last-server preference
+ * - device identity (fingerprint + signing keys) so re-login can prove bind-session
+ *
  * Also clears chrome.storage.session (unlock session, pending save offers, …)
  * and notifies the service worker to drop in-memory caches.
  *
  * Call this before network logout / revoke when the account session ends.
+ * Device signing keys are cleared separately on revoke/block via
+ * `clearExtensionDeviceSigningKey`.
  */
 export async function wipeAllExtensionData(): Promise<void> {
+  // Keep device identity across account login/logout/401 so bind-session proof still works.
+  const preserve = new Set<string>([
+    STORAGE_KEYS.lastServer,
+    STORAGE_KEYS.deviceFingerprint,
+    STORAGE_KEYS.deviceId,
+    STORAGE_KEYS.devicePublicKey,
+    STORAGE_KEYS.devicePrivateKey,
+    STORAGE_KEYS.deviceDeferred,
+  ]);
   const all = await storageArea().get(null);
   const keysToRemove = Object.keys(all).filter((key) => {
-    if (key === STORAGE_KEYS.lastServer) {
+    if (preserve.has(key)) {
       return false;
     }
     return (

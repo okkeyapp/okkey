@@ -67,8 +67,8 @@ vi.mock("@okkey/crypto", () => ({
     password_kdf_salt: "c2FsdA==",
     password_kdf_params_version: 2,
   })),
-  ed25519Keypair: vi.fn(() => new Uint8Array(64)),
   generateRecoverySecret: vi.fn(async () => "ABCD-EFGH-IJKM"),
+  recoveryPossessionPublicKey: vi.fn(async () => "cG9zc2Vzc2lvbi1wdWJsaWMta2V5LWJhc2U2NA=="),
   wrapVaultKeyWithRecoverySecret: vi.fn(async () => ({
     crypto_version: 2,
     algorithm: "xchacha20poly1305",
@@ -95,6 +95,10 @@ vi.mock("../../components/settings/recoveryKeyPdf", () => ({
 
 vi.mock("../../auth/localVaultBundle", () => ({
   finalizePendingVaultBundle: vi.fn(),
+}));
+
+vi.mock("../../auth/deviceSigningKey", () => ({
+  ensureDeviceSigningPublicKey: vi.fn(async () => btoa("pub-key-32-bytes-pad!!!!!!")),
 }));
 
 vi.mock("./registrationErrors", () => ({
