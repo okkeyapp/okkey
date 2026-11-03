@@ -19,6 +19,7 @@ import {
   type WorkspaceCapsulePoliciesDto,
 } from "@okkey/types";
 import { generateEntityId, isEntityId } from "../entity-id.ts";
+import { parseGuestSessionId } from "./guest-session-id.ts";
 import type { ApiConfig } from "../config.ts";
 import { workspaceHasPlanFeature } from "../plan-entitlements.ts";
 import {
@@ -1105,10 +1106,14 @@ export class CapsuleService {
     requesterUserId?: string,
     guestSessionId?: string,
   ): Promise<CapsuleApprovalStatusDto> {
+    const guest = parseGuestSessionId(guestSessionId);
+    if (guest.kind === "invalid") {
+      throw new CapsuleServiceError("INVALID_GUEST_SESSION_ID", 400, "guestSessionId is invalid");
+    }
     const identityClause = requesterUserId
       ? "requester_user_id = $2"
       : "guest_session_id = $2";
-    const identityValue = requesterUserId ?? guestSessionId?.trim();
+    const identityValue = requesterUserId ?? (guest.kind === "value" ? guest.id : undefined);
     if (!identityValue) {
       throw new CapsuleServiceError("AUTH_REQUIRED", 401, "authenticated email required");
     }
