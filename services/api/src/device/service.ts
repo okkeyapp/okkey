@@ -1017,15 +1017,14 @@ export class DeviceService {
     input: RegisterDeviceInput,
   ): Promise<{ deviceFingerprint: string; devicePublicKey: string }> {
     const deviceId = input.provedDeviceId?.trim() ?? "";
-    const lookup = this.devices.findOwnedDeviceAuth;
-    if (!deviceId || typeof lookup !== "function") {
+    if (!deviceId || typeof this.devices.findOwnedDeviceAuth !== "function") {
       throw new DeviceServiceError(
         "RECOVERY_CLAIM_REQUIRES_PROVED_DEVICE",
         403,
         "recovery claim requires the pending device that proved the recovery key",
       );
     }
-    const device = await lookup(userId, deviceId);
+    const device = await this.devices.findOwnedDeviceAuth(userId, deviceId);
     if (!device || (device.status !== "pending" && device.status !== "trusted")) {
       throw new DeviceServiceError(
         "RECOVERY_CLAIM_REQUIRES_PROVED_DEVICE",

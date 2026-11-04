@@ -224,6 +224,38 @@ test("registerDevice claimAfterRecovery requires the proved device and keeps its
   assert.deepEqual(claimed?.deviceShare, Uint8Array.from(Buffer.from(mintedShare, "base64")));
 });
 
+test("registerDevice claimAfterRecovery keeps repository this when loading the proved device", async () => {
+  const pendingKey = Buffer.from("public-key").toString("base64");
+  const devices = {
+    calls: 0,
+    async findOwnedDeviceAuth(this: { calls: number }) {
+      this.calls += 1;
+      return {
+        id: "pending-1",
+        status: "pending",
+        devicePublicKey: pendingKey,
+        deviceFingerprint: "a".repeat(64),
+        deviceShare: new Uint8Array(32).fill(1),
+      };
+    },
+    async claimTrustedAfterRecovery() {
+      return createDeviceRecord({ id: "d-fresh", status: "trusted" });
+    },
+  };
+  const service = new DeviceService({
+    devices: devices as never,
+    config: { deviceApprovalTtlSeconds: 60, publicAppBaseUrl: "https://app.test" },
+  });
+
+  const result = await service.registerDevice(
+    "u1",
+    "127.0.0.1",
+    createInput({ claimAfterRecovery: true, provedDeviceId: "pending-1" }),
+  );
+  assert.equal(result.deviceId, "d-fresh");
+  assert.equal(devices.calls, 1);
+});
+
 test("registerDevice recoveryPending keeps a pending sibling and does not claim", async () => {
   let allowPending: boolean | undefined;
   const service = createService({
