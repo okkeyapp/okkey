@@ -137,6 +137,71 @@ function resolveMetadata(body: RegisterDeviceBody): RegisterDeviceMetadataBody {
   };
 }
 
+type RegisterBooleanField =
+  | "reclaim_sole_trusted"
+  | "claim_after_recovery"
+  | "recovery_pending";
+
+interface RegisterBooleanFlags {
+  reclaimSoleTrusted: boolean;
+  claimAfterRecovery: boolean;
+  recoveryPending: boolean;
+}
+
+function isJsonObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Device-register flags accept only JSON booleans.
+ * An omitted flag is false. When `metadata` is an object and contains the key,
+ * that value is used (including `null`, which is rejected). Otherwise the same
+ * top-level field is used. `claim_after_recovery` still suppresses `recovery_pending`.
+ */
+function readRegisterBooleanFlags(
+  body: RegisterDeviceBody,
+): { ok: true; flags: RegisterBooleanFlags } | { ok: false; field: RegisterBooleanField } {
+  const record = body as unknown as Record<string, unknown>;
+
+  const read = (field: RegisterBooleanField): { ok: true; value: boolean } | { ok: false } => {
+    const metadata = record.metadata;
+    const source =
+      isJsonObject(metadata) && Object.prototype.hasOwnProperty.call(metadata, field)
+        ? metadata
+        : record;
+    if (!Object.prototype.hasOwnProperty.call(source, field)) {
+      return { ok: true, value: false };
+    }
+    const value = source[field];
+    if (typeof value === "boolean") {
+      return { ok: true, value };
+    }
+    return { ok: false };
+  };
+
+  const reclaimSoleTrusted = read("reclaim_sole_trusted");
+  if (!reclaimSoleTrusted.ok) {
+    return { ok: false, field: "reclaim_sole_trusted" };
+  }
+  const claimAfterRecovery = read("claim_after_recovery");
+  if (!claimAfterRecovery.ok) {
+    return { ok: false, field: "claim_after_recovery" };
+  }
+  const recoveryPending = read("recovery_pending");
+  if (!recoveryPending.ok) {
+    return { ok: false, field: "recovery_pending" };
+  }
+
+  return {
+    ok: true,
+    flags: {
+      reclaimSoleTrusted: reclaimSoleTrusted.value,
+      claimAfterRecovery: claimAfterRecovery.value,
+      recoveryPending: !claimAfterRecovery.value && recoveryPending.value,
+    },
+  };
+}
+
 function getApproverDeviceId(ctx: Parameters<RouteHandler>[0]): string {
   const deviceId = getHeader(ctx.req, "x-device-id");
   if (!deviceId) {
@@ -207,6 +272,21 @@ export function createRegisterDeviceRoute(
       return;
     }
 
+    const parsedFlags = readRegisterBooleanFlags(body);
+    if (!parsedFlags.ok) {
+      json(
+        ctx.res,
+        400,
+        errorPayload(
+          "DEVICE_BAD_REQUEST",
+          `${parsedFlags.field} must be a boolean`,
+          ctx.requestId,
+        ),
+      );
+      return;
+    }
+    const { reclaimSoleTrusted, claimAfterRecovery, recoveryPending } = parsedFlags.flags;
+
     try {
       const userId = await resolveUserId(ctx.req);
       if (!userId) {
@@ -214,18 +294,6 @@ export function createRegisterDeviceRoute(
         return;
       }
       const metadata = resolveMetadata(body);
-      const reclaimSoleTrusted = Boolean(
-        body.metadata?.reclaim_sole_trusted ?? body.reclaim_sole_trusted,
-      );
-      const claimAfterRecovery = Boolean(
-        body.metadata?.claim_after_recovery ?? (body as { claim_after_recovery?: boolean }).claim_after_recovery,
-      );
-      const recoveryPending =
-        !claimAfterRecovery &&
-        Boolean(
-          body.metadata?.recovery_pending ??
-            (body as { recovery_pending?: boolean }).recovery_pending,
-        );
       if (claimAfterRecovery && mayClaimAfterRecovery) {
         const allowed = await mayClaimAfterRecovery(ctx.req);
         if (!allowed) {
