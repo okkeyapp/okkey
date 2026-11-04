@@ -23,6 +23,7 @@ import {
   derivePasswordShareC,
   wipeBytes,
 } from "@okkey/crypto";
+import { ensureMlDsaIdentityOnUnlock } from "@okkey/vault";
 
 import { createAuthSdk, createAuthenticatedCoreClient, createPublicApiClient } from "../api/client";
 import { clearSettingsPopupCache } from "../components/settings/settingsPopupCache";
@@ -737,6 +738,42 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  const upgradeMlDsaIdentity = useCallback(
+    async (vaultKey: Uint8Array) => {
+      if (!userId || !accessToken) {
+        return;
+      }
+      const bundle = readVaultBundle(userId);
+      if (!bundle) {
+        return;
+      }
+      const token = accessToken;
+      const uid = userId;
+      try {
+        const next = await ensureMlDsaIdentityOnUnlock({
+          userId: uid,
+          vaultKey,
+          bundle,
+          upload: async (body) => {
+            await createAuthenticatedCoreClient(token).uploadMlDsaIdentityKey(body);
+          },
+          readLatestBundle: async () => {
+            const dto = await createAuthenticatedCoreClient(token).getVaultUnlockBootstrap(
+              getOrCreateDeviceFingerprint(),
+            );
+            return mapVaultUnlockBootstrapToStored(dto);
+          },
+        });
+        if (next.encrypted_private_key.payload !== bundle.encrypted_private_key.payload) {
+          writeVaultBundle(next, uid);
+        }
+      } catch {
+        /* Unlock already succeeded; a later unlock can retry the identity upgrade. */
+      }
+    },
+    [userId, accessToken],
+  );
+
   const tryUnlockWithMasterPassword = useCallback(async (masterPassword: string): Promise<boolean> => {
     const bundle = readVaultBundle(userId);
     if (!bundle) {
@@ -780,6 +817,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       wipeBytes(serverA);
       wipeBytes(deviceB);
       wipeBytes(salt);
+      await upgradeMlDsaIdentity(vaultKey);
       const token = accessToken;
       if (token && userId) {
         void buildVaultUnlockAttestation({
@@ -799,7 +837,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       wipeBytes(pwd);
       return false;
     }
-  }, [userId, accessToken]);
+  }, [userId, accessToken, upgradeMlDsaIdentity]);
 
   const applyUnlockedSecrets = useCallback(
     (nextVaultKey: Uint8Array, nextShareC: Uint8Array) => {
@@ -819,6 +857,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       if (userId) {
         persistVaultUnlockSession(userId, nextVaultKey, nextShareC);
       }
+      void upgradeMlDsaIdentity(nextVaultKey);
       const token = accessToken;
       const bundle = userId ? readVaultBundle(userId) : null;
       if (token && userId && bundle?.encrypted_private_key?.payload) {
@@ -835,7 +874,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
           });
       }
     },
-    [userId, accessToken],
+    [userId, accessToken, upgradeMlDsaIdentity],
   );
 
   const verifyMasterPassword = useCallback(

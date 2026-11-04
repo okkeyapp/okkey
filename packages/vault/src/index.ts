@@ -16,6 +16,7 @@ export {
   unlockWithMasterPassword,
   type UnlockWithMasterPasswordResult,
 } from "./unlock-with-master-password.js";
+export { ensureMlDsaIdentityOnUnlock } from "./mldsa-identity-upgrade.js";
 export {
   formatTagSearchQuery,
   itemRecordMatchesTagSearch,

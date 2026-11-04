@@ -64,6 +64,7 @@ import { readExtensionPinUnlockWrap } from "../../lib/extensionDeviceUnlockStore
 import {
   ensureExtensionVaultBundle,
   unlockExtensionVault,
+  upgradeExtensionMlDsaIdentity,
   wipeUnlockSecrets,
 } from "../../lib/extensionUnlock";
 import { initExtensionCrypto } from "../../lib/initExtensionCrypto";
@@ -319,7 +320,22 @@ export function PopupApp() {
     wipeUnlockSecrets(unlockSecretsRef.current);
     unlockSecretsRef.current = secrets;
     setUnlockSecrets(secrets);
-    setEncryptedPrivateKeyPayload(bundle.encrypted_private_key.payload);
+    let identityPayload = bundle.encrypted_private_key.payload;
+    if (profile && session?.access_token) {
+      try {
+        const core = createCoreClient(profile.apiBaseUrl, session.access_token);
+        const upgraded = await upgradeExtensionMlDsaIdentity({
+          core,
+          userId,
+          vaultKey: secrets.vaultKey,
+          bundle,
+        });
+        identityPayload = upgraded.encrypted_private_key.payload;
+      } catch {
+        /* Session restore stays unlocked if the identity upgrade cannot run. */
+      }
+    }
+    setEncryptedPrivateKeyPayload(identityPayload);
     setVaultIdleLockMs(fresh.idleLockMs);
     setMasterPassword("");
     void applyExtensionStoredTheme();
@@ -328,7 +344,7 @@ export function PopupApp() {
       /* popup may be the only listener besides SW */
     });
     return true;
-  }, []);
+  }, [profile, session]);
 
   const applyServerPreference = useCallback((mode: ExtensionHostMode, webBaseUrl: string) => {
     setHostMode(mode);
@@ -802,7 +818,19 @@ export function PopupApp() {
       wipeUnlockSecrets(unlockSecretsRef.current);
       unlockSecretsRef.current = secrets;
       setUnlockSecrets(secrets);
-      setEncryptedPrivateKeyPayload(bundle.encrypted_private_key.payload);
+      let identityPayload = bundle.encrypted_private_key.payload;
+      try {
+        const upgraded = await upgradeExtensionMlDsaIdentity({
+          core,
+          userId: session.user_id,
+          vaultKey: secrets.vaultKey,
+          bundle,
+        });
+        identityPayload = upgraded.encrypted_private_key.payload;
+      } catch {
+        /* Unlock stays successful if the identity upgrade cannot run. */
+      }
+      setEncryptedPrivateKeyPayload(identityPayload);
       setMasterPassword("");
       setPinDigits(emptyPinDigits());
       setPinError(null);
@@ -819,7 +847,7 @@ export function PopupApp() {
       void buildVaultUnlockAttestation({
         userId: session.user_id,
         vaultKey: secrets.vaultKey,
-        encryptedPrivateKeyPayloadB64: bundle.encrypted_private_key.payload,
+        encryptedPrivateKeyPayloadB64: identityPayload,
       })
         .then((attestation) => core.recordVaultUnlock(attestation))
         .catch(() => {

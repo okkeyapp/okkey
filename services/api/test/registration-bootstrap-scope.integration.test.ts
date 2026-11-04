@@ -148,6 +148,7 @@ function registerBody(authStateId: string) {
     auth_state_id: authStateId,
     user_public_key: Buffer.alloc(32, 5).toString("base64"),
     user_public_pq_key: Buffer.alloc(1184, 6).toString("base64"),
+    user_public_mldsa_key: Buffer.alloc(1952, 4).toString("base64"),
     encrypted_private_key: {
       crypto_version: 2,
       algorithm: "opaque",

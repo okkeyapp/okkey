@@ -42,8 +42,7 @@ import {
   SIGNATURE_INVALID,
   SIGNATURE_REQUIRED,
   SIGNATURE_STATUS_CODE,
-  parseHybridSignatureEnvelope,
-  verifyHybridSignatureForPayload,
+  checkHybridSignatureForNewWrite,
 } from "../crypto/hybrid-signature.ts";
 import { isEntityId } from "../entity-id.ts";
 import { type PlanEntitlementRuntimeConfig } from "../plan-entitlements.ts";
@@ -287,45 +286,29 @@ export class SyncService {
           { context: "sync.append", eventType: input.eventType },
         );
       }
-      let envelope;
-      try {
-        envelope = parseHybridSignatureEnvelope(input.signature, "sync.append");
-      } catch (error) {
-        throw new SyncServiceError(
-          SIGNATURE_INVALID,
-          SIGNATURE_STATUS_CODE,
-          (error as Error).message,
-          { context: "sync.append", eventType: input.eventType },
-        );
-      }
-      if (envelope.signer_pq_public_key !== actor.publicPqKey) {
-        throw new SyncServiceError(
-          SIGNATURE_INVALID,
-          SIGNATURE_STATUS_CODE,
-          "signature signer_pq_public_key mismatch",
-          { context: "sync.append", eventType: input.eventType },
-        );
-      }
-      const verified = verifyHybridSignatureForPayload({
-        envelope,
+      const checked = checkHybridSignatureForNewWrite({
+        signature: input.signature,
+        expectedContext: "sync.append",
         payload: {
           vaultId,
           eventType: input.eventType,
           encryptedBlob: normalizedBlob,
         },
         signerPublicKeyBase64: actor.publicKey,
+        signerPqPublicKeyBase64: actor.publicPqKey,
+        signerMldsaPublicKeyBase64: actor.publicMldsaKey ?? null,
       });
-      if (!verified) {
+      if (!checked.ok) {
         throw new SyncServiceError(
           SIGNATURE_INVALID,
           SIGNATURE_STATUS_CODE,
-          "signature verification failed",
+          checked.message,
           { context: "sync.append", eventType: input.eventType },
         );
       }
       normalizedBlob.meta = {
         ...normalizedBlob.meta,
-        signature: envelope,
+        signature: checked.envelope,
       };
     }
     const policyViolation = getCryptoWritePolicyViolation(

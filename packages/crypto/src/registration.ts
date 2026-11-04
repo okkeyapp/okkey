@@ -10,16 +10,23 @@ import {
   b64_encode,
   ed25519_keypair,
   kdf_derive,
+  mldsa65_keypair,
+  mldsa65_public_key_len,
+  mldsa65_seed_len,
   random_bytes,
 } from "@okkey/crypto-wasm";
 import { ensureWasm } from "./wasm-init.js";
 import type { EncryptedBlobDto } from "@okkey/types";
 import {
+  MLDSA65_PUBLIC_KEY_LEN,
+  MLDSA65_SEED_LEN,
+  USER_IDENTITY_BUNDLE_IDENTITY_V2,
   encryptUserIdentityPrivateBundle,
-  encodeUserIdentityPrivateBundleV1,
+  encodeUserIdentityPrivateBundleV2,
   generateMlkem768KeypairMaterial,
   userIdentityEncryptedBlobDtoFromPayload,
 } from "./user-identity-bundle.js";
+import { wipeBytes } from "./secret-buffer.js";
 
 const SHARE_LEN = 32;
 const KDF_SALT_LEN = 16;
@@ -53,6 +60,7 @@ export interface RegistrationSplitKeyMaterial {
 export interface RegistrationUserKeyMaterial {
   userPublicKey: Uint8Array;
   userPublicPqKey: Uint8Array;
+  userPublicMlDsaKey: Uint8Array;
   encryptedPrivateKey: Uint8Array;
 }
 
@@ -81,8 +89,27 @@ export async function buildRegistrationCryptoArtifacts(
   const userPublicKey = edSeedPk.slice(32, 64);
 
   const mlkem = await generateMlkem768KeypairMaterial();
-  const plaintextBundle = encodeUserIdentityPrivateBundleV1(signingPrivateKey, mlkem.decapsulationKey);
+  const mldsaMaterial = mldsa65_keypair();
+  const mldsaSeedLen = mldsa65_seed_len();
+  const mldsaPublicLen = mldsa65_public_key_len();
+  if (
+    mldsaSeedLen !== MLDSA65_SEED_LEN ||
+    mldsaPublicLen !== MLDSA65_PUBLIC_KEY_LEN ||
+    mldsaMaterial.length !== mldsaSeedLen + mldsaPublicLen
+  ) {
+    throw new Error("unexpected ml-dsa keypair output length");
+  }
+  const mldsaSeed = mldsaMaterial.slice(0, mldsaSeedLen);
+  const userPublicMlDsaKey = mldsaMaterial.slice(mldsaSeedLen);
+  const plaintextBundle = encodeUserIdentityPrivateBundleV2(
+    signingPrivateKey,
+    mlkem.decapsulationKey,
+    mldsaSeed,
+  );
   const encryptedPrivateKey = await encryptUserIdentityPrivateBundle(vaultKey, plaintextBundle);
+  wipeBytes(mldsaMaterial);
+  wipeBytes(mldsaSeed);
+  wipeBytes(plaintextBundle);
 
   return {
     vaultKey,
@@ -92,6 +119,7 @@ export async function buildRegistrationCryptoArtifacts(
     passwordKdfParamsVersion: OKKEY_PASSWORD_KDF_PARAMS_VERSION,
     userPublicKey,
     userPublicPqKey: mlkem.encapsulationKey,
+    userPublicMlDsaKey,
     encryptedPrivateKey,
   };
 }
@@ -195,6 +223,7 @@ export function registrationArtifactsToWire(
 ): {
   user_public_key: string;
   user_public_pq_key: string;
+  user_public_mldsa_key: string;
   encrypted_private_key: EncryptedBlobDto;
   server_key_share: string;
   password_kdf_salt: string;
@@ -203,7 +232,10 @@ export function registrationArtifactsToWire(
   return {
     user_public_key: b64_encode(material.userPublicKey),
     user_public_pq_key: b64_encode(material.userPublicPqKey),
-    encrypted_private_key: userIdentityEncryptedBlobDtoFromPayload(material.encryptedPrivateKey),
+    user_public_mldsa_key: b64_encode(material.userPublicMlDsaKey),
+    encrypted_private_key: userIdentityEncryptedBlobDtoFromPayload(material.encryptedPrivateKey, {
+      identity: USER_IDENTITY_BUNDLE_IDENTITY_V2,
+    }),
     server_key_share: b64_encode(material.serverKeyShare),
     password_kdf_salt: b64_encode(material.passwordKdfSalt),
     password_kdf_params_version: material.passwordKdfParamsVersion,

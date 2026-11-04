@@ -51,6 +51,8 @@ export interface UserRecord {
   publicKey: string;
   /** ML-KEM-768 encapsulation key (base64 text); null for legacy rows */
   publicPqKey: string | null;
+  /** ML-DSA-65 verifying key (base64 text); null until the account publishes one */
+  publicMldsaKey?: string | null;
   /** Preferred language for email (`en` | `ru`); null if unset */
   locale: string | null;
   createdAt: string;
@@ -76,7 +78,7 @@ export class UsersRepository {
     try {
       const id = generateEntityId();
       const rows = await this.db.query<
-        BaseRow & { email: string; public_key: string; public_pq_key: string | null }
+        BaseRow & { email: string; public_key: string; public_pq_key: string | null; public_mldsa_key?: string | null }
       >(
         `
           INSERT INTO users (
@@ -90,7 +92,7 @@ export class UsersRepository {
             password_kdf_params_version
           )
           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-          RETURNING id, email, public_key, public_pq_key, locale, created_at, updated_at
+          RETURNING id, email, public_key, public_pq_key, public_mldsa_key, locale, created_at, updated_at
         `,
         [
           id,
@@ -114,7 +116,7 @@ export class UsersRepository {
     const rows = await this.db.query<
       BaseRow & { email: string; public_key: string; public_pq_key: string | null; locale: string | null }
     >(
-      "SELECT id, email, public_key, public_pq_key, locale, created_at, updated_at FROM users WHERE id = $1",
+      "SELECT id, email, public_key, public_pq_key, public_mldsa_key, locale, created_at, updated_at FROM users WHERE id = $1",
       [id],
     );
     return rows[0] ? mapUser(rows[0]) : null;
@@ -124,7 +126,7 @@ export class UsersRepository {
     const rows = await this.db.query<
       BaseRow & { email: string; public_key: string; public_pq_key: string | null; locale: string | null }
     >(
-      "SELECT id, email, public_key, public_pq_key, locale, created_at, updated_at FROM users WHERE lower(email) = lower($1)",
+      "SELECT id, email, public_key, public_pq_key, public_mldsa_key, locale, created_at, updated_at FROM users WHERE lower(email) = lower($1)",
       [email],
     );
     return rows[0] ? mapUser(rows[0]) : null;
@@ -147,7 +149,7 @@ export class UsersRepository {
           UPDATE users
           SET email = $2::text, updated_at = now()
           WHERE id = $1::bigint
-          RETURNING id, email, public_key, public_pq_key, locale, created_at, updated_at
+          RETURNING id, email, public_key, public_pq_key, public_mldsa_key, locale, created_at, updated_at
         `,
         [userId, email],
       );
@@ -312,6 +314,40 @@ export class UsersRepository {
     );
     const row = rows[0];
     return row ? row.master_password_changed_at.toISOString() : null;
+  }
+
+  /**
+   * Store an ML-DSA-65 verifying key and the re-encrypted identity bundle.
+   * Returns "stored" when the key is new or already equal, "conflict" when a different key is set,
+   * or null when the user does not exist.
+   */
+  async setMlDsaIdentityKey(
+    userId: string,
+    input: { publicMldsaKey: string; encryptedPrivateKey: Uint8Array },
+  ): Promise<"stored" | "conflict" | null> {
+    const rows = await this.db.query<{ public_mldsa_key: string }>(
+      `
+        UPDATE users
+        SET public_mldsa_key = $2::text,
+            encrypted_private_key = $3::bytea,
+            updated_at = now()
+        WHERE id = $1::bigint
+          AND (public_mldsa_key IS NULL OR public_mldsa_key = $2::text)
+        RETURNING public_mldsa_key
+      `,
+      [userId, input.publicMldsaKey, Buffer.from(input.encryptedPrivateKey)],
+    );
+    if (rows[0]) {
+      return "stored";
+    }
+    const existing = await this.db.query<{ id: string; public_mldsa_key: string | null }>(
+      "SELECT id, public_mldsa_key FROM users WHERE id = $1::bigint",
+      [userId],
+    );
+    if (!existing[0]) {
+      return null;
+    }
+    return "conflict";
   }
 
   async isTwoFactorEnabled(userId: string): Promise<boolean> {
@@ -3953,6 +3989,7 @@ function mapUser(
     email: string;
     public_key: string;
     public_pq_key?: string | null;
+    public_mldsa_key?: string | null;
     locale?: string | null;
   },
 ): UserRecord {
@@ -3961,6 +3998,7 @@ function mapUser(
     email: row.email,
     publicKey: row.public_key,
     publicPqKey: row.public_pq_key ?? null,
+    publicMldsaKey: row.public_mldsa_key ?? null,
     locale: row.locale ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at ?? row.created_at,

@@ -22,6 +22,8 @@ curve25519-dalek = { version = "4", default-features = false, features = ["alloc
 x25519-dalek = { version = "2", features = ["static_secrets"] }
 base64 = "0.22"
 ml-kem = "0.2"
+# 0.1.1 is the newest ml-dsa release whose dependency closure builds on rustc 1.86.
+ml-dsa = { version = "=0.1.1", default-features = false, features = ["alloc"] }
 
 [dev-dependencies]
 hex = "0.4"

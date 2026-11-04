@@ -711,6 +711,7 @@ export async function registerUser(
     authStateId,
     userPublicKey: pkB64,
     userPublicPqKey: pqPkB64,
+    userPublicMldsaKey: Buffer.alloc(1952, 4).toString("base64"),
     encryptedPrivateKey: encPriv,
     serverKeyShare: share32,
     passwordKdfSalt: salt16,

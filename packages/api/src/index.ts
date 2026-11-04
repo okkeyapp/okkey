@@ -47,6 +47,8 @@ import type {
   AccountProfileUpdateRequestDto,
   AccountMasterPasswordChangeRequestDto,
   AccountMasterPasswordChangeResponseDto,
+  MldsaIdentityKeyUploadRequestDto,
+  MldsaIdentityKeyUploadResponseDto,
   VaultUnlockAttestationDto,
   VaultUnlockAttemptStatusDto,
   VaultUnlockRecordResponseDto,
@@ -341,6 +343,13 @@ export class CoreApiClient {
     body: AccountMasterPasswordChangeRequestDto,
   ): Promise<AccountMasterPasswordChangeResponseDto> {
     return this.api.post<AccountMasterPasswordChangeResponseDto>("/account/master-password/change", body);
+  }
+
+  /** Publish the account ML-DSA-65 verifying key, authenticated by the Ed25519 identity key. */
+  uploadMlDsaIdentityKey(
+    body: MldsaIdentityKeyUploadRequestDto,
+  ): Promise<MldsaIdentityKeyUploadResponseDto> {
+    return this.api.post<MldsaIdentityKeyUploadResponseDto>("/account/identity/mldsa-key", body);
   }
 
   /** Reports a successful vault unlock with a signed attestation (no secrets). */

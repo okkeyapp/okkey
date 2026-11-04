@@ -10,6 +10,7 @@ export interface RegistrationBundleInput {
   email: string;
   publicKey: string;
   publicPqKey: string;
+  publicMldsaKey: string;
   encryptedPrivateKey: EncryptedBlob;
   serverKeyShare: Uint8Array;
   passwordKdfSalt: Uint8Array;
@@ -59,6 +60,7 @@ export async function insertRegistrationBundle(
         email,
         public_key,
         public_pq_key,
+        public_mldsa_key,
         encrypted_private_key,
         server_key_share,
         password_kdf_salt,
@@ -67,7 +69,7 @@ export async function insertRegistrationBundle(
         last_name,
         last_vault_unlocked_at
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::timestamptz)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::timestamptz)
       RETURNING id
     `,
     [
@@ -75,6 +77,7 @@ export async function insertRegistrationBundle(
       input.email,
       input.publicKey,
       input.publicPqKey,
+      input.publicMldsaKey,
       Buffer.from(serializeEncryptedBlobToStorage(input.encryptedPrivateKey)),
       Buffer.from(input.serverKeyShare),
       Buffer.from(input.passwordKdfSalt),

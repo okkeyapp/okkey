@@ -1,6 +1,7 @@
 import { wipeBytes } from "@okkey/crypto";
 import type { CoreApiClient } from "@okkey/api";
 import {
+  ensureMlDsaIdentityOnUnlock,
   unlockWithMasterPassword,
   type StoredVaultBundle,
   type UnlockWithMasterPasswordResult,
@@ -13,6 +14,34 @@ import {
   readExtensionVaultBundle,
   writeExtensionVaultBundle,
 } from "./vaultStorage";
+
+export async function upgradeExtensionMlDsaIdentity(input: {
+  core: CoreApiClient;
+  userId: string;
+  vaultKey: Uint8Array;
+  bundle: StoredVaultBundle;
+}): Promise<StoredVaultBundle> {
+  const next = await ensureMlDsaIdentityOnUnlock({
+    userId: input.userId,
+    vaultKey: input.vaultKey,
+    bundle: input.bundle,
+    upload: async (body) => {
+      await input.core.uploadMlDsaIdentityKey(body);
+    },
+    readLatestBundle: async () => {
+      const fingerprint = await readDeviceFingerprint();
+      if (!fingerprint) {
+        return null;
+      }
+      const dto = await input.core.getVaultUnlockBootstrap(fingerprint);
+      return mapVaultUnlockBootstrapToStored(dto);
+    },
+  });
+  if (next.encrypted_private_key.payload !== input.bundle.encrypted_private_key.payload) {
+    await writeExtensionVaultBundle(input.userId, next);
+  }
+  return next;
+}
 
 export async function ensureExtensionVaultBundle(input: {
   core: CoreApiClient;

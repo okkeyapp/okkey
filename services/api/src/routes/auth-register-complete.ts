@@ -8,6 +8,7 @@ interface RegisterCompleteBody {
   auth_state_id?: unknown;
   user_public_key?: string;
   user_public_pq_key?: string;
+  user_public_mldsa_key?: string;
   encrypted_private_key?: unknown;
   server_key_share?: string;
   password_kdf_salt?: string;
@@ -159,6 +160,7 @@ export function createRegisterCompleteRoute(
     const requiredString = [
       ["user_public_key", body.user_public_key],
       ["user_public_pq_key", body.user_public_pq_key],
+      ["user_public_mldsa_key", body.user_public_mldsa_key],
       ["encrypted_private_key", body.encrypted_private_key],
       ["server_key_share", body.server_key_share],
       ["password_kdf_salt", body.password_kdf_salt],
@@ -306,6 +308,7 @@ export function createRegisterCompleteRoute(
         authStateId,
         userPublicKey: body.user_public_key!.trim(),
         userPublicPqKey: body.user_public_pq_key!.trim(),
+        userPublicMldsaKey: body.user_public_mldsa_key!.trim(),
         encryptedPrivateKey: body.encrypted_private_key as EncryptedBlob,
         serverKeyShare: srvShare,
         passwordKdfSalt: kdfSalt,

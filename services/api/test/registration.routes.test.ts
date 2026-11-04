@@ -43,6 +43,7 @@ function validRegisterBody() {
     auth_state_id: "a".repeat(32),
     user_public_key: Buffer.alloc(32, 1).toString("base64"),
     user_public_pq_key: Buffer.alloc(1184, 8).toString("base64"),
+    user_public_mldsa_key: Buffer.alloc(1952, 4).toString("base64"),
     encrypted_private_key: {
       crypto_version: 2,
       algorithm: "opaque",
