@@ -8,8 +8,8 @@ INSTALL_SH="${ROOT}/install.sh"
 
 # --- Structural: resolve before first fetch_file in the main body ---
 # (Helpers may mention fetch_file earlier; compare line numbers of the calls.)
-resolve_line="$(rg -n '^resolve_sales_email$' "${INSTALL_SH}" | head -1 | cut -d: -f1)"
-fetch_line="$(rg -n 'fetch_file "\$COMPOSE_FILE_NAME"' "${INSTALL_SH}" | head -1 | cut -d: -f1)"
+resolve_line="$(grep -n -E '^resolve_sales_email$' "${INSTALL_SH}" | head -1 | cut -d: -f1)"
+fetch_line="$(grep -n -F 'fetch_file "$COMPOSE_FILE_NAME"' "${INSTALL_SH}" | head -1 | cut -d: -f1)"
 [[ -n "${resolve_line}" && -n "${fetch_line}" ]] || {
   echo "FAIL: could not locate resolve_sales_email / fetch_file compose call" >&2
   exit 1
