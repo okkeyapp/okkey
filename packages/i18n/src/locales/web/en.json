@@ -1571,6 +1571,7 @@
   "clientUpgrade.body": "This version of the app cannot continue. Install the latest Okkey and try again.",
   "unlock.errorTitle": "Error",
   "unlock.errorIncorrectPassword": "Incorrect master password",
+  "unlock.errorServerShareUnavailable": "Master password unlock needs a connection to your Okkey server. Try again when you are online. PIN and biometrics still work offline if you turned them on.",
   "unlock.shortMasterPasswordHint": "Your master password is shorter than {min} characters. You can keep using it. Changing it is optional.",
   "unlock.shortMasterPasswordHint.change": "Change master password",
   "unlock.shortMasterPasswordHint.dismiss": "Dismiss",

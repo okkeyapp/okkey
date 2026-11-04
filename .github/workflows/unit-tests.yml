@@ -159,6 +159,8 @@ jobs:
           yarn build:i18n
           yarn --cwd packages/ui build
           yarn --cwd packages/import build
+          yarn --cwd packages/api build
+          yarn --cwd packages/vault build
 
       - name: Run web tests
         run: yarn test:web

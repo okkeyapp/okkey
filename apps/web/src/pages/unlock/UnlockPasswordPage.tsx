@@ -86,6 +86,7 @@ export default function UnlockPasswordPage() {
   const [pinDigits, setPinDigits] = useState(emptyPinDigits);
   const [masterPassword, setMasterPassword] = useState("");
   const [showUnlockError, setShowUnlockError] = useState(false);
+  const [serverShareError, setServerShareError] = useState(false);
   const [masterPasswordLocked, setMasterPasswordLocked] = useState(
     () => userId !== null && isMasterPasswordLocked(userId),
   );
@@ -300,6 +301,7 @@ export default function UnlockPasswordPage() {
       return;
     }
     setShowUnlockError(false);
+    setServerShareError(false);
     setNoBundleError(false);
     setPinError(null);
     if (vaultUnlockBootstrapLoading || bioBusy) {
@@ -314,11 +316,19 @@ export default function UnlockPasswordPage() {
       return;
     }
     await initCrypto();
-    const unlockResult = await tryUnlockWithMasterPassword(masterPassword);
-    if (unlockResult === "upgrade_required" || clientUpgradeRequired) {
+    const unlocked = await tryUnlockWithMasterPassword(masterPassword);
+    if (!unlocked.ok && (unlocked.reason === "upgrade_required" || clientUpgradeRequired)) {
       return;
     }
-    if (unlockResult !== true) {
+    if (!unlocked.ok && unlocked.reason === "server_share_unavailable") {
+      setServerShareError(true);
+      return;
+    }
+    if (!unlocked.ok && unlocked.reason === "no_bundle") {
+      setNoBundleError(true);
+      return;
+    }
+    if (!unlocked.ok) {
       if (userId) {
         const local = recordMasterPasswordFailure(userId);
         setMasterPasswordLocked(local.locked);
@@ -523,6 +533,7 @@ export default function UnlockPasswordPage() {
               onChange={(e) => {
                 setMasterPassword(e.target.value);
                 setShowUnlockError(false);
+                setServerShareError(false);
                 setNoBundleError(false);
               }}
             />
@@ -534,6 +545,14 @@ export default function UnlockPasswordPage() {
             <AlertErrorIcon className="size-4" />
             <AlertTitle>{t("clientUpgrade.title")}</AlertTitle>
             <AlertDescription>{t("clientUpgrade.body")}</AlertDescription>
+          </Alert>
+        ) : null}
+
+        {serverShareError ? (
+          <Alert variant="error">
+            <AlertErrorIcon className="size-4" />
+            <AlertTitle>{t("unlock.errorTitle")}</AlertTitle>
+            <AlertDescription>{t("unlock.errorServerShareUnavailable")}</AlertDescription>
           </Alert>
         ) : null}
 

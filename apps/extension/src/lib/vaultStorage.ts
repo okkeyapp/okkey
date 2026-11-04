@@ -2,17 +2,24 @@
 
 import {
   mapVaultUnlockBootstrapToStored,
+  omitServerKeyShare,
   parseStoredVaultBundle,
   type StoredVaultBundle,
-} from "@okkey/vault";
+} from "@okkey/vault/vault-bundle";
+
+import { extensionLocalStorage } from "./extensionStorageApi.ts";
 
 const KEYS = {
   vaultBundlePrefix: "okkey.extension.vaultBundle.u.",
   currentWorkspacePrefix: "okkey.extension.workspace.current.u.",
 } as const;
 
-function storageArea(): typeof browser.storage.local {
-  return browser.storage.local;
+function storageArea() {
+  const area = extensionLocalStorage();
+  if (!area) {
+    throw new Error("extension storage is unavailable");
+  }
+  return area;
 }
 
 export async function readExtensionVaultBundle(userId: string): Promise<StoredVaultBundle | null> {
@@ -26,7 +33,7 @@ export async function writeExtensionVaultBundle(
   bundle: StoredVaultBundle,
 ): Promise<void> {
   const key = `${KEYS.vaultBundlePrefix}${userId}`;
-  await storageArea().set({ [key]: bundle });
+  await storageArea().set({ [key]: omitServerKeyShare(bundle) });
 }
 
 export async function clearExtensionVaultBundle(userId: string): Promise<void> {

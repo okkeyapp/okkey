@@ -1,8 +1,17 @@
 /**
- * Split-key unlock material: per-user localStorage (survives logout + new tabs) plus session mirror.
- * XSS-sensitive; master password still required to derive keys.
+ * Device-side split-key material: per-user localStorage (survives logout and new tabs)
+ * plus a session mirror of the same record.
+ *
+ * The server share is not part of that record. It is fetched after authentication
+ * and kept only in memory for this page (`server-key-share-memory` in `@okkey/vault`).
+ * A legacy record may still contain `server_key_share_b64` until the next online unlock.
  */
-import type { EncryptedBlobDto, VaultUnlockBootstrapResponseDto } from "@okkey/types";
+import {
+  mapVaultUnlockBootstrapToStored,
+  omitServerKeyShare,
+  parseStoredVaultBundle,
+  type StoredVaultBundle,
+} from "@okkey/vault";
 
 import {
   VAULT_BUNDLE_PENDING_KEY,
@@ -10,31 +19,15 @@ import {
   vaultBundleScopedStorageKey,
 } from "./storageKeys";
 
-export interface StoredVaultBundle {
-  server_key_share_b64: string;
-  device_share_b64: string;
-  password_kdf_salt_b64: string;
-  password_kdf_params_version: number;
-  encrypted_private_key: EncryptedBlobDto;
-}
+export type { StoredVaultBundle };
+export { mapVaultUnlockBootstrapToStored };
 
 function parseBundle(raw: string | null): StoredVaultBundle | null {
   if (!raw) {
     return null;
   }
   try {
-    const o = JSON.parse(raw) as StoredVaultBundle;
-    if (
-      !o.server_key_share_b64 ||
-      !o.device_share_b64 ||
-      !o.password_kdf_salt_b64 ||
-      typeof o.password_kdf_params_version !== "number" ||
-      !o.encrypted_private_key ||
-      typeof o.encrypted_private_key !== "object"
-    ) {
-      return null;
-    }
-    return o;
+    return parseStoredVaultBundle(JSON.parse(raw));
   } catch {
     return null;
   }
@@ -65,14 +58,20 @@ function readLocalKey(key: string): StoredVaultBundle | null {
   return parseBundle(localStorage.getItem(key));
 }
 
+function persistableJson(bundle: StoredVaultBundle): string {
+  return JSON.stringify(omitServerKeyShare(bundle));
+}
+
+/** Session mirror never receives the server share, even when localStorage still has a legacy copy. */
 function syncSessionMirror(bundle: StoredVaultBundle): void {
   if (sessionStorageOk()) {
-    sessionStorage.setItem(VAULT_BUNDLE_STORAGE_KEY, JSON.stringify(bundle));
+    sessionStorage.setItem(VAULT_BUNDLE_STORAGE_KEY, persistableJson(bundle));
   }
 }
 
 /**
  * @param userId — current user from session; `null` during registration before token is issued.
+ * The returned object may still include a legacy `server_key_share_b64` read from disk.
  */
 export function readVaultBundle(userId: string | null): StoredVaultBundle | null {
   if (userId) {
@@ -83,7 +82,9 @@ export function readVaultBundle(userId: string | null): StoredVaultBundle | null
       const legacy = readLocalKey(VAULT_BUNDLE_STORAGE_KEY);
       if (legacy) {
         try {
-          localStorage.setItem(scopedKey, JSON.stringify(legacy));
+          // Keep a legacy server share on disk until an online unlock removes it.
+          // Copying the raw record preserves that fallback across the key rename.
+          localStorage.setItem(scopedKey, localStorage.getItem(VAULT_BUNDLE_STORAGE_KEY) ?? "");
           localStorage.removeItem(VAULT_BUNDLE_STORAGE_KEY);
         } catch {
           /* ignore */
@@ -113,7 +114,7 @@ export function readVaultBundle(userId: string | null): StoredVaultBundle | null
 }
 
 export function writeVaultBundle(bundle: StoredVaultBundle, userId: string | null): void {
-  const json = JSON.stringify(bundle);
+  const json = persistableJson(bundle);
   syncSessionMirror(bundle);
   if (!localStorageOk()) {
     return;
@@ -139,8 +140,9 @@ export function finalizePendingVaultBundle(userId: string): void {
     return;
   }
   const scopedKey = vaultBundleScopedStorageKey(userId);
+  const parsed = parseBundle(pendingRaw);
   try {
-    localStorage.setItem(scopedKey, pendingRaw);
+    localStorage.setItem(scopedKey, parsed ? persistableJson(parsed) : pendingRaw);
     localStorage.removeItem(VAULT_BUNDLE_PENDING_KEY);
     localStorage.removeItem(VAULT_BUNDLE_STORAGE_KEY);
   } catch {
@@ -201,14 +203,4 @@ export function clearVaultBundleForUser(userId: string): void {
   } catch {
     /* ignore */
   }
-}
-
-export function mapVaultUnlockBootstrapToStored(dto: VaultUnlockBootstrapResponseDto): StoredVaultBundle {
-  return {
-    server_key_share_b64: dto.server_key_share,
-    device_share_b64: dto.device_share,
-    password_kdf_salt_b64: dto.password_kdf_salt,
-    password_kdf_params_version: dto.password_kdf_params_version,
-    encrypted_private_key: dto.encrypted_private_key,
-  };
 }

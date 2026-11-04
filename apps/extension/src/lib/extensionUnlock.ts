@@ -1,19 +1,25 @@
 import { UnsupportedIdentityBundleError, wipeBytes } from "@okkey/crypto";
 import { isClientUpgradeRequiredError, type CoreApiClient } from "@okkey/api";
+import { ensureMlDsaIdentityOnUnlock } from "@okkey/vault";
 import {
-  ensureMlDsaIdentityOnUnlock,
   unlockWithMasterPassword,
-  type StoredVaultBundle,
   type UnlockWithMasterPasswordResult,
-} from "@okkey/vault";
-
-import { initExtensionCrypto } from "./initExtensionCrypto";
-import { readDeviceFingerprint } from "./storage";
+} from "@okkey/vault/unlock-with-master-password";
 import {
   mapVaultUnlockBootstrapToStored,
-  readExtensionVaultBundle,
-  writeExtensionVaultBundle,
-} from "./vaultStorage";
+  type StoredVaultBundle,
+} from "@okkey/vault/vault-bundle";
+
+import { initExtensionCrypto } from "./initExtensionCrypto.ts";
+import { readDeviceFingerprint } from "./storage.ts";
+import { writeExtensionVaultBundle } from "./vaultStorage.ts";
+import {
+  ensureExtensionVaultBundle,
+  type ExtensionMasterPasswordUnlockResult,
+} from "./extensionVaultBundle.ts";
+
+export type { ExtensionMasterPasswordUnlockResult };
+export { clearExtensionServerKeyShareMemory, ensureExtensionVaultBundle } from "./extensionVaultBundle.ts";
 
 export async function upgradeExtensionMlDsaIdentity(input: {
   core: CoreApiClient;
@@ -43,51 +49,33 @@ export async function upgradeExtensionMlDsaIdentity(input: {
   return next;
 }
 
-export async function ensureExtensionVaultBundle(input: {
-  core: CoreApiClient;
-  userId: string;
-}): Promise<StoredVaultBundle | null> {
-  const existing = await readExtensionVaultBundle(input.userId);
-  if (existing) {
-    return existing;
-  }
-  const fingerprint = await readDeviceFingerprint();
-  if (!fingerprint) {
-    return null;
-  }
-  try {
-    const dto = await input.core.getVaultUnlockBootstrap(fingerprint);
-    const bundle = mapVaultUnlockBootstrapToStored(dto);
-    await writeExtensionVaultBundle(input.userId, bundle);
-    return bundle;
-  } catch (error) {
-    if (isClientUpgradeRequiredError(error)) {
-      throw error;
-    }
-    return null;
-  }
-}
-
 export async function unlockExtensionVault(input: {
   core: CoreApiClient;
   userId: string;
   masterPassword: string;
-}): Promise<UnlockWithMasterPasswordResult | null> {
+}): Promise<ExtensionMasterPasswordUnlockResult> {
   await initExtensionCrypto();
   const bundle = await ensureExtensionVaultBundle({
     core: input.core,
     userId: input.userId,
   });
   if (!bundle) {
-    return null;
+    return { ok: false, reason: "no_bundle" };
+  }
+  if (!bundle.server_key_share_b64?.trim()) {
+    return { ok: false, reason: "server_share_unavailable" };
   }
   try {
-    return await unlockWithMasterPassword(bundle, input.masterPassword);
+    const secrets = await unlockWithMasterPassword(bundle, input.masterPassword);
+    return { ok: true, secrets };
   } catch (error) {
     if (error instanceof UnsupportedIdentityBundleError || isClientUpgradeRequiredError(error)) {
       throw error;
     }
-    return null;
+    if (error instanceof Error && error.message === "SERVER_KEY_SHARE_UNAVAILABLE") {
+      return { ok: false, reason: "server_share_unavailable" };
+    }
+    return { ok: false, reason: "rejected" };
   }
 }
 
