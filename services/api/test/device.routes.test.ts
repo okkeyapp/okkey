@@ -4,7 +4,11 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { createApiApp } from "../src/app.ts";
 import type { ApiConfig } from "../src/config.ts";
 import { createTestApiConfig } from "./test-api-config.ts";
-import { DeviceServiceError, type DeviceService } from "../src/device/service.ts";
+import {
+  DeviceServiceError,
+  type DeviceService,
+  type RegisterDeviceInput,
+} from "../src/device/service.ts";
 import type { SessionService } from "../src/session/service.ts";
 
 const DEVICE_A = "1234567890123456789";
@@ -1007,6 +1011,176 @@ test("POST /devices/:id/reject ends sessions bound to the pending device", async
   });
   assert.equal(res.statusCode, 200);
   assert.deepEqual(ended, [DEVICE_B]);
+});
+
+const NON_BOOLEAN_FLAG_VALUES: unknown[] = ["false", 1, {}, [], "", null];
+
+type RegisterFlagField = "recovery_pending" | "reclaim_sole_trusted" | "claim_after_recovery";
+
+function registerBodyWithFlag(
+  field: RegisterFlagField,
+  value: unknown,
+  place: "metadata" | "top",
+): Record<string, unknown> {
+  if (place === "metadata") {
+    return { ...registerBody(), metadata: { [field]: value } };
+  }
+  return { ...registerBody(), [field]: value };
+}
+
+interface RegisterCapture {
+  statusCode: number;
+  payload: { error?: string; message?: string; requestId?: string };
+  input?: RegisterDeviceInput;
+}
+
+async function registerAndCapture(body: unknown): Promise<RegisterCapture> {
+  let input: RegisterDeviceInput | undefined;
+  const res = await dispatch({
+    method: "POST",
+    url: "/devices/register",
+    headers: { "x-user-id": "u1" },
+    body,
+    deviceService: createDeviceServiceStub({
+      registerDevice: async (_userId, _ip, received) => {
+        input = received;
+        return { deviceId: "d1", status: "pending_approval" };
+      },
+    }),
+  });
+  return {
+    statusCode: res.statusCode,
+    payload: JSON.parse(res.body) as RegisterCapture["payload"],
+    input,
+  };
+}
+
+function assertBooleanFlagRejected(result: RegisterCapture, field: RegisterFlagField): void {
+  assert.equal(result.statusCode, 400);
+  assert.equal(result.payload.error, "DEVICE_BAD_REQUEST");
+  assert.equal(result.payload.message, `${field} must be a boolean`);
+  assert.equal(typeof result.payload.requestId, "string");
+  assert.equal((result.payload.requestId ?? "").length > 0, true);
+  assert.deepEqual(Object.keys(result.payload).sort(), ["error", "message", "requestId"]);
+  assert.equal(result.input, undefined);
+}
+
+test("POST /devices/register rejects non-boolean recovery_pending", async () => {
+  for (const value of NON_BOOLEAN_FLAG_VALUES) {
+    for (const place of ["metadata", "top"] as const) {
+      const result = await registerAndCapture(registerBodyWithFlag("recovery_pending", value, place));
+      assertBooleanFlagRejected(result, "recovery_pending");
+    }
+  }
+
+  const nullDoesNotFallThrough = await registerAndCapture({
+    ...registerBody(),
+    recovery_pending: true,
+    metadata: { recovery_pending: null },
+  });
+  assertBooleanFlagRejected(nullDoesNotFallThrough, "recovery_pending");
+
+  const invalidAlongsideClaim = await registerAndCapture({
+    ...registerBody(),
+    metadata: { claim_after_recovery: true, recovery_pending: "false" },
+  });
+  assertBooleanFlagRejected(invalidAlongsideClaim, "recovery_pending");
+
+  const unauthenticated = await dispatch({
+    method: "POST",
+    url: "/devices/register",
+    body: registerBodyWithFlag("recovery_pending", "false", "metadata"),
+  });
+  assert.equal(unauthenticated.statusCode, 400);
+  const unauthenticatedPayload = JSON.parse(unauthenticated.body) as { error: string; message: string };
+  assert.equal(unauthenticatedPayload.error, "DEVICE_BAD_REQUEST");
+  assert.equal(unauthenticatedPayload.message, "recovery_pending must be a boolean");
+});
+
+test("POST /devices/register keeps recovery_pending true, false, and omitted behaviour", async () => {
+  const metadataTrue = await registerAndCapture(
+    registerBodyWithFlag("recovery_pending", true, "metadata"),
+  );
+  assert.equal(metadataTrue.statusCode, 200);
+  assert.equal(metadataTrue.input?.recoveryPending, true);
+  assert.equal(metadataTrue.input?.claimAfterRecovery, false);
+  assert.equal(metadataTrue.input?.reclaimSoleTrusted, false);
+
+  const metadataFalse = await registerAndCapture(
+    registerBodyWithFlag("recovery_pending", false, "metadata"),
+  );
+  assert.equal(metadataFalse.statusCode, 200);
+  assert.equal(metadataFalse.input?.recoveryPending, false);
+
+  const topTrue = await registerAndCapture(registerBodyWithFlag("recovery_pending", true, "top"));
+  assert.equal(topTrue.statusCode, 200);
+  assert.equal(topTrue.input?.recoveryPending, true);
+
+  const topFalse = await registerAndCapture(registerBodyWithFlag("recovery_pending", false, "top"));
+  assert.equal(topFalse.statusCode, 200);
+  assert.equal(topFalse.input?.recoveryPending, false);
+
+  const omitted = await registerAndCapture(registerBody());
+  assert.equal(omitted.statusCode, 200);
+  assert.equal(omitted.input?.recoveryPending, false);
+  assert.equal(omitted.input?.claimAfterRecovery, false);
+  assert.equal(omitted.input?.reclaimSoleTrusted, false);
+
+  const metadataWins = await registerAndCapture({
+    ...registerBody(),
+    recovery_pending: true,
+    metadata: { recovery_pending: false },
+  });
+  assert.equal(metadataWins.statusCode, 200);
+  assert.equal(metadataWins.input?.recoveryPending, false);
+
+  const claimSuppressesPending = await registerAndCapture({
+    ...registerBody(),
+    metadata: { claim_after_recovery: true, recovery_pending: true },
+  });
+  assert.equal(claimSuppressesPending.statusCode, 200);
+  assert.equal(claimSuppressesPending.input?.claimAfterRecovery, true);
+  assert.equal(claimSuppressesPending.input?.recoveryPending, false);
+});
+
+test("POST /devices/register rejects non-boolean reclaim_sole_trusted and claim_after_recovery", async () => {
+  for (const field of ["reclaim_sole_trusted", "claim_after_recovery"] as const) {
+    for (const value of NON_BOOLEAN_FLAG_VALUES) {
+      for (const place of ["metadata", "top"] as const) {
+        const result = await registerAndCapture(registerBodyWithFlag(field, value, place));
+        assertBooleanFlagRejected(result, field);
+      }
+    }
+  }
+});
+
+test("POST /devices/register keeps reclaim and claim boolean behaviour", async () => {
+  const reclaimTrue = await registerAndCapture(
+    registerBodyWithFlag("reclaim_sole_trusted", true, "metadata"),
+  );
+  assert.equal(reclaimTrue.statusCode, 200);
+  assert.equal(reclaimTrue.input?.reclaimSoleTrusted, true);
+  assert.equal(reclaimTrue.input?.recoveryPending, false);
+
+  const reclaimFalse = await registerAndCapture(
+    registerBodyWithFlag("reclaim_sole_trusted", false, "metadata"),
+  );
+  assert.equal(reclaimFalse.statusCode, 200);
+  assert.equal(reclaimFalse.input?.reclaimSoleTrusted, false);
+
+  const reclaimOmitted = await registerAndCapture(registerBody());
+  assert.equal(reclaimOmitted.statusCode, 200);
+  assert.equal(reclaimOmitted.input?.reclaimSoleTrusted, false);
+
+  const claimFalse = await registerAndCapture(
+    registerBodyWithFlag("claim_after_recovery", false, "metadata"),
+  );
+  assert.equal(claimFalse.statusCode, 200);
+  assert.equal(claimFalse.input?.claimAfterRecovery, false);
+  assert.equal(claimFalse.input?.recoveryPending, false);
+
+  const claimOmitted = await registerAndCapture(registerBody());
+  assert.equal(claimOmitted.input?.claimAfterRecovery, false);
 });
 
 test("POST /devices/:id/block ends sessions bound to the pending device", async () => {
