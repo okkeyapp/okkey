@@ -45,11 +45,11 @@ On tag `v1.0.0-beta.2`, the installer writes these values. Leave them as written
 
 ```text
 DEPLOY_ENV=dev
-CRYPTO_ALLOWED_PROFILE_VERSIONS=1,2
+CRYPTO_ALLOWED_PROFILE_VERSIONS=2
 CRYPTO_ROLLOUT_MODE=compat
 ```
 
-The web client registers with password KDF params version 1. `DEPLOY_ENV=prod` allows only profile `2`, and the API refuses the combination of `DEPLOY_ENV=prod` with `CRYPTO_ALLOWED_PROFILE_VERSIONS=1,2`.
+Only profile 2 is allowed (`CRYPTO_ALLOWED_PROFILE_VERSIONS=2`). New registrations use KDF v2.
 
 `EMAIL_PROVIDER` defaults to `logger`. One-time email codes are written to the worker logs. To send real mail, set the `EMAIL_SMTP_*` variables in `.env`. The names are in [`deploy/docker/.env.example`](../deploy/docker/.env.example).
 

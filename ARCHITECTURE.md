@@ -31,7 +31,7 @@ Core includes:
 - Shared SDKs (API, crypto bindings, vault, sync, auth, UI)
 - Core backend services (API + worker)
 - Rust crypto engine (WASM)
-- Self-hosting infrastructure (docker/terraform/kubernetes)
+- Self-hosting infrastructure (Docker Compose). Kubernetes and Helm are planned and are not part of v1.0.0. Only Docker Compose is supported.
 
 ---
 

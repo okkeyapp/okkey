@@ -34,7 +34,7 @@ the install dir; do not symlink `nginx`/`certs` next to `docker-compose.prod.yml
 
 ```bash
 INSTALL_DIR=~/okkey
-REF=dev   # or your OKKEY_REF
+REF=v1.0.0-beta.2   # OKKEY_REF for this release
 
 # Prefer a git checkout / full tree copy (Dockerfile + templates + certs dir):
 #   cp -a deploy/docker/proxy "$INSTALL_DIR/proxy"

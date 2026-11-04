@@ -8,23 +8,14 @@ Run Okkey Core on your own machine with Docker Compose - **no monorepo clone or 
 
 ## One-command install
 
-On tag v1.0.0-beta.2 the installer defaults `OKKEY_REF` to `v1.0.0-beta.2`.
-
-**Tracking / QA** (floating `:dev` images, published only by a manual run of the publish workflow):
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/okkeyapp/okkey/v1.0.0-beta.2/deploy/docker/install.sh \
-  | OKKEY_REF=v1.0.0-beta.2 OKKEY_IMAGE_TAG=dev bash
-```
-
-**Production:** pin full SemVer (never floating `:latest`). `.env.example` on tag v1.0.0-beta.2 defaults to `1.0.0-beta.2`:
+Install the pinned release. Put `OKKEY_REF` and `OKKEY_IMAGE_TAG` on the right of `|`. Cosign signature verification stays on (the installer default).
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/okkeyapp/okkey/v1.0.0-beta.2/deploy/docker/install.sh \
   | OKKEY_REF=v1.0.0-beta.2 OKKEY_IMAGE_TAG=1.0.0-beta.2 bash
 ```
 
-`:1.0.0-beta.2` is published when git tag `v1.0.0-beta.2` lands. Until then, tracking installs must pass `OKKEY_IMAGE_TAG=dev`. Pushes to `release/1.0.0-beta.2` publish `:1.0.0-beta.2-candidate` and `:1.0.0-beta.2-<sha>` and do not move that pin or `:latest`. `OKKEY_CHANNEL=prod` stays gated until the SemVer exists in GHCR (or `OKKEY_PROD_CHANNEL_FORCE=1`).
+`:1.0.0-beta.2` is published when git tag `v1.0.0-beta.2` lands. Pushes to `release/1.0.0-beta.2` publish `:1.0.0-beta.2-candidate` and `:1.0.0-beta.2-<sha>` and do not move that pin or `:latest`. `OKKEY_CHANNEL=prod` stays gated until the SemVer exists in GHCR (or `OKKEY_PROD_CHANNEL_FORCE=1`).
 
 Note: `OKKEY_REF=…` / `OKKEY_IMAGE_TAG=…` / `OKKEY_CHANNEL=…` must be on the **right** of `|` so the installer process sees them - `VAR=x curl | bash` does **not** pass `VAR` into `bash`.
 
@@ -143,12 +134,7 @@ Retention (scheduled GC; release SemVer tags and floating `:dev` are never delet
 
 Ephemeral `pr-*` versions are deleted only by CI (`GITHUB_TOKEN` + `packages:write`), not by hand. Prod never uses floating `:latest`.
 
-Installer defaults:
-
-| Channel | `OKKEY_IMAGE_TAG` |
-|---------|-------------------|
-| Production (`.env.example` default) | `1.0.0-beta.2` - **never** `:latest` |
-| Tracking / QA | override `OKKEY_IMAGE_TAG=dev`; `OKKEY_CHANNEL=prod` gated until SemVer exists in GHCR |
+Install pin: `OKKEY_REF=v1.0.0-beta.2` and `OKKEY_IMAGE_TAG=1.0.0-beta.2` (never `:latest`).
 
 Multi-arch (`linux/amd64` + `linux/arm64`), OCI labels, SBOM, and build provenance are enabled in CI. Cosign **keyless GitHub OIDC** signing runs on every non-PR publish (no key-based override).
 
@@ -161,8 +147,7 @@ curl -fsSL -O "https://raw.githubusercontent.com/okkeyapp/okkey/${REF}/deploy/do
 curl -fsSL -O "https://raw.githubusercontent.com/okkeyapp/okkey/${REF}/deploy/docker/.env.example"
 cp .env.example .env
 # edit secrets and PUBLIC_APP_URL / OKKEY_API_PUBLIC_URL
-# production pin (default): OKKEY_IMAGE_TAG=1.0.0-beta.2 - never :latest
-# tracking: set OKKEY_IMAGE_TAG=dev until / alongside tip images
+# pin: OKKEY_IMAGE_TAG=1.0.0-beta.2 — never :latest
 docker compose -f docker-compose.prod.yml --env-file .env up -d
 ```
 

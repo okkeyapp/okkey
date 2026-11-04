@@ -271,6 +271,8 @@ infrastructure/
  └ kubernetes/
 ```
 
+Kubernetes and Helm are planned and are not part of v1.0.0. Only Docker Compose is supported.
+
 ---
 
 # Enterprise Repository (Separate)
