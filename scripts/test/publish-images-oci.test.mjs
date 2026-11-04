@@ -54,6 +54,15 @@ test("publish workflow sets every OCI annotation key on labels, manifests, and t
   );
 });
 
+test(":dev is refused unless the workflow ref is refs/heads/dev", () => {
+  assert.match(
+    workflow,
+    /refusing to publish or sign the :dev channel from/,
+  );
+  assert.match(workflow, /workflow_dispatch for :dev must run on refs\/heads\/dev/);
+  assert.match(workflow, /0\.0\.0-dev/);
+});
+
 test("created timestamp format is RFC 3339 UTC and version is required", () => {
   assert.equal(count(workflow, "date -u +%Y-%m-%dT%H:%M:%SZ"), 1);
   assert.match(workflow, /resolver did not emit image_version/);

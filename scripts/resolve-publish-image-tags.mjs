@@ -10,8 +10,10 @@
  *   tag vX.Y.Z-prerelease  → :X.Y.Z-prerelease  (no rolling / :latest)
  *     e.g. v1.0.0-beta.2   → :1.0.0-beta.2 only
  *   workflow_dispatch      → explicit tag (default dev; + :latest when push_latest=true)
+ *                            :dev is published only from refs/heads/dev
  *
- * Push to `dev` does not publish. The floating :dev image is workflow_dispatch only.
+ * Push to `dev` does not publish. The floating :dev image is workflow_dispatch
+ * on refs/heads/dev only. Its OCI version is 0.0.0-dev (the image tag stays :dev).
  * Pull-request tag shapes remain for callers, but the publish workflow does not run on PRs.
  *
  * Spelling: SemVer pre-release uses **beta** (never "betta").
@@ -39,6 +41,25 @@ import { resolve } from "node:path";
 const CLEAN_SEMVER_TAG = /^v[0-9]+\.[0-9]+\.[0-9]+$/;
 const RELEASE_BRANCH =
   /^(?:release|hotfix)\/v?(\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?)$/;
+const DEV_CHANNEL_REF = "refs/heads/dev";
+
+/** OCI version for the floating :dev channel. Valid SemVer, below any release. */
+export const DEV_CHANNEL_IMAGE_VERSION = "0.0.0-dev";
+
+/**
+ * :dev may be pushed and signed only when workflow_dispatch runs on refs/heads/dev.
+ * @param {ResolveContext} ctx
+ */
+export function assertDevChannelPublishRef(ctx) {
+  if (ctx.eventName !== "workflow_dispatch") return;
+  const tag = ctx.dispatchTag || "dev";
+  if (tag !== "dev") return;
+  if (ctx.ref === DEV_CHANNEL_REF) return;
+  const from = ctx.ref || "an unknown ref";
+  throw new Error(
+    `refusing to publish or sign the :dev channel from ${from}; workflow_dispatch for :dev must run on refs/heads/dev`,
+  );
+}
 
 /**
  * @param {string} sha
@@ -112,6 +133,7 @@ export function tagsForImage(image, ctx) {
   }
 
   if (eventName === "workflow_dispatch") {
+    assertDevChannelPublishRef(ctx);
     const dt = ctx.dispatchTag || "dev";
     /** @type {string[]} */
     const tags = [`${image}:${dt}`];
@@ -129,8 +151,7 @@ export function tagsForImage(image, ctx) {
 /**
  * OCI org.opencontainers.image.version.
  * Git tags stay `v…`; the annotation value is SemVer without that prefix
- * (v1.0.0-beta.3 → 1.0.0-beta.3). The dev channel has no release tag, so
- * workflow_dispatch uses the image tag, default `dev`.
+ * (v1.0.0-beta.3 → 1.0.0-beta.3). The floating :dev channel uses 0.0.0-dev.
  * @param {ResolveContext} ctx
  * @returns {string}
  */
@@ -143,7 +164,10 @@ export function resolveImageVersion(ctx) {
     return refName.startsWith("v") ? refName.slice(1) : refName;
   }
   if (ctx.eventName === "workflow_dispatch") {
-    return ctx.dispatchTag || "dev";
+    assertDevChannelPublishRef(ctx);
+    const dt = ctx.dispatchTag || "dev";
+    if (dt === "dev") return DEV_CHANNEL_IMAGE_VERSION;
+    return dt;
   }
   if (ctx.eventName === "push" && ctx.ref === "refs/heads/dev") {
     throw new Error(
@@ -154,7 +178,9 @@ export function resolveImageVersion(ctx) {
   if (ctx.eventName === "push" && branchVersion) {
     return `${branchVersion}-candidate`;
   }
-  return "dev";
+  throw new Error(
+    `cannot resolve OCI image version for event=${ctx.eventName || ""} ref=${ctx.ref || ""}`,
+  );
 }
 
 /**

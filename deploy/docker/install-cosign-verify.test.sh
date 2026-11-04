@@ -17,6 +17,11 @@ help_out="$(PATH="/usr/bin:/bin" bash "${INSTALL_SH}" --help 2>&1)" || fail " --
 ${help_out}"
 printf '%s\n' "${help_out}" | grep -Fq -- '--skip-cosign-verify' || fail "help missing --skip-cosign-verify
 ${help_out}"
+printf '%s\n' "${help_out}" | grep -Fq -- '--allow-candidate' || fail "help missing --allow-candidate
+${help_out}"
+printf '%s\n' "${help_out}" | grep -Fq 'Verification stays on' || fail "help must say candidate mode still verifies
+${help_out}"
+head -n 30 "${INSTALL_SH}" | grep -Fq -- '--allow-candidate' || fail "script header missing --allow-candidate"
 
 # --- unknown argument fails before docker ---
 set +e
@@ -29,8 +34,8 @@ ${unknown_out}"
 
 # --- bypass is not a line in env examples ---
 for env_file in "${ROOT}/.env.example" "${REPO_ROOT}/.env.example"; do
-  if grep -Eq 'SKIP_COSIGN|skip-cosign' "${env_file}"; then
-    fail "bypass must not appear in ${env_file}"
+  if grep -Eq 'SKIP_COSIGN|skip-cosign|ALLOW_CANDIDATE|allow-candidate' "${env_file}"; then
+    fail "bypass or candidate opt-in must not appear in ${env_file}"
   fi
 done
 
@@ -42,6 +47,7 @@ up_line="$(grep -n '^run_compose \.env up -d$' "${INSTALL_SH}" | head -1 | cut -
 
 # Expected keyless identity: this repo's publish-images workflow, GitHub Actions OIDC.
 EXPECTED_IDENTITY='https://github.com/okkeyapp/okkey/\.github/workflows/publish-images\.yml@refs/(heads/dev|tags/v.+)'
+CANDIDATE_IDENTITY='https://github.com/okkeyapp/okkey/\.github/workflows/publish-images\.yml@refs/(heads/dev|tags/v.+|heads/release/.+|heads/hotfix/.+)'
 EXPECTED_ISSUER='https://token.actions.githubusercontent.com'
 
 # run_install TAG WITH_COSIGN FAIL_COSIGN [ENV=value...] -- [script args...]
@@ -71,7 +77,12 @@ run_install() {
   fake="${work}/bin"
   install_dir="${work}/install"
   mkdir -p "${fake}" "${install_dir}"
-  printf 'OKKEY_IMAGE_TAG=%s\nOKKEY_SALES_EMAIL=sales@example.com\nJWT_SECRET=old\n' "${tag}" > "${install_dir}/.env"
+  {
+    printf 'OKKEY_IMAGE_TAG=%s\nOKKEY_SALES_EMAIL=sales@example.com\nJWT_SECRET=old\n' "${tag}"
+    if [[ -n "${INSTALL_ENV_EXTRA:-}" ]]; then
+      printf '%s\n' "${INSTALL_ENV_EXTRA}"
+    fi
+  } > "${install_dir}/.env"
 
   cat > "${fake}/docker" <<'EOF'
 #!/usr/bin/env bash
@@ -178,6 +189,8 @@ ${RUN_OUT}"
 ${RUN_SEQUENCE}"
 printf '%s\n' "${RUN_COSIGN}" | grep -Fq -- "${EXPECTED_IDENTITY}" || fail "identity regexp missing
 ${RUN_COSIGN}"
+printf '%s\n' "${RUN_COSIGN}" | grep -Fq 'heads/release' && fail "default identity must not accept release branches
+${RUN_COSIGN}"
 printf '%s\n' "${RUN_COSIGN}" | grep -Fq -- "${EXPECTED_ISSUER}" || fail "OIDC issuer missing
 ${RUN_COSIGN}"
 for image in api worker web; do
@@ -252,5 +265,51 @@ run_install "dev" 0 0 OKKEY_SKIP_PULL=1 OKKEY_FORCE_COSIGN_VERIFY=1 --
 printf '%s\n' "${RUN_OUT}" | grep -Fq 'cosign is not installed' || fail "forced verify missing cosign error
 ${RUN_OUT}"
 assert_no_up
+
+# --allow-candidate widens identity and still verifies.
+run_install "1.0.0-beta.2-candidate" 1 0 -- --allow-candidate
+[[ "${RUN_RC}" -eq 0 ]] || fail "allow-candidate should succeed when cosign passes
+${RUN_OUT}"
+[[ "${RUN_SEQUENCE}" == $'PULL\nCOSIGN\nCOSIGN\nCOSIGN\nUP' ]] || fail "allow-candidate still must verify before up:
+${RUN_SEQUENCE}"
+printf '%s\n' "${RUN_OUT}" | grep -Fq 'WARNING: pre-release candidate install (--allow-candidate).' || fail "candidate warning missing
+${RUN_OUT}"
+printf '%s\n' "${RUN_OUT}" | grep -Fq 'Signature verification stays on. This is not a bypass.' || fail "candidate warning must say verification stays on
+${RUN_OUT}"
+printf '%s\n' "${RUN_COSIGN}" | grep -Fq -- "${CANDIDATE_IDENTITY}" || fail "candidate identity regexp missing
+${RUN_COSIGN}"
+printf '%s\n' "${RUN_COSIGN}" | grep -Fq 'heads/hotfix/.+' || fail "candidate identity missing hotfix
+${RUN_COSIGN}"
+
+# Process env opt-in, same verify path.
+run_install "1.0.0-beta.2-candidate" 1 0 OKKEY_ALLOW_CANDIDATE=1 --
+[[ "${RUN_RC}" -eq 0 ]] || fail "OKKEY_ALLOW_CANDIDATE should succeed when cosign passes
+${RUN_OUT}"
+printf '%s\n' "${RUN_OUT}" | grep -Fq 'pre-release candidate install (OKKEY_ALLOW_CANDIDATE=1)' || fail "env candidate warning missing
+${RUN_OUT}"
+printf '%s\n' "${RUN_COSIGN}" | grep -Fq -- "${CANDIDATE_IDENTITY}" || fail "env candidate identity missing
+${RUN_COSIGN}"
+[[ "${RUN_SEQUENCE}" == $'PULL\nCOSIGN\nCOSIGN\nCOSIGN\nUP' ]] || fail "env candidate skipped verify:
+${RUN_SEQUENCE}"
+
+# A bad signature is still fatal with --allow-candidate.
+run_install "1.0.0-beta.2-candidate" 1 1 -- --allow-candidate
+[[ "${RUN_RC}" -ne 0 ]] || fail "allow-candidate must not skip a bad signature"
+printf '%s\n' "${RUN_OUT}" | grep -Fq 'cosign verify failed' || fail "allow-candidate missing verify-failed error
+${RUN_OUT}"
+assert_no_up
+
+# OKKEY_ALLOW_CANDIDATE in the install .env is ignored.
+INSTALL_ENV_EXTRA='OKKEY_ALLOW_CANDIDATE=1'
+run_install "dev" 1 0 --
+unset INSTALL_ENV_EXTRA
+[[ "${RUN_RC}" -eq 0 ]] || fail ".env candidate line should still install with the default identity
+${RUN_OUT}"
+printf '%s\n' "${RUN_OUT}" | grep -Fq 'pre-release candidate' && fail ".env must not enable candidate mode
+${RUN_OUT}"
+printf '%s\n' "${RUN_COSIGN}" | grep -Fq -- "${EXPECTED_IDENTITY}" || fail ".env candidate line changed the identity
+${RUN_COSIGN}"
+printf '%s\n' "${RUN_COSIGN}" | grep -Fq 'heads/release' && fail ".env candidate line widened the identity
+${RUN_COSIGN}"
 
 echo "OK: install.sh cosign verify"

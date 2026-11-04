@@ -7,6 +7,7 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import {
   assertBeta2TagSet,
+  DEV_CHANNEL_IMAGE_VERSION,
   resolveImageVersion,
   tagsForImage,
 } from "../resolve-publish-image-tags.mjs";
@@ -205,21 +206,71 @@ test("v1.0.0-beta.3 image version is SemVer without the leading v", () => {
   );
 });
 
-test("dev channel version is dev (workflow_dispatch default)", () => {
+test("dev channel OCI version is 0.0.0-dev when dispatched on refs/heads/dev", () => {
+  assert.equal(DEV_CHANNEL_IMAGE_VERSION, "0.0.0-dev");
   assert.equal(
-    resolveImageVersion({ eventName: "workflow_dispatch" }),
-    "dev",
+    resolveImageVersion({
+      eventName: "workflow_dispatch",
+      ref: "refs/heads/dev",
+    }),
+    "0.0.0-dev",
   );
   assert.equal(
     resolveImageVersion({
       eventName: "workflow_dispatch",
+      ref: "refs/heads/dev",
       dispatchTag: "dev",
     }),
-    "dev",
+    "0.0.0-dev",
   );
   assert.deepEqual(
-    tagsForImage(IMAGE, { eventName: "workflow_dispatch" }),
+    tagsForImage(IMAGE, {
+      eventName: "workflow_dispatch",
+      ref: "refs/heads/dev",
+    }),
     [`${IMAGE}:dev`],
+  );
+});
+
+test("workflow_dispatch :dev from any other ref fails closed", () => {
+  for (const ref of ["refs/heads/main", "refs/heads/release/1.0.0-beta.2", ""]) {
+    assert.throws(
+      () =>
+        tagsForImage(IMAGE, {
+          eventName: "workflow_dispatch",
+          ref,
+          dispatchTag: "dev",
+        }),
+      /refusing to publish or sign the :dev channel/,
+    );
+    assert.throws(
+      () =>
+        resolveImageVersion({
+          eventName: "workflow_dispatch",
+          ref,
+          dispatchTag: "dev",
+        }),
+      /refusing to publish or sign the :dev channel/,
+    );
+  }
+});
+
+test("workflow_dispatch of a non-dev tag is allowed from other branches", () => {
+  assert.deepEqual(
+    tagsForImage(IMAGE, {
+      eventName: "workflow_dispatch",
+      ref: "refs/heads/main",
+      dispatchTag: "1.2.3",
+    }),
+    [`${IMAGE}:1.2.3`],
+  );
+  assert.equal(
+    resolveImageVersion({
+      eventName: "workflow_dispatch",
+      ref: "refs/heads/main",
+      dispatchTag: "1.2.3",
+    }),
+    "1.2.3",
   );
 });
 

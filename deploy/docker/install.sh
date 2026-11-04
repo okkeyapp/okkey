@@ -15,6 +15,9 @@
 #
 # Emergency bypass (not for production; prints a loud warning):
 #   ./deploy/docker/install.sh --skip-cosign-verify
+#
+# QA candidate images (release/* and hotfix/*). Signature verification stays on:
+#   ./deploy/docker/install.sh --allow-candidate
 set -euo pipefail
 
 OKKEY_INSTALL_DIR="${OKKEY_INSTALL_DIR:-$HOME/okkey}"
@@ -38,23 +41,34 @@ die() { printf 'error: %s\n' "$*" >&2; exit 1; }
 
 usage() {
   cat <<'EOF'
-Usage: install.sh [--skip-cosign-verify]
+Usage: install.sh [--skip-cosign-verify] [--allow-candidate]
 
   --skip-cosign-verify   Emergency bypass: do not verify GHCR cosign signatures
                          before docker compose up. Prints a loud warning.
                          Off by default. Not for production.
+  --allow-candidate      Also accept publish-images.yml signatures from
+                         refs/heads/release/* and refs/heads/hotfix/*.
+                         Verification stays on. Prints a warning that a
+                         pre-release candidate is being installed.
+                         Off by default. Process env: OKKEY_ALLOW_CANDIDATE=1
+                         (not read from .env).
   -h, --help             Show this help
 EOF
 }
 
 # Set by parse_args. Not read from .env.
 SKIP_COSIGN_VERIFY_FLAG=0
+ALLOW_CANDIDATE_FLAG=0
 
 parse_args() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --skip-cosign-verify)
         SKIP_COSIGN_VERIFY_FLAG=1
+        shift
+        ;;
+      --allow-candidate)
+        ALLOW_CANDIDATE_FLAG=1
         shift
         ;;
       -h|--help)
@@ -171,7 +185,11 @@ need_cmd() {
 
 # Cosign keyless OIDC identity for Core publish workflow
 # (.github/workflows/publish-images.yml on okkeyapp/okkey).
-OKKEY_COSIGN_CERTIFICATE_IDENTITY_REGEXP="${OKKEY_COSIGN_CERTIFICATE_IDENTITY_REGEXP:-https://github.com/okkeyapp/okkey/\.github/workflows/publish-images\.yml@refs/(heads/dev|tags/v.+)}"
+# Default: refs/heads/dev and refs/tags/v*. --allow-candidate adds
+# refs/heads/release/* and refs/heads/hotfix/*. An exported
+# OKKEY_COSIGN_CERTIFICATE_IDENTITY_REGEXP replaces both.
+OKKEY_COSIGN_DEFAULT_IDENTITY_REGEXP='https://github.com/okkeyapp/okkey/\.github/workflows/publish-images\.yml@refs/(heads/dev|tags/v.+)'
+OKKEY_COSIGN_CANDIDATE_IDENTITY_REGEXP='https://github.com/okkeyapp/okkey/\.github/workflows/publish-images\.yml@refs/(heads/dev|tags/v.+|heads/release/.+|heads/hotfix/.+)'
 OKKEY_COSIGN_CERTIFICATE_OIDC_ISSUER="${OKKEY_COSIGN_CERTIFICATE_OIDC_ISSUER:-https://token.actions.githubusercontent.com}"
 
 # Resolve image ref used by compose for a service (env override → default GHCR).
@@ -212,6 +230,15 @@ warn_skip_cosign() {
     "==> WARNING: Emergency bypass only. Do not use this for production." >&2
 }
 
+# Opt-in for release/* and hotfix/* candidate signatures. Verification stays on.
+warn_allow_candidate() {
+  local why="$1"
+  printf '%s\n' \
+    "==> WARNING: pre-release candidate install (${why})." \
+    "==> WARNING: also accepting publish-images signatures from refs/heads/release/* and refs/heads/hotfix/*." \
+    "==> WARNING: Signature verification stays on. This is not a bypass." >&2
+}
+
 # Verify cosign keyless signatures for api/web/worker before compose up.
 # Default is verify on for every GHCR tag, including full SemVer and :dev.
 # Emergency bypass is the CLI flag --skip-cosign-verify (or the equivalent
@@ -220,6 +247,12 @@ warn_skip_cosign() {
 verify_pulled_image_signatures() {
   local tag="$1"
   local skip_pull="${2:-0}"
+  local allow_candidate=0
+
+  # Process env only. A line in the install .env does not enable this.
+  if [[ "${ALLOW_CANDIDATE_FLAG}" == "1" || "${OKKEY_ALLOW_CANDIDATE:-}" == "1" ]]; then
+    allow_candidate=1
+  fi
 
   if [[ "${SKIP_COSIGN_VERIFY_FLAG}" == "1" ]]; then
     warn_skip_cosign "--skip-cosign-verify"
@@ -244,6 +277,23 @@ Emergency bypass (prints a warning; not for production):
   fi
   need_cmd docker
 
+  local identity_regexp="${OKKEY_COSIGN_CERTIFICATE_IDENTITY_REGEXP:-}"
+  if [[ -z "${identity_regexp}" ]]; then
+    if [[ "${allow_candidate}" == "1" ]]; then
+      identity_regexp="${OKKEY_COSIGN_CANDIDATE_IDENTITY_REGEXP}"
+    else
+      identity_regexp="${OKKEY_COSIGN_DEFAULT_IDENTITY_REGEXP}"
+    fi
+  fi
+
+  if [[ "${allow_candidate}" == "1" ]]; then
+    if [[ "${ALLOW_CANDIDATE_FLAG}" == "1" ]]; then
+      warn_allow_candidate "--allow-candidate"
+    else
+      warn_allow_candidate "OKKEY_ALLOW_CANDIDATE=1"
+    fi
+  fi
+
   local refs=()
   refs+=("$(compose_image_ref OKKEY_API_IMAGE ghcr.io/okkeyapp/api "${tag}")")
   refs+=("$(compose_image_ref OKKEY_WORKER_IMAGE ghcr.io/okkeyapp/worker "${tag}")")
@@ -254,7 +304,7 @@ Emergency bypass (prints a warning; not for production):
     digest_ref="$(image_digest_ref "${ref}")"
     log "==> Verifying cosign signature: ${digest_ref}"
     if ! cosign verify \
-      --certificate-identity-regexp "${OKKEY_COSIGN_CERTIFICATE_IDENTITY_REGEXP}" \
+      --certificate-identity-regexp "${identity_regexp}" \
       --certificate-oidc-issuer "${OKKEY_COSIGN_CERTIFICATE_OIDC_ISSUER}" \
       "${digest_ref}"; then
       die "cosign verify failed for ${digest_ref}.

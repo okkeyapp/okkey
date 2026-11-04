@@ -6,7 +6,8 @@
 # Image builds and signing run on:
 #   push to release/** and hotfix/**
 #   push of version tags (v*)
-#   workflow_dispatch — the only way to publish the floating :dev image
+#   workflow_dispatch — the only way to publish the floating :dev image,
+#     and only when the workflow ref is refs/heads/dev
 # The daily schedule is GHCR TTL cleanup only (no image build).
 #
 # Tag scheme:
@@ -17,6 +18,8 @@
 #   tag vX.Y.Z-prerelease  → :X.Y.Z-prerelease  (no rolling / :latest)
 #     e.g. v1.0.0-beta.2   → :1.0.0-beta.2 only (spelling: beta, never betta)
 #   workflow_dispatch      → explicit tag (default dev; + :latest when push_latest=true)
+#                            :dev fails unless github.ref is refs/heads/dev
+#                            OCI version for :dev is 0.0.0-dev (tag stays :dev)
 #
 # Tag resolution: scripts/resolve-publish-image-tags.mjs (unit-tested in supply-chain).
 #
@@ -44,7 +47,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Image tag to push (default: dev). This is the only way to publish :dev."
+        description: "Image tag to push (default: dev). :dev is published only from refs/heads/dev."
         required: false
         default: "dev"
       push_latest:
@@ -133,6 +136,18 @@ jobs:
           OWNER: ${{ env.OWNER }}
         run: |
           set -euo pipefail
+          # Do not build, push, or sign :dev unless this run is refs/heads/dev.
+          if [[ "${EVENT_NAME}" == "workflow_dispatch" ]]; then
+            DEV_TAG="${DISPATCH_TAG:-dev}"
+            if [[ -z "${DEV_TAG}" ]]; then
+              DEV_TAG="dev"
+            fi
+            if [[ "${DEV_TAG}" == "dev" && "${REF}" != "refs/heads/dev" ]]; then
+              echo "refusing to publish or sign the :dev channel from ${REF:-an unknown ref}; workflow_dispatch for :dev must run on refs/heads/dev" >&2
+              exit 1
+            fi
+          fi
+
           PLATFORMS="${DEFAULT_PLATFORMS}"
 
           if [[ "${EVENT_NAME}" == "pull_request" ]]; then
@@ -159,7 +174,7 @@ jobs:
           # Shared resolver (unit-tested): v1.0.0-beta.2 → :1.0.0-beta.2 only
           # (no :latest / :1 / :1.0). Spelling: beta, never betta.
           # image_version is SemVer without a leading v (git tag v1.0.0-beta.3 → 1.0.0-beta.3).
-          # The dev channel (workflow_dispatch, default tag dev) uses version "dev".
+          # The :dev channel uses 0.0.0-dev. The image tag stays :dev.
           node scripts/resolve-publish-image-tags.mjs
 
           # OCI created annotation: RFC 3339 date-time (UTC).
