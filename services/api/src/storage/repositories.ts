@@ -3757,6 +3757,11 @@ export class SessionsRepository {
     return Boolean(rows[0]);
   }
 
+  /**
+   * Replace this session's single-use recovery challenge.
+   * A session that already proved may start another restore on the same
+   * access token. The proof grant and device binding are left in place.
+   */
   async setRecoveryChallenge(input: {
     tokenHash: string;
     userId: string;
@@ -3772,7 +3777,6 @@ export class SessionsRepository {
           AND user_id = $2
           AND device_id IS NOT NULL
           AND expires_at > now()
-          AND recovery_proved_at IS NULL
         RETURNING id
       `,
       [input.tokenHash, input.userId, input.challenge, input.expiresAtIso],
