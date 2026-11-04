@@ -369,6 +369,47 @@ describe("resolveDeviceTrust", () => {
     expect(snapshot.status).toBe("trusted");
     expect(snapshot.deviceId).toBe("d-pending");
   });
+
+  it("keeps a pending_approval row pending when it is returned with trusted devices", async () => {
+    hasDeviceSigningKey.mockResolvedValue(false);
+    listDevices.mockResolvedValue({
+      devices: [
+        {
+          device_id: "d-new",
+          device_fingerprint: fingerprint,
+          status: "pending_approval",
+        },
+      ],
+      pending: [],
+    });
+
+    const snapshot = await resolveDeviceTrust(coreClient(), "u1");
+
+    expect(registerDevice).not.toHaveBeenCalled();
+    expect(snapshot.status).toBe("pending");
+    expect(snapshot.deviceId).toBe("d-new");
+    expect(snapshot.needsRecovery).toBeUndefined();
+  });
+
+  it("does not require recovery for a pending device whose approvers are hidden", async () => {
+    hasDeviceSigningKey.mockResolvedValue(false);
+    listDevices.mockResolvedValue({
+      devices: [],
+      pending: [
+        {
+          device_id: "d-new",
+          device_fingerprint: fingerprint,
+          status: "pending_approval",
+        },
+      ],
+    });
+
+    const snapshot = await resolveDeviceTrust(coreClient(), "u1");
+
+    expect(registerDevice).not.toHaveBeenCalled();
+    expect(snapshot.status).toBe("pending");
+    expect(snapshot.needsRecovery).toBeUndefined();
+  });
 });
 
 describe("pollDeviceTrust", () => {
@@ -402,6 +443,76 @@ describe("pollDeviceTrust", () => {
     expect(bindDeviceSession).toHaveBeenCalled();
     expect(snapshot.status).toBe("trusted");
     expect(snapshot.deviceId).toBe("d-me");
+  });
+
+  it("treats pending_approval in the trusted list as still waiting", async () => {
+    hasDeviceSigningKey.mockResolvedValue(false);
+    listDevices.mockResolvedValue({
+      devices: [
+        {
+          device_id: "d-new",
+          device_fingerprint: fingerprint,
+          status: "pending_approval",
+        },
+      ],
+      pending: [],
+    });
+
+    const snapshot = await pollDeviceTrust(coreClient(), fingerprint, "d-new");
+
+    expect(createDeviceBindChallenge).not.toHaveBeenCalled();
+    expect(snapshot.status).toBe("pending");
+    expect(snapshot.deviceId).toBe("d-new");
+    expect(snapshot.needsRecovery).toBeUndefined();
+  });
+
+  it("stays pending while the approval row is still listed", async () => {
+    listDevices.mockResolvedValue({
+      devices: [],
+      pending: [
+        {
+          device_id: "d-new",
+          device_fingerprint: fingerprint,
+          status: "pending_approval",
+        },
+      ],
+    });
+
+    const snapshot = await pollDeviceTrust(coreClient(), fingerprint, "d-new");
+
+    expect(snapshot.status).toBe("pending");
+    expect(snapshot.deviceId).toBe("d-new");
+  });
+
+  it("matches a pending device id even when the decimal forms differ", async () => {
+    listDevices.mockResolvedValue({
+      devices: [],
+      pending: [
+        {
+          device_id: "000202",
+          device_fingerprint: "not-this-browser",
+          status: "pending_approval",
+        },
+      ],
+    });
+
+    const snapshot = await pollDeviceTrust(coreClient(), fingerprint, "202");
+
+    expect(snapshot.status).toBe("pending");
+    expect(snapshot.deviceId).toBe("000202");
+  });
+
+  it("reports rejected only after the pending row is gone", async () => {
+    listDevices.mockResolvedValue({
+      devices: [],
+      pending: [],
+      blocked: [],
+    });
+
+    const snapshot = await pollDeviceTrust(coreClient(), fingerprint, "d-new");
+
+    expect(snapshot.status).toBe("rejected");
+    expect(snapshot.deviceId).toBe("d-new");
   });
 
   it("keeps error when bind proof fails so recovery gate cannot open unbound", async () => {
