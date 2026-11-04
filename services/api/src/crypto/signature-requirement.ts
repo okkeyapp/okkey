@@ -9,8 +9,12 @@ import {
 import type { CryptoRolloutMode } from "./policy-matrix.ts";
 
 /**
- * Operations that must carry a valid hybrid signature in `strict` rollout mode.
- * `compat` verifies a signature only when the caller presents one.
+ * Shared-vault mutations that must carry a valid hybrid signature in `strict`.
+ * `compat` verifies a signature on these operations only when one is present.
+ *
+ * `sync.append` of `VAULT_SHARE` and `VAULT_KEY_ROTATION` is required in both
+ * modes: `POST /vaults/:vaultId/events` already rejected those unsigned events
+ * before rollout mode was consulted.
  *
  * `vault.create` and `vault.access_update` are signature contexts, but their
  * handlers are not in this service. They are omitted here so this list matches
@@ -91,6 +95,12 @@ export function isSignatureRequired(input: {
   operation: SignatureOperation;
   eventType?: string;
 }): boolean {
+  if (
+    input.operation === "sync.append" &&
+    SYNC_APPEND_CRITICAL_EVENT_TYPES.has(input.eventType ?? "")
+  ) {
+    return true;
+  }
   return input.rolloutMode === "strict" && isCriticalSignatureOperation(input.operation, input.eventType);
 }
 

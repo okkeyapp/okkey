@@ -321,14 +321,13 @@ test("signature requirement is mode- and operation-specific", () => {
     );
   }
   for (const eventType of ["VAULT_SHARE", "VAULT_KEY_ROTATION"] as const) {
-    assert.equal(
-      isSignatureRequired({ rolloutMode: "strict", operation: "sync.append", eventType }),
-      true,
-    );
-    assert.equal(
-      isSignatureRequired({ rolloutMode: "compat", operation: "sync.append", eventType }),
-      false,
-    );
+    for (const rolloutMode of ["strict", "compat"] as const) {
+      assert.equal(
+        isSignatureRequired({ rolloutMode, operation: "sync.append", eventType }),
+        true,
+        `${rolloutMode} ${eventType}`,
+      );
+    }
   }
   for (const eventType of ["ITEM_CREATE", "ITEM_UPDATE", "ITEM_DELETE", "VAULT_CREATE", "DEVICE_ADD"]) {
     assert.equal(
@@ -360,25 +359,16 @@ test("sync append signature gate", async () => {
     for (const mode of ["strict", "compat"] as const) {
       const label = `${mode} ${eventType}`;
       const service = () => syncService(mode, signer);
-      if (mode === "strict") {
-        await assertSignatureCode(
-          () =>
-            service().appendEvent(VAULT_ID, ACTOR_ID, {
-              eventType,
-              encryptedBlob,
-              baseVersion: 0,
-            }),
-          "SIGNATURE_REQUIRED",
-          `${label} unsigned`,
-        );
-      } else {
-        const accepted = await service().appendEvent(VAULT_ID, ACTOR_ID, {
-          eventType,
-          encryptedBlob,
-          baseVersion: 0,
-        });
-        assert.equal(accepted.eventType, eventType, `${label} unsigned`);
-      }
+      await assertSignatureCode(
+        () =>
+          service().appendEvent(VAULT_ID, ACTOR_ID, {
+            eventType,
+            encryptedBlob,
+            baseVersion: 0,
+          }),
+        "SIGNATURE_REQUIRED",
+        `${label} unsigned`,
+      );
       await assertSignatureCode(
         () =>
           service().appendEvent(VAULT_ID, ACTOR_ID, {

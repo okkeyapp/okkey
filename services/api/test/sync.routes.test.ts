@@ -294,38 +294,27 @@ test("POST /vaults/:vaultId/events maps CRYPTO_DOWNGRADE_NOT_ALLOWED", async () 
   assert.equal(payload.details?.reason, "downgrade");
 });
 
-test("POST /vaults/:vaultId/events strict mode requires signature for VAULT_SHARE", async () => {
-  const res = await dispatch({
-    method: "POST",
-    url: "/vaults/1000000000000000001/events",
-    headers: { "x-user-id": "u1" },
-    config: { ...config, cryptoRolloutMode: "strict" },
-    body: {
-      eventType: "VAULT_SHARE",
-      encryptedBlob: mkBlob("x", 2),
-      baseVersion: 0,
-    },
-  });
+for (const mode of ["strict", "compat"] as const) {
+  for (const eventType of ["VAULT_SHARE", "VAULT_KEY_ROTATION"] as const) {
+    test(`POST /vaults/:vaultId/events ${mode} requires signature for ${eventType}`, async () => {
+      const res = await dispatch({
+        method: "POST",
+        url: "/vaults/1000000000000000001/events",
+        headers: { "x-user-id": "u1" },
+        config: { ...config, cryptoRolloutMode: mode },
+        body: {
+          eventType,
+          encryptedBlob: mkBlob("x", 2),
+          baseVersion: 0,
+        },
+      });
 
-  assert.equal(res.statusCode, 400);
-  const payload = JSON.parse(res.body) as { error: string };
-  assert.equal(payload.error, "SIGNATURE_REQUIRED");
-});
-
-test("POST /vaults/:vaultId/events compat mode accepts unsigned VAULT_SHARE", async () => {
-  const res = await dispatch({
-    method: "POST",
-    url: "/vaults/1000000000000000001/events",
-    headers: { "x-user-id": "u1" },
-    body: {
-      eventType: "VAULT_SHARE",
-      encryptedBlob: mkBlob("x", 2),
-      baseVersion: 0,
-    },
-  });
-
-  assert.equal(res.statusCode, 201);
-});
+      assert.equal(res.statusCode, 400);
+      const payload = JSON.parse(res.body) as { error: string };
+      assert.equal(payload.error, "SIGNATURE_REQUIRED");
+    });
+  }
+}
 
 test("POST /vaults/:vaultId/events accepts signature for VAULT_KEY_ROTATION", async () => {
   const res = await dispatch({
