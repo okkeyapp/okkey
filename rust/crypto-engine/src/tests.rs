@@ -276,6 +276,61 @@ fn hybrid_decrypt_rejects_corrupted_envelope() {
   assert!(!err.is_empty());
 }
 
+fn count_len(log: &[usize], len: usize) -> usize {
+  log.iter().filter(|value| **value == len).count()
+}
+
+#[test]
+fn hybrid_encrypt_wipes_ephemeral_secrets() {
+  let (recipient_sk, recipient_pk) = x25519::generate_keypair();
+  let (recipient_pq_dk, recipient_pq_ek) = mlkem768::generate_keypair();
+  let aad = b"okkey-hybrid-aad";
+
+  crate::secret::start_wipe_record();
+  let envelope = hybrid::encrypt_hybrid(&[], &recipient_pk, &recipient_pq_ek, aad, b"share")
+    .expect("encrypt");
+  let encrypt_wipes = crate::secret::take_wipe_record();
+  // ephemeral X25519 secret, ECC shared secret, ML-KEM shared secret, AEAD key
+  assert_eq!(count_len(&encrypt_wipes, 32), 4);
+
+  crate::secret::start_wipe_record();
+  let _ = hybrid::decrypt_hybrid(&recipient_sk, &recipient_pq_dk, aad, &envelope).expect("decrypt");
+  let decrypt_wipes = crate::secret::take_wipe_record();
+  // ECC shared secret, ML-KEM shared secret, AEAD key. Recipient private keys stay.
+  assert_eq!(count_len(&decrypt_wipes, 32), 3);
+  assert_eq!(recipient_sk.iter().filter(|byte| **byte != 0).count() > 0, true);
+}
+
+#[test]
+fn hybrid_encrypt_wipes_secrets_on_error() {
+  crate::secret::start_wipe_record();
+  let err = hybrid::encrypt_hybrid(&[], &[0u8; 32], &[0u8; 8], b"aad", b"share");
+  assert!(err.is_err());
+  let wipes = crate::secret::take_wipe_record();
+  // Ephemeral private key and ECC shared secret exist before ML-KEM rejects the key.
+  assert!(count_len(&wipes, 32) >= 2);
+
+  crate::secret::start_wipe_record();
+  let err = hybrid::encrypt_hybrid(&[], &[], &[], b"aad", b"");
+  assert!(err.is_err());
+  assert!(crate::secret::take_wipe_record().is_empty());
+}
+
+#[test]
+fn hybrid_decrypt_wipes_derived_secrets_when_envelope_is_tampered() {
+  let (recipient_sk, recipient_pk) = x25519::generate_keypair();
+  let (recipient_pq_dk, recipient_pq_ek) = mlkem768::generate_keypair();
+  let mut envelope = hybrid::encrypt_hybrid(&[], &recipient_pk, &recipient_pq_ek, b"aad", b"share")
+    .expect("encrypt");
+  let last = envelope.len() - 1;
+  envelope[last] ^= 0x01;
+
+  crate::secret::start_wipe_record();
+  let err = hybrid::decrypt_hybrid(&recipient_sk, &recipient_pq_dk, b"aad", &envelope);
+  assert!(err.is_err());
+  assert_eq!(count_len(&crate::secret::take_wipe_record(), 32), 3);
+}
+
 #[test]
 fn hybrid_golden_layout_sha256_matches_cross_layer_fixture() {
   let mut envelope = Vec::with_capacity(hybrid::HYBRID_ENVELOPE_FIXED_HEADER_LEN + 20);

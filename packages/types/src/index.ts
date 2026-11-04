@@ -1465,6 +1465,10 @@ export interface DeviceRegisterRequestDto {
   device_share: string;
   device_fingerprint: string;
   device_name: string;
+  /** Base64 32-byte X25519 public key for a single approval. Sent with the ML-KEM key. */
+  one_time_x25519_public_key?: string;
+  /** Base64 ML-KEM-768 encapsulation key (1184 bytes) for a single approval. */
+  one_time_mlkem_public_key?: string;
   platform?: string;
   os_name?: string;
   os_version?: string;
@@ -1594,6 +1598,26 @@ export interface DeviceListItemDto {
   approval_expires_at: string | null;
   /** Present for blocked devices; null means permanently blocked. */
   blocked_until?: string | null;
+  /** Set on a pending device that can receive share B in a one-time hybrid envelope. */
+  one_time_x25519_public_key?: string;
+  one_time_mlkem_public_key?: string;
+}
+
+/** `POST /devices/:deviceId/approve` when the pending device published a one-time key. */
+export interface DeviceApproveRequestDto {
+  /** Base64 hybrid envelope of the approver's 32-byte share B. Omit to use the deprecated copy. */
+  share_delivery_envelope?: string;
+}
+
+/** `GET /devices/:deviceId/share-delivery` success body. */
+export interface DeviceShareDeliveryResponseDto {
+  share_delivery_envelope: string;
+  expires_at: string;
+}
+
+/** `POST /devices/:deviceId/share-delivery/confirm` request body. */
+export interface DeviceShareDeliveryConfirmRequestDto {
+  device_share: string;
 }
 
 /** `GET /devices` success body. */

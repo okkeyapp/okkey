@@ -61,7 +61,19 @@ export interface DeviceServiceDeps {
     | "updateActiveDeviceMetadata"
     | "rotateActiveDevicePublicKey"
     | "requestKeyRebind"
-  >;
+  > &
+    Partial<
+      Pick<
+        DevicesRepository,
+        | "savePendingOneTimeKeys"
+        | "listPendingOneTimeKeys"
+        | "storeShareDelivery"
+        | "deleteExpiredShareDeliveries"
+        | "clearShareDelivery"
+        | "readShareDelivery"
+        | "confirmShareDelivery"
+      >
+    >;
   config: Pick<ApiConfig, "deviceApprovalTtlSeconds" | "publicAppBaseUrl">;
   users?: Pick<UsersRepository, "findById">;
   emailTemplates?: Pick<EmailTemplateService, "sendDeviceApprovalRequest">;
@@ -111,6 +123,10 @@ export interface RegisterDeviceInput {
    * replaced so the route can bind the session to the new row.
    */
   preserveSessionTokenHash?: string;
+  /** Base64 X25519 public key for this approval only. Both one-time keys are required together. */
+  oneTimeX25519PublicKey?: string;
+  /** Base64 ML-KEM-768 encapsulation key for this approval only. */
+  oneTimeMlkemPublicKey?: string;
 }
 
 export interface RegisterDeviceResult {
@@ -123,7 +139,7 @@ export interface RegisterDeviceResult {
 
 export interface ResolveDeviceApprovalResult {
   deviceId: string;
-  status: "trusted" | "revoked";
+  status: "trusted" | "revoked" | "pending_approval";
 }
 
 export type DeviceBlockDuration = "1h" | "1d" | "1w" | "forever";
@@ -159,6 +175,9 @@ export interface DeviceListItem {
   isCurrent: boolean;
   approvalExpiresAt: string | null;
   blockedUntil: string | null;
+  /** Base64. Present only while this pending device is waiting on a one-time delivery key. */
+  oneTimeX25519PublicKey?: string | null;
+  oneTimeMlkemPublicKey?: string | null;
 }
 
 export interface DeviceListResult {
@@ -320,6 +339,10 @@ export class DeviceService {
         created: record.created === true,
       };
 
+      if (result.status === "pending_approval") {
+        await this.saveOneTimeKeysIfPresent(userId, result.deviceId, input);
+      }
+
       if (result.status === "pending_approval" && record.sendApprovalEmail !== false) {
         try {
           await this.notifyDeviceApprovalEmail(userId, requestIp, input);
@@ -364,11 +387,22 @@ export class DeviceService {
   ): Promise<DeviceListResult> {
     const nowIso = this.now().toISOString();
     await this.devices.clearExpiredBlocks(userId, nowIso);
+    await this.devices.deleteExpiredShareDeliveries?.(userId, nowIso);
     const records = await this.devices.listByUser(userId, ["trusted", "pending", "blocked"]);
     const normalizedFingerprint = normalizeFingerprint(currentFingerprint);
     const items = await Promise.all(
       records.map((record) => this.toListItem(record, normalizedFingerprint)),
     );
+    const oneTimeKeys = (await this.devices.listPendingOneTimeKeys?.(userId)) ?? [];
+    const oneTimeByDevice = new Map(oneTimeKeys.map((row) => [row.deviceId, row]));
+    for (const item of items) {
+      const keys = oneTimeByDevice.get(item.deviceId);
+      if (!keys || item.status !== "pending_approval") {
+        continue;
+      }
+      item.oneTimeX25519PublicKey = Buffer.from(keys.x25519PublicKey).toString("base64");
+      item.oneTimeMlkemPublicKey = Buffer.from(keys.mlkemPublicKey).toString("base64");
+    }
 
     return {
       devices: items.filter((item) => item.status === "trusted"),
@@ -552,13 +586,87 @@ export class DeviceService {
     userId: string,
     approverDeviceId: string,
     pendingDeviceId: string,
+    shareDelivery?: Uint8Array,
   ): Promise<ResolveDeviceApprovalResult> {
-    return this.resolveDeviceApproval({
+    if (shareDelivery && shareDelivery.length > 0) {
+      return this.approveWithShareDelivery(userId, approverDeviceId, pendingDeviceId, shareDelivery);
+    }
+    // TODO(device-approval-share-delivery): remove this plaintext share copy one release
+    // after every client publishes a one-time key and sends a hybrid envelope.
+    // Deprecated so an older client on either side can still finish approval.
+    const copied = await this.resolveDeviceApproval({
       userId,
       approverDeviceId,
       pendingDeviceId,
       action: "approve",
     });
+    if (copied.status === "trusted") {
+      await this.devices.clearShareDelivery?.(userId, pendingDeviceId);
+    }
+    return copied;
+  }
+
+  async readShareDelivery(
+    userId: string,
+    deviceId: string,
+  ): Promise<{ envelope: Uint8Array; expiresAt: string }> {
+    const nowIso = this.now().toISOString();
+    await this.devices.deleteExpiredShareDeliveries?.(userId, nowIso);
+    const row = await this.devices.readShareDelivery?.({
+      userId,
+      deviceId,
+      now: nowIso,
+    });
+    if (!row) {
+      throw new DeviceServiceError(
+        "DEVICE_SHARE_DELIVERY_NOT_FOUND",
+        404,
+        "share delivery envelope is not available",
+      );
+    }
+    return row;
+  }
+
+  async confirmShareDelivery(
+    userId: string,
+    deviceId: string,
+    deviceShareB64: string,
+  ): Promise<ResolveDeviceApprovalResult> {
+    if (!isValidBase64(deviceShareB64)) {
+      throw new DeviceServiceError("DEVICE_BAD_REQUEST", 400, "invalid device_share");
+    }
+    const deviceShare = Uint8Array.from(Buffer.from(deviceShareB64, "base64"));
+    try {
+      assertOpaqueSplitKeyShare(deviceShare, "device_share");
+    } catch (error: unknown) {
+      throw new DeviceServiceError(
+        "DEVICE_BAD_REQUEST",
+        400,
+        error instanceof Error ? error.message : "invalid device_share",
+      );
+    }
+    const nowIso = this.now().toISOString();
+    const result = await this.devices.confirmShareDelivery?.({
+      userId,
+      deviceId,
+      deviceShare,
+      now: nowIso,
+    });
+    if (result === "confirmed") {
+      return { deviceId, status: "trusted" };
+    }
+    if (result === "expired") {
+      throw new DeviceServiceError(
+        "DEVICE_SHARE_DELIVERY_EXPIRED",
+        410,
+        "share delivery envelope expired",
+      );
+    }
+    throw new DeviceServiceError(
+      "DEVICE_SHARE_DELIVERY_NOT_FOUND",
+      404,
+      "share delivery envelope is not available",
+    );
   }
 
   async rejectDevice(
@@ -574,6 +682,124 @@ export class DeviceService {
       action: "reject",
       reason,
     });
+  }
+
+  private async saveOneTimeKeysIfPresent(
+    userId: string,
+    deviceId: string,
+    input: RegisterDeviceInput,
+  ): Promise<void> {
+    const x25519 = input.oneTimeX25519PublicKey?.trim() ?? "";
+    const mlkem = input.oneTimeMlkemPublicKey?.trim() ?? "";
+    if (!x25519 && !mlkem) {
+      return;
+    }
+    if (!x25519 || !mlkem || !isValidBase64(x25519) || !isValidBase64(mlkem)) {
+      throw new DeviceServiceError(
+        "DEVICE_BAD_REQUEST",
+        400,
+        "one-time delivery key must include both X25519 and ML-KEM public keys",
+      );
+    }
+    const x25519Bytes = Uint8Array.from(Buffer.from(x25519, "base64"));
+    const mlkemBytes = Uint8Array.from(Buffer.from(mlkem, "base64"));
+    if (x25519Bytes.length !== 32 || mlkemBytes.length !== 1184) {
+      throw new DeviceServiceError(
+        "DEVICE_BAD_REQUEST",
+        400,
+        "one-time delivery key has an unexpected length",
+      );
+    }
+    const saved = await this.devices.savePendingOneTimeKeys?.({
+      userId,
+      deviceId,
+      x25519PublicKey: x25519Bytes,
+      mlkemPublicKey: mlkemBytes,
+    });
+    if (saved !== true) {
+      throw new DeviceServiceError(
+        "DEVICE_BAD_REQUEST",
+        400,
+        "one-time delivery key was not stored",
+      );
+    }
+  }
+
+  private assertShareDeliveryEnvelope(envelope: Uint8Array): void {
+    // hybrid_envelope_v1 fixed header (1148) plus the AEAD tag (16).
+    const minimum = 1148 + 16;
+    if (
+      envelope.length < minimum ||
+      envelope[0] !== 1 ||
+      envelope[1] !== 1 ||
+      envelope[2] !== 1
+    ) {
+      throw new DeviceServiceError(
+        "DEVICE_SHARE_DELIVERY_INVALID",
+        400,
+        "share delivery envelope is not a hybrid envelope",
+      );
+    }
+  }
+
+  private async approveWithShareDelivery(
+    userId: string,
+    approverDeviceId: string,
+    pendingDeviceId: string,
+    envelope: Uint8Array,
+  ): Promise<ResolveDeviceApprovalResult> {
+    this.assertShareDeliveryEnvelope(envelope);
+    const trustedApprover = await this.devices.isTrustedDevice(userId, approverDeviceId);
+    if (!trustedApprover) {
+      throw new DeviceServiceError(
+        "DEVICE_APPROVAL_ACCESS_DENIED",
+        403,
+        "trusted approver device required",
+      );
+    }
+    if (!this.devices.storeShareDelivery) {
+      throw new DeviceServiceError("INTERNAL_SERVER_ERROR", 500, "share delivery storage is unavailable");
+    }
+    const now = this.now();
+    const ttlMs = this.config.deviceApprovalTtlSeconds * 1000;
+    const stored = await this.devices.storeShareDelivery({
+      userId,
+      deviceId: pendingDeviceId,
+      approverUserId: userId,
+      envelope,
+      now: now.toISOString(),
+      pendingCreatedBefore: new Date(now.getTime() - ttlMs).toISOString(),
+      expiresAt: new Date(now.getTime() + ttlMs).toISOString(),
+    });
+    if (stored.kind === "stored") {
+      return { deviceId: pendingDeviceId, status: "pending_approval" };
+    }
+    if (stored.kind === "expired") {
+      throw new DeviceServiceError(
+        "DEVICE_APPROVAL_EXPIRED",
+        410,
+        "device approval challenge expired",
+      );
+    }
+    if (stored.kind === "not_pending") {
+      throw new DeviceServiceError(
+        "DEVICE_APPROVAL_ALREADY_RESOLVED",
+        409,
+        "device approval already resolved",
+      );
+    }
+    if (stored.kind === "missing_one_time_key") {
+      throw new DeviceServiceError(
+        "DEVICE_SHARE_DELIVERY_INVALID",
+        400,
+        "pending device has no one-time delivery key",
+      );
+    }
+    throw new DeviceServiceError(
+      "DEVICE_APPROVAL_NOT_FOUND",
+      404,
+      "pending device approval not found",
+    );
   }
 
   private async resolveDeviceApproval(input: {

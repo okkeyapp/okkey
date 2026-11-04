@@ -2302,6 +2302,9 @@ export class DevicesRepository {
             UPDATE devices AS pending
             SET
               status = 'trusted',
+              -- TODO(device-approval-share-delivery): remove this plaintext share copy
+              -- one release after clients deliver share B in a one-time hybrid envelope.
+              -- Deprecated path for an older client on either side of approval.
               device_share = approver.device_share,
               approved_by = $2,
               approved_at = $3::timestamptz,
@@ -3210,6 +3213,300 @@ export class DevicesRepository {
       `,
       [userId, now],
     );
+  }
+
+  async savePendingOneTimeKeys(input: {
+    userId: string;
+    deviceId: string;
+    x25519PublicKey: Uint8Array;
+    mlkemPublicKey: Uint8Array;
+  }): Promise<boolean> {
+    const rows = await this.db.query<{ id: string }>(
+      `
+        UPDATE devices
+        SET
+          one_time_x25519_public = $3,
+          one_time_mlkem_public = $4
+        WHERE id = $1::bigint
+          AND user_id = $2::bigint
+          AND status = 'pending'
+        RETURNING id
+      `,
+      [
+        input.deviceId,
+        input.userId,
+        Buffer.from(input.x25519PublicKey),
+        Buffer.from(input.mlkemPublicKey),
+      ],
+    );
+    return Boolean(rows[0]);
+  }
+
+  async listPendingOneTimeKeys(userId: string): Promise<
+    Array<{
+      deviceId: string;
+      x25519PublicKey: Uint8Array;
+      mlkemPublicKey: Uint8Array;
+    }>
+  > {
+    const rows = await this.db.query<{
+      id: string;
+      one_time_x25519_public: Buffer;
+      one_time_mlkem_public: Buffer;
+    }>(
+      `
+        SELECT id, one_time_x25519_public, one_time_mlkem_public
+        FROM devices
+        WHERE user_id = $1::bigint
+          AND status = 'pending'
+          AND one_time_x25519_public IS NOT NULL
+          AND one_time_mlkem_public IS NOT NULL
+      `,
+      [userId],
+    );
+    return rows.map((row) => ({
+      deviceId: row.id,
+      x25519PublicKey: Uint8Array.from(row.one_time_x25519_public),
+      mlkemPublicKey: Uint8Array.from(row.one_time_mlkem_public),
+    }));
+  }
+
+  /**
+   * Store a hybrid envelope for a pending device that published a one-time key.
+   * Does not copy share B and does not mark the device trusted.
+   */
+  async storeShareDelivery(input: {
+    userId: string;
+    deviceId: string;
+    approverUserId: string;
+    envelope: Uint8Array;
+    now: string;
+    pendingCreatedBefore: string;
+    expiresAt: string;
+  }): Promise<
+    | { kind: "stored" }
+    | { kind: "not_found" }
+    | { kind: "expired" }
+    | { kind: "not_pending" }
+    | { kind: "missing_one_time_key" }
+  > {
+    return this.db.transaction(async (tx) => {
+      const rows = await tx.query<{
+        id: string;
+        status: string;
+        created_at: string | Date;
+        has_one_time_key: boolean;
+      }>(
+        `
+          SELECT
+            id,
+            status,
+            created_at,
+            (
+              one_time_x25519_public IS NOT NULL
+              AND one_time_mlkem_public IS NOT NULL
+            ) AS has_one_time_key
+          FROM devices
+          WHERE id = $1::bigint
+            AND user_id = $2::bigint
+          FOR UPDATE
+        `,
+        [input.deviceId, input.userId],
+      );
+      const row = rows[0];
+      if (!row) {
+        return { kind: "not_found" };
+      }
+      if (row.status !== "pending") {
+        return { kind: "not_pending" };
+      }
+      const createdMs = new Date(row.created_at).getTime();
+      if (createdMs < new Date(input.pendingCreatedBefore).getTime()) {
+        await tx.query(
+          `
+            UPDATE devices
+            SET
+              status = 'revoked',
+              rejected_at = COALESCE(rejected_at, $2::timestamptz),
+              rejection_reason = COALESCE(rejection_reason, 'approval expired'),
+              revoked_at = COALESCE(revoked_at, $2::timestamptz),
+              share_delivery_envelope = NULL,
+              share_delivery_expires_at = NULL,
+              one_time_x25519_public = NULL,
+              one_time_mlkem_public = NULL
+            WHERE id = $1::bigint
+          `,
+          [input.deviceId, input.now],
+        );
+        await deleteSessionsForDevices(tx, [input.deviceId]);
+        return { kind: "expired" };
+      }
+      if (!row.has_one_time_key) {
+        return { kind: "missing_one_time_key" };
+      }
+      await tx.query(
+        `
+          UPDATE devices
+          SET
+            share_delivery_envelope = $3,
+            share_delivery_expires_at = $4::timestamptz,
+            approved_by = $5::bigint,
+            approved_at = $6::timestamptz
+          WHERE id = $1::bigint
+            AND user_id = $2::bigint
+            AND status = 'pending'
+        `,
+        [
+          input.deviceId,
+          input.userId,
+          Buffer.from(input.envelope),
+          input.expiresAt,
+          input.approverUserId,
+          input.now,
+        ],
+      );
+      return { kind: "stored" };
+    });
+  }
+
+  async deleteExpiredShareDeliveries(userId: string, now: string): Promise<void> {
+    await this.db.query(
+      `
+        UPDATE devices
+        SET
+          share_delivery_envelope = NULL,
+          share_delivery_expires_at = NULL
+        WHERE user_id = $1::bigint
+          AND share_delivery_envelope IS NOT NULL
+          AND share_delivery_expires_at IS NOT NULL
+          AND share_delivery_expires_at <= $2::timestamptz
+      `,
+      [userId, now],
+    );
+  }
+
+  /** Drop a stored envelope and the one-time public key. Share B is left as-is. */
+  async clearShareDelivery(userId: string, deviceId: string): Promise<void> {
+    await this.db.query(
+      `
+        UPDATE devices
+        SET
+          share_delivery_envelope = NULL,
+          share_delivery_expires_at = NULL,
+          one_time_x25519_public = NULL,
+          one_time_mlkem_public = NULL
+        WHERE id = $1::bigint
+          AND user_id = $2::bigint
+      `,
+      [deviceId, userId],
+    );
+  }
+
+  async readShareDelivery(input: {
+    userId: string;
+    deviceId: string;
+    now: string;
+  }): Promise<{ envelope: Uint8Array; expiresAt: string } | null> {
+    const rows = await this.db.query<{
+      share_delivery_envelope: Buffer | null;
+      share_delivery_expires_at: string | Date | null;
+      status: string;
+    }>(
+      `
+        SELECT share_delivery_envelope, share_delivery_expires_at, status
+        FROM devices
+        WHERE id = $1::bigint
+          AND user_id = $2::bigint
+      `,
+      [input.deviceId, input.userId],
+    );
+    const row = rows[0];
+    if (!row || row.status !== "pending" || !row.share_delivery_envelope) {
+      return null;
+    }
+    const expiresAt = row.share_delivery_expires_at instanceof Date
+      ? row.share_delivery_expires_at.toISOString()
+      : row.share_delivery_expires_at
+        ? new Date(row.share_delivery_expires_at).toISOString()
+        : null;
+    if (!expiresAt || new Date(expiresAt).getTime() <= new Date(input.now).getTime()) {
+      await this.deleteExpiredShareDeliveries(input.userId, input.now);
+      return null;
+    }
+    return {
+      envelope: Uint8Array.from(row.share_delivery_envelope),
+      expiresAt,
+    };
+  }
+
+  /**
+   * Install the delivered share B and delete the envelope so it cannot be read again.
+   */
+  async confirmShareDelivery(input: {
+    userId: string;
+    deviceId: string;
+    deviceShare: Uint8Array;
+    now: string;
+  }): Promise<"confirmed" | "not_found" | "expired"> {
+    return this.db.transaction(async (tx) => {
+      const rows = await tx.query<{
+        share_delivery_expires_at: string | Date | null;
+      }>(
+        `
+          SELECT share_delivery_expires_at
+          FROM devices
+          WHERE id = $1::bigint
+            AND user_id = $2::bigint
+            AND status = 'pending'
+            AND share_delivery_envelope IS NOT NULL
+          FOR UPDATE
+        `,
+        [input.deviceId, input.userId],
+      );
+      const row = rows[0];
+      if (!row) {
+        return "not_found";
+      }
+      const expiresMs = row.share_delivery_expires_at
+        ? new Date(row.share_delivery_expires_at).getTime()
+        : Number.NaN;
+      if (!Number.isFinite(expiresMs) || expiresMs <= new Date(input.now).getTime()) {
+        await tx.query(
+          `
+            UPDATE devices
+            SET
+              share_delivery_envelope = NULL,
+              share_delivery_expires_at = NULL
+            WHERE id = $1::bigint
+              AND user_id = $2::bigint
+          `,
+          [input.deviceId, input.userId],
+        );
+        return "expired";
+      }
+      await tx.query(
+        `
+          UPDATE devices
+          SET
+            device_share = $3,
+            status = 'trusted',
+            approved_at = COALESCE(approved_at, $4::timestamptz),
+            last_seen_at = $4::timestamptz,
+            rejected_at = NULL,
+            rejection_reason = NULL,
+            revoked_at = NULL,
+            share_delivery_envelope = NULL,
+            share_delivery_expires_at = NULL,
+            one_time_x25519_public = NULL,
+            one_time_mlkem_public = NULL
+          WHERE id = $1::bigint
+            AND user_id = $2::bigint
+            AND status = 'pending'
+        `,
+        [input.deviceId, input.userId, Buffer.from(input.deviceShare), input.now],
+      );
+      return "confirmed";
+    });
   }
 }
 

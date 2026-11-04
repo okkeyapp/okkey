@@ -1,4 +1,5 @@
 pub mod kdf;
+pub mod secret;
 pub mod aead;
 pub mod sign;
 pub mod x25519;

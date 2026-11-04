@@ -1,3 +1,4 @@
+import { initCrypto, sealDeviceShareForOneTimeKey, wipeBytes } from "@okkey/crypto";
 import type { DeviceBlockDuration, DeviceListItemDto } from "@okkey/types";
 import {
   Button,
@@ -17,6 +18,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { useAuthVault, useAuthenticatedCoreClient } from "../../auth/AuthVaultContext";
+import { base64ToBytes, bytesToBase64 } from "../../auth/base64";
+import { readVaultBundle } from "../../auth/localVaultBundle";
 import { formatDeviceClientOs, formatDeviceTitle } from "../../auth/browserEnvironment";
 import { getOrCreateDeviceFingerprint } from "../../auth/deviceFingerprint";
 import { IconCheck16, IconNotNow16 } from "../items/itemCategoryIcons";
@@ -27,6 +30,34 @@ import {
 } from "../settings/DeviceTypeIcon";
 import { useLocale } from "../../locale/LocaleContext";
 import { emitDevicesChanged, DEVICES_CHANGED_EVENT } from "./devicesEvents";
+
+async function sealShareDelivery(
+  device: DeviceListItemDto,
+  userId: string | null,
+): Promise<string | null> {
+  const x25519 = device.one_time_x25519_public_key;
+  const mlkem = device.one_time_mlkem_public_key;
+  if (!x25519 || !mlkem || !userId) {
+    return null;
+  }
+  const shareB64 = readVaultBundle(userId)?.device_share_b64?.trim() ?? "";
+  if (!shareB64) {
+    return null;
+  }
+  await initCrypto();
+  const share = base64ToBytes(shareB64);
+  try {
+    const envelope = await sealDeviceShareForOneTimeKey({
+      deviceShare: share,
+      recipientX25519PublicKey: base64ToBytes(x25519),
+      recipientMlkemPublicKey: base64ToBytes(mlkem),
+      deviceId: device.device_id,
+    });
+    return bytesToBase64(envelope);
+  } finally {
+    wipeBytes(share);
+  }
+}
 
 const BLOCK_OPTIONS: Array<{ duration: DeviceBlockDuration; labelKey: string }> = [
   { duration: "1h", labelKey: "web.settingsPopup.devices.pending.block1h" },
@@ -68,7 +99,7 @@ function isBenignApprovalRace(err: unknown): boolean {
 export default function DeviceApprovalController() {
   const { t, locale } = useLocale();
   const core = useAuthenticatedCoreClient();
-  const { currentDeviceId, vaultUnlocked } = useAuthVault();
+  const { currentDeviceId, vaultUnlocked, userId } = useAuthVault();
   const [pending, setPending] = useState<DeviceListItemDto[]>([]);
   const [resolving, setResolving] = useState(false);
   const fingerprint = useMemo(() => getOrCreateDeviceFingerprint(), []);
@@ -123,7 +154,8 @@ export default function DeviceApprovalController() {
     setResolving(true);
     try {
       if (decision === "approve") {
-        await core.approveDevice(targetDeviceId, approverId);
+        const envelope = await sealShareDelivery(current, userId);
+        await core.approveDevice(targetDeviceId, approverId, envelope ?? undefined);
         toast.success(t("web.settingsPopup.devices.toast.trusted"));
       } else {
         await core.rejectDevice(targetDeviceId, approverId, "dismissed by user");

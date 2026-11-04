@@ -83,6 +83,8 @@ interface RegisterDeviceBody extends RegisterDeviceMetadataBody {
   device_share?: string;
   device_fingerprint?: string;
   device_name?: string;
+  one_time_x25519_public_key?: string;
+  one_time_mlkem_public_key?: string;
   challenge_id?: string;
   signature?: string;
   share_proof?: string;
@@ -235,6 +237,12 @@ function toWireDevice(item: DeviceListItem) {
     is_current: item.isCurrent,
     approval_expires_at: item.approvalExpiresAt,
     blocked_until: item.blockedUntil ?? null,
+    ...(item.oneTimeX25519PublicKey && item.oneTimeMlkemPublicKey
+      ? {
+          one_time_x25519_public_key: item.oneTimeX25519PublicKey,
+          one_time_mlkem_public_key: item.oneTimeMlkemPublicKey,
+        }
+      : {}),
   };
 }
 
@@ -357,6 +365,14 @@ export function createRegisterDeviceRoute(
         provedDeviceId,
         recoveryPending,
         preserveSessionTokenHash,
+        oneTimeX25519PublicKey:
+          typeof body.one_time_x25519_public_key === "string"
+            ? body.one_time_x25519_public_key
+            : undefined,
+        oneTimeMlkemPublicKey:
+          typeof body.one_time_mlkem_public_key === "string"
+            ? body.one_time_mlkem_public_key
+            : undefined,
       });
       const bindCreated =
         result.created &&
@@ -898,6 +914,14 @@ export function createApproveDeviceRoute(
       return;
     }
 
+    let body: { share_delivery_envelope?: string } = {};
+    try {
+      body = await readOptionalJsonObject(ctx.req);
+    } catch {
+      json(ctx.res, 400, errorPayload("DEVICE_BAD_REQUEST", "invalid json", ctx.requestId));
+      return;
+    }
+
     try {
       const userId = await resolveUserId(ctx.req);
       if (!userId) {
@@ -905,7 +929,25 @@ export function createApproveDeviceRoute(
         return;
       }
       const approverDeviceId = getApproverDeviceId(ctx);
-      const result = await deviceService.approveDevice(userId, approverDeviceId, deviceId);
+      const envelopeB64 = body.share_delivery_envelope?.trim() ?? "";
+      let envelope: Uint8Array | undefined;
+      if (envelopeB64) {
+        if (!isBase64(envelopeB64)) {
+          json(
+            ctx.res,
+            400,
+            errorPayload("DEVICE_BAD_REQUEST", "share_delivery_envelope must be base64", ctx.requestId),
+          );
+          return;
+        }
+        envelope = Uint8Array.from(Buffer.from(envelopeB64, "base64"));
+      }
+      const result = await deviceService.approveDevice(
+        userId,
+        approverDeviceId,
+        deviceId,
+        envelope,
+      );
       json(ctx.res, 200, {
         device_id: result.deviceId,
         status: result.status,
@@ -914,6 +956,133 @@ export function createApproveDeviceRoute(
       handleDeviceError(ctx.requestId, ctx.res, error);
     }
   };
+}
+
+function isBase64(value: string): boolean {
+  if (!value || value.length % 4 !== 0) {
+    return false;
+  }
+  return /^[A-Za-z0-9+/]+={0,2}$/.test(value);
+}
+
+async function readOptionalJsonObject(
+  req: IncomingMessage,
+): Promise<{ share_delivery_envelope?: string }> {
+  const mocked = (req as IncomingMessage & { body?: unknown }).body;
+  if (mocked !== undefined) {
+    if (mocked === null || typeof mocked !== "object" || Array.isArray(mocked)) {
+      throw new Error("invalid json");
+    }
+    return mocked as { share_delivery_envelope?: string };
+  }
+  const asyncIterator = (req as AsyncIterable<unknown>)[Symbol.asyncIterator];
+  if (typeof asyncIterator !== "function") {
+    return {};
+  }
+  return readJsonBody(req);
+}
+
+export function createGetShareDeliveryRoute(
+  deviceService: DeviceService,
+  resolveUserId: (req: IncomingMessage) => Promise<string | null>,
+  resolveSession?: (req: IncomingMessage) => Promise<{ deviceId: string | null } | null>,
+): RouteHandler {
+  return async (ctx) => {
+    const deviceId = ctx.params.deviceId;
+    if (!deviceId) {
+      json(ctx.res, 400, errorPayload("DEVICE_BAD_REQUEST", "deviceId is required", ctx.requestId));
+      return;
+    }
+    try {
+      const userId = await resolveUserId(ctx.req);
+      if (!userId) {
+        json(ctx.res, 401, errorPayload("AUTH_REQUIRED", "auth required", ctx.requestId));
+        return;
+      }
+      assertOwnDevice(ctx, deviceId, await resolveCallerDeviceId(ctx.req, resolveSession));
+      const delivery = await deviceService.readShareDelivery(userId, deviceId);
+      json(ctx.res, 200, {
+        share_delivery_envelope: Buffer.from(delivery.envelope).toString("base64"),
+        expires_at: delivery.expiresAt,
+      });
+    } catch (error) {
+      handleDeviceError(ctx.requestId, ctx.res, error);
+    }
+  };
+}
+
+export function createConfirmShareDeliveryRoute(
+  deviceService: DeviceService,
+  resolveUserId: (req: IncomingMessage) => Promise<string | null>,
+  resolveSession?: (req: IncomingMessage) => Promise<{ deviceId: string | null } | null>,
+): RouteHandler {
+  return async (ctx) => {
+    const deviceId = ctx.params.deviceId;
+    if (!deviceId) {
+      json(ctx.res, 400, errorPayload("DEVICE_BAD_REQUEST", "deviceId is required", ctx.requestId));
+      return;
+    }
+    let body: { device_share?: string };
+    try {
+      body = await readJsonBody(ctx.req);
+    } catch {
+      json(ctx.res, 400, errorPayload("DEVICE_BAD_REQUEST", "invalid json", ctx.requestId));
+      return;
+    }
+    if (typeof body.device_share !== "string" || !body.device_share.trim()) {
+      json(
+        ctx.res,
+        400,
+        errorPayload("DEVICE_BAD_REQUEST", "device_share is required", ctx.requestId),
+      );
+      return;
+    }
+    try {
+      const userId = await resolveUserId(ctx.req);
+      if (!userId) {
+        json(ctx.res, 401, errorPayload("AUTH_REQUIRED", "auth required", ctx.requestId));
+        return;
+      }
+      assertOwnDevice(ctx, deviceId, await resolveCallerDeviceId(ctx.req, resolveSession));
+      const result = await deviceService.confirmShareDelivery(
+        userId,
+        deviceId,
+        body.device_share.trim(),
+      );
+      json(ctx.res, 200, {
+        device_id: result.deviceId,
+        status: result.status,
+      });
+    } catch (error) {
+      handleDeviceError(ctx.requestId, ctx.res, error);
+    }
+  };
+}
+
+async function resolveCallerDeviceId(
+  req: IncomingMessage,
+  resolveSession?: (req: IncomingMessage) => Promise<{ deviceId: string | null } | null>,
+): Promise<string> {
+  const session = resolveSession ? await resolveSession(req) : null;
+  const sessionDeviceId = session?.deviceId?.trim() ?? "";
+  if (sessionDeviceId) {
+    return sessionDeviceId;
+  }
+  return getHeader(req, "x-device-id")?.trim() ?? "";
+}
+
+function assertOwnDevice(
+  ctx: Parameters<RouteHandler>[0],
+  deviceId: string,
+  callerDeviceId: string,
+): void {
+  if (!callerDeviceId || !sameDeviceId(callerDeviceId, deviceId)) {
+    throw new DeviceServiceError(
+      "DEVICE_SHARE_DELIVERY_FORBIDDEN",
+      403,
+      "only the pending device can read its share delivery",
+    );
+  }
 }
 
 export function createRejectDeviceRoute(

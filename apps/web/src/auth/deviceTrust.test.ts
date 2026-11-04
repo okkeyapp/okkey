@@ -35,6 +35,12 @@ vi.mock("./deviceSigningKey", () => ({
   clearDeviceSigningKey: () => clearDeviceSigningKey(),
 }));
 
+vi.mock("./deviceShareDelivery", () => ({
+  prepareOneTimeShareDelivery: vi.fn(async () => null),
+  acceptShareDeliveryIfPresent: vi.fn(async () => false),
+  discardOneTimeShareDelivery: vi.fn(),
+}));
+
 vi.mock("@okkey/crypto", () => ({
   initCrypto: vi.fn(async () => undefined),
   deviceBindShareProof: () => new Uint8Array([9, 9, 9, 9]),

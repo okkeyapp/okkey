@@ -1028,11 +1028,37 @@ export class CoreApiClient {
     );
   }
 
-  approveDevice(pendingDeviceId: string, approverDeviceId: string): Promise<DeviceRegisterResponseDto> {
+  approveDevice(
+    pendingDeviceId: string,
+    approverDeviceId: string,
+    shareDeliveryEnvelopeB64?: string,
+  ): Promise<DeviceRegisterResponseDto> {
+    const body = shareDeliveryEnvelopeB64
+      ? { share_delivery_envelope: shareDeliveryEnvelopeB64 }
+      : {};
     return this.api.post<DeviceRegisterResponseDto>(
       `/devices/${encodeURIComponent(pendingDeviceId)}/approve`,
-      {},
+      body,
       { headers: { "X-Device-Id": approverDeviceId } },
+    );
+  }
+
+  getDeviceShareDelivery(deviceId: string): Promise<{
+    share_delivery_envelope: string;
+    expires_at: string;
+  }> {
+    return this.api.get(
+      `/devices/${encodeURIComponent(deviceId)}/share-delivery`,
+    );
+  }
+
+  confirmDeviceShareDelivery(
+    deviceId: string,
+    deviceShareB64: string,
+  ): Promise<DeviceRegisterResponseDto> {
+    return this.api.post<DeviceRegisterResponseDto>(
+      `/devices/${encodeURIComponent(deviceId)}/share-delivery/confirm`,
+      { device_share: deviceShareB64 },
     );
   }
 
