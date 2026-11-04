@@ -74,7 +74,8 @@ export default function DevicePendingPage() {
     if (
       deviceTrustStatus !== "pending" &&
       deviceTrustStatus !== "checking" &&
-      deviceTrustStatus !== "blocked"
+      deviceTrustStatus !== "blocked" &&
+      deviceTrustStatus !== "error"
     ) {
       return;
     }
@@ -97,23 +98,27 @@ export default function DevicePendingPage() {
   }
 
   const blocked = deviceTrustStatus === "blocked";
-  const rejected = deviceTrustStatus === "rejected" || deviceTrustStatus === "error";
+  // Only an actual denial/revocation uses the denied copy. `error` is a failed
+  // lookup or rebind, including a device that is still waiting for approval.
+  const denied = deviceTrustStatus === "rejected";
   const checking = deviceTrustStatus === "idle" || deviceTrustStatus === "checking";
+  const failed = deviceTrustStatus === "error";
 
   const title = blocked
     ? t("web.devicePending.blockedTitle")
-    : rejected
+    : denied
       ? t("web.devicePending.rejectedTitle")
       : t("web.devicePending.title");
   const description = blocked
     ? t("web.devicePending.blockedBody")
     : deviceNeedsRecovery
       ? t("web.devicePending.recoveryRequiredBody")
-      : rejected
+      : denied
         ? t("web.devicePending.rejectedBody")
         : t("web.devicePending.body");
 
-  const mode = checking ? "checking" : blocked ? "blocked" : rejected ? "rejected" : "pending";
+  const mode = checking ? "checking" : blocked ? "blocked" : denied ? "rejected" : "pending";
+  const showRetry = (denied || failed) && !deviceNeedsRecovery;
 
   const approvers: DevicePendingApprover[] = deviceApprovers.map((device) => ({
     ...device,
@@ -147,17 +152,15 @@ export default function DevicePendingPage() {
           }
           approvers={approvers}
           actions={
-            rejected ? (
-              deviceNeedsRecovery ? (
-                <Button type="button" asChild>
-                  <Link to={ACCOUNT_RESTORE_PATH}>{t("web.devicePending.recoveryRequiredCta")}</Link>
-                </Button>
-              ) : (
-                <Button type="button" disabled={retrying} onClick={() => void onRetry()}>
-                  {retrying ? <Spinner data-icon="inline-start" /> : null}
-                  {t("web.devicePending.retry")}
-                </Button>
-              )
+            showRetry ? (
+              <Button type="button" disabled={retrying} onClick={() => void onRetry()}>
+                {retrying ? <Spinner data-icon="inline-start" /> : null}
+                {t("web.devicePending.retry")}
+              </Button>
+            ) : denied && deviceNeedsRecovery ? (
+              <Button type="button" asChild>
+                <Link to={ACCOUNT_RESTORE_PATH}>{t("web.devicePending.recoveryRequiredCta")}</Link>
+              </Button>
             ) : mode === "pending" ? (
               <Button type="button" variant="outline" asChild>
                 <Link to={ACCOUNT_RESTORE_PATH}>{t("web.devicePending.recoveryRequiredCta")}</Link>

@@ -54,7 +54,85 @@ function randomPlaceholderShare(): Uint8Array {
 }
 
 function fingerprintMatch(device: DeviceListItemDto, fingerprint: string): boolean {
-  return device.device_fingerprint.trim().toLowerCase() === fingerprint.trim().toLowerCase();
+  const stored = device.device_fingerprint;
+  if (typeof stored !== "string" || stored.trim().length === 0) {
+    return false;
+  }
+  return stored.trim().toLowerCase() === fingerprint.trim().toLowerCase();
+}
+
+/** Wire status for a device that still needs approval. */
+function isPendingApproval(device: { status?: string }): boolean {
+  return device.status === "pending_approval" || device.status === "pending";
+}
+
+/**
+ * Rows in `devices` are trusted approvers. A pending sign-in must not be treated
+ * as trusted just because it was returned in that array.
+ */
+function isTrustedRow(device: { status?: string }): boolean {
+  return device.status == null || device.status === "trusted";
+}
+
+function sameListedDeviceId(left: unknown, right: unknown): boolean {
+  if (left == null || right == null) {
+    return false;
+  }
+  const a = String(left).trim();
+  const b = String(right).trim();
+  if (a.length === 0 || b.length === 0) {
+    return false;
+  }
+  if (a === b) {
+    return true;
+  }
+  if (!/^\d+$/.test(a) || !/^\d+$/.test(b)) {
+    return false;
+  }
+  try {
+    return BigInt(a) === BigInt(b);
+  } catch {
+    return false;
+  }
+}
+
+function pendingRows(listed: {
+  devices?: DeviceListItemDto[];
+  pending?: DeviceListItemDto[];
+}): DeviceListItemDto[] {
+  return [
+    ...(listed.pending ?? []),
+    ...(listed.devices ?? []).filter((device) => isPendingApproval(device)),
+  ];
+}
+
+function findPendingRow(
+  listed: { devices?: DeviceListItemDto[]; pending?: DeviceListItemDto[] },
+  fingerprint: string,
+  pendingDeviceId?: string | null,
+): DeviceListItemDto | undefined {
+  const rows = pendingRows(listed);
+  const byFingerprint = rows.find((device) => fingerprintMatch(device, fingerprint));
+  if (byFingerprint) {
+    return byFingerprint;
+  }
+  if (pendingDeviceId == null || String(pendingDeviceId).trim().length === 0) {
+    return undefined;
+  }
+  return rows.find((device) => sameListedDeviceId(device.device_id, pendingDeviceId));
+}
+
+function findTrustedRow(
+  devices: DeviceListItemDto[] | undefined,
+  fingerprint: string,
+): DeviceListItemDto | undefined {
+  return (devices ?? []).find(
+    (device) => isTrustedRow(device) && fingerprintMatch(device, fingerprint),
+  );
+}
+
+function trustedApprovers(devices: DeviceListItemDto[] | undefined): DeviceListItemDto[] {
+  return (devices ?? []).filter((device) => isTrustedRow(device));
 }
 
 function browserBindMetadata() {
@@ -216,8 +294,8 @@ export async function resolveDeviceTrust(
     }
   }
 
-  const trustedMatch = listed.devices.find((device) => fingerprintMatch(device, fingerprint));
-  const pendingMatch = listed.pending.find((device) => fingerprintMatch(device, fingerprint));
+  const trustedMatch = findTrustedRow(listed.devices, fingerprint);
+  const pendingMatch = findPendingRow(listed, fingerprint);
   const soleTrusted = listed.devices.length === 1 ? listed.devices[0] : null;
   const canReclaimSole =
     hasBundle &&
@@ -281,23 +359,23 @@ export async function resolveDeviceTrust(
           return {
             status: "pending",
             deviceId: pendingMatch.device_id,
-            approverDevices: listed.devices,
+            approverDevices: trustedApprovers(listed.devices),
           };
         } catch (error: unknown) {
           return {
             status: "pending",
             deviceId: pendingMatch.device_id,
-            approverDevices: listed.devices,
+            approverDevices: trustedApprovers(listed.devices),
             errorMessage: error instanceof Error ? error.message : String(error),
           };
         }
       }
+      // Empty `devices` is not "no approvers": a session that is not trusted
+      // only receives its own row, so the waiting device must stay pending.
       return {
         status: "pending",
         deviceId: pendingMatch.device_id,
-        approverDevices: listed.devices,
-        needsRecovery: listed.devices.length < 1,
-        errorMessage: listed.devices.length < 1 ? "DEVICE_REBIND_REQUIRES_RECOVERY" : undefined,
+        approverDevices: trustedApprovers(listed.devices),
       };
     }
     try {
@@ -305,13 +383,13 @@ export async function resolveDeviceTrust(
       return {
         status: "pending",
         deviceId: pendingMatch.device_id,
-        approverDevices: listed.devices,
+        approverDevices: trustedApprovers(listed.devices),
       };
     } catch (error: unknown) {
       return {
         status: "pending",
         deviceId: pendingMatch.device_id,
-        approverDevices: listed.devices,
+        approverDevices: trustedApprovers(listed.devices),
         errorMessage: error instanceof Error ? error.message : String(error),
       };
     }
@@ -347,7 +425,7 @@ export async function resolveDeviceTrust(
     return {
       status: "pending",
       deviceId: registered.device_id,
-      approverDevices: afterPending.devices,
+      approverDevices: trustedApprovers(afterPending.devices),
     };
   } catch (error: unknown) {
     if (
@@ -367,7 +445,7 @@ export async function resolveDeviceTrust(
       return {
         status: "pending",
         deviceId: pendingMatch.device_id,
-        approverDevices: listed.devices,
+        approverDevices: trustedApprovers(listed.devices),
       };
     }
     return {
@@ -431,7 +509,7 @@ export async function pollDeviceTrust(
     }
   }
 
-  const trustedMatch = listed.devices.find((device) => fingerprintMatch(device, fingerprint));
+  const trustedMatch = findTrustedRow(listed.devices, fingerprint);
   if (trustedMatch) {
     // Never report trusted for an unbound Bearer — that unlocked the vault UI while
     // /account/recovery and vault-unlock stayed 401 after a failed bind-session proof.
@@ -487,17 +565,13 @@ export async function pollDeviceTrust(
     }
   }
 
-  const pendingMatch =
-    listed.pending.find((device) => fingerprintMatch(device, fingerprint)) ??
-    (pendingDeviceId
-      ? listed.pending.find((device) => device.device_id === pendingDeviceId)
-      : undefined);
+  const pendingMatch = findPendingRow(listed, fingerprint, pendingDeviceId);
 
   if (pendingMatch) {
     return {
       status: "pending",
       deviceId: pendingMatch.device_id,
-      approverDevices: listed.devices,
+      approverDevices: trustedApprovers(listed.devices),
     };
   }
 
