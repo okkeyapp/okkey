@@ -415,22 +415,36 @@ Side effects (single DB transaction): insert user (with KDF columns), default wo
 
 ### `POST /account/recovery/key/enroll`
 
-Stores the first recovery-key wrap for the authenticated user (or for a `registration_recovery` bootstrap Bearer). Ciphertext only — the server never sees the recovery secret.
+Stores a recovery-key wrap for the authenticated user (or for a `registration_recovery` bootstrap Bearer). Ciphertext only. The server never sees the recovery secret.
 
-**Auth:** `Authorization: Bearer <access_token>` — full session **or** `scope: registration_recovery` from `POST /auth/register/complete`.
+**Auth:** `Authorization: Bearer <access_token>`. Full session or `scope: registration_recovery` from `POST /auth/register/complete`.
 
-**Request body:** `{ "encryptedBlob": EncryptedBlob }` (`encrypted_blob` accepted as an alias). Wrap `meta` must identify a vault-key recovery wrap (`entity: vault_key_recovery_wrap`, `key_scope: account`).
+**Request body:** `{ "encryptedBlob": EncryptedBlob }` (`encrypted_blob` accepted as an alias). Optional `possessionPublicKey` (`possession_public_key` alias): standard base64 of a 32-byte Ed25519 verifying key. Omitted, empty, or whitespace is stored as absent. `meta.entity` must be `vault_key_recovery_wrap`. The handler does not check `key_scope`.
 
 **Response `200`:** `{ key: { enrolled, createdAt, rotatedAt, exportedAt }, settings: { keyEnabled, devicesEnabled, contactsEnabled } }`.
 
 | `error` | HTTP | When |
 |---------|------|------|
 | `AUTH_REQUIRED` | 401 | Missing/invalid Bearer |
-| `RECOVERY_BAD_REQUEST` | 400 | Invalid JSON / missing blob / invalid wrap meta |
-| `RECOVERY_ROTATE_FORBIDDEN` | 403 | Bootstrap scope (or `forbidRotate`) and a wrap already exists — first enroll only; concurrent losers of the atomic insert also receive this code |
-| `RECOVERY_PLAN_REQUIRED` | 403 | Plan does not allow recovery key (should not apply to default Free) |
+| `RECOVERY_BAD_REQUEST` | 400 | Invalid JSON, missing blob, `meta.entity` is not `vault_key_recovery_wrap`, or `possessionPublicKey` is not a base64 Ed25519 public key |
+| `RECOVERY_ROTATE_FORBIDDEN` | 403 | A wrap already exists and this session may not replace it (bootstrap scope, or a full session that is neither a trusted device nor recovery-proved). Concurrent losers of the atomic insert also receive this code |
 
-With `registration_recovery`, enroll is **atomic insert-if-absent** (`ON CONFLICT DO NOTHING`). Rotation requires a full session and `POST /account/recovery/key/rotate`.
+A `registration_recovery` bootstrap token, and a full session that is neither a trusted device nor recovery-proved, enroll with **atomic insert-if-absent** (`ON CONFLICT DO NOTHING`). A trusted device, or a full session that has completed `POST /account/recovery/key/prove`, may call enroll when a wrap already exists: that replaces the wrap (sets `rotatedAt`, clears `exportedAt`). `POST /account/recovery/key/rotate` is the dedicated replace route for those same sessions.
+
+### `POST /account/recovery/key/rotate`
+
+Replaces the stored recovery-key wrap. Ciphertext only. The server never sees the recovery secret.
+
+**Auth:** `Authorization: Bearer <access_token>` for a trusted device, or a full session that has proved the recovery key (`recovery_proved_at` set). Not `registration_recovery`. Any other session is `401 AUTH_REQUIRED`.
+
+**Request body:** Same as enroll (`encryptedBlob` / `encrypted_blob`, optional possession public key).
+
+**Response `200`:** Same shape as enroll. A replace sets `rotatedAt` and clears `exportedAt`. A first insert from this route also sets `rotatedAt`.
+
+| `error` | HTTP | When |
+|---------|------|------|
+| `AUTH_REQUIRED` | 401 | Missing/invalid Bearer, or the session is not trusted and has not proved the recovery key |
+| `RECOVERY_BAD_REQUEST` | 400 | Invalid JSON, missing blob, bad `meta.entity`, or bad possession public key |
 
 ### `POST /account/recovery/key/ack-export`
 
@@ -463,7 +477,9 @@ Proves possession of the recovery key for the current full session, including a 
 
 **Auth:** Full Bearer bound to a device. Not `registration_recovery`. A session with no `device_id` is `403 RECOVERY_PROOF_REQUIRES_DEVICE`.
 
-**Start:** `{}` returns `{ "proved": false, "challenge", "deviceId", "expiresAt" }`. The challenge is random, single-use, short-lived, and stored only for this session. It is not a credential.
+**Start:** a JSON object that omits both `challenge` and `signature`, including `{}`, returns `{ "proved": false, "challenge", "deviceId", "expiresAt" }`. The challenge is random, single-use, and stored only for this session (TTL 120 seconds). It is not a credential.
+
+A fully authenticated session (full Bearer bound to a device, including one that has already proved) can call this route again with `{}`. Each call issues a new single-use challenge and invalidates the previous one on that session. An existing proof grant and the session device binding stay in place.
 
 **Finish:** `{ "challenge", "signature" }`. `signature` is an Ed25519 signature over the canonical message `{ challenge, device_id, purpose: "account.recovery_possession", user_id }` using a key derived from the recovery secret. The server checks it with the **public** key stored at enroll or rotate. A match sets `recovery_proved_at` on this session and returns `{ "proved": true }`.
 
@@ -471,11 +487,27 @@ The public key cannot produce a signature. Replaying a signature on another sess
 
 Wraps enrolled before a possession public key existed cannot be proved from an untrusted device (`409 RECOVERY_PROOF_UNAVAILABLE`). Ciphertext is not returned. A trusted device can rotate the recovery key, which stores a new public key.
 
-Failed signatures count toward a per-session limit (5) and a per-account limit (10) inside 15 minutes, then `429 RECOVERY_PROOF_LIMITED`. A lockout rejects even a correct signature until it expires. `null` or non-object JSON is `400 RECOVERY_BAD_REQUEST`.
+Failed signatures count toward a per-session limit (5) and a per-account limit (10) inside 15 minutes, then `429 RECOVERY_PROOF_LIMITED`. That body includes `remaining_ms` (lock time left, in milliseconds) next to `error`, `message`, and `requestId`. A lockout rejects even a correct signature until it expires. `null` or non-object JSON is `400 RECOVERY_BAD_REQUEST`.
 
 After proof, this session may read the wrap, the identity ciphertext, and the workspace list, change the master password, and `POST /devices/register` with `claim_after_recovery`. Vault keys, shares, events, and profile stay limited to a trusted device.
 
 **Errors:** `AUTH_REQUIRED` 401, `RECOVERY_BAD_REQUEST` 400, `RECOVERY_PROOF_REQUIRES_DEVICE` 403, `RECOVERY_PROOF_INVALID` 403, `RECOVERY_PROOF_UNAVAILABLE` 409, `RECOVERY_KEY_NOT_AVAILABLE` 404, `RECOVERY_PROOF_LIMITED` 429.
+
+### `GET /account/recovery/key/wrap`
+
+Returns the stored recovery-key wrap. The server does not unwrap it.
+
+**Auth:** Same as rotate: trusted device, or a full session that has proved the recovery key. Not `registration_recovery`.
+
+**Response `200`:** `{ "encryptedBlob": EncryptedBlob }`.
+
+| `error` | HTTP | When |
+|---------|------|------|
+| `AUTH_REQUIRED` | 401 | Missing/invalid Bearer, or the session is not trusted and has not proved the recovery key |
+| `RECOVERY_KEY_NOT_AVAILABLE` | 404 | Recovery key is not enabled or not enrolled |
+| `RECOVERY_KEY_NOT_ENROLLED` | 404 | No wrap row |
+
+Core recovery-key routes are only `POST /account/recovery/key/prove`, `POST /account/recovery/key/enroll`, `POST /account/recovery/key/rotate`, `POST /account/recovery/key/ack-export`, and `GET /account/recovery/key/wrap`.
 
 ---
 
@@ -1049,24 +1081,38 @@ Registers or updates a device for the authenticated user. May return `pending_ap
 | `app_version` | string | No | Same |
 | `client_type` | string | No | Same |
 | `user_agent` | string | No | Falls back to HTTP `User-Agent` or `unknown`. |
-| `metadata` | object | No | Optional nested object with the same optional string fields; overrides top-level when both present (per-field). |
+| `recovery_pending` | boolean | No | JSON boolean only. Omitted means false. Registers the device as pending during recovery and does not replace a trusted device's key. |
+| `claim_after_recovery` | boolean | No | JSON boolean only. Omitted means false. Accepted only for the device bound to the session that completed `POST /account/recovery/key/prove`. When true, `recovery_pending` is treated as false. |
+| `metadata` | object | No | Optional nested object with the same optional string fields and these two booleans. For each string field, `metadata` overrides the top-level value when both are set. For each boolean, when `metadata` is a JSON object and contains that key, the `metadata` value is used (including `null`, which is rejected). Otherwise the top-level field is used. |
+
+`recovery_pending` and `claim_after_recovery` accept only JSON booleans. An omitted flag is false. A non-boolean value, including `null`, a string, or a number, is `400 DEVICE_BAD_REQUEST`.
+
+A pending registration with the same fingerprint replaces the existing pending entry. An account can hold at most 20 pending devices. Only `status = pending` rows count. Trusted, blocked, and revoked rows do not. Replacing the pending row for a fingerprint that already has one does not use another slot, including when the account is already at the cap. The first device on an account with no trusted device is stored as trusted and does not use a pending slot.
 
 **Response `200`:**
 
 | Field | Type | Values |
 |--------|------|--------|
-| `device_id` | string | UUID |
-| `status` | string | `trusted` \| `pending_approval` |
+| `device_id` | string | Entity id |
+| `status` | string | `trusted` \| `pending_approval` \| `blocked` |
+| `blocked_until` | string \| null | Present when `status` is `blocked` |
 
 **Errors:**
 
 | `error` | HTTP | When |
 |---------|------|------|
-| `DEVICE_BAD_REQUEST` | 400 | Invalid JSON; missing required fields; invalid `device_share`. |
+| `DEVICE_BAD_REQUEST` | 400 | Invalid JSON; missing required fields; invalid `device_share`; a flag is not a JSON boolean. |
 | `DEVICE_INVALID_FINGERPRINT` | 400 | Fingerprint format invalid. |
 | `DEVICE_INVALID_PUBLIC_KEY` | 400 | Public key not valid base64. |
 | `DEVICE_DUPLICATE_CONFLICT` | 409 | Unique constraint / duplicate registration conflict. |
+| `DEVICE_FINGERPRINT_ALREADY_TRUSTED` | 409 | This fingerprint is already trusted and the public key differs, and `recovery_pending` is not set. |
+| `DEVICE_PENDING_LIMIT` | 409 | The account already has 20 pending devices. `details.limit` is that cap (number). |
+| `RECOVERY_PROOF_REQUIRED` | 403 | No proof in session. |
+| `RECOVERY_CLAIM_REQUIRES_PROVED_DEVICE` | 403 | No proved device. |
+| `RECOVERY_CLAIM_DEVICE_MISMATCH` | 403 | Device differs from the proved one. |
 | `AUTH_REQUIRED` | 401 | No valid Bearer session and no allowed dev header. |
+
+`RECOVERY_PROOF_REQUIRED` is returned when the caller is not a trusted device and the session has not proved the recovery key. A trusted session that has not proved receives `RECOVERY_CLAIM_REQUIRES_PROVED_DEVICE`. `RECOVERY_CLAIM_DEVICE_MISMATCH` is a fingerprint or public-key difference from that proved device. A proved device row that is missing, or not `pending` or `trusted`, is `RECOVERY_CLAIM_REQUIRES_PROVED_DEVICE`.
 
 ### `POST /devices/:deviceId/approve`
 
@@ -1144,7 +1190,7 @@ Renames a trusted or pending device owned by the user.
 
 Revokes a trusted or pending device owned by the authenticated user (settings dismiss / revoke). Does **not** require `X-Device-Id`. Approval-flow reject with a trusted approver remains `POST …/reject`.
 
-Registering a fingerprint that already belongs to a trusted device does not replace that device's public key or share, and new keys do not become trusted. Vault, workspace, event, account profile, vault-unlock status, and unlock-bootstrap routes require the session's device to be trusted. `GET /account/recovery` lists methods for a pending device and omits the contact directory. The recovery wrap, identity ciphertext, workspace list, and master-password change stay closed until that session proves the recovery key (`POST /account/recovery/key/prove`) or the device is approved. `claim_after_recovery` on device register requires that proof and then binds the session to the claimed device. Unlock bootstrap returns key material only for that trusted device and does not use a client fingerprint. A session whose device is not trusted receives only that device from `GET /devices`. Attaching a session to an existing device is `POST /devices/:deviceId/bind-challenge` then `POST /devices/:deviceId/bind-session` with an Ed25519 signature of that one-time challenge by the device private key. Bind challenges live in shared Redis (TTL) and are single-use. `challenge_id` and `signature` must be strings (`400 DEVICE_BAD_REQUEST` otherwise). Name, app, and OS metadata change only after that proof. A login on that same fingerprint uses this signed bind instead of register. When the client lost its device signing seed but still holds the vault device share, `bind-session` accepts `share_proof` plus `new_device_public_key` instead of a signature. That rotates only the signing public key, does not replace the device share, and does not call register, so a trusted fingerprint is not `409`. An invalid signature is not retried as a share proof. `share_proof` and `new_device_public_key` must be strings (`400` otherwise). `POST /devices/:deviceId/request-key-rebind` demotes a device only after the same challenge proof and only when the request fingerprint matches that device; otherwise the row is unchanged. An unbound full session `GET /devices` returns only the row for the requested fingerprint. A session bound to a device that is not trusted returns only that device. The **current device** is the session’s `device_id`. Ids compare as integers, so a leading-zero form of the same id is still the current device. A full Bearer session with no `device_id` cannot revoke devices unless `sign_out: true`, and cannot call vault or workspace routes until a new registration or a signed bind attaches a device. Header-auth may still send `X-Device-Id`. Revoking the current device is rejected unless `sign_out: true`. On success, and on reject, block, or any other transition to revoked or blocked, Core deletes server sessions bound to that device. `metadata.recovery_pending` on an unbound session inserts a pending device for a new public key when that fingerprint is already trusted. It does not replace the trusted public key or share, and the session binds only to the new pending device so it can call `POST /account/recovery/key/prove`. Vault access still requires a successful proof and then `claim_after_recovery`. A session already bound to a device is not moved to another device by a later register, except `claim_after_recovery` after a recovery-key proof, which rebinds the session onto the claimed device. With `sign_out: true`, Core also deletes the caller’s access-token session.
+Registering the same public key for a fingerprint that is already trusted leaves that device trusted and does not replace its key or share. A different public key without `recovery_pending` is `409 DEVICE_FINGERPRINT_ALREADY_TRUSTED`. Vault, workspace, event, account profile, vault-unlock status, and unlock-bootstrap routes require the session's device to be trusted. `GET /account/recovery` lists methods for a pending device and omits the contact directory. The recovery wrap, identity ciphertext, workspace list, and master-password change stay closed until that session proves the recovery key (`POST /account/recovery/key/prove`) or the device is approved. `claim_after_recovery` on device register requires that proof and then binds the session to the claimed device. Unlock bootstrap returns key material only for that trusted device and does not use a client fingerprint. A session whose device is not trusted receives only that device from `GET /devices`. Attaching a session to an existing device is `POST /devices/:deviceId/bind-challenge` then `POST /devices/:deviceId/bind-session` with an Ed25519 signature of that one-time challenge by the device private key. Bind challenges live in shared Redis (TTL) and are single-use. `challenge_id` and `signature` must be strings (`400 DEVICE_BAD_REQUEST` otherwise). Name, app, and OS metadata change only after that proof. A login on that same fingerprint uses this signed bind instead of register. When the client lost its device signing seed but still holds the vault device share, `bind-session` accepts `share_proof` plus `new_device_public_key` instead of a signature. That rotates only the signing public key, does not replace the device share, and does not call register, so a trusted fingerprint is not `409`. An invalid signature is not retried as a share proof. `share_proof` and `new_device_public_key` must be strings (`400` otherwise). `POST /devices/:deviceId/request-key-rebind` demotes a device only after the same challenge proof and only when the request fingerprint matches that device; otherwise the row is unchanged. An unbound full session `GET /devices` returns only the row for the requested fingerprint. A session bound to a device that is not trusted returns only that device. The **current device** is the session’s `device_id`. Ids compare as integers, so a leading-zero form of the same id is still the current device. A full Bearer session with no `device_id` cannot revoke devices unless `sign_out: true`, and cannot call vault or workspace routes until a new registration or a signed bind attaches a device. Header-auth may still send `X-Device-Id`. Revoking the current device is rejected unless `sign_out: true`. On success, and on reject, block, or any other transition to revoked or blocked, Core deletes server sessions bound to that device. `recovery_pending` (top-level, or inside `metadata` when that object contains the key) on an unbound session inserts a pending device for a new public key when that fingerprint is already trusted. It does not replace the trusted public key or share, and the session binds only to the new pending device so it can call `POST /account/recovery/key/prove`. Vault access still requires a successful proof and then `claim_after_recovery`. A session already bound to a device is not moved to another device by a later register, except `claim_after_recovery` after a recovery-key proof, which rebinds the session onto the claimed device. With `sign_out: true`, Core also deletes the caller’s access-token session.
 
 **Auth:** Bearer (or allowed `X-User-Id`).
 
