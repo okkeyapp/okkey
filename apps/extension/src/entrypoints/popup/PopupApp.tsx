@@ -186,6 +186,10 @@ export function PopupApp() {
   const [locale, setLocale] = useState<WebLocale>(() => readStoredExtensionLocale());
   const [profile, setProfile] = useState<ExtensionProfile | null>(null);
   const [session, setSession] = useState<ExtensionSession | null>(null);
+  const profileRef = useRef(profile);
+  const sessionRef = useRef(session);
+  profileRef.current = profile;
+  sessionRef.current = session;
   const [trust, setTrust] = useState<DeviceTrustSnapshot | null>(null);
   const [identity, setIdentity] = useState<AccountIdentity | null>(null);
   const [hostMode, setHostMode] = useState<ExtensionHostMode>(
@@ -321,9 +325,11 @@ export function PopupApp() {
     unlockSecretsRef.current = secrets;
     setUnlockSecrets(secrets);
     let identityPayload = bundle.encrypted_private_key.payload;
-    if (profile && session?.access_token) {
+    const currentProfile = profileRef.current;
+    const currentSession = sessionRef.current;
+    if (currentProfile && currentSession?.access_token) {
       try {
-        const core = createCoreClient(profile.apiBaseUrl, session.access_token);
+        const core = createCoreClient(currentProfile.apiBaseUrl, currentSession.access_token);
         const upgraded = await upgradeExtensionMlDsaIdentity({
           core,
           userId,
@@ -344,7 +350,7 @@ export function PopupApp() {
       /* popup may be the only listener besides SW */
     });
     return true;
-  }, [profile, session]);
+  }, []);
 
   const applyServerPreference = useCallback((mode: ExtensionHostMode, webBaseUrl: string) => {
     setHostMode(mode);
