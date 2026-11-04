@@ -156,9 +156,10 @@ export interface ApiConfig {
   webauthnChallengeTtlSeconds: number;
   /**
    * How `/favicon/preview` resolves website icons.
-   * - `direct` (default): fetch from the site origin only.
+   * - `off` (default when unset): do not fetch; clients show a monogram.
+   * - `client`: clients may load the site favicon themselves; this API does not fetch.
+   * - `direct`: explicit opt-in; fetch from the site origin only.
    * - `google`: explicit opt-in; uses Google's favicon service.
-   * - `off`: disable remote favicon preview.
    */
   faviconProvider: FaviconProvider;
 }

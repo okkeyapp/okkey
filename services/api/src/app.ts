@@ -190,7 +190,7 @@ import {
   createAttachmentDownloadRoute,
   createAttachmentUploadRoute,
 } from "./routes/attachments.ts";
-import { createItemFaviconPreviewRoute } from "./routes/item-favicons.ts";
+import { createItemFaviconConfigRoute, createItemFaviconPreviewRoute } from "./routes/item-favicons.ts";
 import { requireEnrolledRecoveryKey } from "./routes/require-recovery-key.ts";
 import { createRecoveryProofAttemptStore } from "./account-recovery/recovery-proof-attempts.ts";
 
@@ -1142,6 +1142,7 @@ export function createApiApp(
   }
 
   if (deps.itemFaviconService) {
+    app.route("GET", "/favicon/config", createItemFaviconConfigRoute(deps.itemFaviconService));
     app.route(
       "POST",
       "/favicon/preview",

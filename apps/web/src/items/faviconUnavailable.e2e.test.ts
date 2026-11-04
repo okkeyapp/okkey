@@ -23,6 +23,7 @@ vi.mock("../lib/resizeFaviconImage", () => ({
 
 import * as keyFieldFilesApi from "../api/key-field-files";
 import { FaviconPreviewUnavailableError, previewItemFavicon } from "../api/item-favicons";
+import { resetFaviconProviderModeCache } from "./faviconMode";
 import { lookupWebsiteFaviconFromNetwork } from "./syncItemFavicon";
 
 function loginWithUrl(url: string, overrides: Partial<ItemPlaintextV2> = {}): ItemPlaintextV2 {
@@ -57,6 +58,12 @@ async function startPreviewServer(mode: PreviewMode): Promise<{
 }> {
   const icon = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0, 0, 0, 0]);
   const server = http.createServer((req, res) => {
+    if (req.method === "GET" && req.url === "/favicon/config") {
+      res.statusCode = 200;
+      res.setHeader("Content-Type", "application/json");
+      res.end(JSON.stringify({ provider: "direct" }));
+      return;
+    }
     if (req.method !== "POST" || req.url !== "/favicon/preview") {
       res.statusCode = 404;
       res.end();
@@ -123,6 +130,7 @@ async function startPreviewServer(mode: PreviewMode): Promise<{
 
 describe("favicon unavailable e2e (server→client, no previewItemFavicon mock)", () => {
   afterEach(() => {
+    resetFaviconProviderModeCache();
     delete window.__OKKEY_RUNTIME__;
     vi.mocked(keyFieldFilesApi.uploadEncryptedAttachment).mockReset();
   });

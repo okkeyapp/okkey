@@ -245,6 +245,16 @@ export {
   type FaviconProps,
 } from "./components/ui/favicon.js";
 export {
+  FAVICON_PROVIDER_MODES,
+  clientSideFaviconUrl,
+  clientSideFaviconUrlFromUrls,
+  faviconProviderUsesServerPreview,
+  parseFaviconProviderMode,
+  resolveWebsiteIconDisplay,
+  type FaviconProviderMode,
+  type WebsiteIconDisplay,
+} from "./lib/favicon-mode.js";
+export {
   ChevronDownGlyph,
   FilterIconAllRecords,
   FilterIconArchived,

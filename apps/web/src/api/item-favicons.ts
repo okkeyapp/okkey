@@ -1,4 +1,16 @@
+import { faviconProviderUsesServerPreview } from "@okkey/ui";
+
+import { loadFaviconProviderMode } from "../items/faviconMode";
 import { getApiBaseUrl } from "./client";
+
+export class FaviconPreviewDisabledError extends Error {
+  readonly code = "FAVICON_DISABLED" as const;
+
+  constructor(message = "Website icon lookup is disabled") {
+    super(message);
+    this.name = "FaviconPreviewDisabledError";
+  }
+}
 
 export class FaviconPreviewUnavailableError extends Error {
   readonly code = "FAVICON_UNAVAILABLE" as const;
@@ -36,6 +48,11 @@ export async function previewItemFavicon(
   urls: readonly string[],
   options?: { signal?: AbortSignal },
 ): Promise<Blob | null> {
+  const mode = await loadFaviconProviderMode();
+  if (!faviconProviderUsesServerPreview(mode)) {
+    throw new FaviconPreviewDisabledError();
+  }
+
   const response = await fetch(`${getApiBaseUrl()}/favicon/preview`, {
     method: "POST",
     headers: {

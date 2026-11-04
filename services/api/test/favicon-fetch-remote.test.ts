@@ -11,6 +11,7 @@ import {
   isHostSuitableForFaviconLookup,
   looksLikeImageBytes,
   MAX_FAVICON_RESPONSE_BYTES,
+  faviconProviderFetchesOnServer,
   parseFaviconProvider,
   registrableDomainFromHost,
   fetchRemoteFaviconBytes,
@@ -220,19 +221,53 @@ describe("bytesEqual", () => {
 });
 
 describe("parseFaviconProvider", () => {
-  test("defaults to direct", () => {
-    assert.equal(parseFaviconProvider(undefined), "direct");
-    assert.equal(parseFaviconProvider(""), "direct");
-    assert.equal(parseFaviconProvider("DIRECT"), "direct");
+  test("unset value is the private default", () => {
+    assert.equal(parseFaviconProvider(undefined), "off");
+    assert.equal(parseFaviconProvider(""), "off");
+    assert.equal(parseFaviconProvider("   "), "off");
+    assert.equal(parseFaviconProvider("off"), "off");
+    assert.equal(parseFaviconProvider("OFF"), "off");
+    assert.equal(faviconProviderFetchesOnServer("off"), false);
+    assert.equal(faviconProviderFetchesOnServer("client"), false);
   });
 
-  test("accepts google and off", () => {
+  test("explicit direct and google opt in to a server fetch", () => {
+    assert.equal(parseFaviconProvider("direct"), "direct");
+    assert.equal(parseFaviconProvider("DIRECT"), "direct");
+    assert.equal(parseFaviconProvider(" direct "), "direct");
     assert.equal(parseFaviconProvider("google"), "google");
-    assert.equal(parseFaviconProvider("off"), "off");
+    assert.equal(faviconProviderFetchesOnServer("direct"), true);
+    assert.equal(faviconProviderFetchesOnServer("google"), true);
+  });
+
+  test("accepts client as a non-fetching mode", () => {
+    assert.equal(parseFaviconProvider("client"), "client");
+    assert.equal(parseFaviconProvider("Client"), "client");
   });
 
   test("rejects unknown values", () => {
     assert.throws(() => parseFaviconProvider("yandex"), /FAVICON_PROVIDER/);
+  });
+});
+
+describe("fetchRemoteFaviconBytes private default", () => {
+  test("omitted provider and client do not contact the website", async () => {
+    let called = false;
+    setFaviconHostResolverForTests(async () => {
+      called = true;
+      throw new Error("dns should not run");
+    });
+    setFaviconOutboundRequestForTests(async () => {
+      called = true;
+      throw new Error("fetch should not run");
+    });
+    const omitted = await fetchRemoteFaviconBytes("example.com");
+    const client = await fetchRemoteFaviconBytesFromUrls(["https://example.com/login"], {
+      provider: "client",
+    });
+    assert.equal(omitted.status, "absent");
+    assert.equal(client.status, "absent");
+    assert.equal(called, false);
   });
 });
 
