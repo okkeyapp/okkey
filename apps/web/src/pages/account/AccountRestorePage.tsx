@@ -10,7 +10,13 @@ import {
   wrapVaultKeyWithRecoverySecret,
 } from "@okkey/crypto";
 import { createWorkspaceFoldersSyncController } from "@okkey/vault";
-import type { AccountRecoveryStatusResponseDto, EncryptedBlobDto } from "@okkey/types";
+import {
+  MASTER_PASSWORD_POLICY_VERSION,
+  MIN_MASTER_PASSWORD_LENGTH,
+  masterPasswordMeetsNewPasswordPolicy,
+  type AccountRecoveryStatusResponseDto,
+  type EncryptedBlobDto,
+} from "@okkey/types";
 import {
   Alert,
   AlertDescription,
@@ -55,8 +61,6 @@ import {
 
 type RestoreMethod = "key" | "devices" | "contacts";
 type RestoreStep = "methods" | "newRecoveryKey";
-
-const MIN_MASTER_PASSWORD_LENGTH = 4;
 
 const DevicesRestorePanel = accountRecoveryModule.DevicesRestorePanel;
 const ContactsRestorePanel = accountRecoveryModule.ContactsRestorePanel;
@@ -201,8 +205,10 @@ export default function AccountRestorePage() {
   const anyMethod =
     keyAvailable || devicesAvailable || contactsAvailable;
 
+  const newPasswordTooShort =
+    newPassword.length > 0 && !masterPasswordMeetsNewPasswordPolicy(newPassword);
   const passwordValid =
-    newPassword.length >= MIN_MASTER_PASSWORD_LENGTH && newPassword === repeatPassword;
+    masterPasswordMeetsNewPasswordPolicy(newPassword) && newPassword === repeatPassword;
 
   async function completeRestoreFromVaultKey(vaultKey: Uint8Array) {
     if (!accessToken || !userId || !passwordValid) {
@@ -243,6 +249,7 @@ export default function AccountRestorePage() {
         server_key_share: bytesToBase64(rebalanced.serverKeyShare),
         password_kdf_salt: bytesToBase64(rebalanced.passwordKdfSalt),
         password_kdf_params_version: rebalanced.passwordKdfParamsVersion,
+        master_password_policy_version: MASTER_PASSWORD_POLICY_VERSION,
       });
       passwordChanged = true;
 
@@ -357,6 +364,9 @@ export default function AccountRestorePage() {
     }
     if (err.body.error === "RECOVERY_KEY_NOT_AVAILABLE") {
       return t("account.restore.error.keyUnavailable");
+    }
+    if (err.body.error === "MASTER_PASSWORD_POLICY_REJECTED") {
+      return t("auth.masterPassword.policyRejected");
     }
     return null;
   }
@@ -630,8 +640,14 @@ export default function AccountRestorePage() {
                     type="password"
                     autoComplete="new-password"
                     value={newPassword}
+                    aria-invalid={newPasswordTooShort || undefined}
                     onChange={(e) => setNewPassword(e.target.value)}
                   />
+                  {newPasswordTooShort ? (
+                    <p className="okkey-small text-destructive" role="alert">
+                      {t("account.restore.passwordTooShort", { min: MIN_MASTER_PASSWORD_LENGTH })}
+                    </p>
+                  ) : null}
                 </div>
                 <div className="flex flex-col gap-2">
                   <label htmlFor="restore-repeat-password" className="okkey-small font-medium text-copy-primary">

@@ -9,6 +9,7 @@ import {
   AUTH_EMAIL_PATH,
 } from "../routes/paths";
 import { useAuthVault } from "./AuthVaultContext";
+import ShortMasterPasswordHint from "./ShortMasterPasswordHint";
 import { hasExtensionAuthPending } from "./extensionAuthPendingStorage";
 import RecoveryKeyRequiredScreen from "./RecoveryKeyRequiredScreen";
 import {
@@ -159,5 +160,10 @@ export default function ProtectedVaultLayout() {
     );
   }
 
-  return <Outlet />;
+  return (
+    <>
+      <ShortMasterPasswordHint />
+      <Outlet />
+    </>
+  );
 }

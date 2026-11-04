@@ -1,4 +1,6 @@
 import type { IncomingMessage } from "node:http";
+import { isCurrentMasterPasswordPolicyVersion } from "@okkey/types";
+
 import { json, readJsonBody, type RouteHandler } from "../http.ts";
 import type { UsersRepository } from "../storage/repositories.ts";
 
@@ -14,6 +16,8 @@ type MasterPasswordChangeBody = {
   server_key_share?: unknown;
   password_kdf_salt?: unknown;
   password_kdf_params_version?: unknown;
+  /** Client attestation of the current new-password policy. Not a password or length. */
+  master_password_policy_version?: unknown;
 };
 
 function decodeBase64Exact(value: unknown, expectedLen: number, label: string): Uint8Array | null {
@@ -70,6 +74,19 @@ export function createAccountMasterPasswordChangeRoute(
         ctx.res,
         400,
         errorPayload("INVALID_MASTER_PASSWORD_CHANGE", "master password change payload is invalid", ctx.requestId),
+      );
+      return;
+    }
+
+    if (!isCurrentMasterPasswordPolicyVersion(body.master_password_policy_version)) {
+      json(
+        ctx.res,
+        400,
+        errorPayload(
+          "MASTER_PASSWORD_POLICY_REJECTED",
+          "master_password_policy_version is not the current policy",
+          ctx.requestId,
+        ),
       );
       return;
     }

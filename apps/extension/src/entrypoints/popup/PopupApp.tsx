@@ -35,6 +35,11 @@ import {
 } from "@okkey/i18n";
 import { buildVaultUnlockAttestation, UnsupportedIdentityBundleError, unwrapUnlockMaterialWithPin, wipeBytes } from "@okkey/crypto";
 import { isClientUpgradeRequiredError } from "@okkey/api";
+import {
+  readShortMasterPasswordHintDismissed,
+  shouldSuggestLongerMasterPassword,
+  writeShortMasterPasswordHintDismissed,
+} from "@okkey/types";
 import { toast } from "sonner";
 
 import {
@@ -203,6 +208,7 @@ export function PopupApp() {
   const [busy, setBusy] = useState(false);
   const [retrying, setRetrying] = useState(false);
   const [masterPassword, setMasterPassword] = useState("");
+  const [suggestLongerMasterPassword, setSuggestLongerMasterPassword] = useState(false);
   const [unlockBusy, setUnlockBusy] = useState(false);
   const [unlockMode, setUnlockMode] = useState<UnlockMode>("master");
   const [pinEnabled, setPinEnabled] = useState(false);
@@ -748,9 +754,17 @@ export function PopupApp() {
     setUnlockSecrets(null);
     setEncryptedPrivateKeyPayload(null);
     setMasterPassword("");
+    setSuggestLongerMasterPassword(false);
     void clearExtensionUnlockSession();
     setScreen("unlock");
   }, []);
+
+  const dismissLongerMasterPasswordHint = useCallback(() => {
+    if (session?.user_id) {
+      writeShortMasterPasswordHintDismissed(localStorage, session.user_id);
+    }
+    setSuggestLongerMasterPassword(false);
+  }, [session]);
 
   const onLogout = async () => {
     const priorProfile = profile;
@@ -950,6 +964,7 @@ export function PopupApp() {
           vaultKey: unlocked.vaultKey,
           passwordShareC: unlocked.passwordShareC,
         };
+        setSuggestLongerMasterPassword(false);
         await finishUnlockWithSecrets(secrets);
       } catch {
         const result = recordPinFailure(session.user_id);
@@ -1006,6 +1021,12 @@ export function PopupApp() {
           toast.error(t("unlock.errorTitle"), { description: t("unlock.errorIncorrectPassword") });
           return;
         }
+        setSuggestLongerMasterPassword(
+          shouldSuggestLongerMasterPassword({
+            passwordLength: masterPassword.length,
+            dismissed: readShortMasterPasswordHintDismissed(localStorage, session.user_id),
+          }),
+        );
         await finishUnlockWithSecrets(secrets);
       } catch (err: unknown) {
         if (err instanceof UnsupportedIdentityBundleError || isClientUpgradeRequiredError(err)) {
@@ -1321,6 +1342,8 @@ export function PopupApp() {
               });
             }
           }}
+          suggestLongerMasterPassword={suggestLongerMasterPassword}
+          onDismissLongerMasterPasswordHint={dismissLongerMasterPasswordHint}
           t={t}
         />
       </PopupFrame>

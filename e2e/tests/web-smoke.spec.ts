@@ -143,6 +143,10 @@ test("4) recovery key → new master password → old rejected, new unlocks", as
   await expect(page.locator("#restore-recovery-key")).toBeVisible({ timeout: 15_000 });
 
   await page.locator("#restore-recovery-key").fill(recoveryKey);
+  await page.locator("#restore-new-password").fill("short-pass");
+  await page.locator("#restore-repeat-password").fill("short-pass");
+  await expect(page.getByRole("button", { name: /^restore access$/i })).toBeDisabled();
+  await expect(page.getByText(/at least 12 characters/i)).toBeVisible();
   await page.locator("#restore-new-password").fill(NEW_MASTER);
   await page.locator("#restore-repeat-password").fill(NEW_MASTER);
   await page.getByRole("button", { name: /^restore access$/i }).click();

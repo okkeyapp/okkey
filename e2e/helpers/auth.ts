@@ -27,6 +27,10 @@ export async function registerBootstrapAndUnlock(
   });
   await page.locator("#auth-reg-first-name").fill(firstName);
   await page.locator("#auth-reg-last-name").fill(lastName);
+  await page.locator("#auth-reg-master-password").fill("short-pass");
+  await page.locator("#auth-reg-repeat-master-password").fill("short-pass");
+  await expect(page.getByRole("button", { name: /^register$/i })).toBeDisabled();
+  await expect(page.getByText(/at least 12 characters/i)).toBeVisible();
   await page.locator("#auth-reg-master-password").fill(masterPassword);
   await page.locator("#auth-reg-repeat-master-password").fill(masterPassword);
   await page.getByRole("button", { name: /^register$/i }).click();

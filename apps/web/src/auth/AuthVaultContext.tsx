@@ -1,4 +1,12 @@
-import type { AccessTokenResponseDto, DeviceListItemDto } from "@okkey/types";
+import {
+  MASTER_PASSWORD_POLICY_VERSION,
+  masterPasswordMeetsNewPasswordPolicy,
+  readShortMasterPasswordHintDismissed,
+  shouldSuggestLongerMasterPassword,
+  writeShortMasterPasswordHintDismissed,
+  type AccessTokenResponseDto,
+  type DeviceListItemDto,
+} from "@okkey/types";
 import { ApiRequestError, isClientUpgradeRequiredError } from "@okkey/api";
 import { AuthClient } from "@okkey/auth";
 import {
@@ -119,6 +127,12 @@ export type AuthVaultContextValue = {
     newPassword: string;
     workspaceIds: string[];
   }) => Promise<{ ok: true; masterPasswordChangedAt: string } | { ok: false; error: string }>;
+  /**
+   * Set only after a master-password unlock when the typed password is shorter
+   * than the current minimum. PIN, biometrics, and session restore leave this false.
+   */
+  suggestLongerMasterPassword: boolean;
+  dismissLongerMasterPasswordHint: () => void;
   setVaultIdleLockMs: (ms: number) => void;
   masterPasswordChangedAt: string | null;
   hasVaultBundle: boolean;
@@ -347,6 +361,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
   const [vaultIdleLockMs, setVaultIdleLockMsState] = useState(DEFAULT_VAULT_IDLE_LOCK_MS);
   const [clientUpgradeRequired, setClientUpgradeRequired] = useState(false);
   const [masterPasswordChangedAt, setMasterPasswordChangedAt] = useState<string | null>(null);
+  const [suggestLongerMasterPassword, setSuggestLongerMasterPassword] = useState(false);
   const [pendingEmail, setPendingEmail] = useState<string | null>(null);
   const [emailChallengeId, setEmailChallengeId] = useState<string | null>(null);
   const [emailResendAvailableAt, setEmailResendAvailableAt] = useState<string | null>(null);
@@ -674,6 +689,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
     setTwoFactorAuthStateIdState(null);
     setProfile(null);
     setVaultIdleLockMsState(DEFAULT_VAULT_IDLE_LOCK_MS);
+    setSuggestLongerMasterPassword(false);
     setDeviceTrustStatus("idle");
     setDeviceBlockedUntil(null);
     setCurrentDeviceId(null);
@@ -692,6 +708,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
     clearPasswordShareSecrets();
     vaultUnlockedRef.current = false;
     setVaultUnlocked(false);
+    setSuggestLongerMasterPassword(false);
     clearSettingsPopupCache();
   }, [clearPasswordShareSecrets]);
 
@@ -822,6 +839,12 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       lastActivityRef.current = Date.now();
       if (userId) {
         persistVaultUnlockSession(userId, vaultKey, shareC);
+        setSuggestLongerMasterPassword(
+          shouldSuggestLongerMasterPassword({
+            passwordLength: masterPassword.length,
+            dismissed: readShortMasterPasswordHintDismissed(localStorage, userId),
+          }),
+        );
       }
       wipeBytes(pwd);
       wipeBytes(serverA);
@@ -937,6 +960,9 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       if (!accessToken || !userId || !vaultKeyRef.current || !passwordShareCRef.current) {
         return { ok: false, error: "not_unlocked" };
       }
+      if (!masterPasswordMeetsNewPasswordPolicy(input.newPassword)) {
+        return { ok: false, error: "too_short" };
+      }
       const bundle = readVaultBundle(userId);
       if (!bundle) {
         return { ok: false, error: "no_bundle" };
@@ -999,6 +1025,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
           server_key_share: bytesToBase64(rebalanced.serverKeyShare),
           password_kdf_salt: bytesToBase64(rebalanced.passwordKdfSalt),
           password_kdf_params_version: rebalanced.passwordKdfParamsVersion,
+          master_password_policy_version: MASTER_PASSWORD_POLICY_VERSION,
         });
 
         writeVaultBundle(
@@ -1018,6 +1045,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
         setPasswordShareC(rebalanced.passwordShareC);
         persistVaultUnlockSession(userId, vaultKeyRef.current, rebalanced.passwordShareC);
         setMasterPasswordChangedAt(response.master_password_changed_at);
+        setSuggestLongerMasterPassword(false);
         clearDeviceUnlockSecrets(userId);
         window.dispatchEvent(new CustomEvent("okkey:master-password-changed"));
 
@@ -1026,7 +1054,10 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
         rebalanced = null;
 
         return { ok: true, masterPasswordChangedAt: response.master_password_changed_at };
-      } catch {
+      } catch (error: unknown) {
+        if (error instanceof ApiRequestError && error.body.error === "MASTER_PASSWORD_POLICY_REJECTED") {
+          return { ok: false, error: "policy_rejected" };
+        }
         return { ok: false, error: "change_failed" };
       } finally {
         wipeBytes(oldPwd);
@@ -1167,6 +1198,14 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
     }
   }, [accessToken, logout, userId]);
 
+  const dismissLongerMasterPasswordHint = useCallback(() => {
+    const id = userIdRef.current;
+    if (id) {
+      writeShortMasterPasswordHintDismissed(localStorage, id);
+    }
+    setSuggestLongerMasterPassword(false);
+  }, []);
+
   const hasVaultBundle = readVaultBundle(userId) !== null;
 
   const value = useMemo<AuthVaultContextValue>(
@@ -1199,6 +1238,8 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       applyUnlockedSecrets,
       verifyMasterPassword,
       changeMasterPassword,
+      suggestLongerMasterPassword,
+      dismissLongerMasterPasswordHint,
       setVaultIdleLockMs,
       masterPasswordChangedAt,
       hasVaultBundle,
@@ -1240,6 +1281,8 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       applyUnlockedSecrets,
       verifyMasterPassword,
       changeMasterPassword,
+      suggestLongerMasterPassword,
+      dismissLongerMasterPasswordHint,
       setVaultIdleLockMs,
       masterPasswordChangedAt,
       hasVaultBundle,

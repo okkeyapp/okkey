@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { MASTER_PASSWORD_POLICY_VERSION } from "@okkey/types";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { createApiApp } from "../src/app.ts";
 import type { ApiConfig } from "../src/config.ts";
@@ -53,6 +54,7 @@ function validRegisterBody() {
     server_key_share: Buffer.alloc(32, 3).toString("base64"),
     password_kdf_salt: Buffer.alloc(16, 4).toString("base64"),
     password_kdf_params_version: 1,
+    master_password_policy_version: MASTER_PASSWORD_POLICY_VERSION,
     device_public_key: Buffer.from("dpk").toString("base64"),
     device_share: Buffer.alloc(32, 5).toString("base64"),
     device_fingerprint: "a".repeat(64),
@@ -235,4 +237,41 @@ test("request logger does not include registration body fields", async () => {
     "logger must not echo JSON body (e.g. device_name)",
   );
   assert.equal(res.statusCode, 201);
+});
+
+test("POST /auth/register/complete rejects a missing master-password policy version", async () => {
+  let calls = 0;
+  const body = validRegisterBody();
+  delete body.master_password_policy_version;
+  const res = await dispatch({
+    body,
+    registrationService: createRegistrationStub(async () => {
+      calls += 1;
+      return {
+        userId: "u1",
+        workspaceId: "w1",
+        vaultId: "v1",
+        deviceId: "d1",
+        deviceStatus: "trusted",
+        accessToken: "tok-reg-1",
+        expiresAt: "2099-01-01T00:00:00.000Z",
+        tokenType: "Bearer" as const,
+        scope: "registration_recovery" as const,
+      };
+    }),
+  });
+  assert.equal(res.statusCode, 400);
+  const payload = JSON.parse(res.body) as { error: string; message: string };
+  assert.equal(payload.error, "MASTER_PASSWORD_POLICY_REJECTED");
+  assert.equal(payload.message.toLowerCase().includes("character"), false);
+  assert.equal(calls, 0);
+});
+
+test("POST /auth/register/complete rejects a stale master-password policy version", async () => {
+  const body = validRegisterBody();
+  body.master_password_policy_version = 0;
+  const res = await dispatch({ body });
+  assert.equal(res.statusCode, 400);
+  const payload = JSON.parse(res.body) as { error: string };
+  assert.equal(payload.error, "MASTER_PASSWORD_POLICY_REJECTED");
 });

@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { MASTER_PASSWORD_POLICY_VERSION } from "@okkey/types";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { testEntityId } from "./test-entity-id.ts";
 import { createApiApp } from "../src/app.ts";
@@ -160,6 +161,7 @@ function registerBody(authStateId: string) {
     server_key_share: Buffer.alloc(32, 11).toString("base64"),
     password_kdf_salt: Buffer.alloc(16, 22).toString("base64"),
     password_kdf_params_version: 2,
+    master_password_policy_version: MASTER_PASSWORD_POLICY_VERSION,
     device_public_key: Buffer.from("bootstrap-device-pk").toString("base64"),
     device_share: Buffer.alloc(32, 11).toString("base64"),
     device_fingerprint: "ab".repeat(32),
