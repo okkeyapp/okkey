@@ -104,7 +104,7 @@ components:
           type: string
         auth_state_id:
           type: string
-          pattern: '^d{10,20}
+          pattern: '^\d{10,20}$'
 
 
     AccessTokenResponse:
@@ -118,7 +118,7 @@ components:
           format: date-time
         user_id:
           type: string
-          pattern: '^d{10,20}
+          pattern: '^\d{10,20}$'
 
         token_type:
           type: string
@@ -162,7 +162,7 @@ components:
       properties:
         enrollmentId:
           type: string
-          pattern: '^d{10,20}
+          pattern: '^\d{10,20}$'
 
         secretBase32:
           type: string
@@ -182,7 +182,7 @@ components:
       properties:
         enrollmentId:
           type: string
-          pattern: '^d{10,20}
+          pattern: '^\d{10,20}$'
 
         code:
           type: string
@@ -298,19 +298,19 @@ components:
       properties:
         user_id:
           type: string
-          pattern: '^d{10,20}
+          pattern: '^\d{10,20}$'
 
         workspace_id:
           type: string
-          pattern: '^d{10,20}
+          pattern: '^\d{10,20}$'
 
         vault_id:
           type: string
-          pattern: '^d{10,20}
+          pattern: '^\d{10,20}$'
 
         device_id:
           type: string
-          pattern: '^d{10,20}
+          pattern: '^\d{10,20}$'
 
         device_status:
           type: string
@@ -334,11 +334,11 @@ components:
       properties:
         id:
           type: string
-          pattern: '^d{10,20}
+          pattern: '^\d{10,20}$'
 
         workspaceId:
           type: string
-          pattern: '^d{10,20}
+          pattern: '^\d{10,20}$'
 
         name:
           type: string
@@ -346,7 +346,7 @@ components:
           type: boolean
         ownerId:
           type: string
-          pattern: '^d{10,20}
+          pattern: '^\d{10,20}$'
 
           nullable: true
         cryptoVersion:
@@ -367,13 +367,13 @@ components:
       properties:
         id:
           type: string
-          pattern: '^d{10,20}
+          pattern: '^\d{10,20}$'
 
         name:
           type: string
         ownerId:
           type: string
-          pattern: '^d{10,20}
+          pattern: '^\d{10,20}$'
 
         planTier:
           type: string
@@ -401,15 +401,15 @@ components:
       properties:
         id:
           type: string
-          pattern: '^d{10,20}
+          pattern: '^\d{10,20}$'
 
         vaultId:
           type: string
-          pattern: '^d{10,20}
+          pattern: '^\d{10,20}$'
 
         actorId:
           type: string
-          pattern: '^d{10,20}
+          pattern: '^\d{10,20}$'
 
           nullable: true
         eventType:
@@ -434,7 +434,7 @@ components:
           nullable: true
         idempotencyKey:
           type: string
-          pattern: '^d{10,20}
+          pattern: '^\d{10,20}$'
 
           nullable: true
         clientCreatedAt:
@@ -454,7 +454,7 @@ components:
       properties:
         vaultId:
           type: string
-          pattern: '^d{10,20}
+          pattern: '^\d{10,20}$'
 
         afterVersion:
           type: integer
@@ -489,7 +489,7 @@ components:
           minimum: 0
         idempotencyKey:
           type: string
-          pattern: '^d{10,20}
+          pattern: '^\d{10,20}$'
 
         clientCreatedAt:
           type: string
@@ -508,7 +508,7 @@ components:
       properties:
         userId:
           type: string
-          pattern: '^d{10,20}
+          pattern: '^\d{10,20}$'
 
         email:
           type: string
@@ -532,7 +532,7 @@ components:
       properties:
         vaultId:
           type: string
-          pattern: '^d{10,20}
+          pattern: '^\d{10,20}$'
 
         members:
           type: array
@@ -545,7 +545,7 @@ components:
       properties:
         recipientUserId:
           type: string
-          pattern: '^d{10,20}
+          pattern: '^\d{10,20}$'
 
         encryptedVaultKey:
           $ref: "#/components/schemas/EncryptedBlob"
@@ -564,7 +564,7 @@ components:
           minimum: 0
         idempotencyKey:
           type: string
-          pattern: '^d{10,20}
+          pattern: '^\d{10,20}$'
 
         clientCreatedAt:
           type: string
@@ -578,7 +578,7 @@ components:
       properties:
         recipientUserId:
           type: string
-          pattern: '^d{10,20}
+          pattern: '^\d{10,20}$'
 
         rotatedVaultKeys:
           type: array
@@ -589,7 +589,7 @@ components:
             properties:
               userId:
                 type: string
-                pattern: '^d{10,20}
+                pattern: '^\d{10,20}$'
 
               encryptedVaultKey:
                 $ref: "#/components/schemas/EncryptedBlob"
@@ -608,7 +608,7 @@ components:
           minimum: 0
         idempotencyKey:
           type: string
-          pattern: '^d{10,20}
+          pattern: '^\d{10,20}$'
 
         clientCreatedAt:
           type: string
@@ -639,7 +639,7 @@ components:
             properties:
               userId:
                 type: string
-                pattern: '^d{10,20}
+                pattern: '^\d{10,20}$'
 
               encryptedVaultKey:
                 $ref: "#/components/schemas/EncryptedBlob"
@@ -658,7 +658,7 @@ components:
           minimum: 0
         idempotencyKey:
           type: string
-          pattern: '^d{10,20}
+          pattern: '^\d{10,20}$'
 
         clientCreatedAt:
           type: string
@@ -684,7 +684,7 @@ components:
             properties:
               userId:
                 type: string
-                pattern: '^d{10,20}
+                pattern: '^\d{10,20}$'
 
               encryptedVaultKey:
                 $ref: "#/components/schemas/EncryptedBlob"
@@ -702,7 +702,7 @@ components:
           minimum: 0
         idempotencyKey:
           type: string
-          pattern: '^d{10,20}
+          pattern: '^\d{10,20}$'
 
         clientCreatedAt:
           type: string
@@ -715,7 +715,7 @@ components:
       properties:
         capsuleId:
           type: string
-          pattern: '^d{10,20}
+          pattern: '^\d{10,20}$'
 
         type:
           type: string
@@ -885,6 +885,54 @@ components:
         settings:
           $ref: "#/components/schemas/AccountRecoverySettings"
 
+    AccountRecoveryKeyWrapResponse:
+      type: object
+      required: [encryptedBlob]
+      properties:
+        encryptedBlob:
+          $ref: "#/components/schemas/EncryptedBlob"
+
+    AccountRecoveryKeyProveChallengeResponse:
+      type: object
+      required: [proved, challenge, deviceId, expiresAt]
+      properties:
+        proved:
+          type: boolean
+          enum: [false]
+        challenge:
+          type: string
+          description: Single-use challenge for this session. Not a credential.
+        deviceId:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
+          description: Challenge expiry (120 seconds from issue).
+
+    AccountRecoveryKeyProvedResponse:
+      type: object
+      required: [proved]
+      properties:
+        proved:
+          type: boolean
+          enum: [true]
+
+    RecoveryProofLimitedError:
+      type: object
+      required: [error, message, requestId, remaining_ms]
+      properties:
+        error:
+          type: string
+          enum: [RECOVERY_PROOF_LIMITED]
+        message:
+          type: string
+        requestId:
+          type: string
+        remaining_ms:
+          type: integer
+          minimum: 0
+          description: Lock time left, in milliseconds.
+
     HybridSignatureEnvelope:
       type: object
       required:
@@ -953,8 +1001,28 @@ components:
           type: string
         user_agent:
           type: string
+        recovery_pending:
+          type: boolean
+          description: >
+            JSON boolean only. Omitted means false. Registers the device as
+            pending during recovery and does not replace a trusted device's key.
+            When metadata is an object and contains this key, that value is used
+            instead of this top-level field. claim_after_recovery true forces
+            this flag off.
+        claim_after_recovery:
+          type: boolean
+          description: >
+            JSON boolean only. Omitted means false. Accepted only for the device
+            bound to the session that completed POST /account/recovery/key/prove.
+            When metadata is an object and contains this key, that value is used
+            instead of this top-level field.
         metadata:
           type: object
+          description: >
+            Optional nested fields. For each string field, metadata overrides the
+            top-level value when both are set. For recovery_pending and
+            claim_after_recovery, a key present on this object wins over the
+            top-level field, including null (rejected).
           properties:
             platform:
               type: string
@@ -971,9 +1039,11 @@ components:
             recovery_pending:
               type: boolean
               description: >
-                Unbound session only. Insert a pending device beside an already
-                trusted fingerprint without replacing that device's keys, and
-                bind the session to the pending row.
+                Same meaning as the top-level flag. Used when this key is present.
+            claim_after_recovery:
+              type: boolean
+              description: >
+                Same meaning as the top-level flag. Used when this key is present.
 
     DeviceRegisterResponse:
       type: object
@@ -981,11 +1051,15 @@ components:
       properties:
         device_id:
           type: string
-          pattern: '^d{10,20}
-
+          pattern: '^\d{10,20}$'
         status:
           type: string
-          enum: [trusted, pending_approval]
+          enum: [trusted, pending_approval, blocked]
+        blocked_until:
+          type: string
+          nullable: true
+          format: date-time
+          description: Present when status is blocked.
 
     DeviceResolveResponse:
       type: object
@@ -993,7 +1067,7 @@ components:
       properties:
         device_id:
           type: string
-          pattern: '^d{10,20}
+          pattern: '^\d{10,20}$'
 
         status:
           type: string
@@ -1016,7 +1090,7 @@ components:
         `POST /auth/session/bootstrap` or `POST /auth/two-factor/verify`.
       schema:
         type: string
-        pattern: '^d{10,20}
+        pattern: '^\d{10,20}$'
 
     HeaderDeviceId:
       name: X-Device-Id
@@ -1024,7 +1098,7 @@ components:
       required: true
       schema:
         type: string
-        pattern: '^d{10,20}
+        pattern: '^\d{10,20}$'
 
 
 paths:
@@ -1291,12 +1365,15 @@ paths:
   /account/recovery/key/enroll:
     post:
       tags: [Account]
-      summary: Enroll recovery key wrap (first enroll; bootstrap scope cannot rotate)
+      summary: Enroll or, when allowed, replace a recovery key wrap
       description: >
-        Accepts a full session Bearer or a short-lived `registration_recovery` bootstrap
-        token from `POST /auth/register/complete`. With bootstrap scope, enroll is
-        insert-if-absent only; a second enroll or concurrent loser returns
-        `RECOVERY_ROTATE_FORBIDDEN` (403).
+        Accepts a full session Bearer or a short-lived registration_recovery bootstrap
+        token from POST /auth/register/complete. meta.entity must be
+        vault_key_recovery_wrap. key_scope is not checked. Bootstrap scope, and a
+        full session that is neither a trusted device nor recovery-proved, are
+        insert-if-absent only. A second enroll or a concurrent loser returns
+        RECOVERY_ROTATE_FORBIDDEN (403). A trusted device or a recovery-proved
+        full session replaces an existing wrap (rotatedAt set, exportedAt cleared).
       security:
         - bearerAuth: []
       requestBody:
@@ -1313,7 +1390,12 @@ paths:
                   $ref: "#/components/schemas/EncryptedBlob"
                 possessionPublicKey:
                   type: string
-                  description: Base64 Ed25519 verifying key derived from the recovery secret. Not a bearer token.
+                  description: >
+                    Base64 Ed25519 verifying key (32 bytes) derived from the recovery
+                    secret. Optional. Not a bearer token.
+                possession_public_key:
+                  type: string
+                  description: Alias of possessionPublicKey.
       responses:
         "200":
           description: Wrap stored; key marked enrolled
@@ -1333,7 +1415,59 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorBody"
         "403":
-          description: RECOVERY_ROTATE_FORBIDDEN (bootstrap / forbidRotate; wrap already exists)
+          description: >
+            RECOVERY_ROTATE_FORBIDDEN when a wrap already exists and this session
+            may not replace it (bootstrap, or not trusted and not recovery-proved).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+
+  /account/recovery/key/rotate:
+    post:
+      tags: [Account]
+      summary: Replace the recovery key wrap
+      description: >
+        Trusted device, or a full session that has proved the recovery key.
+        Not registration_recovery. Same body as enroll. A replace sets rotatedAt
+        and clears exportedAt. Ciphertext only.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [encryptedBlob]
+              properties:
+                encryptedBlob:
+                  $ref: "#/components/schemas/EncryptedBlob"
+                encrypted_blob:
+                  $ref: "#/components/schemas/EncryptedBlob"
+                possessionPublicKey:
+                  type: string
+                  description: Optional base64 Ed25519 verifying key (32 bytes).
+                possession_public_key:
+                  type: string
+                  description: Alias of possessionPublicKey.
+      responses:
+        "200":
+          description: Wrap stored
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountRecoveryKeyEnrollResponse"
+        "400":
+          description: RECOVERY_BAD_REQUEST
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "401":
+          description: >
+            AUTH_REQUIRED when the Bearer is missing or invalid, or the session
+            is not trusted and has not proved the recovery key.
           content:
             application/json:
               schema:
@@ -1375,15 +1509,51 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorBody"
 
+  /account/recovery/key/wrap:
+    get:
+      tags: [Account]
+      summary: Read the stored recovery key wrap
+      description: >
+        Trusted device, or a full session that has proved the recovery key.
+        Not registration_recovery. Returns ciphertext only. The server does not
+        unwrap it.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Stored wrap
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountRecoveryKeyWrapResponse"
+        "401":
+          description: >
+            AUTH_REQUIRED when the Bearer is missing or invalid, or the session
+            is not trusted and has not proved the recovery key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "404":
+          description: RECOVERY_KEY_NOT_AVAILABLE or RECOVERY_KEY_NOT_ENROLLED
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+
   /account/recovery/key/prove:
     post:
       tags: [Account]
       summary: Prove recovery-key possession for this session
       description: >
-        Full Bearer bound to a device. An empty object returns a single-use challenge
-        and no ciphertext. A signature over that challenge grants the session.
+        Full Bearer bound to a device. Not registration_recovery. An object that
+        omits both challenge and signature, including {}, returns a single-use
+        challenge (120 seconds) and no ciphertext. A fully authenticated session
+        can call this again with {}. Each call issues a new single-use challenge
+        and invalidates the previous one. An existing proof grant and the device
+        binding stay. A signature over the current challenge grants the session.
         Legacy wraps without a possession public key are refused. Failed signatures
-        are rate-limited per session and per account.
+        are rate-limited per session (5) and per account (10) inside 15 minutes.
       security:
         - bearerAuth: []
       requestBody:
@@ -1399,19 +1569,51 @@ paths:
                   type: string
       responses:
         "200":
-          description: Challenge issued, or proof accepted. Never includes wrap or identity ciphertext.
+          description: >
+            Challenge issued (proved false) or proof accepted (proved true).
+            Never includes wrap or identity ciphertext.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/AccountRecoveryKeyProveChallengeResponse"
+                  - $ref: "#/components/schemas/AccountRecoveryKeyProvedResponse"
         "400":
           description: RECOVERY_BAD_REQUEST
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
         "401":
           description: AUTH_REQUIRED
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
         "403":
           description: RECOVERY_PROOF_INVALID or RECOVERY_PROOF_REQUIRES_DEVICE
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
         "404":
           description: RECOVERY_KEY_NOT_AVAILABLE
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
         "409":
           description: RECOVERY_PROOF_UNAVAILABLE
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
         "429":
-          description: RECOVERY_PROOF_LIMITED
+          description: RECOVERY_PROOF_LIMITED. Includes remaining_ms.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecoveryProofLimitedError"
 
   /auth/email/confirm:
     post:
@@ -1744,7 +1946,7 @@ paths:
           required: true
           schema:
             type: string
-            pattern: '^d{10,20}
+            pattern: '^\d{10,20}$'
 
       responses:
         "200":
@@ -1787,7 +1989,7 @@ paths:
           required: true
           schema:
             type: string
-            pattern: '^d{10,20}
+            pattern: '^\d{10,20}$'
 
       responses:
         "200":
@@ -1828,7 +2030,7 @@ paths:
           required: true
           schema:
             type: string
-            pattern: '^d{10,20}
+            pattern: '^\d{10,20}$'
 
       responses:
         "200":
@@ -1869,7 +2071,7 @@ paths:
           required: true
           schema:
             type: string
-            pattern: '^d{10,20}
+            pattern: '^\d{10,20}$'
 
       responses:
         "200":
@@ -1908,7 +2110,7 @@ paths:
           required: true
           schema:
             type: string
-            pattern: '^d{10,20}
+            pattern: '^\d{10,20}$'
 
       requestBody:
         required: true
@@ -1960,7 +2162,7 @@ paths:
           required: true
           schema:
             type: string
-            pattern: '^d{10,20}
+            pattern: '^\d{10,20}$'
 
       requestBody:
         required: true
@@ -2013,7 +2215,7 @@ paths:
           required: true
           schema:
             type: string
-            pattern: '^d{10,20}
+            pattern: '^\d{10,20}$'
 
       requestBody:
         required: true
@@ -2066,14 +2268,14 @@ paths:
           required: true
           schema:
             type: string
-            pattern: '^d{10,20}
+            pattern: '^\d{10,20}$'
 
         - name: userId
           in: path
           required: true
           schema:
             type: string
-            pattern: '^d{10,20}
+            pattern: '^\d{10,20}$'
 
       requestBody:
         required: true
@@ -2125,7 +2327,7 @@ paths:
           required: true
           schema:
             type: string
-            pattern: '^d{10,20}
+            pattern: '^\d{10,20}$'
 
         - name: afterVersion
           in: query
@@ -2171,7 +2373,7 @@ paths:
           required: true
           schema:
             type: string
-            pattern: '^d{10,20}
+            pattern: '^\d{10,20}$'
 
       requestBody:
         required: true
@@ -2252,7 +2454,7 @@ paths:
           required: true
           schema:
             type: string
-            pattern: '^d{10,20}
+            pattern: '^\d{10,20}$'
 
       requestBody:
         required: true
@@ -2296,7 +2498,7 @@ paths:
           required: true
           schema:
             type: string
-            pattern: '^d{10,20}
+            pattern: '^\d{10,20}$'
 
       responses:
         "200":
@@ -2373,7 +2575,7 @@ paths:
           required: true
           schema:
             type: string
-            pattern: '^d{10,20}
+            pattern: '^\d{10,20}$'
 
       requestBody:
         required: false
@@ -2508,7 +2710,7 @@ paths:
           required: true
           schema:
             type: string
-            pattern: '^d{10,20}
+            pattern: '^\d{10,20}$'
 
       responses:
         "200":
@@ -2533,6 +2735,19 @@ paths:
   /devices/register:
     post:
       tags: [Devices]
+      summary: Register or update a device
+      description: >
+        recovery_pending and claim_after_recovery are optional JSON booleans.
+        Omitted means false. When metadata is an object and contains the key,
+        that value is used. Otherwise the top-level field is used. A non-boolean,
+        including null, is 400. claim_after_recovery true forces recovery_pending
+        off. claim_after_recovery is accepted only for the device bound to the
+        session that completed POST /account/recovery/key/prove.
+        recovery_pending registers the device as pending during recovery and does
+        not replace a trusted device's key. A pending registration with the same
+        fingerprint replaces the existing pending entry. An account can hold at
+        most 20 pending devices. Only status pending counts. Replacing an existing
+        pending row for that fingerprint does not use another slot.
       security:
         - bearerAuth: []
       parameters:
@@ -2545,25 +2760,50 @@ paths:
               $ref: "#/components/schemas/DeviceRegisterRequest"
       responses:
         "200":
+          description: Device registered or updated
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/DeviceRegisterResponse"
         "400":
+          description: >
+            DEVICE_BAD_REQUEST (invalid JSON, missing fields, invalid device_share,
+            or a flag is not a JSON boolean), DEVICE_INVALID_FINGERPRINT, or
+            DEVICE_INVALID_PUBLIC_KEY.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorBody"
         "401":
+          description: AUTH_REQUIRED
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "403":
+          description: >
+            RECOVERY_PROOF_REQUIRED (no proof in session),
+            RECOVERY_CLAIM_REQUIRES_PROVED_DEVICE (no proved device), or
+            RECOVERY_CLAIM_DEVICE_MISMATCH (device differs from the proved one).
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorBody"
         "409":
+          description: >
+            DEVICE_DUPLICATE_CONFLICT, DEVICE_FINGERPRINT_ALREADY_TRUSTED, or
+            DEVICE_PENDING_LIMIT. DEVICE_PENDING_LIMIT includes details.limit,
+            the pending-device cap (20).
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorBody"
+              example:
+                error: DEVICE_PENDING_LIMIT
+                message: pending device limit reached
+                requestId: req_example
+                details:
+                  limit: 20
 
   /devices/{deviceId}/approve:
     post:
@@ -2578,7 +2818,7 @@ paths:
           required: true
           schema:
             type: string
-            pattern: '^d{10,20}
+            pattern: '^\d{10,20}$'
 
       responses:
         "200":
@@ -2630,7 +2870,7 @@ paths:
           required: true
           schema:
             type: string
-            pattern: '^d{10,20}
+            pattern: '^\d{10,20}$'
 
       requestBody:
         content:
