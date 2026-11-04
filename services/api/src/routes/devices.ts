@@ -179,6 +179,9 @@ export function createRegisterDeviceRoute(
   trustedProxyHops = 0,
   sessionService?: Pick<SessionDeviceBinding, "bindAccessTokenDevice">,
   mayClaimAfterRecovery?: (req: IncomingMessage) => Promise<boolean>,
+  resolveProvedRecoveryDevice?: (
+    req: IncomingMessage,
+  ) => Promise<{ userId: string; deviceId: string } | null>,
 ): RouteHandler {
   return async (ctx) => {
     let body: RegisterDeviceBody;
@@ -241,6 +244,25 @@ export function createRegisterDeviceRoute(
           return;
         }
       }
+      let provedDeviceId: string | undefined;
+      if (claimAfterRecovery) {
+        const proved = resolveProvedRecoveryDevice
+          ? await resolveProvedRecoveryDevice(ctx.req)
+          : null;
+        if (!proved || proved.userId !== userId || proved.deviceId.trim() === "") {
+          json(
+            ctx.res,
+            403,
+            errorPayload(
+              "RECOVERY_CLAIM_REQUIRES_PROVED_DEVICE",
+              "recovery claim requires the pending device that proved the recovery key",
+              ctx.requestId,
+            ),
+          );
+          return;
+        }
+        provedDeviceId = proved.deviceId.trim();
+      }
       const requestIp = await getRequestIp(ctx.req, { trustedProxyHops });
       const result = await deviceService.registerDevice(userId, requestIp, {
         deviceFingerprint: body.device_fingerprint,
@@ -257,6 +279,7 @@ export function createRegisterDeviceRoute(
         acceptLanguage: getHeader(ctx.req, "accept-language"),
         reclaimSoleTrusted,
         claimAfterRecovery,
+        provedDeviceId,
         recoveryPending,
       });
 
