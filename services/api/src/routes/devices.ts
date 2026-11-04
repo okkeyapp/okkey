@@ -245,6 +245,9 @@ export function createRegisterDeviceRoute(
   sessionService?: Pick<SessionDeviceBinding, "bindAccessTokenDevice"> &
     Partial<Pick<SessionDeviceBinding, "hashAccessToken">>,
   mayClaimAfterRecovery?: (req: IncomingMessage) => Promise<boolean>,
+  resolveProvedRecoveryDevice?: (
+    req: IncomingMessage,
+  ) => Promise<{ userId: string; deviceId: string } | null>,
 ): RouteHandler {
   return async (ctx) => {
     let body: RegisterDeviceBody;
@@ -310,6 +313,25 @@ export function createRegisterDeviceRoute(
           return;
         }
       }
+      let provedDeviceId: string | undefined;
+      if (claimAfterRecovery) {
+        const proved = resolveProvedRecoveryDevice
+          ? await resolveProvedRecoveryDevice(ctx.req)
+          : null;
+        if (!proved || proved.userId !== userId || proved.deviceId.trim() === "") {
+          json(
+            ctx.res,
+            403,
+            errorPayload(
+              "RECOVERY_CLAIM_REQUIRES_PROVED_DEVICE",
+              "recovery claim requires the pending device that proved the recovery key",
+              ctx.requestId,
+            ),
+          );
+          return;
+        }
+        provedDeviceId = proved.deviceId.trim();
+      }
       const requestIp = await getRequestIp(ctx.req, { trustedProxyHops });
       const accessToken = getBearerToken(ctx.req);
       // Kept across a pending-row replacement so this session can bind to the new row.
@@ -332,6 +354,7 @@ export function createRegisterDeviceRoute(
         acceptLanguage: getHeader(ctx.req, "accept-language"),
         reclaimSoleTrusted,
         claimAfterRecovery,
+        provedDeviceId,
         recoveryPending,
         preserveSessionTokenHash,
       });

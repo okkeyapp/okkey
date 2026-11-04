@@ -358,6 +358,20 @@ export function createApiApp(
     const session = await resolveFullSession(req);
     return Boolean(session && isFullSessionScope(session.scope) && session.recoveryProvedAt);
   };
+  /** Device bound to this session when the recovery key proof succeeded. */
+  const resolveProvedRecoveryDevice = async (
+    req: IncomingMessage,
+  ): Promise<{ userId: string; deviceId: string } | null> => {
+    const session = await resolveFullSession(req);
+    if (!session || !isFullSessionScope(session.scope) || !session.recoveryProvedAt) {
+      return null;
+    }
+    const deviceId = session.deviceId?.trim() ?? "";
+    if (!deviceId) {
+      return null;
+    }
+    return { userId: session.userId, deviceId };
+  };
   /** Full session or post-register recovery bootstrap (enroll + ack-export only). */
   const resolveUserIdForRegistrationRecovery: (req: IncomingMessage) => Promise<string | null> =
     deps.sessionService !== undefined
@@ -845,6 +859,7 @@ export function createApiApp(
         config.trustedProxyHops,
         deps.sessionService,
         mayClaimAfterRecovery,
+        resolveProvedRecoveryDevice,
       ),
     );
     app.route(

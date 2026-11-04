@@ -95,6 +95,12 @@ export interface RegisterDeviceInput {
    */
   claimAfterRecovery?: boolean;
   /**
+   * Device bound to this session when it proved the recovery key.
+   * Required when `claimAfterRecovery` is set. The claim fingerprint and
+   * public key must match this device.
+   */
+  provedDeviceId?: string;
+  /**
    * Unbound recovery session: add a pending device for a new public key when
    * this fingerprint is already trusted. Does not replace the trusted keys.
    * A previous pending row for the same fingerprint is replaced.
@@ -231,11 +237,15 @@ export class DeviceService {
 
     try {
       if (input.claimAfterRecovery) {
+        const provedDevice = await this.requireProvedRecoveryDevice(userId, input);
+        // Fingerprint and public key come from the device that proved recovery.
+        // device_share stays the request value: web restore mints share B after
+        // the pending registration and sends that share on this claim.
         const claimed = await this.devices.claimTrustedAfterRecovery({
           userId,
-          deviceFingerprint: input.deviceFingerprint.trim().toLowerCase(),
+          deviceFingerprint: provedDevice.deviceFingerprint,
           deviceName: cleanString(input.deviceName, "Unknown device"),
-          devicePublicKey: input.devicePublicKey.trim(),
+          devicePublicKey: provedDevice.devicePublicKey,
           deviceShare: deviceShareBytes,
           platform: cleanString(input.platform, "unknown"),
           osName: cleanString(input.osName, "unknown"),
@@ -1010,6 +1020,50 @@ export class DeviceService {
       deviceId: result.device.id,
       status: "pending_approval",
       created: false,
+    };
+  }
+
+  /**
+   * The session device that passed `POST /account/recovery/key/prove`.
+   * Register does not move a session that is already bound, so this row is
+   * the device the possession signature was checked against.
+   * Pending when another trusted device exists; trusted when recovery
+   * registration was the account's only device.
+   */
+  private async requireProvedRecoveryDevice(
+    userId: string,
+    input: RegisterDeviceInput,
+  ): Promise<{ deviceFingerprint: string; devicePublicKey: string }> {
+    const deviceId = input.provedDeviceId?.trim() ?? "";
+    if (!deviceId || typeof this.devices.findOwnedDeviceAuth !== "function") {
+      throw new DeviceServiceError(
+        "RECOVERY_CLAIM_REQUIRES_PROVED_DEVICE",
+        403,
+        "recovery claim requires the pending device that proved the recovery key",
+      );
+    }
+    const device = await this.devices.findOwnedDeviceAuth(userId, deviceId);
+    if (!device || (device.status !== "pending" && device.status !== "trusted")) {
+      throw new DeviceServiceError(
+        "RECOVERY_CLAIM_REQUIRES_PROVED_DEVICE",
+        403,
+        "recovery claim requires the pending device that proved the recovery key",
+      );
+    }
+    const sameFingerprint =
+      input.deviceFingerprint.trim().toLowerCase() ===
+      device.deviceFingerprint.trim().toLowerCase();
+    const samePublicKey = input.devicePublicKey.trim() === device.devicePublicKey.trim();
+    if (!sameFingerprint || !samePublicKey) {
+      throw new DeviceServiceError(
+        "RECOVERY_CLAIM_DEVICE_MISMATCH",
+        403,
+        "recovery claim does not match the device that proved the recovery key",
+      );
+    }
+    return {
+      deviceFingerprint: device.deviceFingerprint.trim().toLowerCase(),
+      devicePublicKey: device.devicePublicKey.trim(),
     };
   }
 

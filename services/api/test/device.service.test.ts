@@ -61,7 +61,21 @@ function createDeviceRecord(overrides?: Record<string, unknown>) {
 function createService(overrides?: {
   registerOrUpdate?: () => Promise<ReturnType<typeof createDeviceRecord>>;
   reclaimSoleTrusted?: () => Promise<ReturnType<typeof createDeviceRecord> | null>;
-  claimTrustedAfterRecovery?: () => Promise<ReturnType<typeof createDeviceRecord>>;
+  claimTrustedAfterRecovery?: (input: {
+    deviceFingerprint: string;
+    devicePublicKey: string;
+    deviceShare: Uint8Array;
+  }) => Promise<ReturnType<typeof createDeviceRecord>>;
+  findOwnedDeviceAuth?: (
+    userId: string,
+    deviceId: string,
+  ) => Promise<{
+    id: string;
+    status: string;
+    devicePublicKey: string;
+    deviceShare: Uint8Array;
+    deviceFingerprint: string;
+  } | null>;
   isTrustedDevice?: () => Promise<boolean>;
   resolveApproval?: () => Promise<DeviceApprovalState>;
   listByUser?: () => Promise<Array<ReturnType<typeof createDeviceRecord>>>;
@@ -82,6 +96,7 @@ function createService(overrides?: {
       claimTrustedAfterRecovery:
         overrides?.claimTrustedAfterRecovery ??
         (async () => createDeviceRecord({ status: "trusted", id: "d-claim" })),
+      findOwnedDeviceAuth: overrides?.findOwnedDeviceAuth ?? (async () => null),
       isTrustedDevice: overrides?.isTrustedDevice ?? (async () => true),
       resolveApproval:
         overrides?.resolveApproval ??
@@ -159,26 +174,89 @@ test("q2-6: registerDevice rejects non-opaque device_share (not hybrid KEM)", as
   );
 });
 
-test("registerDevice claimAfterRecovery becomes sole trusted without pending", async () => {
-  let claimed = false;
+test("registerDevice claimAfterRecovery requires the proved device and keeps its identity", async () => {
+  let claimed:
+    | { deviceFingerprint: string; devicePublicKey: string; deviceShare: Uint8Array }
+    | undefined;
+  const pendingKey = Buffer.from("public-key").toString("base64");
   const service = createService({
-    claimTrustedAfterRecovery: async () => {
-      claimed = true;
+    claimTrustedAfterRecovery: async (input) => {
+      claimed = input;
       return createDeviceRecord({ id: "d-fresh", status: "trusted" });
     },
+    findOwnedDeviceAuth: async () => ({
+      id: "pending-1",
+      status: "pending",
+      devicePublicKey: pendingKey,
+      deviceFingerprint: "a".repeat(64),
+      deviceShare: new Uint8Array(32).fill(1),
+    }),
     registerOrUpdate: async () => {
       throw new Error("registerOrUpdate must not run for claimAfterRecovery");
     },
   });
 
+  await assert.rejects(
+    () =>
+      service.registerDevice(
+        "u1",
+        "127.0.0.1",
+        createInput({ claimAfterRecovery: true }),
+      ),
+    (error: unknown) =>
+      error instanceof DeviceServiceError &&
+      error.code === "RECOVERY_CLAIM_REQUIRES_PROVED_DEVICE" &&
+      error.statusCode === 403,
+  );
+  assert.equal(claimed, undefined);
+
+  const mintedShare = Buffer.alloc(32, 5).toString("base64");
   const result = await service.registerDevice(
     "u1",
     "127.0.0.1",
-    createInput({ claimAfterRecovery: true }),
+    createInput({
+      claimAfterRecovery: true,
+      provedDeviceId: "pending-1",
+      deviceShare: mintedShare,
+    }),
   );
-  assert.equal(claimed, true);
   assert.equal(result.status, "trusted");
   assert.equal(result.deviceId, "d-fresh");
+  assert.equal(claimed?.deviceFingerprint, "a".repeat(64));
+  assert.equal(claimed?.devicePublicKey, pendingKey);
+  assert.deepEqual(claimed?.deviceShare, Uint8Array.from(Buffer.from(mintedShare, "base64")));
+});
+
+test("registerDevice claimAfterRecovery keeps repository this when loading the proved device", async () => {
+  const pendingKey = Buffer.from("public-key").toString("base64");
+  const devices = {
+    calls: 0,
+    async findOwnedDeviceAuth(this: { calls: number }) {
+      this.calls += 1;
+      return {
+        id: "pending-1",
+        status: "pending",
+        devicePublicKey: pendingKey,
+        deviceFingerprint: "a".repeat(64),
+        deviceShare: new Uint8Array(32).fill(1),
+      };
+    },
+    async claimTrustedAfterRecovery() {
+      return createDeviceRecord({ id: "d-fresh", status: "trusted" });
+    },
+  };
+  const service = new DeviceService({
+    devices: devices as never,
+    config: { deviceApprovalTtlSeconds: 60, publicAppBaseUrl: "https://app.test" },
+  });
+
+  const result = await service.registerDevice(
+    "u1",
+    "127.0.0.1",
+    createInput({ claimAfterRecovery: true, provedDeviceId: "pending-1" }),
+  );
+  assert.equal(result.deviceId, "d-fresh");
+  assert.equal(devices.calls, 1);
 });
 
 test("registerDevice recoveryPending keeps a pending sibling and does not claim", async () => {
