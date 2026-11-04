@@ -71,7 +71,7 @@ The protections in this release are aimed at these cases:
 
 The default Compose file publishes the API on `127.0.0.1` only. Other machines reach Okkey through a reverse proxy you configure. The example proxy lives in `deploy/docker/proxy`. Public TLS is configured there.
 
-The default `.env` from the installer sets `DEPLOY_ENV=dev`, `CRYPTO_ALLOWED_PROFILE_VERSIONS=1,2`, and `CRYPTO_ROLLOUT_MODE=compat`. Those values are what the current web client needs in order to register. They are the settings this beta runs with.
+The default `.env` from the installer sets `DEPLOY_ENV=dev`, `CRYPTO_ALLOWED_PROFILE_VERSIONS=2`, and `CRYPTO_ROLLOUT_MODE=compat`. Only profile 2 is allowed. New registrations use KDF v2.
 
 ## What this release does not cover
 
