@@ -1,8 +1,10 @@
 /**
  * Server share (A) for the current JS realm.
  * Not written to localStorage, sessionStorage, or extension local storage.
- * A full page load, a closed extension popup, or an MV3 service-worker restart
- * drops this map; the next master-password unlock fetches A again.
+ * Callers clear this map on vault lock and on logout, so a locked device holds
+ * the same material as a fresh reload. A full page load, a closed extension
+ * popup, or an MV3 service-worker restart drops it as well. The next
+ * master-password unlock fetches A again.
  */
 
 export type ServerKeyShareSource = "memory" | "server" | "legacy";
@@ -17,7 +19,7 @@ const shares = new Map<string, string>();
 /**
  * Bumped on every committed share and on clear.
  * An in-flight fetch captures the epoch and must not apply its result if a
- * newer commit (password change, logout) happened while it was awaiting.
+ * newer commit (password change, lock, or logout) happened while it was awaiting.
  */
 let epoch = 0;
 

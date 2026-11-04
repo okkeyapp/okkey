@@ -742,6 +742,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
   logoutRef.current = logout;
 
   const lockVault = useCallback(() => {
+    clearRememberedServerKeyShares();
     clearVaultUnlockSession();
     clearVaultKeySecret();
     clearPasswordShareSecrets();

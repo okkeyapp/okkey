@@ -564,6 +564,7 @@ export function PopupApp() {
     const tick = () => {
       void extensionUnlockSessionExceededIdle(userId).then((exceeded) => {
         if (exceeded) {
+          clearExtensionServerKeyShareMemory();
           wipeUnlockSecrets(unlockSecretsRef.current);
           unlockSecretsRef.current = null;
           setUnlockSecrets(null);
@@ -592,6 +593,7 @@ export function PopupApp() {
       if (screen !== "vault") {
         return;
       }
+      clearExtensionServerKeyShareMemory();
       wipeUnlockSecrets(unlockSecretsRef.current);
       unlockSecretsRef.current = null;
       setUnlockSecrets(null);
@@ -752,6 +754,7 @@ export function PopupApp() {
   };
 
   const lockVault = useCallback(() => {
+    clearExtensionServerKeyShareMemory();
     wipeUnlockSecrets(unlockSecretsRef.current);
     unlockSecretsRef.current = null;
     setUnlockSecrets(null);

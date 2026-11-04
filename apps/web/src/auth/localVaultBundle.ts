@@ -3,7 +3,8 @@
  * plus a session mirror of the same record.
  *
  * The server share is not part of that record. It is fetched after authentication
- * and kept only in memory for this page (`server-key-share-memory` in `@okkey/vault`).
+ * and kept only in memory until vault lock or logout
+ * (`server-key-share-memory` in `@okkey/vault`).
  * A legacy record may still contain `server_key_share_b64` until the next online unlock.
  */
 import {

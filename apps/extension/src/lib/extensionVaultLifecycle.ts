@@ -9,6 +9,7 @@ import {
 } from "@okkey/vault";
 
 import { clearBackgroundClipboardIfMatches } from "./backgroundClipboardClear";
+import { clearExtensionServerKeyShareMemory } from "./extensionVaultBundle";
 import {
   clearExtensionUnlockSession,
   DEFAULT_EXTENSION_IDLE_LOCK_MS,
@@ -104,6 +105,7 @@ async function readUnlockSession(): Promise<VaultUnlockSessionRecord | null> {
 }
 
 export async function lockVaultFromBackground(): Promise<void> {
+  clearExtensionServerKeyShareMemory();
   await clearExtensionUnlockSession();
   try {
     await browser.alarms.clear(IDLE_LOCK_ALARM);
