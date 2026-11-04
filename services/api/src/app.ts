@@ -847,7 +847,9 @@ export function createApiApp(
     app.route(
       "POST",
       "/vaults/:vaultId/events",
-      gateVaultUse(createSyncEventsAppendRoute(deps.syncService, resolveUserId)),
+      gateVaultUse(
+        createSyncEventsAppendRoute(deps.syncService, resolveUserId, config.cryptoRolloutMode),
+      ),
     );
   }
   if (deps.deviceService) {

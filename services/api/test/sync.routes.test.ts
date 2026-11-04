@@ -89,8 +89,9 @@ async function dispatch(input: {
   headers?: Record<string, string>;
   body?: unknown;
   syncService?: SyncService;
+  config?: ApiConfig;
 }) {
-  const app = createApiApp(config, loggerStub(), {
+  const app = createApiApp(input.config ?? config, loggerStub(), {
     syncService: input.syncService ?? createSyncServiceStub(),
   });
   const req = {
@@ -293,7 +294,25 @@ test("POST /vaults/:vaultId/events maps CRYPTO_DOWNGRADE_NOT_ALLOWED", async () 
   assert.equal(payload.details?.reason, "downgrade");
 });
 
-test("POST /vaults/:vaultId/events requires signature for VAULT_SHARE", async () => {
+test("POST /vaults/:vaultId/events strict mode requires signature for VAULT_SHARE", async () => {
+  const res = await dispatch({
+    method: "POST",
+    url: "/vaults/1000000000000000001/events",
+    headers: { "x-user-id": "u1" },
+    config: { ...config, cryptoRolloutMode: "strict" },
+    body: {
+      eventType: "VAULT_SHARE",
+      encryptedBlob: mkBlob("x", 2),
+      baseVersion: 0,
+    },
+  });
+
+  assert.equal(res.statusCode, 400);
+  const payload = JSON.parse(res.body) as { error: string };
+  assert.equal(payload.error, "SIGNATURE_REQUIRED");
+});
+
+test("POST /vaults/:vaultId/events compat mode accepts unsigned VAULT_SHARE", async () => {
   const res = await dispatch({
     method: "POST",
     url: "/vaults/1000000000000000001/events",
@@ -305,9 +324,7 @@ test("POST /vaults/:vaultId/events requires signature for VAULT_SHARE", async ()
     },
   });
 
-  assert.equal(res.statusCode, 400);
-  const payload = JSON.parse(res.body) as { error: string };
-  assert.equal(payload.error, "SIGNATURE_REQUIRED");
+  assert.equal(res.statusCode, 201);
 });
 
 test("POST /vaults/:vaultId/events accepts signature for VAULT_KEY_ROTATION", async () => {
