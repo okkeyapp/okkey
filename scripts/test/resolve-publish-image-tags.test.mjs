@@ -184,6 +184,45 @@ test("workflow_dispatch :latest only when push_latest=true", () => {
   ]);
 });
 
+test("v1.0.0-beta.3 image version is SemVer without the leading v", () => {
+  assert.equal(
+    resolveImageVersion({
+      eventName: "push",
+      refType: "tag",
+      refName: "v1.0.0-beta.3",
+      ref: "refs/tags/v1.0.0-beta.3",
+    }),
+    "1.0.0-beta.3",
+  );
+  assert.deepEqual(
+    tagsForImage(IMAGE, {
+      eventName: "push",
+      refType: "tag",
+      refName: "v1.0.0-beta.3",
+      ref: "refs/tags/v1.0.0-beta.3",
+    }),
+    [`${IMAGE}:1.0.0-beta.3`],
+  );
+});
+
+test("dev channel version is dev (workflow_dispatch default)", () => {
+  assert.equal(
+    resolveImageVersion({ eventName: "workflow_dispatch" }),
+    "dev",
+  );
+  assert.equal(
+    resolveImageVersion({
+      eventName: "workflow_dispatch",
+      dispatchTag: "dev",
+    }),
+    "dev",
+  );
+  assert.deepEqual(
+    tagsForImage(IMAGE, { eventName: "workflow_dispatch" }),
+    [`${IMAGE}:dev`],
+  );
+});
+
 test("CLI writes GITHUB_OUTPUT for v1.0.0-beta.2", () => {
   const dir = mkdtempSync(join(tmpdir(), "okkey-img2-tags-"));
   const out = join(dir, "github_output");

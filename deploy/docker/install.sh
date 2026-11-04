@@ -12,6 +12,9 @@
 #
 # From a checked-out tree:
 #   ./deploy/docker/install.sh
+#
+# Emergency bypass (not for production; prints a loud warning):
+#   ./deploy/docker/install.sh --skip-cosign-verify
 set -euo pipefail
 
 OKKEY_INSTALL_DIR="${OKKEY_INSTALL_DIR:-$HOME/okkey}"
@@ -32,6 +35,39 @@ ENV_EXAMPLE_NAME=".env.example"
 
 log() { printf '%s\n' "$*"; }
 die() { printf 'error: %s\n' "$*" >&2; exit 1; }
+
+usage() {
+  cat <<'EOF'
+Usage: install.sh [--skip-cosign-verify]
+
+  --skip-cosign-verify   Emergency bypass: do not verify GHCR cosign signatures
+                         before docker compose up. Prints a loud warning.
+                         Off by default. Not for production.
+  -h, --help             Show this help
+EOF
+}
+
+# Set by parse_args. Not read from .env.
+SKIP_COSIGN_VERIFY_FLAG=0
+
+parse_args() {
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --skip-cosign-verify)
+        SKIP_COSIGN_VERIFY_FLAG=1
+        shift
+        ;;
+      -h|--help)
+        usage
+        exit 0
+        ;;
+      *)
+        die "unknown argument: $1
+Run: install.sh --help"
+        ;;
+    esac
+  done
+}
 
 # Read KEY=value from the install-dir .env (no export). Empty if missing.
 env_file_value() {
@@ -156,7 +192,7 @@ image_digest_ref() {
   digest_line="$(docker image inspect --format '{{index .RepoDigests 0}}' "${ref}" 2>/dev/null || true)"
   if [[ -z "${digest_line}" || "${digest_line}" == "<no value>" ]]; then
     die "cannot resolve digest for ${ref} after pull (RepoDigests empty).
-hint: re-pull from GHCR, or set OKKEY_SKIP_COSIGN_VERIFY=1 only for local/unsigned images."
+hint: re-pull from GHCR, or re-run with --skip-cosign-verify only for local/unsigned images."
   fi
   # RepoDigests is already name@sha256:…
   if [[ "${digest_line}" == *@sha256:* ]]; then
@@ -167,15 +203,30 @@ hint: re-pull from GHCR, or set OKKEY_SKIP_COSIGN_VERIFY=1 only for local/unsign
   die "unexpected RepoDigests format for ${ref}: ${digest_line} (id=${digest})"
 }
 
+# Loud stderr warning for the emergency signature bypass.
+warn_skip_cosign() {
+  local why="$1"
+  printf '%s\n' \
+    "==> WARNING: image signature verification is DISABLED (${why})." \
+    "==> WARNING: api, worker, and web will start WITHOUT a cosign check." \
+    "==> WARNING: Emergency bypass only. Do not use this for production." >&2
+}
+
 # Verify cosign keyless signatures for api/web/worker before compose up.
-# Skip only with an explicit flag (default: verify on). Local/preloaded
-# installs that skip pull also skip verify unless OKKEY_FORCE_COSIGN_VERIFY=1.
+# Default is verify on for every GHCR tag, including full SemVer and :dev.
+# Emergency bypass is the CLI flag --skip-cosign-verify (or the equivalent
+# process env OKKEY_SKIP_COSIGN_VERIFY=1). Local installs that skip pull also
+# skip verify unless OKKEY_FORCE_COSIGN_VERIFY=1.
 verify_pulled_image_signatures() {
   local tag="$1"
   local skip_pull="${2:-0}"
 
+  if [[ "${SKIP_COSIGN_VERIFY_FLAG}" == "1" ]]; then
+    warn_skip_cosign "--skip-cosign-verify"
+    return 0
+  fi
   if [[ "${OKKEY_SKIP_COSIGN_VERIFY:-}" == "1" ]]; then
-    log "==> WARNING: skipping image signature verify (OKKEY_SKIP_COSIGN_VERIFY=1)"
+    warn_skip_cosign "OKKEY_SKIP_COSIGN_VERIFY=1"
     return 0
   fi
   if [[ "${skip_pull}" == "1" && "${OKKEY_FORCE_COSIGN_VERIFY:-}" != "1" ]]; then
@@ -183,7 +234,14 @@ verify_pulled_image_signatures() {
     return 0
   fi
 
-  need_cmd cosign
+  if ! command -v cosign >/dev/null 2>&1; then
+    die "cosign is not installed, so GHCR image signatures cannot be verified.
+Install cosign and re-run:
+  https://docs.sigstore.dev/cosign/system_config/installation/
+Emergency bypass (prints a warning; not for production):
+  ./deploy/docker/install.sh --skip-cosign-verify
+  curl -fsSL …/install.sh | bash -s -- --skip-cosign-verify"
+  fi
   need_cmd docker
 
   local refs=()
@@ -200,9 +258,11 @@ verify_pulled_image_signatures() {
       --certificate-oidc-issuer "${OKKEY_COSIGN_CERTIFICATE_OIDC_ISSUER}" \
       "${digest_ref}"; then
       die "cosign verify failed for ${digest_ref}.
+The image is unsigned or was not signed by this repo's publish-images workflow
+(GitHub Actions OIDC). Refusing to start the stack.
 hint: Core images must be signed keyless by .github/workflows/publish-images.yml.
-  Install cosign (https://docs.sigstore.dev/cosign/system_config/installation/).
-  Emergency bypass only: OKKEY_SKIP_COSIGN_VERIFY=1 (prints a warning; not for prod)."
+  Install cosign: https://docs.sigstore.dev/cosign/system_config/installation/
+  Emergency bypass only: install.sh --skip-cosign-verify (prints a warning; not for prod)."
     fi
   done
   log "==> Image signatures OK (api, worker, web)"
@@ -381,6 +441,8 @@ hint: set OKKEY_REF on the right of \`|\` so bash sees it, e.g.
   curl -fsSL https://raw.githubusercontent.com/okkeyapp/okkey/dev/deploy/docker/install.sh \\
     | OKKEY_REF=dev bash"
 }
+
+parse_args "$@"
 
 need_cmd docker
 docker compose version >/dev/null 2>&1 || die "docker compose plugin is required"

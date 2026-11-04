@@ -158,9 +158,21 @@ jobs:
 
           # Shared resolver (unit-tested): v1.0.0-beta.2 → :1.0.0-beta.2 only
           # (no :latest / :1 / :1.0). Spelling: beta, never betta.
+          # image_version is SemVer without a leading v (git tag v1.0.0-beta.3 → 1.0.0-beta.3).
+          # The dev channel (workflow_dispatch, default tag dev) uses version "dev".
           node scripts/resolve-publish-image-tags.mjs
 
+          # OCI created annotation: RFC 3339 date-time (UTC).
           IMAGE_CREATED="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          IMAGE_VERSION="$(grep '^image_version=' "$GITHUB_OUTPUT" | tail -1 | cut -d= -f2-)"
+          if [[ -z "${IMAGE_VERSION}" ]]; then
+            echo "resolver did not emit image_version" >&2
+            exit 1
+          fi
+          if [[ ! "${IMAGE_CREATED}" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]]; then
+            echo "image_created is not RFC 3339: ${IMAGE_CREATED}" >&2
+            exit 1
+          fi
           {
             echo "platforms=${PLATFORMS}"
             echo "image_created=${IMAGE_CREATED}"
@@ -168,6 +180,7 @@ jobs:
             echo "want_arm64=${WANT_ARM64}"
           } >> "$GITHUB_OUTPUT"
 
+          echo "OCI version: ${IMAGE_VERSION}"
           echo "OCI created: ${IMAGE_CREATED}"
           echo "Platforms: ${PLATFORMS} (amd64=${WANT_AMD64} arm64=${WANT_ARM64})"
 
@@ -245,6 +258,18 @@ jobs:
             org.opencontainers.image.version=${{ needs.prep.outputs.image_version }}
             org.opencontainers.image.created=${{ needs.prep.outputs.image_created }}
             org.opencontainers.image.licenses=AGPL-3.0-or-later
+          # OCI image-spec annotations on the manifest and per-arch index.
+          # The merge step references these manifests by digest and sets the
+          # same keys on the new multi-arch index.
+          annotations: |
+            index,manifest:org.opencontainers.image.title=okkey-${{ matrix.image }}
+            index,manifest:org.opencontainers.image.description=Okkey Core ${{ matrix.image }} image
+            index,manifest:org.opencontainers.image.vendor=okkeyapp
+            index,manifest:org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            index,manifest:org.opencontainers.image.revision=${{ needs.prep.outputs.revision }}
+            index,manifest:org.opencontainers.image.version=${{ needs.prep.outputs.image_version }}
+            index,manifest:org.opencontainers.image.created=${{ needs.prep.outputs.image_created }}
+            index,manifest:org.opencontainers.image.licenses=AGPL-3.0-or-later
           provenance: mode=max
           sbom: true
           cache-from: type=gha,scope=${{ matrix.cache_scope }}-linux-amd64
@@ -341,6 +366,18 @@ jobs:
             org.opencontainers.image.version=${{ needs.prep.outputs.image_version }}
             org.opencontainers.image.created=${{ needs.prep.outputs.image_created }}
             org.opencontainers.image.licenses=AGPL-3.0-or-later
+          # OCI image-spec annotations on the manifest and per-arch index.
+          # The merge step references these manifests by digest and sets the
+          # same keys on the new multi-arch index.
+          annotations: |
+            index,manifest:org.opencontainers.image.title=okkey-${{ matrix.image }}
+            index,manifest:org.opencontainers.image.description=Okkey Core ${{ matrix.image }} image
+            index,manifest:org.opencontainers.image.vendor=okkeyapp
+            index,manifest:org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            index,manifest:org.opencontainers.image.revision=${{ needs.prep.outputs.revision }}
+            index,manifest:org.opencontainers.image.version=${{ needs.prep.outputs.image_version }}
+            index,manifest:org.opencontainers.image.created=${{ needs.prep.outputs.image_created }}
+            index,manifest:org.opencontainers.image.licenses=AGPL-3.0-or-later
           provenance: mode=max
           sbom: true
           cache-from: type=gha,scope=${{ matrix.cache_scope }}-linux-arm64
@@ -440,6 +477,11 @@ jobs:
         env:
           IMAGE: ${{ steps.meta.outputs.image }}
           TAGS_CSV: ${{ steps.meta.outputs.tags }}
+          OCI_VERSION: ${{ needs.prep.outputs.image_version }}
+          OCI_CREATED: ${{ needs.prep.outputs.image_created }}
+          OCI_REVISION: ${{ needs.prep.outputs.revision }}
+          OCI_SOURCE: ${{ github.server_url }}/${{ github.repository }}
+          OCI_IMAGE: ${{ matrix.image }}
         run: |
           set -euo pipefail
           cd /tmp/digests
@@ -454,6 +496,16 @@ jobs:
             exit 1
           fi
 
+          if [[ -z "${OCI_VERSION}" || -z "${OCI_CREATED}" || -z "${OCI_REVISION}" || -z "${OCI_SOURCE}" ]]; then
+            echo "missing OCI version, created, revision, or source" >&2
+            exit 1
+          fi
+          # created annotation must be RFC 3339 (UTC, Zulu).
+          if [[ ! "${OCI_CREATED}" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]]; then
+            echo "OCI created is not RFC 3339: ${OCI_CREATED}" >&2
+            exit 1
+          fi
+
           TAG_ARGS=()
           IFS=',' read -ra TAGS <<< "${TAGS_CSV}"
           for t in "${TAGS[@]}"; do
@@ -462,7 +514,24 @@ jobs:
             TAG_ARGS+=("-t" "$t")
           done
 
-          docker buildx imagetools create "${TAG_ARGS[@]}" "${DIGEST_ARGS[@]}"
+          # imagetools create builds a new index and does not copy annotations
+          # onto it. Set the OCI image-spec keys on that index. Child manifests
+          # keep the annotations from the per-arch build (referenced by digest),
+          # so SBOM and provenance attestations stay attached to those digests.
+          ANN_ARGS=()
+          add_ann() {
+            ANN_ARGS+=(--annotation "index:${1}=${2}")
+          }
+          add_ann org.opencontainers.image.title "okkey-${OCI_IMAGE}"
+          add_ann org.opencontainers.image.description "Okkey Core ${OCI_IMAGE} image"
+          add_ann org.opencontainers.image.vendor "okkeyapp"
+          add_ann org.opencontainers.image.source "${OCI_SOURCE}"
+          add_ann org.opencontainers.image.revision "${OCI_REVISION}"
+          add_ann org.opencontainers.image.version "${OCI_VERSION}"
+          add_ann org.opencontainers.image.created "${OCI_CREATED}"
+          add_ann org.opencontainers.image.licenses "AGPL-3.0-or-later"
+
+          docker buildx imagetools create "${ANN_ARGS[@]}" "${TAG_ARGS[@]}" "${DIGEST_ARGS[@]}"
 
           FIRST_TAG="$(echo "${TAGS_CSV}" | cut -d, -f1 | xargs)"
           # Digest of the multi-arch index (not a child platform manifest).
@@ -508,22 +577,22 @@ jobs:
         uses: sigstore/cosign-installer@v3
 
       # Keyless GitHub OIDC only — no COSIGN_KEY / password path.
+      # Same step for v* tag pushes and workflow_dispatch (:dev). A failed
+      # sign fails the job. SBOM and provenance stay on the build jobs.
       - name: Sign images (cosign keyless OIDC)
         if: github.event_name != 'pull_request'
         env:
           COSIGN_YES: "true"
           DIGEST: ${{ steps.manifest.outputs.digest }}
           IMAGE: ${{ steps.meta.outputs.image }}
-          FIRST_TAG: ${{ steps.manifest.outputs.first_tag }}
         shell: bash
         run: |
           set -euo pipefail
-          if [[ -n "${DIGEST}" ]]; then
-            REF="${IMAGE}@${DIGEST}"
-          else
-            REF="${FIRST_TAG}"
-            echo "::warning::No index digest resolved; signing tag ref ${REF}"
+          if [[ -z "${DIGEST}" ]]; then
+            echo "refusing to sign without an index digest for ${IMAGE}" >&2
+            exit 1
           fi
+          REF="${IMAGE}@${DIGEST}"
           cosign sign "${REF}"
           echo "Signed ${REF}"
 

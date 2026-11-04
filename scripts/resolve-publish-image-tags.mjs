@@ -127,7 +127,10 @@ export function tagsForImage(image, ctx) {
 }
 
 /**
- * OCI org.opencontainers.image.version — SemVer without leading `v`.
+ * OCI org.opencontainers.image.version.
+ * Git tags stay `v…`; the annotation value is SemVer without that prefix
+ * (v1.0.0-beta.3 → 1.0.0-beta.3). The dev channel has no release tag, so
+ * workflow_dispatch uses the image tag, default `dev`.
  * @param {ResolveContext} ctx
  * @returns {string}
  */

@@ -27,6 +27,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Run installer signature checks
+        run: |
+          set -euo pipefail
+          bash deploy/docker/env-file.test.sh
+          bash deploy/docker/install-sales-email-order.test.sh
+          bash deploy/docker/install-cosign-verify.test.sh
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
