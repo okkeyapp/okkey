@@ -177,7 +177,8 @@ export function createRegisterDeviceRoute(
   deviceService: DeviceService,
   resolveUserId: (req: IncomingMessage) => Promise<string | null>,
   trustedProxyHops = 0,
-  sessionService?: Pick<SessionDeviceBinding, "bindAccessTokenDevice">,
+  sessionService?: Pick<SessionDeviceBinding, "bindAccessTokenDevice"> &
+    Partial<Pick<SessionDeviceBinding, "hashAccessToken">>,
   mayClaimAfterRecovery?: (req: IncomingMessage) => Promise<boolean>,
 ): RouteHandler {
   return async (ctx) => {
@@ -242,6 +243,12 @@ export function createRegisterDeviceRoute(
         }
       }
       const requestIp = await getRequestIp(ctx.req, { trustedProxyHops });
+      const accessToken = getBearerToken(ctx.req);
+      // Kept across a pending-row replacement so this session can bind to the new row.
+      const preserveSessionTokenHash =
+        accessToken && typeof sessionService?.hashAccessToken === "function"
+          ? sessionService.hashAccessToken(accessToken)
+          : undefined;
       const result = await deviceService.registerDevice(userId, requestIp, {
         deviceFingerprint: body.device_fingerprint,
         devicePublicKey: body.device_public_key,
@@ -258,9 +265,8 @@ export function createRegisterDeviceRoute(
         reclaimSoleTrusted,
         claimAfterRecovery,
         recoveryPending,
+        preserveSessionTokenHash,
       });
-
-      const accessToken = getBearerToken(ctx.req);
       const bindCreated =
         result.created &&
         (result.status === "trusted" || result.status === "pending_approval");

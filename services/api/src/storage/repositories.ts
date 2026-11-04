@@ -994,9 +994,18 @@ export interface DeviceApprovalState {
 async function deleteSessionsForDevices(
   db: Pick<QueryExecutor, "query">,
   deviceIds: string[],
+  options?: { exceptTokenHash?: string },
 ): Promise<void> {
   const ids = [...new Set(deviceIds.filter((id) => id.length > 0))];
   if (ids.length === 0) {
+    return;
+  }
+  const exceptTokenHash = options?.exceptTokenHash?.trim();
+  if (exceptTokenHash) {
+    await db.query(
+      `DELETE FROM sessions WHERE device_id = ANY($1::bigint[]) AND token_hash IS DISTINCT FROM $2`,
+      [ids, exceptTokenHash],
+    );
     return;
   }
   await db.query(`DELETE FROM sessions WHERE device_id = ANY($1::bigint[])`, [ids]);
@@ -1007,6 +1016,101 @@ export class TrustedDeviceKeyConflictError extends Error {
   constructor() {
     super("trusted device keys cannot be replaced");
     this.name = "TrustedDeviceKeyConflictError";
+  }
+}
+
+/**
+ * Cap on `devices.status = 'pending'` rows for one account.
+ * Trusted, blocked, and revoked rows do not count. Replacing the pending row
+ * for a fingerprint that already has one does not consume another slot.
+ */
+export const MAX_PENDING_DEVICES_PER_ACCOUNT = 20;
+
+/** Account already has {@link MAX_PENDING_DEVICES_PER_ACCOUNT} pending device rows. */
+export class PendingDeviceLimitError extends Error {
+  readonly limit: number;
+
+  constructor(limit: number = MAX_PENDING_DEVICES_PER_ACCOUNT) {
+    super("pending device limit reached");
+    this.name = "PendingDeviceLimitError";
+    this.limit = limit;
+  }
+}
+
+/**
+ * Drop pending rows for this fingerprint whose public key differs.
+ * Sessions on those rows are deleted first: removing the device would only
+ * detach them (`sessions.device_id` is `ON DELETE SET NULL`). The caller's
+ * session is left so that delete detaches it and register can bind the new row.
+ * Returns whether a same-key pending row was kept, and how many other pending rows were removed.
+ */
+async function replacePendingRowsForFingerprint(
+  tx: Pick<QueryExecutor, "query">,
+  input: {
+    userId: string;
+    deviceFingerprint: string;
+    devicePublicKey: string;
+    preserveSessionTokenHash?: string;
+  },
+): Promise<{ keptSameKey: boolean; removed: number }> {
+  const pending = await tx.query<{ id: string; device_public_key: string }>(
+    `
+      SELECT id, device_public_key
+      FROM devices
+      WHERE user_id = $1::bigint
+        AND device_fingerprint = $2
+        AND status = 'pending'
+      FOR UPDATE
+    `,
+    [input.userId, input.deviceFingerprint],
+  );
+  const nextKey = input.devicePublicKey.trim();
+  const keptSameKey = pending.some((row) => row.device_public_key.trim() === nextKey);
+  const doomed = pending
+    .filter((row) => row.device_public_key.trim() !== nextKey)
+    .map((row) => row.id);
+  await deleteSessionsForDevices(tx, doomed, {
+    exceptTokenHash: input.preserveSessionTokenHash,
+  });
+  if (doomed.length > 0) {
+    await tx.query(
+      `
+        DELETE FROM devices
+        WHERE id = ANY($1::bigint[])
+          AND user_id = $2::bigint
+          AND status = 'pending'
+      `,
+      [doomed, input.userId],
+    );
+  }
+  return { keptSameKey, removed: doomed.length };
+}
+
+/**
+ * Reject another pending insert once the account is at the cap.
+ * The first device on an account is trusted, so a miss with no trusted row
+ * does not consume a pending slot.
+ */
+async function assertCanInsertPendingDevice(
+  tx: Pick<QueryExecutor, "query">,
+  userId: string,
+  options?: { trustedDeviceKnown?: boolean },
+): Promise<void> {
+  const rows = await tx.query<{ pending_n: string; trusted_n: string }>(
+    `
+      SELECT
+        COUNT(*) FILTER (WHERE status = 'pending')::text AS pending_n,
+        COUNT(*) FILTER (WHERE status = 'trusted')::text AS trusted_n
+      FROM devices
+      WHERE user_id = $1::bigint
+    `,
+    [userId],
+  );
+  const pending = Number(rows[0]?.pending_n ?? 0);
+  const trusted = Number(rows[0]?.trusted_n ?? 0);
+  const accountHasTrusted = options?.trustedDeviceKnown === true || trusted > 0;
+  if (accountHasTrusted && pending >= MAX_PENDING_DEVICES_PER_ACCOUNT) {
+    throw new PendingDeviceLimitError(MAX_PENDING_DEVICES_PER_ACCOUNT);
   }
 }
 
@@ -1357,9 +1461,15 @@ export class DevicesRepository {
     now: string;
     /**
      * Recovery restore on a browser that lost its signing key. Insert a pending
-     * row for the new public key without changing the trusted row.
+     * row for the new public key without changing the trusted row. A previous
+     * pending row for this fingerprint with a different public key is replaced.
      */
     allowPendingAlongsideTrusted?: boolean;
+    /**
+     * Token hash of the caller. Sessions on a replaced pending row are deleted
+     * except this one, which the device delete detaches so register can bind it.
+     */
+    preserveSessionTokenHash?: string;
   }): Promise<DeviceRecord & { sendApprovalEmail: boolean; created: boolean }> {
     try {
       return await withUserDeviceLock(input.userId, () => this.db.transaction(async (tx) => {
@@ -1450,6 +1560,19 @@ export class DevicesRepository {
           if (current.device_public_key.trim() !== input.devicePublicKey.trim()) {
             if (!input.allowPendingAlongsideTrusted) {
               throw new TrustedDeviceKeyConflictError();
+            }
+            const replaced = await replacePendingRowsForFingerprint(tx, {
+              userId: input.userId,
+              deviceFingerprint: input.deviceFingerprint,
+              devicePublicKey: input.devicePublicKey,
+              preserveSessionTokenHash: input.preserveSessionTokenHash,
+            });
+            // Replacing an existing pending row does not consume another slot,
+            // including when the account is already at the cap.
+            if (!replaced.keptSameKey && replaced.removed === 0) {
+              await assertCanInsertPendingDevice(tx, input.userId, {
+                trustedDeviceKnown: true,
+              });
             }
             const siblingId = generateEntityId();
             const sibling = await tx.query<{
@@ -1720,6 +1843,8 @@ export class DevicesRepository {
         };
       }
 
+      await assertCanInsertPendingDevice(tx, input.userId);
+
       const id = generateEntityId();
       const rows = await tx.query<{
         id: string;
@@ -1917,7 +2042,10 @@ export class DevicesRepository {
       };
       }));
     } catch (error) {
-      if (error instanceof TrustedDeviceKeyConflictError) {
+      if (
+        error instanceof TrustedDeviceKeyConflictError ||
+        error instanceof PendingDeviceLimitError
+      ) {
         throw error;
       }
       throw toUniqueError(error);

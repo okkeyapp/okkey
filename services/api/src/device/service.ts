@@ -10,7 +10,10 @@ import type {
   DeviceRecord,
   DevicesRepository,
 } from "../storage/repositories.ts";
-import { TrustedDeviceKeyConflictError } from "../storage/repositories.ts";
+import {
+  PendingDeviceLimitError,
+  TrustedDeviceKeyConflictError,
+} from "../storage/repositories.ts";
 import { assertOpaqueSplitKeyShare } from "../registration/split-key-transport-policy.ts";
 import {
   DEVICE_BIND_CHALLENGE_TTL_SECONDS,
@@ -94,8 +97,14 @@ export interface RegisterDeviceInput {
   /**
    * Unbound recovery session: add a pending device for a new public key when
    * this fingerprint is already trusted. Does not replace the trusted keys.
+   * A previous pending row for the same fingerprint is replaced.
    */
   recoveryPending?: boolean;
+  /**
+   * Caller access-token hash. Kept when a pending row for this fingerprint is
+   * replaced so the route can bind the session to the new row.
+   */
+  preserveSessionTokenHash?: string;
 }
 
 export interface RegisterDeviceResult {
@@ -283,6 +292,7 @@ export class DeviceService {
         requestIp: cleanString(requestIp, "unknown"),
         now: this.now().toISOString(),
         allowPendingAlongsideTrusted: input.recoveryPending === true,
+        preserveSessionTokenHash: input.preserveSessionTokenHash,
       });
 
       if (record.status === "blocked") {
@@ -317,6 +327,14 @@ export class DeviceService {
           "DEVICE_FINGERPRINT_ALREADY_TRUSTED",
           409,
           "trusted device keys cannot be replaced",
+        );
+      }
+      if (error instanceof PendingDeviceLimitError) {
+        throw new DeviceServiceError(
+          "DEVICE_PENDING_LIMIT",
+          409,
+          "pending device limit reached",
+          { limit: error.limit },
         );
       }
       if (error instanceof UniqueConstraintError) {

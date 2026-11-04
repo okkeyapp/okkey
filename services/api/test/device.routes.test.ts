@@ -279,6 +279,88 @@ test("POST /devices/register returns 409 when trusted fingerprint keys differ", 
   assert.equal(bound, false);
 });
 
+test("POST /devices/register returns DEVICE_PENDING_LIMIT", async () => {
+  let bound = false;
+  const res = await dispatch({
+    method: "POST",
+    url: "/devices/register",
+    headers: {
+      authorization: "Bearer tok-limit",
+      "x-user-id": "u1",
+      "x-forwarded-for": "10.0.0.1",
+    },
+    body: registerBody(),
+    deviceService: createDeviceServiceStub({
+      registerDevice: async () => {
+        throw new DeviceServiceError(
+          "DEVICE_PENDING_LIMIT",
+          409,
+          "pending device limit reached",
+          { limit: 20 },
+        );
+      },
+    }),
+    sessionService: createSessionServiceStub({
+      resolveAccessToken: async () => ({
+        userId: "u1",
+        deviceId: null,
+        scope: null,
+        tokenHash: "hash:tok-limit",
+      }),
+      bindAccessTokenDevice: async () => {
+        bound = true;
+        return true;
+      },
+    }),
+  });
+
+  assert.equal(res.statusCode, 409);
+  const payload = JSON.parse(res.body) as {
+    error: string;
+    message: string;
+    requestId: string;
+    details: { limit: number };
+  };
+  assert.equal(payload.error, "DEVICE_PENDING_LIMIT");
+  assert.equal(payload.message, "pending device limit reached");
+  assert.equal(payload.details.limit, 20);
+  assert.equal(typeof payload.requestId, "string");
+  assert.ok(payload.requestId.length > 0);
+  assert.equal(bound, false);
+});
+
+test("POST /devices/register forwards the caller token hash", async () => {
+  let seen: string | undefined;
+  const res = await dispatch({
+    method: "POST",
+    url: "/devices/register",
+    headers: {
+      authorization: "Bearer tok-register",
+      "x-user-id": "u1",
+    },
+    body: {
+      ...registerBody(),
+      metadata: { recovery_pending: true },
+    },
+    deviceService: createDeviceServiceStub({
+      registerDevice: async (_userId, _ip, input) => {
+        seen = input.preserveSessionTokenHash;
+        return { deviceId: "d-pending", status: "pending_approval", created: true };
+      },
+    }),
+    sessionService: createSessionServiceStub({
+      resolveAccessToken: async () => ({
+        userId: "u1",
+        deviceId: null,
+        scope: null,
+        tokenHash: "hash:tok-register",
+      }),
+    }),
+  });
+  assert.equal(res.statusCode, 200);
+  assert.equal(seen, "hash:tok-register");
+});
+
 test("POST /devices/:id/approve requires trusted approver headers", async () => {
   const res = await dispatch({
     method: "POST",

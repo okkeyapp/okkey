@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import {
   DevicesRepository,
   EventsRepository,
+  MAX_PENDING_DEVICES_PER_ACCOUNT,
+  PendingDeviceLimitError,
   SessionsRepository,
   TrustedDeviceKeyConflictError,
   ItemsRepository,
@@ -155,10 +157,11 @@ test("ItemsRepository.listByVault maps encrypted data", async () => {
 
 test("DevicesRepository.registerOrUpdate returns mapped device row", async () => {
   const db = new FakeDb();
-  // User lock, fingerprint lock, fingerprint miss, then INSERT returns the row.
+  // User lock, fingerprint lock, fingerprint miss, pending-cap check, then INSERT.
   db.enqueueResult([]);
   db.enqueueResult([]);
   db.enqueueResult([]);
+  db.enqueueResult([{ pending_n: "0", trusted_n: "0" }]);
   db.enqueueResult([makeDeviceRow({ status: "trusted" })]);
 
   const repo = new DevicesRepository(db);
@@ -183,12 +186,13 @@ test("DevicesRepository.registerOrUpdate returns mapped device row", async () =>
   assert.equal(result.sendApprovalEmail, false);
   assert.equal(result.ipFirst, "10.0.0.1");
   assert.equal(result.approvedBy, null);
-  assert.equal(db.queries.length, 4);
+  assert.equal(db.queries.length, 5);
   assert.deepEqual(db.queries[0].params, ["okkey-user-devices:u1"]);
   assert.match(db.queries[1].sql, /pg_advisory_xact_lock/);
   assert.match(db.queries[2].sql, /FROM devices/);
   assert.match(db.queries[2].sql, /device_fingerprint/);
-  assert.match(db.queries[3].sql, /INSERT INTO devices/);
+  assert.match(db.queries[3].sql, /COUNT\(\*\) FILTER \(WHERE status = 'pending'\)/);
+  assert.match(db.queries[4].sql, /INSERT INTO devices/);
 });
 
 test("DevicesRepository.registerOrUpdate emails only a newly pending device", async () => {
@@ -220,6 +224,7 @@ test("DevicesRepository.registerOrUpdate emails only a newly pending device", as
   created.enqueueResult([]);
   created.enqueueResult([]);
   created.enqueueResult([]);
+  created.enqueueResult([{ pending_n: "0", trusted_n: "1" }]);
   created.enqueueResult([makeDeviceRow({ status: "pending" })]);
   const createdRepo = new DevicesRepository(created);
   const first = await createdRepo.registerOrUpdate({
@@ -443,6 +448,8 @@ test("DevicesRepository.registerOrUpdate can add a pending sibling without repla
   db.enqueueResult([
     makeDeviceRow({ id: "d-trusted", status: "trusted", device_public_key: storedKey }),
   ]);
+  db.enqueueResult([]); // no previous pending row for this fingerprint
+  db.enqueueResult([{ pending_n: "0", trusted_n: "1" }]);
   db.enqueueResult([
     makeDeviceRow({
       id: "d-pending",
@@ -477,6 +484,193 @@ test("DevicesRepository.registerOrUpdate can add a pending sibling without repla
   assert.match(insert.sql, /'pending'/);
   assert.equal(
     db.queries.some((query) => /UPDATE devices/.test(query.sql)),
+    false,
+  );
+});
+
+test("DevicesRepository.registerOrUpdate replaces a pending sibling and revokes its sessions", async () => {
+  const storedKey = Buffer.from("original-pk").toString("base64");
+  const freshKey = Buffer.from("fresh-pk").toString("base64");
+  const db = new FakeDb();
+  db.enqueueResult([]);
+  db.enqueueResult([]);
+  db.enqueueResult([
+    makeDeviceRow({ id: "d-trusted", status: "trusted", device_public_key: storedKey }),
+  ]);
+  db.enqueueResult([
+    { id: "old-pending", device_public_key: Buffer.from("old-pk").toString("base64") },
+    { id: "other-pending", device_public_key: Buffer.from("other-pk").toString("base64") },
+  ]);
+  db.enqueueResult([]); // delete sessions
+  db.enqueueResult([]); // delete replaced pending rows
+  db.enqueueResult([
+    makeDeviceRow({
+      id: "d-new",
+      status: "pending",
+      device_public_key: freshKey,
+      inserted: true,
+    }),
+  ]);
+  const repo = new DevicesRepository(db);
+  const sibling = await repo.registerOrUpdate({
+    userId: "u1",
+    deviceFingerprint: "a".repeat(64),
+    deviceName: "Recovered browser",
+    devicePublicKey: freshKey,
+    deviceShare: new Uint8Array(32).fill(4),
+    platform: "web",
+    osName: "Linux",
+    osVersion: "6",
+    appVersion: "web",
+    clientType: "web_app",
+    userAgent: "ua",
+    requestIp: "10.0.0.8",
+    now: "2026-01-02T00:00:00.000Z",
+    allowPendingAlongsideTrusted: true,
+    preserveSessionTokenHash: "caller-hash",
+  });
+  assert.equal(sibling.id, "d-new");
+  assert.equal(sibling.status, "pending");
+  assert.equal(sibling.created, true);
+  const sessionDelete = db.queries.find((query) => /DELETE FROM sessions/.test(query.sql));
+  const deviceDelete = db.queries.find((query) => /DELETE FROM devices/.test(query.sql));
+  const insert = db.queries.find((query) => /INSERT INTO devices/.test(query.sql));
+  assert.ok(sessionDelete);
+  assert.ok(deviceDelete);
+  assert.ok(insert);
+  assert.match(sessionDelete.sql, /token_hash IS DISTINCT FROM/);
+  assert.deepEqual(sessionDelete.params, [["old-pending", "other-pending"], "caller-hash"]);
+  assert.deepEqual(deviceDelete.params?.[0], ["old-pending", "other-pending"]);
+  const sessionAt = db.queries.indexOf(sessionDelete);
+  const deviceAt = db.queries.indexOf(deviceDelete);
+  const insertAt = db.queries.indexOf(insert);
+  assert.ok(sessionAt < deviceAt);
+  assert.ok(deviceAt < insertAt);
+  assert.equal(
+    db.queries.some((query) => /COUNT\(\*\) FILTER/.test(query.sql)),
+    false,
+  );
+});
+
+test("DevicesRepository.registerOrUpdate keeps a pending sibling with the same public key", async () => {
+  const storedKey = Buffer.from("original-pk").toString("base64");
+  const freshKey = Buffer.from("fresh-pk").toString("base64");
+  const db = new FakeDb();
+  db.enqueueResult([]);
+  db.enqueueResult([]);
+  db.enqueueResult([
+    makeDeviceRow({ id: "d-trusted", status: "trusted", device_public_key: storedKey }),
+  ]);
+  db.enqueueResult([{ id: "d-pending", device_public_key: freshKey }]);
+  db.enqueueResult([
+    makeDeviceRow({
+      id: "d-pending",
+      status: "pending",
+      device_public_key: freshKey,
+      inserted: false,
+    }),
+  ]);
+  const repo = new DevicesRepository(db);
+  const sibling = await repo.registerOrUpdate({
+    userId: "u1",
+    deviceFingerprint: "a".repeat(64),
+    deviceName: "Recovered browser",
+    devicePublicKey: freshKey,
+    deviceShare: new Uint8Array(32).fill(4),
+    platform: "web",
+    osName: "Linux",
+    osVersion: "6",
+    appVersion: "web",
+    clientType: "web_app",
+    userAgent: "ua",
+    requestIp: "10.0.0.8",
+    now: "2026-01-02T00:00:00.000Z",
+    allowPendingAlongsideTrusted: true,
+    preserveSessionTokenHash: "caller-hash",
+  });
+  assert.equal(sibling.id, "d-pending");
+  assert.equal(sibling.created, false);
+  assert.equal(
+    db.queries.some((query) => /DELETE FROM (sessions|devices)/.test(query.sql)),
+    false,
+  );
+  assert.equal(
+    db.queries.some((query) => /COUNT\(\*\) FILTER/.test(query.sql)),
+    false,
+  );
+});
+
+test("DevicesRepository.registerOrUpdate rejects a new pending device at the account cap", async () => {
+  const db = new FakeDb();
+  db.enqueueResult([]);
+  db.enqueueResult([]);
+  db.enqueueResult([]);
+  db.enqueueResult([
+    { pending_n: String(MAX_PENDING_DEVICES_PER_ACCOUNT), trusted_n: "1" },
+  ]);
+  const repo = new DevicesRepository(db);
+  await assert.rejects(
+    () =>
+      repo.registerOrUpdate({
+        userId: "u1",
+        deviceFingerprint: "b".repeat(64),
+        deviceName: "Another browser",
+        devicePublicKey: Buffer.from("another-pk").toString("base64"),
+        deviceShare: new Uint8Array(32).fill(2),
+        platform: "web",
+        osName: "Linux",
+        osVersion: "6",
+        appVersion: "web",
+        clientType: "web_app",
+        userAgent: "ua",
+        requestIp: "10.0.0.8",
+        now: "2026-01-02T00:00:00.000Z",
+      }),
+    (error: unknown) =>
+      error instanceof PendingDeviceLimitError &&
+      error.limit === MAX_PENDING_DEVICES_PER_ACCOUNT,
+  );
+  assert.equal(
+    db.queries.some((query) => /INSERT INTO devices/.test(query.sql)),
+    false,
+  );
+});
+
+test("DevicesRepository.registerOrUpdate rejects a new pending sibling at the account cap", async () => {
+  const storedKey = Buffer.from("original-pk").toString("base64");
+  const db = new FakeDb();
+  db.enqueueResult([]);
+  db.enqueueResult([]);
+  db.enqueueResult([
+    makeDeviceRow({ id: "d-trusted", status: "trusted", device_public_key: storedKey }),
+  ]);
+  db.enqueueResult([]);
+  db.enqueueResult([
+    { pending_n: String(MAX_PENDING_DEVICES_PER_ACCOUNT), trusted_n: "1" },
+  ]);
+  const repo = new DevicesRepository(db);
+  await assert.rejects(
+    () =>
+      repo.registerOrUpdate({
+        userId: "u1",
+        deviceFingerprint: "a".repeat(64),
+        deviceName: "Recovered browser",
+        devicePublicKey: Buffer.from("fresh-pk").toString("base64"),
+        deviceShare: new Uint8Array(32).fill(4),
+        platform: "web",
+        osName: "Linux",
+        osVersion: "6",
+        appVersion: "web",
+        clientType: "web_app",
+        userAgent: "ua",
+        requestIp: "10.0.0.8",
+        now: "2026-01-02T00:00:00.000Z",
+        allowPendingAlongsideTrusted: true,
+      }),
+    (error: unknown) => error instanceof PendingDeviceLimitError,
+  );
+  assert.equal(
+    db.queries.some((query) => /INSERT INTO devices/.test(query.sql)),
     false,
   );
 });
