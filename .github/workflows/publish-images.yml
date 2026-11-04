@@ -184,6 +184,11 @@ jobs:
             echo "resolver did not emit image_version" >&2
             exit 1
           fi
+          # v9.9.9 must be stored as 9.9.9. A leading v is the git tag, not the OCI version.
+          if [[ "${IMAGE_VERSION}" == v[0-9]* ]]; then
+            echo "OCI version must not keep a leading v (got ${IMAGE_VERSION})" >&2
+            exit 1
+          fi
           if [[ ! "${IMAGE_CREATED}" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]]; then
             echo "image_created is not RFC 3339: ${IMAGE_CREATED}" >&2
             exit 1

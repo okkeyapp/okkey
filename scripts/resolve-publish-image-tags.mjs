@@ -62,6 +62,37 @@ export function assertDevChannelPublishRef(ctx) {
 }
 
 /**
+ * Drop one leading `v` from a release tag (`v9.9.9` → `9.9.9`, `v1.0.0-beta.2` → `1.0.0-beta.2`).
+ * Names that are not `v` plus a digit are unchanged (`dev`, `latest`).
+ * @param {string} name
+ * @returns {string}
+ */
+export function stripLeadingReleaseV(name) {
+  const raw = String(name || "");
+  const tag = raw.startsWith("refs/tags/") ? raw.slice("refs/tags/".length) : raw;
+  if (/^v\d/.test(tag)) return tag.slice(1);
+  return tag;
+}
+
+/**
+ * Git tag name when this publish is a tag push (`v9.9.9`), or null otherwise.
+ * `refs/tags/…` counts even when refType was not set.
+ * @param {ResolveContext} ctx
+ * @returns {string|null}
+ */
+function gitTagName(ctx) {
+  const ref = ctx.ref || "";
+  if (ctx.refType !== "tag" && !ref.startsWith("refs/tags/")) return null;
+  if (ctx.refName) {
+    return ctx.refName.startsWith("refs/tags/")
+      ? ctx.refName.slice("refs/tags/".length)
+      : ctx.refName;
+  }
+  if (ref.startsWith("refs/tags/")) return ref.slice("refs/tags/".length);
+  return "";
+}
+
+/**
  * @param {string} sha
  * @returns {string}
  */
@@ -87,7 +118,6 @@ export function releaseBranchVersion(refName) {
 export function tagsForImage(image, ctx) {
   const eventName = ctx.eventName;
   const ref = ctx.ref || "";
-  const refType = ctx.refType || "";
   const refName = ctx.refName || "";
 
   if (eventName === "pull_request") {
@@ -118,13 +148,14 @@ export function tagsForImage(image, ctx) {
     return [`${image}:${version}-candidate`, `${image}:${version}-${short}`];
   }
 
-  if (refType === "tag") {
-    const version = refName.startsWith("v") ? refName.slice(1) : refName;
+  const gitTag = gitTagName(ctx);
+  if (gitTag !== null) {
+    const version = stripLeadingReleaseV(gitTag);
     /** @type {string[]} */
     const tags = [`${image}:${version}`];
     // Clean SemVer vX.Y.Z only → rolling :X.Y / :X.
     // Pre-release (e.g. v1.0.0-beta.2) must NOT get :1.0 / :1 / :latest.
-    if (CLEAN_SEMVER_TAG.test(refName)) {
+    if (CLEAN_SEMVER_TAG.test(gitTag.startsWith("v") ? gitTag : `v${gitTag}`)) {
       const major = version.split(".")[0];
       const minorMajor = version.split(".").slice(0, 2).join(".");
       tags.push(`${image}:${minorMajor}`, `${image}:${major}`);
@@ -135,8 +166,10 @@ export function tagsForImage(image, ctx) {
   if (eventName === "workflow_dispatch") {
     assertDevChannelPublishRef(ctx);
     const dt = ctx.dispatchTag || "dev";
+    // Keep the floating tag `:dev`. A v-prefixed pin (`v9.9.9`) is published as `:9.9.9`.
+    const published = dt === "dev" ? "dev" : stripLeadingReleaseV(dt);
     /** @type {string[]} */
-    const tags = [`${image}:${dt}`];
+    const tags = [`${image}:${published}`];
     const wantLatest =
       ctx.dispatchLatest === true || ctx.dispatchLatest === "true";
     if (wantLatest && dt !== "latest") {
@@ -159,15 +192,13 @@ export function resolveImageVersion(ctx) {
   if (ctx.eventName === "pull_request") {
     return `pr-${ctx.prNumber}`;
   }
-  if (ctx.refType === "tag") {
-    const refName = ctx.refName || "";
-    return refName.startsWith("v") ? refName.slice(1) : refName;
-  }
+  const gitTag = gitTagName(ctx);
+  if (gitTag !== null) return stripLeadingReleaseV(gitTag);
   if (ctx.eventName === "workflow_dispatch") {
     assertDevChannelPublishRef(ctx);
     const dt = ctx.dispatchTag || "dev";
     if (dt === "dev") return DEV_CHANNEL_IMAGE_VERSION;
-    return dt;
+    return stripLeadingReleaseV(dt);
   }
   if (ctx.eventName === "push" && ctx.ref === "refs/heads/dev") {
     throw new Error(

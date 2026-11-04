@@ -185,11 +185,12 @@ need_cmd() {
 
 # Cosign keyless OIDC identity for Core publish workflow
 # (.github/workflows/publish-images.yml on okkeyapp/okkey).
-# Default: refs/heads/dev and refs/tags/v*. --allow-candidate adds
-# refs/heads/release/* and refs/heads/hotfix/*. An exported
+# Default: refs/heads/dev and refs/tags/v<semver> only. --allow-candidate adds
+# refs/heads/release/<name> and refs/heads/hotfix/<name>. Anchored with ^...$
+# because cosign matches the regexp as a substring. An exported
 # OKKEY_COSIGN_CERTIFICATE_IDENTITY_REGEXP replaces both.
-OKKEY_COSIGN_DEFAULT_IDENTITY_REGEXP='https://github.com/okkeyapp/okkey/\.github/workflows/publish-images\.yml@refs/(heads/dev|tags/v.+)'
-OKKEY_COSIGN_CANDIDATE_IDENTITY_REGEXP='https://github.com/okkeyapp/okkey/\.github/workflows/publish-images\.yml@refs/(heads/dev|tags/v.+|heads/release/.+|heads/hotfix/.+)'
+OKKEY_COSIGN_DEFAULT_IDENTITY_REGEXP='^https://github\.com/okkeyapp/okkey/\.github/workflows/publish-images\.yml@refs/(?:heads/dev|tags/v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?)$'
+OKKEY_COSIGN_CANDIDATE_IDENTITY_REGEXP='^https://github\.com/okkeyapp/okkey/\.github/workflows/publish-images\.yml@refs/(?:heads/dev|tags/v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?|heads/release/[0-9A-Za-z._-]+|heads/hotfix/[0-9A-Za-z._-]+)$'
 OKKEY_COSIGN_CERTIFICATE_OIDC_ISSUER="${OKKEY_COSIGN_CERTIFICATE_OIDC_ISSUER:-https://token.actions.githubusercontent.com}"
 
 # Resolve image ref used by compose for a service (env override → default GHCR).

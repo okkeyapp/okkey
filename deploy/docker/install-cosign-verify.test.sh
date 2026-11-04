@@ -46,8 +46,8 @@ up_line="$(grep -n '^run_compose \.env up -d$' "${INSTALL_SH}" | head -1 | cut -
 [[ "${verify_line}" -lt "${up_line}" ]] || fail "verify (line ${verify_line}) must run before compose up (line ${up_line})"
 
 # Expected keyless identity: this repo's publish-images workflow, GitHub Actions OIDC.
-EXPECTED_IDENTITY='https://github.com/okkeyapp/okkey/\.github/workflows/publish-images\.yml@refs/(heads/dev|tags/v.+)'
-CANDIDATE_IDENTITY='https://github.com/okkeyapp/okkey/\.github/workflows/publish-images\.yml@refs/(heads/dev|tags/v.+|heads/release/.+|heads/hotfix/.+)'
+EXPECTED_IDENTITY='^https://github\.com/okkeyapp/okkey/\.github/workflows/publish-images\.yml@refs/(?:heads/dev|tags/v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?)$'
+CANDIDATE_IDENTITY='^https://github\.com/okkeyapp/okkey/\.github/workflows/publish-images\.yml@refs/(?:heads/dev|tags/v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?|heads/release/[0-9A-Za-z._-]+|heads/hotfix/[0-9A-Za-z._-]+)$'
 EXPECTED_ISSUER='https://token.actions.githubusercontent.com'
 
 # run_install TAG WITH_COSIGN FAIL_COSIGN [ENV=value...] -- [script args...]
@@ -278,7 +278,7 @@ printf '%s\n' "${RUN_OUT}" | grep -Fq 'Signature verification stays on. This is 
 ${RUN_OUT}"
 printf '%s\n' "${RUN_COSIGN}" | grep -Fq -- "${CANDIDATE_IDENTITY}" || fail "candidate identity regexp missing
 ${RUN_COSIGN}"
-printf '%s\n' "${RUN_COSIGN}" | grep -Fq 'heads/hotfix/.+' || fail "candidate identity missing hotfix
+printf '%s\n' "${RUN_COSIGN}" | grep -Fq 'heads/hotfix/[0-9A-Za-z._-]+' || fail "candidate identity missing hotfix
 ${RUN_COSIGN}"
 
 # Process env opt-in, same verify path.

@@ -185,6 +185,47 @@ test("workflow_dispatch :latest only when push_latest=true", () => {
   ]);
 });
 
+test("v9.9.9 OCI version and image tag drop the leading v", () => {
+  const tagPush = {
+    eventName: "push",
+    refType: "tag",
+    refName: "v9.9.9",
+    ref: "refs/tags/v9.9.9",
+    sha: "abc1234567890",
+  };
+  assert.equal(resolveImageVersion(tagPush), "9.9.9");
+  assert.deepEqual(tagsForImage(IMAGE, tagPush), [
+    `${IMAGE}:9.9.9`,
+    `${IMAGE}:9.9`,
+    `${IMAGE}:9`,
+  ]);
+  // Tag pushes are recognized from refs/tags/ even when refType is omitted.
+  assert.equal(
+    resolveImageVersion({
+      eventName: "push",
+      ref: "refs/tags/v9.9.9",
+      refName: "v9.9.9",
+    }),
+    "9.9.9",
+  );
+  assert.equal(
+    resolveImageVersion({
+      eventName: "workflow_dispatch",
+      ref: "refs/heads/dev",
+      dispatchTag: "v9.9.9",
+    }),
+    "9.9.9",
+  );
+  assert.deepEqual(
+    tagsForImage(IMAGE, {
+      eventName: "workflow_dispatch",
+      ref: "refs/heads/dev",
+      dispatchTag: "v9.9.9",
+    }),
+    [`${IMAGE}:9.9.9`],
+  );
+});
+
 test("v1.0.0-beta.3 image version is SemVer without the leading v", () => {
   assert.equal(
     resolveImageVersion({

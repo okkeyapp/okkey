@@ -66,6 +66,7 @@ test(":dev is refused unless the workflow ref is refs/heads/dev", () => {
 test("created timestamp format is RFC 3339 UTC and version is required", () => {
   assert.equal(count(workflow, "date -u +%Y-%m-%dT%H:%M:%SZ"), 1);
   assert.match(workflow, /resolver did not emit image_version/);
+  assert.match(workflow, /OCI version must not keep a leading v/);
   assert.match(workflow, /missing OCI version, created, revision, or source/);
 });
 
