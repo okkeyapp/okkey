@@ -7,7 +7,10 @@ import {
 } from "../src/device/service.ts";
 import type { EmailTemplateService } from "../src/email/service.ts";
 import { UniqueConstraintError } from "../src/storage/errors.ts";
-import { TrustedDeviceKeyConflictError } from "../src/storage/repositories.ts";
+import {
+  PendingDeviceLimitError,
+  TrustedDeviceKeyConflictError,
+} from "../src/storage/repositories.ts";
 import type { DeviceApprovalState } from "../src/storage/repositories.ts";
 
 function createInput(overrides?: Partial<RegisterDeviceInput>): RegisterDeviceInput {
@@ -203,6 +206,48 @@ test("registerDevice recoveryPending keeps a pending sibling and does not claim"
   assert.equal(result.deviceId, "d-sibling");
   assert.equal(result.status, "pending_approval");
   assert.equal(result.created, true);
+});
+
+test("registerDevice maps the pending device cap to DEVICE_PENDING_LIMIT", async () => {
+  const service = createService({
+    registerOrUpdate: async () => {
+      throw new PendingDeviceLimitError(20);
+    },
+  });
+  await assert.rejects(
+    () =>
+      service.registerDevice(
+        "u1",
+        "127.0.0.1",
+        createInput({ recoveryPending: true }),
+      ),
+    (error: unknown) =>
+      error instanceof DeviceServiceError &&
+      error.code === "DEVICE_PENDING_LIMIT" &&
+      error.statusCode === 409 &&
+      error.message === "pending device limit reached" &&
+      error.details?.limit === 20,
+  );
+});
+
+test("registerDevice forwards the caller token hash", async () => {
+  let seen: string | undefined;
+  const service = createService({
+    registerOrUpdate: async (input: { preserveSessionTokenHash?: string }) => {
+      seen = input.preserveSessionTokenHash;
+      return {
+        ...createDeviceRecord({ id: "d-sibling", status: "pending" }),
+        sendApprovalEmail: false,
+        created: true,
+      };
+    },
+  });
+  await service.registerDevice(
+    "u1",
+    "127.0.0.1",
+    createInput({ recoveryPending: true, preserveSessionTokenHash: "caller-hash" }),
+  );
+  assert.equal(seen, "caller-hash");
 });
 
 test("registerDevice does not accept new keys for an existing trusted fingerprint", async () => {
