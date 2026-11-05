@@ -405,6 +405,12 @@ export function loadConfig(): ApiConfig {
     process.env.CRYPTO_ROLLOUT_MODE,
     deployEnv,
   );
+  // Fail closed: compat skips capability checks. Prod must not boot in that mode.
+  if (deployEnv === "prod" && cryptoRolloutMode === "compat") {
+    throw new Error(
+      "CRYPTO_ROLLOUT_MODE=compat is forbidden when DEPLOY_ENV=prod: compat allows every capability check. Set CRYPTO_ROLLOUT_MODE=strict (production default).",
+    );
+  }
   const cryptoRolloutEnabled = parseBoolean(process.env.CRYPTO_ROLLOUT_ENABLED, true);
   const cryptoRolloutState = parseCryptoRolloutState(process.env.CRYPTO_ROLLOUT_STATE);
   const cryptoRolloutStopWritePaths = parseCsvList(process.env.CRYPTO_ROLLOUT_STOP_WRITE_PATHS);
