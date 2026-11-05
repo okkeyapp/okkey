@@ -332,6 +332,7 @@ export {
   USER_IDENTITY_PRIVATE_BUNDLE_V2_LEN,
   USER_IDENTITY_ENCRYPTED_PRIVATE_MIN_PAYLOAD_BYTES,
   USER_IDENTITY_SK_AAD,
+  UnsupportedIdentityBundleError,
   encodeUserIdentityPrivateBundleV1,
   encodeUserIdentityPrivateBundleV2,
   decodeUserIdentityPrivateBundleV1,

@@ -118,6 +118,16 @@ test("POST /auth/register/complete returns 201", async () => {
   assert.equal(payload.device_status, "trusted");
 });
 
+test("POST /auth/register/complete requires an app that can send an ML-DSA identity key", async () => {
+  const body = validRegisterBody();
+  delete (body as { user_public_mldsa_key?: string }).user_public_mldsa_key;
+  const res = await dispatch({ body });
+  assert.equal(res.statusCode, 426);
+  const payload = JSON.parse(res.body) as { error: string; message: string };
+  assert.equal(payload.error, "CLIENT_UPGRADE_REQUIRED");
+  assert.match(payload.message, /Update the app/);
+});
+
 test("POST /auth/register/complete validates auth_state_id", async () => {
   const body = validRegisterBody();
   delete (body as { auth_state_id?: string }).auth_state_id;

@@ -300,8 +300,8 @@ export class SyncService {
       });
       if (!checked.ok) {
         throw new SyncServiceError(
-          SIGNATURE_INVALID,
-          SIGNATURE_STATUS_CODE,
+          checked.code,
+          checked.statusCode,
           checked.message,
           { context: "sync.append", eventType: input.eventType },
         );

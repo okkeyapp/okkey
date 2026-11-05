@@ -208,9 +208,11 @@ export default function SettingsVaultContent({ t, workspaceIds }: SettingsVaultC
             setChangeSubmitting(false);
             if (!result.ok) {
               setChangeError(
-                result.error === "wrong_old_password"
-                  ? t("web.settingsPopup.vault.changePassword.wrongOld")
-                  : t("web.settingsPopup.vault.changePassword.failed"),
+                result.error === "upgrade_required"
+                  ? t("clientUpgrade.body")
+                  : result.error === "wrong_old_password"
+                    ? t("web.settingsPopup.vault.changePassword.wrongOld")
+                    : t("web.settingsPopup.vault.changePassword.failed"),
               );
               return;
             }

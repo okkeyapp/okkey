@@ -64,7 +64,8 @@ test("new writes reject historical v1 envelopes while payload verification still
   });
   assert.equal(rejected.ok, false);
   if (!rejected.ok) {
-    assert.match(rejected.message, /historical hybrid signature/);
+    assert.equal(rejected.code, "CLIENT_UPGRADE_REQUIRED");
+    assert.equal(rejected.statusCode, 426);
   }
 });
 

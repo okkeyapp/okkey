@@ -9,6 +9,11 @@ import {
   type HybridSignatureEnvelopeV1,
   type HybridSignatureEnvelopeV2,
 } from "@okkey/crypto";
+import {
+  CLIENT_UPGRADE_REQUIRED,
+  CLIENT_UPGRADE_REQUIRED_MESSAGE,
+  CLIENT_UPGRADE_REQUIRED_STATUS,
+} from "./client-upgrade.ts";
 import { ensureApiCryptoWasm } from "./wasm-runtime.ts";
 
 export const SIGNATURE_REQUIRED = "SIGNATURE_REQUIRED";
@@ -142,7 +147,12 @@ export function verifyHybridSignatureForPayload(input: {
 
 export type HybridSignatureWriteCheck =
   | { ok: true; envelope: HybridSignatureEnvelopeV2 }
-  | { ok: false; message: string };
+  | {
+      ok: false;
+      code: typeof SIGNATURE_INVALID | typeof CLIENT_UPGRADE_REQUIRED;
+      statusCode: number;
+      message: string;
+    };
 
 /**
  * New writes accept only the v2 envelope. v1 stays verifiable through
@@ -160,16 +170,36 @@ export function checkHybridSignatureForNewWrite(input: {
   try {
     envelope = parseHybridSignatureEnvelope(input.signature, input.expectedContext);
   } catch (error) {
-    return { ok: false, message: (error as Error).message };
+    return {
+      ok: false,
+      code: SIGNATURE_INVALID,
+      statusCode: SIGNATURE_STATUS_CODE,
+      message: (error as Error).message,
+    };
   }
   if (envelope.version === HYBRID_SIGNATURE_ENVELOPE_VERSION_V1) {
-    return { ok: false, message: "historical hybrid signature scheme is not accepted for new writes" };
+    return {
+      ok: false,
+      code: CLIENT_UPGRADE_REQUIRED,
+      statusCode: CLIENT_UPGRADE_REQUIRED_STATUS,
+      message: CLIENT_UPGRADE_REQUIRED_MESSAGE,
+    };
   }
   if (!input.signerPqPublicKeyBase64 || envelope.signer_pq_public_key !== input.signerPqPublicKeyBase64) {
-    return { ok: false, message: "signature signer_pq_public_key mismatch" };
+    return {
+      ok: false,
+      code: SIGNATURE_INVALID,
+      statusCode: SIGNATURE_STATUS_CODE,
+      message: "signature signer_pq_public_key mismatch",
+    };
   }
   if (!input.signerMldsaPublicKeyBase64 || envelope.signer_mldsa_public_key !== input.signerMldsaPublicKeyBase64) {
-    return { ok: false, message: "signature signer_mldsa_public_key mismatch" };
+    return {
+      ok: false,
+      code: SIGNATURE_INVALID,
+      statusCode: SIGNATURE_STATUS_CODE,
+      message: "signature signer_mldsa_public_key mismatch",
+    };
   }
   const verified = verifyHybridSignatureForPayload({
     envelope,
@@ -177,7 +207,12 @@ export function checkHybridSignatureForNewWrite(input: {
     signerPublicKeyBase64: input.signerPublicKeyBase64,
   });
   if (!verified) {
-    return { ok: false, message: "signature verification failed" };
+    return {
+      ok: false,
+      code: SIGNATURE_INVALID,
+      statusCode: SIGNATURE_STATUS_CODE,
+      message: "signature verification failed",
+    };
   }
   return { ok: true, envelope };
 }

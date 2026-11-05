@@ -1240,8 +1240,8 @@ export class VaultSharingService {
     });
     if (!checked.ok) {
       throw new VaultSharingServiceError(
-        SIGNATURE_INVALID,
-        SIGNATURE_STATUS_CODE,
+        checked.code,
+        checked.statusCode,
         checked.message,
         { context: input.context },
       );

@@ -28,6 +28,16 @@ export const MLKEM768_DECAPSULATION_KEY_LEN = 2400;
 const BUNDLE_VERSION_V1 = 1;
 const BUNDLE_VERSION_V2 = 2;
 
+/** AEAD opened, but the plaintext is not a bundle version this client can read. */
+export class UnsupportedIdentityBundleError extends Error {
+  readonly code = "UNSUPPORTED_IDENTITY_BUNDLE";
+
+  constructor() {
+    super("unsupported user identity bundle version");
+    this.name = "UnsupportedIdentityBundleError";
+  }
+}
+
 /** ML-DSA-65 private seed length (FIPS 204 ξ). */
 export const MLDSA65_SEED_LEN = 32;
 /** ML-DSA-65 verifying key length. */
@@ -133,7 +143,7 @@ export function decodeUserIdentityPrivateBundle(plaintext: Uint8Array): DecodedU
     return { ...decoded, mldsa65Seed: null };
   }
   if (plaintext.length !== USER_IDENTITY_PRIVATE_BUNDLE_V2_LEN || plaintext[0] !== BUNDLE_VERSION_V2) {
-    throw new Error("unsupported user identity bundle version");
+    throw new UnsupportedIdentityBundleError();
   }
   const v1Prefix = plaintext.slice(0, USER_IDENTITY_PRIVATE_BUNDLE_V1_LEN);
   v1Prefix[0] = BUNDLE_VERSION_V1;

@@ -33,7 +33,8 @@ import {
   type WebLocale,
   type WebMessageValues,
 } from "@okkey/i18n";
-import { buildVaultUnlockAttestation, unwrapUnlockMaterialWithPin, wipeBytes } from "@okkey/crypto";
+import { buildVaultUnlockAttestation, UnsupportedIdentityBundleError, unwrapUnlockMaterialWithPin, wipeBytes } from "@okkey/crypto";
+import { isClientUpgradeRequiredError } from "@okkey/api";
 import { toast } from "sonner";
 
 import {
@@ -1007,6 +1008,10 @@ export function PopupApp() {
         }
         await finishUnlockWithSecrets(secrets);
       } catch (err: unknown) {
+        if (err instanceof UnsupportedIdentityBundleError || isClientUpgradeRequiredError(err)) {
+          toast.error(t("clientUpgrade.title"), { description: t("clientUpgrade.body") });
+          return;
+        }
         const message = err instanceof Error ? err.message : String(err);
         toast.error(t("unlock.errorTitle"), { description: message });
       } finally {

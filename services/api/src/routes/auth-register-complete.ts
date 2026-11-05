@@ -1,3 +1,8 @@
+import {
+  CLIENT_UPGRADE_REQUIRED,
+  CLIENT_UPGRADE_REQUIRED_MESSAGE,
+  CLIENT_UPGRADE_REQUIRED_STATUS,
+} from "../crypto/client-upgrade.ts";
 import { getHeader, json, readJsonBody, type RouteHandler } from "../http.ts";
 import { RegistrationError, type RegistrationService } from "../registration/service.ts";
 import type { EncryptedBlob } from "../crypto/encrypted-blob.ts";
@@ -157,10 +162,18 @@ export function createRegisterCompleteRoute(
       return;
     }
 
+    if (typeof body.user_public_mldsa_key !== "string" || !body.user_public_mldsa_key.trim()) {
+      json(
+        ctx.res,
+        CLIENT_UPGRADE_REQUIRED_STATUS,
+        errorPayload(CLIENT_UPGRADE_REQUIRED, CLIENT_UPGRADE_REQUIRED_MESSAGE, ctx.requestId),
+      );
+      return;
+    }
+
     const requiredString = [
       ["user_public_key", body.user_public_key],
       ["user_public_pq_key", body.user_public_pq_key],
-      ["user_public_mldsa_key", body.user_public_mldsa_key],
       ["encrypted_private_key", body.encrypted_private_key],
       ["server_key_share", body.server_key_share],
       ["password_kdf_salt", body.password_kdf_salt],

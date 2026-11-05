@@ -10,6 +10,7 @@ import {
   buildHybridSignatureEnvelopeV1,
   buildHybridSignatureEnvelopeV2,
   decryptUserIdentityFromEncryptedBlob,
+  UnsupportedIdentityBundleError,
   encodeUserIdentityPrivateBundleV1,
   encodeUserIdentityPrivateBundleV2,
   encryptUserIdentityPrivateBundle,
@@ -134,6 +135,21 @@ test("identity bundle v1 still decrypts and v2 round-trips the ML-DSA seed", asy
   const openedV2 = await decryptUserIdentityFromEncryptedBlob(vaultKey, Buffer.from(v2Blob).toString("base64"));
   assert.deepEqual(openedV2.mldsa65Seed, seed);
   assert.deepEqual(openedV2.mlkem768DecapsulationKey, mlkem);
+});
+
+test("an unknown identity bundle format is not reported as a bad vault key", async () => {
+  const vaultKey = new Uint8Array(32).fill(8);
+  const unknown = new Uint8Array(64);
+  unknown[0] = 9;
+  const encrypted = await encryptUserIdentityPrivateBundle(vaultKey, unknown);
+  await assert.rejects(
+    () => decryptUserIdentityFromEncryptedBlob(vaultKey, Buffer.from(encrypted).toString("base64")),
+    (error) => error instanceof UnsupportedIdentityBundleError,
+  );
+  await assert.rejects(
+    () => decryptUserIdentityFromEncryptedBlob(new Uint8Array(32).fill(1), Buffer.from(encrypted).toString("base64")),
+    (error) => !(error instanceof UnsupportedIdentityBundleError),
+  );
 });
 
 test("prepareMlDsaIdentityUpgrade signs a bundle an Ed25519 identity key can authenticate", async () => {
