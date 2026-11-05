@@ -44,6 +44,7 @@ async function call(
   url: string,
   token: string | null,
   body?: unknown,
+  request?: { ip?: string },
 ): Promise<{ status: number; json: Record<string, unknown> }> {
   const res = new MockResponse();
   const headers: Record<string, string> = {};
@@ -55,7 +56,7 @@ async function call(
       method,
       url,
       headers,
-      socket: { remoteAddress: "127.0.0.1" },
+      socket: { remoteAddress: request?.ip ?? "127.0.0.1" },
       ...(body !== undefined ? { body } : {}),
     } as IncomingMessage,
     res as unknown as ServerResponse,
@@ -65,8 +66,10 @@ async function call(
   return { status: res.statusCode, json };
 }
 
-async function boot(t: import("node:test").TestContext) {
-  const config = loadConfig();
+async function boot(
+  t: import("node:test").TestContext,
+  config: ReturnType<typeof loadConfig> = loadConfig(),
+) {
   const storage = await createIntegrationStorage(t, config);
   if (!storage) {
     return null;
@@ -141,6 +144,23 @@ async function boot(t: import("node:test").TestContext) {
     registrationService,
     handler: app.handler() as Handler,
   };
+}
+
+async function seedAuthState(
+  storage: { redis: { setWithTtl(key: string, value: string, ttlSeconds: number): Promise<void> } },
+  authStateId: string,
+  email: string,
+): Promise<void> {
+  await storage.redis.setWithTtl(
+    authStateRedisKey(authStateId),
+    JSON.stringify({
+      id: authStateId,
+      email,
+      userId: null,
+      createdAt: new Date().toISOString(),
+    }),
+    3600,
+  );
 }
 
 function registerBody(authStateId: string) {
@@ -483,3 +503,288 @@ test(
     assert.equal(res.json.error, "RECOVERY_BAD_REQUEST");
   },
 );
+
+test("integration: expired registration bootstrap is rejected on enroll and ack-export", async (t) => {
+  const env = await boot(t);
+  if (!env) {
+    return;
+  }
+  const { storage, handler } = env;
+  const email = `reg-bootstrap-ttl-${testEntityId()}@okkey.local`;
+  const authStateId = testEntityId();
+  t.after(async () => {
+    try {
+      await storage.redis.del(authStateRedisKey(authStateId));
+      await storage.redis.del(`registration:result:${authStateId}`);
+      await cleanupUserData(storage, email);
+    } finally {
+      await storage.close();
+    }
+  });
+  await seedAuthState(storage, authStateId, email);
+  const created = await call(
+    handler,
+    "POST",
+    "/auth/register/complete",
+    null,
+    registerBody(authStateId),
+  );
+  assert.equal(created.status, 201);
+  const token = created.json.access_token as string;
+  await storage.postgres.query(
+    `UPDATE sessions
+     SET expires_at = now() - interval '1 minute'
+     WHERE user_id IN (SELECT id FROM users WHERE email = $1)`,
+    [email],
+  );
+  const enroll = await call(handler, "POST", "/account/recovery/key/enroll", token, {
+    encryptedBlob: RECOVERY_BLOB,
+  });
+  assert.equal(enroll.status, 401);
+  assert.equal(enroll.json.error, "AUTH_REQUIRED");
+  const ack = await call(handler, "POST", "/account/recovery/key/ack-export", token, {});
+  assert.equal(ack.status, 401);
+  assert.equal(ack.json.error, "AUTH_REQUIRED");
+});
+
+test("integration: full-session re-ack overwrites exported_at and keeps the session", async (t) => {
+  const env = await boot(t);
+  if (!env) {
+    return;
+  }
+  const { storage, handler, sessionService } = env;
+  const email = `reg-bootstrap-reack-${testEntityId()}@okkey.local`;
+  const authStateId = testEntityId();
+  t.after(async () => {
+    try {
+      await storage.redis.del(authStateRedisKey(authStateId));
+      await storage.redis.del(`registration:result:${authStateId}`);
+      await cleanupUserData(storage, email);
+    } finally {
+      await storage.close();
+    }
+  });
+  await seedAuthState(storage, authStateId, email);
+  const created = await call(
+    handler,
+    "POST",
+    "/auth/register/complete",
+    null,
+    registerBody(authStateId),
+  );
+  assert.equal(created.status, 201);
+  const enrolled = await call(
+    handler,
+    "POST",
+    "/account/recovery/key/enroll",
+    created.json.access_token as string,
+    { encryptedBlob: RECOVERY_BLOB },
+  );
+  assert.equal(enrolled.status, 200);
+
+  const full = await sessionService.createSession(created.json.user_id as string, {
+    deviceId: created.json.device_id as string,
+  });
+  assert.equal(full.scope, null);
+  const first = await call(
+    handler,
+    "POST",
+    "/account/recovery/key/ack-export",
+    full.accessToken,
+    {},
+  );
+  assert.equal(first.status, 200);
+  const firstAt = (first.json.key as { exportedAt?: string }).exportedAt;
+  assert.equal(typeof firstAt, "string");
+
+  await storage.postgres.query(
+    `UPDATE user_vault_recovery_wrap
+     SET exported_at = '2020-01-01T00:00:00.000Z'
+     WHERE user_id IN (SELECT id FROM users WHERE email = $1)`,
+    [email],
+  );
+  const second = await call(
+    handler,
+    "POST",
+    "/account/recovery/key/ack-export",
+    full.accessToken,
+    {},
+  );
+  assert.equal(second.status, 200);
+  const secondAt = (second.json.key as { exportedAt?: string }).exportedAt;
+  assert.equal(typeof secondAt, "string");
+  assert.notEqual(secondAt, firstAt);
+  assert.equal(String(secondAt).startsWith("2020-"), false);
+
+  const stillThere = await call(
+    handler,
+    "POST",
+    "/account/recovery/key/ack-export",
+    full.accessToken,
+    {},
+  );
+  assert.equal(stillThere.status, 200);
+});
+
+test("integration: register/complete returns 429 when the per-IP bootstrap budget is spent", async (t) => {
+  const ip = "203.0.113.20";
+  const config = {
+    ...loadConfig(),
+    authRateLimitRegisterCompletePerIp: 1,
+    authRateLimitRegisterCompletePerEmail: 100_000,
+  };
+  const env = await boot(t, config);
+  if (!env) {
+    return;
+  }
+  const { storage, handler } = env;
+  const emailA = `reg-bootstrap-ip-a-${testEntityId()}@okkey.local`;
+  const emailB = `reg-bootstrap-ip-b-${testEntityId()}@okkey.local`;
+  const authA = testEntityId();
+  const authB = testEntityId();
+  t.after(async () => {
+    try {
+      await storage.redis.del(authStateRedisKey(authA));
+      await storage.redis.del(authStateRedisKey(authB));
+      await storage.redis.del(`registration:result:${authA}`);
+      await storage.redis.del(`registration:result:${authB}`);
+      await storage.redis.del(`auth:rate:register-complete:ip:${ip}`);
+      await storage.redis.del(`auth:rate:register-complete:email:${emailA}`);
+      await storage.redis.del(`auth:rate:register-complete:email:${emailB}`);
+      await cleanupUserData(storage, emailA);
+      await cleanupUserData(storage, emailB);
+    } finally {
+      await storage.close();
+    }
+  });
+  await seedAuthState(storage, authA, emailA);
+  await seedAuthState(storage, authB, emailB);
+  const first = await call(
+    handler,
+    "POST",
+    "/auth/register/complete",
+    null,
+    registerBody(authA),
+    { ip },
+  );
+  assert.equal(first.status, 201);
+  assert.equal(typeof first.json.access_token, "string");
+  const second = await call(
+    handler,
+    "POST",
+    "/auth/register/complete",
+    null,
+    registerBody(authB),
+    { ip },
+  );
+  assert.equal(second.status, 429);
+  assert.equal(second.json.error, "AUTH_RATE_LIMITED");
+});
+
+test("integration: register/complete returns 429 when the per-email bootstrap budget is spent", async (t) => {
+  const email = `reg-bootstrap-email-${testEntityId()}@okkey.local`;
+  const ipA = "203.0.113.21";
+  const ipB = "203.0.113.22";
+  const config = {
+    ...loadConfig(),
+    authRateLimitRegisterCompletePerIp: 100_000,
+    authRateLimitRegisterCompletePerEmail: 1,
+  };
+  const env = await boot(t, config);
+  if (!env) {
+    return;
+  }
+  const { storage, handler } = env;
+  const authA = testEntityId();
+  const authB = testEntityId();
+  t.after(async () => {
+    try {
+      await storage.redis.del(authStateRedisKey(authA));
+      await storage.redis.del(authStateRedisKey(authB));
+      await storage.redis.del(`registration:result:${authA}`);
+      await storage.redis.del(`registration:result:${authB}`);
+      await storage.redis.del(`auth:rate:register-complete:ip:${ipA}`);
+      await storage.redis.del(`auth:rate:register-complete:ip:${ipB}`);
+      await storage.redis.del(`auth:rate:register-complete:email:${email}`);
+      await cleanupUserData(storage, email);
+    } finally {
+      await storage.close();
+    }
+  });
+  await seedAuthState(storage, authA, email);
+  await seedAuthState(storage, authB, email);
+  const first = await call(
+    handler,
+    "POST",
+    "/auth/register/complete",
+    null,
+    registerBody(authA),
+    { ip: ipA },
+  );
+  assert.equal(first.status, 201);
+  const second = await call(
+    handler,
+    "POST",
+    "/auth/register/complete",
+    null,
+    registerBody(authB),
+    { ip: ipB },
+  );
+  assert.equal(second.status, 429);
+  assert.equal(second.json.error, "AUTH_RATE_LIMITED");
+});
+
+test("integration: register/complete replay does not consume the bootstrap rate limit", async (t) => {
+  const ip = "203.0.113.23";
+  const config = {
+    ...loadConfig(),
+    authRateLimitRegisterCompletePerIp: 1,
+    authRateLimitRegisterCompletePerEmail: 1,
+  };
+  const env = await boot(t, config);
+  if (!env) {
+    return;
+  }
+  const { storage, handler } = env;
+  const email = `reg-bootstrap-replay-limit-${testEntityId()}@okkey.local`;
+  const otherEmail = `reg-bootstrap-replay-other-${testEntityId()}@okkey.local`;
+  const authStateId = testEntityId();
+  const otherAuth = testEntityId();
+  t.after(async () => {
+    try {
+      await storage.redis.del(authStateRedisKey(authStateId));
+      await storage.redis.del(authStateRedisKey(otherAuth));
+      await storage.redis.del(`registration:result:${authStateId}`);
+      await storage.redis.del(`registration:result:${otherAuth}`);
+      await storage.redis.del(`auth:rate:register-complete:ip:${ip}`);
+      await storage.redis.del(`auth:rate:register-complete:email:${email}`);
+      await storage.redis.del(`auth:rate:register-complete:email:${otherEmail}`);
+      await cleanupUserData(storage, email);
+      await cleanupUserData(storage, otherEmail);
+    } finally {
+      await storage.close();
+    }
+  });
+  await seedAuthState(storage, authStateId, email);
+  await seedAuthState(storage, otherAuth, otherEmail);
+  const body = registerBody(authStateId);
+  const first = await call(handler, "POST", "/auth/register/complete", null, body, { ip });
+  assert.equal(first.status, 201);
+  assert.equal(typeof first.json.access_token, "string");
+
+  const replay = await call(handler, "POST", "/auth/register/complete", null, body, { ip });
+  assert.equal(replay.status, 201);
+  assert.equal(replay.json.user_id, first.json.user_id);
+  assert.equal("access_token" in replay.json, false);
+
+  const blocked = await call(
+    handler,
+    "POST",
+    "/auth/register/complete",
+    null,
+    registerBody(otherAuth),
+    { ip },
+  );
+  assert.equal(blocked.status, 429);
+  assert.equal(blocked.json.error, "AUTH_RATE_LIMITED");
+});
