@@ -47,12 +47,14 @@ function wireLoginMethods(methods: LoginMethodsResponse) {
       name: c.name,
       created_at: c.createdAt,
       last_used_at: c.lastUsedAt,
+      has_share_wrap: c.hasShareWrap,
     })),
     hardware_keys: methods.hardwareKeys.map((c) => ({
       id: c.id,
       name: c.name,
       created_at: c.createdAt,
       last_used_at: c.lastUsedAt,
+      has_share_wrap: c.hasShareWrap,
     })),
   };
 }

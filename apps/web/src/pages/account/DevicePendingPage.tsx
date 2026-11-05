@@ -12,7 +12,12 @@ import { Link, Navigate, useSearchParams } from "react-router-dom";
 
 import AccountUserBar from "../../components/account/AccountUserBar";
 import AppShellLayout from "../../components/app-shell/AppShellLayout";
-import { useAuthVault } from "../../auth/AuthVaultContext";
+import { useAuthenticatedCoreClient, useAuthVault } from "../../auth/AuthVaultContext";
+import {
+  approvePendingDeviceWithPasskey,
+  passkeyApprovalErrorMessageKey,
+  type PasskeyApprovalErrorCode,
+} from "../../auth/passkeyDeviceApproval";
 import { useLocale } from "../../locale/LocaleContext";
 import {
   ACCOUNT_LOCK_PATH,
@@ -46,7 +51,9 @@ export default function DevicePendingPage() {
     deviceNeedsRecovery,
     refreshDeviceTrust,
     retryDeviceRegistration,
+    currentDeviceId,
   } = useAuthVault();
+  const core = useAuthenticatedCoreClient();
 
   const redirect = useMemo(() => {
     const raw = searchParams.get("redirect");
@@ -54,6 +61,26 @@ export default function DevicePendingPage() {
   }, [searchParams]);
 
   const [retrying, setRetrying] = useState(false);
+  const [passkeyBusy, setPasskeyBusy] = useState(false);
+  const [passkeyError, setPasskeyError] = useState<PasskeyApprovalErrorCode | null>(null);
+
+  const onPasskeyApprove = async () => {
+    if (!core || !currentDeviceId || passkeyBusy) {
+      return;
+    }
+    setPasskeyBusy(true);
+    setPasskeyError(null);
+    try {
+      const result = await approvePendingDeviceWithPasskey(core, currentDeviceId);
+      if (!result.ok) {
+        setPasskeyError(result.code);
+        return;
+      }
+      await refreshDeviceTrust();
+    } finally {
+      setPasskeyBusy(false);
+    }
+  };
 
   const onRetry = async () => {
     if (retrying) {
@@ -152,7 +179,28 @@ export default function DevicePendingPage() {
           }
           approvers={approvers}
           actions={
-            showRetry ? (
+            mode === "pending" && currentDeviceId ? (
+              <div className="flex flex-col gap-3">
+                <Button
+                  type="button"
+                  disabled={passkeyBusy}
+                  onClick={() => void onPasskeyApprove()}
+                >
+                  {passkeyBusy ? <Spinner data-icon="inline-start" /> : null}
+                  {passkeyBusy
+                    ? t("web.devicePending.passkeyBusy")
+                    : t("web.devicePending.passkeyApprove")}
+                </Button>
+                {passkeyError ? (
+                  <p className="text-sm text-destructive" role="alert">
+                    {t(passkeyApprovalErrorMessageKey(passkeyError))}
+                  </p>
+                ) : null}
+                <Button type="button" variant="outline" asChild>
+                  <Link to={ACCOUNT_RESTORE_PATH}>{t("web.devicePending.recoveryRequiredCta")}</Link>
+                </Button>
+              </div>
+            ) : showRetry ? (
               <Button type="button" disabled={retrying} onClick={() => void onRetry()}>
                 {retrying ? <Spinner data-icon="inline-start" /> : null}
                 {t("web.devicePending.retry")}
