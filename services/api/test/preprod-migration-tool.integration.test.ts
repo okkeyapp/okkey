@@ -159,6 +159,8 @@ test("integration: CLI blocks execution in production environment", () => {
       INTERNAL_PREPROD_MIGRATION_ALLOW_PROD: "",
       // Avoid inheriting dev `.env` profile list (e.g. 1,2) which fails prod policy before prod guard runs.
       CRYPTO_ALLOWED_PROFILE_VERSIONS: "2",
+      // CI sets CRYPTO_ROLLOUT_MODE=compat; prod refuses that before the migration guard.
+      CRYPTO_ROLLOUT_MODE: "strict",
     },
     encoding: "utf8",
   });

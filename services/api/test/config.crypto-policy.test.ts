@@ -131,6 +131,69 @@ test("loadConfig parses explicit crypto rollout mode", () => {
   );
 });
 
+test("loadConfig rejects compat rollout mode in prod", () => {
+  withEnv(
+    {
+      DEPLOY_ENV: "prod",
+      CRYPTO_ROLLOUT_MODE: "compat",
+      CRYPTO_ALLOWED_PROFILE_VERSIONS: "",
+    },
+    () => {
+      assert.throws(
+        () => loadConfig(),
+        /CRYPTO_ROLLOUT_MODE=compat is forbidden when DEPLOY_ENV=prod/,
+      );
+    },
+  );
+
+  withEnv(
+    {
+      NODE_ENV: "production",
+      DEPLOY_ENV: "",
+      CRYPTO_ROLLOUT_MODE: "COMPAT",
+      CRYPTO_ALLOWED_PROFILE_VERSIONS: "",
+    },
+    () => {
+      assert.throws(
+        () => loadConfig(),
+        /CRYPTO_ROLLOUT_MODE=compat is forbidden when DEPLOY_ENV=prod/,
+      );
+    },
+  );
+});
+
+test("loadConfig accepts explicit strict rollout mode in prod", () => {
+  withEnv(
+    {
+      DEPLOY_ENV: "prod",
+      CRYPTO_ROLLOUT_MODE: "strict",
+      CRYPTO_ALLOWED_PROFILE_VERSIONS: "",
+    },
+    () => {
+      const cfg = loadConfig();
+      assert.equal(cfg.deployEnv, "prod");
+      assert.equal(cfg.cryptoRolloutMode, "strict");
+    },
+  );
+});
+
+test("loadConfig accepts compat rollout mode outside prod", () => {
+  for (const deployEnv of ["dev", "stage"] as const) {
+    withEnv(
+      {
+        DEPLOY_ENV: deployEnv,
+        CRYPTO_ROLLOUT_MODE: "compat",
+        CRYPTO_ALLOWED_PROFILE_VERSIONS: "",
+      },
+      () => {
+        const cfg = loadConfig();
+        assert.equal(cfg.deployEnv, deployEnv);
+        assert.equal(cfg.cryptoRolloutMode, "compat");
+      },
+    );
+  }
+});
+
 test("loadConfig parses rollout stop/resume gates", () => {
   withEnv(
     {
