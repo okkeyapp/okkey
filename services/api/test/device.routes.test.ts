@@ -1216,13 +1216,46 @@ test("POST /devices/register keeps recovery_pending true, false, and omitted beh
   assert.equal(metadataWins.statusCode, 200);
   assert.equal(metadataWins.input?.recoveryPending, false);
 
-  const claimSuppressesPending = await registerAndCapture({
+  const claimWithoutProof = await registerAndCapture({
     ...registerBody(),
     metadata: { claim_after_recovery: true, recovery_pending: true },
   });
-  assert.equal(claimSuppressesPending.statusCode, 200);
-  assert.equal(claimSuppressesPending.input?.claimAfterRecovery, true);
-  assert.equal(claimSuppressesPending.input?.recoveryPending, false);
+  assert.equal(claimWithoutProof.statusCode, 403);
+  assert.equal(claimWithoutProof.payload.error, "RECOVERY_CLAIM_REQUIRES_PROVED_DEVICE");
+  assert.equal(claimWithoutProof.input, undefined);
+
+  let provedInput: RegisterDeviceInput | undefined;
+  const claimAfterProof = await dispatch({
+    method: "POST",
+    url: "/devices/register",
+    headers: { authorization: "Bearer tok-proved" },
+    body: {
+      ...registerBody(),
+      metadata: { claim_after_recovery: true, recovery_pending: true },
+    },
+    deviceService: createDeviceServiceStub({
+      registerDevice: async (_userId, _ip, received) => {
+        provedInput = received;
+        return { deviceId: "d1", status: "trusted" };
+      },
+    }),
+    sessionService: createSessionServiceStub({
+      resolveAccessToken: async () => ({
+        userId: "u1",
+        deviceId: DEVICE_A,
+        scope: null,
+        tokenHash: "hash:tok-proved",
+        expiresAt: null,
+        recoveryProvedAt: "2026-01-01T00:00:00.000Z",
+        recoveryChallenge: null,
+        recoveryChallengeExpiresAt: null,
+      }),
+    }),
+  });
+  assert.equal(claimAfterProof.statusCode, 200);
+  assert.equal(provedInput?.claimAfterRecovery, true);
+  assert.equal(provedInput?.recoveryPending, false);
+  assert.equal(provedInput?.provedDeviceId, DEVICE_A);
 });
 
 test("POST /devices/register rejects non-boolean reclaim_sole_trusted and claim_after_recovery", async () => {

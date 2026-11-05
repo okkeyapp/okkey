@@ -1,3 +1,4 @@
+import { wipeBytes } from "@okkey/crypto";
 import type { WebMessageValues } from "@okkey/i18n";
 import type {
   AccountLoginMethodsResponseDto,
@@ -34,7 +35,13 @@ import {
   type AccountWebAuthnCapability,
   type AccountWebAuthnErrorCode,
 } from "../../auth/accountWebAuthnCapability";
-import { useAuthenticatedCoreClient } from "../../auth/AuthVaultContext";
+import { useAuthenticatedCoreClient, useAuthVault } from "../../auth/AuthVaultContext";
+import { readVaultBundle } from "../../auth/localVaultBundle";
+import { base64ToBytes } from "../../auth/base64";
+import {
+  establishPasskeyShareWrap,
+  passkeyWrapErrorMessageKey,
+} from "../../auth/passkeyDeviceApproval";
 import { SettingsRow } from "./SettingsRows";
 import { useSettingsPopupCacheEntry } from "./useSettingsPopupCache";
 
@@ -107,6 +114,7 @@ function capabilityBlockedCode(cap: AccountWebAuthnCapability | null): AccountWe
 
 export default function SettingsLoginContent({ t }: SettingsLoginContentProps) {
   const core = useAuthenticatedCoreClient();
+  const { userId, vaultUnlocked } = useAuthVault();
   const mapLoginError = useCallback(() => t("web.settingsLogin.error.load"), [t]);
   const ensureLogin = useCallback(async () => {
     if (!core) {
@@ -233,6 +241,51 @@ export default function SettingsLoginContent({ t }: SettingsLoginContentProps) {
       await applyMethods(next);
     } catch (err) {
       setError(messageForCode(mapAccountWebAuthnError(err)));
+    } finally {
+      setBusy(false);
+      setBusyAttachment(null);
+    }
+  }
+
+  async function allowPasskeyToApprove(credentialRowId: string) {
+    if (!core) {
+      return;
+    }
+    setBusy(true);
+    setBusyAttachment("platform");
+    setError(null);
+    setErrorAttachment("platform");
+    try {
+      if (!vaultUnlocked || !userId) {
+        setError(t(passkeyWrapErrorMessageKey("needs_unlock")));
+        return;
+      }
+      const shareB64 = readVaultBundle(userId)?.device_share_b64?.trim() ?? "";
+      if (!shareB64) {
+        setError(t(passkeyWrapErrorMessageKey("needs_unlock")));
+        return;
+      }
+      const deviceShare = base64ToBytes(shareB64);
+      let result: Awaited<ReturnType<typeof establishPasskeyShareWrap>>;
+      try {
+        result = await establishPasskeyShareWrap(core, {
+          credentialRowId,
+          deviceShare,
+        });
+      } finally {
+        wipeBytes(deviceShare);
+      }
+      if (!result.ok) {
+        setError(t(passkeyWrapErrorMessageKey(result.code)));
+        return;
+      }
+      const next = await core.getLoginMethods();
+      setMethods(next);
+      setError(null);
+      setErrorAttachment(null);
+      toast.success(t("web.settingsLogin.passkeyWrap.saved"));
+    } catch {
+      setError(t(passkeyWrapErrorMessageKey("failed")));
     } finally {
       setBusy(false);
       setBusyAttachment(null);
@@ -410,14 +463,29 @@ export default function SettingsLoginContent({ t }: SettingsLoginContentProps) {
           </Button>
         ) : null}
         {passkeys.map((cred) => (
-          <CredentialCard
-            key={cred.id}
-            credential={cred}
-            busy={busy}
-            showDelete
-            deleteLabel={t("web.settingsLogin.deleteCredential")}
-            onDelete={() => void deleteCredential(cred.id, "platform")}
-          />
+          <div key={cred.id} className="flex flex-col gap-2">
+            <CredentialCard
+              credential={cred}
+              busy={busy}
+              showDelete
+              deleteLabel={t("web.settingsLogin.deleteCredential")}
+              onDelete={() => void deleteCredential(cred.id, "platform")}
+            />
+            {cred.has_share_wrap ? (
+              <p className="text-sm text-muted-foreground">
+                {t("web.settingsLogin.passkeyWrap.ready")}
+              </p>
+            ) : null}
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full"
+              disabled={busy}
+              onClick={() => void allowPasskeyToApprove(cred.id)}
+            >
+              {t("web.settingsLogin.passkeyWrap.action")}
+            </Button>
+          </div>
         ))}
         {passkeys.length > 0 && passkeyReady ? (
           <Button
