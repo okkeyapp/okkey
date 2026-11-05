@@ -29,6 +29,7 @@ import { PlanQuotaExceededError } from "./storage-quota/service.ts";
 import { PgWorkspaceKeyStore } from "./workspace-key/store.ts";
 import { TwoFactorService } from "./two-factor/service.ts";
 import { WebAuthnService } from "./webauthn/service.ts";
+import { PasskeyDeviceApprovalService } from "./webauthn/passkey-device-approval.ts";
 import { WebAuthnCredentialsRepository } from "./webauthn/repository.ts";
 import { VaultUnlockBootstrapService } from "./account/vault-unlock-bootstrap.ts";
 import { VaultService } from "./vault/service.ts";
@@ -132,6 +133,13 @@ async function main(): Promise<void> {
     users: storage.repositories.users,
     authService,
     config,
+  });
+  const passkeyDeviceApprovalService = new PasskeyDeviceApprovalService({
+    redis: storage.redis,
+    credentials: storage.repositories.webauthnCredentials,
+    devices: storage.repositories.devices,
+    config,
+    log: logger,
   });
   const registrationService = new RegistrationService({
     authService,
@@ -413,6 +421,7 @@ async function main(): Promise<void> {
     extensionAuthService,
     twoFactorService,
     webauthnService,
+    passkeyDeviceApprovalService,
     capsuleService,
     attachmentService,
     itemFaviconService,
