@@ -2,7 +2,7 @@
  * One-time key for extension device-approval share delivery.
  * Private keys stay in extension storage until the server accepts receipt.
  */
-import { ApiRequestError, type CoreApiClient } from "@okkey/api";
+import type { CoreApiClient } from "@okkey/api";
 import {
   generateOneTimeDeliveryKeyPair,
   initCrypto,
@@ -19,6 +19,18 @@ import {
   writeShareDeliveryKey,
   writeShareDeliveryReapproval,
 } from "./storage.ts";
+
+/** Duck-typed so extension unit tests can load this file without `@okkey/api` dist. */
+function isMissingShareDeliveryError(err: unknown): boolean {
+  if (typeof err !== "object" || err === null) {
+    return false;
+  }
+  const candidate = err as { name?: unknown; status?: unknown };
+  return (
+    candidate.name === "ApiRequestError" &&
+    (candidate.status === 404 || candidate.status === 410)
+  );
+}
 
 function bytesToBase64(bytes: Uint8Array): string {
   let binary = "";
@@ -106,7 +118,7 @@ export async function claimExtensionShareDelivery(
   try {
     delivery = await core.getDeviceShareDelivery(deviceId);
   } catch (error: unknown) {
-    if (error instanceof ApiRequestError && (error.status === 404 || error.status === 410)) {
+    if (isMissingShareDeliveryError(error)) {
       return false;
     }
     throw error;
