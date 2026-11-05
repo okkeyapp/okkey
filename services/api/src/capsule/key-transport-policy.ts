@@ -1,18 +1,16 @@
 /**
  * Capsule guest key delivery.
  *
- * Active modes are still the URL fragment and explicit out_of_band.
- * Hybrid X25519+ML-KEM delivery is an extension point and is not selected:
- * anonymous guests have no identity key, and the product has not chosen
- * between an ephemeral recipient and a logged-in recipient.
- * Legacy `#key=` fragments remain the reader.
+ * The API accepts only `fragment` and `out_of_band`. New guest links carry a
+ * one-time ephemeral hybrid recipient inside that fragment. A legacy raw
+ * `#key=` value still unwraps on read. `hybrid_*` is not an API transport mode.
  */
 export type CapsuleKeyTransportMode = "fragment" | "out_of_band";
 
-/** Legacy fragment stays the active delivery. Hybrid recipient choice is open. */
-export const CAPSULE_GUEST_KEY_TRANSPORT_CLAIM = "legacy_fragment_hybrid_undecided" as const;
+/** New links use an ephemeral recipient inside the fragment. Legacy `#key=` still reads. */
+export const CAPSULE_GUEST_KEY_TRANSPORT_CLAIM = "ephemeral_recipient_fragment" as const;
 
-export const CAPSULE_GUEST_KEY_HYBRID_RECIPIENT = "undecided" as const;
+export const CAPSULE_GUEST_KEY_HYBRID_RECIPIENT = "ephemeral_v1" as const;
 
 export const CAPSULE_UNSAFE_KEY_TRANSPORT = "CAPSULE_UNSAFE_KEY_TRANSPORT";
 export const CAPSULE_UNSAFE_KEY_TRANSPORT_STATUS_CODE = 400;
@@ -23,7 +21,7 @@ const SAFE_CAPSULE_KEY_TRANSPORT_MODES = new Set<CapsuleKeyTransportMode>([
   "out_of_band",
 ]);
 
-/** Hybrid guest delivery is recognized and not active until a recipient is chosen. */
+/** Not an API transport mode. Guest hybrid material stays in the fragment. */
 const HYBRID_CAPSULE_KEY_TRANSPORT_NOT_SELECTED = new Set([
   "hybrid",
   "hybrid_ecc_pq_v1",
@@ -50,13 +48,13 @@ export function normalizeCapsuleKeyTransportMode(value: string | undefined): Cap
   }
   if (HYBRID_CAPSULE_KEY_TRANSPORT_NOT_SELECTED.has(mode.toLowerCase())) {
     throw new Error(
-      "capsule guest hybrid delivery is not selected; use fragment or out_of_band",
+      "guest hybrid material belongs in the link fragment; use fragment or out_of_band",
     );
   }
   throw new Error("unsafe key transport is not allowed; use fragment or out_of_band");
 }
 
-/** Active guest key transport modes. Hybrid delivery is not one of them yet. */
+/** API transport modes. Hybrid guest material is inside the fragment, not a mode. */
 export function listSafeCapsuleKeyTransportModes(): readonly CapsuleKeyTransportMode[] {
   return ["fragment", "out_of_band"];
 }

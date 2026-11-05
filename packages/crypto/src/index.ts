@@ -280,10 +280,8 @@ export {
 export {
   CAPSULE_GUEST_KEY_DELIVERY_LEGACY_FRAGMENT,
   CAPSULE_GUEST_KEY_HYBRID_RECIPIENT,
-  legacyFragmentGuestKeyDelivery,
-  activeCapsuleGuestKeyDelivery,
+  exportCapsuleGuestKeyFragment,
   readCapsuleGuestKey,
-  type CapsuleGuestKeyDelivery,
 } from "./capsule-guest-key.js";
 
 export { encryptVaultItemPayload, decryptVaultItemPayload } from "./vault-item.js";

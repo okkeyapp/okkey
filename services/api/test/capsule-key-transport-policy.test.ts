@@ -8,8 +8,8 @@ import {
   normalizeCapsuleKeyTransportMode,
 } from "../src/capsule/key-transport-policy.ts";
 
-test("q2-5: capsule guest key stays on the legacy fragment until hybrid delivery is chosen", () => {
-  assert.equal(CAPSULE_GUEST_KEY_TRANSPORT_CLAIM, "legacy_fragment_hybrid_undecided");
+test("capsule guest API mode stays fragment; ephemeral hybrid is inside the link", () => {
+  assert.equal(CAPSULE_GUEST_KEY_TRANSPORT_CLAIM, "ephemeral_recipient_fragment");
   assert.deepEqual(listSafeCapsuleKeyTransportModes(), ["fragment", "out_of_band"]);
   assert.equal(DEFAULT_CAPSULE_KEY_TRANSPORT_MODE, "out_of_band");
 });
@@ -32,7 +32,7 @@ test("normalizeCapsuleKeyTransportMode does not activate hybrid guest delivery",
   ]) {
     assert.throws(
       () => normalizeCapsuleKeyTransportMode(mode),
-      /hybrid delivery is not selected/u,
+      /link fragment/u,
       `expected reject for mode=${mode}`,
     );
   }

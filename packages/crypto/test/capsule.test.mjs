@@ -4,11 +4,11 @@ import { readFile } from "node:fs/promises";
 
 import {
   CAPSULE_GUEST_KEY_HYBRID_RECIPIENT,
-  activeCapsuleGuestKeyDelivery,
   decodeCapsuleKeyFragment,
   decryptCapsuleMetadata,
   encodeCapsuleKeyFragment,
   encryptCapsuleMetadata,
+  exportCapsuleGuestKeyFragment,
   generateCapsuleKey,
   initCrypto,
   readCapsuleGuestKey,
@@ -40,14 +40,17 @@ test("capsule fragment rejects malformed key material", () => {
   assert.throws(() => decodeCapsuleKeyFragment("not-a-key"), /invalid capsule key fragment/u);
 });
 
-test("guest key reader keeps the legacy fragment; hybrid recipient is not selected", async () => {
+test("new guest fragment is an ephemeral hybrid recipient; legacy #key= still opens", async () => {
   const capsuleKey = await generateCapsuleKey();
-  const fragment = encodeCapsuleKeyFragment(capsuleKey);
-  const delivery = activeCapsuleGuestKeyDelivery();
-  assert.equal(delivery.id, "legacy_fragment");
-  assert.equal(CAPSULE_GUEST_KEY_HYBRID_RECIPIENT, "undecided");
-  assert.deepEqual(readCapsuleGuestKey(fragment), capsuleKey);
-  assert.deepEqual(delivery.importMaterial(delivery.exportMaterial(capsuleKey)), capsuleKey);
+  const legacy = encodeCapsuleKeyFragment(capsuleKey);
+  const next = await exportCapsuleGuestKeyFragment(capsuleKey);
+
+  assert.equal(CAPSULE_GUEST_KEY_HYBRID_RECIPIENT, "ephemeral_v1");
+  assert.deepEqual(await readCapsuleGuestKey(legacy), capsuleKey);
+  assert.deepEqual(await readCapsuleGuestKey(next), capsuleKey);
+  assert.notEqual(next, legacy);
+  assert.doesNotMatch(next, /[+/=]/u);
+  assert.throws(() => decodeCapsuleKeyFragment(next), /invalid capsule key fragment/u);
 });
 
 test("owner wrap is VaultKey AEAD and the guest fragment still round-trips", async () => {
