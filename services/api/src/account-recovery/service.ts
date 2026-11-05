@@ -680,5 +680,12 @@ export class AccountRecoveryService {
         "encryptedBlob.meta.entity must be vault_key_recovery_wrap",
       );
     }
+    if (blob.meta.key_scope !== "account") {
+      throw new AccountRecoveryError(
+        "RECOVERY_BAD_REQUEST",
+        400,
+        "encryptedBlob.meta.key_scope must be account",
+      );
+    }
   }
 }

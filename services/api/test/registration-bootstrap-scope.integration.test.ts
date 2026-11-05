@@ -436,11 +436,9 @@ test("integration: registration_recovery without a device id is rejected", async
   assert.equal(res.json.error, "AUTH_REQUIRED");
 });
 
-// Contract: recovery wrap meta must set key_scope to "account"
-// (docs/api_contracts.md, POST /account/recovery/key/enroll). The route accepts any key_scope.
+// Recovery wrap meta.key_scope must be "account"; any other scope is RECOVERY_BAD_REQUEST.
 test(
   "integration: recovery enroll rejects a wrap whose key_scope is not account",
-  { todo: true },
   async (t) => {
     const env = await boot(t);
     if (!env) {
@@ -475,6 +473,7 @@ test(
       null,
       registerBody(authStateId),
     );
+    assert.equal(created.status, 201);
     const token = created.json.access_token as string;
     const res = await call(handler, "POST", "/account/recovery/key/enroll", token, {
       encryptedBlob: {
