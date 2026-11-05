@@ -305,6 +305,7 @@
   "web.devicePending.approversHeading": "Подтвердите с устройства",
   "web.devicePending.approversEmpty": "Пока нет доверенных устройств. Откройте Okkey на устройстве, которому вы уже доверяете.",
   "web.devicePending.waiting": "Ожидаем подтверждения…",
+  "web.devicePending.shareDeliveryReset": "Этот вход нужно подтвердить ещё раз. Попросите сделать это с доверенного устройства.",
   "web.devicePending.rejectedTitle": "Вход отклонён",
   "web.devicePending.rejectedBody": "Доверенное устройство отклонило этот вход. Можно запросить подтверждение снова.",
   "web.devicePending.recoveryRequiredBody": "У этого браузера больше нет ключа подписи устройства. Восстановите доступ с помощью ключа восстановления — для смены ключа нужно подтверждение с другого доверенного устройства.",

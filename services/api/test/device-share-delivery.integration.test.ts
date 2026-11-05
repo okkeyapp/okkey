@@ -473,3 +473,144 @@ test("integration: expired unclaimed share delivery envelope is deleted", async 
   assert.equal(row?.share_delivery_envelope, null);
   assert.equal(row?.status, "pending");
 });
+
+test("integration: empty approve of an already-trusted device is 409", async (t) => {
+  const config = loadConfig();
+  const storage = await createIntegrationStorage(t, config);
+  if (!storage) {
+    return;
+  }
+  await applyMigrations(storage);
+  const email = `share-delivery-trusted-${testEntityId()}@okkey.local`;
+  const deviceService = new DeviceService({
+    devices: storage.repositories.devices,
+    config,
+    users: storage.repositories.users,
+    log: createLoggerStub(),
+  });
+  const sessionService = new SessionService({
+    sessions: storage.repositories.sessions,
+    config,
+  });
+  const handler = createApiApp(config, createLoggerStub(), {
+    deviceService,
+    sessionService,
+  }).handler();
+
+  t.after(async () => {
+    try {
+      await cleanupUserData(storage, email);
+    } finally {
+      await storage.close();
+    }
+  });
+
+  const { userId } = await registerUser(storage, config, email);
+  const trustedRows = await storage.postgres.query<{ id: string }>(
+    `SELECT id FROM devices WHERE user_id = $1::bigint AND status = 'trusted'`,
+    [userId],
+  );
+  const trusted = trustedRows[0];
+  assert.ok(trusted);
+  const approver = await sessionService.createSession(userId);
+  await bindApprover(storage, sessionService, userId, approver.accessToken, trusted.id);
+
+  const again = await dispatch(
+    handler,
+    "POST",
+    `/devices/${trusted.id}/approve`,
+    approver.accessToken,
+    {},
+    { "x-device-id": trusted.id },
+  );
+  assert.equal(again.statusCode, 409);
+  assert.equal(again.json.error, "DEVICE_APPROVAL_ALREADY_RESOLVED");
+});
+
+test("integration: replacing one-time keys drops an unclaimed envelope", async (t) => {
+  const config = loadConfig();
+  const storage = await createIntegrationStorage(t, config);
+  if (!storage) {
+    return;
+  }
+  await applyMigrations(storage);
+  const email = `share-delivery-rotate-${testEntityId()}@okkey.local`;
+  const deviceService = new DeviceService({
+    devices: storage.repositories.devices,
+    config,
+    users: storage.repositories.users,
+    log: createLoggerStub(),
+  });
+  const sessionService = new SessionService({
+    sessions: storage.repositories.sessions,
+    config,
+  });
+  const handler = createApiApp(config, createLoggerStub(), {
+    deviceService,
+    sessionService,
+  }).handler();
+
+  t.after(async () => {
+    try {
+      await cleanupUserData(storage, email);
+    } finally {
+      await storage.close();
+    }
+  });
+
+  const { userId } = await registerUser(storage, config, email);
+  const trustedRows = await storage.postgres.query<{ id: string }>(
+    `SELECT id FROM devices WHERE user_id = $1::bigint AND status = 'trusted'`,
+    [userId],
+  );
+  const trusted = trustedRows[0];
+  assert.ok(trusted);
+  const approver = await sessionService.createSession(userId);
+  await bindApprover(storage, sessionService, userId, approver.accessToken, trusted.id);
+  const pendingSession = await sessionService.createSession(userId);
+  const registered = await dispatch(
+    handler,
+    "POST",
+    "/devices/register",
+    pendingSession.accessToken,
+    registerBody({
+      fingerprint: fingerprint("f"),
+      publicKey: "pending-rotate",
+      shareByte: 4,
+      oneTime: true,
+    }),
+  );
+  assert.equal(registered.statusCode, 200);
+  const pendingId = String(registered.json.device_id);
+  const approved = await dispatch(
+    handler,
+    "POST",
+    `/devices/${pendingId}/approve`,
+    approver.accessToken,
+    { share_delivery_envelope: hybridEnvelope() },
+    { "x-device-id": trusted.id },
+  );
+  assert.equal(approved.statusCode, 200);
+
+  const rotated = await dispatch(
+    handler,
+    "POST",
+    "/devices/register",
+    pendingSession.accessToken,
+    {
+      ...registerBody({
+        fingerprint: fingerprint("f"),
+        publicKey: "pending-rotate",
+        shareByte: 4,
+      }),
+      one_time_x25519_public_key: Buffer.alloc(32, 8).toString("base64"),
+      one_time_mlkem_public_key: Buffer.alloc(1184, 9).toString("base64"),
+    },
+  );
+  assert.equal(rotated.statusCode, 200);
+  assert.equal(rotated.json.status, "pending_approval");
+  const row = await deviceRow(storage, pendingId);
+  assert.equal(row?.status, "pending");
+  assert.equal(row?.share_delivery_envelope, null);
+  assert.deepEqual(Uint8Array.from(row!.one_time_x25519_public!), new Uint8Array(32).fill(8));
+});

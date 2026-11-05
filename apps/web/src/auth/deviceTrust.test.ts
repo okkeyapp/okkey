@@ -39,6 +39,10 @@ vi.mock("./deviceShareDelivery", () => ({
   prepareOneTimeShareDelivery: vi.fn(async () => null),
   acceptShareDeliveryIfPresent: vi.fn(async () => false),
   discardOneTimeShareDelivery: vi.fn(),
+  hasOneTimeShareDelivery: vi.fn(() => true),
+  markShareDeliveryReapproval: vi.fn(),
+  clearShareDeliveryReapproval: vi.fn(),
+  needsShareDeliveryReapproval: vi.fn(() => false),
 }));
 
 vi.mock("@okkey/crypto", () => ({

@@ -21,6 +21,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { useAuthenticatedCoreClient, useAuthVault } from "../../auth/AuthVaultContext";
+import { sealLocalShareForPendingDevice } from "../../auth/deviceShareDelivery";
 import { formatDeviceClientOs, formatDeviceTitle } from "../../auth/browserEnvironment";
 import { getOrCreateDeviceFingerprint } from "../../auth/deviceFingerprint";
 import ListScrollSentinel from "../../lists/ListScrollSentinel";
@@ -147,7 +148,7 @@ export { parseOsFromDeviceName } from "../../auth/browserEnvironment";
 
 export default function SettingsDevicesContent({ t }: SettingsDevicesContentProps) {
   const core = useAuthenticatedCoreClient();
-  const { currentDeviceId: sessionDeviceId } = useAuthVault();
+  const { currentDeviceId: sessionDeviceId, userId } = useAuthVault();
   const { locale } = useLocale();
   const fingerprint = useMemo(() => getOrCreateDeviceFingerprint(), []);
   const mapDevicesError = useCallback((err: unknown) => devicesErrorMessage(err, t), [t]);
@@ -326,12 +327,31 @@ export default function SettingsDevicesContent({ t }: SettingsDevicesContentProp
       ],
     });
     try {
-      await core.approveDevice(device.device_id, currentDeviceId);
+      const envelope = userId
+        ? await sealLocalShareForPendingDevice({
+            userId,
+            deviceId: device.device_id,
+            oneTimeX25519PublicKey: device.one_time_x25519_public_key,
+            oneTimeMlkemPublicKey: device.one_time_mlkem_public_key,
+          })
+        : null;
+      if (envelope) {
+        await core.approveDevice(device.device_id, currentDeviceId, envelope);
+      } else {
+        await core.approveDevice(device.device_id, currentDeviceId);
+      }
       toast.success(t("web.settingsPopup.devices.toast.trusted"));
       emitDevicesChanged();
       await load({ quiet: true });
     } catch (err) {
-      toast.error(devicesErrorMessage(err, t));
+      if (
+        err instanceof ApiRequestError &&
+        err.body.error === "DEVICE_APPROVAL_ALREADY_RESOLVED"
+      ) {
+        toast.success(t("web.settingsPopup.devices.toast.trusted"));
+      } else {
+        toast.error(devicesErrorMessage(err, t));
+      }
       await load({ quiet: true });
     } finally {
       setBusyId(null);

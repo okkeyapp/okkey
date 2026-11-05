@@ -18,6 +18,10 @@ export const STORAGE_KEYS = {
    * Prevents auto re-register → pending popup loop.
    */
   deviceDeferred: "okkey.extension.deviceDeferred",
+  /** One-time X25519 + ML-KEM private keys for share-B delivery. */
+  shareDeliveryKey: "okkey.extension.shareDeliveryKey",
+  /** Set when those keys were replaced and approval must be requested again. */
+  shareDeliveryReapproval: "okkey.extension.shareDeliveryReapproval",
   /** Survives logout / wipe — last chosen SaaS vs self-hosted server URL. */
   lastServer: "okkey.extension.lastServer",
 } as const;
@@ -153,6 +157,51 @@ export async function readDeviceId(): Promise<string | null> {
 
 export async function writeDeviceId(deviceId: string): Promise<void> {
   await storageArea().set({ [STORAGE_KEYS.deviceId]: deviceId });
+}
+
+export type ExtensionShareDeliveryKey = {
+  fingerprint: string;
+  x25519PrivateB64: string;
+  mlkemPrivateB64: string;
+};
+
+export async function readShareDeliveryKey(): Promise<ExtensionShareDeliveryKey | null> {
+  const result = await storageArea().get(STORAGE_KEYS.shareDeliveryKey);
+  const raw = result[STORAGE_KEYS.shareDeliveryKey] as Partial<ExtensionShareDeliveryKey> | undefined;
+  if (
+    !raw ||
+    typeof raw.fingerprint !== "string" ||
+    typeof raw.x25519PrivateB64 !== "string" ||
+    typeof raw.mlkemPrivateB64 !== "string"
+  ) {
+    return null;
+  }
+  return {
+    fingerprint: raw.fingerprint,
+    x25519PrivateB64: raw.x25519PrivateB64,
+    mlkemPrivateB64: raw.mlkemPrivateB64,
+  };
+}
+
+export async function writeShareDeliveryKey(value: ExtensionShareDeliveryKey): Promise<void> {
+  await storageArea().set({ [STORAGE_KEYS.shareDeliveryKey]: value });
+}
+
+export async function clearShareDeliveryKey(): Promise<void> {
+  await storageArea().remove(STORAGE_KEYS.shareDeliveryKey);
+}
+
+export async function readShareDeliveryReapproval(): Promise<boolean> {
+  const result = await storageArea().get(STORAGE_KEYS.shareDeliveryReapproval);
+  return result[STORAGE_KEYS.shareDeliveryReapproval] === true;
+}
+
+export async function writeShareDeliveryReapproval(value: boolean): Promise<void> {
+  if (!value) {
+    await storageArea().remove(STORAGE_KEYS.shareDeliveryReapproval);
+    return;
+  }
+  await storageArea().set({ [STORAGE_KEYS.shareDeliveryReapproval]: true });
 }
 
 export type ExtensionDeviceDeferred = {

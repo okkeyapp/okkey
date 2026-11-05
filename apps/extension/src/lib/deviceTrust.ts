@@ -4,6 +4,14 @@ import type { DeviceListItemDto, DeviceRegisterResponseDto } from "@okkey/types"
 
 import { isUnauthorizedApiError } from "./apiErrors.ts";
 import { parseBrowserEnvironment } from "./browserEnvironment.ts";
+import {
+  claimExtensionShareDelivery,
+  discardExtensionShareDeliveryKey,
+  extensionShareDeliveryReapproval,
+  hasExtensionShareDeliveryKey,
+  markExtensionShareDeliveryReapproval,
+  prepareExtensionShareDelivery,
+} from "./deviceShareDelivery.ts";
 import { randomDeviceShareB64 } from "./deviceKeyPlaceholders.ts";
 import {
   clearExtensionDeviceSigningKey,
@@ -40,6 +48,8 @@ export type DeviceTrustSnapshot = {
   errorMessage?: string;
   blockedUntil?: string | null;
   needsRecovery?: boolean;
+  /** Pending install lost its one-time key and must be approved again. */
+  needsShareReapproval?: boolean;
 };
 
 function bytesToBase64(bytes: Uint8Array): string {
@@ -132,20 +142,37 @@ async function ensureFingerprint(): Promise<string> {
 
 export async function registerExtensionDevice(
   core: CoreApiClient,
+  options?: {
+    prepareShareDelivery?: (
+      fingerprint: string,
+    ) => Promise<{ x25519PublicB64: string; mlkemPublicB64: string } | null>;
+    initCrypto?: () => Promise<void>;
+    signingPublicKey?: () => Promise<string>;
+  },
 ): Promise<DeviceRegisterResponseDto> {
   const env = parseBrowserEnvironment(
     typeof navigator !== "undefined" ? navigator.userAgent : "",
     { channel: "Extension" },
   );
   const fingerprint = await ensureFingerprint();
-  await initCrypto();
-  const devicePublicKeyB64 = await ensureExtensionDeviceSigningPublicKey();
+  await (options?.initCrypto ?? initCrypto)();
+  const devicePublicKeyB64 = options?.signingPublicKey
+    ? await options.signingPublicKey()
+    : await ensureExtensionDeviceSigningPublicKey();
 
   const locale = await loadExtensionLocale();
+  const prepare = options?.prepareShareDelivery ?? prepareExtensionShareDelivery;
+  const oneTime = await prepare(fingerprint).catch(() => null);
   const result = await core.registerDevice({
     device_public_key: devicePublicKeyB64,
     device_share: randomDeviceShareB64(),
     device_fingerprint: fingerprint,
+    ...(oneTime
+      ? {
+          one_time_x25519_public_key: oneTime.x25519PublicB64,
+          one_time_mlkem_public_key: oneTime.mlkemPublicB64,
+        }
+      : {}),
     device_name: env.deviceName,
     platform: env.platform,
     os_name: env.osName,
@@ -161,6 +188,9 @@ export async function registerExtensionDevice(
   });
   await writeDeviceId(result.device_id);
   await clearDeviceDeferred();
+  if (result.status === "trusted") {
+    await discardExtensionShareDeliveryKey(fingerprint);
+  }
   return result;
 }
 
@@ -245,6 +275,7 @@ export async function resolveExtensionDeviceTrust(
   const trustedMatch = listed.devices.find((device) => fingerprintMatch(device, fingerprint));
 
   if (trustedMatch) {
+    await discardExtensionShareDeliveryKey(fingerprint);
     if (!(await hasExtensionDeviceSigningKey())) {
       const shareB64 = options?.deviceShareB64?.trim() ?? "";
       if (shareB64) {
@@ -300,6 +331,24 @@ export async function resolveExtensionDeviceTrust(
 
   const pendingMatch = listed.pending.find((device) => fingerprintMatch(device, fingerprint));
   if (pendingMatch) {
+    const rotated = await rotateLostExtensionShareDeliveryKey(core, fingerprint, pendingMatch);
+    if (rotated) {
+      await writeDeviceId(pendingMatch.device_id);
+      return {
+        status: "pending",
+        deviceId: pendingMatch.device_id,
+        approverDevices: listed.devices,
+        needsShareReapproval: true,
+      };
+    }
+    if (await claimExtensionShareDelivery(core, fingerprint, pendingMatch.device_id).catch(() => false)) {
+      return {
+        status: "trusted",
+        deviceId: pendingMatch.device_id,
+        approverDevices: listed.devices,
+      };
+    }
+    const needsShareReapproval = await extensionShareDeliveryReapproval();
     if (!(await hasExtensionDeviceSigningKey())) {
       const shareB64 = options?.deviceShareB64?.trim() ?? "";
       if (shareB64) {
@@ -311,6 +360,7 @@ export async function resolveExtensionDeviceTrust(
             status: "pending",
             deviceId: pendingMatch.device_id,
             approverDevices: listed.devices,
+            needsShareReapproval,
           };
         } catch (error: unknown) {
           await writeDeviceId(pendingMatch.device_id);
@@ -338,6 +388,7 @@ export async function resolveExtensionDeviceTrust(
         status: "pending",
         deviceId: pendingMatch.device_id,
         approverDevices: listed.devices,
+        needsShareReapproval,
       };
     } catch (error: unknown) {
       await writeDeviceId(pendingMatch.device_id);
@@ -457,6 +508,27 @@ export async function probeExtensionDeviceTrusted(
   return "untrusted";
 }
 
+async function rotateLostExtensionShareDeliveryKey(
+  core: CoreApiClient,
+  fingerprint: string,
+  pending: DeviceListItemDto,
+): Promise<boolean> {
+  if (!pending.one_time_x25519_public_key || !pending.one_time_mlkem_public_key) {
+    return false;
+  }
+  if (await hasExtensionShareDeliveryKey(fingerprint)) {
+    return false;
+  }
+  try {
+    await registerExtensionDevice(core);
+    await markExtensionShareDeliveryReapproval();
+    return true;
+  } catch {
+    await discardExtensionShareDeliveryKey(fingerprint);
+    return false;
+  }
+}
+
 export async function pollExtensionDeviceTrust(
   core: CoreApiClient,
   pendingDeviceId: string | null,
@@ -486,8 +558,50 @@ export async function pollExtensionDeviceTrust(
     }
   }
 
+  const pendingForDelivery =
+    listed.pending.find((device) => fingerprintMatch(device, fingerprint)) ??
+    (pendingDeviceId
+      ? listed.pending.find((device) => device.device_id === pendingDeviceId)
+      : undefined);
+  if (pendingForDelivery) {
+    const rotated = await rotateLostExtensionShareDeliveryKey(
+      core,
+      fingerprint,
+      pendingForDelivery,
+    );
+    if (rotated) {
+      await clearExtensionSessionArea();
+      return {
+        status: "pending",
+        deviceId: pendingForDelivery.device_id,
+        approverDevices: listed.devices,
+        needsShareReapproval: true,
+      };
+    }
+    if (
+      await claimExtensionShareDelivery(core, fingerprint, pendingForDelivery.device_id).catch(
+        () => false,
+      )
+    ) {
+      const refreshed = await core.listDevices(fingerprint);
+      const trustedAfter = refreshed.devices.find((device) =>
+        fingerprintMatch(device, fingerprint),
+      );
+      if (trustedAfter) {
+        await writeDeviceId(trustedAfter.device_id);
+        await clearDeviceDeferred();
+        return {
+          status: "trusted",
+          deviceId: trustedAfter.device_id,
+          approverDevices: refreshed.devices,
+        };
+      }
+    }
+  }
+
   const trustedMatch = listed.devices.find((device) => fingerprintMatch(device, fingerprint));
   if (trustedMatch) {
+    await discardExtensionShareDeliveryKey(fingerprint);
     await writeDeviceId(trustedMatch.device_id);
     await clearDeviceDeferred();
     return {
@@ -512,6 +626,7 @@ export async function pollExtensionDeviceTrust(
       status: "pending",
       deviceId: pendingMatch.device_id,
       approverDevices: listed.devices,
+      needsShareReapproval: await extensionShareDeliveryReapproval(),
     };
   }
 

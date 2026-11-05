@@ -877,10 +877,11 @@ export class DeviceService {
     }
 
     if (action === "approve" && result.kind === "already_trusted") {
-      return {
-        deviceId: result.device.id,
-        status: "trusted",
-      };
+      throw new DeviceServiceError(
+        "DEVICE_APPROVAL_ALREADY_RESOLVED",
+        409,
+        "device approval already resolved",
+      );
     }
     if (action === "reject" && result.kind === "already_revoked") {
       return {

@@ -3226,7 +3226,11 @@ export class DevicesRepository {
         UPDATE devices
         SET
           one_time_x25519_public = $3,
-          one_time_mlkem_public = $4
+          one_time_mlkem_public = $4,
+          share_delivery_envelope = NULL,
+          share_delivery_expires_at = NULL,
+          approved_by = NULL,
+          approved_at = NULL
         WHERE id = $1::bigint
           AND user_id = $2::bigint
           AND status = 'pending'

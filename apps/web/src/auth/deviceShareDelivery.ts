@@ -7,13 +7,16 @@ import {
   generateOneTimeDeliveryKeyPair,
   initCrypto,
   openDeviceShareDelivery,
+  sealDeviceShareForOneTimeKey,
   wipeBytes,
   wipeOneTimeDeliveryPrivateKeys,
 } from "@okkey/crypto";
 
 import { base64ToBytes, bytesToBase64 } from "./base64";
+import { readVaultBundle } from "./localVaultBundle";
 
 const STORAGE_KEY = "okkey.device.share_delivery_keypair";
+const REAPPROVAL_KEY = "okkey.device.share_delivery_reapproval";
 
 interface StoredOneTimeDeliveryKey {
   fingerprint: string;
@@ -53,6 +56,32 @@ function readStored(): StoredOneTimeDeliveryKey | null {
   }
 }
 
+export function hasOneTimeShareDelivery(fingerprint: string): boolean {
+  const stored = readStored();
+  return Boolean(stored && stored.fingerprint === fingerprint);
+}
+
+export function markShareDeliveryReapproval(): void {
+  if (typeof localStorage === "undefined") {
+    return;
+  }
+  localStorage.setItem(REAPPROVAL_KEY, "1");
+}
+
+export function clearShareDeliveryReapproval(): void {
+  if (typeof localStorage === "undefined") {
+    return;
+  }
+  localStorage.removeItem(REAPPROVAL_KEY);
+}
+
+export function needsShareDeliveryReapproval(): boolean {
+  if (typeof localStorage === "undefined") {
+    return false;
+  }
+  return localStorage.getItem(REAPPROVAL_KEY) === "1";
+}
+
 /** Delete the one-time private key. Safe to call when nothing is stored. */
 export function discardOneTimeShareDelivery(fingerprint?: string): void {
   const stored = readStored();
@@ -67,6 +96,37 @@ export function discardOneTimeShareDelivery(fingerprint?: string): void {
   wipeOneTimeDeliveryPrivateKeys({ x25519PrivateKey, mlkemPrivateKey });
   if (typeof localStorage !== "undefined") {
     localStorage.removeItem(STORAGE_KEY);
+  }
+}
+
+/** Seal this browser's share B when the pending device published a one-time key. */
+export async function sealLocalShareForPendingDevice(input: {
+  userId: string;
+  deviceId: string;
+  oneTimeX25519PublicKey?: string;
+  oneTimeMlkemPublicKey?: string;
+}): Promise<string | null> {
+  const x25519 = input.oneTimeX25519PublicKey?.trim() ?? "";
+  const mlkem = input.oneTimeMlkemPublicKey?.trim() ?? "";
+  if (!x25519 || !mlkem) {
+    return null;
+  }
+  const shareB64 = readVaultBundle(input.userId)?.device_share_b64?.trim() ?? "";
+  if (!shareB64) {
+    return null;
+  }
+  await initCrypto();
+  const share = base64ToBytes(shareB64);
+  try {
+    const envelope = await sealDeviceShareForOneTimeKey({
+      deviceShare: share,
+      recipientX25519PublicKey: base64ToBytes(x25519),
+      recipientMlkemPublicKey: base64ToBytes(mlkem),
+      deviceId: input.deviceId,
+    });
+    return bytesToBase64(envelope);
+  } finally {
+    wipeBytes(share);
   }
 }
 
@@ -129,6 +189,7 @@ export async function acceptShareDeliveryIfPresent(
     });
     await core.confirmDeviceShareDelivery(deviceId, bytesToBase64(share));
     discardOneTimeShareDelivery(fingerprint);
+    clearShareDeliveryReapproval();
     return true;
   } finally {
     wipeBytes(x25519PrivateKey);
