@@ -1601,12 +1601,18 @@ export interface DeviceListItemDto {
   /** Set on a pending device that can receive share B in a one-time hybrid envelope. */
   one_time_x25519_public_key?: string;
   one_time_mlkem_public_key?: string;
+  /** Base64 Ed25519 public key for a framed share-B wrap. Null for legacy 32-byte shares. */
+  share_wrap_ed25519_public_key?: string | null;
+  /** Base64 ML-KEM-768 encapsulation key for a framed share-B wrap. */
+  share_wrap_pq_public_key?: string | null;
 }
 
 /** `POST /devices/:deviceId/approve` when the pending device published a one-time key. */
 export interface DeviceApproveRequestDto {
   /** Base64 hybrid envelope of the approver's 32-byte share B. Omit to use the deprecated copy. */
   share_delivery_envelope?: string;
+  /** Base64 share B to store on the pending device instead of copying the approver row. */
+  device_share?: string;
 }
 
 /** `GET /devices/:deviceId/share-delivery` success body. */

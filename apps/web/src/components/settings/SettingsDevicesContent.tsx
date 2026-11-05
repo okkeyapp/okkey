@@ -21,7 +21,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { useAuthenticatedCoreClient, useAuthVault } from "../../auth/AuthVaultContext";
+import { replacementDeviceShareForApproval } from "../../auth/approveDeviceShare";
 import { sealLocalShareForPendingDevice } from "../../auth/deviceShareDelivery";
+import { readVaultBundle } from "../../auth/localVaultBundle";
 import { formatDeviceClientOs, formatDeviceTitle } from "../../auth/browserEnvironment";
 import { getOrCreateDeviceFingerprint } from "../../auth/deviceFingerprint";
 import ListScrollSentinel from "../../lists/ListScrollSentinel";
@@ -327,6 +329,7 @@ export default function SettingsDevicesContent({ t }: SettingsDevicesContentProp
       ],
     });
     try {
+      const bundle = userId ? readVaultBundle(userId) : null;
       const envelope = userId
         ? await sealLocalShareForPendingDevice({
             userId,
@@ -335,11 +338,15 @@ export default function SettingsDevicesContent({ t }: SettingsDevicesContentProp
             oneTimeMlkemPublicKey: device.one_time_mlkem_public_key,
           })
         : null;
-      if (envelope) {
-        await core.approveDevice(device.device_id, currentDeviceId, envelope);
-      } else {
-        await core.approveDevice(device.device_id, currentDeviceId);
-      }
+      const deviceShareB64 =
+        !envelope && bundle && userId
+          ? await replacementDeviceShareForApproval({
+              userId,
+              localShareB64: bundle.device_share_b64,
+              pending: device,
+            })
+          : undefined;
+      await core.approveDevice(device.device_id, currentDeviceId, envelope ?? undefined, deviceShareB64);
       toast.success(t("web.settingsPopup.devices.toast.trusted"));
       emitDevicesChanged();
       await load({ quiet: true });

@@ -7,6 +7,7 @@ import {
   generateOneTimeDeliveryKeyPair,
   initCrypto,
   openDeviceShareDelivery,
+  openStoredSplitKeyShareB,
   sealDeviceShareForOneTimeKey,
   wipeBytes,
   wipeOneTimeDeliveryPrivateKeys,
@@ -14,6 +15,7 @@ import {
 
 import { base64ToBytes, bytesToBase64 } from "./base64";
 import { readVaultBundle } from "./localVaultBundle";
+import { loadSplitKeyShareWrapKey } from "@okkey/vault";
 
 const STORAGE_KEY = "okkey.device.share_delivery_keypair";
 const REAPPROVAL_KEY = "okkey.device.share_delivery_reapproval";
@@ -116,7 +118,13 @@ export async function sealLocalShareForPendingDevice(input: {
     return null;
   }
   await initCrypto();
-  const share = base64ToBytes(shareB64);
+  const stored = base64ToBytes(shareB64);
+  const keys = await loadSplitKeyShareWrapKey(input.userId);
+  const share = await openStoredSplitKeyShareB({
+    stored,
+    recipientEd25519Seed: keys?.ed25519Seed,
+    recipientMlkemDecapsulationKey: keys?.mlkemDecapsulationKey,
+  });
   try {
     const envelope = await sealDeviceShareForOneTimeKey({
       deviceShare: share,
@@ -126,6 +134,7 @@ export async function sealLocalShareForPendingDevice(input: {
     });
     return bytesToBase64(envelope);
   } finally {
+    wipeBytes(stored);
     wipeBytes(share);
   }
 }

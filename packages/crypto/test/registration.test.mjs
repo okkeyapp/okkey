@@ -13,14 +13,14 @@ import {
 const wasmBytes = await readFile(new URL("../dist/okkey_crypto_engine_bg.wasm", import.meta.url));
 await initCrypto({ module_or_path: wasmBytes });
 
-test("q2-6: registration split-key shares are opaque 32-byte (not hybrid KEM)", async () => {
+test("registration seals share B and still reconstructs VaultKey from the raw term", async () => {
   const password = new TextEncoder().encode("q2-6-split-key-test-password");
   const material = await buildRegistrationCryptoArtifacts(password);
 
   assert.equal(material.serverKeyShare.length, 32);
   assert.equal(material.deviceShare.length, 32);
   assert.equal(material.vaultKey.length, 32);
-  // PQ identity is separate from share-B transport.
+  assert.equal(material.wrappedDeviceShare.length > 32, true);
   assert.ok(material.userPublicPqKey.length > 32);
 
   const recovered = await reconstructVaultKeyWithMasterPassword({

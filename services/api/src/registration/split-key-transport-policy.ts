@@ -1,32 +1,29 @@
 /**
- * Q-Day #2 / q2-6 product decision (out-of-scope):
- * Split-key A⊕B⊕C shares (incl. new-device share B) are opaque 32-byte local
- * material. They are **not** hybrid ECC+PQ KEM envelopes. PQ applies to user
- * identity keys at registration, not to share-B transport. Do not add hybrid_*
- * wrap of share B without a product override and claim-map update
- * (docs/scheme sync = q2-7).
+ * Split-key share transport.
+ *
+ * Share A stays 32 opaque bytes. Share B new writes are a hybrid
+ * X25519 + ML-KEM-768 envelope (`hybrid_ecc_pq_v1`) framed for a device
+ * wrap key. Readers still accept exactly 32 legacy bytes.
+ * The API stores the bytes; it does not decrypt them.
  */
+import { classifySplitKeyShareBWire } from "@okkey/crypto";
 
-export type SplitKeyShareTransportMode = "opaque";
+export type SplitKeyShareTransportMode = "hybrid_ecc_pq_v1" | "opaque";
 
-/** Locked claim token for this release (q2-6 out-of-scope). */
-export const SPLIT_KEY_SHARE_B_TRANSPORT_CLAIM = "opaque_local_not_hybrid_kem" as const;
+/** Current share-B claim: hybrid envelope, with a legacy 32-byte read path. */
+export const SPLIT_KEY_SHARE_B_TRANSPORT_CLAIM = "hybrid_ecc_pq_v1" as const;
 
 export const SPLIT_KEY_OPAQUE_SHARE_LEN = 32 as const;
 
-export const DEFAULT_SPLIT_KEY_SHARE_TRANSPORT_MODE: SplitKeyShareTransportMode = "opaque";
+/** Reject stored shares larger than a framed ML-KEM-768 envelope of a 32-byte share. */
+export const SPLIT_KEY_SHARE_B_MAX_LEN = 4096 as const;
 
-const SAFE_SPLIT_KEY_SHARE_TRANSPORT_MODES = new Set<SplitKeyShareTransportMode>(["opaque"]);
+export const DEFAULT_SPLIT_KEY_SHARE_TRANSPORT_MODE: SplitKeyShareTransportMode =
+  "hybrid_ecc_pq_v1";
 
-/** Modes that would imply hybrid-KEM wrap of share B — always rejected. */
-const REJECTED_HYBRID_SPLIT_KEY_SHARE_TRANSPORT_MODES = new Set([
-  "hybrid",
+const SAFE_SPLIT_KEY_SHARE_TRANSPORT_MODES = new Set<SplitKeyShareTransportMode>([
   "hybrid_ecc_pq_v1",
-  "hybrid_recipient",
-  "hybrid_kem",
-  "mlkem",
-  "ml_kem",
-  "ml-kem",
+  "opaque",
 ]);
 
 export function normalizeSplitKeyShareTransportMode(
@@ -36,30 +33,40 @@ export function normalizeSplitKeyShareTransportMode(
   if (SAFE_SPLIT_KEY_SHARE_TRANSPORT_MODES.has(mode as SplitKeyShareTransportMode)) {
     return mode as SplitKeyShareTransportMode;
   }
-  if (REJECTED_HYBRID_SPLIT_KEY_SHARE_TRANSPORT_MODES.has(mode.toLowerCase())) {
-    throw new Error(
-      "split-key share B transport is opaque 32-byte local material, not hybrid KEM",
-    );
-  }
-  throw new Error("unsupported split-key share transport; use opaque");
+  throw new Error("unsupported split-key share transport; use hybrid_ecc_pq_v1 or opaque");
 }
 
-/** Allowed share-B transport modes for this release (q2-6 out-of-scope). */
+/** Share-B modes this release can store. `opaque` is legacy read/write compatibility. */
 export function listSafeSplitKeyShareTransportModes(): readonly SplitKeyShareTransportMode[] {
-  return ["opaque"];
+  return ["hybrid_ecc_pq_v1", "opaque"];
 }
 
 /**
- * Assert wire share is exactly 32 opaque bytes (rejects hybrid envelope sizes).
- * Used for server_key_share (A) and device_share (B) on register / new-device.
+ * Assert wire share A is exactly 32 opaque bytes.
+ * Share B uses {@link assertSplitKeyShareB}.
  */
 export function assertOpaqueSplitKeyShare(
   bytes: Uint8Array,
   fieldName: "server_key_share" | "device_share",
 ): void {
   if (bytes.length !== SPLIT_KEY_OPAQUE_SHARE_LEN) {
+    throw new Error(`${fieldName} must be ${SPLIT_KEY_OPAQUE_SHARE_LEN} opaque bytes`);
+  }
+}
+
+/**
+ * Accept a legacy 32-byte share B or a hybrid X25519+ML-KEM frame/envelope.
+ * Reject every other length and header.
+ */
+export function assertSplitKeyShareB(bytes: Uint8Array): void {
+  if (bytes.length === 0 || bytes.length > SPLIT_KEY_SHARE_B_MAX_LEN) {
     throw new Error(
-      `${fieldName} must be ${SPLIT_KEY_OPAQUE_SHARE_LEN} opaque bytes (split-key share is not hybrid KEM)`,
+      "device_share must be 32 legacy bytes or a hybrid X25519+ML-KEM share envelope",
+    );
+  }
+  if (classifySplitKeyShareBWire(bytes) == null) {
+    throw new Error(
+      "device_share must be 32 legacy bytes or a hybrid X25519+ML-KEM share envelope",
     );
   }
 }

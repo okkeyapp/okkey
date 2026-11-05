@@ -2131,8 +2131,10 @@ export class DevicesRepository {
     now: string;
     expiresAt: string;
     approvedBy: string;
-    /** Trusted device that performs approval; its device_share (B) is copied onto the pending row. */
+    /** Trusted device that performs approval. Its device_share is copied when no replacement is set. */
     approverDeviceId?: string;
+    /** Hybrid (or legacy) share to store instead of copying the approver row. */
+    deviceShare?: Uint8Array;
     rejectReason?: string;
   }): Promise<DeviceApprovalState> {
     return withUserDeviceLock(input.userId, () => this.db.transaction(async (tx) => {
@@ -2305,7 +2307,7 @@ export class DevicesRepository {
               -- TODO(device-approval-share-delivery): remove this plaintext share copy
               -- one release after clients deliver share B in a one-time hybrid envelope.
               -- Deprecated path for an older client on either side of approval.
-              device_share = approver.device_share,
+              device_share = COALESCE($5::bytea, approver.device_share),
               approved_by = $2,
               approved_at = $3::timestamptz,
               last_seen_at = $3::timestamptz,
@@ -2341,7 +2343,7 @@ export class DevicesRepository {
               pending.rejection_reason,
               pending.revoked_at
           `,
-          [input.deviceId, input.approvedBy, input.now, input.approverDeviceId],
+          [input.deviceId, input.approvedBy, input.now, input.approverDeviceId, input.deviceShare ?? null],
         );
         if (!approvedRows[0]) {
           return { kind: "access_denied", device: mapDevice(current) };

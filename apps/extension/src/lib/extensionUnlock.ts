@@ -1,6 +1,6 @@
 import { UnsupportedIdentityBundleError, wipeBytes } from "@okkey/crypto";
 import { isClientUpgradeRequiredError, type CoreApiClient } from "@okkey/api";
-import { ensureMlDsaIdentityOnUnlock } from "@okkey/vault";
+import { ensureMlDsaIdentityOnUnlock, loadSplitKeyShareWrapKey } from "@okkey/vault";
 import {
   unlockWithMasterPassword,
   type UnlockWithMasterPasswordResult,
@@ -66,7 +66,8 @@ export async function unlockExtensionVault(input: {
     return { ok: false, reason: "server_share_unavailable" };
   }
   try {
-    const secrets = await unlockWithMasterPassword(bundle, input.masterPassword);
+    const shareWrap = await loadSplitKeyShareWrapKey(input.userId);
+    const secrets = await unlockWithMasterPassword(bundle, input.masterPassword, shareWrap);
     return { ok: true, secrets };
   } catch (error) {
     if (error instanceof UnsupportedIdentityBundleError || isClientUpgradeRequiredError(error)) {

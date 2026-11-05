@@ -1,12 +1,18 @@
 /**
- * Q-Day #2 / q2-5 product decision (claim-reduce):
- * Capsule guest key delivery is OOB — URL fragment or explicit out_of_band —
- * and is **not** a hybrid ECC+PQ KEM hop. Do not add hybrid_* / mlkem modes
- * here without a product override and claim-map update (docs sync = q2-7).
+ * Capsule guest key delivery.
+ *
+ * Active modes are still the URL fragment and explicit out_of_band.
+ * Hybrid X25519+ML-KEM delivery is an extension point and is not selected:
+ * anonymous guests have no identity key, and the product has not chosen
+ * between an ephemeral recipient and a logged-in recipient.
+ * Legacy `#key=` fragments remain the reader.
  */
 export type CapsuleKeyTransportMode = "fragment" | "out_of_band";
 
-export const CAPSULE_GUEST_KEY_TRANSPORT_CLAIM = "oob_fragment_not_kem" as const;
+/** Legacy fragment stays the active delivery. Hybrid recipient choice is open. */
+export const CAPSULE_GUEST_KEY_TRANSPORT_CLAIM = "legacy_fragment_hybrid_undecided" as const;
+
+export const CAPSULE_GUEST_KEY_HYBRID_RECIPIENT = "undecided" as const;
 
 export const CAPSULE_UNSAFE_KEY_TRANSPORT = "CAPSULE_UNSAFE_KEY_TRANSPORT";
 export const CAPSULE_UNSAFE_KEY_TRANSPORT_STATUS_CODE = 400;
@@ -17,8 +23,8 @@ const SAFE_CAPSULE_KEY_TRANSPORT_MODES = new Set<CapsuleKeyTransportMode>([
   "out_of_band",
 ]);
 
-/** Modes that would imply hybrid-KEM guest delivery — always rejected. */
-const REJECTED_HYBRID_CAPSULE_KEY_TRANSPORT_MODES = new Set([
+/** Hybrid guest delivery is recognized and not active until a recipient is chosen. */
+const HYBRID_CAPSULE_KEY_TRANSPORT_NOT_SELECTED = new Set([
   "hybrid",
   "hybrid_ecc_pq_v1",
   "hybrid_recipient",
@@ -42,15 +48,15 @@ export function normalizeCapsuleKeyTransportMode(value: string | undefined): Cap
   if (SAFE_CAPSULE_KEY_TRANSPORT_MODES.has(mode as CapsuleKeyTransportMode)) {
     return mode as CapsuleKeyTransportMode;
   }
-  if (REJECTED_HYBRID_CAPSULE_KEY_TRANSPORT_MODES.has(mode.toLowerCase())) {
+  if (HYBRID_CAPSULE_KEY_TRANSPORT_NOT_SELECTED.has(mode.toLowerCase())) {
     throw new Error(
-      "capsule guest key transport is OOB fragment / out_of_band, not hybrid KEM",
+      "capsule guest hybrid delivery is not selected; use fragment or out_of_band",
     );
   }
   throw new Error("unsafe key transport is not allowed; use fragment or out_of_band");
 }
 
-/** Allowed guest key transport modes for this release (q2-5 claim-reduce). */
+/** Active guest key transport modes. Hybrid delivery is not one of them yet. */
 export function listSafeCapsuleKeyTransportModes(): readonly CapsuleKeyTransportMode[] {
   return ["fragment", "out_of_band"];
 }
