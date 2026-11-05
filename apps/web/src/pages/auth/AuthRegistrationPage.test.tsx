@@ -251,4 +251,22 @@ describe("AuthRegistrationPage recovery key", () => {
       expect(next).toBeEnabled();
     });
   });
+
+  it("acks the recovery export once when the key is copied and then downloaded", async () => {
+    enrollAccountRecoveryKey.mockResolvedValue({});
+    renderPage();
+    await submitRegistration();
+    const next = await screen.findByRole("button", { name: "auth.registration.recovery.next" });
+    fireEvent.click(screen.getByRole("button", { name: "auth.registration.recovery.copy" }));
+    await waitFor(() => {
+      expect(next).toBeEnabled();
+    });
+    expect(ackAccountRecoveryKeyExport).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "auth.registration.recovery.downloadPdf" }));
+    await waitFor(() => {
+      expect(downloadRecoveryKeyPdf).toHaveBeenCalledTimes(1);
+    });
+    expect(ackAccountRecoveryKeyExport).toHaveBeenCalledTimes(1);
+  });
 });
