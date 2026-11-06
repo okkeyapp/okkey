@@ -45,6 +45,7 @@ import { clearSettingsPopupCache } from "../components/settings/settingsPopupCac
 import { migratePersonalFoldersAfterPasswordChange } from "../folders/migratePersonalFoldersAfterPasswordChange";
 import { accountLockWithRedirectQuery } from "../routes/paths";
 import { base64ToBytes, bytesToBase64 } from "./base64";
+import { openBundleDeviceShare } from "./openDeviceShare";
 import { getOrCreateDeviceFingerprint } from "./deviceFingerprint";
 import { clearDeviceSigningKey } from "./deviceSigningKey";
 import {
@@ -866,7 +867,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
     let salt: Uint8Array | null = null;
     try {
       serverA = base64ToBytes(acquired.shareB64);
-      deviceB = base64ToBytes(material.device_share_b64);
+      deviceB = await openBundleDeviceShare(userId, material.device_share_b64);
       salt = base64ToBytes(material.password_kdf_salt_b64);
       const shareC = await derivePasswordShareC({
         masterPasswordUtf8: pwd,
@@ -1066,7 +1067,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       let rebalanced: Awaited<ReturnType<typeof rebalanceServerShareForNewPassword>> | null = null;
 
       try {
-        deviceB = base64ToBytes(bundle.device_share_b64);
+        deviceB = await openBundleDeviceShare(userId, bundle.device_share_b64);
         const salt = base64ToBytes(bundle.password_kdf_salt_b64);
         try {
           oldShareC = await derivePasswordShareC({

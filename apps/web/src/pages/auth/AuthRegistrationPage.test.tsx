@@ -52,6 +52,13 @@ vi.mock("@okkey/crypto", () => ({
   buildRegistrationCryptoArtifacts: vi.fn(async () => ({
     vaultKey: new Uint8Array(32),
     deviceShare: new Uint8Array(32),
+    wrappedDeviceShare: new Uint8Array([9, 9, 9, 9]),
+    shareWrap: {
+      ed25519Seed: new Uint8Array(32),
+      ed25519PublicKey: new Uint8Array(32),
+      mlkemDecapsulationKey: new Uint8Array(8),
+      mlkemEncapsulationKey: new Uint8Array(8),
+    },
     serverKeyShare: new Uint8Array(32),
   })),
   registrationArtifactsToWire: vi.fn(() => ({
@@ -100,6 +107,11 @@ vi.mock("../../auth/localVaultBundle", () => ({
 
 vi.mock("../../auth/deviceSigningKey", () => ({
   ensureDeviceSigningPublicKey: vi.fn(async () => btoa("pub-key-32-bytes-pad!!!!!!")),
+}));
+
+vi.mock("@okkey/vault", () => ({
+  persistSplitKeyShareWrapKey: vi.fn(async () => undefined),
+  clearSplitKeyShareWrapKey: vi.fn(async () => undefined),
 }));
 
 vi.mock("./registrationErrors", () => ({

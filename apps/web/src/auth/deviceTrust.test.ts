@@ -45,6 +45,13 @@ vi.mock("./deviceShareDelivery", () => ({
   needsShareDeliveryReapproval: vi.fn(() => false),
 }));
 
+vi.mock("./deviceShareWire", () => ({
+  deviceShareB64ForRegister: vi.fn(async () => ({
+    shareB64: btoa("device-share-bytes-32!!!!!!!!!!!!".slice(0, 32)),
+    upgradedShareB64: null,
+  })),
+}));
+
 vi.mock("@okkey/crypto", () => ({
   initCrypto: vi.fn(async () => undefined),
   deviceBindShareProof: () => new Uint8Array([9, 9, 9, 9]),

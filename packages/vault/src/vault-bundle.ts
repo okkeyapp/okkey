@@ -7,6 +7,7 @@ import type { EncryptedBlobDto, VaultUnlockBootstrapResponseDto } from "@okkey/t
  */
 export interface StoredVaultBundle {
   server_key_share_b64?: string;
+  /** Legacy 32-byte share B, or a framed hybrid X25519+ML-KEM envelope. */
   device_share_b64: string;
   password_kdf_salt_b64: string;
   password_kdf_params_version: number;

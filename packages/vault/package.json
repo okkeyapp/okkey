@@ -25,6 +25,16 @@
       "types": "./dist/unlock-with-master-password.d.ts",
       "import": "./dist/unlock-with-master-password.js",
       "default": "./src/unlock-with-master-password.ts"
+    },
+    "./device-share-wire": {
+      "types": "./dist/device-share-wire.d.ts",
+      "import": "./dist/device-share-wire.js",
+      "default": "./src/device-share-wire.ts"
+    },
+    "./split-key-share-wrap-store": {
+      "types": "./dist/split-key-share-wrap-store.d.ts",
+      "import": "./dist/split-key-share-wrap-store.js",
+      "default": "./src/split-key-share-wrap-store.ts"
     }
   },
   "files": ["dist", "src"],

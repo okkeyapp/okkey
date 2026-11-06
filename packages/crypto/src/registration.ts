@@ -2,9 +2,9 @@
  * Client-side registration crypto: split-key VaultKey = A ⊕ B ⊕ C (32-byte XOR),
  * C = Argon2id(master_password, salt). Backend receives only A and encrypted artifacts.
  *
- * Q-Day #2 / q2-6: shares A/B/C (incl. new-device share B) stay opaque 32-byte
- * local material — not hybrid ECC+PQ KEM envelopes. PQ applies to identity keys
- * (`userPublicPqKey` / ML-KEM) at registration, not to share-B transport.
+ * Share B is sealed to a device wrap key with hybrid X25519 + ML-KEM-768 before
+ * it is stored or sent. The in-memory `deviceShare` stays the raw XOR term.
+ * Readers still accept a legacy 32-byte share.
  */
 import {
   b64_encode,
@@ -16,6 +16,7 @@ import {
   random_bytes,
 } from "@okkey/crypto-wasm";
 import { ensureWasm } from "./wasm-init.js";
+import { sealSplitKeyShareB, type SplitKeyShareWrapKey } from "./split-key-share-wrap.js";
 import {
   MIN_MASTER_PASSWORD_LENGTH,
   masterPasswordUtf8MeetsNewPasswordPolicy,
@@ -74,7 +75,12 @@ function xor32(a: Uint8Array, b: Uint8Array, c: Uint8Array): Uint8Array {
 
 export interface RegistrationSplitKeyMaterial {
   serverKeyShare: Uint8Array;
+  /** Raw 32-byte XOR term. Stay in memory; do not persist or send this. */
   deviceShare: Uint8Array;
+  /** Framed hybrid envelope of `deviceShare`. This is the stored / wire form. */
+  wrappedDeviceShare: Uint8Array;
+  /** Device wrap key for `wrappedDeviceShare`. Persist outside the vault bundle. */
+  shareWrap: SplitKeyShareWrapKey;
   passwordKdfSalt: Uint8Array;
   passwordKdfParamsVersion: typeof OKKEY_PASSWORD_KDF_PARAMS_VERSION;
 }
@@ -106,6 +112,7 @@ export async function buildRegistrationCryptoArtifacts(
   );
 
   const deviceShareB = xor32(serverShareA, passwordShareC, vaultKey);
+  const sealedShare = await sealSplitKeyShareB(deviceShareB);
 
   const edSeedPk = ed25519_keypair();
   const signingPrivateKey = edSeedPk.slice(0, 32);
@@ -138,6 +145,8 @@ export async function buildRegistrationCryptoArtifacts(
     vaultKey,
     serverKeyShare: serverShareA,
     deviceShare: deviceShareB,
+    wrappedDeviceShare: sealedShare.wrapped,
+    shareWrap: sealedShare.shareWrap,
     passwordKdfSalt,
     passwordKdfParamsVersion: OKKEY_PASSWORD_KDF_PARAMS_VERSION,
     userPublicKey,

@@ -1032,10 +1032,15 @@ export class CoreApiClient {
     pendingDeviceId: string,
     approverDeviceId: string,
     shareDeliveryEnvelopeB64?: string,
+    deviceShareB64?: string,
   ): Promise<DeviceRegisterResponseDto> {
-    const body = shareDeliveryEnvelopeB64
-      ? { share_delivery_envelope: shareDeliveryEnvelopeB64 }
-      : {};
+    const body: { share_delivery_envelope?: string; device_share?: string } = {};
+    if (shareDeliveryEnvelopeB64) {
+      body.share_delivery_envelope = shareDeliveryEnvelopeB64;
+    }
+    if (deviceShareB64) {
+      body.device_share = deviceShareB64;
+    }
     return this.api.post<DeviceRegisterResponseDto>(
       `/devices/${encodeURIComponent(pendingDeviceId)}/approve`,
       body,

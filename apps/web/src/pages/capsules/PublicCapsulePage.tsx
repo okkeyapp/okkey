@@ -239,8 +239,8 @@ export default function PublicCapsulePage() {
                   );
           const fragment = sessionStorage.getItem(`okkey:capsule-key:${capsuleId}`);
           if (!fragment) throw new Error("missing key");
-          const { decodeCapsuleKeyFragment } = await import("@okkey/crypto");
-          const capsuleKey = decodeCapsuleKeyFragment(fragment);
+          const { readCapsuleGuestKey } = await import("@okkey/crypto");
+          const capsuleKey = await readCapsuleGuestKey(fragment);
           try {
             const decrypted = await decryptCapsulePayload(
               capsuleKey,

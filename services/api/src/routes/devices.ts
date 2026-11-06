@@ -243,6 +243,8 @@ function toWireDevice(item: DeviceListItem) {
           one_time_mlkem_public_key: item.oneTimeMlkemPublicKey,
         }
       : {}),
+    share_wrap_ed25519_public_key: item.shareWrapEd25519PublicKey,
+    share_wrap_pq_public_key: item.shareWrapPqPublicKey,
   };
 }
 
@@ -914,7 +916,7 @@ export function createApproveDeviceRoute(
       return;
     }
 
-    let body: { share_delivery_envelope?: string } = {};
+    let body: { share_delivery_envelope?: string; device_share?: string } = {};
     try {
       body = await readOptionalJsonObject(ctx.req);
     } catch {
@@ -942,11 +944,17 @@ export function createApproveDeviceRoute(
         }
         envelope = Uint8Array.from(Buffer.from(envelopeB64, "base64"));
       }
+      let deviceShare: Uint8Array | undefined;
+      const shareB64 = body.device_share?.trim() ?? "";
+      if (shareB64) {
+        deviceShare = Uint8Array.from(Buffer.from(shareB64, "base64"));
+      }
       const result = await deviceService.approveDevice(
         userId,
         approverDeviceId,
         deviceId,
         envelope,
+        deviceShare,
       );
       json(ctx.res, 200, {
         device_id: result.deviceId,
@@ -967,13 +975,13 @@ function isBase64(value: string): boolean {
 
 async function readOptionalJsonObject(
   req: IncomingMessage,
-): Promise<{ share_delivery_envelope?: string }> {
+): Promise<{ share_delivery_envelope?: string; device_share?: string }> {
   const mocked = (req as IncomingMessage & { body?: unknown }).body;
   if (mocked !== undefined) {
     if (mocked === null || typeof mocked !== "object" || Array.isArray(mocked)) {
       throw new Error("invalid json");
     }
-    return mocked as { share_delivery_envelope?: string };
+    return mocked as { share_delivery_envelope?: string; device_share?: string };
   }
   const asyncIterator = (req as AsyncIterable<unknown>)[Symbol.asyncIterator];
   if (typeof asyncIterator !== "function") {

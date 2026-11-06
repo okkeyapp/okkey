@@ -23,7 +23,7 @@ import { SESSION_SCOPE_REGISTRATION_RECOVERY } from "../session/scopes.ts";
 import type { PostgresDatabase } from "../storage/postgres.ts";
 import type { UsersRepository } from "../storage/repositories.ts";
 import { insertRegistrationBundle } from "./repository.ts";
-import { assertOpaqueSplitKeyShare } from "./split-key-transport-policy.ts";
+import { assertOpaqueSplitKeyShare, assertSplitKeyShareB } from "./split-key-transport-policy.ts";
 
 const KDF_SALT_LEN = 16;
 const ED25519_PK_LEN = 32;
@@ -379,7 +379,7 @@ export class RegistrationService {
   private validateCryptoPayload(input: RegisterCompleteInput): void {
     try {
       assertOpaqueSplitKeyShare(input.serverKeyShare, "server_key_share");
-      assertOpaqueSplitKeyShare(input.deviceShare, "device_share");
+      assertSplitKeyShareB(input.deviceShare);
     } catch (error: unknown) {
       throw new RegistrationError(
         "CRYPTO_PAYLOAD_INVALID",

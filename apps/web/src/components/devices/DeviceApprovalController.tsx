@@ -17,7 +17,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { useAuthVault, useAuthenticatedCoreClient } from "../../auth/AuthVaultContext";
+import { replacementDeviceShareForApproval } from "../../auth/approveDeviceShare";
 import { sealLocalShareForPendingDevice } from "../../auth/deviceShareDelivery";
+import { readVaultBundle } from "../../auth/localVaultBundle";
 import { formatDeviceClientOs, formatDeviceTitle } from "../../auth/browserEnvironment";
 import { getOrCreateDeviceFingerprint } from "../../auth/deviceFingerprint";
 import { IconCheck16, IconNotNow16 } from "../items/itemCategoryIcons";
@@ -124,6 +126,7 @@ export default function DeviceApprovalController() {
     setResolving(true);
     try {
       if (decision === "approve") {
+        const bundle = userId ? readVaultBundle(userId) : null;
         const envelope = userId
           ? await sealLocalShareForPendingDevice({
               userId,
@@ -132,7 +135,15 @@ export default function DeviceApprovalController() {
               oneTimeMlkemPublicKey: current.one_time_mlkem_public_key,
             })
           : null;
-        await core.approveDevice(targetDeviceId, approverId, envelope ?? undefined);
+        const deviceShareB64 =
+          !envelope && bundle && userId
+            ? await replacementDeviceShareForApproval({
+                userId,
+                localShareB64: bundle.device_share_b64,
+                pending: current,
+              })
+            : undefined;
+        await core.approveDevice(targetDeviceId, approverId, envelope ?? undefined, deviceShareB64);
         toast.success(t("web.settingsPopup.devices.toast.trusted"));
       } else {
         await core.rejectDevice(targetDeviceId, approverId, "dismissed by user");
