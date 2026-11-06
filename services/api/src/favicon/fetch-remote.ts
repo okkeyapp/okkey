@@ -10,7 +10,7 @@ const IPV4_HOST_RE = /^\d{1,3}(\.\d{1,3}){3}$/;
 /** Hosts used to capture Google's generic “no favicon” placeholder bytes (google provider only). */
 const GENERIC_FAVICON_SENTINEL_HOSTS = ["invalid.invalid", "this-domain-does-not-exist.okkey"] as const;
 
-/** Well-known origin-relative paths tried for the default (direct) provider. */
+/** Well-known origin-relative paths tried for the explicit `direct` provider. */
 const DIRECT_FAVICON_PATHS = ["/favicon.ico", "/apple-touch-icon.png", "/apple-touch-icon-precomposed.png"] as const;
 
 /** Browser-like UA so sites (and Cloudflare) are less likely to challenge favicon/HTML probes. */
@@ -26,10 +26,14 @@ export const MAX_FAVICON_RESPONSE_BYTES = 256 * 1024;
 /** Cap HTML page bodies used only to discover `<link rel=icon>` candidates. */
 export const MAX_FAVICON_HTML_BYTES = 512 * 1024;
 
-export type FaviconProvider = "direct" | "google" | "off";
+export type FaviconProvider = "direct" | "google" | "off" | "client";
 
 export type FaviconFetchOptions = {
-  /** Default `direct` — fetch from the site origin only. */
+  /**
+   * Omitted provider does not fetch (same as `off`).
+   * `direct` and `google` are explicit opt-ins.
+   * `client` is advertised to apps; this process still does not fetch.
+   */
   provider?: FaviconProvider;
 };
 
@@ -412,13 +416,18 @@ export function primaryHostFromUrls(urls: readonly string[]): string | null {
 
 export function parseFaviconProvider(raw: string | undefined): FaviconProvider {
   const normalized = (raw ?? "").trim().toLowerCase();
-  if (!normalized || normalized === "direct") {
-    return "direct";
+  // Unset or blank is the private default: the API does not learn item domains.
+  if (!normalized || normalized === "off") {
+    return "off";
   }
-  if (normalized === "google" || normalized === "off") {
+  if (normalized === "direct" || normalized === "google" || normalized === "client") {
     return normalized;
   }
-  throw new Error(`FAVICON_PROVIDER must be "direct", "google", or "off", got: ${raw}`);
+  throw new Error(`FAVICON_PROVIDER must be "off", "direct", "google", or "client", got: ${raw}`);
+}
+
+export function faviconProviderFetchesOnServer(provider: FaviconProvider): boolean {
+  return provider === "direct" || provider === "google";
 }
 
 function buildGoogleFaviconUrl(host: string): string {
@@ -874,8 +883,8 @@ export async function fetchRemoteFaviconBytes(
   host: string,
   options: FaviconFetchOptions = {},
 ): Promise<FaviconRemoteLookupResult> {
-  const provider = options.provider ?? "direct";
-  if (provider === "off") {
+  const provider = options.provider ?? "off";
+  if (!faviconProviderFetchesOnServer(provider)) {
     return { status: "absent" };
   }
 
@@ -900,8 +909,8 @@ export async function fetchRemoteFaviconBytesFromUrls(
   urls: readonly string[],
   options: FaviconFetchOptions = {},
 ): Promise<FaviconRemoteLookupResult> {
-  const provider = options.provider ?? "direct";
-  if (provider === "off") {
+  const provider = options.provider ?? "off";
+  if (!faviconProviderFetchesOnServer(provider)) {
     return { status: "absent" };
   }
 

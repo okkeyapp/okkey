@@ -47,6 +47,7 @@ import DeleteItemsConfirmPopup from "./DeleteItemsConfirmPopup";
 import { ItemsDetailPanelEmptyStateFill } from "./ItemsDetailPanelEmptyState";
 import ItemTagsReadonly from "./ItemTagsReadonly";
 import { downloadKeyFieldFileAttachment } from "../../api/key-field-files";
+import { useClientWebsiteIconSrc } from "../../items/faviconMode";
 import { useItemFaviconAttachmentUrl } from "../../items/useItemFaviconAttachmentUrl";
 import { useResolvedVaultEncryptionKey } from "../../items/useResolvedVaultEncryptionKey";
 import { useWorkspaceMemberDisplayNames } from "../../workspace/useWorkspaceMemberDisplayNames";
@@ -103,6 +104,16 @@ export default function ItemDetailCard({ itemId, vaults, workspaceId: workspaceI
   const vault = vaults.find((candidate) => candidate.id === (item?.vaultId ?? listRecord?.vaultId));
   const itemEncryptionKey = useResolvedVaultEncryptionKey(item?.vaultId ?? listRecord?.vaultId);
   const faviconId = item?.faviconId ?? listRecord?.faviconId;
+  const websiteUrls = useMemo(() => {
+    if (item) {
+      return item.fields
+        .filter((field) => field.type === "url" && field.value.kind === "url")
+        .map((field) => (field.value.kind === "url" ? field.value.url.trim() : ""))
+        .filter((url) => url.length > 0);
+    }
+    return listRecord?.urls ?? [];
+  }, [item, listRecord?.urls]);
+  const clientIconSrc = useClientWebsiteIconSrc(websiteUrls, !faviconId);
   const faviconUrl = useItemFaviconAttachmentUrl({
     accessToken,
     vaultKey: itemEncryptionKey,
@@ -407,7 +418,7 @@ export default function ItemDetailCard({ itemId, vaults, workspaceId: workspaceI
               categoryId={item.categoryId}
               title={item.title}
               faviconId={faviconId}
-              previewImageSrc={faviconUrl.imageSrc}
+              previewImageSrc={faviconUrl.imageSrc ?? clientIconSrc}
               previewLoading={faviconUrl.loading}
               size={40}
               alt=""

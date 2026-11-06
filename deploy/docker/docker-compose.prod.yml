@@ -131,7 +131,7 @@ services:
       # Keep the host publish on 127.0.0.1 so a forged XFF cannot hit the API from the LAN/WAN.
       TRUSTED_PROXY_HOPS: ${TRUSTED_PROXY_HOPS:-0}
       GEOIP_ENABLED: ${GEOIP_ENABLED:-false}
-      FAVICON_PROVIDER: ${FAVICON_PROVIDER:-direct}
+      FAVICON_PROVIDER: ${FAVICON_PROVIDER:-off}
     ports:
       # Loopback only — browsers use OKKEY_API_PUBLIC_URL; proxy overlay reaches api:4000 on the Docker network.
       - "127.0.0.1:${API_PORT:-4000}:4000"

@@ -23,11 +23,28 @@ type PreviewBody = {
   urls?: string[];
 };
 
+/** Public mode advertisement. Does not accept website URLs. */
+export function createItemFaviconConfigRoute(service: ItemFaviconService): RouteHandler {
+  return async (ctx) => {
+    json(ctx.res, 200, { provider: service.provider });
+  };
+}
+
 export function createItemFaviconPreviewRoute(
   service: ItemFaviconService,
   resolveUserId: (req: IncomingMessage) => Promise<string | null>,
 ): RouteHandler {
   return async (ctx) => {
+    if (!service.serverFetchesWebsiteIcons()) {
+      // Refuse before reading the body so item domains are not parsed on the private default.
+      json(ctx.res, 403, {
+        error: "FAVICON_DISABLED",
+        message: "Website icon lookup is disabled",
+        requestId: ctx.requestId,
+      });
+      return;
+    }
+
     const userId = await resolveUserId(ctx.req);
     if (!userId) {
       json(ctx.res, 401, { error: "UNAUTHORIZED", message: "Authentication required", requestId: ctx.requestId });

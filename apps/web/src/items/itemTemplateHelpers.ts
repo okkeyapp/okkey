@@ -4,7 +4,7 @@ import type { KeyFormEditorSection } from "../components/key-form/KeyFormEditor"
 import type { NewItemFormPrefillValues } from "../components/items/NewItemForm";
 import type { ItemFormFaviconSyncInput } from "./useItemFormFavicon";
 import { downloadKeyFieldFileAttachmentBytes, uploadEncryptedAttachment } from "../api/key-field-files";
-import { previewItemFavicon } from "../api/item-favicons";
+import { FaviconPreviewDisabledError, previewItemFavicon } from "../api/item-favicons";
 import { collectWebsiteUrlsFromSections } from "../lib/domainRecordTitle";
 import { keyFieldFileValueFromFaviconId } from "./syncItemFavicon";
 
@@ -184,9 +184,15 @@ export async function syncTemplateFaviconForSnapshot(
   if (snapshot.categoryId === ITEM_CATEGORY_LOGIN) {
     const urls = collectWebsiteUrlsFromSections(snapshot.sections);
     if (urls.length > 0) {
-      const previewBlob = await previewItemFavicon(accessToken, urls);
-      if (previewBlob) {
-        return uploadTemplateFavicon(await blobToBytes(previewBlob), "website");
+      try {
+        const previewBlob = await previewItemFavicon(accessToken, urls);
+        if (previewBlob) {
+          return uploadTemplateFavicon(await blobToBytes(previewBlob), "website");
+        }
+      } catch (error) {
+        if (!(error instanceof FaviconPreviewDisabledError)) {
+          throw error;
+        }
       }
     }
   }

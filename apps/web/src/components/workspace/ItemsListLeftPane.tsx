@@ -43,6 +43,7 @@ import { useListWindow } from "../../lists/useListWindow";
 import { windowListSections } from "../../lists/windowListSections";
 import { formatTagSearchQuery, parseTagSearchNeedle, scoreItemsListRecordSearch } from "../../items/workspaceItemSearch";
 import { LazyItemRecordFavicon } from "../items/ItemRecordFavicon";
+import { useClientWebsiteIconSrc } from "../../items/faviconMode";
 import DeleteItemsConfirmPopup from "../items/DeleteItemsConfirmPopup";
 import { isItemCategoryId, itemCategoryIdToPopupSlug } from "../items/itemCategoryCatalog";
 import { useWorkspaceItems } from "../../items/WorkspaceItemsContext";
@@ -686,13 +687,14 @@ function ItemsListRecordFavicon({
     faviconId: row.faviconId,
     enabled: Boolean(itemEncryptionKey),
   });
+  const clientIconSrc = useClientWebsiteIconSrc(row.urls, !row.faviconId);
 
   return (
     <LazyItemRecordFavicon
       categoryId={row.categoryId}
       title={row.title}
       faviconId={row.faviconId}
-      previewImageSrc={faviconUrl.imageSrc}
+      previewImageSrc={faviconUrl.imageSrc ?? clientIconSrc}
       previewLoading={faviconUrl.loading}
       size={32}
       className="shrink-0 bg-background"

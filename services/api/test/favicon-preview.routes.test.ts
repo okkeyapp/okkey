@@ -8,7 +8,7 @@ import {
 } from "../src/favicon/fetch-remote.ts";
 import { ItemFaviconService } from "../src/favicon/service.ts";
 import type { RequestContext } from "../src/http.ts";
-import { createItemFaviconPreviewRoute } from "../src/routes/item-favicons.ts";
+import { createItemFaviconConfigRoute, createItemFaviconPreviewRoute } from "../src/routes/item-favicons.ts";
 
 class MockResponse {
   statusCode = 200;
@@ -33,9 +33,13 @@ class MockResponse {
   }
 }
 
-async function dispatch(body: unknown, userId: string | null = "1000000000000000009"): Promise<MockResponse> {
+async function dispatch(
+  body: unknown,
+  userId: string | null = "1000000000000000009",
+  provider: "direct" | "off" | "client" = "direct",
+): Promise<MockResponse> {
   const handler = createItemFaviconPreviewRoute(
-    new ItemFaviconService({ provider: "direct" }),
+    new ItemFaviconService({ provider }),
     async () => userId,
   );
   const req = {
@@ -58,6 +62,67 @@ async function dispatch(body: unknown, userId: string | null = "1000000000000000
 test.afterEach(() => {
   setFaviconHostResolverForTests(null);
   setFaviconOutboundRequestForTests(null);
+});
+
+test("POST /favicon/preview is disabled without reading urls when the provider is off", async () => {
+  let fetched = false;
+  let bodyRead = false;
+  setFaviconOutboundRequestForTests(async () => {
+    fetched = true;
+    throw new Error("should not fetch");
+  });
+  const handler = createItemFaviconPreviewRoute(
+    new ItemFaviconService({ provider: "off" }),
+    async () => "1000000000000000009",
+  );
+  const req = {
+    method: "POST",
+    url: "/favicon/preview",
+    headers: { "content-type": "application/json" },
+    get body() {
+      bodyRead = true;
+      return { urls: ["https://secret.example/login"] };
+    },
+  } as IncomingMessage & { body?: unknown };
+  const res = new MockResponse();
+  await handler({
+    requestId: "req-off",
+    req,
+    res: res as unknown as ServerResponse,
+    params: {},
+  });
+  assert.equal(res.statusCode, 403);
+  const payload = JSON.parse(res.body.toString()) as { error: string; message: string };
+  assert.equal(payload.error, "FAVICON_DISABLED");
+  assert.match(payload.message, /disabled/i);
+  assert.equal(fetched, false);
+  assert.equal(bodyRead, false);
+
+  const clientMode = await dispatch({ urls: ["https://secret.example/login"] }, "1000000000000000009", "client");
+  assert.equal(clientMode.statusCode, 403);
+  assert.equal(JSON.parse(clientMode.body.toString()).error, "FAVICON_DISABLED");
+  assert.equal(fetched, false);
+});
+
+test("GET /favicon/config reports off by default and direct when opted in", async () => {
+  const off = new MockResponse();
+  await createItemFaviconConfigRoute(new ItemFaviconService())({
+    requestId: "req-config-off",
+    req: { method: "GET", url: "/favicon/config", headers: {} } as IncomingMessage,
+    res: off as unknown as ServerResponse,
+    params: {},
+  });
+  assert.equal(off.statusCode, 200);
+  assert.equal(JSON.parse(off.body.toString()).provider, "off");
+
+  const direct = new MockResponse();
+  await createItemFaviconConfigRoute(new ItemFaviconService({ provider: "direct" }))({
+    requestId: "req-config-direct",
+    req: { method: "GET", url: "/favicon/config", headers: {} } as IncomingMessage,
+    res: direct as unknown as ServerResponse,
+    params: {},
+  });
+  assert.equal(JSON.parse(direct.body.toString()).provider, "direct");
 });
 
 test("POST /favicon/preview returns 401 without auth", async () => {

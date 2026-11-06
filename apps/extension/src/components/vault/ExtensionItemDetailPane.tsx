@@ -30,6 +30,7 @@ import {
   type ItemActivityWireEntry,
   type KeyFormEditorMessages,
 } from "@okkey/vault-ui";
+import { useClientWebsiteIconSrc } from "../../lib/useFaviconProvider";
 import { useCallback, useMemo, useRef, useState } from "react";
 import type { WebLocale } from "@okkey/i18n";
 
@@ -137,6 +138,7 @@ export function ExtensionItemDetailPane(props: ExtensionItemDetailPaneProps) {
     faviconId: item.faviconId,
     enabled: Boolean(vaultKey && item.faviconId),
   });
+  const clientIconSrc = useClientWebsiteIconSrc(apiBaseUrl, collectItemUrls(item), !item.faviconId);
 
   const messagesWithCopy = useMemo((): KeyFormEditorMessages => {
     const isLoginItem = item.categoryId === ITEM_CATEGORY_LOGIN;
@@ -287,7 +289,7 @@ export function ExtensionItemDetailPane(props: ExtensionItemDetailPaneProps) {
                 categoryId={item.categoryId}
                 title={item.title}
                 faviconId={item.faviconId}
-                previewImageSrc={faviconUrl.imageSrc}
+                previewImageSrc={faviconUrl.imageSrc ?? clientIconSrc}
                 previewLoading={faviconUrl.loading}
                 size={40}
                 alt=""

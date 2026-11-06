@@ -261,6 +261,7 @@ export function Favicon({
           height={size}
           loading={lazy ? "lazy" : undefined}
           decoding="async"
+          referrerPolicy="no-referrer"
           className={cn(
             "pointer-events-none size-full object-cover",
             imagePending && skeletonWhileLoading && "opacity-0",

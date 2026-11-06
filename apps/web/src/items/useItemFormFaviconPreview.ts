@@ -1,7 +1,9 @@
 import { ITEM_CATEGORY_LOGIN } from "@okkey/types";
+import { resolveWebsiteIconDisplay } from "@okkey/ui";
 import { useEffect, useRef, useState } from "react";
 
 import { previewItemFavicon } from "../api/item-favicons";
+import { useFaviconProviderMode } from "./faviconMode";
 
 const DEBOUNCE_MS = 400;
 
@@ -61,6 +63,7 @@ export function useItemFormFaviconPreview(input: {
 }): ItemFormFaviconPreviewState {
   const urlsKey = websiteUrlsLookupKey(input.urls);
   const nameFetchRevision = input.nameFetchRevision ?? 0;
+  const iconMode = useFaviconProviderMode();
   const [previewImageSrc, setPreviewImageSrc] = useState<string | undefined>();
   const [previewPngBytes, setPreviewPngBytes] = useState<Uint8Array | null>(null);
   const [previewUrlsKey, setPreviewUrlsKey] = useState<string | null>(null);
@@ -102,6 +105,38 @@ export function useItemFormFaviconPreview(input: {
     }
     if (!input.accessToken) {
       setIsLoading(false);
+      return;
+    }
+    if (iconMode === null) {
+      // Mode is unknown: keep the monogram / stored icon and do not call /favicon/preview.
+      setIsLoading(false);
+      return;
+    }
+    const display = resolveWebsiteIconDisplay(iconMode, input.urls);
+    if (display.kind !== "server") {
+      requestSeqRef.current += 1;
+      if (display.kind === "client") {
+        const keepStored =
+          input.skipFetchForUrlsKey != null &&
+          input.skipFetchForUrlsKey === urlsKey &&
+          nameFetchRevision === 0;
+        if (keepStored) {
+          clearPreview();
+        } else {
+          revokeBlobUrl(blobUrlRef.current);
+          blobUrlRef.current = null;
+          previewPngBytesRef.current = null;
+          previewUrlsKeyRef.current = null;
+          setPreviewPngBytes(null);
+          setPreviewUrlsKey(null);
+          setPreviewImageSrc(display.src);
+        }
+      } else {
+        clearPreview();
+      }
+      setIsLoading(false);
+      lastFetchedUrlsKeyRef.current = urlsKey;
+      lastFetchedNameRevisionRef.current = nameFetchRevision;
       return;
     }
     if (!urlsKey) {
@@ -212,6 +247,7 @@ export function useItemFormFaviconPreview(input: {
     input.categoryId,
     input.disabled,
     input.skipFetchForUrlsKey,
+    iconMode,
   ]);
 
   return { previewImageSrc, isLoading, previewPngBytes, previewUrlsKey };
