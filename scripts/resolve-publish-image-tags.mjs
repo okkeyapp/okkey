@@ -10,8 +10,10 @@
  *   tag vX.Y.Z-prerelease  → :X.Y.Z-prerelease  (no rolling / :latest)
  *     e.g. v1.0.0-beta.2   → :1.0.0-beta.2 only
  *   workflow_dispatch      → explicit tag (default dev; + :latest when push_latest=true)
+ *                            :dev is published only from refs/heads/dev
  *
- * Push to `dev` does not publish. The floating :dev image is workflow_dispatch only.
+ * Push to `dev` does not publish. The floating :dev image is workflow_dispatch
+ * on refs/heads/dev only. Its OCI version is 0.0.0-dev (the image tag stays :dev).
  * Pull-request tag shapes remain for callers, but the publish workflow does not run on PRs.
  *
  * Spelling: SemVer pre-release uses **beta** (never "betta").
@@ -39,6 +41,56 @@ import { resolve } from "node:path";
 const CLEAN_SEMVER_TAG = /^v[0-9]+\.[0-9]+\.[0-9]+$/;
 const RELEASE_BRANCH =
   /^(?:release|hotfix)\/v?(\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?)$/;
+const DEV_CHANNEL_REF = "refs/heads/dev";
+
+/** OCI version for the floating :dev channel. Valid SemVer, below any release. */
+export const DEV_CHANNEL_IMAGE_VERSION = "0.0.0-dev";
+
+/**
+ * :dev may be pushed and signed only when workflow_dispatch runs on refs/heads/dev.
+ * @param {ResolveContext} ctx
+ */
+export function assertDevChannelPublishRef(ctx) {
+  if (ctx.eventName !== "workflow_dispatch") return;
+  const tag = ctx.dispatchTag || "dev";
+  if (tag !== "dev") return;
+  if (ctx.ref === DEV_CHANNEL_REF) return;
+  const from = ctx.ref || "an unknown ref";
+  throw new Error(
+    `refusing to publish or sign the :dev channel from ${from}; workflow_dispatch for :dev must run on refs/heads/dev`,
+  );
+}
+
+/**
+ * Drop one leading `v` from a release tag (`v9.9.9` → `9.9.9`, `v1.0.0-beta.2` → `1.0.0-beta.2`).
+ * Names that are not `v` plus a digit are unchanged (`dev`, `latest`).
+ * @param {string} name
+ * @returns {string}
+ */
+export function stripLeadingReleaseV(name) {
+  const raw = String(name || "");
+  const tag = raw.startsWith("refs/tags/") ? raw.slice("refs/tags/".length) : raw;
+  if (/^v\d/.test(tag)) return tag.slice(1);
+  return tag;
+}
+
+/**
+ * Git tag name when this publish is a tag push (`v9.9.9`), or null otherwise.
+ * `refs/tags/…` counts even when refType was not set.
+ * @param {ResolveContext} ctx
+ * @returns {string|null}
+ */
+function gitTagName(ctx) {
+  const ref = ctx.ref || "";
+  if (ctx.refType !== "tag" && !ref.startsWith("refs/tags/")) return null;
+  if (ctx.refName) {
+    return ctx.refName.startsWith("refs/tags/")
+      ? ctx.refName.slice("refs/tags/".length)
+      : ctx.refName;
+  }
+  if (ref.startsWith("refs/tags/")) return ref.slice("refs/tags/".length);
+  return "";
+}
 
 /**
  * @param {string} sha
@@ -66,7 +118,6 @@ export function releaseBranchVersion(refName) {
 export function tagsForImage(image, ctx) {
   const eventName = ctx.eventName;
   const ref = ctx.ref || "";
-  const refType = ctx.refType || "";
   const refName = ctx.refName || "";
 
   if (eventName === "pull_request") {
@@ -97,13 +148,14 @@ export function tagsForImage(image, ctx) {
     return [`${image}:${version}-candidate`, `${image}:${version}-${short}`];
   }
 
-  if (refType === "tag") {
-    const version = refName.startsWith("v") ? refName.slice(1) : refName;
+  const gitTag = gitTagName(ctx);
+  if (gitTag !== null) {
+    const version = stripLeadingReleaseV(gitTag);
     /** @type {string[]} */
     const tags = [`${image}:${version}`];
     // Clean SemVer vX.Y.Z only → rolling :X.Y / :X.
     // Pre-release (e.g. v1.0.0-beta.2) must NOT get :1.0 / :1 / :latest.
-    if (CLEAN_SEMVER_TAG.test(refName)) {
+    if (CLEAN_SEMVER_TAG.test(gitTag.startsWith("v") ? gitTag : `v${gitTag}`)) {
       const major = version.split(".")[0];
       const minorMajor = version.split(".").slice(0, 2).join(".");
       tags.push(`${image}:${minorMajor}`, `${image}:${major}`);
@@ -112,9 +164,12 @@ export function tagsForImage(image, ctx) {
   }
 
   if (eventName === "workflow_dispatch") {
+    assertDevChannelPublishRef(ctx);
     const dt = ctx.dispatchTag || "dev";
+    // Keep the floating tag `:dev`. A v-prefixed pin (`v9.9.9`) is published as `:9.9.9`.
+    const published = dt === "dev" ? "dev" : stripLeadingReleaseV(dt);
     /** @type {string[]} */
-    const tags = [`${image}:${dt}`];
+    const tags = [`${image}:${published}`];
     const wantLatest =
       ctx.dispatchLatest === true || ctx.dispatchLatest === "true";
     if (wantLatest && dt !== "latest") {
@@ -127,7 +182,9 @@ export function tagsForImage(image, ctx) {
 }
 
 /**
- * OCI org.opencontainers.image.version — SemVer without leading `v`.
+ * OCI org.opencontainers.image.version.
+ * Git tags stay `v…`; the annotation value is SemVer without that prefix
+ * (v1.0.0-beta.3 → 1.0.0-beta.3). The floating :dev channel uses 0.0.0-dev.
  * @param {ResolveContext} ctx
  * @returns {string}
  */
@@ -135,12 +192,13 @@ export function resolveImageVersion(ctx) {
   if (ctx.eventName === "pull_request") {
     return `pr-${ctx.prNumber}`;
   }
-  if (ctx.refType === "tag") {
-    const refName = ctx.refName || "";
-    return refName.startsWith("v") ? refName.slice(1) : refName;
-  }
+  const gitTag = gitTagName(ctx);
+  if (gitTag !== null) return stripLeadingReleaseV(gitTag);
   if (ctx.eventName === "workflow_dispatch") {
-    return ctx.dispatchTag || "dev";
+    assertDevChannelPublishRef(ctx);
+    const dt = ctx.dispatchTag || "dev";
+    if (dt === "dev") return DEV_CHANNEL_IMAGE_VERSION;
+    return stripLeadingReleaseV(dt);
   }
   if (ctx.eventName === "push" && ctx.ref === "refs/heads/dev") {
     throw new Error(
@@ -151,7 +209,9 @@ export function resolveImageVersion(ctx) {
   if (ctx.eventName === "push" && branchVersion) {
     return `${branchVersion}-candidate`;
   }
-  return "dev";
+  throw new Error(
+    `cannot resolve OCI image version for event=${ctx.eventName || ""} ref=${ctx.ref || ""}`,
+  );
 }
 
 /**
