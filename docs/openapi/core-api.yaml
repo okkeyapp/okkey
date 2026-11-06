@@ -1120,6 +1120,69 @@ paths:
         "503":
           description: Not ready
 
+  /system/updates:
+    get:
+      tags: [System]
+      summary: Self-host update check
+      description: |
+        Hidden in SaaS (404). Does not consult license or plan tier.
+        An empty feed URL or isolated mode does not call an external host.
+        Checking does not download or apply a package.
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Current version and available offline packages
+        "401":
+          description: Auth required
+        "404":
+          description: Not available in SaaS mode
+
+  /system/updates/dismiss:
+    post:
+      tags: [System]
+      summary: Dismiss the current available version until a newer one is published
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Dismissed
+        "403":
+          description: Workspace owner required
+
+  /system/updates/apply:
+    post:
+      tags: [System]
+      summary: Ask the update agent to verify and apply one offline package
+      description: |
+        Starts only when a workspace owner calls this route.
+        The agent verifies the package signature before changing containers.
+        The web container does not receive the Docker socket.
+      security: [{ bearerAuth: [] }]
+      responses:
+        "202":
+          description: Apply job started
+        "400":
+          description: Missing signature, untrusted key, or invalid package
+        "403":
+          description: Workspace owner required
+
+  /system/updates/jobs/{jobId}:
+    get:
+      tags: [System]
+      summary: Poll an update job
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Job progress
+        "404":
+          description: Unknown job
+
   /auth/email/start:
     post:
       tags: [Auth]

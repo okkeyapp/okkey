@@ -1,0 +1,14 @@
+{
+  "schema": "okkey.update-feed.v1",
+  "packages": [
+    {
+      "component": "okkey",
+      "version": "1.1.0",
+      "fromVersion": "1.0.0-beta.2",
+      "summary": "Example feed shape. Sign a real package with services/api/src/system-updates/sign-cli.ts before apply.",
+      "releasedAt": "2026-11-01T00:00:00.000Z",
+      "packageUrl": "http://127.0.0.1:8099/okkey-1.1.0.okpkg",
+      "packageSha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+  ]
+}

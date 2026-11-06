@@ -127,6 +127,13 @@ services:
       WEBAUTHN_RP_NAME: ${WEBAUTHN_RP_NAME:-Okkey}
       WEBAUTHN_ORIGINS: ${WEBAUTHN_ORIGINS}
       OKKEY_DEPLOYMENT_MODE: self_hosted
+      OKKEY_VERSION: ${OKKEY_IMAGE_TAG:-1.0.0-beta.2}
+      OKKEY_ENTERPRISE_VERSION: ${OKKEY_ENTERPRISE_VERSION:-}
+      # Empty feed URL does not call out. Set OKKEY_UPDATE_ISOLATED=true to force that even if a URL is set.
+      OKKEY_UPDATE_FEED_URL: ${OKKEY_UPDATE_FEED_URL:-}
+      OKKEY_UPDATE_ISOLATED: ${OKKEY_UPDATE_ISOLATED:-false}
+      OKKEY_UPDATE_AGENT_URL: http://update-agent:8090
+      OKKEY_UPDATE_AGENT_TOKEN: ${OKKEY_UPDATE_AGENT_TOKEN:-}
       # 0 = ignore X-Forwarded-For (TCP peer). Set 1 when api sits behind deploy/docker/proxy nginx.
       # Keep the host publish on 127.0.0.1 so a forged XFF cannot hit the API from the LAN/WAN.
       TRUSTED_PROXY_HOPS: ${TRUSTED_PROXY_HOPS:-0}
@@ -193,6 +200,7 @@ services:
   web:
     image: ${OKKEY_WEB_IMAGE:-ghcr.io/okkeyapp/web}:${OKKEY_IMAGE_TAG:-1.0.0-beta.2}
     restart: unless-stopped
+    # Do not mount the Docker socket on this service. Package apply runs only in update-agent.
     depends_on:
       api:
         condition: service_healthy
@@ -200,6 +208,26 @@ services:
       OKKEY_API_PUBLIC_URL: ${OKKEY_API_PUBLIC_URL}
     ports:
       - "${WEB_PORT:-8080}:80"
+
+  # Dedicated update agent. The Docker socket is mounted on this service only.
+  update-agent:
+    image: ${OKKEY_API_IMAGE:-ghcr.io/okkeyapp/api}:${OKKEY_IMAGE_TAG:-1.0.0-beta.2}
+    restart: unless-stopped
+    command: ["node", "--experimental-strip-types", "services/api/src/update-agent/main.ts"]
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      OKKEY_UPDATE_AGENT_TOKEN: ${OKKEY_UPDATE_AGENT_TOKEN:-}
+      OKKEY_UPDATE_TRUSTED_PUBLIC_KEY: ${OKKEY_UPDATE_TRUSTED_PUBLIC_KEY:-}
+      OKKEY_UPDATE_ISOLATED: ${OKKEY_UPDATE_ISOLATED:-false}
+      OKKEY_COMPOSE_PROJECT: ${OKKEY_COMPOSE_PROJECT:-okkey}
+      OKKEY_INSTALL_DIR: /okkey
+      DOCKER_SOCKET: /var/run/docker.sock
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${OKKEY_HOST_INSTALL_DIR:-.}:/okkey
 
 volumes:
   okkey-postgres:
