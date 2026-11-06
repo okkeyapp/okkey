@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { MASTER_PASSWORD_POLICY_VERSION } from "@okkey/types";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { createApiApp } from "../src/app.ts";
 import type { ApiConfig } from "../src/config.ts";
@@ -242,12 +243,42 @@ test("POST /account/master-password/change updates shares", async () => {
       server_key_share: share,
       password_kdf_salt: salt,
       password_kdf_params_version: 1,
+      master_password_policy_version: MASTER_PASSWORD_POLICY_VERSION,
     },
   });
 
   assert.equal(res.statusCode, 200);
   const payload = JSON.parse(res.body) as { master_password_changed_at: string };
   assert.equal(payload.master_password_changed_at, "2026-03-02T21:59:00.000Z");
+});
+
+test("POST /account/master-password/change rejects a missing policy version", async () => {
+  let updates = 0;
+  const users = createUsersRepositoryStub();
+  const original = users.updateMasterPasswordShares.bind(users);
+  users.updateMasterPasswordShares = async (...args) => {
+    updates += 1;
+    return original(...args);
+  };
+  const share = Buffer.alloc(32, 7).toString("base64");
+  const salt = Buffer.alloc(16, 9).toString("base64");
+  const res = await dispatch({
+    method: "POST",
+    url: "/account/master-password/change",
+    sessionService: createSessionServiceStub(),
+    usersRepository: users,
+    headers: { authorization: "Bearer test-access-token" },
+    body: {
+      server_key_share: share,
+      password_kdf_salt: salt,
+      password_kdf_params_version: 1,
+    },
+  });
+
+  assert.equal(res.statusCode, 400);
+  const payload = JSON.parse(res.body) as { error: string };
+  assert.equal(payload.error, "MASTER_PASSWORD_POLICY_REJECTED");
+  assert.equal(updates, 0);
 });
 
 test("PATCH /account/profile rejects invalid payload", async () => {

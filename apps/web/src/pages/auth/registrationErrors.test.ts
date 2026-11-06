@@ -22,6 +22,15 @@ describe("registrationErrorI18nKey", () => {
     expect(registrationErrorI18nKey(err)).toBe("auth.registration.errorAlreadyRegistered");
   });
 
+  it("maps MASTER_PASSWORD_POLICY_REJECTED", () => {
+    const err = new ApiRequestError(400, {
+      error: "MASTER_PASSWORD_POLICY_REJECTED",
+      message: "master_password_policy_version is not the current policy",
+      requestId: "r1",
+    });
+    expect(registrationErrorI18nKey(err)).toBe("auth.masterPassword.policyRejected");
+  });
+
   it("maps CRYPTO_ROLLOUT_PAUSED", () => {
     const err = new ApiRequestError(503, {
       error: "CRYPTO_ROLLOUT_PAUSED",

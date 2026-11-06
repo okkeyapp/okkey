@@ -16,7 +16,11 @@ import {
   random_bytes,
 } from "@okkey/crypto-wasm";
 import { ensureWasm } from "./wasm-init.js";
-import type { EncryptedBlobDto } from "@okkey/types";
+import {
+  MIN_MASTER_PASSWORD_LENGTH,
+  masterPasswordUtf8MeetsNewPasswordPolicy,
+  type EncryptedBlobDto,
+} from "@okkey/types";
 import {
   MLDSA65_PUBLIC_KEY_LEN,
   MLDSA65_SEED_LEN,
@@ -40,6 +44,24 @@ export const OKKEY_PASSWORD_KDF_PARAMS_V1 = {
 
 /** New password KDF writes. Unlock still accepts stored version 1. */
 export const OKKEY_PASSWORD_KDF_PARAMS_VERSION = 2 as const;
+
+/**
+ * Reject a master password that is being set (registration or change).
+ * Unlock paths must not call this — existing shorter passwords stay valid.
+ */
+function assertNewMasterPasswordUtf8(masterPasswordUtf8: Uint8Array): void {
+  let meetsPolicy = false;
+  try {
+    meetsPolicy = masterPasswordUtf8MeetsNewPasswordPolicy(masterPasswordUtf8);
+  } catch {
+    throw new Error("master password must be valid UTF-8");
+  }
+  if (!meetsPolicy) {
+    throw new Error(
+      `master password must be at least ${MIN_MASTER_PASSWORD_LENGTH} characters`,
+    );
+  }
+}
 
 
 function xor32(a: Uint8Array, b: Uint8Array, c: Uint8Array): Uint8Array {
@@ -67,6 +89,7 @@ export interface RegistrationUserKeyMaterial {
 export async function buildRegistrationCryptoArtifacts(
   masterPasswordUtf8: Uint8Array,
 ): Promise<RegistrationSplitKeyMaterial & RegistrationUserKeyMaterial & { vaultKey: Uint8Array }> {
+  assertNewMasterPasswordUtf8(masterPasswordUtf8);
   await ensureWasm();
 
   const vaultKey = random_bytes(SHARE_LEN);
@@ -193,6 +216,7 @@ export async function rebalanceServerShareForNewPassword(input: {
   deviceShare: Uint8Array;
   passwordKdfParamsVersion?: number;
 }): Promise<RebalanceServerShareForNewPasswordResult> {
+  assertNewMasterPasswordUtf8(input.newMasterPasswordUtf8);
   await ensureWasm();
   if (input.vaultKey.length !== SHARE_LEN || input.deviceShare.length !== SHARE_LEN) {
     throw new Error("vaultKey and deviceShare must be 32 bytes");

@@ -9,7 +9,12 @@ import {
   recoveryPossessionPublicKey,
   wrapVaultKeyWithRecoverySecret,
 } from "@okkey/crypto";
-import type { RegisterCompleteRequestDto } from "@okkey/types";
+import {
+  MASTER_PASSWORD_POLICY_VERSION,
+  MIN_MASTER_PASSWORD_LENGTH,
+  masterPasswordMeetsNewPasswordPolicy,
+  type RegisterCompleteRequestDto,
+} from "@okkey/types";
 import {
   Alert,
   AlertDescription,
@@ -45,7 +50,6 @@ import {
   type RegistrationStep,
 } from "./registrationRecoveryStep";
 
-const MIN_MASTER_PASSWORD_LENGTH = 4;
 /** Match KeyField copy-success feedback duration. */
 const RECOVERY_COPY_SUCCESS_MS = 3000;
 
@@ -141,7 +145,7 @@ export default function AuthRegistrationPage() {
       masterPassword.length > 0 &&
       repeatMasterPassword.length > 0;
 
-    const passwordLongEnough = masterPassword.length >= MIN_MASTER_PASSWORD_LENGTH;
+    const passwordLongEnough = masterPasswordMeetsNewPasswordPolicy(masterPassword);
 
     const passwordsMatch = repeatMasterPassword.length > 0 && masterPassword === repeatMasterPassword;
 
@@ -189,6 +193,7 @@ export default function AuthRegistrationPage() {
         server_key_share: wire.server_key_share,
         password_kdf_salt: wire.password_kdf_salt,
         password_kdf_params_version: wire.password_kdf_params_version,
+        master_password_policy_version: MASTER_PASSWORD_POLICY_VERSION,
         device_public_key: devicePublicKeyB64,
         device_share: bytesToBase64(material.deviceShare),
         device_fingerprint: getOrCreateDeviceFingerprint(),

@@ -141,6 +141,39 @@ async function submitRegistration() {
   fireEvent.click(screen.getByRole("button", { name: "auth.registration.submit" }));
 }
 
+describe("AuthRegistrationPage master password length", () => {
+  beforeEach(() => {
+    navigate.mockReset();
+  });
+
+  it("keeps Register disabled until the master password has 12 characters", () => {
+    renderPage();
+    fireEvent.change(screen.getByLabelText("auth.registration.firstName"), {
+      target: { value: "Ada" },
+    });
+    fireEvent.change(screen.getByLabelText("auth.registration.lastName"), {
+      target: { value: "Lovelace" },
+    });
+    fireEvent.change(screen.getByLabelText("auth.registration.masterPassword"), {
+      target: { value: "12345678901" },
+    });
+    fireEvent.change(screen.getByLabelText("auth.registration.repeatMasterPassword"), {
+      target: { value: "12345678901" },
+    });
+    const submit = screen.getByRole("button", { name: "auth.registration.submit" });
+    expect(submit).toBeDisabled();
+    expect(screen.getByText("auth.registration.reqPasswordLength")).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText("auth.registration.masterPassword"), {
+      target: { value: "123456789012" },
+    });
+    fireEvent.change(screen.getByLabelText("auth.registration.repeatMasterPassword"), {
+      target: { value: "123456789012" },
+    });
+    expect(submit).toBeEnabled();
+  });
+});
+
 describe("AuthRegistrationPage recovery key", () => {
   beforeEach(() => {
     navigate.mockReset();

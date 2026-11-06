@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { MASTER_PASSWORD_POLICY_VERSION } from "@okkey/types";
 import { generateKeyPairSync, sign } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { createApiApp } from "../src/app.ts";
@@ -351,6 +352,7 @@ test("pending session proves with a device-bound challenge and does not receive 
         server_key_share: Buffer.alloc(32, 1).toString("base64"),
         password_kdf_salt: Buffer.alloc(16, 2).toString("base64"),
         password_kdf_params_version: 2,
+        master_password_policy_version: MASTER_PASSWORD_POLICY_VERSION,
       })
     ).statusCode,
     200,

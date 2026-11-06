@@ -1,3 +1,5 @@
+import { isCurrentMasterPasswordPolicyVersion } from "@okkey/types";
+
 import {
   CLIENT_UPGRADE_REQUIRED,
   CLIENT_UPGRADE_REQUIRED_MESSAGE,
@@ -18,6 +20,8 @@ interface RegisterCompleteBody {
   server_key_share?: string;
   password_kdf_salt?: string;
   password_kdf_params_version?: number;
+  /** Client attestation of the current new-password policy. Not a password or length. */
+  master_password_policy_version?: unknown;
   device_public_key?: string;
   device_share?: string;
   device_fingerprint?: string;
@@ -204,6 +208,19 @@ export function createRegisterCompleteRoute(
         errorPayload(
           "REGISTRATION_BAD_REQUEST",
           "password_kdf_params_version is required",
+          ctx.requestId,
+        ),
+      );
+      return;
+    }
+
+    if (!isCurrentMasterPasswordPolicyVersion(body.master_password_policy_version)) {
+      json(
+        ctx.res,
+        400,
+        errorPayload(
+          "MASTER_PASSWORD_POLICY_REJECTED",
+          "master_password_policy_version is not the current policy",
           ctx.requestId,
         ),
       );

@@ -91,6 +91,19 @@ export {
   computeAccountSecurityScore,
 } from "./account-security-score.js";
 
+export {
+  MASTER_PASSWORD_POLICY_VERSION,
+  MIN_MASTER_PASSWORD_LENGTH,
+  isCurrentMasterPasswordPolicyVersion,
+  masterPasswordMeetsNewPasswordPolicy,
+  masterPasswordUtf8Length,
+  masterPasswordUtf8MeetsNewPasswordPolicy,
+  readShortMasterPasswordHintDismissed,
+  shortMasterPasswordHintDismissedStorageKey,
+  shouldSuggestLongerMasterPassword,
+  writeShortMasterPasswordHintDismissed,
+} from "./master-password-policy.js";
+
 export interface User {
   id: EntityId;
   email: string;
@@ -1630,6 +1643,12 @@ export interface RegisterCompleteRequestDto {
   server_key_share: string;
   password_kdf_salt: string;
   password_kdf_params_version: number;
+  /**
+   * Client attestation that the new master password meets
+   * {@link MASTER_PASSWORD_POLICY_VERSION}. The server checks the version
+   * only and never receives the password.
+   */
+  master_password_policy_version: number;
   device_public_key: string;
   device_share: string;
   device_fingerprint: string;
@@ -1699,6 +1718,12 @@ export interface AccountMasterPasswordChangeRequestDto {
   server_key_share: string;
   password_kdf_salt: string;
   password_kdf_params_version: number;
+  /**
+   * Client attestation that the new master password meets
+   * {@link MASTER_PASSWORD_POLICY_VERSION}. The server checks the version
+   * only and never receives the password.
+   */
+  master_password_policy_version: number;
 }
 
 /** `POST /account/master-password/change` success body. */

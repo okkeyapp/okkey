@@ -18,6 +18,8 @@ export function registrationErrorI18nKey(err: unknown): string {
         return "auth.registration.errorBadRequest";
       case "CLIENT_UPGRADE_REQUIRED":
         return "clientUpgrade.body";
+      case "MASTER_PASSWORD_POLICY_REJECTED":
+        return "auth.masterPassword.policyRejected";
       case "CRYPTO_PAYLOAD_INVALID":
         return "auth.registration.errorCryptoPayload";
       case "CRYPTO_PROFILE_NOT_ALLOWED":
