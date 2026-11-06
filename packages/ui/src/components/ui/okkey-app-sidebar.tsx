@@ -1092,6 +1092,8 @@ export type OkkeyAppSidebarProps = {
   accountMenu?: OkkeyAppSidebarAccountMenu;
   /** When set, footer Documentation / Help use these strings (e.g. i18n); otherwise English gallery labels. */
   footerPlainLinkLabels?: { documentation: string; help: string };
+  /** Host-rendered block above the footer links (self-host version and update notice). */
+  beforeFooter?: React.ReactNode;
   /**
    * When false, hide Documentation / Help footer links entirely (e.g. extension popup).
    * Default true for gallery / web.
@@ -1345,6 +1347,7 @@ function OkkeyAppSidebarInner({
   folderEmptyLabel,
   accountMenu,
   footerPlainLinkLabels,
+  beforeFooter,
   showFooterPlainLinks = true,
   vaultHeaderPlusAriaLabel = "Add vault",
   folderHeaderPlusAriaLabel = "Add folder",
@@ -1372,6 +1375,7 @@ function OkkeyAppSidebarInner({
   | "folderEmptyLabel"
   | "accountMenu"
   | "footerPlainLinkLabels"
+  | "beforeFooter"
   | "showFooterPlainLinks"
   | "vaultHeaderPlusAriaLabel"
   | "folderHeaderPlusAriaLabel"
@@ -1646,6 +1650,7 @@ function OkkeyAppSidebarInner({
         </ScrollArea>
 
         <div className="mt-auto shrink-0 p-2">
+          {beforeFooter ? <div className="mb-2">{beforeFooter}</div> : null}
           {showFooterPlain ? (
             !showExpanded ? (
               <SidebarMenu>
@@ -1791,6 +1796,7 @@ export function OkkeyAppSidebar({
   folderEmptyLabel,
   accountMenu,
   footerPlainLinkLabels,
+  beforeFooter,
   showFooterPlainLinks,
   vaultHeaderPlusAriaLabel,
   folderHeaderPlusAriaLabel,
@@ -1864,6 +1870,7 @@ export function OkkeyAppSidebar({
                   folderEmptyLabel={folderEmptyLabel}
                   accountMenu={accountMenu}
                   footerPlainLinkLabels={footerPlainLinkLabels}
+                  beforeFooter={beforeFooter}
                   showFooterPlainLinks={showFooterPlainLinks}
                   vaultHeaderPlusAriaLabel={vaultHeaderPlusAriaLabel}
                   folderHeaderPlusAriaLabel={folderHeaderPlusAriaLabel}
@@ -1906,6 +1913,7 @@ export function OkkeyAppSidebar({
                     folderEmptyLabel={folderEmptyLabel}
                     accountMenu={accountMenu}
                     footerPlainLinkLabels={footerPlainLinkLabels}
+                    beforeFooter={beforeFooter}
                     showFooterPlainLinks={showFooterPlainLinks}
                     vaultHeaderPlusAriaLabel={vaultHeaderPlusAriaLabel}
                     folderHeaderPlusAriaLabel={folderHeaderPlusAriaLabel}
