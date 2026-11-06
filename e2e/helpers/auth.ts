@@ -83,6 +83,23 @@ export async function unlockWithMasterPassword(
   await page.locator("#unlock-master-password").fill(masterPassword);
   await page.getByRole("button", { name: /^unlock$/i }).click();
   await expect(page).toHaveURL(/\/items/, { timeout: 60_000 });
+  await expectNoPersistedServerKeyShare(page);
+}
+
+/** Device storage may keep the device share. It must not keep the server share. */
+export async function expectNoPersistedServerKeyShare(page: Page): Promise<void> {
+  const raw = await page.evaluate(() => {
+    const parts: string[] = [];
+    for (let i = 0; i < localStorage.length; i += 1) {
+      const key = localStorage.key(i);
+      if (key?.startsWith("okkey.vault.bundle")) {
+        parts.push(localStorage.getItem(key) ?? "");
+      }
+    }
+    parts.push(sessionStorage.getItem("okkey.vault.bundle") ?? "");
+    return parts.join("\n");
+  });
+  expect(raw.includes("server_key_share")).toBe(false);
 }
 
 /** Assert unlock rejects this master password and stays on the lock screen. */

@@ -10,6 +10,21 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./src/index.ts"
+    },
+    "./vault-bundle": {
+      "types": "./dist/vault-bundle.d.ts",
+      "import": "./dist/vault-bundle.js",
+      "default": "./src/vault-bundle.ts"
+    },
+    "./server-key-share-memory": {
+      "types": "./dist/server-key-share-memory.d.ts",
+      "import": "./dist/server-key-share-memory.js",
+      "default": "./src/server-key-share-memory.ts"
+    },
+    "./unlock-with-master-password": {
+      "types": "./dist/unlock-with-master-password.d.ts",
+      "import": "./dist/unlock-with-master-password.js",
+      "default": "./src/unlock-with-master-password.ts"
     }
   },
   "files": ["dist", "src"],

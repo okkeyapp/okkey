@@ -195,6 +195,18 @@ export async function extensionPkceSignInUnlockAndSeeItem(input: {
     await expect(popup.getByText(input.itemTitle, { exact: false }).first()).toBeVisible({
       timeout: 90_000,
     });
+    const extensionStorage = await popup.evaluate(async () => {
+      const chromeApi = (
+        globalThis as {
+          chrome?: {
+            storage?: { local?: { get: (keys: null) => Promise<Record<string, unknown>> } };
+          };
+        }
+      ).chrome;
+      const all = (await chromeApi?.storage?.local?.get(null)) ?? {};
+      return JSON.stringify(all);
+    });
+    expect(extensionStorage.includes("server_key_share")).toBe(false);
   } finally {
     await context.close();
     fs.rmSync(userDataDir, { recursive: true, force: true });

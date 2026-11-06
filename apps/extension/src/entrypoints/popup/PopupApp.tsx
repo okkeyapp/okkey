@@ -68,6 +68,7 @@ import {
 import { clearExtensionDeviceSigningKey } from "../../lib/deviceSigningKey";
 import { readExtensionPinUnlockWrap } from "../../lib/extensionDeviceUnlockStore";
 import {
+  clearExtensionServerKeyShareMemory,
   ensureExtensionVaultBundle,
   unlockExtensionVault,
   upgradeExtensionMlDsaIdentity,
@@ -397,6 +398,7 @@ export function PopupApp() {
     unlockSecretsRef.current = null;
     setUnlockSecrets(null);
     setEncryptedPrivateKeyPayload(null);
+    clearExtensionServerKeyShareMemory();
     // Preserve device signing keys across 401 / account wipe so re-login can still
     // prove bind-session. Blocked/rejected paths clear keys inside deviceTrust.
     await wipeAllExtensionData();
@@ -562,6 +564,7 @@ export function PopupApp() {
     const tick = () => {
       void extensionUnlockSessionExceededIdle(userId).then((exceeded) => {
         if (exceeded) {
+          clearExtensionServerKeyShareMemory();
           wipeUnlockSecrets(unlockSecretsRef.current);
           unlockSecretsRef.current = null;
           setUnlockSecrets(null);
@@ -590,6 +593,7 @@ export function PopupApp() {
       if (screen !== "vault") {
         return;
       }
+      clearExtensionServerKeyShareMemory();
       wipeUnlockSecrets(unlockSecretsRef.current);
       unlockSecretsRef.current = null;
       setUnlockSecrets(null);
@@ -700,6 +704,7 @@ export function PopupApp() {
         const priorApiBase = previous.apiBaseUrl;
         const priorDeviceId = trust?.deviceId ?? (await readDeviceId());
         // Local wipe first so unlock / pending-save cannot survive a hung revoke.
+        clearExtensionServerKeyShareMemory();
         await wipeAllExtensionData();
         if (priorToken) {
           const core = createCoreClient(priorApiBase, priorToken);
@@ -749,6 +754,7 @@ export function PopupApp() {
   };
 
   const lockVault = useCallback(() => {
+    clearExtensionServerKeyShareMemory();
     wipeUnlockSecrets(unlockSecretsRef.current);
     unlockSecretsRef.current = null;
     setUnlockSecrets(null);
@@ -774,6 +780,7 @@ export function PopupApp() {
     unlockSecretsRef.current = null;
     setUnlockSecrets(null);
     setEncryptedPrivateKeyPayload(null);
+    clearExtensionServerKeyShareMemory();
     // Wipe account/session state first; keep device signing keys unless revoke succeeds
     // so a failed revoke still allows proof-before-bind on the next login.
     await wipeAllExtensionData();
@@ -1012,13 +1019,19 @@ export function PopupApp() {
     void (async () => {
       try {
         const core = createCoreClient(profile.apiBaseUrl, session.access_token);
-        const secrets = await unlockExtensionVault({
+        const unlocked = await unlockExtensionVault({
           core,
           userId: session.user_id,
           masterPassword,
         });
-        if (!secrets) {
-          toast.error(t("unlock.errorTitle"), { description: t("unlock.errorIncorrectPassword") });
+        if (!unlocked.ok) {
+          const description =
+            unlocked.reason === "server_share_unavailable"
+              ? t("unlock.errorServerShareUnavailable")
+              : unlocked.reason === "no_bundle"
+                ? t("unlock.errorNoLocalVault")
+                : t("unlock.errorIncorrectPassword");
+          toast.error(t("unlock.errorTitle"), { description });
           return;
         }
         setSuggestLongerMasterPassword(
@@ -1027,7 +1040,7 @@ export function PopupApp() {
             dismissed: readShortMasterPasswordHintDismissed(localStorage, session.user_id),
           }),
         );
-        await finishUnlockWithSecrets(secrets);
+        await finishUnlockWithSecrets(unlocked.secrets);
       } catch (err: unknown) {
         if (err instanceof UnsupportedIdentityBundleError || isClientUpgradeRequiredError(err)) {
           toast.error(t("clientUpgrade.title"), { description: t("clientUpgrade.body") });

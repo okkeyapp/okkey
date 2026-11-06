@@ -1,4 +1,4 @@
-import { extensionSessionStorage } from "./extensionStorageApi.ts";
+import { extensionLocalStorage, extensionSessionStorage } from "./extensionStorageApi.ts";
 
 /** Broadcast after a full local wipe so the service worker can drop in-memory caches. */
 export const EXTENSION_DATA_WIPED_MSG = "okkey.extension.dataWiped" as const;
@@ -54,8 +54,12 @@ export type ExtensionPkcePending = {
   createdAt: number;
 };
 
-function storageArea(): typeof browser.storage.local {
-  return browser.storage.local;
+function storageArea() {
+  const area = extensionLocalStorage();
+  if (!area) {
+    throw new Error("extension storage is unavailable");
+  }
+  return area;
 }
 
 export async function readProfile(): Promise<ExtensionProfile | null> {

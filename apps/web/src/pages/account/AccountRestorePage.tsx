@@ -9,7 +9,7 @@ import {
   wipeBytes,
   wrapVaultKeyWithRecoverySecret,
 } from "@okkey/crypto";
-import { createWorkspaceFoldersSyncController } from "@okkey/vault";
+import { createWorkspaceFoldersSyncController, rememberServerKeyShare } from "@okkey/vault";
 import {
   MASTER_PASSWORD_POLICY_VERSION,
   MIN_MASTER_PASSWORD_LENGTH,
@@ -259,9 +259,10 @@ export default function AccountRestorePage() {
         encryptedPrivateKey = identity.encrypted_private_key;
       }
 
+      const nextServerShareB64 = bytesToBase64(rebalanced.serverKeyShare);
+      rememberServerKeyShare(userId, nextServerShareB64);
       writeVaultBundle(
         {
-          server_key_share_b64: bytesToBase64(rebalanced.serverKeyShare),
           device_share_b64: bytesToBase64(deviceB),
           password_kdf_salt_b64: bytesToBase64(rebalanced.passwordKdfSalt),
           password_kdf_params_version: rebalanced.passwordKdfParamsVersion,

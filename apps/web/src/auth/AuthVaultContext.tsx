@@ -32,7 +32,13 @@ import {
   derivePasswordShareC,
   wipeBytes,
 } from "@okkey/crypto";
-import { ensureMlDsaIdentityOnUnlock } from "@okkey/vault";
+import {
+  beginServerKeyShareFetch,
+  clearRememberedServerKeyShares,
+  commitFetchedServerKeyShare,
+  ensureMlDsaIdentityOnUnlock,
+  rememberServerKeyShare,
+} from "@okkey/vault";
 
 import { createAuthSdk, createAuthenticatedCoreClient, createPublicApiClient } from "../api/client";
 import { clearSettingsPopupCache } from "../components/settings/settingsPopupCache";
@@ -72,6 +78,7 @@ import {
 import { clearStoredCurrentWorkspaceId } from "./workspaceStorage";
 import { clearDeviceUnlockSecrets } from "./vaultDeviceUnlockStore";
 import { patchVaultDevicePrefs, readVaultDevicePrefs } from "./vaultDevicePrefs";
+import { resolveUnlockServerShare } from "./resolveUnlockServerShare";
 import { scheduleClipboardClearAfterCopy } from "./vaultClipboardClear";
 import { DEFAULT_VAULT_IDLE_LOCK_MS, vaultIdleLockMsFromServerSeconds } from "./vaultIdleLockMs";
 import {
@@ -85,6 +92,24 @@ import {
 import { useLocale } from "../locale/LocaleContext";
 
 export const DEFAULT_IDLE_MS = DEFAULT_VAULT_IDLE_LOCK_MS;
+
+export type MasterPasswordUnlockResult =
+  | { ok: true }
+  | {
+      ok: false;
+      reason: "no_bundle" | "rejected" | "server_share_unavailable" | "upgrade_required";
+    };
+
+function bytesEqual(left: Uint8Array, right: Uint8Array): boolean {
+  if (left.length !== right.length) {
+    return false;
+  }
+  let diff = 0;
+  for (let i = 0; i < left.length; i += 1) {
+    diff |= left[i]! ^ right[i]!;
+  }
+  return diff === 0;
+}
 
 export type AuthVaultContextValue = {
   accessToken: string | null;
@@ -113,7 +138,7 @@ export type AuthVaultContextValue = {
   touchActivity: () => void;
   saveVaultBundle: (bundle: StoredVaultBundle) => void;
   updateLocalProfile: (patch: { email?: string; firstName?: string | null; lastName?: string | null }) => void;
-  tryUnlockWithMasterPassword: (masterPassword: string) => Promise<boolean | "upgrade_required">;
+  tryUnlockWithMasterPassword: (masterPassword: string) => Promise<MasterPasswordUnlockResult>;
   /** Server or local key format says this build must be updated. */
   clientUpgradeRequired: boolean;
   /** Re-fetch A+B from server when local vault bundle is missing (trusted device). */
@@ -510,19 +535,30 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       setVaultUnlockBootstrapLoading(deviceTrustStatus === "checking");
       return;
     }
-    if (readVaultBundle(userId)) {
+    const existing = readVaultBundle(userId);
+    if (existing) {
+      // Device material is already local. Refresh A in the background and drop any
+      // legacy persisted copy once the server answers. Do not block unlock UI.
       setVaultUnlockBootstrapLoading(false);
+      const bundle = existing;
+      void resolveUnlockServerShare({ userId, accessToken, bundle }).catch(() => {
+        /* Offline: a legacy server share, when present, stays until the next online unlock. */
+      });
       return;
     }
 
     setVaultUnlockBootstrapLoading(true);
     let cancelled = false;
+    const begunAt = beginServerKeyShareFetch();
     void (async () => {
       try {
         const fp = getOrCreateDeviceFingerprint();
         const client = createAuthenticatedCoreClient(accessToken);
         const dto = await client.getVaultUnlockBootstrap(fp);
         if (cancelled) {
+          return;
+        }
+        if (!commitFetchedServerKeyShare(userId, dto.server_key_share, begunAt)) {
           return;
         }
         writeVaultBundle(mapVaultUnlockBootstrapToStored(dto), userId);
@@ -554,6 +590,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       const fp = getOrCreateDeviceFingerprint();
       const client = createAuthenticatedCoreClient(accessToken);
       const dto = await client.getVaultUnlockBootstrap(fp);
+      rememberServerKeyShare(userId, dto.server_key_share);
       writeVaultBundle(mapVaultUnlockBootstrapToStored(dto), userId);
       return true;
     } catch (error) {
@@ -653,6 +690,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
     setAccessToken(dto.access_token);
     setUserId(dto.user_id);
     setVaultIdleLockMsState(DEFAULT_VAULT_IDLE_LOCK_MS);
+    clearRememberedServerKeyShares();
     migrateLegacyVaultBundleToUser(dto.user_id);
     const merged = bridgeLocalProfileAfterLogin(dto.user_id);
     if (merged) {
@@ -670,6 +708,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       clearStoredCurrentWorkspaceId(workspaceUserId);
     }
     userIdRef.current = null;
+    clearRememberedServerKeyShares();
     clearVaultUnlockSession();
     clearStoredSession();
     clearSessionLocalProfile();
@@ -703,6 +742,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
   logoutRef.current = logout;
 
   const lockVault = useCallback(() => {
+    clearRememberedServerKeyShares();
     clearVaultUnlockSession();
     clearVaultKeySecret();
     clearPasswordShareSecrets();
@@ -801,29 +841,41 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
     [userId, accessToken],
   );
 
-  const tryUnlockWithMasterPassword = useCallback(async (masterPassword: string): Promise<boolean | "upgrade_required"> => {
+  const tryUnlockWithMasterPassword = useCallback(async (masterPassword: string): Promise<MasterPasswordUnlockResult> => {
     const bundle = readVaultBundle(userId);
-    if (!bundle) {
-      return false;
+    if (!bundle || !userId) {
+      return { ok: false, reason: "no_bundle" };
     }
+    const acquired = await resolveUnlockServerShare({
+      userId,
+      accessToken,
+      bundle,
+    });
+    if (!acquired) {
+      return { ok: false, reason: "server_share_unavailable" };
+    }
+    const material = readVaultBundle(userId) ?? bundle;
     const pwd = new TextEncoder().encode(masterPassword);
+    let serverA: Uint8Array | null = null;
+    let deviceB: Uint8Array | null = null;
+    let salt: Uint8Array | null = null;
     try {
-      const serverA = base64ToBytes(bundle.server_key_share_b64);
-      const deviceB = base64ToBytes(bundle.device_share_b64);
-      const salt = base64ToBytes(bundle.password_kdf_salt_b64);
+      serverA = base64ToBytes(acquired.shareB64);
+      deviceB = base64ToBytes(material.device_share_b64);
+      salt = base64ToBytes(material.password_kdf_salt_b64);
       const shareC = await derivePasswordShareC({
         masterPasswordUtf8: pwd,
         passwordKdfSalt: salt,
-        passwordKdfParamsVersion: bundle.password_kdf_params_version,
+        passwordKdfParamsVersion: material.password_kdf_params_version,
       });
       const vaultKey = await reconstructVaultKeyWithMasterPassword({
         masterPasswordUtf8: pwd,
         serverKeyShare: serverA,
         deviceShare: deviceB,
         passwordKdfSalt: salt,
-        passwordKdfParamsVersion: bundle.password_kdf_params_version,
+        passwordKdfParamsVersion: material.password_kdf_params_version,
       });
-      await decryptUserIdentityFromEncryptedBlob(vaultKey, bundle.encrypted_private_key.payload);
+      await decryptUserIdentityFromEncryptedBlob(vaultKey, material.encrypted_private_key.payload);
       if (vaultKeyRef.current) {
         wipeBytes(vaultKeyRef.current);
       }
@@ -837,26 +889,20 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       vaultUnlockedRef.current = true;
       setVaultUnlocked(true);
       lastActivityRef.current = Date.now();
-      if (userId) {
-        persistVaultUnlockSession(userId, vaultKey, shareC);
-        setSuggestLongerMasterPassword(
-          shouldSuggestLongerMasterPassword({
-            passwordLength: masterPassword.length,
-            dismissed: readShortMasterPasswordHintDismissed(localStorage, userId),
-          }),
-        );
-      }
-      wipeBytes(pwd);
-      wipeBytes(serverA);
-      wipeBytes(deviceB);
-      wipeBytes(salt);
+      persistVaultUnlockSession(userId, vaultKey, shareC);
+      setSuggestLongerMasterPassword(
+        shouldSuggestLongerMasterPassword({
+          passwordLength: masterPassword.length,
+          dismissed: readShortMasterPasswordHintDismissed(localStorage, userId),
+        }),
+      );
       await upgradeMlDsaIdentity(vaultKey);
       const token = accessToken;
-      if (token && userId) {
+      if (token) {
         void buildVaultUnlockAttestation({
           userId,
           vaultKey,
-          encryptedPrivateKeyPayloadB64: bundle.encrypted_private_key.payload,
+          encryptedPrivateKeyPayloadB64: material.encrypted_private_key.payload,
         })
           .then((attestation) =>
             createAuthenticatedCoreClient(token).recordVaultUnlock(attestation),
@@ -865,14 +911,18 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
             /* best-effort: unlock UI must not fail if telemetry POST fails */
           });
       }
-      return true;
+      return { ok: true };
     } catch (error) {
-      wipeBytes(pwd);
-      if (error instanceof UnsupportedIdentityBundleError) {
+      if (error instanceof UnsupportedIdentityBundleError || isClientUpgradeRequiredError(error)) {
         setClientUpgradeRequired(true);
-        return "upgrade_required";
+        return { ok: false, reason: "upgrade_required" };
       }
-      return false;
+      return { ok: false, reason: "rejected" };
+    } finally {
+      wipeBytes(pwd);
+      if (serverA) wipeBytes(serverA);
+      if (deviceB) wipeBytes(deviceB);
+      if (salt) wipeBytes(salt);
     }
   }, [userId, accessToken, upgradeMlDsaIdentity]);
 
@@ -921,34 +971,70 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
         return false;
       }
       const pwd = new TextEncoder().encode(masterPassword);
+      let salt: Uint8Array | null = null;
+      let derived: Uint8Array | null = null;
       try {
-        const serverA = base64ToBytes(bundle.server_key_share_b64);
-        const deviceB = base64ToBytes(bundle.device_share_b64);
-        const salt = base64ToBytes(bundle.password_kdf_salt_b64);
-        const vaultKey = await reconstructVaultKeyWithMasterPassword({
+        salt = base64ToBytes(bundle.password_kdf_salt_b64);
+        derived = await derivePasswordShareC({
           masterPasswordUtf8: pwd,
-          serverKeyShare: serverA,
-          deviceShare: deviceB,
           passwordKdfSalt: salt,
           passwordKdfParamsVersion: bundle.password_kdf_params_version,
         });
-        await decryptUserIdentityFromEncryptedBlob(vaultKey, bundle.encrypted_private_key.payload);
-        wipeBytes(pwd);
-        wipeBytes(serverA);
-        wipeBytes(deviceB);
-        wipeBytes(salt);
-        wipeBytes(vaultKey);
-        return true;
+        // Unlocked session already holds C. Comparing it avoids another fetch of A
+        // and still works after a reload that restored C from this tab's session.
+        if (passwordShareCRef.current && bytesEqual(derived, passwordShareCRef.current)) {
+          if (vaultKeyRef.current) {
+            await decryptUserIdentityFromEncryptedBlob(
+              vaultKeyRef.current,
+              bundle.encrypted_private_key.payload,
+            );
+          }
+          return true;
+        }
+        if (!userId) {
+          return false;
+        }
+        const acquired = await resolveUnlockServerShare({
+          userId,
+          accessToken,
+          bundle,
+        });
+        if (!acquired) {
+          return false;
+        }
+        const material = readVaultBundle(userId) ?? bundle;
+        const serverA = base64ToBytes(acquired.shareB64);
+        const deviceB = base64ToBytes(material.device_share_b64);
+        const materialSalt = base64ToBytes(material.password_kdf_salt_b64);
+        try {
+          const vaultKey = await reconstructVaultKeyWithMasterPassword({
+            masterPasswordUtf8: pwd,
+            serverKeyShare: serverA,
+            deviceShare: deviceB,
+            passwordKdfSalt: materialSalt,
+            passwordKdfParamsVersion: material.password_kdf_params_version,
+          });
+          await decryptUserIdentityFromEncryptedBlob(vaultKey, material.encrypted_private_key.payload);
+          wipeBytes(vaultKey);
+          return true;
+        } finally {
+          wipeBytes(serverA);
+          wipeBytes(deviceB);
+          wipeBytes(materialSalt);
+        }
       } catch (error) {
-        wipeBytes(pwd);
-        if (error instanceof UnsupportedIdentityBundleError) {
+        if (error instanceof UnsupportedIdentityBundleError || isClientUpgradeRequiredError(error)) {
           setClientUpgradeRequired(true);
           return "upgrade_required";
         }
         return false;
+      } finally {
+        wipeBytes(pwd);
+        if (salt) wipeBytes(salt);
+        if (derived) wipeBytes(derived);
       }
     },
-    [userId],
+    [userId, accessToken],
   );
 
   const changeMasterPassword = useCallback(
@@ -971,27 +1057,27 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       const oldPwd = new TextEncoder().encode(input.oldPassword);
       const newPwd = new TextEncoder().encode(input.newPassword);
       let oldShareC: Uint8Array | null = null;
+      let deviceB: Uint8Array | null = null;
       let rebalanced: Awaited<ReturnType<typeof rebalanceServerShareForNewPassword>> | null = null;
 
       try {
-        const serverA = base64ToBytes(bundle.server_key_share_b64);
-        const deviceB = base64ToBytes(bundle.device_share_b64);
+        deviceB = base64ToBytes(bundle.device_share_b64);
         const salt = base64ToBytes(bundle.password_kdf_salt_b64);
         try {
-          const reconstructed = await reconstructVaultKeyWithMasterPassword({
-            masterPasswordUtf8: oldPwd,
-            serverKeyShare: serverA,
-            deviceShare: deviceB,
-            passwordKdfSalt: salt,
-            passwordKdfParamsVersion: bundle.password_kdf_params_version,
-          });
-          await decryptUserIdentityFromEncryptedBlob(reconstructed, bundle.encrypted_private_key.payload);
-          wipeBytes(reconstructed);
           oldShareC = await derivePasswordShareC({
             masterPasswordUtf8: oldPwd,
             passwordKdfSalt: salt,
             passwordKdfParamsVersion: bundle.password_kdf_params_version,
           });
+          if (!passwordShareCRef.current || !bytesEqual(oldShareC, passwordShareCRef.current)) {
+            return { ok: false, error: "wrong_old_password" };
+          }
+          if (vaultKeyRef.current) {
+            await decryptUserIdentityFromEncryptedBlob(
+              vaultKeyRef.current,
+              bundle.encrypted_private_key.payload,
+            );
+          }
         } catch (error) {
           if (error instanceof UnsupportedIdentityBundleError) {
             setClientUpgradeRequired(true);
@@ -999,7 +1085,6 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
           }
           return { ok: false, error: "wrong_old_password" };
         } finally {
-          wipeBytes(serverA);
           wipeBytes(salt);
         }
 
@@ -1010,6 +1095,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
           passwordKdfParamsVersion: bundle.password_kdf_params_version,
         });
         wipeBytes(deviceB);
+        deviceB = null;
 
         const client = createAuthenticatedCoreClient(accessToken);
         if (input.workspaceIds.length > 0 && oldShareC) {
@@ -1021,17 +1107,20 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
           });
         }
 
+        const nextServerShareB64 = bytesToBase64(rebalanced.serverKeyShare);
         const response = await client.changeMasterPassword({
-          server_key_share: bytesToBase64(rebalanced.serverKeyShare),
+          server_key_share: nextServerShareB64,
           password_kdf_salt: bytesToBase64(rebalanced.passwordKdfSalt),
           password_kdf_params_version: rebalanced.passwordKdfParamsVersion,
           master_password_policy_version: MASTER_PASSWORD_POLICY_VERSION,
         });
 
+        // Commit A in memory before rewriting disk so an in-flight bootstrap fetch
+        // cannot put the previous share back, and disk never receives the new share.
+        rememberServerKeyShare(userId, nextServerShareB64);
         writeVaultBundle(
           {
             ...bundle,
-            server_key_share_b64: bytesToBase64(rebalanced.serverKeyShare),
             password_kdf_salt_b64: bytesToBase64(rebalanced.passwordKdfSalt),
             password_kdf_params_version: rebalanced.passwordKdfParamsVersion,
           },
@@ -1064,6 +1153,9 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
         wipeBytes(newPwd);
         if (oldShareC) {
           wipeBytes(oldShareC);
+        }
+        if (deviceB) {
+          wipeBytes(deviceB);
         }
         if (rebalanced) {
           wipeBytes(rebalanced.passwordShareC);

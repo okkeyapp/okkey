@@ -21,8 +21,12 @@ export async function unlockWithMasterPassword(
   bundle: StoredVaultBundle,
   masterPassword: string,
 ): Promise<UnlockWithMasterPasswordResult> {
+  const shareB64 = bundle.server_key_share_b64?.trim() ?? "";
+  if (!shareB64) {
+    throw new Error("SERVER_KEY_SHARE_UNAVAILABLE");
+  }
   const pwd = new TextEncoder().encode(masterPassword);
-  const serverA = base64ToBytes(bundle.server_key_share_b64);
+  const serverA = base64ToBytes(shareB64);
   const deviceB = base64ToBytes(bundle.device_share_b64);
   const salt = base64ToBytes(bundle.password_kdf_salt_b64);
   try {

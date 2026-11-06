@@ -1571,6 +1571,7 @@
   "clientUpgrade.body": "Эта версия приложения не может продолжить. Установите последнюю версию Okkey и попробуйте снова.",
   "unlock.errorTitle": "Ошибка",
   "unlock.errorIncorrectPassword": "Неверный мастер-пароль",
+  "unlock.errorServerShareUnavailable": "Разблокировка мастер-паролем требует соединения с сервером Okkey. Повторите, когда будете в сети. PIN и биометрия по-прежнему работают офлайн, если вы их включили.",
   "unlock.shortMasterPasswordHint": "Ваш мастер-пароль короче {min} символов. Им можно пользоваться как раньше. Сменить его можно по желанию.",
   "unlock.shortMasterPasswordHint.change": "Сменить мастер-пароль",
   "unlock.shortMasterPasswordHint.dismiss": "Скрыть",

@@ -9,9 +9,20 @@ import type {
 export { bytesToBase64, base64ToBytes } from "./base64.js";
 export {
   mapVaultUnlockBootstrapToStored,
+  omitServerKeyShare,
   parseStoredVaultBundle,
   type StoredVaultBundle,
 } from "./vault-bundle.js";
+export {
+  acquireServerKeyShare,
+  beginServerKeyShareFetch,
+  clearRememberedServerKeyShares,
+  commitFetchedServerKeyShare,
+  readRememberedServerKeyShare,
+  rememberServerKeyShare,
+  type AcquiredServerKeyShare,
+  type ServerKeyShareSource,
+} from "./server-key-share-memory.js";
 export {
   unlockWithMasterPassword,
   type UnlockWithMasterPasswordResult,
