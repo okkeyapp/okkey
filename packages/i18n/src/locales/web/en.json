@@ -305,6 +305,7 @@
   "web.devicePending.approversHeading": "Approve from",
   "web.devicePending.approversEmpty": "No trusted devices are available yet. Open Okkey on a device you already trust.",
   "web.devicePending.waiting": "Waiting for approval…",
+  "web.devicePending.shareDeliveryReset": "This sign-in has to be approved again. Ask someone on a trusted device to approve it.",
   "web.devicePending.rejectedTitle": "This device was denied",
   "web.devicePending.rejectedBody": "A trusted device rejected this sign-in. You can request approval again.",
   "web.devicePending.recoveryRequiredBody": "This browser no longer has its device signing key. Restore access with your recovery key — another trusted device is required to approve a key change.",

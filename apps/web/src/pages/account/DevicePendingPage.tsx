@@ -44,6 +44,7 @@ export default function DevicePendingPage() {
     deviceBlockedUntil,
     deviceApprovers,
     deviceNeedsRecovery,
+    deviceShareReapproval,
     refreshDeviceTrust,
     retryDeviceRegistration,
   } = useAuthVault();
@@ -115,7 +116,9 @@ export default function DevicePendingPage() {
       ? t("web.devicePending.recoveryRequiredBody")
       : denied
         ? t("web.devicePending.rejectedBody")
-        : t("web.devicePending.body");
+        : deviceShareReapproval
+          ? t("web.devicePending.shareDeliveryReset")
+          : t("web.devicePending.body");
 
   const mode = checking ? "checking" : blocked ? "blocked" : denied ? "rejected" : "pending";
   const showRetry = (denied || failed) && !deviceNeedsRecovery;

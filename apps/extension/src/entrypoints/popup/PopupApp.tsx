@@ -1272,7 +1272,9 @@ export function PopupApp() {
                   <span>{t("web.devicePending.waiting")}</span>
                 </div>
                 <p className="okkey-body text-center text-sm text-muted-foreground">
-                  {t("web.devicePending.bodyCompact")}
+                  {trust?.needsShareReapproval
+                    ? t("web.devicePending.shareDeliveryReset")
+                    : t("web.devicePending.bodyCompact")}
                 </p>
               </div>
             ) : null}

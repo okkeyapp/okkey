@@ -639,8 +639,13 @@ test("approveDevice and rejectDevice are idempotent for resolved same action", a
       device: createDeviceRecord({ status: "trusted" }),
     }),
   });
-  const approved = await approveService.approveDevice("u1", "trusted1", "pending1");
-  assert.equal(approved.status, "trusted");
+  await assert.rejects(
+    () => approveService.approveDevice("u1", "trusted1", "pending1"),
+    (error: unknown) =>
+      error instanceof DeviceServiceError &&
+      error.code === "DEVICE_APPROVAL_ALREADY_RESOLVED" &&
+      error.statusCode === 409,
+  );
 
   const rejectService = createService({
     resolveApproval: async () => ({

@@ -1,6 +1,10 @@
 use sha2::{Digest, Sha256};
 
-use crate::{aead, mlkem768, x25519};
+use crate::{
+  aead, mlkem768,
+  secret::{wipe_secret, SecretBytes},
+  x25519,
+};
 
 pub const HYBRID_ENVELOPE_VERSION_V1: u8 = 1;
 pub const HYBRID_KDF_SHA256: u8 = 1;
@@ -46,11 +50,35 @@ pub fn encrypt_hybrid(
     return Err("plaintext cannot be empty".into());
   }
   let (ecc_ephemeral_private_key, ecc_ephemeral_public_key) = x25519::generate_keypair();
-  let ecc_shared_secret = x25519::derive_shared_secret(&ecc_ephemeral_private_key, recipient_public_key)?;
-  let (pq_ciphertext, pq_shared_secret) = mlkem768::encapsulate_shared_secret(recipient_pq_public_key)?;
-  let key = derive_hybrid_aead_key(&ecc_shared_secret, &pq_shared_secret, aad)?;
+  // Drop wipes the ephemeral private key and both shared secrets on success and on `?`.
+  let ecc_ephemeral_private_key = SecretBytes::new(ecc_ephemeral_private_key);
+  let ecc_shared_secret = SecretBytes::new(x25519::derive_shared_secret(
+    ecc_ephemeral_private_key.as_slice(),
+    recipient_public_key,
+  )?);
+  let (pq_ciphertext, pq_shared_secret) =
+    mlkem768::encapsulate_shared_secret(recipient_pq_public_key)?;
+  let pq_shared_secret = SecretBytes::new(pq_shared_secret);
+  let mut key = derive_hybrid_aead_key(
+    ecc_shared_secret.as_slice(),
+    pq_shared_secret.as_slice(),
+    aad,
+  )?;
   let nonce = aead::generate_nonce(aead::XCHACHA20_NONCE_LEN);
-  let ciphertext = aead::encrypt(aead::AeadAlg::XChaCha20Poly1305, &key, &nonce, aad, plaintext)?;
+  let ciphertext = match aead::encrypt(
+    aead::AeadAlg::XChaCha20Poly1305,
+    &key,
+    &nonce,
+    aad,
+    plaintext,
+  ) {
+    Ok(ciphertext) => ciphertext,
+    Err(error) => {
+      wipe_secret(&mut key);
+      return Err(error);
+    }
+  };
+  wipe_secret(&mut key);
 
   let mut out = Vec::with_capacity(HYBRID_ENVELOPE_FIXED_HEADER_LEN + ciphertext.len());
   out.push(HYBRID_ENVELOPE_VERSION_V1);
@@ -71,16 +99,36 @@ pub fn decrypt_hybrid(
   envelope: &[u8],
 ) -> Result<Vec<u8>, String> {
   let parsed = parse_envelope(envelope)?;
-  let ecc_shared_secret = x25519::derive_shared_secret(recipient_private_key, parsed.ecc_ephemeral_public_key)?;
-  let pq_shared_secret = mlkem768::decapsulate_shared_secret(recipient_pq_private_key, parsed.pq_ciphertext)?;
-  let key = derive_hybrid_aead_key(&ecc_shared_secret, &pq_shared_secret, aad)?;
-  aead::decrypt(
+  // Caller-owned recipient private keys are not wiped. Shared secrets and the
+  // derived AEAD key are. Drop covers the `?` paths below.
+  let ecc_shared_secret = SecretBytes::new(x25519::derive_shared_secret(
+    recipient_private_key,
+    parsed.ecc_ephemeral_public_key,
+  )?);
+  let pq_shared_secret = SecretBytes::new(mlkem768::decapsulate_shared_secret(
+    recipient_pq_private_key,
+    parsed.pq_ciphertext,
+  )?);
+  let mut key = derive_hybrid_aead_key(
+    ecc_shared_secret.as_slice(),
+    pq_shared_secret.as_slice(),
+    aad,
+  )?;
+  let opened = match aead::decrypt(
     aead::AeadAlg::XChaCha20Poly1305,
     &key,
     parsed.nonce,
     aad,
     parsed.ciphertext,
-  )
+  ) {
+    Ok(plaintext) => plaintext,
+    Err(error) => {
+      wipe_secret(&mut key);
+      return Err(error);
+    }
+  };
+  wipe_secret(&mut key);
+  Ok(opened)
 }
 
 fn parse_envelope(envelope: &[u8]) -> Result<ParsedEnvelope<'_>, String> {

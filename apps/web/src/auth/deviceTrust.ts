@@ -16,6 +16,15 @@ import {
   getOrCreateDeviceFingerprint,
   isLegacyHexFingerprint,
 } from "./deviceFingerprint";
+import {
+  acceptShareDeliveryIfPresent,
+  clearShareDeliveryReapproval,
+  discardOneTimeShareDelivery,
+  hasOneTimeShareDelivery,
+  markShareDeliveryReapproval,
+  needsShareDeliveryReapproval,
+  prepareOneTimeShareDelivery,
+} from "./deviceShareDelivery";
 import { readVaultBundle } from "./localVaultBundle";
 
 export type DeviceTrustStatus =
@@ -36,6 +45,8 @@ export type DeviceTrustSnapshot = {
   blockedUntil?: string | null;
   /** Sole trusted device lost its seed — user must use account recovery. */
   needsRecovery?: boolean;
+  /** Pending device lost its one-time key and must be approved again. */
+  needsShareReapproval?: boolean;
 };
 
 const PLACEHOLDER_SHARE_LEN = 32;
@@ -351,6 +362,16 @@ export async function resolveDeviceTrust(
     }
   }
   if (pendingMatch && !canReclaimSole && !canBootstrapTrusted) {
+    if (
+      await rotateLostShareDeliveryKey(core, fingerprint, pendingMatch, userId)
+    ) {
+      return {
+        status: "pending",
+        deviceId: pendingMatch.device_id,
+        approverDevices: trustedApprovers(listed.devices),
+        needsShareReapproval: true,
+      };
+    }
     if (!(await hasDeviceSigningKey())) {
       const shareB64 = bundle?.device_share_b64?.trim() ?? "";
       if (shareB64) {
@@ -461,13 +482,40 @@ export async function resolveDeviceTrust(
  * Poll trust status for a previously registered pending device.
  * When the row disappears from both trusted and pending lists → rejected.
  */
+/**
+ * Pending device published a one-time key, but this browser no longer has the
+ * private half. Publish a new pair and drop any stored envelope so approval
+ * can be requested again.
+ */
+async function rotateLostShareDeliveryKey(
+  core: CoreApiClient,
+  fingerprint: string,
+  pending: DeviceListItemDto,
+  userId?: string,
+): Promise<boolean> {
+  if (!pending.one_time_x25519_public_key || !pending.one_time_mlkem_public_key) {
+    return false;
+  }
+  if (hasOneTimeShareDelivery(fingerprint)) {
+    return false;
+  }
+  try {
+    await registerCurrentBrowserDevice(core, fingerprint, { userId });
+    markShareDeliveryReapproval();
+    return true;
+  } catch {
+    discardOneTimeShareDelivery(fingerprint);
+    return false;
+  }
+}
+
 export async function pollDeviceTrust(
   core: CoreApiClient,
   fingerprint: string,
   pendingDeviceId: string | null,
   userId?: string,
 ): Promise<DeviceTrustSnapshot> {
-  const listed = await core.listDevices(fingerprint);
+  let listed = await core.listDevices(fingerprint);
 
   if (pendingDeviceId) {
     const blockedById = (listed.blocked ?? []).find(
@@ -509,8 +557,36 @@ export async function pollDeviceTrust(
     }
   }
 
+  const pendingBeforeTrust = findPendingRow(listed, fingerprint, pendingDeviceId);
+  if (pendingBeforeTrust) {
+    const rotated = await rotateLostShareDeliveryKey(
+      core,
+      fingerprint,
+      pendingBeforeTrust,
+      userId,
+    );
+    if (rotated) {
+      return {
+        status: "pending",
+        deviceId: pendingBeforeTrust.device_id,
+        approverDevices: trustedApprovers(listed.devices),
+        needsShareReapproval: true,
+      };
+    }
+    const accepted = await acceptShareDeliveryIfPresent(
+      core,
+      fingerprint,
+      pendingBeforeTrust.device_id,
+    ).catch(() => false);
+    if (accepted) {
+      listed = await core.listDevices(fingerprint);
+    }
+  }
+
   const trustedMatch = findTrustedRow(listed.devices, fingerprint);
   if (trustedMatch) {
+    discardOneTimeShareDelivery(fingerprint);
+    clearShareDeliveryReapproval();
     // Never report trusted for an unbound Bearer — that unlocked the vault UI while
     // /account/recovery and vault-unlock stayed 401 after a failed bind-session proof.
     if (boundSessionDeviceId === trustedMatch.device_id) {
@@ -572,6 +648,7 @@ export async function pollDeviceTrust(
       status: "pending",
       deviceId: pendingMatch.device_id,
       approverDevices: trustedApprovers(listed.devices),
+      needsShareReapproval: needsShareDeliveryReapproval(),
     };
   }
 
@@ -609,6 +686,7 @@ export async function registerCurrentBrowserDevice(
   // Prefer structured identity from UA; argument is kept for callers/tests.
   const deviceFingerprint = fingerprint.trim() || env.fingerprint;
   const devicePublicKeyB64 = await ensureDeviceSigningPublicKey();
+  const oneTime = await prepareOneTimeShareDelivery(deviceFingerprint).catch(() => null);
 
   const bundle = options?.userId ? readVaultBundle(options.userId) : null;
   let shareBytes: Uint8Array | null = null;
@@ -627,10 +705,16 @@ export async function registerCurrentBrowserDevice(
   }
 
   try {
-    return await core.registerDevice({
+    const registered = await core.registerDevice({
       device_public_key: devicePublicKeyB64,
       device_share: bytesToBase64(shareBytes),
       device_fingerprint: deviceFingerprint,
+      ...(oneTime
+        ? {
+            one_time_x25519_public_key: oneTime.x25519PublicB64,
+            one_time_mlkem_public_key: oneTime.mlkemPublicB64,
+          }
+        : {}),
       device_name: env.deviceName,
       platform: env.platform,
       os_name: env.osName,
@@ -647,6 +731,10 @@ export async function registerCurrentBrowserDevice(
         recovery_pending: options?.recoveryPending === true,
       },
     });
+    if (registered.status === "trusted") {
+      discardOneTimeShareDelivery(deviceFingerprint);
+    }
+    return registered;
   } finally {
     if (ownsShare) {
       wipeBytes(shareBytes);

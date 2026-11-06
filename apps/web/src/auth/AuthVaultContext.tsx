@@ -178,6 +178,7 @@ export type AuthVaultContextValue = {
    * user must restore via account recovery.
    */
   deviceNeedsRecovery: boolean;
+  deviceShareReapproval: boolean;
   /** Re-check pending/rejected device status (poll helper for wait UI). */
   refreshDeviceTrust: () => Promise<void>;
   /** Force local blocked state (e.g. recovery closed_reason=blocked before poll catches up). */
@@ -405,6 +406,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
   const [currentDeviceId, setCurrentDeviceId] = useState<string | null>(null);
   const [deviceApprovers, setDeviceApprovers] = useState<DeviceListItemDto[]>([]);
   const [deviceNeedsRecovery, setDeviceNeedsRecovery] = useState(false);
+  const [deviceShareReapproval, setDeviceShareReapproval] = useState(false);
   const pendingDeviceIdRef = useRef<string | null>(null);
   const currentDeviceIdRef = useRef<string | null>(null);
   /** Sticky forever-block so poll cannot bounce back to unlock/restore. */
@@ -466,6 +468,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       currentDeviceIdRef.current = null;
       setDeviceApprovers([]);
       setDeviceNeedsRecovery(false);
+      setDeviceShareReapproval(false);
       pendingDeviceIdRef.current = null;
       foreverBlockedRef.current = false;
       setVaultUnlockBootstrapLoading(false);
@@ -502,6 +505,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
         currentDeviceIdRef.current = snapshot.deviceId;
         setDeviceApprovers(snapshot.approverDevices);
         setDeviceNeedsRecovery(snapshot.needsRecovery === true);
+        setDeviceShareReapproval(snapshot.needsShareReapproval === true);
         if (snapshot.status === "blocked" || snapshot.status === "rejected") {
           clearBoundDeviceSession();
           void clearDeviceSigningKey();
@@ -735,6 +739,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
     currentDeviceIdRef.current = null;
     setDeviceApprovers([]);
     setDeviceNeedsRecovery(false);
+    setDeviceShareReapproval(false);
     pendingDeviceIdRef.current = null;
     foreverBlockedRef.current = false;
     clearSettingsPopupCache();
@@ -1200,6 +1205,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       setCurrentDeviceId(snapshot.deviceId);
       currentDeviceIdRef.current = snapshot.deviceId;
       setDeviceNeedsRecovery(snapshot.needsRecovery === true);
+      setDeviceShareReapproval(snapshot.needsShareReapproval === true);
       // Poll returns a fresh array every 2s; keep previous reference when equal so
       // AuthVault context consumers (item forms / datepicker) do not re-render on a tick.
       setDeviceApprovers((prev) =>
@@ -1276,6 +1282,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       currentDeviceIdRef.current = snapshot.deviceId;
       setDeviceApprovers(snapshot.approverDevices);
       setDeviceNeedsRecovery(snapshot.needsRecovery === true);
+      setDeviceShareReapproval(snapshot.needsShareReapproval === true);
       if (snapshot.status === "blocked" || snapshot.status === "rejected") {
         clearBoundDeviceSession();
         void clearDeviceSigningKey();
@@ -1342,6 +1349,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       currentDeviceId,
       deviceApprovers,
       deviceNeedsRecovery,
+      deviceShareReapproval,
       refreshDeviceTrust,
       markDeviceBlockedForever,
       retryDeviceRegistration,
@@ -1385,6 +1393,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       currentDeviceId,
       deviceApprovers,
       deviceNeedsRecovery,
+      deviceShareReapproval,
       refreshDeviceTrust,
       markDeviceBlockedForever,
       retryDeviceRegistration,

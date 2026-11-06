@@ -298,6 +298,15 @@ export {
 } from "./recovery-possession.js";
 
 export {
+  deviceShareDeliveryAad,
+  generateOneTimeDeliveryKeyPair,
+  wipeOneTimeDeliveryPrivateKeys,
+  sealDeviceShareForOneTimeKey,
+  openDeviceShareDelivery,
+  type OneTimeDeliveryKeyPair,
+} from "./device-share-delivery.js";
+
+export {
   wrapUnlockMaterialWithPin,
   unwrapUnlockMaterialWithPin,
   wrapUnlockMaterialWithBioKey,

@@ -29,6 +29,8 @@ import { healthRouteHandler } from "./routes/health.ts";
 import { createReadyRouteHandler } from "./routes/ready.ts";
 import {
   createApproveDeviceRoute,
+  createConfirmShareDeliveryRoute,
+  createGetShareDeliveryRoute,
   createBlockDeviceRoute,
   createListDevicesRoute,
   createPatchDeviceRoute,
@@ -920,6 +922,24 @@ export function createApiApp(
       "POST",
       "/devices/:deviceId/approve",
       createApproveDeviceRoute(deps.deviceService, resolveUserId),
+    );
+    app.route(
+      "GET",
+      "/devices/:deviceId/share-delivery",
+      createGetShareDeliveryRoute(
+        deps.deviceService,
+        resolveUserIdAllowUnboundDevice,
+        resolveSessionAllowUnboundDevice,
+      ),
+    );
+    app.route(
+      "POST",
+      "/devices/:deviceId/share-delivery/confirm",
+      createConfirmShareDeliveryRoute(
+        deps.deviceService,
+        resolveUserIdAllowUnboundDevice,
+        resolveSessionAllowUnboundDevice,
+      ),
     );
     app.route(
       "POST",

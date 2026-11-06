@@ -17,6 +17,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { useAuthVault, useAuthenticatedCoreClient } from "../../auth/AuthVaultContext";
+import { sealLocalShareForPendingDevice } from "../../auth/deviceShareDelivery";
 import { formatDeviceClientOs, formatDeviceTitle } from "../../auth/browserEnvironment";
 import { getOrCreateDeviceFingerprint } from "../../auth/deviceFingerprint";
 import { IconCheck16, IconNotNow16 } from "../items/itemCategoryIcons";
@@ -68,7 +69,7 @@ function isBenignApprovalRace(err: unknown): boolean {
 export default function DeviceApprovalController() {
   const { t, locale } = useLocale();
   const core = useAuthenticatedCoreClient();
-  const { currentDeviceId, vaultUnlocked } = useAuthVault();
+  const { currentDeviceId, vaultUnlocked, userId } = useAuthVault();
   const [pending, setPending] = useState<DeviceListItemDto[]>([]);
   const [resolving, setResolving] = useState(false);
   const fingerprint = useMemo(() => getOrCreateDeviceFingerprint(), []);
@@ -123,7 +124,15 @@ export default function DeviceApprovalController() {
     setResolving(true);
     try {
       if (decision === "approve") {
-        await core.approveDevice(targetDeviceId, approverId);
+        const envelope = userId
+          ? await sealLocalShareForPendingDevice({
+              userId,
+              deviceId: current.device_id,
+              oneTimeX25519PublicKey: current.one_time_x25519_public_key,
+              oneTimeMlkemPublicKey: current.one_time_mlkem_public_key,
+            })
+          : null;
+        await core.approveDevice(targetDeviceId, approverId, envelope ?? undefined);
         toast.success(t("web.settingsPopup.devices.toast.trusted"));
       } else {
         await core.rejectDevice(targetDeviceId, approverId, "dismissed by user");
