@@ -21,6 +21,7 @@ import { useWorkspaceFolders } from "../../../../folders/WorkspaceFoldersContext
 import { findWorkspaceFolderPathById, NO_FOLDER_VALUE } from "../../../../folders/workspaceFolderTree";
 import { useWorkspaceItems } from "../../../../items/WorkspaceItemsContext";
 import { useWorkspaceVaultProfiles } from "../../../../items/WorkspaceVaultProfilesContext";
+import { publicDocsUrl } from "../../../../docs/publicDocsUrl";
 import { useLocale } from "../../../../locale/LocaleContext";
 import NewItemSaveLocationSection, {
   useSyncedNewItemVaultId,
@@ -38,7 +39,7 @@ export default function ExportSection({
   vaults,
   vaultsListReady,
 }: ExportSectionProps) {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const { accessToken } = useAuthVault();
   const { canViewItem } = useWorkspaceVaultProfiles();
   const { items, resolveVaultEncryptionKey } = useWorkspaceItems();
@@ -143,7 +144,7 @@ export default function ExportSection({
         <p className="text-sm leading-5 text-muted-foreground">
           {t("web.tools.export.intro")}{" "}
           <a
-            href={t("web.tools.export.learnMoreUrl")}
+            href={publicDocsUrl("export", locale)}
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-1 font-medium text-foreground hover:underline"

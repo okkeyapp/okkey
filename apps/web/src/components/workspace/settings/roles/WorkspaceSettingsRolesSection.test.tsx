@@ -112,7 +112,6 @@ function renderRolesSection(
             "web.workspaceSettings.sections.roles": "Roles",
             "web.workspaceSettings.roles.intro": "Roles intro",
             "web.workspaceSettings.roles.learnMore": "Learn more",
-            "web.workspaceSettings.roles.learnMoreUrl": "https://example.com",
             "web.workspaceSettings.roles.builtIn.title": "Built-in roles",
             "web.workspaceSettings.roles.builtIn.subtitle": "Built-in roles are read-only",
             "web.workspaceSettings.roles.builtIn.owner": "Owner",
