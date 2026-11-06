@@ -593,6 +593,15 @@ fi
 replace_env OKKEY_SALES_EMAIL "${sales_email}"
 log "==> OKKEY_SALES_EMAIL=${sales_email}"
 
+update_agent_token="$(env_file_value OKKEY_UPDATE_AGENT_TOKEN)"
+if [[ -z "${update_agent_token}" ]]; then
+  update_agent_token="$(gen_secret)"
+  replace_env OKKEY_UPDATE_AGENT_TOKEN "${update_agent_token}"
+  log "==> Generated OKKEY_UPDATE_AGENT_TOKEN"
+fi
+replace_env OKKEY_COMPOSE_PROJECT "$(compose_project_name)"
+replace_env OKKEY_HOST_INSTALL_DIR "${OKKEY_INSTALL_DIR}"
+
 image_tag="$(env_file_value OKKEY_IMAGE_TAG)"
 image_tag="${image_tag:-dev}"
 log "==> Pulling images and starting stack (compose project=$(compose_project_name), OKKEY_IMAGE_TAG=${image_tag})"
