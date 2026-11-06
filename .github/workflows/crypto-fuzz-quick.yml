@@ -6,6 +6,8 @@ on:
     branches:
       - main
       - master
+      - "release/**"
+      - "hotfix/**"
 
 jobs:
   crypto-fuzz-quick:

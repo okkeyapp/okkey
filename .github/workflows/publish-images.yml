@@ -71,9 +71,12 @@ permissions:
   pull-requests: read
 
 # Parallel matrix images share GHCR/cache; serialize per-ref so runs do not fight.
+# Cancel only a superseded build of a release/* or hotfix/* branch.
+# A version-tag publish (refs/tags/v*) is never cancelled. Schedule (GHCR
+# cleanup on the default branch) and other refs stay non-cancellable too.
 concurrency:
   group: okkey-publish-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: ${{ github.ref_type == 'branch' && (startsWith(github.ref_name, 'release/') || startsWith(github.ref_name, 'hotfix/')) }}
 
 env:
   REGISTRY: ghcr.io
