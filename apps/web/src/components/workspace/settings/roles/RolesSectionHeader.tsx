@@ -1,5 +1,8 @@
 import type { WebMessageValues } from "@okkey/i18n";
 
+import { publicDocsUrl } from "../../../../docs/publicDocsUrl";
+import { useLocale } from "../../../../locale/LocaleContext";
+
 type RolesSectionHeaderProps = {
   t: (messageKey: string, values?: WebMessageValues) => string;
 };
@@ -18,13 +21,14 @@ function ExternalLinkIcon() {
 }
 
 export default function RolesSectionHeader({ t }: RolesSectionHeaderProps) {
+  const { locale } = useLocale();
   return (
     <div className="flex flex-col gap-4">
       <h2 className="text-lg font-semibold text-foreground">{t("web.workspaceSettings.sections.roles")}</h2>
       <p className="text-sm leading-5 text-muted-foreground">
         {t("web.workspaceSettings.roles.intro")}{" "}
         <a
-          href={t("web.workspaceSettings.roles.learnMoreUrl")}
+          href={publicDocsUrl("roles", locale)}
           target="_blank"
           rel="noopener noreferrer"
           className="inline-flex items-center gap-1 font-medium text-foreground hover:underline"
