@@ -184,6 +184,7 @@ export default function AuthRegistrationPage() {
         auth_state_id: registrationAuthStateId,
         user_public_key: wire.user_public_key,
         user_public_pq_key: wire.user_public_pq_key,
+        user_public_mldsa_key: wire.user_public_mldsa_key,
         encrypted_private_key: wire.encrypted_private_key,
         server_key_share: wire.server_key_share,
         password_kdf_salt: wire.password_kdf_salt,

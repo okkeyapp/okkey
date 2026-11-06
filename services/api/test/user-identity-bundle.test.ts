@@ -69,6 +69,7 @@ test("unit: user identity bundle decrypt from EncryptedBlob payload", async () =
   const decrypted = await decryptUserIdentityFromEncryptedBlob(vaultKey, blob.payload);
   assert.deepEqual(decrypted.ed25519SecretKey, ed25519Secret);
   assert.deepEqual(decrypted.mlkem768DecapsulationKey, mlkemDecapsulation);
+  assert.equal(decrypted.mldsa65Seed, null);
 });
 
 test("unit: ML-KEM-768 keypair generator returns fixed lengths", async () => {
@@ -148,6 +149,7 @@ test("integration: registration + first unlock decrypts stored hybrid identity b
     authStateId,
     userPublicKey: wire.user_public_key,
     userPublicPqKey: wire.user_public_pq_key,
+    userPublicMldsaKey: wire.user_public_mldsa_key,
     encryptedPrivateKey: wire.encrypted_private_key,
     serverKeyShare: artifacts.serverKeyShare,
     passwordKdfSalt: artifacts.passwordKdfSalt,

@@ -1566,6 +1566,8 @@
   "unlock.pinIncorrect": "Неверный PIN-код",
   "unlock.pinLocked": "Слишком много попыток. Попробуйте позже или введите мастер-пароль.",
   "unlock.masterPasswordLocked": "Слишком много попыток. Попробуйте позже.",
+  "clientUpgrade.title": "Обновите Okkey",
+  "clientUpgrade.body": "Эта версия приложения не может продолжить. Установите последнюю версию Okkey и попробуйте снова.",
   "unlock.errorTitle": "Ошибка",
   "unlock.errorIncorrectPassword": "Неверный мастер-пароль",
   "unlock.syncingVault": "Загружаем данные хранилища с сервера",

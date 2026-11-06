@@ -1216,13 +1216,45 @@ test("POST /devices/register keeps recovery_pending true, false, and omitted beh
   assert.equal(metadataWins.statusCode, 200);
   assert.equal(metadataWins.input?.recoveryPending, false);
 
-  const claimSuppressesPending = await registerAndCapture({
+  const claimWithoutProof = await registerAndCapture({
     ...registerBody(),
     metadata: { claim_after_recovery: true, recovery_pending: true },
   });
-  assert.equal(claimSuppressesPending.statusCode, 200);
-  assert.equal(claimSuppressesPending.input?.claimAfterRecovery, true);
-  assert.equal(claimSuppressesPending.input?.recoveryPending, false);
+  assert.equal(claimWithoutProof.statusCode, 403);
+  assert.equal(claimWithoutProof.payload.error, "RECOVERY_CLAIM_REQUIRES_PROVED_DEVICE");
+  assert.equal(claimWithoutProof.input, undefined);
+
+  let provedInput: RegisterDeviceInput | undefined;
+  const provedClaim = await dispatch({
+    method: "POST",
+    url: "/devices/register",
+    headers: { authorization: "Bearer proved-token", "x-user-id": "u1" },
+    body: {
+      ...registerBody(),
+      metadata: { claim_after_recovery: true, recovery_pending: true },
+    },
+    deviceService: createDeviceServiceStub({
+      registerDevice: async (_userId, _ip, received) => {
+        provedInput = received;
+        return { deviceId: "d-proved", status: "pending_approval" };
+      },
+    }),
+    sessionService: createSessionServiceStub({
+      resolveAccessToken: async () => ({
+        userId: "u1",
+        deviceId: "proved-device",
+        scope: null,
+        tokenHash: "hash",
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+        recoveryProvedAt: new Date().toISOString(),
+        recoveryChallenge: null,
+        recoveryChallengeExpiresAt: null,
+      }),
+    }),
+  });
+  assert.equal(provedClaim.statusCode, 200);
+  assert.equal(provedInput?.claimAfterRecovery, true);
+  assert.equal(provedInput?.recoveryPending, false);
 });
 
 test("POST /devices/register rejects non-boolean reclaim_sole_trusted and claim_after_recovery", async () => {

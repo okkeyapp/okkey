@@ -16,7 +16,12 @@ import type { WorkspaceCapsulePoliciesDto } from "./workspace-capsule-policies.j
 import type { WorkspaceMonitoringCardSettings } from "./workspace-monitoring-card-settings.js";
 import type { WorkspaceMonitoringCardSettingsDto } from "./workspace-monitoring-card-settings.js";
 
-export type { EncryptedBlobDto, HybridSignatureEnvelopeDto } from "./crypto-wire.js";
+export type {
+  EncryptedBlobDto,
+  HybridSignatureEnvelopeDto,
+  HybridSignatureEnvelopeV1Dto,
+  HybridSignatureEnvelopeV2Dto,
+} from "./crypto-wire.js";
 
 export type {
   DeploymentMode,
@@ -1619,6 +1624,8 @@ export interface RegisterCompleteRequestDto {
   user_public_key: string;
   /** ML-KEM-768 encapsulation key (1184 raw bytes), standard base64. */
   user_public_pq_key: string;
+  /** ML-DSA-65 verifying key (1952 raw bytes), standard base64. */
+  user_public_mldsa_key: string;
   encrypted_private_key: EncryptedBlobDto;
   server_key_share: string;
   password_kdf_salt: string;
@@ -1697,6 +1704,22 @@ export interface AccountMasterPasswordChangeRequestDto {
 /** `POST /account/master-password/change` success body. */
 export interface AccountMasterPasswordChangeResponseDto {
   master_password_changed_at: string;
+}
+
+/** `POST /account/identity/mldsa-key` — bind an ML-DSA-65 verifying key to the account. */
+export interface MldsaIdentityKeyUploadRequestDto {
+  /** ML-DSA-65 verifying key (1952 raw bytes), standard base64. */
+  public_key: string;
+  /** Re-encrypted identity bundle that includes the ML-DSA-65 seed. */
+  encrypted_private_key: EncryptedBlobDto;
+  /** Ed25519 signature by the account identity key over the upload statement. */
+  signature: string;
+}
+
+/** `POST /account/identity/mldsa-key` success body. */
+export interface MldsaIdentityKeyUploadResponseDto {
+  public_mldsa_key: string;
+  status: "stored";
 }
 
 /** Signed proof for `POST /account/vault-unlock` (identity Ed25519). */

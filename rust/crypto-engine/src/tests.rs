@@ -62,6 +62,65 @@ fn hybrid_signature_sign_verify() {
 }
 
 #[test]
+fn mldsa65_sign_verify_and_lengths() {
+  let (seed, pk) = sign::mldsa65_generate_keypair().expect("mldsa keygen");
+  assert_eq!(seed.len(), sign::MLDSA65_SEED_LEN);
+  assert_eq!(pk.len(), sign::MLDSA65_PUBLIC_KEY_LEN);
+  assert_eq!(sign::mldsa65_public_key(&seed).expect("pk"), pk);
+  let message = b"okkey-mldsa65";
+  let signature = sign::mldsa65_sign(&seed, message).expect("mldsa sign");
+  assert_eq!(signature.len(), sign::MLDSA65_SIGNATURE_LEN);
+  assert!(sign::mldsa65_verify(&pk, message, &signature).expect("mldsa verify"));
+  assert!(!sign::mldsa65_verify(&pk, b"other", &signature).expect("mldsa verify"));
+}
+
+#[test]
+fn hybrid_signature_v2_requires_both_halves() {
+  let (ed_sk, ed_pk) = sign::generate_keypair();
+  let (mldsa_seed, mldsa_pk) = sign::mldsa65_generate_keypair().expect("mldsa keygen");
+  let (_, pq_ek) = mlkem768::generate_keypair();
+  let context = b"sync.append";
+  let message = br#"{"eventType":"ITEM_CREATE","vaultId":"v1"}"#;
+
+  let signature = sign::hybrid_sign_v2(&ed_sk, &mldsa_seed, &pq_ek, context, message)
+    .expect("hybrid sign v2");
+  assert_eq!(signature.len(), sign::HYBRID_SIGNATURE_V2_LEN);
+  assert!(sign::hybrid_verify_v2(&ed_pk, &mldsa_pk, &pq_ek, context, message, &signature)
+    .expect("hybrid verify v2"));
+
+  let mut ed_tamper = signature.clone();
+  ed_tamper[0] ^= 0x01;
+  assert!(!sign::hybrid_verify_v2(&ed_pk, &mldsa_pk, &pq_ek, context, message, &ed_tamper)
+    .expect("ed25519 half"));
+
+  let mut mldsa_tamper = signature.clone();
+  mldsa_tamper[sign::ED25519_SIGNATURE_LEN] ^= 0x01;
+  assert!(!sign::hybrid_verify_v2(&ed_pk, &mldsa_pk, &pq_ek, context, message, &mldsa_tamper)
+    .expect("mldsa half"));
+
+  let mut tail_tamper = signature.clone();
+  let last = tail_tamper.len() - 1;
+  tail_tamper[last] ^= 0x01;
+  assert!(!sign::hybrid_verify_v2(&ed_pk, &mldsa_pk, &pq_ek, context, message, &tail_tamper)
+    .expect("mldsa tail"));
+
+  assert!(!sign::hybrid_verify_v2(&ed_pk, &mldsa_pk, &pq_ek, context, b"other", &signature)
+    .expect("message"));
+}
+
+#[test]
+fn hybrid_signature_v1_remains_verifiable() {
+  let (sk, pk) = sign::generate_keypair();
+  let (_, pq_ek) = mlkem768::generate_keypair();
+  let context = b"vault.share";
+  let message = br#"{"recipient":"u1"}"#;
+  let signature = sign::hybrid_sign_v1(&sk, &pq_ek, context, message).expect("v1 sign");
+  assert!(sign::hybrid_verify_v1(&pk, &pq_ek, context, message, &signature).expect("v1 verify"));
+  assert!(!sign::hybrid_verify_v2(&pk, &pq_ek, &pq_ek, context, message, &signature)
+    .expect("v1 bytes are not a v2 signature"));
+}
+
+#[test]
 fn hybrid_signature_rejects_tampered_message() {
   let (sk, pk) = sign::generate_keypair();
   let (_, pq_ek) = mlkem768::generate_keypair();

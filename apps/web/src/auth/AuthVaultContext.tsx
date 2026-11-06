@@ -1,5 +1,5 @@
 import type { AccessTokenResponseDto, DeviceListItemDto } from "@okkey/types";
-import { ApiRequestError } from "@okkey/api";
+import { ApiRequestError, isClientUpgradeRequiredError } from "@okkey/api";
 import { AuthClient } from "@okkey/auth";
 import {
   createContext,
@@ -18,11 +18,13 @@ import { useLocation, useNavigate } from "react-router-dom";
 import {
   buildVaultUnlockAttestation,
   decryptUserIdentityFromEncryptedBlob,
+  UnsupportedIdentityBundleError,
   reconstructVaultKeyWithMasterPassword,
   rebalanceServerShareForNewPassword,
   derivePasswordShareC,
   wipeBytes,
 } from "@okkey/crypto";
+import { ensureMlDsaIdentityOnUnlock } from "@okkey/vault";
 
 import { createAuthSdk, createAuthenticatedCoreClient, createPublicApiClient } from "../api/client";
 import { clearSettingsPopupCache } from "../components/settings/settingsPopupCache";
@@ -103,13 +105,15 @@ export type AuthVaultContextValue = {
   touchActivity: () => void;
   saveVaultBundle: (bundle: StoredVaultBundle) => void;
   updateLocalProfile: (patch: { email?: string; firstName?: string | null; lastName?: string | null }) => void;
-  tryUnlockWithMasterPassword: (masterPassword: string) => Promise<boolean>;
+  tryUnlockWithMasterPassword: (masterPassword: string) => Promise<boolean | "upgrade_required">;
+  /** Server or local key format says this build must be updated. */
+  clientUpgradeRequired: boolean;
   /** Re-fetch A+B from server when local vault bundle is missing (trusted device). */
   ensureVaultBundleForUnlock: () => Promise<boolean>;
   /** Apply unlock material from PIN / biometric unwrap (VaultKey + C already verified). */
   applyUnlockedSecrets: (vaultKey: Uint8Array, passwordShareC: Uint8Array) => void;
   /** Verify master password without changing unlock state (for section re-auth). */
-  verifyMasterPassword: (masterPassword: string) => Promise<boolean>;
+  verifyMasterPassword: (masterPassword: string) => Promise<boolean | "upgrade_required">;
   changeMasterPassword: (input: {
     oldPassword: string;
     newPassword: string;
@@ -341,6 +345,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
   const [passwordShareC, setPasswordShareC] = useState<Uint8Array | null>(initialTabVault.passwordShareC);
   const [vaultKey, setVaultKey] = useState<Uint8Array | null>(initialTabVault.vaultKey);
   const [vaultIdleLockMs, setVaultIdleLockMsState] = useState(DEFAULT_VAULT_IDLE_LOCK_MS);
+  const [clientUpgradeRequired, setClientUpgradeRequired] = useState(false);
   const [masterPasswordChangedAt, setMasterPasswordChangedAt] = useState<string | null>(null);
   const [pendingEmail, setPendingEmail] = useState<string | null>(null);
   const [emailChallengeId, setEmailChallengeId] = useState<string | null>(null);
@@ -506,7 +511,10 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
           return;
         }
         writeVaultBundle(mapVaultUnlockBootstrapToStored(dto), userId);
-      } catch {
+      } catch (error) {
+        if (isClientUpgradeRequiredError(error)) {
+          setClientUpgradeRequired(true);
+        }
         /* No trusted device / offline — unlock stays without local bundle. */
       } finally {
         if (!cancelled) {
@@ -533,7 +541,10 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       const dto = await client.getVaultUnlockBootstrap(fp);
       writeVaultBundle(mapVaultUnlockBootstrapToStored(dto), userId);
       return true;
-    } catch {
+    } catch (error) {
+      if (isClientUpgradeRequiredError(error)) {
+        setClientUpgradeRequired(true);
+      }
       return false;
     }
   }, [accessToken, userId]);
@@ -737,7 +748,43 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  const tryUnlockWithMasterPassword = useCallback(async (masterPassword: string): Promise<boolean> => {
+  const upgradeMlDsaIdentity = useCallback(
+    async (vaultKey: Uint8Array) => {
+      if (!userId || !accessToken) {
+        return;
+      }
+      const bundle = readVaultBundle(userId);
+      if (!bundle) {
+        return;
+      }
+      const token = accessToken;
+      const uid = userId;
+      try {
+        const next = await ensureMlDsaIdentityOnUnlock({
+          userId: uid,
+          vaultKey,
+          bundle,
+          upload: async (body) => {
+            await createAuthenticatedCoreClient(token).uploadMlDsaIdentityKey(body);
+          },
+          readLatestBundle: async () => {
+            const dto = await createAuthenticatedCoreClient(token).getVaultUnlockBootstrap(
+              getOrCreateDeviceFingerprint(),
+            );
+            return mapVaultUnlockBootstrapToStored(dto);
+          },
+        });
+        if (next.encrypted_private_key.payload !== bundle.encrypted_private_key.payload) {
+          writeVaultBundle(next, uid);
+        }
+      } catch {
+        /* Unlock already succeeded; a later unlock can retry the identity upgrade. */
+      }
+    },
+    [userId, accessToken],
+  );
+
+  const tryUnlockWithMasterPassword = useCallback(async (masterPassword: string): Promise<boolean | "upgrade_required"> => {
     const bundle = readVaultBundle(userId);
     if (!bundle) {
       return false;
@@ -780,6 +827,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       wipeBytes(serverA);
       wipeBytes(deviceB);
       wipeBytes(salt);
+      await upgradeMlDsaIdentity(vaultKey);
       const token = accessToken;
       if (token && userId) {
         void buildVaultUnlockAttestation({
@@ -795,11 +843,15 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
           });
       }
       return true;
-    } catch {
+    } catch (error) {
       wipeBytes(pwd);
+      if (error instanceof UnsupportedIdentityBundleError) {
+        setClientUpgradeRequired(true);
+        return "upgrade_required";
+      }
       return false;
     }
-  }, [userId, accessToken]);
+  }, [userId, accessToken, upgradeMlDsaIdentity]);
 
   const applyUnlockedSecrets = useCallback(
     (nextVaultKey: Uint8Array, nextShareC: Uint8Array) => {
@@ -819,6 +871,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       if (userId) {
         persistVaultUnlockSession(userId, nextVaultKey, nextShareC);
       }
+      void upgradeMlDsaIdentity(nextVaultKey);
       const token = accessToken;
       const bundle = userId ? readVaultBundle(userId) : null;
       if (token && userId && bundle?.encrypted_private_key?.payload) {
@@ -835,11 +888,11 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
           });
       }
     },
-    [userId, accessToken],
+    [userId, accessToken, upgradeMlDsaIdentity],
   );
 
   const verifyMasterPassword = useCallback(
-    async (masterPassword: string): Promise<boolean> => {
+    async (masterPassword: string): Promise<boolean | "upgrade_required"> => {
       const bundle = readVaultBundle(userId);
       if (!bundle) {
         return false;
@@ -863,8 +916,12 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
         wipeBytes(salt);
         wipeBytes(vaultKey);
         return true;
-      } catch {
+      } catch (error) {
         wipeBytes(pwd);
+        if (error instanceof UnsupportedIdentityBundleError) {
+          setClientUpgradeRequired(true);
+          return "upgrade_required";
+        }
         return false;
       }
     },
@@ -909,7 +966,11 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
             passwordKdfSalt: salt,
             passwordKdfParamsVersion: bundle.password_kdf_params_version,
           });
-        } catch {
+        } catch (error) {
+          if (error instanceof UnsupportedIdentityBundleError) {
+            setClientUpgradeRequired(true);
+            return { ok: false, error: "upgrade_required" };
+          }
           return { ok: false, error: "wrong_old_password" };
         } finally {
           wipeBytes(serverA);
@@ -1133,6 +1194,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       saveVaultBundle,
       updateLocalProfile,
       tryUnlockWithMasterPassword,
+      clientUpgradeRequired,
       ensureVaultBundleForUnlock,
       applyUnlockedSecrets,
       verifyMasterPassword,
@@ -1173,6 +1235,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       saveVaultBundle,
       updateLocalProfile,
       tryUnlockWithMasterPassword,
+      clientUpgradeRequired,
       ensureVaultBundleForUnlock,
       applyUnlockedSecrets,
       verifyMasterPassword,

@@ -57,6 +57,7 @@ vi.mock("@okkey/crypto", () => ({
   registrationArtifactsToWire: vi.fn(() => ({
     user_public_key: "pk",
     user_public_pq_key: "pq",
+    user_public_mldsa_key: "mldsa",
     encrypted_private_key: {
       crypto_version: 2,
       algorithm: "opaque",

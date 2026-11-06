@@ -1566,6 +1566,8 @@
   "unlock.pinIncorrect": "Incorrect PIN",
   "unlock.pinLocked": "Too many attempts. Try again later or use your master password.",
   "unlock.masterPasswordLocked": "Too many attempts. Try again later.",
+  "clientUpgrade.title": "Update Okkey",
+  "clientUpgrade.body": "This version of the app cannot continue. Install the latest Okkey and try again.",
   "unlock.errorTitle": "Error",
   "unlock.errorIncorrectPassword": "Incorrect master password",
   "unlock.syncingVault": "Restoring vault data from the server",

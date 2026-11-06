@@ -85,6 +85,90 @@ pub fn hybrid_verify_v1(
 }
 
 #[wasm_bindgen]
+pub fn mldsa65_seed_len() -> usize {
+  sign::MLDSA65_SEED_LEN
+}
+
+#[wasm_bindgen]
+pub fn mldsa65_public_key_len() -> usize {
+  sign::MLDSA65_PUBLIC_KEY_LEN
+}
+
+#[wasm_bindgen]
+pub fn mldsa65_signature_len() -> usize {
+  sign::MLDSA65_SIGNATURE_LEN
+}
+
+#[wasm_bindgen]
+pub fn hybrid_signature_v2_len() -> usize {
+  sign::HYBRID_SIGNATURE_V2_LEN
+}
+
+/// Random ML-DSA-65 identity key: `[seed (32) || public key]`.
+#[wasm_bindgen]
+pub fn mldsa65_keypair() -> Result<Vec<u8>, JsValue> {
+  let (seed, public_key) = sign::mldsa65_generate_keypair().map_err(|e| JsValue::from_str(&e))?;
+  let mut out = Vec::with_capacity(seed.len() + public_key.len());
+  out.extend_from_slice(&seed);
+  out.extend_from_slice(&public_key);
+  Ok(out)
+}
+
+#[wasm_bindgen]
+pub fn mldsa65_public_key(seed: &[u8]) -> Result<Vec<u8>, JsValue> {
+  sign::mldsa65_public_key(seed).map_err(|e| JsValue::from_str(&e))
+}
+
+#[wasm_bindgen]
+pub fn mldsa65_sign(seed: &[u8], message: &[u8]) -> Result<Vec<u8>, JsValue> {
+  sign::mldsa65_sign(seed, message).map_err(|e| JsValue::from_str(&e))
+}
+
+#[wasm_bindgen]
+pub fn mldsa65_verify(public_key: &[u8], message: &[u8], signature: &[u8]) -> Result<bool, JsValue> {
+  sign::mldsa65_verify(public_key, message, signature).map_err(|e| JsValue::from_str(&e))
+}
+
+/// Hybrid signature v2 bytes: Ed25519 signature || ML-DSA-65 signature.
+#[wasm_bindgen]
+pub fn hybrid_sign_v2(
+  ed25519_private_key: &[u8],
+  mldsa_seed: &[u8],
+  signer_pq_public_key: &[u8],
+  context: &[u8],
+  message: &[u8],
+) -> Result<Vec<u8>, JsValue> {
+  sign::hybrid_sign_v2(
+    ed25519_private_key,
+    mldsa_seed,
+    signer_pq_public_key,
+    context,
+    message,
+  )
+  .map_err(|e| JsValue::from_str(&e))
+}
+
+#[wasm_bindgen]
+pub fn hybrid_verify_v2(
+  ed25519_public_key: &[u8],
+  mldsa_public_key: &[u8],
+  signer_pq_public_key: &[u8],
+  context: &[u8],
+  message: &[u8],
+  signature: &[u8],
+) -> Result<bool, JsValue> {
+  sign::hybrid_verify_v2(
+    ed25519_public_key,
+    mldsa_public_key,
+    signer_pq_public_key,
+    context,
+    message,
+    signature,
+  )
+  .map_err(|e| JsValue::from_str(&e))
+}
+
+#[wasm_bindgen]
 pub fn x25519_keypair() -> Vec<u8> {
   let (sk, pk) = x25519::generate_keypair();
   [sk, pk].concat()

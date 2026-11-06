@@ -3,6 +3,7 @@ import {
   VaultUnlockBootstrapError,
   VaultUnlockBootstrapService,
 } from "../account/vault-unlock-bootstrap.ts";
+import { requestSupportsMlDsaIdentity } from "../crypto/client-upgrade.ts";
 import { json, type RouteHandler } from "../http.ts";
 
 function errorPayload(code: string, message: string, requestId: string) {
@@ -26,6 +27,7 @@ export function createVaultUnlockBootstrapRoute(
       const body = await service.getForBoundDevice({
         userId: session.userId,
         deviceId: session.deviceId,
+        clientSupportsMlDsaIdentity: requestSupportsMlDsaIdentity(ctx.req),
       });
       json(ctx.res, 200, body);
     } catch (error) {

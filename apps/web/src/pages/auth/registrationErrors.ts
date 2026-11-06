@@ -16,6 +16,8 @@ export function registrationErrorI18nKey(err: unknown): string {
         return "auth.registration.errorAlreadyRegistered";
       case "REGISTRATION_BAD_REQUEST":
         return "auth.registration.errorBadRequest";
+      case "CLIENT_UPGRADE_REQUIRED":
+        return "clientUpgrade.body";
       case "CRYPTO_PAYLOAD_INVALID":
         return "auth.registration.errorCryptoPayload";
       case "CRYPTO_PROFILE_NOT_ALLOWED":

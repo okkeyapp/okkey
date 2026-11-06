@@ -37,7 +37,7 @@ function emptyPinDigits(): string[] {
 
 export default function SectionReauthPopup({ zone, onUnlocked, onCancel }: SectionReauthPopupProps) {
   const { t } = useLocale();
-  const { userId, verifyMasterPassword } = useAuthVault();
+  const { userId, verifyMasterPassword, clientUpgradeRequired } = useAuthVault();
   const formId = useId();
   const pinLabelId = useId();
   const prefs = readVaultDevicePrefs(userId);
@@ -224,6 +224,10 @@ export default function SectionReauthPopup({ zone, onUnlocked, onCancel }: Secti
     setError(null);
     try {
       const ok = await verifyMasterPassword(masterPassword);
+      if (ok === "upgrade_required" || clientUpgradeRequired) {
+        setError(t("clientUpgrade.body"));
+        return;
+      }
       if (!ok) {
         setError(t("unlock.errorIncorrectPassword"));
         return;

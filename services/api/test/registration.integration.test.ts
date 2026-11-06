@@ -17,6 +17,7 @@ import { createIntegrationStorage } from "./integration-env.ts";
 const testDir = path.dirname(fileURLToPath(import.meta.url));
 
 const MIN_ENCRYPTED_USER_IDENTITY_BYTES = 2473;
+const SAMPLE_MLDSA_PK_B64 = Buffer.alloc(1952, 4).toString("base64");
 const SAMPLE_PQ_PK_B64 = Buffer.alloc(1184, 9).toString("base64");
 
 function mkEncryptedPrivateKeyBlob(byte: number) {
@@ -103,6 +104,7 @@ test("integration: registration completes user, workspace, vault, trusted device
     authStateId,
     userPublicKey: pkB64,
     userPublicPqKey: SAMPLE_PQ_PK_B64,
+    userPublicMldsaKey: SAMPLE_MLDSA_PK_B64,
     encryptedPrivateKey: encPriv,
     serverKeyShare: share32,
     passwordKdfSalt: salt16,
@@ -148,6 +150,7 @@ test("integration: registration completes user, workspace, vault, trusted device
     authStateId,
     userPublicKey: pkB64,
     userPublicPqKey: SAMPLE_PQ_PK_B64,
+    userPublicMldsaKey: SAMPLE_MLDSA_PK_B64,
     encryptedPrivateKey: encPriv,
     serverKeyShare: share32,
     passwordKdfSalt: salt16,
@@ -242,6 +245,7 @@ test("integration: parallel completeRegistration creates single user", async (t)
     authStateId,
     userPublicKey: pkB64,
     userPublicPqKey: SAMPLE_PQ_PK_B64,
+    userPublicMldsaKey: SAMPLE_MLDSA_PK_B64,
     encryptedPrivateKey: encPriv,
     serverKeyShare: share32,
     passwordKdfSalt: salt16,
@@ -335,6 +339,7 @@ test("integration: missing auth state returns AUTH_CHALLENGE_EXPIRED", async (t)
         authStateId: missingStateId,
         userPublicKey: Buffer.alloc(32, 1).toString("base64"),
         userPublicPqKey: SAMPLE_PQ_PK_B64,
+    userPublicMldsaKey: SAMPLE_MLDSA_PK_B64,
         encryptedPrivateKey: {
           crypto_version: 2,
           algorithm: "opaque",
@@ -430,6 +435,7 @@ test("integration: strict rollout rejects registration without PQ-capable device
         authStateId,
         userPublicKey: Buffer.alloc(32, 5).toString("base64"),
         userPublicPqKey: SAMPLE_PQ_PK_B64,
+    userPublicMldsaKey: SAMPLE_MLDSA_PK_B64,
         encryptedPrivateKey: mkEncryptedPrivateKeyBlob(33),
         serverKeyShare: new Uint8Array(32).fill(11),
         passwordKdfSalt: new Uint8Array(16).fill(22),

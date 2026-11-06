@@ -51,6 +51,7 @@ export function createCorsMiddleware(corsOriginConfig: string): Middleware {
         "X-User-Id",
         "X-Device-Id",
         "X-Device-Fingerprint",
+        "X-Okkey-Client-Capabilities",
         "X-File-Name",
         "X-File-Mime-Type",
         "X-File-Size",

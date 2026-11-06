@@ -43,8 +43,8 @@ import {
 import {
   SIGNATURE_INVALID,
   SIGNATURE_STATUS_CODE,
-  parseHybridSignatureEnvelope,
-  verifyHybridSignatureForPayload,
+  checkHybridSignatureForNewWrite,
+  type SignatureContext,
 } from "../crypto/hybrid-signature.ts";
 
 export class VaultSharingServiceError extends Error {
@@ -293,47 +293,17 @@ export class VaultSharingService {
       event_type: "VAULT_SHARE",
     });
     if (input.signature) {
-      const actorKeys = await this.getUserSigningKeys(actorId);
-      let signatureEnvelope;
-      try {
-        signatureEnvelope = parseHybridSignatureEnvelope(input.signature, "vault.share");
-      } catch (error) {
-        throw new VaultSharingServiceError(
-          SIGNATURE_INVALID,
-          SIGNATURE_STATUS_CODE,
-          (error as Error).message,
-          { context: "vault.share" },
-        );
-      }
-      if (signatureEnvelope.signer_pq_public_key !== actorKeys.publicPqKey) {
-        throw new VaultSharingServiceError(
-          SIGNATURE_INVALID,
-          SIGNATURE_STATUS_CODE,
-          "signature signer_pq_public_key mismatch",
-          { context: "vault.share" },
-        );
-      }
-      const verifiedSignature = verifyHybridSignatureForPayload({
-        envelope: signatureEnvelope,
+      await this.attachVerifiedSignature({
+        actorId,
+        context: "vault.share",
+        signature: input.signature,
         payload: {
           vaultId,
           eventType: "VAULT_SHARE",
           encryptedBlob: normalizedPayloadBlob,
         },
-        signerPublicKeyBase64: actorKeys.publicKey,
+        blob: normalizedPayloadBlob,
       });
-      if (!verifiedSignature) {
-        throw new VaultSharingServiceError(
-          SIGNATURE_INVALID,
-          SIGNATURE_STATUS_CODE,
-          "signature verification failed",
-          { context: "vault.share" },
-        );
-      }
-      normalizedPayloadBlob.meta = {
-        ...normalizedPayloadBlob.meta,
-        signature: signatureEnvelope,
-      };
     }
     await this.ensureRecipientInWorkspace(acl.workspaceId, recipientUserId);
     const recipientPqKey = await this.getUserPublicPqKey(recipientUserId);
@@ -442,47 +412,17 @@ export class VaultSharingService {
     const { rotatedMap, normalizedRotatedVaultKeys } =
       await this.parseAssertAndStampRotatedVaultKeys(input.rotatedVaultKeys);
     if (input.signature) {
-      const actorKeys = await this.getUserSigningKeys(actorId);
-      let signatureEnvelope;
-      try {
-        signatureEnvelope = parseHybridSignatureEnvelope(input.signature, "vault.revoke");
-      } catch (error) {
-        throw new VaultSharingServiceError(
-          SIGNATURE_INVALID,
-          SIGNATURE_STATUS_CODE,
-          (error as Error).message,
-          { context: "vault.revoke" },
-        );
-      }
-      if (signatureEnvelope.signer_pq_public_key !== actorKeys.publicPqKey) {
-        throw new VaultSharingServiceError(
-          SIGNATURE_INVALID,
-          SIGNATURE_STATUS_CODE,
-          "signature signer_pq_public_key mismatch",
-          { context: "vault.revoke" },
-        );
-      }
-      const verifiedSignature = verifyHybridSignatureForPayload({
-        envelope: signatureEnvelope,
+      await this.attachVerifiedSignature({
+        actorId,
+        context: "vault.revoke",
+        signature: input.signature,
         payload: {
           vaultId,
           eventType: "VAULT_KEY_ROTATION",
           encryptedBlob: payloadBlob,
         },
-        signerPublicKeyBase64: actorKeys.publicKey,
+        blob: payloadBlob,
       });
-      if (!verifiedSignature) {
-        throw new VaultSharingServiceError(
-          SIGNATURE_INVALID,
-          SIGNATURE_STATUS_CODE,
-          "signature verification failed",
-          { context: "vault.revoke" },
-        );
-      }
-      payloadBlob.meta = {
-        ...payloadBlob.meta,
-        signature: signatureEnvelope,
-      };
     }
 
     this.assertEncryptedBlobsMeetVaultFloor(vaultId, acl.vaultCryptoVersion, [
@@ -640,47 +580,17 @@ export class VaultSharingService {
     const { rotatedMap, normalizedRotatedVaultKeys } =
       await this.parseAssertAndStampRotatedVaultKeys(input.rotatedVaultKeys);
     if (input.signature) {
-      const actorKeys = await this.getUserSigningKeys(actorId);
-      let signatureEnvelope;
-      try {
-        signatureEnvelope = parseHybridSignatureEnvelope(input.signature, "vault.rotate");
-      } catch (error) {
-        throw new VaultSharingServiceError(
-          SIGNATURE_INVALID,
-          SIGNATURE_STATUS_CODE,
-          (error as Error).message,
-          { context: "vault.rotate" },
-        );
-      }
-      if (signatureEnvelope.signer_pq_public_key !== actorKeys.publicPqKey) {
-        throw new VaultSharingServiceError(
-          SIGNATURE_INVALID,
-          SIGNATURE_STATUS_CODE,
-          "signature signer_pq_public_key mismatch",
-          { context: "vault.rotate" },
-        );
-      }
-      const verifiedSignature = verifyHybridSignatureForPayload({
-        envelope: signatureEnvelope,
+      await this.attachVerifiedSignature({
+        actorId,
+        context: "vault.rotate",
+        signature: input.signature,
         payload: {
           vaultId,
           eventType: "VAULT_KEY_ROTATION",
           encryptedBlob: payloadBlob,
         },
-        signerPublicKeyBase64: actorKeys.publicKey,
+        blob: payloadBlob,
       });
-      if (!verifiedSignature) {
-        throw new VaultSharingServiceError(
-          SIGNATURE_INVALID,
-          SIGNATURE_STATUS_CODE,
-          "signature verification failed",
-          { context: "vault.rotate" },
-        );
-      }
-      payloadBlob.meta = {
-        ...payloadBlob.meta,
-        signature: signatureEnvelope,
-      };
     }
 
     this.assertEncryptedBlobsMeetVaultFloor(vaultId, acl.vaultCryptoVersion, [
@@ -840,47 +750,17 @@ export class VaultSharingService {
     const { rotatedMap, normalizedRotatedVaultKeys } =
       await this.parseAssertAndStampRotatedVaultKeys(input.rotatedVaultKeys);
     if (input.signature) {
-      const actorKeys = await this.getUserSigningKeys(actorId);
-      let signatureEnvelope;
-      try {
-        signatureEnvelope = parseHybridSignatureEnvelope(input.signature, "vault.member_role_update");
-      } catch (error) {
-        throw new VaultSharingServiceError(
-          SIGNATURE_INVALID,
-          SIGNATURE_STATUS_CODE,
-          (error as Error).message,
-          { context: "vault.member_role_update" },
-        );
-      }
-      if (signatureEnvelope.signer_pq_public_key !== actorKeys.publicPqKey) {
-        throw new VaultSharingServiceError(
-          SIGNATURE_INVALID,
-          SIGNATURE_STATUS_CODE,
-          "signature signer_pq_public_key mismatch",
-          { context: "vault.member_role_update" },
-        );
-      }
-      const verifiedSignature = verifyHybridSignatureForPayload({
-        envelope: signatureEnvelope,
+      await this.attachVerifiedSignature({
+        actorId,
+        context: "vault.member_role_update",
+        signature: input.signature,
         payload: {
           vaultId,
           eventType: "VAULT_KEY_ROTATION",
           encryptedBlob: payloadBlob,
         },
-        signerPublicKeyBase64: actorKeys.publicKey,
+        blob: payloadBlob,
       });
-      if (!verifiedSignature) {
-        throw new VaultSharingServiceError(
-          SIGNATURE_INVALID,
-          SIGNATURE_STATUS_CODE,
-          "signature verification failed",
-          { context: "vault.member_role_update" },
-        );
-      }
-      payloadBlob.meta = {
-        ...payloadBlob.meta,
-        signature: signatureEnvelope,
-      };
     }
 
     this.assertEncryptedBlobsMeetVaultFloor(vaultId, acl.vaultCryptoVersion, [
@@ -1342,10 +1222,48 @@ export class VaultSharingService {
     return rows[0]?.public_pq_key ?? null;
   }
 
-  private async getUserSigningKeys(userId: string): Promise<{ publicKey: string; publicPqKey: string }> {
+  private async attachVerifiedSignature(input: {
+    actorId: string;
+    context: SignatureContext;
+    signature: unknown;
+    payload: unknown;
+    blob: EncryptedBlob;
+  }): Promise<void> {
+    const actorKeys = await this.getUserSigningKeys(input.actorId);
+    const checked = checkHybridSignatureForNewWrite({
+      signature: input.signature,
+      expectedContext: input.context,
+      payload: input.payload,
+      signerPublicKeyBase64: actorKeys.publicKey,
+      signerPqPublicKeyBase64: actorKeys.publicPqKey,
+      signerMldsaPublicKeyBase64: actorKeys.publicMldsaKey,
+    });
+    if (!checked.ok) {
+      throw new VaultSharingServiceError(
+        checked.code,
+        checked.statusCode,
+        checked.message,
+        { context: input.context },
+      );
+    }
+    input.blob.meta = {
+      ...input.blob.meta,
+      signature: checked.envelope,
+    };
+  }
+
+  private async getUserSigningKeys(userId: string): Promise<{
+    publicKey: string;
+    publicPqKey: string;
+    publicMldsaKey: string | null;
+  }> {
     const canonical = normalizeWireUserId(userId);
-    const rows = await this.db.query<{ public_key: string; public_pq_key: string | null }>(
-      "SELECT public_key, public_pq_key FROM users WHERE id = $1::bigint",
+    const rows = await this.db.query<{
+      public_key: string;
+      public_pq_key: string | null;
+      public_mldsa_key: string | null;
+    }>(
+      "SELECT public_key, public_pq_key, public_mldsa_key FROM users WHERE id = $1::bigint",
       [canonical],
     );
     if (!rows[0]?.public_key || !rows[0]?.public_pq_key) {
@@ -1358,6 +1276,7 @@ export class VaultSharingService {
     return {
       publicKey: rows[0].public_key,
       publicPqKey: rows[0].public_pq_key,
+      publicMldsaKey: rows[0].public_mldsa_key,
     };
   }
 

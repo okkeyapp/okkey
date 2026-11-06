@@ -13,6 +13,7 @@ function baseInput() {
     authStateId: "s1",
     userPublicKey: Buffer.alloc(32, 9).toString("base64"),
     userPublicPqKey: Buffer.alloc(1184, 7).toString("base64"),
+    userPublicMldsaKey: Buffer.alloc(1952, 4).toString("base64"),
     encryptedPrivateKey: {
       crypto_version: 2,
       algorithm: "opaque",

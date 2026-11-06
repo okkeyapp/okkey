@@ -159,6 +159,8 @@ import {
   type VaultUnlockAttemptRedis,
 } from "./account/vault-unlock-attempts.ts";
 import { createAccountMasterPasswordChangeRoute } from "./routes/account-master-password-change.ts";
+import { MldsaIdentityKeyService } from "./account/mldsa-identity-key.ts";
+import { createAccountMlDsaIdentityKeyRoute } from "./routes/account-mldsa-identity-key.ts";
 import { createAccountProfileRoute } from "./routes/account-profile.ts";
 import {
   createAccountEmailChangeConfirmRoute,
@@ -581,6 +583,14 @@ export function createApiApp(
       "POST",
       "/account/master-password/change",
       createAccountMasterPasswordChangeRoute(deps.usersRepository, resolveUserIdForRestore),
+    );
+    app.route(
+      "POST",
+      "/account/identity/mldsa-key",
+      createAccountMlDsaIdentityKeyRoute(
+        new MldsaIdentityKeyService(deps.usersRepository),
+        resolveUserId,
+      ),
     );
   }
   if (deps.sessionService !== undefined && deps.emailChangeService) {

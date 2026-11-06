@@ -21,6 +21,31 @@ declare module "@okkey/crypto-wasm" {
     message: Uint8Array,
     signature: Uint8Array,
   ): boolean;
+  export function mldsa65_seed_len(): number;
+  export function mldsa65_public_key_len(): number;
+  export function mldsa65_signature_len(): number;
+  export function hybrid_signature_v2_len(): number;
+  /** `[seed (32) || ML-DSA-65 public key]`. */
+  export function mldsa65_keypair(): Uint8Array;
+  export function mldsa65_public_key(seed: Uint8Array): Uint8Array;
+  export function mldsa65_sign(seed: Uint8Array, message: Uint8Array): Uint8Array;
+  export function mldsa65_verify(publicKey: Uint8Array, message: Uint8Array, signature: Uint8Array): boolean;
+  /** Ed25519 signature || ML-DSA-65 signature. */
+  export function hybrid_sign_v2(
+    ed25519PrivateKey: Uint8Array,
+    mldsaSeed: Uint8Array,
+    signerPqPublicKey: Uint8Array,
+    context: Uint8Array,
+    message: Uint8Array,
+  ): Uint8Array;
+  export function hybrid_verify_v2(
+    ed25519PublicKey: Uint8Array,
+    mldsaPublicKey: Uint8Array,
+    signerPqPublicKey: Uint8Array,
+    context: Uint8Array,
+    message: Uint8Array,
+    signature: Uint8Array,
+  ): boolean;
   export function x25519_keypair(): Uint8Array;
   export function x25519_shared(privateKey: Uint8Array, peerPublicKey: Uint8Array): Uint8Array;
   /** Ed25519 SigningKey seed → X25519 private scalar bytes. */

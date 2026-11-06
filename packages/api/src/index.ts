@@ -47,6 +47,8 @@ import type {
   AccountProfileUpdateRequestDto,
   AccountMasterPasswordChangeRequestDto,
   AccountMasterPasswordChangeResponseDto,
+  MldsaIdentityKeyUploadRequestDto,
+  MldsaIdentityKeyUploadResponseDto,
   VaultUnlockAttestationDto,
   VaultUnlockAttemptStatusDto,
   VaultUnlockRecordResponseDto,
@@ -126,6 +128,20 @@ export class ApiRequestError extends Error {
   }
 }
 
+/** Server code when this app build cannot continue and must be updated. */
+export const CLIENT_UPGRADE_REQUIRED = "CLIENT_UPGRADE_REQUIRED";
+/** Advertised by current clients that understand an ML-DSA-65 identity bundle. */
+export const MLDSA_IDENTITY_CAPABILITY = "mldsa-identity-v2";
+export const CLIENT_CAPABILITY_HEADER = "X-Okkey-Client-Capabilities";
+
+export function isClientUpgradeRequiredError(error: unknown): boolean {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+  const body = (error as { body?: { error?: unknown } }).body;
+  return body?.error === CLIENT_UPGRADE_REQUIRED;
+}
+
 export interface ApiRequestOptions {
   /** Merged over defaultHeaders for this request only. */
   headers?: Record<string, string>;
@@ -140,7 +156,10 @@ export class ApiClient {
     this.baseUrl = options.baseUrl.replace(/\/$/, "");
     // Native `fetch` must be bound; storing it unbound causes "Illegal invocation" when called.
     this.fetchImpl = options.fetchImpl ?? globalThis.fetch.bind(globalThis);
-    this.defaultHeaders = options.defaultHeaders ?? {};
+    this.defaultHeaders = {
+      [CLIENT_CAPABILITY_HEADER]: MLDSA_IDENTITY_CAPABILITY,
+      ...(options.defaultHeaders ?? {}),
+    };
   }
 
   async get<T>(path: string, options?: ApiRequestOptions): Promise<T> {
@@ -341,6 +360,13 @@ export class CoreApiClient {
     body: AccountMasterPasswordChangeRequestDto,
   ): Promise<AccountMasterPasswordChangeResponseDto> {
     return this.api.post<AccountMasterPasswordChangeResponseDto>("/account/master-password/change", body);
+  }
+
+  /** Publish the account ML-DSA-65 verifying key, authenticated by the Ed25519 identity key. */
+  uploadMlDsaIdentityKey(
+    body: MldsaIdentityKeyUploadRequestDto,
+  ): Promise<MldsaIdentityKeyUploadResponseDto> {
+    return this.api.post<MldsaIdentityKeyUploadResponseDto>("/account/identity/mldsa-key", body);
   }
 
   /** Reports a successful vault unlock with a signed attestation (no secrets). */

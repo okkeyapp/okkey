@@ -1,3 +1,8 @@
+import {
+  CLIENT_UPGRADE_REQUIRED,
+  CLIENT_UPGRADE_REQUIRED_MESSAGE,
+  CLIENT_UPGRADE_REQUIRED_STATUS,
+} from "../crypto/client-upgrade.ts";
 import { getHeader, json, readJsonBody, type RouteHandler } from "../http.ts";
 import { RegistrationError, type RegistrationService } from "../registration/service.ts";
 import type { EncryptedBlob } from "../crypto/encrypted-blob.ts";
@@ -8,6 +13,7 @@ interface RegisterCompleteBody {
   auth_state_id?: unknown;
   user_public_key?: string;
   user_public_pq_key?: string;
+  user_public_mldsa_key?: string;
   encrypted_private_key?: unknown;
   server_key_share?: string;
   password_kdf_salt?: string;
@@ -152,6 +158,15 @@ export function createRegisterCompleteRoute(
           "auth_state_id is required (opaque hex or legacy snowflake)",
           ctx.requestId,
         ),
+      );
+      return;
+    }
+
+    if (typeof body.user_public_mldsa_key !== "string" || !body.user_public_mldsa_key.trim()) {
+      json(
+        ctx.res,
+        CLIENT_UPGRADE_REQUIRED_STATUS,
+        errorPayload(CLIENT_UPGRADE_REQUIRED, CLIENT_UPGRADE_REQUIRED_MESSAGE, ctx.requestId),
       );
       return;
     }
@@ -306,6 +321,7 @@ export function createRegisterCompleteRoute(
         authStateId,
         userPublicKey: body.user_public_key!.trim(),
         userPublicPqKey: body.user_public_pq_key!.trim(),
+        userPublicMldsaKey: body.user_public_mldsa_key!.trim(),
         encryptedPrivateKey: body.encrypted_private_key as EncryptedBlob,
         serverKeyShare: srvShare,
         passwordKdfSalt: kdfSalt,

@@ -33,7 +33,8 @@ import {
   type WebLocale,
   type WebMessageValues,
 } from "@okkey/i18n";
-import { buildVaultUnlockAttestation, unwrapUnlockMaterialWithPin, wipeBytes } from "@okkey/crypto";
+import { buildVaultUnlockAttestation, UnsupportedIdentityBundleError, unwrapUnlockMaterialWithPin, wipeBytes } from "@okkey/crypto";
+import { isClientUpgradeRequiredError } from "@okkey/api";
 import { toast } from "sonner";
 
 import {
@@ -64,6 +65,7 @@ import { readExtensionPinUnlockWrap } from "../../lib/extensionDeviceUnlockStore
 import {
   ensureExtensionVaultBundle,
   unlockExtensionVault,
+  upgradeExtensionMlDsaIdentity,
   wipeUnlockSecrets,
 } from "../../lib/extensionUnlock";
 import { initExtensionCrypto } from "../../lib/initExtensionCrypto";
@@ -185,6 +187,10 @@ export function PopupApp() {
   const [locale, setLocale] = useState<WebLocale>(() => readStoredExtensionLocale());
   const [profile, setProfile] = useState<ExtensionProfile | null>(null);
   const [session, setSession] = useState<ExtensionSession | null>(null);
+  const profileRef = useRef(profile);
+  const sessionRef = useRef(session);
+  profileRef.current = profile;
+  sessionRef.current = session;
   const [trust, setTrust] = useState<DeviceTrustSnapshot | null>(null);
   const [identity, setIdentity] = useState<AccountIdentity | null>(null);
   const [hostMode, setHostMode] = useState<ExtensionHostMode>(
@@ -319,7 +325,24 @@ export function PopupApp() {
     wipeUnlockSecrets(unlockSecretsRef.current);
     unlockSecretsRef.current = secrets;
     setUnlockSecrets(secrets);
-    setEncryptedPrivateKeyPayload(bundle.encrypted_private_key.payload);
+    let identityPayload = bundle.encrypted_private_key.payload;
+    const currentProfile = profileRef.current;
+    const currentSession = sessionRef.current;
+    if (currentProfile && currentSession?.access_token) {
+      try {
+        const core = createCoreClient(currentProfile.apiBaseUrl, currentSession.access_token);
+        const upgraded = await upgradeExtensionMlDsaIdentity({
+          core,
+          userId,
+          vaultKey: secrets.vaultKey,
+          bundle,
+        });
+        identityPayload = upgraded.encrypted_private_key.payload;
+      } catch {
+        /* Session restore stays unlocked if the identity upgrade cannot run. */
+      }
+    }
+    setEncryptedPrivateKeyPayload(identityPayload);
     setVaultIdleLockMs(fresh.idleLockMs);
     setMasterPassword("");
     void applyExtensionStoredTheme();
@@ -802,7 +825,19 @@ export function PopupApp() {
       wipeUnlockSecrets(unlockSecretsRef.current);
       unlockSecretsRef.current = secrets;
       setUnlockSecrets(secrets);
-      setEncryptedPrivateKeyPayload(bundle.encrypted_private_key.payload);
+      let identityPayload = bundle.encrypted_private_key.payload;
+      try {
+        const upgraded = await upgradeExtensionMlDsaIdentity({
+          core,
+          userId: session.user_id,
+          vaultKey: secrets.vaultKey,
+          bundle,
+        });
+        identityPayload = upgraded.encrypted_private_key.payload;
+      } catch {
+        /* Unlock stays successful if the identity upgrade cannot run. */
+      }
+      setEncryptedPrivateKeyPayload(identityPayload);
       setMasterPassword("");
       setPinDigits(emptyPinDigits());
       setPinError(null);
@@ -819,7 +854,7 @@ export function PopupApp() {
       void buildVaultUnlockAttestation({
         userId: session.user_id,
         vaultKey: secrets.vaultKey,
-        encryptedPrivateKeyPayloadB64: bundle.encrypted_private_key.payload,
+        encryptedPrivateKeyPayloadB64: identityPayload,
       })
         .then((attestation) => core.recordVaultUnlock(attestation))
         .catch(() => {
@@ -973,6 +1008,10 @@ export function PopupApp() {
         }
         await finishUnlockWithSecrets(secrets);
       } catch (err: unknown) {
+        if (err instanceof UnsupportedIdentityBundleError || isClientUpgradeRequiredError(err)) {
+          toast.error(t("clientUpgrade.title"), { description: t("clientUpgrade.body") });
+          return;
+        }
         const message = err instanceof Error ? err.message : String(err);
         toast.error(t("unlock.errorTitle"), { description: message });
       } finally {

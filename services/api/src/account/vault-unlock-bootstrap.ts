@@ -1,3 +1,9 @@
+import {
+  CLIENT_UPGRADE_REQUIRED,
+  CLIENT_UPGRADE_REQUIRED_MESSAGE,
+  CLIENT_UPGRADE_REQUIRED_STATUS,
+  identityBundleRequiresCurrentClient,
+} from "../crypto/client-upgrade.ts";
 import { decodeEncryptedBlobFromStorage } from "../crypto/encrypted-blob.ts";
 import type { DevicesRepository, UsersRepository } from "../storage/repositories.ts";
 
@@ -46,6 +52,8 @@ export class VaultUnlockBootstrapService {
   async getForBoundDevice(input: {
     userId: string;
     deviceId: string;
+    /** When false, an ML-DSA identity bundle is refused so an old client fails loudly. */
+    clientSupportsMlDsaIdentity?: boolean;
   }): Promise<VaultUnlockBootstrapWire> {
     const row = await this.users.loadVaultUnlockRow(input.userId);
     if (!row) {
@@ -65,6 +73,16 @@ export class VaultUnlockBootstrapService {
     }
 
     const encryptedPrivateKey = decodeEncryptedBlobFromStorage(row.encryptedPrivateKey);
+    if (
+      input.clientSupportsMlDsaIdentity === false &&
+      identityBundleRequiresCurrentClient(encryptedPrivateKey.meta)
+    ) {
+      throw new VaultUnlockBootstrapError(
+        CLIENT_UPGRADE_REQUIRED,
+        CLIENT_UPGRADE_REQUIRED_STATUS,
+        CLIENT_UPGRADE_REQUIRED_MESSAGE,
+      );
+    }
 
     return {
       server_key_share: Buffer.from(row.serverKeyShare).toString("base64"),

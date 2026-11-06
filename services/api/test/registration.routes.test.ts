@@ -43,6 +43,7 @@ function validRegisterBody() {
     auth_state_id: "a".repeat(32),
     user_public_key: Buffer.alloc(32, 1).toString("base64"),
     user_public_pq_key: Buffer.alloc(1184, 8).toString("base64"),
+    user_public_mldsa_key: Buffer.alloc(1952, 4).toString("base64"),
     encrypted_private_key: {
       crypto_version: 2,
       algorithm: "opaque",
@@ -115,6 +116,16 @@ test("POST /auth/register/complete returns 201", async () => {
   const payload = JSON.parse(res.body) as { user_id: string; device_status: string };
   assert.equal(payload.user_id, "u1");
   assert.equal(payload.device_status, "trusted");
+});
+
+test("POST /auth/register/complete requires an app that can send an ML-DSA identity key", async () => {
+  const body = validRegisterBody();
+  delete (body as { user_public_mldsa_key?: string }).user_public_mldsa_key;
+  const res = await dispatch({ body });
+  assert.equal(res.statusCode, 426);
+  const payload = JSON.parse(res.body) as { error: string; message: string };
+  assert.equal(payload.error, "CLIENT_UPGRADE_REQUIRED");
+  assert.match(payload.message, /Update the app/);
 });
 
 test("POST /auth/register/complete validates auth_state_id", async () => {

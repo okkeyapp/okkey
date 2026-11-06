@@ -61,6 +61,7 @@ export default function UnlockPasswordPage() {
     accessToken,
     userId,
     tryUnlockWithMasterPassword,
+    clientUpgradeRequired,
     ensureVaultBundleForUnlock,
     applyUnlockedSecrets,
     hasVaultBundle,
@@ -313,8 +314,11 @@ export default function UnlockPasswordPage() {
       return;
     }
     await initCrypto();
-    const ok = await tryUnlockWithMasterPassword(masterPassword);
-    if (!ok) {
+    const unlockResult = await tryUnlockWithMasterPassword(masterPassword);
+    if (unlockResult === "upgrade_required" || clientUpgradeRequired) {
+      return;
+    }
+    if (unlockResult !== true) {
       if (userId) {
         const local = recordMasterPasswordFailure(userId);
         setMasterPasswordLocked(local.locked);
@@ -523,6 +527,14 @@ export default function UnlockPasswordPage() {
               }}
             />
           </div>
+        ) : null}
+
+        {clientUpgradeRequired ? (
+          <Alert variant="error">
+            <AlertErrorIcon className="size-4" />
+            <AlertTitle>{t("clientUpgrade.title")}</AlertTitle>
+            <AlertDescription>{t("clientUpgrade.body")}</AlertDescription>
+          </Alert>
         ) : null}
 
         {noBundleError ? (
