@@ -382,6 +382,43 @@ test("getRecoveryPossession reports a public key or a legacy wrap and never retu
   assert.equal(JSON.stringify(legacyState).includes("abc"), false);
 });
 
+test("enrollKey rejects a wrap whose key_scope is not account", async () => {
+  const service = createService();
+  const base = {
+    crypto_version: 2,
+    algorithm: "xchacha20-poly1305",
+    payload: "abc",
+  };
+  await assert.rejects(
+    () =>
+      service.enrollKey("u1", {
+        ...base,
+        meta: { entity: "vault_key_recovery_wrap", key_scope: "vault" },
+      }),
+    (err: unknown) =>
+      err instanceof AccountRecoveryError &&
+      err.code === "RECOVERY_BAD_REQUEST" &&
+      err.statusCode === 400,
+  );
+  await assert.rejects(
+    () =>
+      service.enrollKey("u1", {
+        ...base,
+        meta: { entity: "vault_key_recovery_wrap" },
+      }),
+    (err: unknown) =>
+      err instanceof AccountRecoveryError && err.code === "RECOVERY_BAD_REQUEST",
+  );
+  assert.equal(await service.hasEnrolledRecoveryKey("u1"), false);
+
+  const enrolled = await service.enrollKey("u1", {
+    ...base,
+    meta: { entity: "vault_key_recovery_wrap", key_scope: "account" },
+  });
+  assert.equal(enrolled.key.enrolled, true);
+  assert.equal(await service.hasEnrolledRecoveryKey("u1"), true);
+});
+
 test("enrollKey persists wrap and enables key settings", async () => {
   const service = createService({ workspaces: [{ planTier: "PREMIUM" }] });
   assert.equal(await service.hasEnrolledRecoveryKey("u1"), false);
