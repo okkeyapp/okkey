@@ -1,4 +1,6 @@
 import type { IncomingMessage } from "node:http";
+import { isSignatureRequired } from "../crypto/signature-requirement.ts";
+import type { CryptoRolloutMode } from "../crypto/policy-matrix.ts";
 import { json, readJsonBody, type RouteHandler } from "../http.ts";
 import { SyncService, SyncServiceError } from "../sync/service.ts";
 
@@ -13,8 +15,6 @@ interface AppendEventBody {
   itemSoftDeleted?: boolean;
   itemDeletedAtMs?: number;
 }
-
-const EVENT_TYPES_REQUIRING_SIGNATURE = new Set(["VAULT_SHARE", "VAULT_KEY_ROTATION"]);
 
 export function createSyncEventsListRoute(
   syncService: SyncService,
@@ -56,6 +56,7 @@ export function createSyncEventsListRoute(
 export function createSyncEventsAppendRoute(
   syncService: SyncService,
   resolveUserId: (req: IncomingMessage) => Promise<string | null>,
+  rolloutMode: CryptoRolloutMode,
 ): RouteHandler {
   return async (ctx) => {
     const vaultId = ctx.params.vaultId;
@@ -84,7 +85,14 @@ export function createSyncEventsAppendRoute(
       );
       return;
     }
-    if (EVENT_TYPES_REQUIRING_SIGNATURE.has(body.eventType) && !body.signature) {
+    if (
+      isSignatureRequired({
+        rolloutMode,
+        operation: "sync.append",
+        eventType: body.eventType,
+      }) &&
+      !body.signature
+    ) {
       json(
         ctx.res,
         400,

@@ -43,9 +43,11 @@ import {
 import {
   SIGNATURE_INVALID,
   SIGNATURE_STATUS_CODE,
-  checkHybridSignatureForNewWrite,
-  type SignatureContext,
 } from "../crypto/hybrid-signature.ts";
+import {
+  enforceOperationSignature,
+  OperationSignatureError,
+} from "../crypto/signature-requirement.ts";
 
 export class VaultSharingServiceError extends Error {
   readonly code: string;
@@ -292,19 +294,15 @@ export class VaultSharingService {
       entity: "vault_event_payload",
       event_type: "VAULT_SHARE",
     });
-    if (input.signature) {
-      await this.attachVerifiedSignature({
-        actorId,
-        context: "vault.share",
-        signature: input.signature,
-        payload: {
-          vaultId,
-          eventType: "VAULT_SHARE",
-          encryptedBlob: normalizedPayloadBlob,
-        },
-        blob: normalizedPayloadBlob,
-      });
-    }
+    await this.enforceCriticalSignature({
+      phase: "presented",
+      vaultId,
+      actorId,
+      operation: "vault.share",
+      eventType: "VAULT_SHARE",
+      signature: input.signature,
+      blob: normalizedPayloadBlob,
+    });
     await this.ensureRecipientInWorkspace(acl.workspaceId, recipientUserId);
     const recipientPqKey = await this.getUserPublicPqKey(recipientUserId);
     // Assert client-declared wrap meta before stamping recipient_user_id for storage.
@@ -323,6 +321,16 @@ export class VaultSharingService {
       normalizedWrappedKeyBlob,
       normalizedPayloadBlob,
     ]);
+
+    await this.enforceCriticalSignature({
+      phase: "finalize",
+      vaultId,
+      actorId,
+      operation: "vault.share",
+      eventType: "VAULT_SHARE",
+      signature: input.signature,
+      blob: normalizedPayloadBlob,
+    });
 
     await this.db.transaction(async (tx) => {
       await tx.query(
@@ -411,19 +419,15 @@ export class VaultSharingService {
     );
     const { rotatedMap, normalizedRotatedVaultKeys } =
       await this.parseAssertAndStampRotatedVaultKeys(input.rotatedVaultKeys);
-    if (input.signature) {
-      await this.attachVerifiedSignature({
-        actorId,
-        context: "vault.revoke",
-        signature: input.signature,
-        payload: {
-          vaultId,
-          eventType: "VAULT_KEY_ROTATION",
-          encryptedBlob: payloadBlob,
-        },
-        blob: payloadBlob,
-      });
-    }
+    await this.enforceCriticalSignature({
+      phase: "presented",
+      vaultId,
+      actorId,
+      operation: "vault.revoke",
+      eventType: "VAULT_KEY_ROTATION",
+      signature: input.signature,
+      blob: payloadBlob,
+    });
 
     this.assertEncryptedBlobsMeetVaultFloor(vaultId, acl.vaultCryptoVersion, [
       payloadBlob,
@@ -438,6 +442,16 @@ export class VaultSharingService {
     });
     payloadBlob = mergeEncryptedBlobMeta(payloadBlob, {
       [ROTATION_REQUEST_FINGERPRINT_META_KEY]: requestFingerprint,
+    });
+
+    await this.enforceCriticalSignature({
+      phase: "finalize",
+      vaultId,
+      actorId,
+      operation: "vault.revoke",
+      eventType: "VAULT_KEY_ROTATION",
+      signature: input.signature,
+      blob: payloadBlob,
     });
 
     await this.db.transaction(async (tx) => {
@@ -579,19 +593,15 @@ export class VaultSharingService {
     );
     const { rotatedMap, normalizedRotatedVaultKeys } =
       await this.parseAssertAndStampRotatedVaultKeys(input.rotatedVaultKeys);
-    if (input.signature) {
-      await this.attachVerifiedSignature({
-        actorId,
-        context: "vault.rotate",
-        signature: input.signature,
-        payload: {
-          vaultId,
-          eventType: "VAULT_KEY_ROTATION",
-          encryptedBlob: payloadBlob,
-        },
-        blob: payloadBlob,
-      });
-    }
+    await this.enforceCriticalSignature({
+      phase: "presented",
+      vaultId,
+      actorId,
+      operation: "vault.rotate",
+      eventType: "VAULT_KEY_ROTATION",
+      signature: input.signature,
+      blob: payloadBlob,
+    });
 
     this.assertEncryptedBlobsMeetVaultFloor(vaultId, acl.vaultCryptoVersion, [
       payloadBlob,
@@ -606,6 +616,16 @@ export class VaultSharingService {
     });
     payloadBlob = mergeEncryptedBlobMeta(payloadBlob, {
       [ROTATION_REQUEST_FINGERPRINT_META_KEY]: requestFingerprint,
+    });
+
+    await this.enforceCriticalSignature({
+      phase: "finalize",
+      vaultId,
+      actorId,
+      operation: "vault.rotate",
+      eventType: "VAULT_KEY_ROTATION",
+      signature: input.signature,
+      blob: payloadBlob,
     });
 
     await this.db.transaction(async (tx) => {
@@ -749,19 +769,15 @@ export class VaultSharingService {
     );
     const { rotatedMap, normalizedRotatedVaultKeys } =
       await this.parseAssertAndStampRotatedVaultKeys(input.rotatedVaultKeys);
-    if (input.signature) {
-      await this.attachVerifiedSignature({
-        actorId,
-        context: "vault.member_role_update",
-        signature: input.signature,
-        payload: {
-          vaultId,
-          eventType: "VAULT_KEY_ROTATION",
-          encryptedBlob: payloadBlob,
-        },
-        blob: payloadBlob,
-      });
-    }
+    await this.enforceCriticalSignature({
+      phase: "presented",
+      vaultId,
+      actorId,
+      operation: "vault.member_role_update",
+      eventType: "VAULT_KEY_ROTATION",
+      signature: input.signature,
+      blob: payloadBlob,
+    });
 
     this.assertEncryptedBlobsMeetVaultFloor(vaultId, acl.vaultCryptoVersion, [
       payloadBlob,
@@ -777,6 +793,16 @@ export class VaultSharingService {
     });
     payloadBlob = mergeEncryptedBlobMeta(payloadBlob, {
       [ROTATION_REQUEST_FINGERPRINT_META_KEY]: requestFingerprint,
+    });
+
+    await this.enforceCriticalSignature({
+      phase: "finalize",
+      vaultId,
+      actorId,
+      operation: "vault.member_role_update",
+      eventType: "VAULT_KEY_ROTATION",
+      signature: input.signature,
+      blob: payloadBlob,
     });
 
     await this.db.transaction(async (tx) => {
@@ -1222,34 +1248,57 @@ export class VaultSharingService {
     return rows[0]?.public_pq_key ?? null;
   }
 
-  private async attachVerifiedSignature(input: {
+  /**
+   * `presented` verifies a signature that was sent, before later payload stamps.
+   * `finalize` rejects a missing signature in strict mode after those checks,
+   * immediately before the write. A presented signature is not verified again.
+   * Verification goes through the ML-DSA new-write checker.
+   */
+  private async enforceCriticalSignature(input: {
+    phase: "presented" | "finalize";
+    vaultId: string;
     actorId: string;
-    context: SignatureContext;
+    operation: "vault.share" | "vault.revoke" | "vault.rotate" | "vault.member_role_update";
+    eventType: "VAULT_SHARE" | "VAULT_KEY_ROTATION";
     signature: unknown;
-    payload: unknown;
     blob: EncryptedBlob;
   }): Promise<void> {
-    const actorKeys = await this.getUserSigningKeys(input.actorId);
-    const checked = checkHybridSignatureForNewWrite({
-      signature: input.signature,
-      expectedContext: input.context,
-      payload: input.payload,
-      signerPublicKeyBase64: actorKeys.publicKey,
-      signerPqPublicKeyBase64: actorKeys.publicPqKey,
-      signerMldsaPublicKeyBase64: actorKeys.publicMldsaKey,
-    });
-    if (!checked.ok) {
-      throw new VaultSharingServiceError(
-        checked.code,
-        checked.statusCode,
-        checked.message,
-        { context: input.context },
-      );
+    if (input.phase === "presented" && !input.signature) {
+      return;
     }
-    input.blob.meta = {
-      ...input.blob.meta,
-      signature: checked.envelope,
-    };
+    if (input.phase === "finalize" && input.signature) {
+      return;
+    }
+    const signer = input.signature ? await this.getUserSigningKeys(input.actorId) : null;
+    try {
+      const envelope = enforceOperationSignature({
+        rolloutMode: this.config.cryptoRolloutMode,
+        operation: input.operation,
+        signature: input.signature,
+        payload: {
+          vaultId: input.vaultId,
+          eventType: input.eventType,
+          encryptedBlob: input.blob,
+        },
+        signer,
+      });
+      if (envelope) {
+        input.blob.meta = {
+          ...input.blob.meta,
+          signature: envelope,
+        };
+      }
+    } catch (error) {
+      if (error instanceof OperationSignatureError) {
+        throw new VaultSharingServiceError(
+          error.code,
+          error.statusCode,
+          error.message,
+          error.details,
+        );
+      }
+      throw error;
+    }
   }
 
   private async getUserSigningKeys(userId: string): Promise<{

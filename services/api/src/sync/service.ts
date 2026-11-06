@@ -39,11 +39,9 @@ import {
   type EncryptedBlob,
 } from "../crypto/encrypted-blob.ts";
 import {
-  SIGNATURE_INVALID,
-  SIGNATURE_REQUIRED,
-  SIGNATURE_STATUS_CODE,
-  checkHybridSignatureForNewWrite,
-} from "../crypto/hybrid-signature.ts";
+  enforceOperationSignature,
+  OperationSignatureError,
+} from "../crypto/signature-requirement.ts";
 import { isEntityId } from "../entity-id.ts";
 import { type PlanEntitlementRuntimeConfig } from "../plan-entitlements.ts";
 import { evaluateSharedVaultItemCreateGate } from "./shared-vault-item-create-gate.ts";
@@ -60,7 +58,6 @@ const SYNC_EVENT_TYPES = new Set([
 ]);
 
 const EVENT_TYPES_REQUIRING_IDEMPOTENCY = new Set(["ITEM_CREATE"]);
-const EVENT_TYPES_REQUIRING_SIGNATURE = new Set(["VAULT_SHARE", "VAULT_KEY_ROTATION"]);
 
 /** Max decoded ciphertext size per event (DoS guard). */
 export const SYNC_MAX_ENCRYPTED_PAYLOAD_BYTES = 512 * 1024;
@@ -265,51 +262,38 @@ export class SyncService {
       entity: "sync_event",
       event_type: input.eventType,
     });
-    const signatureIsRequired =
-      EVENT_TYPES_REQUIRING_SIGNATURE.has(input.eventType) &&
-      this.config.cryptoRolloutMode === "strict";
-    if (EVENT_TYPES_REQUIRING_SIGNATURE.has(input.eventType) && (input.signature || signatureIsRequired)) {
-      if (!input.signature) {
-        throw new SyncServiceError(
-          SIGNATURE_REQUIRED,
-          SIGNATURE_STATUS_CODE,
-          "signature is required for this eventType",
-          { context: "sync.append", eventType: input.eventType },
-        );
-      }
-      const actor = this.users ? await this.users.findById(userId) : null;
-      if (!actor?.publicKey || !actor.publicPqKey) {
-        throw new SyncServiceError(
-          SIGNATURE_INVALID,
-          SIGNATURE_STATUS_CODE,
-          "signer keys are unavailable",
-          { context: "sync.append", eventType: input.eventType },
-        );
-      }
-      const checked = checkHybridSignatureForNewWrite({
+    const actor = input.signature && this.users ? await this.users.findById(userId) : null;
+    try {
+      const envelope = enforceOperationSignature({
+        rolloutMode: this.config.cryptoRolloutMode,
+        operation: "sync.append",
+        eventType: input.eventType,
         signature: input.signature,
-        expectedContext: "sync.append",
         payload: {
           vaultId,
           eventType: input.eventType,
           encryptedBlob: normalizedBlob,
         },
-        signerPublicKeyBase64: actor.publicKey,
-        signerPqPublicKeyBase64: actor.publicPqKey,
-        signerMldsaPublicKeyBase64: actor.publicMldsaKey ?? null,
+        signer:
+          actor?.publicKey && actor.publicPqKey
+            ? {
+                publicKey: actor.publicKey,
+                publicPqKey: actor.publicPqKey,
+                publicMldsaKey: actor.publicMldsaKey ?? null,
+              }
+            : null,
       });
-      if (!checked.ok) {
-        throw new SyncServiceError(
-          checked.code,
-          checked.statusCode,
-          checked.message,
-          { context: "sync.append", eventType: input.eventType },
-        );
+      if (envelope) {
+        normalizedBlob.meta = {
+          ...normalizedBlob.meta,
+          signature: envelope,
+        };
       }
-      normalizedBlob.meta = {
-        ...normalizedBlob.meta,
-        signature: checked.envelope,
-      };
+    } catch (error) {
+      if (error instanceof OperationSignatureError) {
+        throw new SyncServiceError(error.code, error.statusCode, error.message, error.details);
+      }
+      throw error;
     }
     const policyViolation = getCryptoWritePolicyViolation(
       this.config,
