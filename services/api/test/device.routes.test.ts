@@ -1216,13 +1216,44 @@ test("POST /devices/register keeps recovery_pending true, false, and omitted beh
   assert.equal(metadataWins.statusCode, 200);
   assert.equal(metadataWins.input?.recoveryPending, false);
 
-  const claimSuppressesPending = await registerAndCapture({
+  // Header auth is a user, not the pending device that proved the recovery key.
+  const claimWithoutProof = await registerAndCapture({
     ...registerBody(),
     metadata: { claim_after_recovery: true, recovery_pending: true },
   });
+  assert.equal(claimWithoutProof.statusCode, 403);
+  assert.equal(claimWithoutProof.payload.error, "RECOVERY_CLAIM_REQUIRES_PROVED_DEVICE");
+  assert.equal(claimWithoutProof.input, undefined);
+
+  let claimInput: RegisterDeviceInput | undefined;
+  const claimSuppressesPending = await dispatch({
+    method: "POST",
+    url: "/devices/register",
+    headers: { authorization: "Bearer proved-token" },
+    body: {
+      ...registerBody(),
+      metadata: { claim_after_recovery: true, recovery_pending: true },
+    },
+    deviceService: createDeviceServiceStub({
+      registerDevice: async (_userId, _ip, received) => {
+        claimInput = received;
+        return { deviceId: DEVICE_A, status: "trusted" };
+      },
+    }),
+    sessionService: createSessionServiceStub({
+      resolveAccessToken: async () => ({
+        userId: "u1",
+        deviceId: DEVICE_A,
+        scope: null,
+        tokenHash: "hash-a",
+        expiresAt: "2099-01-01T00:00:00.000Z",
+        recoveryProvedAt: "2099-01-01T00:00:00.000Z",
+      }),
+    }),
+  });
   assert.equal(claimSuppressesPending.statusCode, 200);
-  assert.equal(claimSuppressesPending.input?.claimAfterRecovery, true);
-  assert.equal(claimSuppressesPending.input?.recoveryPending, false);
+  assert.equal(claimInput?.claimAfterRecovery, true);
+  assert.equal(claimInput?.recoveryPending, false);
 });
 
 test("POST /devices/register rejects non-boolean reclaim_sole_trusted and claim_after_recovery", async () => {
