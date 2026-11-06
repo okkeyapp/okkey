@@ -112,7 +112,6 @@ function renderProfilesSection(
               "web.workspaceSettings.sections.roles": "Roles",
               "web.workspaceSettings.profiles.intro": "Profiles intro",
               "web.workspaceSettings.profiles.learnMore": "Learn more",
-              "web.workspaceSettings.profiles.learnMoreUrl": "https://example.com",
               "web.workspaceSettings.profiles.builtIn.title": "Built-in profiles",
               "web.workspaceSettings.profiles.builtIn.subtitle": "Built-in profiles are read-only",
               "web.workspaceSettings.profiles.builtIn.extended": "Extended",

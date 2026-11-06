@@ -4,6 +4,7 @@ import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { WorkspaceMemberDto } from "@okkey/types";
 
+import { publicDocsUrl } from "../../../../docs/publicDocsUrl";
 import WorkspaceSettingsMembersSection from "./WorkspaceSettingsMembersSection";
 
 const coreMock = vi.hoisted(() => ({
@@ -47,7 +48,6 @@ const t = (key: string) => {
     "web.workspaceSettings.members.title": "Участники пространства",
     "web.workspaceSettings.members.intro": "Intro",
     "web.workspaceSettings.members.learnMore": "Подробнее",
-    "web.workspaceSettings.members.learnMoreUrl": "https://example.com",
     "web.workspaceSettings.members.loading": "Loading…",
     "web.workspaceSettings.members.searchPlaceholder": "Search…",
     "web.workspaceSettings.members.invite.action": "Invite",
@@ -170,6 +170,10 @@ describe("WorkspaceSettingsMembersSection", () => {
       </MemoryRouter>,
     );
     expect(screen.getByText("Участники пространства")).toBeTruthy();
+    const learnMore = screen.getByRole("link", { name: "Подробнее" });
+    expect(learnMore).toHaveAttribute("href", publicDocsUrl("members", "ru"));
+    expect(learnMore).toHaveAttribute("target", "_blank");
+    expect(learnMore.getAttribute("rel")).toContain("noopener");
   });
 
   it("shows additional members upsell on FREE without enterprise module", async () => {

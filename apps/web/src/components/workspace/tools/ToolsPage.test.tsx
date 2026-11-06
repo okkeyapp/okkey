@@ -2,6 +2,7 @@ import { render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 
+import { publicDocsUrl } from "../../../docs/publicDocsUrl";
 import { LocaleProvider } from "../../../locale/LocaleContext";
 import ToolsPage from "./ToolsPage";
 
@@ -40,6 +41,11 @@ describe("ToolsPage", () => {
     expect(sidebar).toHaveTextContent("Export");
     expect(screen.getByRole("link", { name: "Import" })).toHaveAttribute("href", "/tools/import");
     expect(screen.getByRole("link", { name: "Export" })).toHaveAttribute("href", "/tools/export");
+
+    const learnMore = screen.getByRole("link", { name: "Learn more" });
+    expect(learnMore).toHaveAttribute("href", publicDocsUrl("generator", "en"));
+    expect(learnMore).toHaveAttribute("target", "_blank");
+    expect(learnMore.getAttribute("rel")).toContain("noopener");
 
     expect(screen.getByRole("heading", { name: "Generator" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Password" })).toHaveAttribute("aria-selected", "true");

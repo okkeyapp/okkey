@@ -37,6 +37,7 @@ import { NO_FOLDER_VALUE } from "../../../../folders/workspaceFolderTree";
 import { runVaultImport } from "../../../../import/importOrchestrator";
 import { useWorkspaceItems } from "../../../../items/WorkspaceItemsContext";
 import { useWorkspaceVaultProfiles } from "../../../../items/WorkspaceVaultProfilesContext";
+import { publicDocsUrl } from "../../../../docs/publicDocsUrl";
 import { useLocale } from "../../../../locale/LocaleContext";
 import { settingsPath } from "../../../../routes/paths";
 import NewItemSaveLocationSection, {
@@ -80,7 +81,7 @@ export default function ImportSection({
   vaults,
   vaultsListReady,
 }: ImportSectionProps) {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const { accessToken } = useAuthVault();
   const { canPostToVault } = useWorkspaceVaultProfiles();
   const { createItem, updateItem, resolveVaultEncryptionKey, maxFileSizeMb, allowedFileExtensions } = useWorkspaceItems();
@@ -303,7 +304,7 @@ export default function ImportSection({
         <p className="text-sm leading-5 text-muted-foreground">
           {t("web.tools.import.intro")}{" "}
           <a
-            href={t("web.tools.import.learnMoreUrl")}
+            href={publicDocsUrl("import", locale)}
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-1 font-medium text-foreground hover:underline"
