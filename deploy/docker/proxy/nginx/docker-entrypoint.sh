@@ -1,11 +1,76 @@
 #!/bin/sh
 set -eu
 
+# Normalize hostnames: lowercase + strip trailing dots (Vasya retest#3 finding 6).
+normalize_host() {
+  printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | sed 's/\.*$//'
+}
+
+# Whole-value DNS hostname gate (retest#5 HIGH / retest#6).
+# Must NOT use line-oriented grep as the primary check: a newline in the value
+# lets one valid line pass while the rest injects into envsubst → nginx.
+# Charset allowlist rejects \n/\r/space/control; label≤63; name≤253; alpha TLD; no IP.
+# POSIX sh only (dash-safe; top-level helper, no nested functions).
+_hostname_gate_fail() {
+  echo "okkey-proxy: $1 must be a single strict DNS hostname (got: '$2')" >&2
+  echo "okkey-proxy: charset [a-z0-9.-] only (no newlines/controls); label≤63; name≤253; alpha TLD; no IP literals" >&2
+  exit 1
+}
+
+require_hostname() {
+  _rh_label="$1"
+  _rh_host="$2"
+
+  # Whole-value charset allowlist — newline/CR/space/tab/wildcard fail here.
+  case "${_rh_host}" in
+    ''|*[!a-z0-9.-]*) _hostname_gate_fail "${_rh_label}" "${_rh_host}" ;;
+  esac
+
+  if [ "${#_rh_host}" -gt 253 ]; then
+    _hostname_gate_fail "${_rh_label}" "${_rh_host}"
+  fi
+
+  _rh_rest="${_rh_host}"
+  _rh_labels=0
+  _rh_tld=""
+  while [ -n "${_rh_rest}" ]; do
+    _rh_lab="${_rh_rest%%.*}"
+    if [ "${_rh_lab}" = "${_rh_rest}" ]; then
+      _rh_tld="${_rh_lab}"
+      _rh_rest=""
+    else
+      _rh_rest="${_rh_rest#*.}"
+    fi
+    _rh_labels=$((_rh_labels + 1))
+    if [ -z "${_rh_lab}" ] || [ "${#_rh_lab}" -gt 63 ]; then
+      _hostname_gate_fail "${_rh_label}" "${_rh_host}"
+    fi
+    case "${_rh_lab}" in
+      -*|*-) _hostname_gate_fail "${_rh_label}" "${_rh_host}" ;;
+    esac
+  done
+
+  # ≥1 dot (FQDN); TLD must contain a letter (rejects IPv4 and numeric TLD).
+  if [ "${_rh_labels}" -lt 2 ]; then
+    _hostname_gate_fail "${_rh_label}" "${_rh_host}"
+  fi
+  case "${_rh_tld}" in
+    *[a-z]*) ;;
+    *) _hostname_gate_fail "${_rh_label}" "${_rh_host}" ;;
+  esac
+}
+
 : "${OKKEY_WEB_HOST:=app.example.com}"
 : "${OKKEY_API_HOST:=api.example.com}"
 : "${OKKEY_WEB_UPSTREAM:=web:80}"
 : "${OKKEY_API_UPSTREAM:=api:4000}"
 : "${OKKEY_COMPAT_ENABLED:=0}"
+: "${OKKEY_COMPAT_HTTPS_PORT:=8443}"
+
+OKKEY_WEB_HOST="$(normalize_host "${OKKEY_WEB_HOST}")"
+OKKEY_API_HOST="$(normalize_host "${OKKEY_API_HOST}")"
+require_hostname OKKEY_WEB_HOST "${OKKEY_WEB_HOST}"
+require_hostname OKKEY_API_HOST "${OKKEY_API_HOST}"
 
 export OKKEY_WEB_HOST OKKEY_API_HOST OKKEY_WEB_UPSTREAM OKKEY_API_UPSTREAM
 
@@ -14,7 +79,8 @@ envsubst '${OKKEY_WEB_HOST} ${OKKEY_API_HOST} ${OKKEY_WEB_UPSTREAM} ${OKKEY_API_
   > /etc/nginx/conf.d/okkey.conf
 
 # Default: no compat listeners (empty include keeps nginx -t happy if referenced nowhere).
-rm -f /etc/nginx/conf.d/okkey-compat.conf
+# Install as zzz-* so if a stale file appears it still sorts after the strict default_server.
+rm -f /etc/nginx/conf.d/okkey-compat.conf /etc/nginx/conf.d/zzz-okkey-compat.conf
 printf '# compat allowlist unused (compat disabled)\n' > /etc/nginx/conf.d/compat-allow.inc
 
 case "${OKKEY_COMPAT_ENABLED}" in
@@ -24,6 +90,11 @@ case "${OKKEY_COMPAT_ENABLED}" in
     : "${OKKEY_COMPAT_SUNSET:?OKKEY_COMPAT_ENABLED requires OKKEY_COMPAT_SUNSET (YYYY-MM-DD)}"
     : "${OKKEY_COMPAT_OWNER:?OKKEY_COMPAT_ENABLED requires OKKEY_COMPAT_OWNER}"
 
+    OKKEY_COMPAT_WEB_HOST="$(normalize_host "${OKKEY_COMPAT_WEB_HOST}")"
+    OKKEY_COMPAT_API_HOST="$(normalize_host "${OKKEY_COMPAT_API_HOST}")"
+    require_hostname OKKEY_COMPAT_WEB_HOST "${OKKEY_COMPAT_WEB_HOST}"
+    require_hostname OKKEY_COMPAT_API_HOST "${OKKEY_COMPAT_API_HOST}"
+
     case "${OKKEY_COMPAT_SUNSET}" in
       [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]) ;;
       *)
@@ -31,10 +102,24 @@ case "${OKKEY_COMPAT_ENABLED}" in
         exit 1
         ;;
     esac
+    # Calendar-valid date (retest#4 finding 2): regex alone accepts 2026-13-45.
+    SUNSET_PARSED="$(date -u -d "${OKKEY_COMPAT_SUNSET}" +%F 2>/dev/null || true)"
+    if [ "${SUNSET_PARSED}" != "${OKKEY_COMPAT_SUNSET}" ]; then
+      echo "okkey-proxy: OKKEY_COMPAT_SUNSET is not a valid calendar date (got: ${OKKEY_COMPAT_SUNSET})" >&2
+      exit 1
+    fi
 
     TODAY="$(date -u +%Y-%m-%d)"
     if [ "${OKKEY_COMPAT_SUNSET}" '<' "${TODAY}" ]; then
       echo "okkey-proxy: compat sunset ${OKKEY_COMPAT_SUNSET} is in the past (today ${TODAY} UTC) — refuse enable" >&2
+      exit 1
+    fi
+    # Upper bound ~1 year (portable: YYYY+1 same MM-DD; retest#3 minor / finding 5).
+    Y="$(date -u +%Y)"
+    MD="$(date -u +%m-%d)"
+    MAX_SUNSET="$((Y + 1))-${MD}"
+    if [ "${OKKEY_COMPAT_SUNSET}" '>' "${MAX_SUNSET}" ]; then
+      echo "okkey-proxy: compat sunset ${OKKEY_COMPAT_SUNSET} exceeds max time-box ${MAX_SUNSET} UTC — refuse enable" >&2
       exit 1
     fi
 
@@ -53,7 +138,44 @@ case "${OKKEY_COMPAT_ENABLED}" in
       exit 1
     fi
 
-    # Optional CIDR allowlist (comma-separated). Empty → open (still isolated by hostname).
+    case "${OKKEY_COMPAT_HTTPS_PORT}" in
+      443)
+        echo "okkey-proxy: OKKEY_COMPAT_HTTPS_PORT must not be 443 (TLS 1.3 key_share shares default SSL_CTX per listen socket)" >&2
+        echo "okkey-proxy: use a dedicated port (default 8443) or a separate IP — see README" >&2
+        exit 1
+        ;;
+      80)
+        echo "okkey-proxy: OKKEY_COMPAT_HTTPS_PORT must not be 80 (HTTP port; compat requires TLS on a dedicated HTTPS port, default 8443)" >&2
+        exit 1
+        ;;
+      ''|*[!0-9]*)
+        echo "okkey-proxy: OKKEY_COMPAT_HTTPS_PORT must be numeric (got: ${OKKEY_COMPAT_HTTPS_PORT})" >&2
+        exit 1
+        ;;
+      0*)
+        # nginx coerces 0443→443; refuse leading zeros (retest#4 finding 3).
+        echo "okkey-proxy: OKKEY_COMPAT_HTTPS_PORT must not have leading zeros (got: ${OKKEY_COMPAT_HTTPS_PORT})" >&2
+        exit 1
+        ;;
+    esac
+    if [ "${OKKEY_COMPAT_HTTPS_PORT}" -lt 1 ] || [ "${OKKEY_COMPAT_HTTPS_PORT}" -gt 65535 ]; then
+      echo "okkey-proxy: OKKEY_COMPAT_HTTPS_PORT out of range 1..65535 (got: ${OKKEY_COMPAT_HTTPS_PORT})" >&2
+      exit 1
+    fi
+
+    # Separate cert files are mandatory: even on a dedicated port, keep SSL_CTX
+    # ownership obvious and SANs scoped to compat hosts.
+    if [ ! -f /etc/nginx/certs/compat-fullchain.pem ] \
+      || [ ! -f /etc/nginx/certs/compat-privkey.pem ]; then
+      echo "okkey-proxy: OKKEY_COMPAT_ENABLED requires dedicated compat certs:" >&2
+      echo "okkey-proxy:   /etc/nginx/certs/compat-fullchain.pem" >&2
+      echo "okkey-proxy:   /etc/nginx/certs/compat-privkey.pem" >&2
+      echo "okkey-proxy: run scripts/gen-self-signed.sh --with-compat (or mount real compat certs)" >&2
+      echo "okkey-proxy: do NOT reuse fullchain.pem/privkey.pem for compat" >&2
+      exit 1
+    fi
+
+    # Optional CIDR allowlist (comma-separated). Empty → open (still isolated by hostname+port).
     {
       echo "# generated by docker-entrypoint.sh — do not edit"
       if [ -n "${OKKEY_COMPAT_ALLOW_CIDRS:-}" ]; then
@@ -67,17 +189,18 @@ case "${OKKEY_COMPAT_ENABLED}" in
         IFS=$OLD_IFS
         echo "deny all;"
       else
-        echo "# no OKKEY_COMPAT_ALLOW_CIDRS — hostname isolation only"
+        echo "# no OKKEY_COMPAT_ALLOW_CIDRS — hostname+port isolation only"
       fi
     } > /etc/nginx/conf.d/compat-allow.inc
 
-    export OKKEY_COMPAT_WEB_HOST OKKEY_COMPAT_API_HOST OKKEY_COMPAT_SUNSET
-    envsubst '${OKKEY_COMPAT_WEB_HOST} ${OKKEY_COMPAT_API_HOST} ${OKKEY_COMPAT_SUNSET} ${OKKEY_WEB_UPSTREAM} ${OKKEY_API_UPSTREAM}' \
+    export OKKEY_COMPAT_WEB_HOST OKKEY_COMPAT_API_HOST OKKEY_COMPAT_SUNSET OKKEY_COMPAT_HTTPS_PORT
+    envsubst '${OKKEY_COMPAT_WEB_HOST} ${OKKEY_COMPAT_API_HOST} ${OKKEY_COMPAT_SUNSET} ${OKKEY_COMPAT_HTTPS_PORT} ${OKKEY_WEB_UPSTREAM} ${OKKEY_API_UPSTREAM}' \
       < /etc/nginx/templates/okkey-compat.conf.template \
-      > /etc/nginx/conf.d/okkey-compat.conf
+      > /etc/nginx/conf.d/zzz-okkey-compat.conf
 
     echo "okkey-proxy: compat listeners ENABLED until ${OKKEY_COMPAT_SUNSET} (owner=${OKKEY_COMPAT_OWNER})"
-    echo "okkey-proxy: compat web=${OKKEY_COMPAT_WEB_HOST} api=${OKKEY_COMPAT_API_HOST}"
+    echo "okkey-proxy: compat web=${OKKEY_COMPAT_WEB_HOST} api=${OKKEY_COMPAT_API_HOST} port=${OKKEY_COMPAT_HTTPS_PORT}"
+    echo "okkey-proxy: compat certs=compat-fullchain.pem (dedicated); listen ≠ 443 (TLS param isolation)"
     ;;
   0|false|FALSE|no|NO|'')
     echo "okkey-proxy: compat listeners disabled (OKKEY_COMPAT_ENABLED=${OKKEY_COMPAT_ENABLED:-0})"
