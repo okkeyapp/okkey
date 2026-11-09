@@ -2,6 +2,10 @@ import assert from "node:assert/strict";
 import { testEntityId } from "./test-entity-id.ts";
 import test from "node:test";
 import { CapsuleService, CapsuleServiceError } from "../src/capsule/service.ts";
+import {
+  registerCapsuleAccessSettingsProvider,
+  resetCapsuleAccessSettingsProviderForTests,
+} from "../src/capsule/access-settings-provider.ts";
 import { loadConfig } from "../src/config.ts";
 import { createIntegrationStorage } from "./integration-env.ts";
 import {
@@ -9,6 +13,25 @@ import {
   cleanupUserData,
   registerUser,
 } from "./two-factor-test-helpers.ts";
+
+function registerPassthroughAccess(t: { after: (fn: () => void) => void }) {
+  registerCapsuleAccessSettingsProvider({
+    prepareWrite: async ({ input }) => ({
+      accessPolicy: {},
+      activateAt: input.activateAt ?? null,
+      deactivateAt: input.deactivateAt ?? input.expiresAt ?? null,
+      deleteAt: input.deleteAt ?? null,
+      maxViews: input.maxViews ?? null,
+      viewLimitAction: input.viewLimitAction === "delete" ? "delete" : "deactivate",
+      passwordAttemptLimit: null,
+      approvalRequired: Boolean(input.approvalRequired),
+    }),
+    assertOpen: async () => ({ approvalRequestId: null }),
+  });
+  t.after(() => {
+    resetCapsuleAccessSettingsProviderForTests();
+  });
+}
 
 function mkBlob(input: string) {
   return {
@@ -197,6 +220,7 @@ test("integration: capsule open returns CAPSULE_EXPIRED after expiry", async (t)
     config,
   });
 
+  registerPassthroughAccess(t);
   const created = await capsules.createCapsule(workspaceId, userId, {
     type: "item",
     encryptedPayload: mkBlob("x"),
@@ -453,6 +477,7 @@ test("integration: update resets view count; activate clears past schedule and v
     config,
   });
 
+  registerPassthroughAccess(t);
   const created = await capsules.createCapsule(workspaceId, userId, {
     type: "text",
     encryptedPayload: mkBlob("edit-payload"),
@@ -541,6 +566,7 @@ test("integration: deactivate then activate restores public access after view li
     config,
   });
 
+  registerPassthroughAccess(t);
   const created = await capsules.createCapsule(workspaceId, userId, {
     type: "text",
     encryptedPayload: mkBlob("limit-payload"),
