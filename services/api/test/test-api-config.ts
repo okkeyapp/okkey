@@ -1,5 +1,9 @@
 import type { ApiConfig } from "../src/config.ts";
 import type { SessionService } from "../src/session/service.ts";
+import {
+  TEST_AUTH_RATE_LIMIT_REGISTER_COMPLETE_PER_EMAIL,
+  TEST_AUTH_RATE_LIMIT_REGISTER_COMPLETE_PER_IP,
+} from "./test-rate-limit-defaults.ts";
 
 /** Deterministic session minting for `RegistrationService` unit tests. */
 export function createMockSessionService(): Pick<SessionService, "createSession"> {
@@ -41,8 +45,8 @@ export function createTestApiConfig(overrides: Partial<ApiConfig> = {}): ApiConf
     invitePreviewRateLimitPerIp: 60,
     authRateLimitConfirmPerIp: 30,
     authRateLimitResendPerIp: 10,
-    authRateLimitRegisterCompletePerIp: 100_000,
-    authRateLimitRegisterCompletePerEmail: 100_000,
+    authRateLimitRegisterCompletePerIp: TEST_AUTH_RATE_LIMIT_REGISTER_COMPLETE_PER_IP,
+    authRateLimitRegisterCompletePerEmail: TEST_AUTH_RATE_LIMIT_REGISTER_COMPLETE_PER_EMAIL,
     registrationAuthStateTtlSeconds: 3600,
     registrationResultTtlSeconds: 604800,
     registrationBootstrapSessionTtlSeconds: 900,

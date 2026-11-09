@@ -21,6 +21,27 @@ test("OpenAPI includes canonical EncryptedBlob schema and usage", async () => {
   assert.match(content, /RegisterCompleteRequest:[\s\S]*encrypted_private_key:[\s\S]*EncryptedBlob/);
 });
 
+test("OpenAPI snowflake id patterns stay a quoted digit-class regex", async () => {
+  const openapiPath = path.join(repoRoot, "docs", "openapi", "core-api.yaml");
+  const content = await readFile(openapiPath, "utf8");
+  const patternLines = content.split("\n").filter((line) => /^\s*pattern:/.test(line));
+  assert.ok(patternLines.length >= 3);
+  // Single-quoted YAML so the value is ^\d{10,20}$, matching ENTITY_ID_RE in packages/id.
+  // A truncated `^d{10,20}` (missing the digit-class escape) must not land in this file.
+  const expectedLine = "pattern: '^\\d{10,20}$'";
+  const expectedValue = "^\\d{10,20}$";
+  for (const line of patternLines) {
+    const raw = line.trim();
+    assert.equal(raw, expectedLine, `unexpected OpenAPI pattern: ${raw}`);
+    const quoted = raw.slice("pattern: ".length);
+    const value = quoted.slice(1, -1).replaceAll("''", "'");
+    assert.equal(value, expectedValue);
+    assert.equal(new RegExp(value).test("1234567890"), true);
+    assert.equal(new RegExp(value).test("d234567890"), false);
+    assert.equal(new RegExp(value).test("123456789"), false);
+  }
+});
+
 test("DTO contract exposes EncryptedBlob fields in types", async () => {
   const typesPath = path.join(repoRoot, "packages", "types", "src", "index.ts");
   const cryptoWirePath = path.join(repoRoot, "packages", "types", "src", "crypto-wire.ts");
