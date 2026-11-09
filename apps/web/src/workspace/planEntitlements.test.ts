@@ -38,8 +38,10 @@ describe("web plan entitlements (self_hosted)", () => {
       webDisplayPlanTier,
     } = await import("./planEntitlements");
     setBackendEnterpriseModulesActive(false);
-    expect(workspaceHasPlanFeature({ planTier: "FREE" }, "sharedVaults")).toBe(false);
-    expect(workspaceHasPlanFeature({ planTier: "ENTERPRISE" }, "sharedVaults")).toBe(false);
+    expect(workspaceHasPlanFeature({ planTier: "FREE" }, "sharedVaults")).toBe(true);
+    expect(workspaceHasPlanFeature({ planTier: "ENTERPRISE" }, "sharedVaults")).toBe(true);
+    expect(workspaceHasPlanFeature({ planTier: "ENTERPRISE" }, "customWorkspaceRoles")).toBe(false);
+    expect(workspaceHasPlanFeature({ planTier: "FREE" }, "monitoring")).toBe(false);
     expect(webDisplayPlanTier({ planTier: "FREE" })).toBe("FREE");
     expect(webDisplayPlanTier({ planTier: "ENTERPRISE" })).toBe("FREE");
   });
@@ -49,7 +51,8 @@ describe("web plan entitlements (self_hosted without modules)", () => {
   it("stays FREE even when plan_tier is ENTERPRISE", async () => {
     vi.stubEnv("VITE_ENTERPRISE_MODULES_ACTIVE", "false");
     const { workspaceHasPlanFeature, webDisplayPlanTier } = await import("./planEntitlements");
-    expect(workspaceHasPlanFeature({ planTier: "ENTERPRISE" }, "sharedVaults")).toBe(false);
+    expect(workspaceHasPlanFeature({ planTier: "ENTERPRISE" }, "sharedVaults")).toBe(true);
+    expect(workspaceHasPlanFeature({ planTier: "ENTERPRISE" }, "customWorkspaceRoles")).toBe(false);
     expect(workspaceHasPlanFeature({ planTier: "ENTERPRISE" }, "filesInItems")).toBe(true);
     expect(webDisplayPlanTier({ planTier: "ENTERPRISE" })).toBe("FREE");
   });
@@ -60,8 +63,13 @@ describe("web plan entitlements (saas)", () => {
     vi.stubEnv("VITE_DEPLOYMENT_MODE", "saas");
     vi.stubEnv("VITE_ENTERPRISE_MODULES_ACTIVE", "true");
     const { workspaceHasPlanFeature, webDisplayPlanTier } = await import("./planEntitlements");
-    expect(workspaceHasPlanFeature({ planTier: "FREE" }, "sharedVaults")).toBe(false);
+    expect(workspaceHasPlanFeature({ planTier: "FREE" }, "sharedVaults")).toBe(true);
     expect(workspaceHasPlanFeature({ planTier: "FREE" }, "filesInItems")).toBe(false);
+    expect(workspaceHasPlanFeature({ planTier: "FREE" }, "monitoring")).toBe(false);
+    expect(workspaceHasPlanFeature({ planTier: "PREMIUM" }, "monitoring")).toBe(true);
+    expect(workspaceHasPlanFeature({ planTier: "PREMIUM" }, "capsuleAccessSettings")).toBe(false);
+    expect(workspaceHasPlanFeature({ planTier: "TEAM" }, "capsuleAccessSettings")).toBe(true);
+    expect(webDisplayPlanTier({ planTier: "FAMILY" })).toBe("PREMIUM");
     expect(workspaceHasPlanFeature({ planTier: "ENTERPRISE" }, "sharedVaults")).toBe(true);
     expect(webDisplayPlanTier({ planTier: "TEAM" })).toBe("TEAM");
   });

@@ -1,9 +1,9 @@
 /**
  * Workspace commercial plan tiers (Core).
- * Product groups: personal (FREE / PREMIUM / FAMILY) and business (TEAM / ENTERPRISE).
+ * Product groups: personal (FREE / PREMIUM) and business (TEAM / ENTERPRISE).
  * Selective “by request” plans use {@link PlanCustomOverride} — not a separate tier value.
  */
-export type PlanTier = "FREE" | "PREMIUM" | "FAMILY" | "TEAM" | "ENTERPRISE";
+export type PlanTier = "FREE" | "PREMIUM" | "TEAM" | "ENTERPRISE";
 
 /**
  * Feature flags gated by {@link PlanTier}.
@@ -29,6 +29,7 @@ export type PlanFeatureOverrides = Partial<Record<PlanFeature, boolean>>;
 /**
  * Custom / “by request” plan: keep a catalog {@link PlanTier} for billing display,
  * and selectively enable or disable features via overrides.
+ * Overrides do not change {@link PlanQuotaLimits}.
  */
 export type PlanCustomOverride = {
   enabled: boolean;
@@ -37,9 +38,12 @@ export type PlanCustomOverride = {
 
 /** Soft numeric limits associated with a catalog tier (null = unlimited). */
 export type PlanQuotaLimits = {
-  /** Max members beyond the owner (additional seats). */
+  /**
+   * Max members beyond the owner. The owner does not consume this quota.
+   * Comparisons must use member rows excluding the workspace owner.
+   */
   maxAdditionalMembers: number | null;
-  /** Max shared vaults (personal vault always allowed when plan permits). */
+  /** Max shared vaults. The personal vault is separate and always allowed. */
   maxSharedVaults: number | null;
   /** Soft attachment / file storage budget in MiB (enforcement later). */
   maxAttachmentStorageMb: number | null;
@@ -53,9 +57,9 @@ export type PlanEntitlementOptions = {
   featureOverrides?: PlanFeatureOverrides | null;
   /**
    * Self-hosted:
-   * - modules off → FREE matrix (plus {@link SELF_HOSTED_FREE_EXTRA})
+   * - modules off → FREE matrix (plus {@link SELF_HOSTED_FREE_EXTRA} and {@link SELF_HOSTED_FREE_QUOTA_OVERRIDES})
    * - modules on → ENTERPRISE matrix (workspace `plan_tier` ignored)
-   * SaaS / omitted mode: catalog `plan_tier` as today.
+   * SaaS / omitted mode: catalog `plan_tier`.
    */
   deploymentMode?: DeploymentMode | null;
   /** True only when enterprise modules were requested and successfully loaded. */
@@ -65,7 +69,6 @@ export type PlanEntitlementOptions = {
 export const PLAN_TIERS: readonly PlanTier[] = [
   "FREE",
   "PREMIUM",
-  "FAMILY",
   "TEAM",
   "ENTERPRISE",
 ] as const;
@@ -85,13 +88,21 @@ export const PLAN_FEATURES: readonly PlanFeature[] = [
   "storageQuotas",
 ] as const;
 
-const ALL_PAID_FALSE = {
+/**
+ * Retired catalog token. Migration rewrites stored rows to PREMIUM.
+ * This is the only reader of that token: unmigrated rows and callers that
+ * still pass it are treated as PREMIUM. Custom overrides on those rows are
+ * left unchanged.
+ */
+const LEGACY_FAMILY_PLAN_TIER = "FAMILY";
+
+const FREE_FEATURES = {
   capsules: true,
   capsuleAccessSettings: false,
   customWorkspaceRoles: false,
   customWorkspaceProfiles: false,
-  sharedVaults: false,
-  additionalWorkspaceMembers: false,
+  sharedVaults: true,
+  additionalWorkspaceMembers: true,
   paidPlanBadge: false,
   accountRecovery: false,
   trustedContacts: false,
@@ -100,9 +111,8 @@ const ALL_PAID_FALSE = {
   storageQuotas: false,
 } as const satisfies Record<PlanFeature, boolean>;
 
-const PERSONAL_PAID = {
-  ...ALL_PAID_FALSE,
-  capsuleAccessSettings: true,
+const PREMIUM_FEATURES = {
+  ...FREE_FEATURES,
   paidPlanBadge: true,
   accountRecovery: true,
   trustedContacts: true,
@@ -111,40 +121,35 @@ const PERSONAL_PAID = {
   storageQuotas: true,
 } as const satisfies Record<PlanFeature, boolean>;
 
-const FAMILY_PAID = {
-  ...PERSONAL_PAID,
-  sharedVaults: true,
-  additionalWorkspaceMembers: true,
+const BUSINESS_FEATURES = {
+  ...PREMIUM_FEATURES,
+  capsuleAccessSettings: true,
   customWorkspaceRoles: true,
   customWorkspaceProfiles: true,
-} as const satisfies Record<PlanFeature, boolean>;
-
-const BUSINESS_PAID = {
-  ...FAMILY_PAID,
 } as const satisfies Record<PlanFeature, boolean>;
 
 /**
  * Source of truth for plan entitlements.
  * New catalog tiers or features = matrix cells only; call sites stay on {@link hasPlanFeature}.
  *
- * Mapping notes (APP.md + Figma SaaS cards):
- * - FREE (SaaS catalog): capsules without access settings; no files / monitoring / recovery / shared vaults / seats.
- * - Self-hosted modules off → FREE matrix plus {@link SELF_HOSTED_FREE_EXTRA} (`filesInItems`).
+ * - FREE: capsules, shared vaults, and additional members (within quota). No files on SaaS,
+ *   no monitoring / recovery / badge, no custom roles, profiles, or capsule access settings.
+ * - Self-hosted modules off → FREE matrix plus {@link SELF_HOSTED_FREE_EXTRA} (`filesInItems`)
+ *   and {@link SELF_HOSTED_FREE_QUOTA_OVERRIDES}.
  *   Self-hosted modules on → ENTERPRISE matrix (`plan_tier` ignored).
- * - PREMIUM: personal paid (files, monitoring, recovery, capsule access settings).
- * - FAMILY: PREMIUM + seats / shared vaults / custom roles & profiles (multi-user personal).
- * - TEAM / ENTERPRISE: full business matrix (same feature set today; ENTERPRISE reserved for future extras).
+ * - PREMIUM: FREE plus files, monitoring, recovery, trusted contacts, and the paid badge.
+ * - TEAM / ENTERPRISE: PREMIUM plus capsule access settings, custom roles, and custom profiles.
+ *   ENTERPRISE quotas are unlimited; attachment storage numbers stay on the catalog.
  */
 export const PLAN_FEATURE_MATRIX: Record<PlanTier, Record<PlanFeature, boolean>> = {
-  FREE: { ...ALL_PAID_FALSE },
-  PREMIUM: { ...PERSONAL_PAID },
-  FAMILY: { ...FAMILY_PAID },
-  TEAM: { ...BUSINESS_PAID },
-  ENTERPRISE: { ...BUSINESS_PAID },
+  FREE: { ...FREE_FEATURES },
+  PREMIUM: { ...PREMIUM_FEATURES },
+  TEAM: { ...BUSINESS_FEATURES },
+  ENTERPRISE: { ...BUSINESS_FEATURES },
 };
 
 /**
- * Features kept free on self-hosted OSS (modules off), while SaaS FREE stays on the catalog matrix.
+ * Features kept on self-hosted FREE (modules off), while SaaS FREE stays on the catalog matrix.
  * Attachments / file fields stay PREMIUM+ on SaaS only.
  */
 export const SELF_HOSTED_FREE_EXTRA: Readonly<Partial<Record<PlanFeature, boolean>>> = {
@@ -152,28 +157,24 @@ export const SELF_HOSTED_FREE_EXTRA: Readonly<Partial<Record<PlanFeature, boolea
 };
 
 /**
- * Soft quota defaults per catalog tier.
- * Exact commercial numbers are product-tunable; FREE keeps zeros (no paid storage / seats / shared vaults).
+ * SaaS catalog quotas. Self-hosted FREE replaces member / shared-vault cells via
+ * {@link SELF_HOSTED_FREE_QUOTA_OVERRIDES}. `maxAttachmentStorageMb` is not enforced yet.
+ * null = unlimited.
  */
 export const PLAN_QUOTA_LIMITS: Record<PlanTier, PlanQuotaLimits> = {
   FREE: {
-    maxAdditionalMembers: 0,
-    maxSharedVaults: 0,
+    maxAdditionalMembers: 3,
+    maxSharedVaults: 1,
     maxAttachmentStorageMb: 0,
   },
   PREMIUM: {
-    maxAdditionalMembers: 0,
-    maxSharedVaults: 0,
+    maxAdditionalMembers: 10,
+    maxSharedVaults: 1,
     maxAttachmentStorageMb: 5 * 1024,
-  },
-  FAMILY: {
-    maxAdditionalMembers: 5,
-    maxSharedVaults: 5,
-    maxAttachmentStorageMb: 20 * 1024,
   },
   TEAM: {
     maxAdditionalMembers: 25,
-    maxSharedVaults: 50,
+    maxSharedVaults: 5,
     maxAttachmentStorageMb: 100 * 1024,
   },
   ENTERPRISE: {
@@ -183,14 +184,26 @@ export const PLAN_QUOTA_LIMITS: Record<PlanTier, PlanQuotaLimits> = {
   },
 };
 
+/**
+ * Quota cells for self-hosted FREE (modules off). SaaS FREE keeps {@link PLAN_QUOTA_LIMITS}.FREE.
+ * Attachment storage is intentionally not overridden here.
+ */
+export const SELF_HOSTED_FREE_QUOTA_OVERRIDES: Partial<PlanQuotaLimits> = {
+  maxAdditionalMembers: 10,
+  maxSharedVaults: 1,
+};
+
 const PLAN_TIER_SET: ReadonlySet<string> = new Set(PLAN_TIERS);
 
 /**
- * Fail-closed: unknown / legacy strings behave as FREE.
- * Known product tiers (including PREMIUM / FAMILY / TEAM) normalize to themselves.
- * Existing ENTERPRISE rows stay ENTERPRISE (no remapping).
+ * Fail-closed: unknown strings behave as FREE.
+ * Known catalog tiers normalize to themselves.
+ * The retired FAMILY token normalizes to PREMIUM (see migration).
  */
 export function normalizePlanTier(planTier: string | null | undefined): PlanTier {
+  if (planTier === LEGACY_FAMILY_PLAN_TIER) {
+    return "PREMIUM";
+  }
   if (planTier && PLAN_TIER_SET.has(planTier)) {
     return planTier as PlanTier;
   }
@@ -199,6 +212,23 @@ export function normalizePlanTier(planTier: string | null | undefined): PlanTier
 
 export function isPlanTier(value: string): value is PlanTier {
   return PLAN_TIER_SET.has(value);
+}
+
+/**
+ * Read a tier from stored data or an API field.
+ * Catalog values pass through. The retired FAMILY token is read as PREMIUM.
+ * Unknown values return null so callers can reject them.
+ * Entitlement checks still fail closed through {@link normalizePlanTier}.
+ */
+export function readPlanTier(value: string | null | undefined): PlanTier | null {
+  if (typeof value !== "string" || value.length === 0) {
+    return null;
+  }
+  if (isPlanTier(value)) {
+    return value;
+  }
+  const normalized = normalizePlanTier(value);
+  return normalized === "FREE" ? null : normalized;
 }
 
 export function emptyPlanFeatureOverrides(): PlanFeatureOverrides {
@@ -224,7 +254,7 @@ export function sanitizePlanFeatureOverrides(
 /**
  * Effective catalog tier used for feature / quota checks.
  * Self-hosted: modules off → FREE; modules on → ENTERPRISE (`plan_tier` ignored).
- * SaaS / omitted mode: workspace `plan_tier`.
+ * SaaS / omitted mode: workspace `plan_tier` (legacy FAMILY reads as PREMIUM).
  */
 export function resolveEntitlementPlanTier(
   workspacePlanTier: string | null | undefined,
@@ -269,7 +299,12 @@ export function getPlanQuotaLimits(
   planTier: string | null | undefined,
   options?: Pick<PlanEntitlementOptions, "deploymentMode" | "enterpriseModulesActive">,
 ): PlanQuotaLimits {
-  return PLAN_QUOTA_LIMITS[resolveEntitlementPlanTier(planTier, options)];
+  const effectiveTier = resolveEntitlementPlanTier(planTier, options);
+  const base = PLAN_QUOTA_LIMITS[effectiveTier];
+  if (options?.deploymentMode === "self_hosted" && effectiveTier === "FREE") {
+    return { ...base, ...SELF_HOSTED_FREE_QUOTA_OVERRIDES };
+  }
+  return base;
 }
 
 /** All feature flags for a tier (after optional custom overrides). */
@@ -297,21 +332,19 @@ export function planEntitlementOptionsFromWorkspace(workspace: {
 
 /**
  * Catalog rank for upgrade-only plan changes (higher = more capable).
- * Personal: FREE < PREMIUM < FAMILY; business: TEAM < ENTERPRISE.
- * Cross-group upgrades use the same ladder (e.g. PREMIUM → TEAM is allowed).
+ * FREE < PREMIUM < TEAM < ENTERPRISE.
  */
 export const PLAN_TIER_RANK: Record<PlanTier, number> = {
   FREE: 0,
   PREMIUM: 1,
-  FAMILY: 2,
-  TEAM: 3,
-  ENTERPRISE: 4,
+  TEAM: 2,
+  ENTERPRISE: 3,
 };
 
 export type PlanCatalogGroup = "personal" | "business";
 
 /** Personal SaaS cards (shown only when multi-workspace / SaaS UI is enabled). */
-export const PLAN_CATALOG_PERSONAL: readonly PlanTier[] = ["FREE", "PREMIUM", "FAMILY"] as const;
+export const PLAN_CATALOG_PERSONAL: readonly PlanTier[] = ["FREE", "PREMIUM"] as const;
 
 /** Business cards (Team + Enterprise). Free stays on the personal tab only. */
 export const PLAN_CATALOG_BUSINESS: readonly PlanTier[] = ["TEAM", "ENTERPRISE"] as const;

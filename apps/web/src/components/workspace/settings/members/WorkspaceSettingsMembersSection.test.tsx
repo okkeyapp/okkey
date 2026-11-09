@@ -298,7 +298,7 @@ describe("WorkspaceSettingsMembersSection", () => {
     expect(screen.getByRole("button", { name: /owner@example.com/i })).toBeInTheDocument();
   });
 
-  it("mounts enterprise members read-only with upsell on FREE when module is loaded", async () => {
+  it("mounts enterprise members editable on FREE when module is loaded", async () => {
     enterpriseMembersMock.AdditionalMembersSection = ({ readOnly, emptyFallback }) => (
       <div data-testid="enterprise-members">
         {readOnly ? "read-only" : "editable"}
@@ -357,9 +357,9 @@ describe("WorkspaceSettingsMembersSection", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByTestId("enterprise-members")).toHaveTextContent("read-only");
+      expect(screen.getByTestId("enterprise-members")).toHaveTextContent("editable");
     });
-    expect(screen.getByText("Примечание")).toBeInTheDocument();
+    expect(screen.queryByText("Примечание")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /owner@example.com/i })).toBeInTheDocument();
   });
 

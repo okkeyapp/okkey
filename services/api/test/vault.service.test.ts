@@ -207,7 +207,7 @@ test("listAccessibleWorkspaces delegates to workspaces repository", async () => 
 test("updateVault freezes shared vault metadata without sharedVaults plan", async () => {
   const service = new VaultService({
     config: {
-      deploymentMode: "self_hosted",
+      deploymentMode: "saas",
       enterpriseModulesEnabled: false,
     },
     workspaces: {
@@ -216,8 +216,8 @@ test("updateVault freezes shared vault metadata without sharedVaults plan", asyn
         name: "Workspace",
         ownerId: "1000000000000000003",
         planTier: "FREE",
-        planCustomOverride: false,
-        planFeatureOverrides: {},
+        planCustomOverride: true,
+        planFeatureOverrides: { sharedVaults: false },
         createdAt: "",
         updatedAt: "",
       }),
