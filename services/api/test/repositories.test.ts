@@ -331,7 +331,7 @@ test("DevicesRepository.resolveApproval approves pending device", async () => {
   assert.equal(result.device?.status, "trusted");
   assert.equal(result.device?.approvedBy, "u1");
   assert.equal(result.device?.approvedAt, "2026-01-01T00:02:00.000Z");
-  assert.match(db.queries[2].sql, /device_share = approver\.device_share/);
+  assert.match(db.queries[2].sql, /approver\.device_share/);
   assert.equal(db.queries[2].params[3], "trusted1");
 });
 

@@ -14,7 +14,8 @@ import {
   PendingDeviceLimitError,
   TrustedDeviceKeyConflictError,
 } from "../storage/repositories.ts";
-import { assertOpaqueSplitKeyShare } from "../registration/split-key-transport-policy.ts";
+import { splitKeyShareBWrapPublicKeys } from "@okkey/crypto";
+import { assertSplitKeyShareB } from "../registration/split-key-transport-policy.ts";
 import {
   DEVICE_BIND_CHALLENGE_TTL_SECONDS,
   deviceBindChallengeKey,
@@ -178,6 +179,10 @@ export interface DeviceListItem {
   /** Base64. Present only while this pending device is waiting on a one-time delivery key. */
   oneTimeX25519PublicKey?: string | null;
   oneTimeMlkemPublicKey?: string | null;
+  /** Base64 Ed25519 public key of the share-B device wrap, when the row is framed. */
+  shareWrapEd25519PublicKey: string | null;
+  /** Base64 ML-KEM-768 encapsulation key of the share-B device wrap, when the row is framed. */
+  shareWrapPqPublicKey: string | null;
 }
 
 export interface DeviceListResult {
@@ -244,8 +249,7 @@ export class DeviceService {
 
     const deviceShareBytes = Uint8Array.from(Buffer.from(input.deviceShare, "base64"));
     try {
-      // q2-6: share B is opaque 32-byte local material — reject hybrid envelopes.
-      assertOpaqueSplitKeyShare(deviceShareBytes, "device_share");
+      assertSplitKeyShareB(deviceShareBytes);
     } catch (error: unknown) {
       throw new DeviceServiceError(
         "DEVICE_BAD_REQUEST",
@@ -587,9 +591,21 @@ export class DeviceService {
     approverDeviceId: string,
     pendingDeviceId: string,
     shareDelivery?: Uint8Array,
+    deviceShare?: Uint8Array,
   ): Promise<ResolveDeviceApprovalResult> {
     if (shareDelivery && shareDelivery.length > 0) {
       return this.approveWithShareDelivery(userId, approverDeviceId, pendingDeviceId, shareDelivery);
+    }
+    if (deviceShare) {
+      try {
+        assertSplitKeyShareB(deviceShare);
+      } catch (error: unknown) {
+        throw new DeviceServiceError(
+          "DEVICE_BAD_REQUEST",
+          400,
+          error instanceof Error ? error.message : "invalid device_share",
+        );
+      }
     }
     // TODO(device-approval-share-delivery): remove this plaintext share copy one release
     // after every client publishes a one-time key and sends a hybrid envelope.
@@ -599,6 +615,7 @@ export class DeviceService {
       approverDeviceId,
       pendingDeviceId,
       action: "approve",
+      deviceShare,
     });
     if (copied.status === "trusted") {
       await this.devices.clearShareDelivery?.(userId, pendingDeviceId);
@@ -637,7 +654,7 @@ export class DeviceService {
     }
     const deviceShare = Uint8Array.from(Buffer.from(deviceShareB64, "base64"));
     try {
-      assertOpaqueSplitKeyShare(deviceShare, "device_share");
+      assertSplitKeyShareB(deviceShare);
     } catch (error: unknown) {
       throw new DeviceServiceError(
         "DEVICE_BAD_REQUEST",
@@ -808,6 +825,7 @@ export class DeviceService {
     pendingDeviceId: string;
     action: "approve" | "reject";
     reason?: string;
+    deviceShare?: Uint8Array;
   }): Promise<ResolveDeviceApprovalResult> {
     const trustedApprover = await this.devices.isTrustedDevice(
       input.userId,
@@ -834,6 +852,7 @@ export class DeviceService {
       expiresAt,
       approvedBy: input.userId,
       approverDeviceId: input.approverDeviceId,
+      deviceShare: input.deviceShare,
       rejectReason: input.reason ? cleanString(input.reason, "rejected by user") : undefined,
     });
 
@@ -925,6 +944,7 @@ export class DeviceService {
 
     const isPending = record.status === "pending";
     const isBlocked = record.status === "blocked";
+    const wrapPublic = splitKeyShareBWrapPublicKeys(record.deviceShare);
     return {
       deviceId: record.id,
       deviceName: record.deviceName,
@@ -953,6 +973,12 @@ export class DeviceService {
           ).toISOString()
         : null,
       blockedUntil: isBlocked ? record.blockedUntil : null,
+      shareWrapEd25519PublicKey: wrapPublic
+        ? Buffer.from(wrapPublic.ed25519PublicKey).toString("base64")
+        : null,
+      shareWrapPqPublicKey: wrapPublic
+        ? Buffer.from(wrapPublic.mlkemEncapsulationKey).toString("base64")
+        : null,
     };
   }
 
@@ -1197,7 +1223,7 @@ export class DeviceService {
     }
     const deviceShareBytes = Uint8Array.from(Buffer.from(input.deviceShare, "base64"));
     try {
-      assertOpaqueSplitKeyShare(deviceShareBytes, "device_share");
+      assertSplitKeyShareB(deviceShareBytes);
     } catch (error: unknown) {
       throw new DeviceServiceError(
         "DEVICE_BAD_REQUEST",

@@ -25,7 +25,8 @@ import {
   needsShareDeliveryReapproval,
   prepareOneTimeShareDelivery,
 } from "./deviceShareDelivery";
-import { readVaultBundle } from "./localVaultBundle";
+import { readVaultBundle, writeVaultBundle } from "./localVaultBundle";
+import { deviceShareB64ForRegister } from "./deviceShareWire";
 
 export type DeviceTrustStatus =
   | "checking"
@@ -689,55 +690,50 @@ export async function registerCurrentBrowserDevice(
   const oneTime = await prepareOneTimeShareDelivery(deviceFingerprint).catch(() => null);
 
   const bundle = options?.userId ? readVaultBundle(options.userId) : null;
-  let shareBytes: Uint8Array | null = null;
-  let ownsShare = false;
-  if (bundle?.device_share_b64) {
-    try {
-      const binary = atob(bundle.device_share_b64);
-      shareBytes = Uint8Array.from(binary, (c) => c.charCodeAt(0));
-    } catch {
-      shareBytes = null;
+  const userId = options?.userId?.trim() ?? "";
+  let shareB64: string;
+  if (!userId) {
+    const placeholder = randomPlaceholderShare();
+    shareB64 = bytesToBase64(placeholder);
+    wipeBytes(placeholder);
+  } else {
+    const wire = await deviceShareB64ForRegister({
+      userId,
+      existingShareB64: bundle?.device_share_b64 ?? null,
+    });
+    shareB64 = wire.shareB64;
+    if (wire.upgradedShareB64 && bundle) {
+      writeVaultBundle({ ...bundle, device_share_b64: wire.upgradedShareB64 }, userId);
     }
-  }
-  if (!shareBytes || shareBytes.length === 0) {
-    shareBytes = randomPlaceholderShare();
-    ownsShare = true;
   }
 
-  try {
-    const registered = await core.registerDevice({
-      device_public_key: devicePublicKeyB64,
-      device_share: bytesToBase64(shareBytes),
-      device_fingerprint: deviceFingerprint,
-      ...(oneTime
-        ? {
-            one_time_x25519_public_key: oneTime.x25519PublicB64,
-            one_time_mlkem_public_key: oneTime.mlkemPublicB64,
-          }
-        : {}),
-      device_name: env.deviceName,
-      platform: env.platform,
-      os_name: env.osName,
-      os_version: env.osVersion,
-      app_version: "web",
-      client_type: env.clientType,
-      user_agent: env.userAgent,
-      // Explicit body locale: browsers ignore Accept-Language set via fetch.
-      locale: readStoredLocale(),
-      metadata: {
-        crypto_capable: true,
-        reclaim_sole_trusted: options?.reclaimSoleTrusted === true,
-        claim_after_recovery: options?.claimAfterRecovery === true,
-        recovery_pending: options?.recoveryPending === true,
-      },
-    });
-    if (registered.status === "trusted") {
-      discardOneTimeShareDelivery(deviceFingerprint);
-    }
-    return registered;
-  } finally {
-    if (ownsShare) {
-      wipeBytes(shareBytes);
-    }
+  const registered = await core.registerDevice({
+    device_public_key: devicePublicKeyB64,
+    device_share: shareB64,
+    device_fingerprint: deviceFingerprint,
+    ...(oneTime
+      ? {
+          one_time_x25519_public_key: oneTime.x25519PublicB64,
+          one_time_mlkem_public_key: oneTime.mlkemPublicB64,
+        }
+      : {}),
+    device_name: env.deviceName,
+    platform: env.platform,
+    os_name: env.osName,
+    os_version: env.osVersion,
+    app_version: "web",
+    client_type: env.clientType,
+    user_agent: env.userAgent,
+    locale: readStoredLocale(),
+    metadata: {
+      crypto_capable: true,
+      reclaim_sole_trusted: options?.reclaimSoleTrusted === true,
+      claim_after_recovery: options?.claimAfterRecovery === true,
+      recovery_pending: options?.recoveryPending === true,
+    },
+  });
+  if (registered.status === "trusted") {
+    discardOneTimeShareDelivery(deviceFingerprint);
   }
+  return registered;
 }

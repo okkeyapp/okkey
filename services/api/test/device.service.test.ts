@@ -140,7 +140,7 @@ test("registerDevice returns pending_approval for new device", async () => {
   assert.equal(result.deviceId, "d1");
 });
 
-test("q2-6: registerDevice rejects non-opaque device_share (not hybrid KEM)", async () => {
+test("registerDevice rejects a malformed device_share", async () => {
   const service = createService({
     registerOrUpdate: async () => {
       throw new Error("registerOrUpdate must not run for invalid share");
@@ -157,7 +157,7 @@ test("q2-6: registerDevice rejects non-opaque device_share (not hybrid KEM)", as
     (err: unknown) =>
       err instanceof DeviceServiceError &&
       err.code === "DEVICE_BAD_REQUEST" &&
-      /32 opaque bytes|not hybrid KEM/u.test(err.message),
+      /32 legacy bytes or a hybrid/u.test(err.message),
   );
 
   await assert.rejects(
@@ -170,7 +170,7 @@ test("q2-6: registerDevice rejects non-opaque device_share (not hybrid KEM)", as
     (err: unknown) =>
       err instanceof DeviceServiceError &&
       err.code === "DEVICE_BAD_REQUEST" &&
-      /32 opaque bytes|not hybrid KEM/u.test(err.message),
+      /32 legacy bytes or a hybrid/u.test(err.message),
   );
 });
 

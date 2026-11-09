@@ -1,5 +1,6 @@
 import type { CoreApiClient } from "@okkey/api";
 import { deviceBindShareProof, initCrypto, wipeBytes } from "@okkey/crypto";
+import { deviceShareB64ForRegister } from "@okkey/vault/device-share-wire";
 import type { DeviceListItemDto, DeviceRegisterResponseDto } from "@okkey/types";
 
 import { isUnauthorizedApiError } from "./apiErrors.ts";
@@ -143,6 +144,8 @@ async function ensureFingerprint(): Promise<string> {
 export async function registerExtensionDevice(
   core: CoreApiClient,
   options?: {
+    userId?: string;
+    existingShareB64?: string;
     prepareShareDelivery?: (
       fingerprint: string,
     ) => Promise<{ x25519PublicB64: string; mlkemPublicB64: string } | null>;
@@ -163,9 +166,15 @@ export async function registerExtensionDevice(
   const locale = await loadExtensionLocale();
   const prepare = options?.prepareShareDelivery ?? prepareExtensionShareDelivery;
   const oneTime = await prepare(fingerprint).catch(() => null);
+  const wire = options?.userId?.trim()
+    ? await deviceShareB64ForRegister({
+        userId: options.userId.trim(),
+        existingShareB64: options.existingShareB64,
+      })
+    : null;
   const result = await core.registerDevice({
     device_public_key: devicePublicKeyB64,
-    device_share: randomDeviceShareB64(),
+    device_share: wire?.shareB64 ?? randomDeviceShareB64(),
     device_fingerprint: fingerprint,
     ...(oneTime
       ? {
@@ -226,7 +235,7 @@ export async function markExtensionDeviceDeferred(deviceId: string | null): Prom
  */
 export async function resolveExtensionDeviceTrust(
   core: CoreApiClient,
-  options?: { forceRegister?: boolean; deviceShareB64?: string },
+  options?: { forceRegister?: boolean; deviceShareB64?: string; userId?: string },
 ): Promise<DeviceTrustSnapshot> {
   const fingerprint = await ensureFingerprint();
   const deferred = options?.forceRegister ? null : await readDeviceDeferred();
@@ -412,7 +421,10 @@ export async function resolveExtensionDeviceTrust(
   }
 
   try {
-    const registered = await registerExtensionDevice(core);
+    const registered = await registerExtensionDevice(core, {
+      userId: options?.userId,
+      existingShareB64: options?.deviceShareB64,
+    });
     if (registered.status === "trusted") {
       return {
         status: "trusted",
@@ -449,9 +461,10 @@ export async function resolveExtensionDeviceTrust(
 export async function retryExtensionDeviceRegistration(
   core: CoreApiClient,
   deviceShareB64?: string,
+  userId?: string,
 ): Promise<DeviceTrustSnapshot> {
   await clearDeviceDeferred();
-  return resolveExtensionDeviceTrust(core, { forceRegister: true, deviceShareB64 });
+  return resolveExtensionDeviceTrust(core, { forceRegister: true, deviceShareB64, userId });
 }
 
 /**

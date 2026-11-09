@@ -255,6 +255,35 @@ export {
   type RebalanceServerShareForNewPasswordResult,
 } from "./registration.js";
 
+export {
+  SPLIT_KEY_SHARE_B_AAD,
+  SPLIT_KEY_SHARE_B_WRAP_SCHEME,
+  generateSplitKeyShareWrapKey,
+  wrapSplitKeyShareB,
+  openStoredSplitKeyShareB,
+  sealSplitKeyShareB,
+  randomSplitKeyShare,
+  type SplitKeyShareWrapKey,
+} from "./split-key-share-wrap.js";
+
+export {
+  SPLIT_KEY_SHARE_B_LEGACY_LEN,
+  SPLIT_KEY_SHARE_B_FRAME_PREFIX_LEN,
+  classifySplitKeyShareBWire,
+  encodeSplitKeyShareBFrame,
+  splitKeyShareBEnvelope,
+  splitKeyShareBWrapPublicKeys,
+  type SplitKeyShareBWireKind,
+  type SplitKeyShareBWrapPublicKeys,
+} from "./split-key-share-frame.js";
+
+export {
+  CAPSULE_GUEST_KEY_DELIVERY_LEGACY_FRAGMENT,
+  CAPSULE_GUEST_KEY_HYBRID_RECIPIENT,
+  exportCapsuleGuestKeyFragment,
+  readCapsuleGuestKey,
+} from "./capsule-guest-key.js";
+
 export { encryptVaultItemPayload, decryptVaultItemPayload } from "./vault-item.js";
 export {
   encryptAttachmentPayload,

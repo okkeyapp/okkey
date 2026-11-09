@@ -46,13 +46,9 @@ if [[ -z "${EXPECTED}" ]]; then
   exit 1
 fi
 
-if [[ -x "${DEST_DIR}/wasm-pack" ]]; then
-  if "${DEST_DIR}/wasm-pack" --version 2>/dev/null | grep -Fq "${VERSION}"; then
-    echo "wasm-pack ${VERSION} already installed at ${DEST_DIR}/wasm-pack"
-    exit 0
-  fi
-fi
-
+if [[ -x "${DEST_DIR}/wasm-pack" ]] && "${DEST_DIR}/wasm-pack" --version 2>/dev/null | grep -Fq "${VERSION}"; then
+  echo "wasm-pack ${VERSION} already installed at ${DEST_DIR}/wasm-pack"
+else
 URL="https://github.com/${RELEASE_REPO}/releases/download/v${VERSION}/${ASSET}"
 tmpdir="$(mktemp -d)"
 trap 'rm -rf "${tmpdir}"' EXIT
@@ -73,3 +69,31 @@ install -m 0755 \
   "${DEST_DIR}/wasm-pack"
 
 echo "Installed $(${DEST_DIR}/wasm-pack --version) -> ${DEST_DIR}/wasm-pack"
+fi
+
+# wasm-pack falls back to `cargo install wasm-bindgen-cli` (unlocked), which
+# currently needs rustc 1.88. Ship the CLI binary that matches the crate.
+WB_VERSION="0.2.114"
+WB_ASSET="wasm-bindgen-${WB_VERSION}-${TARGET}.tar.gz"
+case "${WB_ASSET}" in
+  wasm-bindgen-0.2.114-x86_64-unknown-linux-musl.tar.gz)
+    WB_SHA="ce21be002bdbc22ede2a5cf250cb801d2106956fc3c529c75d9452729db3490c" ;;
+  wasm-bindgen-0.2.114-aarch64-unknown-linux-musl.tar.gz)
+    WB_SHA="39103878ad3c0016f2d04b7b4a6206c974240286852abac5736d017a43703958" ;;
+  *) echo "install-wasm-pack: no wasm-bindgen checksum for ${WB_ASSET}" >&2; exit 1 ;;
+esac
+if ! "${DEST_DIR}/wasm-bindgen" --version 2>/dev/null | grep -Fq "${WB_VERSION}"; then
+  WB_URL="https://github.com/wasm-bindgen/wasm-bindgen/releases/download/${WB_VERSION}/${WB_ASSET}"
+  wbdir="$(mktemp -d)"
+  echo "Downloading ${WB_URL}"
+  curl --proto '=https' --tlsv1.2 --fail --silent --show-error --location \
+    --retry 10 --retry-delay 2 --retry-all-errors \
+    --output "${wbdir}/${WB_ASSET}" "${WB_URL}"
+  echo "${WB_SHA}  ${wbdir}/${WB_ASSET}" | sha256sum -c -
+  tar -xzf "${wbdir}/${WB_ASSET}" -C "${wbdir}"
+  install -m 0755 \
+    "${wbdir}/wasm-bindgen-${WB_VERSION}-${TARGET}/wasm-bindgen" \
+    "${DEST_DIR}/wasm-bindgen"
+  rm -rf "${wbdir}"
+fi
+echo "Installed $(${DEST_DIR}/wasm-bindgen --version) -> ${DEST_DIR}/wasm-bindgen"

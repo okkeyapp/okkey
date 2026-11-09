@@ -465,7 +465,10 @@ export function PopupApp() {
         const shareB64 = userId
           ? (await readExtensionVaultBundle(userId))?.device_share_b64
           : undefined;
-        const snapshot = await resolveExtensionDeviceTrust(core, { deviceShareB64: shareB64 });
+        const snapshot = await resolveExtensionDeviceTrust(core, {
+          deviceShareB64: shareB64,
+          userId,
+        });
         await applyTrustSnapshot(snapshot, userId);
         void loadIdentity(apiBaseUrl, accessToken, userId).catch(async (err: unknown) => {
           if (!isUnauthorizedApiError(err)) {

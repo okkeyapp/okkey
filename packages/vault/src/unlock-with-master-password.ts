@@ -1,6 +1,7 @@
 import {
   decryptUserIdentityFromEncryptedBlob,
   derivePasswordShareC,
+  openStoredSplitKeyShareB,
   reconstructVaultKeyWithMasterPassword,
   wipeBytes,
 } from "@okkey/crypto";
@@ -20,6 +21,10 @@ export type UnlockWithMasterPasswordResult = {
 export async function unlockWithMasterPassword(
   bundle: StoredVaultBundle,
   masterPassword: string,
+  shareWrap?: {
+    ed25519Seed: Uint8Array;
+    mlkemDecapsulationKey: Uint8Array;
+  } | null,
 ): Promise<UnlockWithMasterPasswordResult> {
   const shareB64 = bundle.server_key_share_b64?.trim() ?? "";
   if (!shareB64) {
@@ -27,7 +32,12 @@ export async function unlockWithMasterPassword(
   }
   const pwd = new TextEncoder().encode(masterPassword);
   const serverA = base64ToBytes(shareB64);
-  const deviceB = base64ToBytes(bundle.device_share_b64);
+  const storedShare = base64ToBytes(bundle.device_share_b64);
+  const deviceB = await openStoredSplitKeyShareB({
+    stored: storedShare,
+    recipientEd25519Seed: shareWrap?.ed25519Seed,
+    recipientMlkemDecapsulationKey: shareWrap?.mlkemDecapsulationKey,
+  });
   const salt = base64ToBytes(bundle.password_kdf_salt_b64);
   try {
     const passwordShareC = await derivePasswordShareC({
@@ -47,6 +57,7 @@ export async function unlockWithMasterPassword(
   } finally {
     wipeBytes(pwd);
     wipeBytes(serverA);
+    wipeBytes(storedShare);
     wipeBytes(deviceB);
     wipeBytes(salt);
   }

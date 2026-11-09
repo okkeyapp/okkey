@@ -2,14 +2,21 @@ import { ApiRequestError } from "@okkey/api";
 import {
   generateRecoverySecret,
   initCrypto,
+  openStoredSplitKeyShareB,
   rebalanceServerShareForNewPassword,
   recoveryPossessionPublicKey,
+  sealSplitKeyShareB,
   signRecoveryPossessionProof,
   unwrapVaultKeyWithRecoverySecret,
   wipeBytes,
   wrapVaultKeyWithRecoverySecret,
 } from "@okkey/crypto";
-import { createWorkspaceFoldersSyncController, rememberServerKeyShare } from "@okkey/vault";
+import {
+  createWorkspaceFoldersSyncController,
+  loadSplitKeyShareWrapKey,
+  persistSplitKeyShareWrapKey,
+  rememberServerKeyShare,
+} from "@okkey/vault";
 import {
   MASTER_PASSWORD_POLICY_VERSION,
   MIN_MASTER_PASSWORD_LENGTH,
@@ -231,11 +238,29 @@ export default function AccountRestorePage() {
       const core = createAuthenticatedCoreClient(accessToken);
 
       if (existingBundle) {
-        deviceB = base64ToBytes(existingBundle.device_share_b64);
+        const stored = base64ToBytes(existingBundle.device_share_b64);
+        const keys = await loadSplitKeyShareWrapKey(userId);
+        deviceB = await openStoredSplitKeyShareB({
+          stored,
+          recipientEd25519Seed: keys?.ed25519Seed,
+          recipientMlkemDecapsulationKey: keys?.mlkemDecapsulationKey,
+        });
       } else {
         // Fresh browser: mint a new device share B' and claim sole trusted device after MP change.
         deviceB = crypto.getRandomValues(new Uint8Array(32));
         mintedFreshShare = true;
+      }
+
+      let storedShareB64 = existingBundle?.device_share_b64 ?? "";
+      if (mintedFreshShare && deviceB) {
+        const sealed = await sealSplitKeyShareB(deviceB);
+        try {
+          await persistSplitKeyShareWrapKey(userId, sealed.shareWrap);
+        } finally {
+          wipeBytes(sealed.shareWrap.ed25519Seed);
+          wipeBytes(sealed.shareWrap.mlkemDecapsulationKey);
+        }
+        storedShareB64 = bytesToBase64(sealed.wrapped);
       }
 
       rebalanced = await rebalanceServerShareForNewPassword({
@@ -263,7 +288,7 @@ export default function AccountRestorePage() {
       rememberServerKeyShare(userId, nextServerShareB64);
       writeVaultBundle(
         {
-          device_share_b64: bytesToBase64(deviceB),
+          device_share_b64: storedShareB64,
           password_kdf_salt_b64: bytesToBase64(rebalanced.passwordKdfSalt),
           password_kdf_params_version: rebalanced.passwordKdfParamsVersion,
           encrypted_private_key: encryptedPrivateKey,
