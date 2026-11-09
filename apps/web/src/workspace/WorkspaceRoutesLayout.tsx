@@ -110,7 +110,10 @@ import {
   WORKSPACES_PATH,
   type WorkspaceAppShellPath,
 } from "../routes/paths";
-import { mergePasswordMonitoringNavItem } from "../monitoring-features/nav";
+import {
+  mergePasswordMonitoringNavItem,
+  visiblePasswordMonitoringPath,
+} from "../monitoring-features/nav";
 import { webDisplayPlanTier } from "./planEntitlements";
 import { planTierLabel } from "./planTierLabel";
 
@@ -158,7 +161,7 @@ function ShellChevrons({ className }: { className?: string }) {
 }
 
 function resolveWorkspaceShellPath(pathname: string): WorkspaceAppShellPath | "monitoring" | null {
-  const monitoringPath = passwordMonitoringModule.monitoringPath;
+  const monitoringPath = visiblePasswordMonitoringPath(passwordMonitoringModule.monitoringPath);
   if (monitoringPath && pathname === monitoringPath) {
     return "monitoring";
   }
@@ -364,17 +367,16 @@ export default function WorkspaceRoutesLayout() {
       addRecords: t("web.items.createRecord"),
       addCapsule: t("web.nav.addCapsule"),
     };
-    const monitoringPath = passwordMonitoringModule.monitoringPath;
+    const monitoringPath = visiblePasswordMonitoringPath(passwordMonitoringModule.monitoringPath);
     const workspaceForNav = workspaceList.find((workspace) => workspace.id === resolvedWorkspaceId);
-    const monitoringNav =
-      monitoringPath && workspaceHasPlanFeature(workspaceForNav, "monitoring")
-        ? {
-            id: "mon",
-            to: monitoringPath,
-            icon: <OkkeyNavMonitoringIcon />,
-            label: t("web.nav.monitoring"),
-          }
-        : null;
+    const monitoringNav = monitoringPath
+      ? {
+          id: "mon",
+          to: monitoringPath,
+          icon: <OkkeyNavMonitoringIcon />,
+          label: t("web.nav.monitoring"),
+        }
+      : null;
     const base = mergePasswordMonitoringNavItem(okkeyWorkspaceShellNavItems(navPaths, labels), monitoringNav);
     const firstSettings = firstAllowedSettingsSection(workspacePermissions);
     const hideSettings = workspacePermissionsReady && !firstSettings;
@@ -1136,7 +1138,7 @@ function WorkspaceShellWithItems({
               isSettingsPathname(pathname) ||
               isToolsPathname(pathname) ||
               pathname === CAPSULES_PATH ||
-              (passwordMonitoringModule.monitoringPath != null &&
+              (visiblePasswordMonitoringPath(passwordMonitoringModule.monitoringPath) != null &&
                 pathname === passwordMonitoringModule.monitoringPath)
             }
             mainColumnLayout={pathname === ITEMS_PATH ? "items-two-pane" : "single"}

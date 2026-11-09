@@ -7,6 +7,7 @@ import { type ReactNode } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 
 import { useAuthVault } from "../auth/AuthVaultContext";
+import { visiblePasswordMonitoringPath } from "../monitoring-features/nav";
 import { hasExtensionAuthPending } from "../auth/extensionAuthPendingStorage";
 import AccountRestorePage from "../pages/account/AccountRestorePage";
 import DevicePendingPage from "../pages/account/DevicePendingPage";
@@ -114,6 +115,7 @@ function LegacyNavigate({ to }: { to: string }) {
 }
 
 export default function AppRoutes() {
+  const monitoringRoutePath = visiblePasswordMonitoringPath(passwordMonitoringModule.monitoringPath);
   return (
     <Routes>
       <Route path={ROOT_PATH} element={<RootRedirect />} />
@@ -192,8 +194,8 @@ export default function AppRoutes() {
         <Route element={<WorkspaceRoutesLayout />}>
           <Route path={ITEMS_PATH} element={<WorkspaceSectionPage />} />
           <Route path={CAPSULES_PATH} element={<WorkspaceSectionPage />} />
-          {passwordMonitoringModule.monitoringPath ? (
-            <Route path={passwordMonitoringModule.monitoringPath} element={<WorkspaceSectionPage />} />
+          {monitoringRoutePath ? (
+            <Route path={monitoringRoutePath} element={<WorkspaceSectionPage />} />
           ) : null}
           <Route path={TOOLS_PATH} element={<ToolsIndexRedirect />} />
           <Route path={`${TOOLS_PATH}/:sectionSlug`} element={<WorkspaceSectionPage />} />

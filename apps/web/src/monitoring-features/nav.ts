@@ -1,6 +1,18 @@
 type NavRow = { id: string };
 
 /**
+ * Path for the monitoring route and sidebar row.
+ * Present whenever the module slot provides `monitoringPath`.
+ * A missing plan feature does not hide it; the module page is read-only in that case.
+ */
+export function visiblePasswordMonitoringPath(monitoringPath: string | null): string | null {
+  if (monitoringPath == null || monitoringPath === "") {
+    return null;
+  }
+  return monitoringPath;
+}
+
+/**
  * Insert a password-monitoring nav row after capsules (`id: "cap"`).
  * A null contribution removes any leftover `mon` row.
  */
