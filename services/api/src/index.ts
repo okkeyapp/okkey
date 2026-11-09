@@ -27,7 +27,7 @@ import { VaultUnlockBootstrapService } from "./account/vault-unlock-bootstrap.ts
 import { VaultService } from "./vault/service.ts";
 import { VaultSharingService } from "./vault-sharing/service.ts";
 import { ItemCategoryPreferencesService } from "./item-category-preferences/service.ts";
-import { CapsuleDefaultsService } from "./capsule-defaults/service.ts";
+import { registerCapsuleAccessSettingsProvider } from "./capsule/access-settings-provider.ts";
 import { ItemTemplatesService } from "./item-templates/service.ts";
 import { ItemPurgeService } from "./item-purge/service.ts";
 import {
@@ -312,6 +312,11 @@ async function main(): Promise<void> {
     logger.info("enterprise modules loaded", {
       plugins: enterprisePlugins.map((plugin) => plugin.id),
     });
+  }
+  for (const plugin of enterprisePlugins) {
+    if (plugin.capsuleAccessSettings) {
+      registerCapsuleAccessSettingsProvider(plugin.capsuleAccessSettings);
+    }
   }
   const app = createApiApp(config, logger, {
     readyCheck: () => storage.ping(),

@@ -75,143 +75,16 @@ test("capsules v2: owner pagination, isolation, approval and reactivation", asyn
   assert.equal(secondPage.capsules.length, 1);
   assert.equal((await service.listOwnerCapsules(workspaceId, requester.userId)).total, 0);
 
-  const approvalCapsule = await service.createCapsule(workspaceId, owner.userId, {
-    type: "text",
-    encryptedPayload: blob("approval-payload"),
-    encryptedMetadata: blob("approval-metadata"),
-    ownerKeyWrap: blob("approval-wrap"),
-    allowedRecipientEmails: [requesterEmail],
-    approvalRequired: true,
-  });
-  const pending = await service.requestCapsuleApproval({
-    capsuleId: approvalCapsule.capsuleId,
-    requesterUserId: requester.userId,
-    requestIp: "203.0.113.10",
-    deviceLabel: "Browser on Test",
-    platform: "Test OS",
-  });
-  assert.equal(pending.status, "pending");
-  assert.equal((await service.listPendingApprovals(owner.userId)).length, 1);
-  assert.equal(await service.resolveApproval(pending.requestId, owner.userId, "approve"), "approved");
-  const approved = await service.getApprovalStatus(pending.requestId, requester.userId);
-  assert.equal(approved.status, "approved");
-  assert.ok(approved.approvalToken);
-  const opened = await service.openCapsule(
-    approvalCapsule.capsuleId,
-    "203.0.113.10",
-    undefined,
-    undefined,
-    "fragment",
-    approved.approvalToken,
-    requester.userId,
-  );
-  assert.equal(opened.viewCount, 1);
-  assert.equal((await service.getApprovalStatus(pending.requestId, requester.userId)).status, "consumed");
-
-  const deniedCapsule = await service.createCapsule(workspaceId, owner.userId, {
-    type: "text",
-    encryptedPayload: blob("denied-payload"),
-    encryptedMetadata: blob("denied-metadata"),
-    ownerKeyWrap: blob("denied-wrap"),
-    allowedRecipientEmails: [requesterEmail],
-    approvalRequired: true,
-  });
-  const deniedRequest = await service.requestCapsuleApproval({
-    capsuleId: deniedCapsule.capsuleId,
-    requesterUserId: requester.userId,
-    requestIp: "203.0.113.11",
-  });
-  await service.resolveApproval(deniedRequest.requestId, owner.userId, "deny");
   await assert.rejects(
     () =>
-      service.requestCapsuleApproval({
-        capsuleId: deniedCapsule.capsuleId,
-        requesterUserId: requester.userId,
-        requestIp: "203.0.113.11",
+      service.createCapsule(workspaceId, owner.userId, {
+        type: "text",
+        encryptedPayload: blob("approval-payload"),
+        encryptedMetadata: blob("approval-metadata"),
+        ownerKeyWrap: blob("approval-wrap"),
+        approvalRequired: true,
       }),
     (error: unknown) =>
-      error instanceof CapsuleServiceError &&
-      (error.code === "CAPSULE_INACTIVE" || error.code === "CAPSULE_APPROVAL_DENIED"),
-  );
-  const reactivated = await service.setCapsuleState(deniedCapsule.capsuleId, owner.userId, "active");
-  assert.equal(reactivated.state, "active");
-  const afterReactivation = await service.requestCapsuleApproval({
-    capsuleId: deniedCapsule.capsuleId,
-    requesterUserId: requester.userId,
-    requestIp: "203.0.113.11",
-  });
-  assert.equal(afterReactivation.status, "pending");
-
-  const guestCapsule = await service.createCapsule(workspaceId, owner.userId, {
-    type: "text",
-    encryptedPayload: blob("guest-approval-payload"),
-    encryptedMetadata: blob("guest-approval-metadata"),
-    ownerKeyWrap: blob("guest-approval-wrap"),
-    approvalRequired: true,
-  });
-  const guestSessionId = `guest-session-${testEntityId()}`;
-  const guestPending = await service.requestCapsuleApproval({
-    capsuleId: guestCapsule.capsuleId,
-    guestSessionId,
-    requestIp: "203.0.113.20",
-    deviceLabel: "Guest Browser",
-    platform: "Test OS",
-  });
-  assert.equal(guestPending.status, "pending");
-  assert.equal(await service.resolveApproval(guestPending.requestId, owner.userId, "approve"), "approved");
-  const guestApproved = await service.getApprovalStatus(
-    guestPending.requestId,
-    undefined,
-    guestSessionId,
-  );
-  assert.equal(guestApproved.status, "approved");
-  assert.ok(guestApproved.approvalToken);
-  const guestOpened = await service.openCapsule(
-    guestCapsule.capsuleId,
-    "203.0.113.20",
-    undefined,
-    undefined,
-    "fragment",
-    guestApproved.approvalToken,
-    undefined,
-    guestSessionId,
-  );
-  assert.equal(guestOpened.viewCount, 1);
-
-  const softDenyCapsule = await service.createCapsule(workspaceId, owner.userId, {
-    type: "text",
-    encryptedPayload: blob("soft-deny-payload"),
-    encryptedMetadata: blob("soft-deny-metadata"),
-    ownerKeyWrap: blob("soft-deny-wrap"),
-    approvalRequired: true,
-  });
-  const softDenySession = `guest-session-soft-${testEntityId()}`;
-  const softDenyPending = await service.requestCapsuleApproval({
-    capsuleId: softDenyCapsule.capsuleId,
-    guestSessionId: softDenySession,
-    requestIp: "203.0.113.30",
-  });
-  assert.equal(await service.resolveApproval(softDenyPending.requestId, owner.userId, "deny"), "denied");
-  const softDenyAgain = await service.requestCapsuleApproval({
-    capsuleId: softDenyCapsule.capsuleId,
-    guestSessionId: softDenySession,
-    requestIp: "203.0.113.30",
-  });
-  assert.equal(softDenyAgain.status, "pending");
-
-  const blacklistPending = softDenyAgain;
-  assert.equal(
-    await service.resolveApproval(blacklistPending.requestId, owner.userId, "blacklist"),
-    "blacklisted",
-  );
-  await assert.rejects(
-    () =>
-      service.requestCapsuleApproval({
-        capsuleId: softDenyCapsule.capsuleId,
-        guestSessionId: `guest-session-other-${testEntityId()}`,
-        requestIp: "203.0.113.30",
-      }),
-    (error: unknown) =>
-      error instanceof CapsuleServiceError && error.code === "CAPSULE_APPROVAL_BLACKLISTED",
+      error instanceof CapsuleServiceError && error.code === "FEATURE_NOT_AVAILABLE",
   );
 });

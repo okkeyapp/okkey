@@ -1,3 +1,8 @@
+/**
+ * Per-member capsule access defaults. Core does not mount the HTTP routes.
+ * The capsules module registers GET/PUT `/workspaces/:workspaceId/capsule-defaults`
+ * and should keep this normalization.
+ */
 import type { WorkspacesRepository } from "../storage/repositories.ts";
 import type {
   CapsuleDefaultsType,

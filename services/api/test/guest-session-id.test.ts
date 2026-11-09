@@ -1,12 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { CapsuleService, CapsuleServiceError } from "../src/capsule/service.ts";
 import {
   parseGuestSessionId,
   readGuestSessionIdQuery,
 } from "../src/capsule/guest-session-id.ts";
-import { createTestApiConfig } from "./test-api-config.ts";
 import { testEntityId } from "./test-entity-id.ts";
 
 test("parseGuestSessionId accepts UUID and guest tokens", () => {
@@ -35,41 +33,4 @@ test("parseGuestSessionId rejects NUL and other malformed tokens", () => {
     readGuestSessionIdQuery("/capsule-approval-requests/1").kind,
     "absent",
   );
-});
-
-test("getApprovalStatus rejects a malformed guestSessionId before querying", async () => {
-  let queried = false;
-  const service = new CapsuleService({
-    db: {
-      query: async () => {
-        queried = true;
-        throw new Error("should not query");
-      },
-      transaction: async () => {
-        throw new Error("should not query");
-      },
-    },
-    redis: {
-      incr: async () => 1,
-      expire: async () => true,
-    },
-    config: createTestApiConfig(),
-    objectStorage: {
-      putObject: async () => {},
-      getObject: async () => null,
-      deleteObject: async () => {},
-    },
-  });
-
-  await assert.rejects(
-    () => service.getApprovalStatus(testEntityId(), undefined, "\0"),
-    (error: unknown) =>
-      error instanceof CapsuleServiceError && error.code === "INVALID_GUEST_SESSION_ID",
-  );
-  await assert.rejects(
-    () => service.getApprovalStatus(testEntityId(), testEntityId(), "not-a-session"),
-    (error: unknown) =>
-      error instanceof CapsuleServiceError && error.code === "INVALID_GUEST_SESSION_ID",
-  );
-  assert.equal(queried, false);
 });

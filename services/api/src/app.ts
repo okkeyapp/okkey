@@ -78,17 +78,11 @@ import {
   createWebAuthnRegisterVerifyRoute,
 } from "./routes/webauthn.ts";
 import {
-  createCapsuleApprovalRequestRoute,
-  createCapsuleApprovalEligibilityRoute,
-  createCapsuleApprovalResolveRoute,
-  createCapsuleApprovalStatusRoute,
-  guardGuestSessionIdQuery,
   createCapsuleCreateRoute,
   createCapsuleDeleteRoute,
   createCapsuleMetadataRoute,
   createCapsuleOpenRoute,
   createCapsuleOwnerListRoute,
-  createCapsulePendingApprovalsRoute,
   createCapsuleRevokeRoute,
   createCapsuleStateRoute,
   createCapsuleOwnerDetailRoute,
@@ -1244,33 +1238,6 @@ export function createApiApp(
       "DELETE",
       "/capsules/:capsuleId",
       gateVaultUse(createCapsuleDeleteRoute(deps.capsuleService, resolveUserId)),
-    );
-    app.route(
-      "POST",
-      "/capsules/:capsuleId/approval-requests",
-      gateVaultUse(createCapsuleApprovalRequestRoute(deps.capsuleService, resolveUserId)),
-    );
-    app.route(
-      "GET",
-      "/capsules/:capsuleId/approval-eligibility",
-      gateVaultUse(createCapsuleApprovalEligibilityRoute(deps.capsuleService, resolveUserId)),
-    );
-    app.route(
-      "GET",
-      "/capsule-approval-requests/:requestId",
-      guardGuestSessionIdQuery(
-        gateVaultUse(createCapsuleApprovalStatusRoute(deps.capsuleService, resolveUserId)),
-      ),
-    );
-    app.route(
-      "GET",
-      "/capsule-approval-requests",
-      gateVaultUse(createCapsulePendingApprovalsRoute(deps.capsuleService, resolveUserId)),
-    );
-    app.route(
-      "POST",
-      "/capsule-approval-requests/:requestId/resolve",
-      gateVaultUse(createCapsuleApprovalResolveRoute(deps.capsuleService, resolveUserId)),
     );
   }
   if (deps.attachmentService) {

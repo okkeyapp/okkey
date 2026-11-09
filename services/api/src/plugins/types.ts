@@ -5,6 +5,7 @@ import type { EmailTemplateService } from "../email/service.ts";
 import type { HttpApp } from "../http.ts";
 import type { QueryExecutor } from "../storage/postgres.ts";
 import type { VaultsRepository, WorkspacesRepository } from "../storage/repositories.ts";
+import type { CapsuleAccessSettingsProvider } from "../capsule/access-settings-provider.ts";
 import type { VaultSharingService } from "../vault-sharing/service.ts";
 
 export type ApiEnterprisePluginRedis = {
@@ -56,4 +57,9 @@ export type ApiEnterprisePluginContext = {
 export interface ApiEnterprisePlugin {
   readonly id: string;
   register(ctx: ApiEnterprisePluginContext): void | Promise<void>;
+  /**
+   * Paid capsule access settings. Absent on open core.
+   * Core calls this during create, update, and open.
+   */
+  capsuleAccessSettings?: CapsuleAccessSettingsProvider;
 }

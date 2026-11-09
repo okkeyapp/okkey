@@ -52,6 +52,43 @@ test("integration: capsule create/open with password and view limit", async (t) 
     config,
   });
 
+  const createdWithoutProvider = await capsules.createCapsule(workspaceId, userId, {
+    type: "item",
+    keyTransportMode: "fragment",
+    encryptedPayload: mkBlob("capsule-ciphertext"),
+    password: "12345",
+    passwordAttemptLimit: 3,
+  });
+  assert.equal(createdWithoutProvider.passwordRequired, true);
+  assert.equal(createdWithoutProvider.passwordAttemptLimit, 3);
+
+  const { registerCapsuleAccessSettingsProvider, resetCapsuleAccessSettingsProviderForTests } =
+    await import("../src/capsule/access-settings-provider.ts");
+  t.after(() => {
+    resetCapsuleAccessSettingsProviderForTests();
+  });
+  registerCapsuleAccessSettingsProvider({
+    prepareWrite: async () => ({
+      accessPolicy: { password: { kdf: "scrypt-v1", salt: "salt", hash: "hash" } },
+      activateAt: null,
+      deactivateAt: null,
+      deleteAt: null,
+      maxViews: 1,
+      viewLimitAction: "deactivate",
+      passwordAttemptLimit: 3,
+      approvalRequired: false,
+    }),
+    assertOpen: async (input) => {
+      if (input.password !== "12345") {
+        throw new CapsuleServiceError("CAPSULE_PASSWORD_INVALID", 403, "password invalid");
+      }
+      if (input.recipientEmail !== "recipient@okkey.local") {
+        throw new CapsuleServiceError("CAPSULE_RECIPIENT_FORBIDDEN", 403, "recipient is not allowed");
+      }
+      return { approvalRequestId: null };
+    },
+  });
+
   const created = await capsules.createCapsule(workspaceId, userId, {
     type: "item",
     keyTransportMode: "fragment",
@@ -63,27 +100,8 @@ test("integration: capsule create/open with password and view limit", async (t) 
   assert.equal(created.passwordRequired, true);
 
   await assert.rejects(
-    () => capsules.openCapsule(created.capsuleId, "127.0.0.1"),
-    (err: unknown) =>
-      err instanceof CapsuleServiceError && err.code === "CAPSULE_PASSWORD_REQUIRED",
-  );
-  await assert.rejects(
     () => capsules.openCapsule(created.capsuleId, "127.0.0.1", "bad-password"),
     (err: unknown) => err instanceof CapsuleServiceError && err.code === "CAPSULE_PASSWORD_INVALID",
-  );
-  await assert.rejects(
-    () => capsules.openCapsule(created.capsuleId, "127.0.0.1", "12345"),
-    (err: unknown) => err instanceof CapsuleServiceError && err.code === "CAPSULE_RECIPIENT_REQUIRED",
-  );
-  await assert.rejects(
-    () =>
-      capsules.openCapsule(
-        created.capsuleId,
-        "127.0.0.1",
-        "12345",
-        "blocked@okkey.local",
-      ),
-    (err: unknown) => err instanceof CapsuleServiceError && err.code === "CAPSULE_RECIPIENT_FORBIDDEN",
   );
 
   const opened = await capsules.openCapsule(
