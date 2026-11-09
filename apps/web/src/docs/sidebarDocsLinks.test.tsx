@@ -1,13 +1,46 @@
 import { render, screen } from "@testing-library/react";
 import { OkkeyAppSidebar } from "@okkey/ui";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { publicDocsUrl } from "./publicDocsUrl";
 
 const SIDEBAR_EXPANDED_KEY = "okkey.appShell.sidebarExpanded";
 
+/** Node can expose a `localStorage` global whose methods are missing. */
+function memoryStorage(): Storage {
+  const map = new Map<string, string>();
+  return {
+    get length() {
+      return map.size;
+    },
+    clear() {
+      map.clear();
+    },
+    getItem(key: string) {
+      return map.has(key) ? (map.get(key) ?? null) : null;
+    },
+    key(index: number) {
+      return [...map.keys()][index] ?? null;
+    },
+    removeItem(key: string) {
+      map.delete(key);
+    },
+    setItem(key: string, value: string) {
+      map.set(key, value);
+    },
+  };
+}
+
+function installStorage(): Storage {
+  const storage = memoryStorage();
+  vi.stubGlobal("localStorage", storage);
+  Object.defineProperty(window, "localStorage", { configurable: true, value: storage });
+  return storage;
+}
+
 function renderSidebar(locale: "en" | "ru", expanded: boolean) {
-  localStorage.setItem(SIDEBAR_EXPANDED_KEY, expanded ? "true" : "false");
+  const storage = installStorage();
+  storage.setItem(SIDEBAR_EXPANDED_KEY, expanded ? "true" : "false");
   return render(
     <OkkeyAppSidebar
       docsLocale={locale}
@@ -41,7 +74,7 @@ function expectFooterDocsLink(
 
 describe("sidebar Documentation and Help", () => {
   afterEach(() => {
-    localStorage.removeItem(SIDEBAR_EXPANDED_KEY);
+    vi.unstubAllGlobals();
   });
 
   it.each([
