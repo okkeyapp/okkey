@@ -3,6 +3,10 @@ import { describe, expect, it } from "vitest";
 import { PUBLIC_DOCS_ORIGIN, PUBLIC_DOCS_TOPICS, publicDocsUrl } from "./publicDocsUrl";
 
 const DECODED: Record<(typeof PUBLIC_DOCS_TOPICS)[number], { ru: string; en: string }> = {
+  home: {
+    ru: "https://okkey.app/",
+    en: "https://okkey.app/en/",
+  },
   roles: {
     ru: "https://okkey.app/settings/workspace#роли",
     en: "https://okkey.app/en/settings/workspace#roles",
