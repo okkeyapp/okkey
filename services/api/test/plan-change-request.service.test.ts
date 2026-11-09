@@ -106,7 +106,6 @@ function makeService(overrides?: {
         maxFileSizeMb: 25,
         filesInItemsEnabled: false,
         capsulePolicies: {} as never,
-        monitoringCardSettings: {} as never,
         tileColor: null,
         logoVaultId: null,
         logoAttachmentId: null,

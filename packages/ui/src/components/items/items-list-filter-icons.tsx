@@ -25,7 +25,7 @@ export function FilterIconAllRecords({ className, ...props }: SVGProps<SVGSVGEle
   );
 }
 
-/** Same glyph as sidebar «Monitoring» nav item (`NavMonitoringIcon` in okkey-app-sidebar). */
+/** Same glyph as the optional monitoring nav item (`OkkeyNavMonitoringIcon`). */
 export function FilterIconMonitoring({ className, ...props }: SVGProps<SVGSVGElement>) {
   return (
     <svg

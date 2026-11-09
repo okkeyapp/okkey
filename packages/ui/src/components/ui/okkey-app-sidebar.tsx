@@ -215,7 +215,7 @@ function NavCapsulesIcon({ className, ...props }: React.SVGProps<SVGSVGElement>)
   );
 }
 
-function NavMonitoringIcon({ className, ...props }: React.SVGProps<SVGSVGElement>) {
+export function OkkeyNavMonitoringIcon({ className, ...props }: React.SVGProps<SVGSVGElement>) {
   return (
     <svg
       viewBox="0 0 16 16"
@@ -842,7 +842,6 @@ function demoVaultLeading(emoji: string) {
 export type OkkeyWorkspaceShellNavPaths = {
   items: string;
   capsules: string;
-  monitoring: string;
   tools: string;
   settings: string;
 };
@@ -850,7 +849,6 @@ export type OkkeyWorkspaceShellNavPaths = {
 export type OkkeyWorkspaceShellNavLabels = Partial<{
   allItems: string;
   capsules: string;
-  monitoring: string;
   tools: string;
   settings: string;
   addRecords: string;
@@ -860,7 +858,6 @@ export type OkkeyWorkspaceShellNavLabels = Partial<{
 const defaultShellNavLabels: Required<OkkeyWorkspaceShellNavLabels> = {
   allItems: "All items",
   capsules: "Capsules",
-  monitoring: "Monitoring",
   tools: "Tools",
   settings: "Settings",
   addRecords: "Add records",
@@ -893,12 +890,6 @@ export function okkeyWorkspaceShellNavItems(
       label: L.capsules,
       trailingPlus: true,
       addAriaLabel: L.addCapsule,
-    },
-    {
-      id: "mon",
-      to: p?.monitoring,
-      icon: <NavMonitoringIcon />,
-      label: L.monitoring,
     },
     {
       id: "tools",

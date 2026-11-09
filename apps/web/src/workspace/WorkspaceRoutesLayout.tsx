@@ -15,6 +15,7 @@ import { webEnterpriseModulesActive, workspaceHasPlanFeature } from "./planEntit
 import {
   cn,
   DropdownMenuItem,
+  OkkeyNavMonitoringIcon,
   okkeyWorkspaceShellNavItems,
   Spinner,
   type OkkeyAppSidebarAccountMenu,
@@ -61,6 +62,7 @@ import DeviceRecoveryApprovalController from "../components/devices/DeviceRecove
 import TrustedContactInviteController from "../components/devices/TrustedContactInviteController";
 import ContactsShareReleaseController from "../components/devices/ContactsShareReleaseController";
 import accountRecoveryModule from "@okkey-enterprise/account-recovery";
+import passwordMonitoringModule from "@okkey-enterprise/monitoring";
 import NewVaultPopup from "../components/workspace/settings/vaults/NewVaultPopup";
 import enterpriseSharedVaultsModule from "@okkey-enterprise/workspace-shared-vaults";
 import {
@@ -94,7 +96,6 @@ import {
   itemsPathAllWorkspaceMerged,
   itemsPathWithFolderMerged,
   itemsPathWithVaultMerged,
-  MONITORING_PATH,
   SEARCH_QUERY_PARAM,
   SETTINGS_PATH,
   settingsPath,
@@ -109,6 +110,7 @@ import {
   WORKSPACES_PATH,
   type WorkspaceAppShellPath,
 } from "../routes/paths";
+import { mergePasswordMonitoringNavItem } from "../monitoring-features/nav";
 import { webDisplayPlanTier } from "./planEntitlements";
 import { planTierLabel } from "./planTierLabel";
 
@@ -155,7 +157,11 @@ function ShellChevrons({ className }: { className?: string }) {
   );
 }
 
-function resolveWorkspaceShellPath(pathname: string): WorkspaceAppShellPath | null {
+function resolveWorkspaceShellPath(pathname: string): WorkspaceAppShellPath | "monitoring" | null {
+  const monitoringPath = passwordMonitoringModule.monitoringPath;
+  if (monitoringPath && pathname === monitoringPath) {
+    return "monitoring";
+  }
   if ((WORKSPACE_APP_SHELL_PATHS as readonly string[]).includes(pathname)) {
     return pathname as WorkspaceAppShellPath;
   }
@@ -173,13 +179,14 @@ function shellTitleKey(pathname: string): string {
   if (!shellPath) {
     return "workspaces.shellTitle";
   }
+  if (shellPath === "monitoring") {
+    return "web.shell.monitoringTitle";
+  }
   switch (shellPath) {
     case ITEMS_PATH:
       return "web.shell.itemsTitle";
     case CAPSULES_PATH:
       return "web.shell.capsulesTitle";
-    case MONITORING_PATH:
-      return "web.shell.monitoringTitle";
     case TOOLS_PATH:
       return "web.shell.toolsTitle";
     case SETTINGS_PATH:
@@ -321,7 +328,6 @@ export default function WorkspaceRoutesLayout() {
     return {
       items: ITEMS_PATH,
       capsules: CAPSULES_PATH,
-      monitoring: MONITORING_PATH,
       tools: toolsPath(),
       settings: firstSettings ? settingsPath(firstSettings) : settingsPath("general"),
     };
@@ -353,16 +359,25 @@ export default function WorkspaceRoutesLayout() {
     const labels = {
       allItems: t("web.nav.allItems"),
       capsules: t("web.nav.capsules"),
-      monitoring: t("web.nav.monitoring"),
       tools: t("web.nav.tools"),
       settings: t("web.nav.settings"),
       addRecords: t("web.items.createRecord"),
       addCapsule: t("web.nav.addCapsule"),
     };
-    const base = okkeyWorkspaceShellNavItems(navPaths, labels);
+    const monitoringPath = passwordMonitoringModule.monitoringPath;
+    const workspaceForNav = workspaceList.find((workspace) => workspace.id === resolvedWorkspaceId);
+    const monitoringNav =
+      monitoringPath && workspaceHasPlanFeature(workspaceForNav, "monitoring")
+        ? {
+            id: "mon",
+            to: monitoringPath,
+            icon: <OkkeyNavMonitoringIcon />,
+            label: t("web.nav.monitoring"),
+          }
+        : null;
+    const base = mergePasswordMonitoringNavItem(okkeyWorkspaceShellNavItems(navPaths, labels), monitoringNav);
     const firstSettings = firstAllowedSettingsSection(workspacePermissions);
     const hideSettings = workspacePermissionsReady && !firstSettings;
-    const workspaceForNav = workspaceList.find((workspace) => workspace.id === resolvedWorkspaceId);
     const capsulesAllowed = isCapsuleAllowedForMember(
       workspaceForNav?.capsulePolicies ?? DEFAULT_WORKSPACE_CAPSULE_POLICIES,
       userId,
@@ -1121,7 +1136,8 @@ function WorkspaceShellWithItems({
               isSettingsPathname(pathname) ||
               isToolsPathname(pathname) ||
               pathname === CAPSULES_PATH ||
-              pathname === MONITORING_PATH
+              (passwordMonitoringModule.monitoringPath != null &&
+                pathname === passwordMonitoringModule.monitoringPath)
             }
             mainColumnLayout={pathname === ITEMS_PATH ? "items-two-pane" : "single"}
             workspaceNavItems={permittedWorkspaceNavItems}
@@ -1157,7 +1173,6 @@ function WorkspaceShellWithItems({
               ),
             )}
             itemsListRecordsLoaded={workspaceItemsState.bootstrapped}
-            monitoringCardSettings={currentWorkspace?.monitoringCardSettings}
           >
             {isContentBlocked ? (
               <WorkspaceErrorState

@@ -7,17 +7,12 @@ import {
   parseDeletedItemsRetentionDaysPayload,
   parseFilesInItemsEnabledPayload,
   parseMaxFileSizeMbPayload,
-  parseMonitoringCardSettingsPayload,
   parseOptionalNamePayload,
   parseOptionalStringPayload,
   WorkspaceSettingsService,
   WorkspaceSettingsServiceError,
 } from "../workspace-settings/service.ts";
-import {
-  workspaceCapsulePoliciesToDto,
-  workspaceMonitoringCardSettingsToDto,
-  type WorkspaceStorageQuotaStatus,
-} from "@okkey/types";
+import { workspaceCapsulePoliciesToDto, type WorkspaceStorageQuotaStatus } from "@okkey/types";
 
 function errorPayload(code: string, message: string, requestId: string) {
   return { error: code, message, requestId };
@@ -30,7 +25,6 @@ type WorkspaceSettingsBody = {
   max_file_size_mb?: unknown;
   files_in_items_enabled?: unknown;
   capsule_policies?: unknown;
-  monitoring_card_settings?: unknown;
   tile_color?: unknown;
   logo_vault_id?: unknown;
   logo_attachment_id?: unknown;
@@ -47,7 +41,6 @@ function serializeSettings(settings: {
   maxFileSizeMb: number;
   filesInItemsEnabled: boolean;
   capsulePolicies: import("@okkey/types").WorkspaceCapsulePolicies;
-  monitoringCardSettings: import("@okkey/types").WorkspaceMonitoringCardSettings;
   tileColor: string | null;
   logoVaultId: string | null;
   logoAttachmentId: string | null;
@@ -60,7 +53,6 @@ function serializeSettings(settings: {
     max_file_size_mb: settings.maxFileSizeMb,
     files_in_items_enabled: settings.filesInItemsEnabled,
     capsule_policies: workspaceCapsulePoliciesToDto(settings.capsulePolicies),
-    monitoring_card_settings: workspaceMonitoringCardSettingsToDto(settings.monitoringCardSettings),
     tile_color: settings.tileColor,
     logo_vault_id: settings.logoVaultId,
     logo_attachment_id: settings.logoAttachmentId,
@@ -120,7 +112,6 @@ export function createWorkspaceSettingsRoute(
         maxFileSizeMb?: number;
         filesInItemsEnabled?: boolean;
         capsulePolicies?: import("@okkey/types").WorkspaceCapsulePolicies;
-        monitoringCardSettings?: import("@okkey/types").WorkspaceMonitoringCardSettings;
         tileColor?: string | null;
         logoVaultId?: string | null;
         logoAttachmentId?: string | null;
@@ -219,27 +210,6 @@ export function createWorkspaceSettingsRoute(
             return;
           }
           throw error;
-        }
-      }
-
-      if (body.monitoring_card_settings !== undefined) {
-        const monitoringCardSettings = parseMonitoringCardSettingsPayload(
-          body.monitoring_card_settings,
-        );
-        if (monitoringCardSettings === null) {
-          json(
-            ctx.res,
-            400,
-            errorPayload(
-              "INVALID_MONITORING_CARD_SETTINGS",
-              "monitoring_card_settings is invalid",
-              ctx.requestId,
-            ),
-          );
-          return;
-        }
-        if (monitoringCardSettings !== undefined) {
-          patch.monitoringCardSettings = monitoringCardSettings;
         }
       }
 

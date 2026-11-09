@@ -1,6 +1,7 @@
 import workspaceTenancyModule from "@okkey-enterprise/workspace-tenancy";
 import workspaceMembersModule from "@okkey-enterprise/workspace-members";
 import legalModule from "@okkey-enterprise/legal";
+import passwordMonitoringModule from "@okkey-enterprise/monitoring";
 import { Spinner } from "@okkey/ui";
 import { type ReactNode } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
@@ -60,7 +61,6 @@ import {
   INVITE_PATH_PATTERN,
   ITEMS_PATH,
   LEGACY_WORKSPACE_DETAIL_PATH_PATTERN,
-  MONITORING_PATH,
   PRIVACY_POLICY_LEGACY_PATH,
   PRIVACY_POLICY_PATH,
   ROOT_PATH,
@@ -192,7 +192,9 @@ export default function AppRoutes() {
         <Route element={<WorkspaceRoutesLayout />}>
           <Route path={ITEMS_PATH} element={<WorkspaceSectionPage />} />
           <Route path={CAPSULES_PATH} element={<WorkspaceSectionPage />} />
-          <Route path={MONITORING_PATH} element={<WorkspaceSectionPage />} />
+          {passwordMonitoringModule.monitoringPath ? (
+            <Route path={passwordMonitoringModule.monitoringPath} element={<WorkspaceSectionPage />} />
+          ) : null}
           <Route path={TOOLS_PATH} element={<ToolsIndexRedirect />} />
           <Route path={`${TOOLS_PATH}/:sectionSlug`} element={<WorkspaceSectionPage />} />
           <Route path={SETTINGS_PATH} element={<SettingsIndexRedirect />} />

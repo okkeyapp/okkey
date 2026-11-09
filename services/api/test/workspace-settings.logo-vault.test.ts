@@ -29,7 +29,6 @@ function workspaceRecord(overrides: Record<string, unknown> = {}) {
       allowGuestAccess: true,
       allowExternalRecipients: true,
     },
-    monitoringCardSettings: {},
     tileColor: null,
     logoVaultId: null,
     logoAttachmentId: null,

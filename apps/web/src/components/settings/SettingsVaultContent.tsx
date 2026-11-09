@@ -9,6 +9,7 @@ import {
   MultiSelectTrigger,
 } from "@okkey/ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import passwordMonitoringModule from "@okkey-enterprise/monitoring";
 
 import { useAuthVault } from "../../auth/AuthVaultContext";
 import {
@@ -106,7 +107,9 @@ export default function SettingsVaultContent({ t, workspaceIds }: SettingsVaultC
           label: t("web.settingsPopup.vault.zones.group.sections"),
           zones: [
             { id: "capsules" as const, label: t("web.settingsPopup.vault.zones.capsules") },
-            { id: "monitoring" as const, label: t("web.settingsPopup.vault.zones.monitoring") },
+            ...(passwordMonitoringModule.monitoringPath
+              ? [{ id: "monitoring" as const, label: t("web.settingsPopup.vault.zones.monitoring") }]
+              : []),
             { id: "tools" as const, label: t("web.settingsPopup.vault.zones.tools") },
             {
               id: "workspaceSettings" as const,
