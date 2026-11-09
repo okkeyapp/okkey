@@ -29,7 +29,7 @@ import workspaceTenancyModule from "@okkey-enterprise/workspace-tenancy";
 import {
   canCompletePendingVaultWraps,
   tryCompletePendingVaultWraps,
-} from "@okkey-enterprise/workspace-members";
+} from "../components/workspace/settings/members/completePendingVaultWraps";
 import { refreshWorkspaceFoldersCachesForIds } from "@okkey/vault";
 import { toast } from "sonner";
 
@@ -64,7 +64,6 @@ import ContactsShareReleaseController from "../components/devices/ContactsShareR
 import accountRecoveryModule from "@okkey-enterprise/account-recovery";
 import passwordMonitoringModule from "@okkey-enterprise/monitoring";
 import NewVaultPopup from "../components/workspace/settings/vaults/NewVaultPopup";
-import enterpriseSharedVaultsModule from "@okkey-enterprise/workspace-shared-vaults";
 import {
   buildPopupQueryValue,
   FOLDERS_POPUP_ID,
@@ -247,10 +246,6 @@ export default function WorkspaceRoutesLayout() {
 
   useEffect(() => {
     if (!core || !userId || !vaultKey || !vaultUnlocked || !resolvedWorkspaceId) {
-      return;
-    }
-    // EE route `/pending-vault-wraps` — skip entirely when modules are off (avoid 404 spam).
-    if (!webEnterpriseModulesActive()) {
       return;
     }
     // Contract requires `members:get`; builtin user role has none — do not probe (403 spam).
@@ -1042,9 +1037,6 @@ function WorkspaceShellWithItems({
   const { isContentBlocked, requestAccess } = useSectionReauth();
   const canShowVaultHeaderPlus = useMemo(() => {
     if (!workspaceHasPlanFeature(currentWorkspace, "sharedVaults")) {
-      return false;
-    }
-    if (!enterpriseSharedVaultsModule.SharedVaultCardPopup) {
       return false;
     }
     const vaultPermissions = settingsSectionPermissionCell(workspacePermissions, "vaults");

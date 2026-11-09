@@ -11,8 +11,6 @@ const config: Config = {
     "../../../okkey-enterprise/web/monitoring/src/**/*.{ts,tsx,js,jsx}",
     "../../../okkey-enterprise/web/workspace-profiles/src/**/*.{ts,tsx,js,jsx}",
     "../../../okkey-enterprise/web/workspace-tenancy/src/**/*.{ts,tsx,js,jsx}",
-    "../../../okkey-enterprise/web/workspace-members/src/**/*.{ts,tsx,js,jsx}",
-    "../../../okkey-enterprise/web/workspace-shared-vaults/src/**/*.{ts,tsx,js,jsx}",
     "../../../okkey-enterprise/web/legal/src/**/*.{ts,tsx,js,jsx}",
     "../../../okkey-enterprise/web/workspace-plan/src/**/*.{ts,tsx,js,jsx}",
   ],
