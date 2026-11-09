@@ -91,7 +91,8 @@ services:
       # Vault items require crypto profile 2. The allowlist can only narrow.
       DEPLOY_ENV: ${DEPLOY_ENV:-dev}
       CRYPTO_ALLOWED_PROFILE_VERSIONS: ${CRYPTO_ALLOWED_PROFILE_VERSIONS:-2}
-      CRYPTO_ROLLOUT_MODE: ${CRYPTO_ROLLOUT_MODE:-compat}
+      # Unset mode is strict. Explicit compat with DEPLOY_ENV=prod refuses to start.
+      CRYPTO_ROLLOUT_MODE: ${CRYPTO_ROLLOUT_MODE:-strict}
       PORT: "4000"
       RUN_BACKGROUND_JOBS: "false"
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
@@ -160,7 +161,8 @@ services:
       NODE_ENV: production
       DEPLOY_ENV: ${DEPLOY_ENV:-dev}
       CRYPTO_ALLOWED_PROFILE_VERSIONS: ${CRYPTO_ALLOWED_PROFILE_VERSIONS:-2}
-      CRYPTO_ROLLOUT_MODE: ${CRYPTO_ROLLOUT_MODE:-compat}
+      # Unset mode is strict. Explicit compat with DEPLOY_ENV=prod refuses to start.
+      CRYPTO_ROLLOUT_MODE: ${CRYPTO_ROLLOUT_MODE:-strict}
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       REDIS_URL: redis://redis:6379
       S3_ENDPOINT: http://minio:9000
