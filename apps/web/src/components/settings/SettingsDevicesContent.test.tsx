@@ -247,7 +247,12 @@ describe("SettingsDevicesContent", () => {
     fireEvent.click(screen.getByText("web.settingsPopup.devices.pending.trust"));
 
     await waitFor(() => {
-      expect(coreMocks.approveDevice).toHaveBeenCalledWith("d-pending", "d-current");
+      expect(coreMocks.approveDevice).toHaveBeenCalledWith(
+        "d-pending",
+        "d-current",
+        undefined,
+        undefined,
+      );
     });
   });
 
