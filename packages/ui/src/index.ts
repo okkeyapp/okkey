@@ -1,5 +1,12 @@
 export { cn } from "./lib/utils.js";
 export {
+  PUBLIC_DOCS_ORIGIN,
+  PUBLIC_DOCS_TOPICS,
+  publicDocsUrl,
+  type PublicDocsLocale,
+  type PublicDocsTopic,
+} from "./lib/public-docs-url.js";
+export {
   PortalContainerProvider,
   usePortalContainer,
   type PortalContainer,

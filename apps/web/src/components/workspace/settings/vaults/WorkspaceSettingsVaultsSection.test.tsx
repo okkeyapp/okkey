@@ -2,6 +2,8 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 
+import { publicDocsUrl } from "../../../../docs/publicDocsUrl";
+import { LocaleProvider } from "../../../../locale/LocaleContext";
 import WorkspaceSettingsVaultsSection from "./WorkspaceSettingsVaultsSection";
 
 const deleteVault = vi.fn().mockResolvedValue({ deleted: true });
@@ -47,7 +49,6 @@ const t = (key: string) => {
     "web.workspaceSettings.sections.vaults": "Сейфы",
     "web.workspaceSettings.vaults.intro": "Intro",
     "web.workspaceSettings.vaults.learnMore": "Подробнее",
-    "web.workspaceSettings.vaults.learnMoreUrl": "https://example.com",
     "web.workspaceSettings.vaults.personal.title": "Личный сейф",
     "web.workspaceSettings.vaults.personal.description": "Personal desc",
     "web.workspaceSettings.vaults.personal.onlyYou": "Доступен только Вам",
@@ -144,16 +145,22 @@ describe("WorkspaceSettingsVaultsSection", () => {
   it("renders personal vault and shared vaults upsell on clean FREE", () => {
     render(
       <MemoryRouter>
+        <LocaleProvider>
         <WorkspaceSettingsVaultsSection
           workspaceId="w1"
           workspace={freeWorkspace}
           vaults={[personalVault]}
           t={t}
         />
+      </LocaleProvider>
       </MemoryRouter>,
     );
 
     expect(screen.getByText("Сейфы")).toBeInTheDocument();
+    const learnMore = screen.getByRole("link", { name: "Подробнее" });
+    expect(learnMore).toHaveAttribute("href", publicDocsUrl("workspaceVaults", "en"));
+    expect(learnMore).toHaveAttribute("target", "_blank");
+    expect(learnMore.getAttribute("rel")).toContain("noopener");
     expect(screen.getByText("Мой сейф")).toBeInTheDocument();
     expect(screen.getByText("Доступен только Вам")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Мой сейф/i })).toBeInTheDocument();
@@ -167,6 +174,7 @@ describe("WorkspaceSettingsVaultsSection", () => {
 
     render(
       <MemoryRouter initialEntries={["/settings/vaults"]}>
+        <LocaleProvider>
         <WorkspaceSettingsVaultsSection
           workspaceId="w1"
           workspace={freeWorkspace}
@@ -174,6 +182,7 @@ describe("WorkspaceSettingsVaultsSection", () => {
           t={t}
           resourcePermissions={{ get: 1, post: 0, put: 0, delete: 1 }}
         />
+      </LocaleProvider>
       </MemoryRouter>,
     );
 
@@ -209,6 +218,7 @@ describe("WorkspaceSettingsVaultsSection", () => {
 
     render(
       <MemoryRouter initialEntries={["/settings/vaults"]}>
+        <LocaleProvider>
         <WorkspaceSettingsVaultsSection
           workspaceId="w1"
           workspace={freeWorkspace}
@@ -216,6 +226,7 @@ describe("WorkspaceSettingsVaultsSection", () => {
           t={t}
           resourcePermissions={{ get: 1, post: 0, put: 1, delete: 0 }}
         />
+      </LocaleProvider>
       </MemoryRouter>,
     );
 

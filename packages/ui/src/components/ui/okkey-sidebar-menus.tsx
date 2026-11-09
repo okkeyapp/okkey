@@ -1308,11 +1308,39 @@ export type OkkeySidebarPlainLinkItem = {
   id: string;
   icon: React.ReactNode;
   label: string;
+  /** Absolute docs URL. Sidebar footer items always navigate here. */
+  href: string;
 };
 
 export type OkkeySidebarPlainLinksMenuProps = {
   items: OkkeySidebarPlainLinkItem[];
 };
+
+/** Same outbound rel as Learn more links in the product. */
+export const OKKEY_SIDEBAR_PLAIN_LINK_REL = "noopener noreferrer";
+
+export function OkkeySidebarPlainLink({
+  item,
+  className,
+  collapsed = false,
+}: {
+  item: OkkeySidebarPlainLinkItem;
+  className?: string;
+  collapsed?: boolean;
+}) {
+  return (
+    <SidebarMenuButton asChild className={className}>
+      <a href={item.href} target="_blank" rel={OKKEY_SIDEBAR_PLAIN_LINK_REL}>
+        {item.icon}
+        {collapsed ? (
+          <span className="sr-only">{item.label}</span>
+        ) : (
+          <span className="truncate">{item.label}</span>
+        )}
+      </a>
+    </SidebarMenuButton>
+  );
+}
 
 export function OkkeySidebarPlainLinksMenu({ items }: OkkeySidebarPlainLinksMenuProps) {
   return (
@@ -1320,10 +1348,7 @@ export function OkkeySidebarPlainLinksMenu({ items }: OkkeySidebarPlainLinksMenu
       <SidebarMenu>
         {items.map((item) => (
           <SidebarMenuItem key={item.id}>
-            <SidebarMenuButton type="button">
-              {item.icon}
-              <span className="truncate">{item.label}</span>
-            </SidebarMenuButton>
+            <OkkeySidebarPlainLink item={item} />
           </SidebarMenuItem>
         ))}
       </SidebarMenu>

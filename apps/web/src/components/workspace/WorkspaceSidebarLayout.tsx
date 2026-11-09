@@ -203,6 +203,7 @@ export default function WorkspaceSidebarLayout({
           accountMenu={accountMenu}
           footerPlainLinkLabels={footerPlainLinkLabels}
           beforeFooter={<SystemUpdateSidebarNotice />}
+          docsLocale={locale}
           vaultHeaderPlusAriaLabel={vaultHeaderPlusAriaLabel}
           folderHeaderPlusAriaLabel={folderHeaderPlusAriaLabel}
           showVaultHeaderPlus={showVaultHeaderPlus}

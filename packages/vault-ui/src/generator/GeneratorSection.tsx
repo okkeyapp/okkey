@@ -57,6 +57,8 @@ export type GeneratorSectionProps = {
   t: (messageKey: string, values?: WebMessageValues) => string;
   /** Hide title/intro (popup already has a panel header). */
   hideIntro?: boolean;
+  /** Absolute public docs URL for the Learn more link in the intro. */
+  learnMoreHref?: string;
   onCopied?: () => void;
   className?: string;
 };
@@ -201,7 +203,13 @@ function GeneratorOutputCard({
   );
 }
 
-export function GeneratorSection({ t, hideIntro = false, onCopied, className }: GeneratorSectionProps) {
+export function GeneratorSection({
+  t,
+  hideIntro = false,
+  learnMoreHref,
+  onCopied,
+  className,
+}: GeneratorSectionProps) {
   const [mode, setMode] = useState<GeneratorMode>("password");
 
   const [passwordPreferences, setPasswordPreferences] = useState<PasswordGeneratorPreferences>(
@@ -348,15 +356,17 @@ export function GeneratorSection({ t, hideIntro = false, onCopied, className }: 
           </h2>
           <p className="text-sm leading-5 text-muted-foreground">
             {t("web.tools.generator.intro")}{" "}
-            <a
-              href={t("web.tools.generator.learnMoreUrl")}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 font-medium text-foreground hover:underline"
-            >
-              {t("web.tools.generator.learnMore")}
-              <GeneratorExternalLinkIcon />
-            </a>
+            {learnMoreHref ? (
+              <a
+                href={learnMoreHref}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 font-medium text-foreground hover:underline"
+              >
+                {t("web.tools.generator.learnMore")}
+                <GeneratorExternalLinkIcon />
+              </a>
+            ) : null}
           </p>
         </div>
       )}
