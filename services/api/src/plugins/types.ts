@@ -26,6 +26,7 @@ export type ApiEnterprisePluginContext = {
     | "sendWorkspaceInvite"
     | "sendDeviceRecoveryApprovalRequestBestEffort"
     | "sendContactRecoveryReleaseRequestBestEffort"
+    | "sendTrustedContactInviteBestEffort"
   >;
   /** Same GeoIP pipeline as Phase 1 device approval list/email. */
   geoIp?: Pick<import("../capsule/geoip.ts").GeoIpLookup, "lookup">;

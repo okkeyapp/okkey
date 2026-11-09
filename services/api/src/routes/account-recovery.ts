@@ -2,14 +2,12 @@ import type { IncomingMessage } from "node:http";
 import type {
   AccountRecoveryKeyEnrollRequestDto,
   AccountRecoverySettingsUpdateRequestDto,
-  TrustedContactInviteRequestDto,
 } from "@okkey/types";
 
 import { randomBytes } from "node:crypto";
 import {
   AccountRecoveryError,
   AccountRecoveryService,
-  extractTrustedContactInviteEmails,
 } from "../account-recovery/service.ts";
 import {
   RECOVERY_PROOF_CHALLENGE_TTL_MS,
@@ -306,131 +304,6 @@ export function createAccountRecoveryIdentityEncryptedKeyRoute(
   };
 }
 
-export function createAccountRecoveryContactInviteRoute(
-  service: AccountRecoveryService,
-  resolveUserId: (req: IncomingMessage) => Promise<string | null>,
-): RouteHandler {
-  return async (ctx) => {
-    try {
-      const userId = await requireUserId(resolveUserId, ctx.req, ctx.requestId, ctx.res);
-      if (!userId) {
-        return;
-      }
-      let body: TrustedContactInviteRequestDto;
-      try {
-        body = await readJsonBody<TrustedContactInviteRequestDto>(ctx.req);
-      } catch {
-        json(ctx.res, 400, errorPayload("RECOVERY_BAD_REQUEST", "invalid json", ctx.requestId));
-        return;
-      }
-      const emails = extractTrustedContactInviteEmails(body);
-      const locale =
-        typeof body.locale === "string" && body.locale.trim().length > 0
-          ? body.locale.trim()
-          : null;
-      const contacts = await service.inviteContacts(userId, emails, {
-        explicitLocale: locale,
-        acceptLanguage: getHeader(ctx.req, "accept-language"),
-      });
-      json(ctx.res, 200, { contact: contacts[0], contacts });
-    } catch (error) {
-      handleRecoveryError(ctx.requestId, ctx.res, error);
-    }
-  };
-}
-
-export function createAccountRecoveryContactDeleteRoute(
-  service: AccountRecoveryService,
-  resolveUserId: (req: IncomingMessage) => Promise<string | null>,
-): RouteHandler {
-  return async (ctx) => {
-    try {
-      const userId = await requireUserId(resolveUserId, ctx.req, ctx.requestId, ctx.res);
-      if (!userId) {
-        return;
-      }
-      const contactId = ctx.params.contactId?.trim();
-      if (!contactId) {
-        json(ctx.res, 400, errorPayload("RECOVERY_BAD_REQUEST", "contactId required", ctx.requestId));
-        return;
-      }
-      const status = await service.removeContact(userId, contactId);
-      json(ctx.res, 200, status);
-    } catch (error) {
-      handleRecoveryError(ctx.requestId, ctx.res, error);
-    }
-  };
-}
-
-export function createAccountRecoveryInviteAcceptRoute(
-  service: AccountRecoveryService,
-  resolveUserId: (req: IncomingMessage) => Promise<string | null>,
-): RouteHandler {
-  return async (ctx) => {
-    try {
-      const userId = await requireUserId(resolveUserId, ctx.req, ctx.requestId, ctx.res);
-      if (!userId) {
-        return;
-      }
-      const inviteId = ctx.params.inviteId?.trim();
-      if (!inviteId) {
-        json(ctx.res, 400, errorPayload("RECOVERY_BAD_REQUEST", "inviteId required", ctx.requestId));
-        return;
-      }
-      const status = await service.acceptInvite(userId, inviteId);
-      json(ctx.res, 200, status);
-    } catch (error) {
-      handleRecoveryError(ctx.requestId, ctx.res, error);
-    }
-  };
-}
-
-export function createAccountRecoveryInviteRejectRoute(
-  service: AccountRecoveryService,
-  resolveUserId: (req: IncomingMessage) => Promise<string | null>,
-): RouteHandler {
-  return async (ctx) => {
-    try {
-      const userId = await requireUserId(resolveUserId, ctx.req, ctx.requestId, ctx.res);
-      if (!userId) {
-        return;
-      }
-      const inviteId = ctx.params.inviteId?.trim();
-      if (!inviteId) {
-        json(ctx.res, 400, errorPayload("RECOVERY_BAD_REQUEST", "inviteId required", ctx.requestId));
-        return;
-      }
-      const status = await service.rejectInvite(userId, inviteId);
-      json(ctx.res, 200, status);
-    } catch (error) {
-      handleRecoveryError(ctx.requestId, ctx.res, error);
-    }
-  };
-}
-
-/** Contact leaves an owner's trusted-contact list (`DELETE …/memberships/:contactId`). */
-export function createAccountRecoveryMembershipLeaveRoute(
-  service: AccountRecoveryService,
-  resolveUserId: (req: IncomingMessage) => Promise<string | null>,
-): RouteHandler {
-  return async (ctx) => {
-    try {
-      const userId = await requireUserId(resolveUserId, ctx.req, ctx.requestId, ctx.res);
-      if (!userId) {
-        return;
-      }
-      const contactId = ctx.params.contactId?.trim();
-      if (!contactId) {
-        json(ctx.res, 400, errorPayload("RECOVERY_BAD_REQUEST", "contactId required", ctx.requestId));
-        return;
-      }
-      const status = await service.leaveAsContact(userId, contactId);
-      json(ctx.res, 200, status);
-    } catch (error) {
-      handleRecoveryError(ctx.requestId, ctx.res, error);
-    }
-  };
-}
 
 function readPossessionPublicKey(body: {
   possessionPublicKey?: string;

@@ -8,14 +8,11 @@ import {
   type AccountRecoverySettingsDto,
   type AccountRecoveryStatusResponseDto,
   type EncryptedBlobDto,
-  type TrustedContactDto,
   type TrustedDeviceGateItem,
 } from "@okkey/types";
 
-import { generateEntityId } from "../entity-id.ts";
 import { decodePossessionPublicKey } from "./possession-proof.ts";
 import { decodeEncryptedBlobFromStorage } from "../crypto/encrypted-blob.ts";
-import { buildEmailAppPathUrl, type EmailTemplateService } from "../email/service.ts";
 import {
   planEntitlementRuntimeFromConfig,
   type PlanEntitlementRuntimeConfig,
@@ -48,14 +45,9 @@ export class AccountRecoveryError extends Error {
 export interface AccountRecoveryServiceDeps {
   recovery: AccountRecoveryRepository;
   workspaces: Pick<WorkspacesRepository, "listAccessibleByUser">;
-  users: Pick<
-    UsersRepository,
-    "findById" | "findByEmail" | "loadVaultUnlockRow" | "loadAccountProfile"
-  >;
+  users: Pick<UsersRepository, "loadVaultUnlockRow">;
   /** Used to enforce the trusted-devices recovery enable gate. */
   devices: Pick<DevicesRepository, "listByUser">;
-  emailTemplates?: Pick<EmailTemplateService, "sendTrustedContactInviteBestEffort">;
-  publicAppBaseUrl?: string;
   /** When set, self-hosted recovery gates on modules instead of `plan_tier`. */
   config?: PlanEntitlementRuntimeConfig;
 }
@@ -113,24 +105,6 @@ export function extractTrustedContactInviteEmails(body: {
   return out;
 }
 
-function mapContact(record: {
-  id: string;
-  contactEmail: string;
-  contactUserId: string | null;
-  status: "pending" | "confirmed";
-  createdAt: string;
-  confirmedAt: string | null;
-}): TrustedContactDto {
-  return {
-    id: record.id,
-    email: record.contactEmail,
-    contactUserId: record.contactUserId,
-    status: record.status,
-    createdAt: record.createdAt,
-    confirmedAt: record.confirmedAt,
-  };
-}
-
 function defaultSettings(_entitlements: AccountRecoveryEntitlements): AccountRecoverySettingsDto {
   return {
     keyEnabled: true,
@@ -140,25 +114,11 @@ function defaultSettings(_entitlements: AccountRecoveryEntitlements): AccountRec
   };
 }
 
-function formatInviterDisplayName(input: {
-  firstName: string | null;
-  lastName: string | null;
-  email: string;
-}): string {
-  const name = [input.firstName, input.lastName]
-    .map((part) => (typeof part === "string" ? part.trim() : ""))
-    .filter((part) => part.length > 0)
-    .join(" ");
-  return name || input.email;
-}
-
 export class AccountRecoveryService {
   private readonly recovery: AccountRecoveryServiceDeps["recovery"];
   private readonly workspaces: AccountRecoveryServiceDeps["workspaces"];
   private readonly users: AccountRecoveryServiceDeps["users"];
   private readonly devices: AccountRecoveryServiceDeps["devices"];
-  private readonly emailTemplates?: AccountRecoveryServiceDeps["emailTemplates"];
-  private readonly publicAppBaseUrl: string;
   private readonly config?: PlanEntitlementRuntimeConfig;
 
   constructor(deps: AccountRecoveryServiceDeps) {
@@ -166,8 +126,6 @@ export class AccountRecoveryService {
     this.workspaces = deps.workspaces;
     this.users = deps.users;
     this.devices = deps.devices;
-    this.emailTemplates = deps.emailTemplates;
-    this.publicAppBaseUrl = deps.publicAppBaseUrl ?? "";
     this.config = deps.config;
   }
 
@@ -192,12 +150,9 @@ export class AccountRecoveryService {
 
   async getStatus(userId: string): Promise<AccountRecoveryStatusResponseDto> {
     const entitlements = await this.resolveEntitlements(userId);
-    const [wrap, settingsRow, contacts, pendingInvites, servingAsContact] = await Promise.all([
+    const [wrap, settingsRow] = await Promise.all([
       this.recovery.getWrap(userId),
       this.recovery.getSettings(userId),
-      this.recovery.listContacts(userId),
-      this.recovery.listPendingInvitesForContact(userId),
-      this.recovery.listMembershipsForContact(userId),
     ]);
 
     const defaults = defaultSettings(entitlements);
@@ -205,11 +160,10 @@ export class AccountRecoveryService {
       ? {
           keyEnabled: settingsRow.keyEnabled,
           devicesEnabled: entitlements.trustedDevices ? settingsRow.devicesEnabled : false,
+          // Directory stays out of core. Report the stored flag only when the plan allows it.
           contactsEnabled: entitlements.trustedContacts ? settingsRow.contactsEnabled : false,
         }
       : defaults;
-
-    const confirmedContactCount = contacts.filter((c) => c.status === "confirmed").length;
 
     return {
       entitlements: {
@@ -224,24 +178,11 @@ export class AccountRecoveryService {
         rotatedAt: wrap?.rotatedAt ?? null,
         exportedAt: wrap?.exportedAt ?? null,
       },
-      contacts: contacts.map(mapContact),
-      confirmedContactCount,
+      contacts: [],
+      confirmedContactCount: 0,
       minConfirmedContacts: MIN_TRUSTED_CONTACTS_CONFIRMED,
-      pendingInvites: pendingInvites.map((invite) => ({
-        id: invite.id,
-        ownerEmail: invite.ownerEmail,
-        ownerFirstName: invite.ownerFirstName,
-        ownerLastName: invite.ownerLastName,
-        createdAt: invite.createdAt,
-      })),
-      servingAsContact: servingAsContact.map((row) => ({
-        id: row.id,
-        ownerEmail: row.ownerEmail,
-        ownerFirstName: row.ownerFirstName,
-        ownerLastName: row.ownerLastName,
-        createdAt: row.createdAt,
-        confirmedAt: row.confirmedAt,
-      })),
+      pendingInvites: [],
+      servingAsContact: [],
     };
   }
 
@@ -254,12 +195,21 @@ export class AccountRecoveryService {
     },
     options?: { currentFingerprint?: string | null },
   ): Promise<AccountRecoveryStatusResponseDto> {
+    if (patch.contactsEnabled === true) {
+      throw new AccountRecoveryError(
+        "RECOVERY_CONTACTS_UNAVAILABLE",
+        403,
+        "trusted contacts catalog is not available in core",
+      );
+    }
     const entitlements = await this.resolveEntitlements(userId);
     const current = await this.getStatus(userId);
+    const stored = await this.recovery.getSettings(userId);
     const next: AccountRecoverySettingsDto = {
       keyEnabled: patch.keyEnabled ?? current.settings.keyEnabled,
       devicesEnabled: patch.devicesEnabled ?? current.settings.devicesEnabled,
-      contactsEnabled: patch.contactsEnabled ?? current.settings.contactsEnabled,
+      // Core does not toggle the contacts method. Keep the stored bit for the module.
+      contactsEnabled: stored?.contactsEnabled ?? false,
     };
 
     if (patch.devicesEnabled === true) {
@@ -288,29 +238,8 @@ export class AccountRecoveryService {
         );
       }
     }
-    if (patch.contactsEnabled === true) {
-      if (!entitlements.trustedContacts) {
-        throw new AccountRecoveryError(
-          "RECOVERY_ENTITLEMENT_REQUIRED",
-          403,
-          "trusted contacts recovery requires a paid plan entitlement",
-        );
-      }
-      if (current.confirmedContactCount < MIN_TRUSTED_CONTACTS_CONFIRMED) {
-        throw new AccountRecoveryError(
-          "RECOVERY_CONTACTS_INSUFFICIENT",
-          400,
-          `at least ${MIN_TRUSTED_CONTACTS_CONFIRMED} confirmed contacts are required`,
-          { min: MIN_TRUSTED_CONTACTS_CONFIRMED, confirmed: current.confirmedContactCount },
-        );
-      }
-    }
-
     if (!entitlements.trustedDevices) {
       next.devicesEnabled = false;
-    }
-    if (!entitlements.trustedContacts) {
-      next.contactsEnabled = false;
     }
 
     if (patch.keyEnabled === false) {
@@ -364,18 +293,14 @@ export class AccountRecoveryService {
     }
 
     const settingsRow = await this.recovery.getSettings(userId);
-    const settings = settingsRow
-      ? {
-          keyEnabled: true,
-          devicesEnabled: entitlements.trustedDevices ? settingsRow.devicesEnabled : false,
-          contactsEnabled: entitlements.trustedContacts ? settingsRow.contactsEnabled : false,
-        }
-      : defaultSettings(entitlements);
-
-    await this.recovery.upsertSettings(userId, {
-      ...settings,
+    const storedContactsEnabled = settingsRow?.contactsEnabled ?? false;
+    const settings = {
       keyEnabled: true,
-    });
+      devicesEnabled: entitlements.trustedDevices ? Boolean(settingsRow?.devicesEnabled) : false,
+      contactsEnabled: storedContactsEnabled,
+    };
+
+    await this.recovery.upsertSettings(userId, settings);
 
     return {
       key: {
@@ -386,7 +311,7 @@ export class AccountRecoveryService {
       },
       settings: {
         ...settings,
-        keyEnabled: true,
+        contactsEnabled: entitlements.trustedContacts ? storedContactsEnabled : false,
       },
     };
   }
@@ -456,174 +381,6 @@ export class AccountRecoveryService {
     };
   }
 
-  async inviteContact(userId: string, rawEmail: string): Promise<TrustedContactDto> {
-    const [contact] = await this.inviteContacts(userId, [rawEmail]);
-    if (!contact) {
-      throw new AccountRecoveryError("RECOVERY_EMAIL_INVALID", 400, "invalid email");
-    }
-    return contact;
-  }
-
-  async inviteContacts(
-    userId: string,
-    rawEmails: string[],
-    localeHints?: {
-      /** Inviter UI / request locale (auth-code pattern). */
-      explicitLocale?: string | null;
-      acceptLanguage?: string | null;
-    },
-  ): Promise<TrustedContactDto[]> {
-    const entitlements = await this.resolveEntitlements(userId);
-    if (!entitlements.trustedContacts) {
-      throw new AccountRecoveryError(
-        "RECOVERY_ENTITLEMENT_REQUIRED",
-        403,
-        "trusted contacts require a paid plan entitlement",
-      );
-    }
-
-    const emails = rawEmails
-      .map((raw) => extractEmailAddress(raw))
-      .filter((email, index, all) => email.length > 0 && all.indexOf(email) === index);
-    if (emails.length === 0) {
-      throw new AccountRecoveryError("RECOVERY_EMAIL_INVALID", 400, "invalid email");
-    }
-
-    const owner = await this.users.findById(userId);
-    if (!owner) {
-      throw new AccountRecoveryError("USER_NOT_FOUND", 404, "user not found");
-    }
-    const ownerEmail = normalizeEmail(owner.email);
-    const ownerProfile = await this.users.loadAccountProfile(userId);
-    const inviterDisplayName = formatInviterDisplayName({
-      firstName: ownerProfile?.firstName ?? null,
-      lastName: ownerProfile?.lastName ?? null,
-      email: ownerEmail,
-    });
-    const helpUrl = buildEmailAppPathUrl(
-      this.publicAppBaseUrl,
-      "/items?popup=settings|recovery",
-    );
-    // Recipient profile → inviter UI/body locale → inviter saved locale → Accept-Language → instance default.
-    const inviterLocale =
-      localeHints?.explicitLocale ?? owner.locale ?? ownerProfile?.locale ?? null;
-
-    const created: TrustedContactDto[] = [];
-    for (const email of emails) {
-      if (!isValidEmail(email)) {
-        throw new AccountRecoveryError("RECOVERY_EMAIL_INVALID", 400, "invalid email");
-      }
-      if (email === ownerEmail) {
-        throw new AccountRecoveryError(
-          "RECOVERY_SELF_INVITE",
-          400,
-          "cannot invite yourself",
-        );
-      }
-
-      const contactUser = await this.users.findByEmail(email);
-      if (!contactUser) {
-        throw new AccountRecoveryError(
-          "RECOVERY_CONTACT_NOT_FOUND",
-          404,
-          "contact must be an existing Okkey user",
-        );
-      }
-
-      const existing = await this.recovery.findContactByEmail(userId, email);
-      if (existing) {
-        throw new AccountRecoveryError("RECOVERY_CONTACT_EXISTS", 409, "contact already invited");
-      }
-
-      const row = await this.recovery.insertContact({
-        id: generateEntityId(),
-        userId,
-        contactEmail: email,
-        contactUserId: contactUser.id,
-      });
-      created.push(mapContact(row));
-
-      if (this.emailTemplates) {
-        await this.emailTemplates.sendTrustedContactInviteBestEffort({
-          to: email,
-          localeHints: {
-            userLocale: contactUser.locale,
-            explicitLocale: inviterLocale,
-            acceptLanguage: localeHints?.acceptLanguage ?? null,
-          },
-          variables: {
-            inviterDisplayName,
-            inviterEmail: ownerEmail,
-            helpUrl,
-          },
-        });
-      }
-    }
-    return created;
-  }
-
-  async removeContact(userId: string, contactId: string): Promise<AccountRecoveryStatusResponseDto> {
-    const deleted = await this.recovery.deleteContact(userId, contactId);
-    if (!deleted) {
-      throw new AccountRecoveryError("RECOVERY_CONTACT_NOT_FOUND", 404, "contact not found");
-    }
-
-    const status = await this.getStatus(userId);
-    if (
-      status.settings.contactsEnabled &&
-      status.confirmedContactCount < MIN_TRUSTED_CONTACTS_CONFIRMED
-    ) {
-      await this.recovery.upsertSettings(userId, {
-        ...status.settings,
-        contactsEnabled: false,
-      });
-      return this.getStatus(userId);
-    }
-    return status;
-  }
-
-  async acceptInvite(contactUserId: string, inviteId: string): Promise<AccountRecoveryStatusResponseDto> {
-    const confirmed = await this.recovery.confirmInvite(contactUserId, inviteId);
-    if (!confirmed) {
-      throw new AccountRecoveryError("RECOVERY_INVITE_NOT_FOUND", 404, "invite not found");
-    }
-    return this.getStatus(contactUserId);
-  }
-
-  async rejectInvite(contactUserId: string, inviteId: string): Promise<AccountRecoveryStatusResponseDto> {
-    const rejected = await this.recovery.rejectInvite(contactUserId, inviteId);
-    if (!rejected) {
-      throw new AccountRecoveryError("RECOVERY_INVITE_NOT_FOUND", 404, "invite not found");
-    }
-    return this.getStatus(contactUserId);
-  }
-
-  /**
-   * Current user leaves another owner's trusted-contact list.
-   * If the owner drops below the confirmed minimum, contacts recovery is disabled for them.
-   */
-  async leaveAsContact(
-    contactUserId: string,
-    contactId: string,
-  ): Promise<AccountRecoveryStatusResponseDto> {
-    const removed = await this.recovery.deleteMembershipAsContact(contactUserId, contactId);
-    if (!removed) {
-      throw new AccountRecoveryError("RECOVERY_CONTACT_NOT_FOUND", 404, "membership not found");
-    }
-
-    const ownerStatus = await this.getStatus(removed.ownerUserId);
-    if (
-      ownerStatus.settings.contactsEnabled &&
-      ownerStatus.confirmedContactCount < MIN_TRUSTED_CONTACTS_CONFIRMED
-    ) {
-      await this.recovery.upsertSettings(removed.ownerUserId, {
-        ...ownerStatus.settings,
-        contactsEnabled: false,
-      });
-    }
-
-    return this.getStatus(contactUserId);
-  }
 
   private async listTrustedDeviceGateItems(
     userId: string,

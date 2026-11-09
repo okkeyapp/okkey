@@ -107,8 +107,6 @@ async function boot(
     workspaces: storage.repositories.workspaces,
     users: storage.repositories.users,
     devices: storage.repositories.devices,
-    emailTemplates,
-    publicAppBaseUrl: config.publicAppBaseUrl,
     config,
   });
   const deviceService = new DeviceService({

@@ -461,12 +461,6 @@ const CASES: Array<{
     error: "INVALID_DEVICE_ID",
   },
   {
-    name: "recovery contact delete",
-    method: "DELETE",
-    url: `/account/recovery/contacts/${OUT_OF_RANGE_ID}`,
-    error: "INVALID_CONTACT_ID",
-  },
-  {
     name: "members list",
     method: "GET",
     url: `/workspaces/${NON_NUMERIC_ID}/members`,

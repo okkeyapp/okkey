@@ -253,8 +253,6 @@ async function main(): Promise<void> {
     workspaces: storage.repositories.workspaces,
     users: storage.repositories.users,
     devices: storage.repositories.devices,
-    emailTemplates,
-    publicAppBaseUrl: config.publicAppBaseUrl,
     config,
   });
   const keyFieldFileStorageConfig = loadKeyFieldFileStorageConfigFromEnv();

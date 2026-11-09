@@ -43,11 +43,6 @@ import {
   createUnblockDeviceRoute,
 } from "./routes/devices.ts";
 import {
-  createAccountRecoveryContactDeleteRoute,
-  createAccountRecoveryContactInviteRoute,
-  createAccountRecoveryInviteAcceptRoute,
-  createAccountRecoveryInviteRejectRoute,
-  createAccountRecoveryMembershipLeaveRoute,
   createAccountRecoveryKeyAckExportRoute,
   createAccountRecoveryKeyEnrollRoute,
   createAccountRecoveryKeyProveRoute,
@@ -1202,31 +1197,6 @@ export function createApiApp(
         deps.accountRecoveryService,
         resolveUserIdForRestore,
       ),
-    );
-    app.route(
-      "POST",
-      "/account/recovery/contacts",
-      createAccountRecoveryContactInviteRoute(deps.accountRecoveryService, resolveUserId),
-    );
-    app.route(
-      "DELETE",
-      "/account/recovery/contacts/:contactId",
-      createAccountRecoveryContactDeleteRoute(deps.accountRecoveryService, resolveUserId),
-    );
-    app.route(
-      "POST",
-      "/account/recovery/contacts/invites/:inviteId/accept",
-      createAccountRecoveryInviteAcceptRoute(deps.accountRecoveryService, resolveUserId),
-    );
-    app.route(
-      "POST",
-      "/account/recovery/contacts/invites/:inviteId/reject",
-      createAccountRecoveryInviteRejectRoute(deps.accountRecoveryService, resolveUserId),
-    );
-    app.route(
-      "DELETE",
-      "/account/recovery/contacts/memberships/:contactId",
-      createAccountRecoveryMembershipLeaveRoute(deps.accountRecoveryService, resolveUserId),
     );
   }
   if (deps.capsuleService) {

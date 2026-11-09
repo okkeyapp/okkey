@@ -60,4 +60,15 @@ export type AccountRecoveryEnterpriseModule = {
   }> | null;
   /** Silent auto (re-)enroll controller — mount in workspace shell. */
   ContactsShareAutoEnrollController: ComponentType | null;
+  /**
+   * Trusted-contacts catalog (switch, list, invites, memberships).
+   * No props: the component reads auth and recovery state itself.
+   * Open core sets this to null.
+   */
+  TrustedContactsSection: ComponentType | null;
+  /**
+   * Popup for a pending trusted-contact invitation (accept / reject).
+   * No props. Open core sets this to null.
+   */
+  TrustedContactInviteController: ComponentType | null;
 };
