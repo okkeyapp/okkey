@@ -1,8 +1,11 @@
 import type { WebMessageValues } from "@okkey/i18n";
 import type {
+  CapsuleSchedulePreset,
   Workspace,
   WorkspaceBuiltInProfileId,
   WorkspaceBuiltInRoleId,
+  WorkspaceCapsulePolicies,
+  WorkspaceMemberDirectoryEntryDto,
   Vault,
 } from "@okkey/types";
 import type { CoreApiClient } from "@okkey/api";
@@ -132,6 +135,76 @@ export type EnterpriseCapsulesAdvancedPoliciesSectionProps = {
   ) => void | Promise<void>;
 };
 
+/**
+ * Paid capsule access fields inside the new/edit capsule popup.
+ * Core keeps the read-only forced view limit (`forceMaxViews`) outside this slot.
+ * Open core sets the slot to null, so those fields are not rendered.
+ */
+export type CapsuleAccessSettingsValues = {
+  viewsEnabled: boolean;
+  maxViews: number;
+  viewLimitAction: "deactivate" | "delete";
+  timeEnabled: boolean;
+  activatePreset: CapsuleSchedulePreset;
+  activateCustom: string;
+  deactivatePreset: CapsuleSchedulePreset;
+  deactivateCustom: string;
+  deletePreset: CapsuleSchedulePreset;
+  deleteCustom: string;
+  accessEnabled: boolean;
+  recipients: string[];
+  passwordEnabled: boolean;
+  password: string;
+  attemptLimit: number;
+  hadPassword: boolean;
+  hadRecipients: boolean;
+  approvalRequired: boolean;
+};
+
+export type CapsuleAccessSettingsFieldsProps = {
+  t: (messageKey: string, values?: WebMessageValues) => string;
+  policies: WorkspaceCapsulePolicies;
+  members: readonly WorkspaceMemberDirectoryEntryDto[];
+  isEditing: boolean;
+  values: CapsuleAccessSettingsValues;
+  onChange: (patch: Partial<CapsuleAccessSettingsValues>) => void;
+  validation: {
+    activateSchedulePast: boolean;
+    deactivateSchedulePast: boolean;
+    deleteSchedulePast: boolean;
+    recipientsInvalid: boolean;
+    passwordInvalid: boolean;
+    /** Earliest date the deactivate/delete pickers may use. */
+    activationMinimumDate: Date | null;
+  };
+  saveDefaults: boolean;
+  onSaveDefaultsChange: (value: boolean) => void;
+};
+
+/** Guest gate for a capsule that requires a password or owner approval. */
+export type PublicCapsuleAccessGateMode =
+  | "password"
+  | "approval"
+  | "waiting"
+  | "denied"
+  | "blacklisted";
+
+export type PublicCapsuleAccessGateProps = {
+  mode: PublicCapsuleAccessGateMode;
+  t: (messageKey: string, values?: WebMessageValues) => string;
+  password: string;
+  onPasswordChange: (value: string) => void;
+  /** i18n key for the password error, or null. */
+  passwordErrorKey: string | null;
+  passwordUnlocking: boolean;
+  onUnlock: () => void;
+  onRequestApproval: () => void;
+};
+
 export type WorkspaceSettingsCapsulesModule = {
   CapsulesAdvancedPoliciesSection: ComponentType<EnterpriseCapsulesAdvancedPoliciesSectionProps> | null;
+  CapsuleAccessSettingsFields: ComponentType<CapsuleAccessSettingsFieldsProps> | null;
+  PublicCapsuleAccessGate: ComponentType<PublicCapsuleAccessGateProps> | null;
+  /** Pending owner-approval popup. No props. Null in open core. */
+  CapsuleApprovalController: ComponentType | null;
 };
