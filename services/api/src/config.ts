@@ -35,6 +35,20 @@ export interface ApiConfig {
   deployEnv: DeployEnv;
   /** Product deployment: self_hosted (default OSS) vs saas (multi-workspace via enterprise plugin). */
   deploymentMode: DeploymentMode;
+  /** Running core image tag (`OKKEY_VERSION`, else `OKKEY_IMAGE_TAG`). */
+  systemVersion: string;
+  /** Installed enterprise module version, when the sibling reports one. */
+  enterpriseVersion: string;
+  /**
+   * Optional update feed URL. Empty means no outbound check.
+   * Never defaulted to a vendor or license host.
+   */
+  updateFeedUrl: string;
+  /** When true, update checks and feed downloads do not call the network. */
+  updateIsolated: boolean;
+  /** Base URL of the dedicated update agent. Empty disables apply. */
+  updateAgentUrl: string;
+  updateAgentToken: string;
   /**
    * Plan assigned to newly created workspaces (catalog / billing display).
    * Always FREE. Self-hosted paid features unlock from loaded modules, not this column.
@@ -420,6 +434,13 @@ export function loadConfig(): ApiConfig {
     nodeEnv,
     deployEnv,
     deploymentMode,
+    systemVersion:
+      (process.env.OKKEY_VERSION ?? process.env.OKKEY_IMAGE_TAG ?? "").trim() || "unknown",
+    enterpriseVersion: (process.env.OKKEY_ENTERPRISE_VERSION ?? "").trim(),
+    updateFeedUrl: (process.env.OKKEY_UPDATE_FEED_URL ?? "").trim(),
+    updateIsolated: parseBoolean(process.env.OKKEY_UPDATE_ISOLATED, false),
+    updateAgentUrl: (process.env.OKKEY_UPDATE_AGENT_URL ?? "").trim(),
+    updateAgentToken: (process.env.OKKEY_UPDATE_AGENT_TOKEN ?? "").trim(),
     defaultWorkspacePlanTier,
     port: parsePort(process.env.PORT),
     logLevel: process.env.LOG_LEVEL ?? "info",

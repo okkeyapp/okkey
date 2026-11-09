@@ -195,6 +195,15 @@ import {
 import { createItemFaviconConfigRoute, createItemFaviconPreviewRoute } from "./routes/item-favicons.ts";
 import { requireEnrolledRecoveryKey } from "./routes/require-recovery-key.ts";
 import { createRecoveryProofAttemptStore } from "./account-recovery/recovery-proof-attempts.ts";
+import {
+  createHttpUpdateAgentClient,
+  unavailableUpdateAgent,
+} from "./system-updates/agent-client.ts";
+import { registerSystemUpdateRoutes } from "./system-updates/routes.ts";
+import {
+  createSystemUpdateService,
+  type SystemUpdateService,
+} from "./system-updates/service.ts";
 
 export interface CreateApiAppOptions {
   enterprisePlugins?: ApiEnterprisePlugin[];
@@ -248,6 +257,8 @@ export interface AppDeps {
   workspacePersonalSyncService?: WorkspacePersonalSyncService;
   attachmentService?: AttachmentService;
   itemFaviconService?: ItemFaviconService;
+  /** Self-host system updates. Tests inject this; production builds it from config. */
+  systemUpdateService?: SystemUpdateService;
 }
 
 export function createApiApp(
@@ -400,6 +411,30 @@ export function createApiApp(
       : handler;
 
   app.route("GET", "/health", healthRouteHandler);
+  const systemUpdateService =
+    deps.systemUpdateService ??
+    createSystemUpdateService({
+      deploymentMode: config.deploymentMode,
+      currentVersion: config.systemVersion,
+      enterpriseInstalled: config.enterpriseModulesEnabled,
+      enterpriseVersion: config.enterpriseVersion,
+      feedUrl: config.updateFeedUrl,
+      isolated: config.updateIsolated,
+      agent:
+        config.updateAgentUrl.trim() && config.updateAgentToken.trim()
+          ? createHttpUpdateAgentClient({
+              baseUrl: config.updateAgentUrl,
+              token: config.updateAgentToken,
+            })
+          : unavailableUpdateAgent(),
+      db: options.postgres,
+    });
+  registerSystemUpdateRoutes(
+    (method, path, handler) => app.route(method, path, handler),
+    config,
+    systemUpdateService,
+    resolveUserId,
+  );
   app.route("GET", "/ready", createReadyRouteHandler(readyCheck));
   if (deps.authService) {
     app.route(
