@@ -206,6 +206,7 @@ export default function NewCapsulePopup({
     ? (searchParams.get(CAPSULE_FROM_ITEM_QUERY_PARAM)?.trim() ?? "")
     : "";
   const advancedAvailable = workspaceHasPlanFeature(workspace, "capsuleAccessSettings");
+  const filesInCapsules = workspaceHasPlanFeature(workspace, "filesInCapsules");
   const storedCapsulePolicies: WorkspaceCapsulePolicies =
     workspace?.capsulePolicies ?? DEFAULT_WORKSPACE_CAPSULE_POLICIES;
   const capsulePolicies = useMemo(
@@ -285,23 +286,29 @@ export default function NewCapsulePopup({
     [t],
   );
   const capsuleTypeOptions = useMemo(() => {
-    const allowed = allCapsuleTypeOptions.filter(([value]) =>
-      isCapsuleTypeAllowed(capsulePolicies, value),
+    const allowed = allCapsuleTypeOptions.filter(
+      ([value]) =>
+        isCapsuleTypeAllowed(capsulePolicies, value) &&
+        (value !== "file" || filesInCapsules),
     );
-    if (isEditing && editingDetail) {
+    if (isEditing && editingDetail && (editingDetail.type !== "file" || filesInCapsules)) {
       const current = allCapsuleTypeOptions.find(([value]) => value === editingDetail.type);
       if (current && !allowed.some(([value]) => value === current[0])) {
         return [...allowed, current];
       }
     }
     return allowed;
-  }, [allCapsuleTypeOptions, capsulePolicies, editingDetail, isEditing]);
+  }, [allCapsuleTypeOptions, capsulePolicies, editingDetail, filesInCapsules, isEditing]);
   const allTypesDisabled = !isEditing && capsuleTypeOptions.length === 0;
-  const typeLocked = Boolean(
+  const policyTypeLocked = Boolean(
     isEditing &&
       editingDetail &&
       !isCapsuleTypeAllowed(capsulePolicies, editingDetail.type),
   );
+  const planFileLocked = Boolean(
+    isEditing && editingDetail?.type === "file" && !filesInCapsules,
+  );
+  const typeLocked = policyTypeLocked || planFileLocked;
   const popupIdentity = !open ? "closed" : isEditing ? `edit:${editingCapsuleId}` : "create";
   const activationMinimumDate = useMemo(
     () =>
@@ -312,7 +319,9 @@ export default function NewCapsulePopup({
 
   useEffect(() => {
     const firstAllowed =
-      (capsulePolicies.allowedCapsuleTypes[0] as CapsuleType | undefined) ?? "text";
+      capsulePolicies.allowedCapsuleTypes.find(
+        (candidate) => candidate !== "file" || filesInCapsules,
+      ) ?? "text";
     setType(firstAllowed);
     setName("");
     setText("");
@@ -408,13 +417,16 @@ export default function NewCapsulePopup({
   }, [canViewFieldType, canViewItem, itemSearch, items, records]);
   const selectedItem = items.find((item) => item.itemId === selectedItemId);
   const selectedRecord = records.find((item) => item.id === selectedItemId);
-  const visibleFields = useMemo(
-    () =>
+  const visibleFields = useMemo(() => {
+    const fields =
       selectedItem?.fields.filter((field) =>
         canViewFieldType(selectedItem.vaultId, field.type),
-      ) ?? [],
-    [canViewFieldType, selectedItem],
-  );
+      ) ?? [];
+    if (filesInCapsules) {
+      return fields;
+    }
+    return fields.filter((field) => field.type !== "file" && field.value.kind !== "file");
+  }, [canViewFieldType, filesInCapsules, selectedItem]);
 
   useEffect(() => {
     if (!open) return;
@@ -956,7 +968,7 @@ export default function NewCapsulePopup({
           ? { keepExistingPassword, keepExistingRecipients, keepExistingFile }
           : {}),
       };
-      if (type === "file" && file) {
+      if (filesInCapsules && type === "file" && file) {
         body.filePayload = bytesToBlob(
           await encryptCapsulePayload(
             generated.capsuleKey,
@@ -965,7 +977,7 @@ export default function NewCapsulePopup({
           "capsule_file_payload",
         );
       }
-      if (type === "item" && itemPayload) {
+      if (type === "item" && itemPayload && filesInCapsules) {
         if (!accessToken) {
           throw new Error(t("web.capsules.popup.attachmentsAuthError"));
         }
@@ -1085,6 +1097,12 @@ export default function NewCapsulePopup({
             linkKey="web.capsules.popup.typesAllDisabledLink"
             onNavigate={handleClose}
           />
+        ) : planFileLocked ? (
+          <Alert variant="info">
+            <CapsuleAlertInfoIcon className="size-4" />
+            <AlertTitle>{t("web.capsules.popup.typesNoticeTitle")}</AlertTitle>
+            <AlertDescription>{t("web.capsules.popup.planUnavailable")}</AlertDescription>
+          </Alert>
         ) : typeLocked ? (
           <CapsuleTypesSettingsAlert
             t={t}
@@ -1329,19 +1347,7 @@ export default function NewCapsulePopup({
 
             <KeyForm mode="edit" className="gap-0">
               <KeySection variant="primary" mode="edit">
-                {type === "text" ? (
-                  <KeyField
-                    className="border-b-transparent"
-                    label={t("web.capsules.public.secretText")}
-                    mode="edit"
-                    editableValue
-                    multilineValue
-                    value={text}
-                    onValueChange={setText}
-                    valuePlaceholder={t("web.capsules.popup.textValuePlaceholder")}
-                    surfaceRounding={capsuleFieldRounding(0, 1)}
-                  />
-                ) : (
+                {type === "file" && filesInCapsules ? (
                   <KeyField
                     className="border-b-transparent"
                     label={t("web.capsules.public.secretFile")}
@@ -1380,6 +1386,18 @@ export default function NewCapsulePopup({
                     fileUploadConstraints={fileUploadConstraints}
                     fileUploadLabel={t("web.capsules.popup.fileUploadLabel")}
                     fileClearLabel={t("web.capsules.popup.fileClearLabel")}
+                    surfaceRounding={capsuleFieldRounding(0, 1)}
+                  />
+                ) : (
+                  <KeyField
+                    className="border-b-transparent"
+                    label={t("web.capsules.public.secretText")}
+                    mode="edit"
+                    editableValue
+                    multilineValue
+                    value={text}
+                    onValueChange={setText}
+                    valuePlaceholder={t("web.capsules.popup.textValuePlaceholder")}
                     surfaceRounding={capsuleFieldRounding(0, 1)}
                   />
                 )}

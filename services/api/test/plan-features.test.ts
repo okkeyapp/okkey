@@ -39,6 +39,7 @@ test("hasPlanFeature: FREE baseline", () => {
   assert.equal(hasPlanFeature("FREE", "accountRecovery"), false);
   assert.equal(hasPlanFeature("FREE", "trustedContacts"), false);
   assert.equal(hasPlanFeature("FREE", "filesInItems"), false);
+  assert.equal(hasPlanFeature("FREE", "filesInCapsules"), false);
   assert.equal(hasPlanFeature("FREE", "monitoring"), false);
   assert.equal(hasPlanFeature("FREE", "storageQuotas"), false);
 });
@@ -46,6 +47,7 @@ test("hasPlanFeature: FREE baseline", () => {
 test("hasPlanFeature: PREMIUM personal paid", () => {
   assert.equal(hasPlanFeature("PREMIUM", "capsuleAccessSettings"), false);
   assert.equal(hasPlanFeature("PREMIUM", "filesInItems"), true);
+  assert.equal(hasPlanFeature("PREMIUM", "filesInCapsules"), true);
   assert.equal(hasPlanFeature("PREMIUM", "monitoring"), true);
   assert.equal(hasPlanFeature("PREMIUM", "accountRecovery"), true);
   assert.equal(hasPlanFeature("PREMIUM", "trustedContacts"), true);
@@ -61,6 +63,7 @@ test("hasPlanFeature: legacy FAMILY reads as PREMIUM", () => {
   assert.equal(hasPlanFeature("FAMILY", "sharedVaults"), true);
   assert.equal(hasPlanFeature("FAMILY", "additionalWorkspaceMembers"), true);
   assert.equal(hasPlanFeature("FAMILY", "filesInItems"), true);
+  assert.equal(hasPlanFeature("FAMILY", "filesInCapsules"), true);
   assert.equal(hasPlanFeature("FAMILY", "monitoring"), true);
   assert.equal(hasPlanFeature("FAMILY", "accountRecovery"), true);
   assert.equal(hasPlanFeature("FAMILY", "customWorkspaceRoles"), false);
@@ -78,6 +81,7 @@ test("hasPlanFeature: TEAM and ENTERPRISE unlock paid gates (regression)", () =>
     assert.equal(hasPlanFeature(tier, "additionalWorkspaceMembers"), true);
     assert.equal(hasPlanFeature(tier, "paidPlanBadge"), true);
     assert.equal(hasPlanFeature(tier, "filesInItems"), true);
+    assert.equal(hasPlanFeature(tier, "filesInCapsules"), true);
     assert.equal(hasPlanFeature(tier, "monitoring"), true);
     assert.equal(hasPlanFeature(tier, "accountRecovery"), true);
     assert.equal(hasPlanFeature(tier, "trustedContacts"), true);
@@ -242,6 +246,20 @@ test("self_hosted entitlements: modules off → FREE; modules on → ENTERPRISE 
     true,
   );
   assert.equal(
+    hasPlanFeature("FREE", "filesInCapsules", {
+      deploymentMode: "self_hosted",
+      enterpriseModulesActive: false,
+    }),
+    true,
+  );
+  assert.equal(
+    hasPlanFeature("ENTERPRISE", "filesInCapsules", {
+      deploymentMode: "self_hosted",
+      enterpriseModulesActive: false,
+    }),
+    true,
+  );
+  assert.equal(
     hasPlanFeature("FREE", "filesInItems", {
       deploymentMode: "self_hosted",
       enterpriseModulesActive: true,
@@ -298,6 +316,19 @@ test("saas entitlements still use plan_tier", () => {
       enterpriseModulesActive: false,
     }),
     false,
+  );
+  assert.equal(
+    hasPlanFeature("FREE", "filesInCapsules", {
+      deploymentMode: "saas",
+      enterpriseModulesActive: false,
+    }),
+    false,
+  );
+  assert.equal(
+    hasPlanFeature("PREMIUM", "filesInCapsules", {
+      deploymentMode: "saas",
+    }),
+    true,
   );
   assert.equal(
     hasPlanFeature("FREE", "sharedVaults", {

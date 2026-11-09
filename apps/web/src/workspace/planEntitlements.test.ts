@@ -17,6 +17,7 @@ describe("web plan entitlements (self_hosted)", () => {
     expect(workspaceHasPlanFeature({ planTier: "FREE" }, "sharedVaults")).toBe(true);
     expect(workspaceHasPlanFeature({ planTier: "FREE" }, "customWorkspaceRoles")).toBe(true);
     expect(workspaceHasPlanFeature({ planTier: "FREE" }, "filesInItems")).toBe(true);
+    expect(workspaceHasPlanFeature({ planTier: "FREE" }, "filesInCapsules")).toBe(true);
     expect(webDisplayPlanTier({ planTier: "FREE" })).toBe("ENTERPRISE");
   });
 
@@ -54,6 +55,7 @@ describe("web plan entitlements (self_hosted without modules)", () => {
     expect(workspaceHasPlanFeature({ planTier: "ENTERPRISE" }, "sharedVaults")).toBe(true);
     expect(workspaceHasPlanFeature({ planTier: "ENTERPRISE" }, "customWorkspaceRoles")).toBe(false);
     expect(workspaceHasPlanFeature({ planTier: "ENTERPRISE" }, "filesInItems")).toBe(true);
+    expect(workspaceHasPlanFeature({ planTier: "ENTERPRISE" }, "filesInCapsules")).toBe(true);
     expect(webDisplayPlanTier({ planTier: "ENTERPRISE" })).toBe("FREE");
   });
 });
@@ -65,6 +67,8 @@ describe("web plan entitlements (saas)", () => {
     const { workspaceHasPlanFeature, webDisplayPlanTier } = await import("./planEntitlements");
     expect(workspaceHasPlanFeature({ planTier: "FREE" }, "sharedVaults")).toBe(true);
     expect(workspaceHasPlanFeature({ planTier: "FREE" }, "filesInItems")).toBe(false);
+    expect(workspaceHasPlanFeature({ planTier: "FREE" }, "filesInCapsules")).toBe(false);
+    expect(workspaceHasPlanFeature({ planTier: "PREMIUM" }, "filesInCapsules")).toBe(true);
     expect(workspaceHasPlanFeature({ planTier: "FREE" }, "monitoring")).toBe(false);
     expect(workspaceHasPlanFeature({ planTier: "PREMIUM" }, "monitoring")).toBe(true);
     expect(workspaceHasPlanFeature({ planTier: "PREMIUM" }, "capsuleAccessSettings")).toBe(false);

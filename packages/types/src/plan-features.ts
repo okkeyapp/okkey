@@ -20,6 +20,7 @@ export type PlanFeature =
   | "accountRecovery"
   | "trustedContacts"
   | "filesInItems"
+  | "filesInCapsules"
   | "monitoring"
   | "storageQuotas";
 
@@ -84,6 +85,7 @@ export const PLAN_FEATURES: readonly PlanFeature[] = [
   "accountRecovery",
   "trustedContacts",
   "filesInItems",
+  "filesInCapsules",
   "monitoring",
   "storageQuotas",
 ] as const;
@@ -107,6 +109,7 @@ const FREE_FEATURES = {
   accountRecovery: false,
   trustedContacts: false,
   filesInItems: false,
+  filesInCapsules: false,
   monitoring: false,
   storageQuotas: false,
 } as const satisfies Record<PlanFeature, boolean>;
@@ -117,6 +120,7 @@ const PREMIUM_FEATURES = {
   accountRecovery: true,
   trustedContacts: true,
   filesInItems: true,
+  filesInCapsules: true,
   monitoring: true,
   storageQuotas: true,
 } as const satisfies Record<PlanFeature, boolean>;
@@ -132,12 +136,14 @@ const BUSINESS_FEATURES = {
  * Source of truth for plan entitlements.
  * New catalog tiers or features = matrix cells only; call sites stay on {@link hasPlanFeature}.
  *
- * - FREE: capsules, shared vaults, and additional members (within quota). No files on SaaS,
- *   no monitoring / recovery / badge, no custom roles, profiles, or capsule access settings.
- * - Self-hosted modules off → FREE matrix plus {@link SELF_HOSTED_FREE_EXTRA} (`filesInItems`)
- *   and {@link SELF_HOSTED_FREE_QUOTA_OVERRIDES}.
+ * - FREE: capsules (text and item), shared vaults, and additional members (within quota).
+ *   No files in items or capsules on SaaS, no monitoring / recovery / badge, no custom roles,
+ *   profiles, or capsule access settings.
+ * - Self-hosted modules off → FREE matrix plus {@link SELF_HOSTED_FREE_EXTRA}
+ *   (`filesInItems`, `filesInCapsules`) and {@link SELF_HOSTED_FREE_QUOTA_OVERRIDES}.
  *   Self-hosted modules on → ENTERPRISE matrix (`plan_tier` ignored).
- * - PREMIUM: FREE plus files, monitoring, recovery, trusted contacts, and the paid badge.
+ * - PREMIUM: FREE plus files in items and capsules, monitoring, recovery, trusted contacts,
+ *   and the paid badge.
  * - TEAM / ENTERPRISE: PREMIUM plus capsule access settings, custom roles, and custom profiles.
  *   ENTERPRISE quotas are unlimited; attachment storage numbers stay on the catalog.
  */
@@ -150,10 +156,12 @@ export const PLAN_FEATURE_MATRIX: Record<PlanTier, Record<PlanFeature, boolean>>
 
 /**
  * Features kept on self-hosted FREE (modules off), while SaaS FREE stays on the catalog matrix.
- * Attachments / file fields stay PREMIUM+ on SaaS only.
+ * Item attachments and capsule files stay PREMIUM+ on SaaS only.
+ * Capsule text and item types stay available on every tier, including SaaS FREE.
  */
 export const SELF_HOSTED_FREE_EXTRA: Readonly<Partial<Record<PlanFeature, boolean>>> = {
   filesInItems: true,
+  filesInCapsules: true,
 };
 
 /**
