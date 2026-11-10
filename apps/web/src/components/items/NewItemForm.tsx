@@ -9,7 +9,7 @@ import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRe
 import { getDatePickerLocale } from "../../lib/datePickerLocale";
 import { NO_FOLDER_VALUE } from "../../folders/workspaceFolderTree";
 import { collectWebsiteUrlsFromSections, suggestedRecordTitleFromWebsiteUrls } from "../../lib/domainRecordTitle";
-import { keyFormSectionsToItemPlaintext } from "../../items/keyFormToItemPlaintext";
+import { keyFormSectionsToItemPlaintext, omitBlankExtraWebsiteUrls } from "../../items/keyFormToItemPlaintext";
 import { useItemFormFavicon, type ItemFormFaviconSyncInput } from "../../items/useItemFormFavicon";
 import { websiteUrlsLookupKey } from "../../items/useItemFormFaviconPreview";
 import type { ItemTemplateFormSnapshot } from "../../items/itemTemplateHelpers";
@@ -251,6 +251,10 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
   const trimmedRecordName = recordName.trim();
   const recordNameInvalid = showValidation && trimmedRecordName.length === 0;
   const currentSections = formSections ?? initialSections;
+  const sectionsForCommit = useMemo(
+    () => omitBlankExtraWebsiteUrls(currentSections),
+    [currentSections],
+  );
   const commitRecordNameForFavicon = useCallback((nextRaw: string) => {
     const next = nextRaw.trim();
     if (next === committedRecordNameRef.current) {
@@ -465,10 +469,10 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
       validateNewItemForm({
         recordName,
         vaultId,
-        sections: currentSections,
+        sections: sectionsForCommit,
         categoryId: category?.id,
       }).ok,
-    [recordName, vaultId, currentSections, category?.id],
+    [recordName, vaultId, sectionsForCommit, category?.id],
   );
 
   const canSave = useMemo(() => {
@@ -495,11 +499,11 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
         validateNewItemForm({
           recordName,
           vaultId,
-          sections: formSections ?? initialSections,
+          sections: sectionsForCommit,
           categoryId: category?.id,
         }),
       getSavePayload: () => {
-        const sections = formSections ?? initialSections;
+        const sections = sectionsForCommit;
         const validation = validateNewItemForm({ recordName, vaultId, sections, categoryId: category?.id });
         if (!validation.ok || !category) {
           return null;
@@ -644,7 +648,7 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
       hasUnsavedChanges: () => hasUnsavedChanges(),
       hasItemContentChanges: () => hasItemContentChanges(),
     }),
-    [folderId, formSections, getSyncInput, hasItemContentChanges, hasUnsavedChanges, initialSections, category, trimmedRecordName, initialValues, prefillValues, tags, resolveAttachmentContext, vaultId],
+    [folderId, formSections, sectionsForCommit, getSyncInput, hasItemContentChanges, hasUnsavedChanges, initialSections, category, trimmedRecordName, initialValues, prefillValues, tags, resolveAttachmentContext, vaultId],
   );
 
   if (!category) {

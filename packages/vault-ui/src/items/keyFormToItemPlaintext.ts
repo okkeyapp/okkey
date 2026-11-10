@@ -17,7 +17,7 @@ function isBlankWebsiteUrl(field: KeyFormEditorField): boolean {
 }
 
 /** Drop blank extra website rows. The first URL field stays so a missing primary URL can still fail validation. */
-function omitBlankExtraWebsiteUrls(sections: readonly KeyFormEditorSection[]): KeyFormEditorSection[] {
+export function omitBlankExtraWebsiteUrls(sections: readonly KeyFormEditorSection[]): KeyFormEditorSection[] {
   return sections.map((section) => {
     if (section.id !== "websites") {
       return section;
