@@ -57,9 +57,7 @@ import PersonalDataBootstrapController from "../components/items/PersonalDataBoo
 import NewCapsulePopup from "../components/capsules/NewCapsulePopup";
 import CapsuleApprovalController from "../components/capsules/CapsuleApprovalController";
 import DeviceApprovalController from "../components/devices/DeviceApprovalController";
-import DeviceRecoveryApprovalController from "../components/devices/DeviceRecoveryApprovalController";
 import TrustedContactInviteController from "../components/devices/TrustedContactInviteController";
-import ContactsShareReleaseController from "../components/devices/ContactsShareReleaseController";
 import accountRecoveryModule from "@okkey-enterprise/account-recovery";
 import NewVaultPopup from "../components/workspace/settings/vaults/NewVaultPopup";
 import enterpriseSharedVaultsModule from "@okkey-enterprise/workspace-shared-vaults";
@@ -189,6 +187,8 @@ function shellTitleKey(pathname: string): string {
   }
 }
 
+const DeviceRecoveryApprovalController = accountRecoveryModule.DeviceRecoveryApprovalController;
+const ContactsShareReleaseController = accountRecoveryModule.ContactsShareReleaseController;
 const ContactsShareAutoEnrollController = accountRecoveryModule.ContactsShareAutoEnrollController;
 
 export default function WorkspaceRoutesLayout() {
@@ -1087,9 +1087,13 @@ function WorkspaceShellWithItems({
           />
           <CapsuleApprovalController />
           <DeviceApprovalController />
-          {enterpriseModulesOn ? <DeviceRecoveryApprovalController /> : null}
+          {DeviceRecoveryApprovalController && enterpriseModulesOn ? (
+            <DeviceRecoveryApprovalController />
+          ) : null}
           <TrustedContactInviteController />
-          {enterpriseModulesOn ? <ContactsShareReleaseController /> : null}
+          {ContactsShareReleaseController && enterpriseModulesOn ? (
+            <ContactsShareReleaseController />
+          ) : null}
           {ContactsShareAutoEnrollController && enterpriseModulesOn ? (
             <ContactsShareAutoEnrollController />
           ) : null}

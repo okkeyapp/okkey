@@ -7,6 +7,8 @@ const stub: AccountRecoveryEnterpriseModule = {
   DeviceApproveInbox: null,
   ContactsReleaseInbox: null,
   ContactsShareAutoEnrollController: null,
+  DeviceRecoveryApprovalController: null,
+  ContactsShareReleaseController: null,
 };
 
 export default stub;
