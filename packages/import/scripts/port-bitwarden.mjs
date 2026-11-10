@@ -64,7 +64,9 @@ function transformSource(source, relDepth) {
 }
 
 async function main() {
-  const treeRes = await fetch("https://api.github.com/repos/bitwarden/clients/git/trees/main?recursive=1");
+  const treeRes = await fetch("https://api.github.com/repos/bitwarden/clients/git/trees/main?recursive=1", {
+    headers: { "X-GitHub-Api-Version": "2026-03-10" },
+  });
   const tree = await treeRes.json();
   const files = tree.tree
     .map((t) => t.path)
