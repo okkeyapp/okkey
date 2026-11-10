@@ -128,7 +128,7 @@ export class VaultService {
         throw new VaultServiceError(
           "PLAN_FEATURE_REQUIRED",
           403,
-          "shared vaults require a paid plan",
+          "shared vaults are not available on this plan",
         );
       }
     }

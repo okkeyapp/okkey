@@ -11,6 +11,7 @@ import type {
   WorkspaceMonitoringCardSettings,
 } from "@okkey/types";
 import {
+  normalizePlanTier,
   sanitizePlanFeatureOverrides,
   workspaceCapsulePoliciesFromDto,
   workspaceCapsulePoliciesToDto,
@@ -470,7 +471,7 @@ export class WorkspacesRepository {
         VALUES ($1, $2, $3, $4)
         RETURNING ${WORKSPACE_SELECT_COLUMNS}
       `,
-      [id, input.name, input.ownerId, input.planTier ?? "FREE"],
+      [id, input.name, input.ownerId, normalizePlanTier(input.planTier ?? "FREE")],
     );
     return mapWorkspace(rows[0]);
   }
@@ -491,6 +492,7 @@ export class WorkspacesRepository {
     return rows[0] ? mapWorkspace(rows[0]) : null;
   }
 
+  /** Headcount of `workspace_members`, including the owner. Not the additional-seat quota. */
   async countMembers(workspaceId: string): Promise<number> {
     const rows = await this.db.query<{ count: string }>(
       `SELECT COUNT(*)::text AS count FROM workspace_members WHERE workspace_id = $1`,
@@ -4314,7 +4316,7 @@ function mapWorkspace(row: WorkspaceRow): WorkspaceRecord {
     id: row.id,
     name: row.name,
     ownerId: row.owner_id,
-    planTier: row.plan_tier,
+    planTier: normalizePlanTier(row.plan_tier),
     planCustomOverride: Boolean(row.plan_custom_override),
     planFeatureOverrides: sanitizePlanFeatureOverrides(row.plan_feature_overrides),
     deletedItemsRetentionDays: row.deleted_items_retention_days,

@@ -202,6 +202,18 @@ test("PlanChangeRequestService rejects invalid tier and email", async () => {
   );
 });
 
+test("PlanChangeRequestService reads a requested FAMILY tier as PREMIUM", async () => {
+  const { service, sent } = makeService({
+    deploymentMode: "saas",
+    planTier: "FREE",
+  });
+  const result = await service.submit({ ...baseSubmit, requestedPlanTier: "FAMILY" });
+  assert.deepEqual(result, { submitted: true });
+  const payload = sent[0] as { variables: Record<string, unknown> };
+  assert.equal(payload.variables.currentPlanTier, "FREE");
+  assert.equal(payload.variables.requestedPlanTier, "PREMIUM");
+});
+
 test("PlanChangeRequestService rejects missing member count on self-hosted", async () => {
   const { service } = makeService();
   await assert.rejects(
@@ -253,6 +265,23 @@ test("PlanChangeRequestService still rejects SaaS downgrade / same-tier", async 
     (error: unknown) =>
       error instanceof PlanChangeRequestServiceError && error.code === "PLAN_DOWNGRADE_FORBIDDEN",
   );
+});
+
+test("PlanChangeRequestService reads legacy FAMILY as PREMIUM on SaaS", async () => {
+  const { service, sent } = makeService({
+    deploymentMode: "saas",
+    planTier: "FAMILY",
+  });
+  await assert.rejects(
+    () => service.submit({ ...baseSubmit, requestedPlanTier: "PREMIUM" }),
+    (error: unknown) =>
+      error instanceof PlanChangeRequestServiceError && error.code === "PLAN_DOWNGRADE_FORBIDDEN",
+  );
+  const result = await service.submit({ ...baseSubmit, requestedPlanTier: "TEAM" });
+  assert.deepEqual(result, { submitted: true });
+  const payload = sent[0] as { variables: Record<string, unknown> };
+  assert.equal(payload.variables.currentPlanTier, "PREMIUM");
+  assert.equal(payload.variables.requestedPlanTier, "TEAM");
 });
 
 test("PlanChangeRequestService sends auto fields and marks sent", async () => {

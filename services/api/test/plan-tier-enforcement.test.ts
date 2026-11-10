@@ -52,9 +52,9 @@ function serviceForTier(planTier: "FREE" | "ENTERPRISE"): CapsuleService {
 test("FREE denies capsule access settings and ENTERPRISE allows them", async () => {
   assert.equal(hasPlanFeature("FREE", "capsuleAccessSettings"), false);
   assert.equal(hasPlanFeature("ENTERPRISE", "capsuleAccessSettings"), true);
-  assert.equal(getPlanQuotaLimits("FREE").maxAdditionalMembers, 0);
+  assert.equal(getPlanQuotaLimits("FREE").maxAdditionalMembers, 3);
   assert.equal(getPlanQuotaLimits("ENTERPRISE").maxAdditionalMembers, null);
-  assert.equal(getPlanQuotaLimits("FREE").maxSharedVaults, 0);
+  assert.equal(getPlanQuotaLimits("FREE").maxSharedVaults, 1);
   assert.equal(getPlanQuotaLimits("ENTERPRISE").maxSharedVaults, null);
 
   await assert.rejects(

@@ -2,9 +2,8 @@ import { randomUUID } from "node:crypto";
 
 import {
   canRequestPlanUpgrade,
-  isPlanTier,
   normalizePlanTier,
-  type PlanTier,
+  readPlanTier,
 } from "@okkey/types";
 
 import type { DeploymentMode } from "../config.ts";
@@ -243,14 +242,14 @@ export class PlanChangeRequestService {
       );
     }
 
-    if (!isPlanTier(input.requestedPlanTier)) {
+    const requestedPlanTier = readPlanTier(input.requestedPlanTier);
+    if (!requestedPlanTier) {
       throw new PlanChangeRequestServiceError(
         "INVALID_REQUEST",
         400,
         "requested plan tier is invalid",
       );
     }
-    const requestedPlanTier = input.requestedPlanTier as PlanTier;
 
     const locale =
       input.locale === "ru" || input.locale === "en" ? input.locale : "en";

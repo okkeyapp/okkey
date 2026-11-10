@@ -537,7 +537,7 @@ export class SyncService {
   }
 
   /**
-   * After EE→FREE (no `sharedVaults`), existing shared vaults stay readable/editable,
+   * When `sharedVaults` is off, existing shared vaults stay readable/editable,
    * but new items / move-into shared must be denied.
    */
   private async assertSharedVaultItemCreateAllowed(vault: VaultRecord): Promise<void> {
@@ -548,7 +548,7 @@ export class SyncService {
       throw new SyncServiceError(
         "PLAN_FEATURE_REQUIRED",
         403,
-        "shared vaults require a paid plan",
+        "shared vaults are not available on this plan",
       );
     }
     const planConfig: PlanEntitlementRuntimeConfig = {

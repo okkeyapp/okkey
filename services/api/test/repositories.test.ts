@@ -104,6 +104,28 @@ test("UsersRepository.hasAnyUsers maps EXISTS result", async () => {
   assert.equal(await new UsersRepository(populated).hasAnyUsers(), true);
 });
 
+test("WorkspacesRepository maps legacy FAMILY plan_tier to PREMIUM and keeps overrides", async () => {
+  const db = new FakeDb();
+  db.enqueueResult([
+    {
+      id: "w1",
+      name: "Acme",
+      owner_id: "u1",
+      plan_tier: "FAMILY",
+      plan_custom_override: true,
+      plan_feature_overrides: { monitoring: false },
+      created_at: "2026-01-01T00:00:00.000Z",
+      updated_at: "2026-01-01T00:00:00.000Z",
+    },
+  ]);
+
+  const items = await new WorkspacesRepository(db).listByOwner("u1");
+  assert.equal(items.length, 1);
+  assert.equal(items[0].planTier, "PREMIUM");
+  assert.equal(items[0].planCustomOverride, true);
+  assert.deepEqual(items[0].planFeatureOverrides, { monitoring: false });
+});
+
 test("WorkspacesRepository.listByOwner returns mapped workspaces", async () => {
   const db = new FakeDb();
   db.enqueueResult([
