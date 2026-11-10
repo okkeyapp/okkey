@@ -1387,6 +1387,13 @@ export class CapsuleService {
       );
     }
     const provider = getCapsuleAccessSettingsProvider();
+    if (!provider && input.approvalRequired) {
+      throw new CapsuleServiceError(
+        "FEATURE_NOT_AVAILABLE",
+        403,
+        "capsule access settings are unavailable on this plan",
+      );
+    }
     if (provider) {
       const prepared = await provider.prepareWrite({
         mode: args.mode,
