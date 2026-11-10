@@ -24,7 +24,6 @@ import { SyncService } from "./sync/service.ts";
 import { WorkspacePersonalSyncService } from "./workspace-personal-sync/service.ts";
 import { WorkspaceKeyService, WorkspaceKeyServiceError } from "./workspace-key/service.ts";
 import { PgWorkspaceKeyStore } from "./workspace-key/store.ts";
-import { assertWorkspacePermission, WorkspacePermissionError } from "./workspace-roles/permissions.ts";
 import { TwoFactorService } from "./two-factor/service.ts";
 import { WebAuthnService } from "./webauthn/service.ts";
 import { WebAuthnCredentialsRepository } from "./webauthn/repository.ts";
@@ -55,6 +54,7 @@ import { ItemFaviconService } from "./favicon/service.ts";
 import { AttachmentService } from "./attachments/service.ts";
 import { WorkspaceStorageQuotaService } from "./storage-quota/service.ts";
 import {
+  assertWorkspacePermission,
   resolveWorkspacePermissions,
   WorkspacePermissionError,
 } from "./workspace-roles/permissions.ts";
