@@ -37,6 +37,33 @@ export type PlanCustomOverride = {
   featureOverrides: PlanFeatureOverrides;
 };
 
+/**
+ * Encrypted workspace storage ceiling.
+ * `baseMb === null` means no ceiling (self-hosted).
+ * Otherwise the limit is `baseMb + perMemberMb * active members` (owner included).
+ */
+export type WorkspaceStorageQuota = {
+  /** MiB included before the per-member allowance. null = no ceiling. */
+  baseMb: number | null;
+  /** Extra MiB for each active member, including the owner. Ignored when `baseMb` is null. */
+  perMemberMb: number;
+};
+
+/** Resolved storage ceiling plus current usage, for clients that already read plan quotas. */
+export type WorkspaceStorageQuotaStatus = WorkspaceStorageQuota & {
+  /** Resolved ceiling in MiB. null = no ceiling. */
+  limitMb: number | null;
+  /** Resolved ceiling in bytes (1024-based MiB). null = no ceiling. */
+  limitBytes: number | null;
+  /** Bytes of encrypted workspace content currently stored. */
+  usedBytes: number;
+  /** Active workspace members, including the owner. */
+  activeMemberCount: number;
+};
+
+/** HTTP error code when a write would exceed the workspace storage ceiling. */
+export const PLAN_QUOTA_EXCEEDED = "PLAN_QUOTA_EXCEEDED";
+
 /** Soft numeric limits associated with a catalog tier (null = unlimited). */
 export type PlanQuotaLimits = {
   /**
@@ -46,8 +73,10 @@ export type PlanQuotaLimits = {
   maxAdditionalMembers: number | null;
   /** Max shared vaults. The personal vault is separate and always allowed. */
   maxSharedVaults: number | null;
-  /** Soft attachment / file storage budget in MiB (enforcement later). */
+  /** Soft attachment / file storage budget in MiB. Not the enforced content ceiling. */
   maxAttachmentStorageMb: number | null;
+  /** Encrypted content budget (items, notes, capsules, and files). */
+  storageQuota: WorkspaceStorageQuota;
 };
 
 /** Product deployment mode (API `OKKEY_DEPLOYMENT_MODE` / web `VITE_DEPLOYMENT_MODE`). */
@@ -145,7 +174,7 @@ const BUSINESS_FEATURES = {
  * - PREMIUM: FREE plus files in items and capsules, monitoring, recovery, trusted contacts,
  *   and the paid badge.
  * - TEAM / ENTERPRISE: PREMIUM plus capsule access settings, custom roles, and custom profiles.
- *   ENTERPRISE quotas are unlimited; attachment storage numbers stay on the catalog.
+ *   ENTERPRISE member and shared-vault quotas are unlimited; attachment storage numbers stay on the catalog.
  */
 export const PLAN_FEATURE_MATRIX: Record<PlanTier, Record<PlanFeature, boolean>> = {
   FREE: { ...FREE_FEATURES },
@@ -164,9 +193,24 @@ export const SELF_HOSTED_FREE_EXTRA: Readonly<Partial<Record<PlanFeature, boolea
   filesInCapsules: true,
 };
 
+/** 5 GiB shared base and 5 GiB per active member (TEAM / ENTERPRISE on SaaS). */
+const STORAGE_PER_MEMBER_MIB = 5 * 1024;
+
+const NO_STORAGE_CEILING: WorkspaceStorageQuota = { baseMb: null, perMemberMb: 0 };
+
+function fixedStorageQuota(baseMb: number): WorkspaceStorageQuota {
+  return { baseMb, perMemberMb: 0 };
+}
+
+function perMemberStorageQuota(sharedAndPerMemberMb: number): WorkspaceStorageQuota {
+  return { baseMb: sharedAndPerMemberMb, perMemberMb: sharedAndPerMemberMb };
+}
+
 /**
  * SaaS catalog quotas. Self-hosted FREE replaces member / shared-vault cells via
- * {@link SELF_HOSTED_FREE_QUOTA_OVERRIDES}. `maxAttachmentStorageMb` is not enforced yet.
+ * {@link SELF_HOSTED_FREE_QUOTA_OVERRIDES}. `maxAttachmentStorageMb` is not the enforced ceiling.
+ * `storageQuota` is the encrypted-content ceiling; self-hosted replaces it with no ceiling
+ * in {@link getPlanQuotaLimits}.
  * null = unlimited.
  */
 export const PLAN_QUOTA_LIMITS: Record<PlanTier, PlanQuotaLimits> = {
@@ -174,21 +218,25 @@ export const PLAN_QUOTA_LIMITS: Record<PlanTier, PlanQuotaLimits> = {
     maxAdditionalMembers: 3,
     maxSharedVaults: 1,
     maxAttachmentStorageMb: 0,
+    storageQuota: fixedStorageQuota(100),
   },
   PREMIUM: {
     maxAdditionalMembers: 10,
     maxSharedVaults: 1,
     maxAttachmentStorageMb: 5 * 1024,
+    storageQuota: fixedStorageQuota(5 * 1024),
   },
   TEAM: {
     maxAdditionalMembers: 25,
     maxSharedVaults: 5,
     maxAttachmentStorageMb: 100 * 1024,
+    storageQuota: perMemberStorageQuota(STORAGE_PER_MEMBER_MIB),
   },
   ENTERPRISE: {
     maxAdditionalMembers: null,
     maxSharedVaults: null,
     maxAttachmentStorageMb: null,
+    storageQuota: perMemberStorageQuota(STORAGE_PER_MEMBER_MIB),
   },
 };
 
@@ -308,11 +356,68 @@ export function getPlanQuotaLimits(
   options?: Pick<PlanEntitlementOptions, "deploymentMode" | "enterpriseModulesActive">,
 ): PlanQuotaLimits {
   const effectiveTier = resolveEntitlementPlanTier(planTier, options);
-  const base = PLAN_QUOTA_LIMITS[effectiveTier];
-  if (options?.deploymentMode === "self_hosted" && effectiveTier === "FREE") {
-    return { ...base, ...SELF_HOSTED_FREE_QUOTA_OVERRIDES };
+  const catalog =
+    options?.deploymentMode === "self_hosted" && effectiveTier === "FREE"
+      ? { ...PLAN_QUOTA_LIMITS[effectiveTier], ...SELF_HOSTED_FREE_QUOTA_OVERRIDES }
+      : PLAN_QUOTA_LIMITS[effectiveTier];
+  if (options?.deploymentMode === "self_hosted") {
+    return {
+      ...catalog,
+      storageQuota: NO_STORAGE_CEILING,
+    };
   }
-  return base;
+  return catalog;
+}
+
+/** 1024-based mebibyte, matching the storage quota unit. */
+export const STORAGE_QUOTA_BYTES_PER_MIB = 1024 * 1024;
+
+/**
+ * Resolved storage ceiling in MiB.
+ * A missing or empty member list still counts the owner as one member.
+ * null = no ceiling.
+ */
+export function resolveWorkspaceStorageLimitMb(
+  quota: WorkspaceStorageQuota,
+  activeMemberCount: number,
+): number | null {
+  if (quota.baseMb === null) {
+    return null;
+  }
+  const members = Number.isFinite(activeMemberCount) ? Math.max(1, Math.floor(activeMemberCount)) : 1;
+  return quota.baseMb + quota.perMemberMb * members;
+}
+
+/** Resolved storage ceiling in bytes. null = no ceiling. */
+export function resolveWorkspaceStorageLimitBytes(
+  quota: WorkspaceStorageQuota,
+  activeMemberCount: number,
+): number | null {
+  const limitMb = resolveWorkspaceStorageLimitMb(quota, activeMemberCount);
+  if (limitMb === null) {
+    return null;
+  }
+  return limitMb * STORAGE_QUOTA_BYTES_PER_MIB;
+}
+
+/**
+ * True when `usedBytes - replacedBytes + additionalBytes` is strictly above the ceiling.
+ * A null ceiling never exceeds. Deletes (no additional bytes) do not exceed.
+ */
+export function storageWriteExceedsQuota(input: {
+  limitBytes: number | null;
+  usedBytes: number;
+  additionalBytes: number;
+  replacedBytes?: number;
+}): boolean {
+  if (input.limitBytes === null) {
+    return false;
+  }
+  const used = Number.isFinite(input.usedBytes) ? Math.max(0, input.usedBytes) : 0;
+  const additional = Number.isFinite(input.additionalBytes) ? Math.max(0, input.additionalBytes) : 0;
+  const replaced = Number.isFinite(input.replacedBytes) ? Math.max(0, input.replacedBytes ?? 0) : 0;
+  const projected = used - Math.min(used, replaced) + additional;
+  return projected > input.limitBytes;
 }
 
 /** All feature flags for a tier (after optional custom overrides). */

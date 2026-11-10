@@ -44,6 +44,10 @@ import {
 } from "../crypto/signature-requirement.ts";
 import { isEntityId } from "../entity-id.ts";
 import { type PlanEntitlementRuntimeConfig } from "../plan-entitlements.ts";
+import {
+  PlanQuotaExceededError,
+  type WorkspaceStorageQuotaService,
+} from "../storage-quota/service.ts";
 import { evaluateSharedVaultItemCreateGate } from "./shared-vault-item-create-gate.ts";
 
 const SYNC_EVENT_TYPES = new Set([
@@ -94,6 +98,8 @@ export interface SyncServiceDeps {
   users?: Pick<UsersRepository, "findById">;
   /** Required in production to gate ITEM_CREATE on shared vaults after EE→FREE. */
   workspaces?: Pick<WorkspacesRepository, "findById">;
+  /** When set, SaaS item writes are rejected once encrypted content exceeds the plan ceiling. */
+  storageQuota?: WorkspaceStorageQuotaService;
   config?: Partial<
     Pick<
       ApiConfig,
@@ -143,6 +149,7 @@ export class SyncService {
   private readonly softDeletes: SyncServiceDeps["softDeletes"];
   private readonly users: SyncServiceDeps["users"];
   private readonly workspaces: SyncServiceDeps["workspaces"];
+  private readonly storageQuota: SyncServiceDeps["storageQuota"];
   private readonly config: Pick<
     ApiConfig,
     | "allowedCryptoProfileVersions"
@@ -162,6 +169,7 @@ export class SyncService {
     this.softDeletes = deps.softDeletes;
     this.users = deps.users;
     this.workspaces = deps.workspaces;
+    this.storageQuota = deps.storageQuota;
     this.config = {
       allowedCryptoProfileVersions: [2],
       deployEnv: "dev",
@@ -436,6 +444,44 @@ export class SyncService {
     if (itemEventTypes.has(input.eventType)) {
       itemSoftDeleted =
         input.eventType === "ITEM_DELETE" ? true : input.itemSoftDeleted === true;
+    }
+
+    if (
+      this.storageQuota &&
+      (input.eventType === "ITEM_CREATE" || input.eventType === "ITEM_UPDATE") &&
+      itemSoftDeleted !== true &&
+      referencedItemId
+    ) {
+      const existingIdempotent = input.idempotencyKey
+        ? await this.events.findByIdempotencyKey(vaultId, input.idempotencyKey)
+        : null;
+      if (!existingIdempotent) {
+        const workspace = this.workspaces
+          ? await this.workspaces.findById(vault.workspaceId)
+          : null;
+        if (workspace) {
+          const nextPayloadBytes = serializeEncryptedBlobToStorage(normalizedBlob).byteLength;
+          try {
+            await this.storageQuota.assertVaultItemWrite({
+              workspace,
+              vaultId,
+              referencedItemId,
+              eventType: input.eventType,
+              nextPayloadBytes,
+            });
+          } catch (error) {
+            if (error instanceof PlanQuotaExceededError) {
+              throw new SyncServiceError(
+                error.code,
+                error.statusCode,
+                error.message,
+                error.details,
+              );
+            }
+            throw error;
+          }
+        }
+      }
     }
 
     try {

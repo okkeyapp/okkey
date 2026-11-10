@@ -12,6 +12,7 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { AttachmentService } from "./attachments/service.ts";
+import { WorkspaceStorageQuotaService } from "./storage-quota/service.ts";
 import { CapsuleService } from "./capsule/service.ts";
 import { MmdbGeoIpLookup } from "./capsule/geoip.ts";
 import { loadConfig } from "./config.ts";
@@ -64,11 +65,13 @@ async function main(): Promise<void> {
   await applySqlMigrations(storage.postgres, { logger });
 
   const geoIp = new MmdbGeoIpLookup(config.geoIpEnabled, config.geoIpDbPath, logger);
+  const storageQuota = new WorkspaceStorageQuotaService({ db: storage.postgres, config });
   const capsuleService = new CapsuleService({
     db: storage.postgres,
     redis: storage.redis,
     users: storage.repositories.users,
     objectStorage: storage.objectStorage,
+    storageQuota,
     geoIp,
     config,
     log: logger,
@@ -92,6 +95,7 @@ async function main(): Promise<void> {
         softDeletes: storage.repositories.vaultItemSoftDeletes,
         templates: storage.repositories.workspaceItemTemplates,
         config,
+        storageQuota,
         // Worker only purges attachments; branding checks are unused on this path.
         canUpdateWorkspaceBranding: async () => false,
       })

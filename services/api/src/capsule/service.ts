@@ -23,6 +23,10 @@ import { parseGuestSessionId } from "./guest-session-id.ts";
 import type { ApiConfig } from "../config.ts";
 import { workspaceHasPlanFeature } from "../plan-entitlements.ts";
 import {
+  PlanQuotaExceededError,
+  type WorkspaceStorageQuotaService,
+} from "../storage-quota/service.ts";
+import {
   CRYPTO_CAPABILITY_REQUIRED,
   CRYPTO_CAPABILITY_REQUIRED_STATUS_CODE,
   buildCapabilityPolicyDetails,
@@ -104,6 +108,8 @@ export interface CapsuleServiceDeps {
   >;
   users?: Pick<UsersRepository, "findById">;
   objectStorage: Pick<ObjectStorage, "putObject" | "getObject" | "deleteObject">;
+  /** When set, SaaS capsule writes are rejected once encrypted content exceeds the plan ceiling. */
+  storageQuota?: WorkspaceStorageQuotaService;
   geoIp?: GeoIpLookup;
   log?: Logger;
 }
@@ -189,6 +195,7 @@ export class CapsuleService {
   private readonly config: CapsuleServiceDeps["config"];
   private readonly users: CapsuleServiceDeps["users"];
   private readonly objectStorage: CapsuleServiceDeps["objectStorage"];
+  private readonly storageQuota: CapsuleServiceDeps["storageQuota"];
   private readonly geoIp?: GeoIpLookup;
   private readonly log: Logger | undefined;
 
@@ -204,6 +211,7 @@ export class CapsuleService {
     };
     this.users = deps.users;
     this.objectStorage = deps.objectStorage;
+    this.storageQuota = deps.storageQuota;
     this.geoIp = deps.geoIp;
     this.log = deps.log;
   }
@@ -386,6 +394,15 @@ export class CapsuleService {
       input.allowedRecipientEmails,
       this.config.sessionSecret,
       keyTransportMode,
+    );
+    await this.assertStorageQuota(
+      workspaceId,
+      workspace.planTier,
+      payload.byteLength +
+        encryptedMetadata.byteLength +
+        (filePayload?.byteLength ?? 0) +
+        byteLengthOfPayloads(attachmentFilePayloads),
+      0,
     );
 
     const rows = await this.db.transaction(async (tx) => {
@@ -727,6 +744,21 @@ export class CapsuleService {
       const attachmentFilePayloads = parseAttachmentFilePayloads(
         input.attachmentFilePayloads,
         input.type,
+      );
+      const replacedFileBytes =
+        existingPolicy.fileStorageKey && (!keepFile || replacingFile)
+          ? (existingPolicy.fileSizeBytes ?? 0)
+          : 0;
+      await this.assertStorageQuota(
+        existing.workspace_id,
+        workspace.planTier,
+        payload.byteLength +
+          encryptedMetadata.byteLength +
+          (filePayload?.byteLength ?? 0) +
+          byteLengthOfPayloads(attachmentFilePayloads),
+        existing.encrypted_payload.byteLength +
+          (existing.encrypted_metadata?.byteLength ?? 0) +
+          replacedFileBytes,
       );
 
       const rows = await this.db.transaction(async (tx) => {
@@ -1597,6 +1629,29 @@ export class CapsuleService {
       .filter((email) => email && hashSet.has(hashRecipient(email, this.config.sessionSecret)));
   }
 
+  private async assertStorageQuota(
+    workspaceId: string,
+    planTier: string | null,
+    additionalBytes: number,
+    replacedBytes: number,
+  ): Promise<void> {
+    if (!this.storageQuota) {
+      return;
+    }
+    try {
+      await this.storageQuota.assertAdditionalBytes({
+        workspace: { id: workspaceId, planTier },
+        additionalBytes,
+        replacedBytes,
+      });
+    } catch (error) {
+      if (error instanceof PlanQuotaExceededError) {
+        throw new CapsuleServiceError(error.code, error.statusCode, error.message, error.details);
+      }
+      throw error;
+    }
+  }
+
   private async readWorkspaceAccess(
     workspaceId: string,
     userId: string,
@@ -2111,6 +2166,17 @@ function capsuleWriteAttachesFiles(input: {
     return false;
   }
   return Object.keys(attachments).some((assetId) => assetId.trim().length > 0);
+}
+
+function byteLengthOfPayloads(payloads: Record<string, Uint8Array | Buffer> | null): number {
+  if (!payloads) {
+    return 0;
+  }
+  let total = 0;
+  for (const value of Object.values(payloads)) {
+    total += value.byteLength;
+  }
+  return total;
 }
 
 function parseAttachmentFilePayloads(

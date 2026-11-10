@@ -8,6 +8,9 @@ import {
   PLAN_TIERS,
   getPlanQuotaLimits,
   hasPlanFeature,
+  resolveWorkspaceStorageLimitMb,
+  storageWriteExceedsQuota,
+  STORAGE_QUOTA_BYTES_PER_MIB,
   isPlanTier,
   normalizePlanTier,
   planEntitlementOptionsFromWorkspace,
@@ -156,28 +159,33 @@ test("sanitizePlanFeatureOverrides ignores unknown keys", () => {
   assert.deepEqual(sanitized, { monitoring: true });
 });
 
-test("PLAN_QUOTA_LIMITS: SaaS catalog seats and shared vaults; ENTERPRISE unlimited", () => {
+test("PLAN_QUOTA_LIMITS: catalog seats stay; storage ceilings are fixed or per member", () => {
   assert.deepEqual(getPlanQuotaLimits("FREE"), {
     maxAdditionalMembers: 3,
     maxSharedVaults: 1,
     maxAttachmentStorageMb: 0,
+    storageQuota: { baseMb: 100, perMemberMb: 0 },
   });
   assert.deepEqual(getPlanQuotaLimits("PREMIUM"), {
     maxAdditionalMembers: 10,
     maxSharedVaults: 1,
     maxAttachmentStorageMb: 5 * 1024,
+    storageQuota: { baseMb: 5 * 1024, perMemberMb: 0 },
   });
   assert.deepEqual(getPlanQuotaLimits("TEAM"), {
     maxAdditionalMembers: 25,
     maxSharedVaults: 5,
     maxAttachmentStorageMb: 100 * 1024,
+    storageQuota: { baseMb: 5 * 1024, perMemberMb: 5 * 1024 },
   });
   assert.deepEqual(PLAN_QUOTA_LIMITS.ENTERPRISE, {
     maxAdditionalMembers: null,
     maxSharedVaults: null,
     maxAttachmentStorageMb: null,
+    storageQuota: { baseMb: 5 * 1024, perMemberMb: 5 * 1024 },
   });
   assert.equal(getPlanQuotaLimits("unknown").maxAdditionalMembers, 3);
+  assert.equal(getPlanQuotaLimits("unknown").storageQuota.baseMb, 100);
   assert.deepEqual(getPlanQuotaLimits("FAMILY"), getPlanQuotaLimits("PREMIUM"));
 });
 
@@ -306,6 +314,81 @@ test("self_hosted entitlements: modules off → FREE; modules on → ENTERPRISE 
       enterpriseModulesActive: true,
     }).maxAdditionalMembers,
     null,
+  );
+});
+
+test("storage ceiling: self-host none; SaaS FREE 100; PREMIUM 5120; TEAM/ENTERPRISE per member", () => {
+  assert.equal(
+    getPlanQuotaLimits("FREE", { deploymentMode: "self_hosted", enterpriseModulesActive: false })
+      .storageQuota.baseMb,
+    null,
+  );
+  assert.equal(
+    getPlanQuotaLimits("ENTERPRISE", {
+      deploymentMode: "self_hosted",
+      enterpriseModulesActive: true,
+    }).storageQuota.baseMb,
+    null,
+  );
+  assert.equal(
+    getPlanQuotaLimits("PREMIUM", { deploymentMode: "self_hosted", enterpriseModulesActive: false })
+      .maxAttachmentStorageMb,
+    0,
+  );
+  assert.equal(
+    resolveWorkspaceStorageLimitMb(getPlanQuotaLimits("FREE", { deploymentMode: "saas" }).storageQuota, 4),
+    100,
+  );
+  assert.equal(
+    resolveWorkspaceStorageLimitMb(
+      getPlanQuotaLimits("PREMIUM", { deploymentMode: "saas" }).storageQuota,
+      1,
+    ),
+    5120,
+  );
+  assert.equal(
+    resolveWorkspaceStorageLimitMb(getPlanQuotaLimits("TEAM", { deploymentMode: "saas" }).storageQuota, 3),
+    5120 * 3 + 5120,
+  );
+  assert.equal(
+    resolveWorkspaceStorageLimitMb(
+      getPlanQuotaLimits("ENTERPRISE", { deploymentMode: "saas" }).storageQuota,
+      0,
+    ),
+    5120 + 5120,
+  );
+  assert.equal(
+    resolveWorkspaceStorageLimitMb(
+      getPlanQuotaLimits("FAMILY", { deploymentMode: "saas" }).storageQuota,
+      6,
+    ),
+    5120,
+  );
+  const limitBytes = 100 * STORAGE_QUOTA_BYTES_PER_MIB;
+  assert.equal(
+    storageWriteExceedsQuota({ limitBytes, usedBytes: limitBytes, additionalBytes: 0 }),
+    false,
+  );
+  assert.equal(
+    storageWriteExceedsQuota({ limitBytes, usedBytes: limitBytes - 10, additionalBytes: 10 }),
+    false,
+  );
+  assert.equal(
+    storageWriteExceedsQuota({ limitBytes, usedBytes: limitBytes, additionalBytes: 1 }),
+    true,
+  );
+  assert.equal(
+    storageWriteExceedsQuota({
+      limitBytes,
+      usedBytes: limitBytes,
+      additionalBytes: 20,
+      replacedBytes: 20,
+    }),
+    false,
+  );
+  assert.equal(
+    storageWriteExceedsQuota({ limitBytes: null, usedBytes: limitBytes, additionalBytes: limitBytes }),
+    false,
   );
 });
 

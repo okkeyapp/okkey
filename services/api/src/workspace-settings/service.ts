@@ -21,7 +21,9 @@ import {
   type WorkspaceCapsulePoliciesDto,
   type WorkspaceMonitoringCardSettings,
   type WorkspaceMonitoringCardSettingsDto,
+  type WorkspaceStorageQuotaStatus,
 } from "@okkey/types";
+import type { WorkspaceStorageQuotaService } from "../storage-quota/service.ts";
 
 export const DEFAULT_DELETED_ITEMS_RETENTION_DAYS = 30;
 export const DEFAULT_WORKSPACE_TILE_COLOR = "#3B82F6";
@@ -40,6 +42,8 @@ export type WorkspaceSettingsSnapshot = {
   tileColor: string | null;
   logoVaultId: string | null;
   logoAttachmentId: string | null;
+  /** Present when the API process wires storage quota measurement. */
+  storageQuota?: WorkspaceStorageQuotaStatus;
 };
 
 export type WorkspaceSettingsPatch = {
@@ -74,6 +78,7 @@ export interface WorkspaceSettingsServiceDeps {
   vaults: Pick<VaultsRepository, "findById">;
   db: QueryExecutor;
   config: Pick<ApiConfig, "deploymentMode" | "enterpriseModulesEnabled">;
+  storageQuota?: WorkspaceStorageQuotaService;
 }
 
 export class WorkspaceSettingsService {
@@ -81,18 +86,20 @@ export class WorkspaceSettingsService {
   private readonly vaults: WorkspaceSettingsServiceDeps["vaults"];
   private readonly db: QueryExecutor;
   private readonly config: WorkspaceSettingsServiceDeps["config"];
+  private readonly storageQuota: WorkspaceSettingsServiceDeps["storageQuota"];
 
   constructor(deps: WorkspaceSettingsServiceDeps) {
     this.workspaces = deps.workspaces;
     this.vaults = deps.vaults;
     this.db = deps.db;
     this.config = deps.config;
+    this.storageQuota = deps.storageQuota;
   }
 
   async getSettings(workspaceId: string, userId: string): Promise<WorkspaceSettingsSnapshot> {
     const workspace = await this.requireAccessibleWorkspace(workspaceId, userId);
     await this.assertAnySettingsGet(workspaceId, userId);
-    return toSettingsSnapshot(workspace);
+    return this.withStorageQuota(workspace, toSettingsSnapshot(workspace));
   }
 
   async updateSettings(
@@ -149,11 +156,11 @@ export class WorkspaceSettingsService {
     }
 
     if (Object.keys(update).length === 0) {
-      return toSettingsSnapshot(workspace);
+      return this.withStorageQuota(workspace, toSettingsSnapshot(workspace));
     }
 
     const updated = await this.workspaces.updateGeneralSettings(workspaceId, update);
-    return toSettingsSnapshot(updated);
+    return this.withStorageQuota(updated, toSettingsSnapshot(updated));
   }
 
   async deleteWorkspace(workspaceId: string, userId: string, confirmationName: string): Promise<void> {
@@ -169,6 +176,19 @@ export class WorkspaceSettingsService {
     if (!deleted) {
       throw new WorkspaceSettingsServiceError("WORKSPACE_NOT_FOUND", 404, "workspace not found");
     }
+  }
+
+  private async withStorageQuota(
+    workspace: { id: string; planTier?: string | null },
+    snapshot: WorkspaceSettingsSnapshot,
+  ): Promise<WorkspaceSettingsSnapshot> {
+    if (!this.storageQuota) {
+      return snapshot;
+    }
+    return {
+      ...snapshot,
+      storageQuota: await this.storageQuota.snapshot(workspace),
+    };
   }
 
   private async assertAnySettingsGet(workspaceId: string, userId: string): Promise<void> {

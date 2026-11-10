@@ -48,6 +48,7 @@ import {
 import { applySqlMigrations } from "./storage/migrate.ts";
 import { ItemFaviconService } from "./favicon/service.ts";
 import { AttachmentService } from "./attachments/service.ts";
+import { WorkspaceStorageQuotaService } from "./storage-quota/service.ts";
 import {
   resolveWorkspacePermissions,
   WorkspacePermissionError,
@@ -138,11 +139,13 @@ async function main(): Promise<void> {
     defaults: storage.repositories.workspaceMemberCapsuleDefaults,
     workspaces: storage.repositories.workspaces,
   });
+  const storageQuota = new WorkspaceStorageQuotaService({ db: storage.postgres, config });
   const workspaceSettingsService = new WorkspaceSettingsService({
     workspaces: storage.repositories.workspaces,
     vaults: storage.repositories.vaults,
     db: storage.postgres,
     config,
+    storageQuota,
   });
   const planChangeRequestService = new PlanChangeRequestService({
     db: storage.postgres,
@@ -202,6 +205,7 @@ async function main(): Promise<void> {
     softDeletes: storage.repositories.vaultItemSoftDeletes,
     users: storage.repositories.users,
     workspaces: storage.repositories.workspaces,
+    storageQuota,
     config,
     log: logger,
   });
@@ -218,6 +222,7 @@ async function main(): Promise<void> {
     redis: storage.redis,
     users: storage.repositories.users,
     objectStorage: storage.objectStorage,
+    storageQuota,
     geoIp,
     config,
     log: logger,
@@ -264,6 +269,7 @@ async function main(): Promise<void> {
         softDeletes: storage.repositories.vaultItemSoftDeletes,
         templates: storage.repositories.workspaceItemTemplates,
         config,
+        storageQuota,
         canUpdateWorkspaceBranding: async (workspaceId, userId) => {
           try {
             const matrix = await resolveWorkspacePermissions(

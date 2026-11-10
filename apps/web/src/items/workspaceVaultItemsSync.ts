@@ -1,7 +1,7 @@
 import type { CoreClient } from "@okkey/api";
 import { decryptVaultItemPayload } from "@okkey/crypto";
 import type { ItemPlaintextV2, SyncAppendEventRequestDto, SyncEventWireDto, Vault } from "@okkey/types";
-import { generateEntityId, parseAndNormalizeItemPlaintextUtf8 } from "@okkey/types";
+import { PLAN_QUOTA_EXCEEDED, generateEntityId, parseAndNormalizeItemPlaintextUtf8 } from "@okkey/types";
 import {
   IndexedDbOutboxStore,
   SyncOutboxClient,
@@ -395,6 +395,14 @@ export function createWorkspaceVaultItemsSyncController(input: {
         await writeCachedState(input.userId, input.workspaceId, vaultStates);
       } catch {
         // Best-effort; surface the append failure either way.
+      }
+      if (remaining.lastErrorCode === PLAN_QUOTA_EXCEEDED) {
+        const quotaMessage = remaining.lastErrorMessage?.trim();
+        throw new Error(
+          quotaMessage && !/^[A-Z0-9_]+$/.test(quotaMessage)
+            ? quotaMessage
+            : "This workspace has reached its storage limit. Delete something or upgrade the plan to save more.",
+        );
       }
       throw new Error(
         remaining.lastErrorCode

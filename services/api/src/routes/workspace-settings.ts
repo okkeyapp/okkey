@@ -16,6 +16,7 @@ import {
 import {
   workspaceCapsulePoliciesToDto,
   workspaceMonitoringCardSettingsToDto,
+  type WorkspaceStorageQuotaStatus,
 } from "@okkey/types";
 
 function errorPayload(code: string, message: string, requestId: string) {
@@ -50,6 +51,7 @@ function serializeSettings(settings: {
   tileColor: string | null;
   logoVaultId: string | null;
   logoAttachmentId: string | null;
+  storageQuota?: WorkspaceStorageQuotaStatus;
 }) {
   return {
     name: settings.name,
@@ -62,6 +64,18 @@ function serializeSettings(settings: {
     tile_color: settings.tileColor,
     logo_vault_id: settings.logoVaultId,
     logo_attachment_id: settings.logoAttachmentId,
+    ...(settings.storageQuota
+      ? {
+          storage_quota: {
+            base_mb: settings.storageQuota.baseMb,
+            per_member_mb: settings.storageQuota.perMemberMb,
+            limit_mb: settings.storageQuota.limitMb,
+            limit_bytes: settings.storageQuota.limitBytes,
+            used_bytes: settings.storageQuota.usedBytes,
+            active_member_count: settings.storageQuota.activeMemberCount,
+          },
+        }
+      : {}),
   };
 }
 
