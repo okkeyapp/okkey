@@ -352,6 +352,7 @@ export class CapsuleService {
       );
     }
     enforceCapsulePoliciesOnWrite(capsulePolicies, input);
+    this.assertFilesInCapsulesAllowed(workspace, input);
 
     const activateAt = normalizeOptionalIsoDate(input.activateAt);
     const deactivateAt = normalizeOptionalIsoDate(input.deactivateAt ?? input.expiresAt);
@@ -680,6 +681,7 @@ export class CapsuleService {
         );
       }
       enforceCapsulePoliciesOnWrite(capsulePolicies, input);
+      this.assertFilesInCapsulesAllowed(workspace, input);
 
       const activateAt = normalizeOptionalIsoDate(input.activateAt);
       const deactivateAt = normalizeOptionalIsoDate(input.deactivateAt ?? input.expiresAt);
@@ -1653,6 +1655,32 @@ export class CapsuleService {
     };
   }
 
+  private assertFilesInCapsulesAllowed(
+    workspace: {
+      planTier: string | null;
+      planCustomOverride: boolean;
+      planFeatureOverrides: PlanFeatureOverrides;
+    },
+    input: {
+      type: string;
+      filePayload?: unknown;
+      attachmentFilePayloads?: Record<string, unknown>;
+      keepExistingFile?: boolean;
+    },
+  ): void {
+    if (!capsuleWriteAttachesFiles(input)) {
+      return;
+    }
+    if (workspaceHasPlanFeature(this.config, workspace, "filesInCapsules")) {
+      return;
+    }
+    throw new CapsuleServiceError(
+      "FEATURE_NOT_AVAILABLE",
+      403,
+      "files in capsules are unavailable on this plan",
+    );
+  }
+
   private async assertWorkspaceCapsulesEnabled(workspaceId: string): Promise<void> {
     const rows = await this.db.query<{ capsule_policies: unknown }>(
       `SELECT capsule_policies FROM workspaces WHERE id = $1`,
@@ -2063,6 +2091,26 @@ function validatePassword(capsule: CapsuleRow, password: string | undefined, sec
   if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) {
     throw new CapsuleServiceError("CAPSULE_PASSWORD_INVALID", 403, "password invalid");
   }
+}
+
+/** True when a create/update would store or keep a capsule file or item attachment. */
+function capsuleWriteAttachesFiles(input: {
+  type: string;
+  filePayload?: unknown;
+  attachmentFilePayloads?: Record<string, unknown>;
+  keepExistingFile?: boolean;
+}): boolean {
+  if (input.type === "file" || input.keepExistingFile === true) {
+    return true;
+  }
+  if (input.filePayload != null) {
+    return true;
+  }
+  const attachments = input.attachmentFilePayloads;
+  if (!attachments || typeof attachments !== "object") {
+    return false;
+  }
+  return Object.keys(attachments).some((assetId) => assetId.trim().length > 0);
 }
 
 function parseAttachmentFilePayloads(
