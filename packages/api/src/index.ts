@@ -43,6 +43,13 @@ import type {
   Vault,
   VaultUnlockBootstrapResponseDto,
   Workspace,
+  WorkspaceClientSettingsResponseDto,
+  WorkspaceClientSettingsUpdateRequestDto,
+  WorkspaceKeyGrantWrapRequestDto,
+  WorkspaceKeyPublishRequestDto,
+  WorkspaceKeyRotationDto,
+  WorkspaceKeyStateDto,
+  WorkspaceLogoPutResponseDto,
   AccountProfileResponseDto,
   AccountProfileUpdateRequestDto,
   AccountMasterPasswordChangeRequestDto,
@@ -178,6 +185,46 @@ export class ApiClient {
 
   async delete<T>(path: string, body?: unknown, options?: ApiRequestOptions): Promise<T> {
     return this.request<T>("DELETE", path, body, options);
+  }
+
+  async putBytes<T>(path: string, bytes: Uint8Array, options?: ApiRequestOptions): Promise<T> {
+    return this.requestBytes<T>("PUT", path, bytes, options);
+  }
+
+  async getBytes(path: string, options?: ApiRequestOptions): Promise<{ bytes: Uint8Array; headers: Headers }> {
+    const headers: Record<string, string> = { ...this.defaultHeaders, ...options?.headers };
+    const res = await this.fetchImpl(`${this.baseUrl}${path}`, { method: "GET", headers });
+    if (!res.ok) {
+      const raw: unknown = await res.json().catch(() => null);
+      throw new ApiRequestError(res.status, parseCoreApiErrorBody(raw, res));
+    }
+    return { bytes: new Uint8Array(await res.arrayBuffer()), headers: res.headers };
+  }
+
+  private async requestBytes<T>(
+    method: string,
+    path: string,
+    bytes: Uint8Array,
+    options?: ApiRequestOptions,
+  ): Promise<T> {
+    const headers: Record<string, string> = {
+      ...this.defaultHeaders,
+      ...options?.headers,
+      "Content-Type": "application/octet-stream",
+    };
+    const body = new ArrayBuffer(bytes.byteLength);
+    new Uint8Array(body).set(bytes);
+    const res = await this.fetchImpl(`${this.baseUrl}${path}`, { method, headers, body });
+    if (!res.ok) {
+      const raw: unknown = await res.json().catch(() => null);
+      throw new ApiRequestError(res.status, parseCoreApiErrorBody(raw, res));
+    }
+    const text = await res.text();
+    const trimmed = text.trim();
+    if (!trimmed) {
+      throw new SyntaxError("empty API response body");
+    }
+    return JSON.parse(trimmed) as T;
   }
 
   async request<T>(
@@ -509,10 +556,72 @@ export class CoreApiClient {
     );
   }
 
-  deleteWorkspaceMember(workspaceId: string, userId: string): Promise<{ deleted: true }> {
+  deleteWorkspaceMember(
+    workspaceId: string,
+    userId: string,
+    body?: { workspace_key_rotation?: WorkspaceKeyRotationDto },
+  ): Promise<{ deleted: true }> {
     return this.api.delete<{ deleted: true }>(
       `/workspaces/${encodeURIComponent(workspaceId)}/members/${encodeURIComponent(userId)}`,
+      body,
     );
+  }
+
+  getWorkspaceKey(workspaceId: string): Promise<WorkspaceKeyStateDto> {
+    return this.api.get<WorkspaceKeyStateDto>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/workspace-key`,
+    );
+  }
+
+  publishWorkspaceKey(
+    workspaceId: string,
+    body: WorkspaceKeyPublishRequestDto,
+  ): Promise<{ current_version: number }> {
+    return this.api.post<{ current_version: number }>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/workspace-key`,
+      body,
+    );
+  }
+
+  grantWorkspaceKeyWrap(
+    workspaceId: string,
+    body: WorkspaceKeyGrantWrapRequestDto,
+  ): Promise<{ key_version: number }> {
+    return this.api.post<{ key_version: number }>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/workspace-key/wraps`,
+      body,
+    );
+  }
+
+  getWorkspaceLogo(workspaceId: string): Promise<{ bytes: Uint8Array; keyVersion: number | null }> {
+    return this.api.getBytes(`/workspaces/${encodeURIComponent(workspaceId)}/logo`).then((result) => ({
+      bytes: result.bytes,
+      keyVersion: Number(result.headers.get("X-Workspace-Key-Version")) || null,
+    }));
+  }
+
+  putWorkspaceLogo(workspaceId: string, ciphertext: Uint8Array): Promise<WorkspaceLogoPutResponseDto> {
+    return this.api.putBytes<WorkspaceLogoPutResponseDto>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/logo`,
+      ciphertext,
+    );
+  }
+
+  deleteWorkspaceLogo(workspaceId: string): Promise<{ deleted: true }> {
+    return this.api.delete<{ deleted: true }>(`/workspaces/${encodeURIComponent(workspaceId)}/logo`);
+  }
+
+  getWorkspaceClientSettings(workspaceId: string): Promise<WorkspaceClientSettingsResponseDto> {
+    return this.api.get<WorkspaceClientSettingsResponseDto>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/client-settings`,
+    );
+  }
+
+  putWorkspaceClientSettings(
+    workspaceId: string,
+    body: WorkspaceClientSettingsUpdateRequestDto,
+  ): Promise<WorkspaceClientSettingsResponseDto & { tile_color?: string | null }> {
+    return this.api.put(`/workspaces/${encodeURIComponent(workspaceId)}/client-settings`, body);
   }
 
   getMemberVaultAccess(workspaceId: string, userId: string): Promise<MemberVaultAccessResponseDto> {

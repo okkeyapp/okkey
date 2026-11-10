@@ -44,6 +44,10 @@ function serializeSettings(settings: {
   tileColor: string | null;
   logoVaultId: string | null;
   logoAttachmentId: string | null;
+  logoKeyVersion?: number | null;
+  logoUpdatedAt?: string | null;
+  clientSettingsKeyVersion?: number | null;
+  clientSettingsCiphertext?: string | null;
   storageQuota?: WorkspaceStorageQuotaStatus;
 }) {
   return {
@@ -56,6 +60,10 @@ function serializeSettings(settings: {
     tile_color: settings.tileColor,
     logo_vault_id: settings.logoVaultId,
     logo_attachment_id: settings.logoAttachmentId,
+    logo_key_version: settings.logoKeyVersion ?? null,
+    logo_updated_at: settings.logoUpdatedAt ?? null,
+    client_settings_key_version: settings.clientSettingsKeyVersion ?? null,
+    client_settings_ciphertext: settings.clientSettingsCiphertext ?? null,
     ...(settings.storageQuota
       ? {
           storage_quota: {

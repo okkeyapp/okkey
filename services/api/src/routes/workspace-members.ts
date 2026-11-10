@@ -7,6 +7,7 @@ import {
   type InvitePreviewRateLimit,
 } from "../workspace-members/invite-preview-rate-limit.ts";
 import { asVaultSharingServiceError } from "../workspace-shared-vaults/vault-sharing-error.ts";
+import { parseWorkspaceKeyWrap, WorkspaceKeyServiceError } from "../workspace-key/service.ts";
 import {
   WorkspaceMembersService,
   WorkspaceMembersServiceError,
@@ -33,7 +34,7 @@ function handleMembersError(
   res: Parameters<typeof json>[0],
   error: unknown,
 ): void {
-  if (error instanceof WorkspaceMembersServiceError) {
+  if (error instanceof WorkspaceMembersServiceError || error instanceof WorkspaceKeyServiceError) {
     json(res, error.statusCode, errorPayload(error.code, error.message, requestId));
     return;
   }
@@ -317,7 +318,18 @@ export function createWorkspaceMemberDeleteRoute(
         json(ctx.res, 401, errorPayload("AUTH_REQUIRED", "auth required", ctx.requestId));
         return;
       }
-      await membersService.removeMember(workspaceId, userId, targetUserId);
+      let body: { workspace_key_rotation?: { wraps?: unknown } };
+      try {
+        body = await readJsonBody<{ workspace_key_rotation?: { wraps?: unknown } }>(ctx.req);
+      } catch {
+        json(ctx.res, 400, errorPayload("BAD_REQUEST", "invalid json body", ctx.requestId));
+        return;
+      }
+      const wraps = body.workspace_key_rotation?.wraps;
+      const rotation = Array.isArray(wraps)
+        ? { wraps: wraps.map((wrap) => parseWorkspaceKeyWrap(wrap)) }
+        : null;
+      await membersService.removeMember(workspaceId, userId, targetUserId, rotation);
       json(ctx.res, 200, { deleted: true });
     } catch (error) {
       handleMembersError(ctx.requestId, ctx.res, error);

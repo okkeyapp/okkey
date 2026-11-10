@@ -159,6 +159,17 @@ import { createVaultProfileWriteGuardMiddleware } from "./vault-profile-write-gu
 import { VaultProfileWriteGuardRepository } from "./vault-profile-write-guard/repository.ts";
 import { VaultProfileWriteGuardService } from "./vault-profile-write-guard/service.ts";
 import type { WorkspaceSharedVaultsService } from "./workspace-shared-vaults/service.ts";
+import {
+  createWorkspaceClientSettingsGetRoute,
+  createWorkspaceClientSettingsPutRoute,
+  createWorkspaceKeyGetRoute,
+  createWorkspaceKeyGrantRoute,
+  createWorkspaceKeyPublishRoute,
+  createWorkspaceLogoDeleteRoute,
+  createWorkspaceLogoGetRoute,
+  createWorkspaceLogoPutRoute,
+} from "./routes/workspace-key.ts";
+import type { WorkspaceKeyService } from "./workspace-key/service.ts";
 import { createWorkspaceMePermissionsRoute } from "./routes/workspace-me-permissions.ts";
 import {
   createWorkspaceMeVaultProfilesRoute,
@@ -269,6 +280,7 @@ export interface AppDeps {
   workspaceMeVaultProfilesService?: WorkspaceMeVaultProfilesService;
   workspaceMembersService?: WorkspaceMembersService;
   workspaceSharedVaultsService?: WorkspaceSharedVaultsService;
+  workspaceKeyService?: WorkspaceKeyService;
   workspacePersonalSyncService?: WorkspacePersonalSyncService;
   attachmentService?: AttachmentService;
   itemFaviconService?: ItemFaviconService;
@@ -828,6 +840,48 @@ export function createApiApp(
         "PATCH",
         "/workspaces/:workspaceId/item-templates/:templateId",
         createWorkspaceItemTemplatesUpdateRoute(deps.itemTemplatesService, resolveUserId),
+      );
+    }
+    if (deps.workspaceKeyService) {
+      app.route(
+        "GET",
+        "/workspaces/:workspaceId/workspace-key",
+        createWorkspaceKeyGetRoute(deps.workspaceKeyService, resolveUserId),
+      );
+      app.route(
+        "POST",
+        "/workspaces/:workspaceId/workspace-key",
+        createWorkspaceKeyPublishRoute(deps.workspaceKeyService, resolveUserId),
+      );
+      app.route(
+        "POST",
+        "/workspaces/:workspaceId/workspace-key/wraps",
+        createWorkspaceKeyGrantRoute(deps.workspaceKeyService, resolveUserId),
+      );
+      app.route(
+        "PUT",
+        "/workspaces/:workspaceId/logo",
+        createWorkspaceLogoPutRoute(deps.workspaceKeyService, resolveUserId),
+      );
+      app.route(
+        "GET",
+        "/workspaces/:workspaceId/logo",
+        createWorkspaceLogoGetRoute(deps.workspaceKeyService, resolveUserId),
+      );
+      app.route(
+        "DELETE",
+        "/workspaces/:workspaceId/logo",
+        createWorkspaceLogoDeleteRoute(deps.workspaceKeyService, resolveUserId),
+      );
+      app.route(
+        "GET",
+        "/workspaces/:workspaceId/client-settings",
+        createWorkspaceClientSettingsGetRoute(deps.workspaceKeyService, resolveUserId),
+      );
+      app.route(
+        "PUT",
+        "/workspaces/:workspaceId/client-settings",
+        createWorkspaceClientSettingsPutRoute(deps.workspaceKeyService, resolveUserId),
       );
     }
     if (deps.workspaceSettingsService) {
