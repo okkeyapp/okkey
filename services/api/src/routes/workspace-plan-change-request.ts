@@ -122,12 +122,20 @@ export function createWorkspacePlanChangeRequestRoute(
     } catch (error) {
       if (error instanceof PlanChangeRequestServiceError) {
         const retryAfter = error.details?.retryAfterSeconds;
+        const availableAt = error.details?.availableAt;
         if (error.code === "RATE_LIMITED" && typeof retryAfter === "number" && retryAfter > 0) {
           ctx.res.setHeader("Retry-After", String(retryAfter));
         }
+        const details =
+          retryAfter != null || availableAt != null
+            ? {
+                ...(retryAfter != null ? { retryAfterSeconds: retryAfter } : {}),
+                ...(availableAt != null ? { availableAt } : {}),
+              }
+            : undefined;
         json(ctx.res, error.status, {
           ...errorPayload(error.code, error.message, ctx.requestId),
-          ...(retryAfter != null ? { details: { retryAfterSeconds: retryAfter } } : {}),
+          ...(details ? { details } : {}),
         });
         return;
       }

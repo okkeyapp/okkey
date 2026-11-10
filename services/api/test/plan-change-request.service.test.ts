@@ -503,3 +503,81 @@ test("PlanChangeRequestService Retry-After lets an honest client succeed on the 
   assert.deepEqual(ok, { submitted: true });
   assert.equal(sent.length, 4);
 });
+
+test("PlanChangeRequestService rate limit is isolated per workspace", async () => {
+  let nowMs = Date.parse("2026-10-25T12:00:00.000Z");
+  const memory = makeMemoryRedis();
+  const sent: string[] = [];
+  const service = new PlanChangeRequestService({
+    salesEmail: "sales@example.com",
+    deploymentMode: "self_hosted",
+    publicAppBaseUrl: "https://vault.example",
+    redis: memory.redis,
+    nowMs: () => nowMs,
+    db: {
+      query: async (sql: string) => {
+        if (sql.includes("owner_id")) {
+          return [{ owner_id: "user_1" }];
+        }
+        throw new Error(`unexpected query: ${sql}`);
+      },
+    } as never,
+    workspaces: {
+      findById: async (id: string) => ({
+        id,
+        name: "Demo",
+        ownerId: "user_1",
+        planTier: "FREE",
+        deletedItemsRetentionDays: 30,
+        allowedFileExtensions: [],
+        maxFileSizeMb: 25,
+        filesInItemsEnabled: false,
+        capsulePolicies: {} as never,
+        monitoringCardSettings: {} as never,
+        tileColor: null,
+        logoVaultId: null,
+        logoAttachmentId: null,
+        planCustomOverride: false,
+        planFeatureOverrides: {},
+        planChangeRequestSentAt: null,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      }),
+      countMembers: async () => 2,
+      markPlanChangeRequestSent: async () => true,
+    },
+    users: {
+      loadAccountProfile: async () => ({
+        email: "owner@example.com",
+        firstName: "A",
+        lastName: "B",
+        locale: "en",
+        billingRegion: "US",
+        vaultIdleLockSeconds: 900,
+        masterPasswordChangedAt: new Date().toISOString(),
+      }),
+    },
+    emailTemplates: {
+      sendPlanChangeRequest: async (input) => {
+        sent.push(input.variables.workspaceId);
+      },
+    },
+  });
+
+  for (let i = 0; i < PLAN_CHANGE_REQUEST_DAILY_LIMIT; i += 1) {
+    nowMs += 1_000;
+    await service.submit({ ...baseSubmit, workspaceId: "ws_a" });
+  }
+  nowMs += 1_000;
+  await assert.rejects(
+    () => service.submit({ ...baseSubmit, workspaceId: "ws_a" }),
+    (error: unknown) =>
+      error instanceof PlanChangeRequestServiceError && error.code === "RATE_LIMITED",
+  );
+  const other = await service.submit({ ...baseSubmit, workspaceId: "ws_b" });
+  assert.deepEqual(other, { submitted: true });
+  assert.equal(sent.filter((id) => id === "ws_a").length, PLAN_CHANGE_REQUEST_DAILY_LIMIT);
+  assert.deepEqual(sent.filter((id) => id === "ws_b"), ["ws_b"]);
+  assert.equal(memory.zsets.get(planChangeRequestWindowRedisKey("ws_a"))?.size, 4);
+  assert.equal(memory.zsets.get(planChangeRequestWindowRedisKey("ws_b"))?.size, 1);
+});

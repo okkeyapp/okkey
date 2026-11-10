@@ -285,5 +285,8 @@ describe("SelfHostedFreePlanSection", () => {
     expect(screen.queryByText(/RATE_LIMITED/)).not.toBeInTheDocument();
     expect(screen.queryByText(/tomorrow/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/min/i)).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "web.workspaceSettings.plan.request.sendAgain" }),
+    ).toBeDisabled();
   });
 });
