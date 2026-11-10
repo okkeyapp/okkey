@@ -1,6 +1,7 @@
 import { AuthService } from "./auth/service.ts";
 import { EmailChangeService } from "./account/email-change.ts";
 import { whenCapsuleAccessSettingsBound } from "./capsule/access-settings-provider.ts";
+import { CapsuleDefaultsService } from "./capsule-defaults/service.ts";
 import { CapsuleService } from "./capsule/service.ts";
 import { MmdbGeoIpLookup } from "./capsule/geoip.ts";
 import { RegistrationService } from "./registration/service.ts";
