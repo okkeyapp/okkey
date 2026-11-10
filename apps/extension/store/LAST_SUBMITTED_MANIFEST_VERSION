@@ -1,0 +1,3 @@
+# Last submitted Chrome, Edge, and AMO manifest version.
+# The next store build must be strictly greater. Dev builds stay below this floor.
+1.0.0.2
