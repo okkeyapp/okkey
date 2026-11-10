@@ -687,6 +687,11 @@ export class CapsuleService {
           accessPolicy: existing.access_policy,
           passwordAttemptLimit: existing.password_attempt_limit,
           approvalRequired: existing.approval_required,
+          activateAt: existing.activate_at,
+          deactivateAt: existing.deactivate_at,
+          deleteAt: existing.delete_at,
+          maxViews: existing.view_limit,
+          viewLimitAction: existing.view_limit_action === "delete" ? "delete" : "deactivate",
         },
       });
       const activateAt = accessWrite.activateAt;
@@ -1328,6 +1333,11 @@ export class CapsuleService {
       accessPolicy: unknown;
       passwordAttemptLimit: number | null;
       approvalRequired: boolean;
+      activateAt?: string | null;
+      deactivateAt?: string | null;
+      deleteAt?: string | null;
+      maxViews?: number | null;
+      viewLimitAction?: CapsuleViewLimitAction;
     };
   }): Promise<{
     accessPolicy: CapsuleAccessPolicy;
@@ -1342,6 +1352,22 @@ export class CapsuleService {
     const input = coerceAccessWriteNumbers(args.input);
     enforceCapsulePoliciesOnWrite(args.policies, input);
     if (!requestsCapsuleAccessSettings(input, args.policies, args.accessSettingsEnabled)) {
+      if (args.mode === "update" && args.existing) {
+        const stored = parsePolicy(args.existing.accessPolicy);
+        return {
+          accessPolicy: { ...stored, keyTransportMode: args.keyTransportMode },
+          activateAt: isoOrNull(args.existing.activateAt),
+          deactivateAt: isoOrNull(args.existing.deactivateAt),
+          deleteAt: isoOrNull(args.existing.deleteAt),
+          maxViews:
+            args.policies.forceMaxViews > 0
+              ? args.policies.forceMaxViews
+              : normalizeStoredCount(args.existing.maxViews),
+          viewLimitAction: args.existing.viewLimitAction === "delete" ? "delete" : "deactivate",
+          passwordAttemptLimit: normalizeStoredCount(args.existing.passwordAttemptLimit),
+          approvalRequired: args.existing.approvalRequired === true,
+        };
+      }
       return {
         accessPolicy: { keyTransportMode: args.keyTransportMode },
         activateAt: null,

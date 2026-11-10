@@ -84,6 +84,7 @@ export interface CapsuleAccessSettingsProvider {
 }
 
 let provider: CapsuleAccessSettingsProvider | null = null;
+let bindingsReady: Promise<void> = Promise.resolve();
 
 export function registerCapsuleAccessSettingsProvider(
   next: CapsuleAccessSettingsProvider,
@@ -93,6 +94,25 @@ export function registerCapsuleAccessSettingsProvider(
 
 export function getCapsuleAccessSettingsProvider(): CapsuleAccessSettingsProvider | null {
   return provider;
+}
+
+/**
+ * Bind `capsuleAccessSettings` after `plugin.register`.
+ * Plugins may replace the provider during register, including after an await.
+ */
+export function bindCapsuleAccessSettingsAfterRegister(
+  registration: void | Promise<void>,
+  bind: () => void,
+): void {
+  bind();
+  if (registration instanceof Promise) {
+    bindingsReady = bindingsReady.then(() => registration).then(bind);
+  }
+}
+
+/** Resolves once every in-flight plugin register() has bound its provider. */
+export function whenCapsuleAccessSettingsBound(): Promise<void> {
+  return bindingsReady;
 }
 
 /** Tests only. */

@@ -3,6 +3,7 @@ import type { AuthService } from "./auth/service.ts";
 import type { RegistrationService } from "./registration/service.ts";
 import type { ApiConfig } from "./config.ts";
 import type { DeviceService } from "./device/service.ts";
+import { bindCapsuleAccessSettingsAfterRegister, registerCapsuleAccessSettingsProvider } from "./capsule/access-settings-provider.ts";
 import { getHeader, HttpApp, type RouteHandler } from "./http.ts";
 import type { Logger } from "./logger.ts";
 import { createCorsMiddleware } from "./middleware/cors.ts";
@@ -1269,7 +1270,7 @@ export function createApiApp(
 
   if (options.postgres && options.workspacesRepository) {
     for (const plugin of enterprisePlugins) {
-      plugin.register({
+      const registration = plugin.register({
         app,
         config,
         resolveUserId,
@@ -1285,6 +1286,11 @@ export function createApiApp(
         services: {
           vaultSharingService: deps.vaultSharingService,
         },
+      });
+      bindCapsuleAccessSettingsAfterRegister(registration, () => {
+        if (plugin.capsuleAccessSettings) {
+          registerCapsuleAccessSettingsProvider(plugin.capsuleAccessSettings);
+        }
       });
     }
   }
