@@ -1,7 +1,8 @@
 # Edge nginx linked against OpenSSL ≥ 3.5 (X25519MLKEM768).
 # Build context: deploy/docker/proxy/nginx
 
-FROM debian:bookworm-slim AS build
+# debian:bookworm-slim
+FROM debian:bookworm-slim@sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc AS build
 
 ARG OPENSSL_VERSION=3.5.0
 ARG NGINX_VERSION=1.28.0
@@ -52,7 +53,8 @@ RUN ./configure \
   && make -j"$(nproc)" \
   && make install
 
-FROM debian:bookworm-slim
+# debian:bookworm-slim
+FROM debian:bookworm-slim@sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc
 
 RUN apt-get update \
   && apt-get install -y --no-install-recommends \

@@ -1,9 +1,14 @@
 # syntax=docker/dockerfile:1.7
 # Shared image for okkey-api and okkey-worker (different CMD).
+# Third-party bases are pinned by multi-arch index digest. The tag documents
+# the channel; the pull uses the digest. NODE_VERSION must stay 25.
 ARG NODE_VERSION=25
 
-FROM node:${NODE_VERSION}-bookworm AS builder
+# node:25-bookworm
+FROM node:25-bookworm@sha256:78839ac448c23517f8eab2e8f7943d9b4f73979eb7f8bed2c73dbf72ff869e7b AS builder
 WORKDIR /src
+ARG NODE_VERSION
+RUN test "${NODE_VERSION}" = "25"
 
 RUN apt-get update \
   && apt-get install -y --no-install-recommends build-essential curl ca-certificates \
@@ -50,8 +55,11 @@ RUN --mount=type=cache,target=/usr/local/share/.cache/yarn \
   && yarn build:ts-sdk \
   && yarn build:email
 
-FROM node:${NODE_VERSION}-bookworm-slim AS runtime
+# node:25-bookworm-slim
+FROM node:25-bookworm-slim@sha256:81db02c4b671288a03915da9534dbd54f96d0e7c24d80ccc54f5b36b2e684370 AS runtime
 WORKDIR /app
+ARG NODE_VERSION
+RUN test "${NODE_VERSION}" = "25"
 ENV NODE_ENV=production
 ENV DEPLOY_ENV=prod
 

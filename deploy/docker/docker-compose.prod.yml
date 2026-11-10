@@ -5,7 +5,8 @@
 
 services:
   postgres:
-    image: postgres:16-alpine
+    # postgres:16-alpine
+    image: postgres:16-alpine@sha256:aa6cb33cf4c19c765cefcf48d96176258800870a9a1e930ad126200f9d825139
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
@@ -20,7 +21,8 @@ services:
       retries: 20
 
   redis:
-    image: redis:7-alpine
+    # redis:7-alpine
+    image: redis:7-alpine@sha256:7b1753b4c5ad8458906c272a8132b8c15f5557b000379eb115fb239706a384b7
     restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes"]
     volumes:
@@ -34,7 +36,8 @@ services:
   # Official minio/minio + minio/mc left Docker Hub (2026-09); Quay anonymous pulls
   # also 401. pgsty/minio is a drop-in Community rebuild (same CLI/env/health).
   minio:
-    image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z
+    # pgsty/minio:RELEASE.2026-08-04T00-00-00Z
+    image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z@sha256:b6bfe7239bfc83fb90d31612d9704d86039dd714f7904b3f1ad68f211e602372
     restart: unless-stopped
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}
@@ -49,7 +52,8 @@ services:
       retries: 20
 
   minio-init:
-    image: amazon/aws-cli:2.17.0
+    # amazon/aws-cli:2.17.0
+    image: amazon/aws-cli:2.17.0@sha256:643507c10ada7964ca6157b3d799f030b90577643da9955d319a77399ed80d73
     depends_on:
       minio:
         condition: service_healthy

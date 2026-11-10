@@ -2,7 +2,8 @@ name: okkey-dev
 
 services:
   postgres:
-    image: postgres:16-alpine
+    # postgres:16-alpine
+    image: postgres:16-alpine@sha256:aa6cb33cf4c19c765cefcf48d96176258800870a9a1e930ad126200f9d825139
     container_name: okkey-postgres
     restart: unless-stopped
     environment:
@@ -20,7 +21,8 @@ services:
       retries: 10
 
   redis:
-    image: redis:7-alpine
+    # redis:7-alpine
+    image: redis:7-alpine@sha256:7b1753b4c5ad8458906c272a8132b8c15f5557b000379eb115fb239706a384b7
     container_name: okkey-redis
     restart: unless-stopped
     ports:
@@ -38,7 +40,8 @@ services:
   # pgsty/minio is a drop-in Community rebuild (same CLI/env/health) — keep in sync
   # with deploy/docker/docker-compose.prod.yml.
   minio:
-    image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z
+    # pgsty/minio:RELEASE.2026-08-04T00-00-00Z
+    image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z@sha256:b6bfe7239bfc83fb90d31612d9704d86039dd714f7904b3f1ad68f211e602372
     container_name: okkey-minio
     restart: unless-stopped
     environment:
