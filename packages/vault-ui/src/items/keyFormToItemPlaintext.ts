@@ -12,8 +12,34 @@ import {
 } from "../key-form/totpFromSecret.js";
 import { serializeSelectFieldValue } from "./keyFormSelectField.js";
 
+function isBlankWebsiteUrl(field: KeyFormEditorField): boolean {
+  return field.type === "url" && (typeof field.value !== "string" || field.value.trim().length === 0);
+}
+
+/** Drop blank extra website rows. The first URL field stays so a missing primary URL can still fail validation. */
+function omitBlankExtraWebsiteUrls(sections: readonly KeyFormEditorSection[]): KeyFormEditorSection[] {
+  return sections.map((section) => {
+    if (section.id !== "websites") {
+      return section;
+    }
+
+    let seenUrl = false;
+    const fields = section.fields.filter((field) => {
+      if (field.type !== "url") {
+        return true;
+      }
+      if (!seenUrl) {
+        seenUrl = true;
+        return true;
+      }
+      return !isBlankWebsiteUrl(field);
+    });
+    return fields.length === section.fields.length ? section : { ...section, fields };
+  });
+}
+
 function sectionsForItemPlaintext(sections: readonly KeyFormEditorSection[]): KeyFormEditorSection[] {
-  return sections
+  return omitBlankExtraWebsiteUrls(sections)
     .map((section) => ({ ...section, fields: [...section.fields] }))
     .filter((section) => section.fields.length > 0);
 }

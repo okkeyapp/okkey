@@ -1108,3 +1108,63 @@ describe("urlAutofillScope persist", () => {
   });
 });
 
+describe("blank extra website URLs", () => {
+  it("drops empty extra URL rows on save and requires only the primary URL", () => {
+    const sections = getDefaultSectionsForCategory("login", messages).map((section) => ({
+      ...section,
+      fields: section.fields.map((field) => {
+        if (field.id === "login") {
+          return { ...field, value: "user@example.com" };
+        }
+        if (field.id === "password") {
+          return { ...field, value: "secret" };
+        }
+        if (field.id === "website-1") {
+          return { ...field, value: "https://example.com" };
+        }
+        return field;
+      }),
+    }));
+    sections.find((section) => section.id === "websites")?.fields.push(
+      {
+        id: "website-2",
+        type: "url",
+        label: "URL",
+        value: "   ",
+        required: true,
+        editableLabel: true,
+        deletable: true,
+      },
+      {
+        id: "website-3",
+        type: "url",
+        label: "URL",
+        value: "https://okkey.app",
+        editableLabel: true,
+        deletable: true,
+      },
+    );
+
+    const item = keyFormSectionsToItemPlaintext({
+      sections,
+      itemId: "item-login-urls",
+      vaultId: "vault-1",
+      title: "Example",
+      categoryId: "login",
+      nowMs: 1,
+    });
+
+    const websiteUrls = item.fields
+      .filter((field) => field.type === "url")
+      .map((field) => (field.value.kind === "url" ? field.value.url : ""));
+    expect(websiteUrls).toEqual(["https://example.com", "https://okkey.app"]);
+
+    const restored = itemPlaintextToKeyFormSections(item, messages, { includeEmptyFields: true });
+    const websites = restored.find((section) => section.id === "websites");
+    expect(websites?.fields.map((field) => ({ id: field.id, required: field.required }))).toEqual([
+      { id: "website-1", required: true },
+      { id: "website-3", required: false },
+    ]);
+  });
+});
+
