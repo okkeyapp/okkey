@@ -7,7 +7,7 @@ import type {
 import { Alert, AlertDescription } from "@okkey/ui";
 import { useLocation, useNavigate } from "react-router-dom";
 
-import { MonitoringGaugeChart } from "../../monitoring/MonitoringCharts";
+import { ScoreGaugeChart } from "./ScoreGaugeChart";
 import {
   buildPopupQueryValue,
   popupQuerySearch,
@@ -105,7 +105,7 @@ export default function AccountSecurityScoreBlock({ t }: AccountSecurityScoreBlo
     >
       <div className="flex items-center gap-4">
         <div className="relative size-24 shrink-0">
-          <MonitoringGaugeChart
+          <ScoreGaugeChart
             score={score}
             className="size-24"
             trackClassName="stroke-[hsl(var(--background))]"

@@ -8,6 +8,7 @@ const config: Config = {
     "../../packages/ui/src/**/*.{ts,tsx,js,jsx}",
     "../../packages/vault-ui/src/**/*.{ts,tsx,js,jsx}",
     "../../../okkey-enterprise/web/workspace-roles/src/**/*.{ts,tsx,js,jsx}",
+    "../../../okkey-enterprise/web/monitoring/src/**/*.{ts,tsx,js,jsx}",
     "../../../okkey-enterprise/web/workspace-profiles/src/**/*.{ts,tsx,js,jsx}",
     "../../../okkey-enterprise/web/workspace-tenancy/src/**/*.{ts,tsx,js,jsx}",
     "../../../okkey-enterprise/web/workspace-members/src/**/*.{ts,tsx,js,jsx}",

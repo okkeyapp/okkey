@@ -9,8 +9,9 @@ import ItemDetailCard from "../../components/items/ItemDetailCard";
 import ItemsDetailPanelEmptyState from "../../components/items/ItemsDetailPanelEmptyState";
 import WorkspaceSettingsPage from "../../components/workspace/settings/WorkspaceSettingsPage";
 import ToolsPage from "../../components/workspace/tools/ToolsPage";
+import passwordMonitoringModule from "@okkey-enterprise/monitoring";
+
 import CapsulesPage from "../capsules/CapsulesPage";
-import MonitoringPage from "../monitoring/MonitoringPage";
 import { useLocale } from "../../locale/LocaleContext";
 import { useAuthVault } from "../../auth/AuthVaultContext";
 import { useWorkspaceVaultProfiles } from "../../items/WorkspaceVaultProfilesContext";
@@ -19,7 +20,6 @@ import {
   ITEM_QUERY_PARAM,
   ITEMS_PATH,
   CAPSULES_PATH,
-  MONITORING_PATH,
   isSettingsPathname,
   isToolsPathname,
   VAULT_QUERY_PARAM,
@@ -59,7 +59,8 @@ export default function WorkspaceSectionPage() {
   const itemId = searchParams.get(ITEM_QUERY_PARAM)?.trim() ?? "";
   const isItemsRoute = location.pathname === ITEMS_PATH;
   const isCapsulesRoute = location.pathname === CAPSULES_PATH;
-  const isMonitoringRoute = location.pathname === MONITORING_PATH;
+  const monitoringPath = passwordMonitoringModule.monitoringPath;
+  const isMonitoringRoute = monitoringPath != null && location.pathname === monitoringPath;
   const isSettingsRoute = isSettingsPathname(location.pathname);
   const isToolsRoute = isToolsPathname(location.pathname);
   const capsulesAllowed = isCapsuleAllowedForMember(
@@ -118,7 +119,8 @@ export default function WorkspaceSectionPage() {
     );
   }
 
-  if (isMonitoringRoute) {
+  const MonitoringPage = passwordMonitoringModule.MonitoringPage;
+  if (isMonitoringRoute && MonitoringPage) {
     return (
       <MonitoringPage
         workspaceId={workspaceId}

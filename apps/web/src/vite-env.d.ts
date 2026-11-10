@@ -67,6 +67,12 @@ declare module "@okkey-enterprise/account-recovery" {
   export default accountRecoveryModule;
 }
 
+declare module "@okkey-enterprise/monitoring" {
+  import type { PasswordMonitoringModule } from "./monitoring-features/registry";
+  const passwordMonitoringModule: PasswordMonitoringModule;
+  export default passwordMonitoringModule;
+}
+
 declare module "@okkey-enterprise/recovery-crypto";
 declare module "@okkey-enterprise/recovery-crypto-wasm";
 

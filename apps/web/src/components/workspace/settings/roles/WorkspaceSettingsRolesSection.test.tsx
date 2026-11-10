@@ -91,16 +91,6 @@ function renderRolesSection(
             passwordAttemptLimit: 0,
             requireApproval: false,
           },
-          monitoringCardSettings: {
-            overall: true,
-            strength: true,
-            reused: true,
-            weak: true,
-            compromised: true,
-            stale: true,
-            passkeyGap: true,
-            twoFactorGap: true,
-          },
           createdAt: "2026-01-01T00:00:00.000Z",
           updatedAt: "2026-01-01T00:00:00.000Z",
         }}

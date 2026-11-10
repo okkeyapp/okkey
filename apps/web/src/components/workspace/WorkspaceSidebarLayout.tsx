@@ -81,8 +81,6 @@ export type WorkspaceSidebarLayoutProps = {
   itemsListRecords?: readonly ItemsListRecord[];
   /** False until workspace item sync bootstrap completes. */
   itemsListRecordsLoaded?: boolean;
-  /** Workspace monitoring card toggles for list filters / HIBP gating. */
-  monitoringCardSettings?: import("@okkey/types").WorkspaceMonitoringCardSettings;
 };
 
 function ShellMainHeader({
@@ -169,7 +167,6 @@ export default function WorkspaceSidebarLayout({
   itemsListFoldersLoaded,
   itemsListRecords = [],
   itemsListRecordsLoaded = true,
-  monitoringCardSettings,
 }: WorkspaceSidebarLayoutProps) {
   const { locale, setLocale, t } = useLocale();
   const [searchParams] = useSearchParams();
@@ -244,7 +241,6 @@ export default function WorkspaceSidebarLayout({
                     itemsListVaultsLoaded={itemsListVaultsLoaded}
                     itemsListFoldersLoaded={itemsListFoldersLoaded}
                     itemsListRecordsLoaded={itemsListRecordsLoaded}
-                    monitoringCardSettings={monitoringCardSettings}
                   />
                 </aside>
                 <div

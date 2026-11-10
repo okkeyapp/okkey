@@ -92,8 +92,9 @@ import {
   withoutOpenItemQueryParam,
   type ItemsVaultKind,
 } from "../../routes/paths";
-import { monitoringIssueItemIds } from "../../monitoring/analytics";
-import { useMonitoringReport } from "../../monitoring/useMonitoringReport";
+import passwordMonitoringModule from "@okkey-enterprise/monitoring";
+
+const useMonitoringIssueItemIds = passwordMonitoringModule.useMonitoringIssueItemIds;
 
 export type ItemsListRecordWire = {
   id: string;
@@ -712,7 +713,6 @@ type ItemsListLeftPaneProps = {
   itemsListFoldersLoaded?: boolean;
   /** False until workspace item sync bootstrap completes. */
   itemsListRecordsLoaded?: boolean;
-  monitoringCardSettings?: import("@okkey/types").WorkspaceMonitoringCardSettings;
 };
 
 export default function ItemsListLeftPane({
@@ -722,7 +722,6 @@ export default function ItemsListLeftPane({
   itemsListVaultsLoaded = true,
   itemsListFoldersLoaded = true,
   itemsListRecordsLoaded = true,
-  monitoringCardSettings,
 }: ItemsListLeftPaneProps) {
   const { locale, t } = useLocale();
   const location = useLocation();
@@ -770,23 +769,22 @@ export default function ItemsListLeftPane({
     }
     return undefined;
   }, [vaultKindIds, vaultQ]);
-  const monitoringReport = useMonitoringReport(workspaceId, {
-    enabledCards: monitoringCardSettings,
-    vaultIds: monitoringVaultIds,
-  });
   const activeItemId = searchParams.get(ITEM_QUERY_PARAM)?.trim() ?? "";
   const folderQ = searchParams.get(FOLDER_QUERY_PARAM)?.trim() ?? "";
   const categoryQ = searchParams.get(CATEGORY_QUERY_PARAM)?.trim() ?? "";
-  const filter = filterFromSearchParam(searchParams.get(FILTER_QUERY_PARAM) ?? "");
+  const rawFilter = filterFromSearchParam(searchParams.get(FILTER_QUERY_PARAM) ?? "");
+  const monitoringFilter = isMonitoringListFilter(rawFilter) ? rawFilter : null;
+  const monitoringIssueItemIds = useMonitoringIssueItemIds({
+    workspaceId,
+    filter: searchParams.get(FILTER_QUERY_PARAM),
+    vaultIds: monitoringVaultIds,
+    workspace: outletContext?.workspace,
+  });
+  const filter = monitoringFilter && !monitoringIssueItemIds ? "all" : rawFilter;
   const sort = sortFromSearchParam(searchParams.get(SORT_QUERY_PARAM) ?? "");
   const searchQ = searchParams.get(SEARCH_QUERY_PARAM)?.trim() ?? "";
 
-  const monitoringItemIds = useMemo(() => {
-    if (!isMonitoringListFilter(filter)) {
-      return undefined;
-    }
-    return new Set(monitoringIssueItemIds(monitoringReport.report, filter));
-  }, [filter, monitoringReport.report]);
+  const monitoringItemIds = monitoringIssueItemIds;
 
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
@@ -804,7 +802,6 @@ export default function ItemsListLeftPane({
 
   const tagSearchActive = Boolean(searchQ && parseTagSearchNeedle(searchQ) !== null);
   const searchScopeLabel = tagSearchActive ? (parseTagSearchNeedle(searchQ) ?? searchQ) : searchQ;
-  const monitoringFilterActive = isMonitoringListFilter(filter);
   const vaultScopeLoading = Boolean(vaultQ && !itemsListVaultsLoaded && !vaultMeta);
   const vaultKindScopeLoading = Boolean(vaultKind && !itemsListVaultsLoaded);
   const scopeTriggerLoading = vaultScopeLoading || vaultKindScopeLoading || folderScopeLoading;
@@ -942,8 +939,7 @@ export default function ItemsListLeftPane({
     !itemsListRecordsLoaded ||
     Boolean(vaultKind && !itemsListVaultsLoaded) ||
     Boolean(vaultQ && !itemsListVaultsLoaded && !vaultMeta) ||
-    Boolean(folderQ && !itemsListFoldersLoaded && !folderPath) ||
-    (monitoringFilterActive && monitoringReport.loading);
+    Boolean(folderQ && !itemsListFoldersLoaded && !folderPath);
   const selectedRows = useMemo(() => records.filter((row) => selectedIds.has(row.id)), [records, selectedIds]);
 
   const rowActionPermits = (row: ItemsListRecord) => {

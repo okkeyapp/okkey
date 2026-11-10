@@ -416,7 +416,6 @@ export function isSettingsPathname(pathname: string): boolean {
 export const WORKSPACE_APP_SHELL_PATHS = [
   ITEMS_PATH,
   CAPSULES_PATH,
-  MONITORING_PATH,
   TOOLS_PATH,
   SETTINGS_PATH,
 ] as const;

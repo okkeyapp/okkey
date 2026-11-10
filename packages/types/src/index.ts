@@ -13,9 +13,6 @@ import type { PlanFeatureOverrides, PlanTier } from "./plan-features.js";
 import type { WorkspaceBuiltInRoleDto } from "./workspace-roles.js";
 import type { WorkspaceCapsulePolicies } from "./workspace-capsule-policies.js";
 import type { WorkspaceCapsulePoliciesDto } from "./workspace-capsule-policies.js";
-import type { WorkspaceMonitoringCardSettings } from "./workspace-monitoring-card-settings.js";
-import type { WorkspaceMonitoringCardSettingsDto } from "./workspace-monitoring-card-settings.js";
-
 export type {
   EncryptedBlobDto,
   HybridSignatureEnvelopeDto,
@@ -160,8 +157,6 @@ export interface Workspace {
   filesInItemsEnabled: boolean;
   /** Workspace-level capsule admin policies. */
   capsulePolicies: WorkspaceCapsulePolicies;
-  /** Workspace-wide monitoring card visibility / feature toggles. */
-  monitoringCardSettings: WorkspaceMonitoringCardSettings;
   /** Hex tile color when no custom logo is set. */
   tileColor?: string | null;
   /** Vault storing the encrypted workspace logo attachment. */
@@ -1277,7 +1272,6 @@ export interface WorkspaceSettingsResponseDto {
   max_file_size_mb: number;
   files_in_items_enabled: boolean;
   capsule_policies: WorkspaceCapsulePoliciesDto;
-  monitoring_card_settings: WorkspaceMonitoringCardSettingsDto;
   tile_color: string | null;
   logo_vault_id: string | null;
   logo_attachment_id: string | null;
@@ -1291,7 +1285,6 @@ export interface WorkspaceSettingsUpdateRequestDto {
   max_file_size_mb?: number;
   files_in_items_enabled?: boolean;
   capsule_policies?: Partial<WorkspaceCapsulePoliciesDto>;
-  monitoring_card_settings?: Partial<WorkspaceMonitoringCardSettingsDto>;
   tile_color?: string | null;
   logo_vault_id?: string | null;
   logo_attachment_id?: string | null;
@@ -1439,7 +1432,6 @@ export interface VaultMemberRoleUpdateRequestDto {
 
 export * from "./capsules.js";
 export * from "./workspace-capsule-policies.js";
-export * from "./workspace-monitoring-card-settings.js";
 
 /** Optional nested metadata (same semantics as `POST /devices/register`). */
 export interface RegisterCompleteMetadataDto {

@@ -89,6 +89,11 @@ export default defineConfig(({ mode }) => {
     __dirname,
     "./src/workspace-features/stubs/enterprise-plan-stub.ts",
   );
+  const enterpriseMonitoringPath = path.resolve(enterpriseRoot, "web/monitoring/src/index.ts");
+  const enterpriseMonitoringStubPath = path.resolve(
+    __dirname,
+    "./src/monitoring-features/stubs/enterprise-monitoring-stub.ts",
+  );
   const enterpriseAccountRecoveryPath = path.resolve(
     enterpriseRoot,
     "web/account-recovery/src/index.ts",
@@ -187,6 +192,9 @@ export default defineConfig(({ mode }) => {
         "@okkey-enterprise/account-recovery": enterpriseModules
           ? enterpriseAccountRecoveryPath
           : enterpriseAccountRecoveryStubPath,
+        "@okkey-enterprise/monitoring": enterpriseModules
+          ? enterpriseMonitoringPath
+          : enterpriseMonitoringStubPath,
         "@okkey-enterprise/recovery-crypto": enterpriseModules
           ? enterpriseRecoveryCryptoPath
           : enterpriseRecoveryCryptoStubPath,

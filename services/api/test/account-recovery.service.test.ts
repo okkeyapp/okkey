@@ -225,7 +225,6 @@ function createService(overrides?: {
           maxFileSizeMb: 10,
           filesInItemsEnabled: false,
           capsulePolicies: {} as never,
-          monitoringCardSettings: {} as never,
           tileColor: null,
           logoVaultId: null,
           logoAttachmentId: null,

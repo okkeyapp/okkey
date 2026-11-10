@@ -360,6 +360,7 @@ export {
   OkkeyAppSidebarToolbar,
   type OkkeyAppShellLayoutContextValue,
   type OkkeyAppSidebarToolbarProps,
+  OkkeyNavMonitoringIcon,
   okkeyWorkspaceShellNavItems,
   useOkkeyAppShellLayout,
   workspaceSwitcherActiveItemClassName,
