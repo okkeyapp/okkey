@@ -311,7 +311,10 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
   }
 
   async function handleDevicesSwitch(checked: boolean) {
-    if (!core || !status?.entitlements.trustedDevices || settingsMutatingRef.current) {
+    if (!core || settingsMutatingRef.current) {
+      return;
+    }
+    if (checked && !status?.entitlements.trustedDevices) {
       return;
     }
     // Gate enable only — leave an already-on method alone if device count drops.
@@ -530,30 +533,31 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
         </div>
       ) : null}
 
-      {canDevices ? (
-        <>
-          <SettingsRow
-            label={t("web.settingsPopup.recovery.devices.label")}
-            description={t("web.settingsPopup.recovery.devices.description")}
-            controlClassName="w-[100px]"
-          >
-            <Switch
-              size="lg"
-              checked={devicesEnabled}
-              disabled={devicesEnableBlocked}
-              onCheckedChange={(checked) => void handleDevicesSwitch(checked)}
-              aria-label={t("web.settingsPopup.recovery.devices.label")}
-            />
-          </SettingsRow>
-          {devicesEnableBlocked ? (
-            <p className="-mt-2 mb-4 text-sm leading-5 text-muted-foreground">
-              {t("web.settingsPopup.recovery.devices.needAnother")}
-            </p>
-          ) : null}
-        </>
+      <SettingsRow
+        label={t("web.settingsPopup.recovery.devices.label")}
+        description={t("web.settingsPopup.recovery.devices.description")}
+        controlClassName="w-[100px]"
+      >
+        <Switch
+          size="lg"
+          checked={devicesEnabled}
+          disabled={(!canDevices && !devicesEnabled) || (canDevices && devicesEnableBlocked)}
+          onCheckedChange={(checked) => void handleDevicesSwitch(checked)}
+          aria-label={t("web.settingsPopup.recovery.devices.label")}
+        />
+      </SettingsRow>
+      {canDevices && devicesEnableBlocked ? (
+        <p className="-mt-2 mb-4 text-sm leading-5 text-muted-foreground">
+          {t("web.settingsPopup.recovery.devices.needAnother")}
+        </p>
+      ) : null}
+      {!canDevices ? (
+        <p className="-mt-2 mb-4 text-sm leading-5 text-muted-foreground">
+          {t("web.settingsPopup.recovery.error.entitlement")}
+        </p>
       ) : null}
 
-      {TrustedContactsSection && canContacts ? <TrustedContactsSection /> : null}
+      {TrustedContactsSection ? <TrustedContactsSection locked={!canContacts} /> : null}
 
       {showPaidUpsell ? <PaidMethodsUpsell t={t} /> : null}
         </>

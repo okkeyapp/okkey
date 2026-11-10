@@ -43,7 +43,7 @@ vi.mock("sonner", () => ({
 }));
 
 const recoverySlots = vi.hoisted(() => ({
-  TrustedContactsSection: null as (() => JSX.Element) | null,
+  TrustedContactsSection: null as ((props: { locked?: boolean }) => JSX.Element) | null,
 }));
 
 vi.mock("@okkey-enterprise/account-recovery", () => ({
@@ -103,9 +103,12 @@ describe("SettingsRecoveryContent", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText("web.settingsPopup.recovery.key.label")).toBeTruthy();
+      expect(
+        screen.getByRole("switch", { name: "web.settingsPopup.recovery.devices.label" }),
+      ).toBeDisabled();
     });
-    expect(screen.queryByText("web.settingsPopup.recovery.devices.label")).toBeNull();
+    expect(screen.getByText("web.settingsPopup.recovery.devices.label")).toBeTruthy();
+    expect(screen.getByText("web.settingsPopup.recovery.error.entitlement")).toBeTruthy();
     expect(screen.queryByText("web.settingsPopup.recovery.contacts.label")).toBeNull();
     expect(
       screen.getByText((_, node) => {
@@ -145,6 +148,22 @@ describe("SettingsRecoveryContent", () => {
     });
     expect(screen.queryByText("web.settingsPopup.recovery.contacts.label")).toBeNull();
     expect(screen.queryByTestId("trusted-contacts-section")).toBeNull();
+  });
+
+  it("mounts the contacts slot on a free plan with adding locked", async () => {
+    recoverySlots.TrustedContactsSection = ({ locked }) => (
+      <div data-testid="trusted-contacts-section" data-locked={String(Boolean(locked))} />
+    );
+
+    render(
+      <MemoryRouter>
+        <SettingsRecoveryContent t={t} />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("trusted-contacts-section").getAttribute("data-locked")).toBe("true");
+    });
   });
 
   it("mounts the contacts slot when the plan grants trusted contacts", async () => {

@@ -159,7 +159,7 @@ export class AccountRecoveryService {
     const settings: AccountRecoverySettingsDto = settingsRow
       ? {
           keyEnabled: settingsRow.keyEnabled,
-          devicesEnabled: entitlements.trustedDevices ? settingsRow.devicesEnabled : false,
+          devicesEnabled: settingsRow.devicesEnabled,
           // Directory stays out of core. Report the stored flag only when the plan allows it.
           contactsEnabled: entitlements.trustedContacts ? settingsRow.contactsEnabled : false,
         }
@@ -207,7 +207,7 @@ export class AccountRecoveryService {
     const stored = await this.recovery.getSettings(userId);
     const next: AccountRecoverySettingsDto = {
       keyEnabled: patch.keyEnabled ?? current.settings.keyEnabled,
-      devicesEnabled: patch.devicesEnabled ?? current.settings.devicesEnabled,
+      devicesEnabled: patch.devicesEnabled ?? stored?.devicesEnabled ?? false,
       // Core does not toggle the contacts method. Keep the stored bit for the module.
       contactsEnabled: stored?.contactsEnabled ?? false,
     };
@@ -238,10 +238,6 @@ export class AccountRecoveryService {
         );
       }
     }
-    if (!entitlements.trustedDevices) {
-      next.devicesEnabled = false;
-    }
-
     if (patch.keyEnabled === false) {
       throw new AccountRecoveryError(
         "RECOVERY_KEY_REQUIRED",
@@ -296,7 +292,7 @@ export class AccountRecoveryService {
     const storedContactsEnabled = settingsRow?.contactsEnabled ?? false;
     const settings = {
       keyEnabled: true,
-      devicesEnabled: entitlements.trustedDevices ? Boolean(settingsRow?.devicesEnabled) : false,
+      devicesEnabled: Boolean(settingsRow?.devicesEnabled),
       contactsEnabled: storedContactsEnabled,
     };
 
