@@ -10,15 +10,26 @@ import {
 } from "@okkey/types";
 import type { PlanEntitlementRuntimeConfig } from "../plan-entitlements.ts";
 import { workspaceHasPlanFeature } from "../plan-entitlements.ts";
+import {
+  PlanQuotaExceededError,
+  type WorkspaceStorageQuotaService,
+} from "../storage-quota/service.ts";
 
 export class AttachmentServiceError extends Error {
   readonly code: string;
   readonly statusCode: number;
+  readonly details?: Record<string, unknown>;
 
-  constructor(code: string, statusCode: number, message: string) {
+  constructor(
+    code: string,
+    statusCode: number,
+    message: string,
+    details?: Record<string, unknown>,
+  ) {
     super(message);
     this.code = code;
     this.statusCode = statusCode;
+    this.details = details;
   }
 }
 
@@ -63,6 +74,8 @@ export interface AttachmentServiceDeps {
   softDeletes: Pick<VaultItemSoftDeletesRepository, "exists">;
   templates: Pick<WorkspaceItemTemplatesRepository, "findById">;
   config: PlanEntitlementRuntimeConfig;
+  /** When set, SaaS uploads are rejected once encrypted content exceeds the plan ceiling. */
+  storageQuota?: WorkspaceStorageQuotaService;
   /** True when the actor may update workspace branding (logo / tile color). */
   canUpdateWorkspaceBranding: (workspaceId: string, userId: string) => Promise<boolean>;
 }
@@ -78,6 +91,7 @@ export class AttachmentService {
   private readonly softDeletes: Pick<VaultItemSoftDeletesRepository, "exists">;
   private readonly templates: Pick<WorkspaceItemTemplatesRepository, "findById">;
   private readonly config: PlanEntitlementRuntimeConfig;
+  private readonly storageQuota: WorkspaceStorageQuotaService | undefined;
   private readonly canUpdateWorkspaceBranding: (
     workspaceId: string,
     userId: string,
@@ -92,6 +106,7 @@ export class AttachmentService {
     this.softDeletes = deps.softDeletes;
     this.templates = deps.templates;
     this.config = deps.config;
+    this.storageQuota = deps.storageQuota;
     this.canUpdateWorkspaceBranding = deps.canUpdateWorkspaceBranding;
   }
 
@@ -143,6 +158,8 @@ export class AttachmentService {
     if (input.encryptedKey.byteLength === 0) {
       throw new AttachmentServiceError("INVALID_ATTACHMENT_METADATA", 400, "Encrypted attachment key is required");
     }
+
+    await this.assertStorageQuota(input, isItemFaviconAttachment);
 
     const stored = await this.storage.upload({
       vaultId: input.vaultId,
@@ -279,6 +296,38 @@ export class AttachmentService {
 
   private async deleteStorageRecords(records: AttachmentRecord[]): Promise<void> {
     await Promise.all(records.map((record) => this.storage.deleteByStorageKey(record.storageKey).catch(() => undefined)));
+  }
+
+  private async assertStorageQuota(
+    input: AttachmentUploadInput,
+    isItemFaviconAttachment: boolean,
+  ): Promise<void> {
+    if (!this.storageQuota) {
+      return;
+    }
+    const vault = await this.vaults.findById(input.vaultId);
+    if (!vault) {
+      return;
+    }
+    const workspace = await this.workspaces.findById(vault.workspaceId);
+    if (!workspace) {
+      return;
+    }
+    const replacedBytes = isItemFaviconAttachment
+      ? await this.storageQuota.replacedItemFaviconBytes(input.vaultId, input.itemId)
+      : 0;
+    try {
+      await this.storageQuota.assertAdditionalBytes({
+        workspace,
+        additionalBytes: input.sizeBytes,
+        replacedBytes,
+      });
+    } catch (error) {
+      if (error instanceof PlanQuotaExceededError) {
+        throw new AttachmentServiceError(error.code, error.statusCode, error.message, error.details);
+      }
+      throw error;
+    }
   }
 
   private async assertVaultAccess(vaultId: string, userId: string): Promise<void> {

@@ -1,4 +1,9 @@
-import type { SyncAppendEventRequestDto, SyncEventWireDto, SyncEventsListResponseDto } from "@okkey/types";
+import {
+  PLAN_QUOTA_EXCEEDED,
+  type SyncAppendEventRequestDto,
+  type SyncEventWireDto,
+  type SyncEventsListResponseDto,
+} from "@okkey/types";
 import { generateEntityId } from "@okkey/id";
 import { eventsListHasMore } from "./events-list-page.js";
 import { replayVaultEvents, type ReplayEngineOptions, type SyncMaterializedState } from "./replay-engine.js";
@@ -136,6 +141,14 @@ function toOutboxError(err: unknown): { code: string; message: string; versionMi
           return { code: "VERSION_MISMATCH", message: directMsg, versionMismatch: mismatch };
         }
       }
+    }
+
+    if (isObject(err.body) && typeof err.body.error === "string") {
+      const bodyMessage = typeof err.body.message === "string" ? err.body.message.trim() : "";
+      return {
+        code: err.body.error,
+        message: bodyMessage || directMsg,
+      };
     }
 
     return {
@@ -384,7 +397,7 @@ export class SyncOutboxClient {
         entry.lastErrorCode = parsed.code;
         entry.lastErrorMessage = parsed.message;
         entry.updatedAtMs = this.nowMs();
-        if (entry.attemptCount >= this.maxAttempts) {
+        if (entry.attemptCount >= this.maxAttempts || parsed.code === PLAN_QUOTA_EXCEEDED) {
           entry.status = "dead";
           entry.nextAttemptAtMs = Number.MAX_SAFE_INTEGER;
         } else {

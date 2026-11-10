@@ -110,6 +110,7 @@ function sendServiceError(ctx: Parameters<RouteHandler>[0], error: unknown, fall
       error: error.code,
       message: error.message,
       requestId: ctx.requestId,
+      ...(error.details ? { details: error.details } : {}),
     });
     return;
   }
