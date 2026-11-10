@@ -204,6 +204,31 @@ export class WorkspaceMembersService {
   }
 
   /**
+   * Lightweight directory for activity / audit labels and the capsule recipients picker.
+   * Available to any workspace member (not gated by members.get or plan quotas).
+   */
+  async listMemberDirectory(
+    workspaceId: string,
+    actorId: string,
+  ): Promise<Array<{ userId: string; email: string; firstName: string | null; lastName: string | null }>> {
+    await this.requireAccessibleWorkspace(workspaceId, actorId);
+    const active = await this.loadActiveMembers(workspaceId);
+    return active.flatMap((member) => {
+      if (!member.userId) {
+        return [];
+      }
+      return [
+        {
+          userId: member.userId,
+          email: member.email,
+          firstName: member.firstName,
+          lastName: member.lastName,
+        },
+      ];
+    });
+  }
+
+  /**
    * Authorize before body validation so foreign workspaces cannot be probed via 400s
    * (same pattern as Core item-category-preferences / the item-category route).
    */
