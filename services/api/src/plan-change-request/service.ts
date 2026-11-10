@@ -29,7 +29,7 @@ export class PlanChangeRequestServiceError extends Error {
     | "EMAIL_NOT_CONFIGURED"
     | "EMAIL_SEND_FAILED";
   readonly status: number;
-  readonly details?: { retryAfterSeconds?: number };
+  readonly details?: { retryAfterSeconds?: number; availableAt?: string };
 
   constructor(
     code:
@@ -43,7 +43,7 @@ export class PlanChangeRequestServiceError extends Error {
       | "EMAIL_SEND_FAILED",
     status: number,
     message: string,
-    details?: { retryAfterSeconds?: number },
+    details?: { retryAfterSeconds?: number; availableAt?: string },
   ) {
     super(message);
     this.name = "PlanChangeRequestServiceError";
@@ -213,11 +213,12 @@ export class PlanChangeRequestService {
         1,
         Math.ceil((pivotScore + windowMs - nowMs) / 1000),
       );
+      const availableAt = new Date(nowMs + retryAfterSeconds * 1000).toISOString();
       throw new PlanChangeRequestServiceError(
         "RATE_LIMITED",
         429,
         "license request rate limit exceeded",
-        { retryAfterSeconds },
+        { retryAfterSeconds, availableAt },
       );
     }
   }
