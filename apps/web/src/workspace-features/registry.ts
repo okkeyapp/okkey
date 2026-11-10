@@ -179,6 +179,11 @@ export type CapsuleAccessSettingsFieldsProps = {
   };
   saveDefaults: boolean;
   onSaveDefaultsChange: (value: boolean) => void;
+  /**
+   * Plan does not include capsule access settings.
+   * Render the same controls disabled, with a paid-plan note. Do not call onChange.
+   */
+  locked?: boolean;
 };
 
 /** Guest gate for a capsule that requires a password or owner approval. */

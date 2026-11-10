@@ -190,7 +190,8 @@ export default function NewCapsulePopup({
   const advancedAvailable = workspaceHasPlanFeature(workspace, "capsuleAccessSettings");
   const filesInCapsules = workspaceHasPlanFeature(workspace, "filesInCapsules");
   const CapsuleAccessSettingsFields = workspaceCapsulesModule.CapsuleAccessSettingsFields;
-  const accessSettingsActive = advancedAvailable && CapsuleAccessSettingsFields != null;
+  const accessSettingsMounted = CapsuleAccessSettingsFields != null;
+  const accessSettingsActive = advancedAvailable && accessSettingsMounted;
   const storedCapsulePolicies: WorkspaceCapsulePolicies =
     workspace?.capsulePolicies ?? DEFAULT_WORKSPACE_CAPSULE_POLICIES;
   const capsulePolicies = useMemo(
@@ -261,29 +262,23 @@ export default function NewCapsulePopup({
     [t],
   );
   const capsuleTypeOptions = useMemo(() => {
-    const allowed = allCapsuleTypeOptions.filter(
-      ([value]) =>
-        isCapsuleTypeAllowed(capsulePolicies, value) &&
-        (value !== "file" || filesInCapsules),
+    const allowed = allCapsuleTypeOptions.filter(([value]) =>
+      isCapsuleTypeAllowed(capsulePolicies, value),
     );
-    if (isEditing && editingDetail && (editingDetail.type !== "file" || filesInCapsules)) {
+    if (isEditing && editingDetail) {
       const current = allCapsuleTypeOptions.find(([value]) => value === editingDetail.type);
       if (current && !allowed.some(([value]) => value === current[0])) {
         return [...allowed, current];
       }
     }
     return allowed;
-  }, [allCapsuleTypeOptions, capsulePolicies, editingDetail, filesInCapsules, isEditing]);
+  }, [allCapsuleTypeOptions, capsulePolicies, editingDetail, isEditing]);
   const allTypesDisabled = !isEditing && capsuleTypeOptions.length === 0;
-  const policyTypeLocked = Boolean(
+  const typeLocked = Boolean(
     isEditing &&
       editingDetail &&
       !isCapsuleTypeAllowed(capsulePolicies, editingDetail.type),
   );
-  const planFileLocked = Boolean(
-    isEditing && editingDetail?.type === "file" && !filesInCapsules,
-  );
-  const typeLocked = policyTypeLocked || planFileLocked;
   const popupIdentity = !open ? "closed" : isEditing ? `edit:${editingCapsuleId}` : "create";
   const activationMinimumDate = useMemo(
     () =>
@@ -343,10 +338,14 @@ export default function NewCapsulePopup({
   useEffect(() => {
     if (!open || isEditing) return;
     if (capsuleTypeOptions.length === 0) return;
-    if (!capsuleTypeOptions.some(([value]) => value === type)) {
-      setType(capsuleTypeOptions[0][0]);
+    const selectable = capsuleTypeOptions.filter(
+      ([value]) => value !== "file" || filesInCapsules,
+    );
+    if (selectable.length === 0) return;
+    if (!selectable.some(([value]) => value === type)) {
+      setType(selectable[0][0]);
     }
-  }, [capsuleTypeOptions, isEditing, open, type]);
+  }, [capsuleTypeOptions, filesInCapsules, isEditing, open, type]);
 
   useEffect(() => {
     if (!accessSettingsActive) {
@@ -901,33 +900,36 @@ export default function NewCapsulePopup({
         encryptedMetadata: generated.encryptedMetadata,
         ownerKeyWrap: generated.ownerKeyWrap,
         keyTransportMode: "fragment",
-        ...(effectiveViewsEnabled
+        ...(forceMaxViews || (accessSettingsActive && viewsEnabled)
           ? {
-              maxViews: effectiveMaxViews,
+              maxViews: forceMaxViews ? capsulePolicies.forceMaxViews : maxViews,
               viewLimitAction: accessSettingsActive ? viewLimitAction : "deactivate",
             }
           : {}),
-        ...(effectiveTimeEnabled
+        ...(accessSettingsActive && effectiveTimeEnabled
           ? {
               ...(activateAt ? { activateAt } : {}),
               ...(deactivateAt ? { deactivateAt } : {}),
               ...(deleteAt ? { deleteAt } : {}),
             }
           : {}),
-        ...(effectiveAccessEnabled && recipients.length > 0
+        ...(accessSettingsActive && effectiveAccessEnabled && recipients.length > 0
           ? { allowedRecipientEmails: recipients }
           : {}),
-        ...(effectivePasswordEnabled && password.length >= 4
+        ...(accessSettingsActive && effectivePasswordEnabled && password.length >= 4
           ? { password, passwordAttemptLimit: effectiveAttemptLimit }
-          : keepExistingPassword
+          : accessSettingsActive && keepExistingPassword
             ? { passwordAttemptLimit: effectiveAttemptLimit }
             : {}),
-        approvalRequired: effectiveApprovalRequired,
+        approvalRequired: accessSettingsActive ? effectiveApprovalRequired : false,
         ...(isEditing
           ? { keepExistingPassword, keepExistingRecipients, keepExistingFile }
           : {}),
       };
-      if (filesInCapsules && type === "file" && file) {
+      if (!isEditing && type === "file" && !filesInCapsules) {
+        throw new Error(t("web.capsules.popup.planUnavailable"));
+      }
+      if (type === "file" && file) {
         body.filePayload = bytesToBlob(
           await encryptCapsulePayload(
             generated.capsuleKey,
@@ -1056,12 +1058,6 @@ export default function NewCapsulePopup({
             linkKey="web.capsules.popup.typesAllDisabledLink"
             onNavigate={handleClose}
           />
-        ) : planFileLocked ? (
-          <Alert variant="info">
-            <CapsuleAlertInfoIcon className="size-4" />
-            <AlertTitle>{t("web.capsules.popup.typesNoticeTitle")}</AlertTitle>
-            <AlertDescription>{t("web.capsules.popup.planUnavailable")}</AlertDescription>
-          </Alert>
         ) : typeLocked ? (
           <CapsuleTypesSettingsAlert
             t={t}
@@ -1075,11 +1071,15 @@ export default function NewCapsulePopup({
         <div className="relative flex w-fit rounded-lg bg-secondary p-1">
           {capsuleTypeOptions.map(([value, Icon, label]) => {
             const active = type === value;
+            const planLocked =
+              value === "file" && !filesInCapsules && !(isEditing && editingDetail?.type === "file");
             return (
               <Button
                 key={value}
                 size="sm"
                 variant={active ? "outline" : "ghost"}
+                disabled={planLocked}
+                title={planLocked ? t("web.capsules.popup.planUnavailable") : undefined}
                 className={cn(
                   "relative border",
                   active
@@ -1104,7 +1104,9 @@ export default function NewCapsulePopup({
                         "active:bg-foreground/10",
                       ),
                 )}
-                onClick={() => setType(value)}
+                onClick={() => {
+                  if (!planLocked) setType(value);
+                }}
               >
                 <Icon data-icon="inline-start" />
                 {label}
@@ -1112,6 +1114,11 @@ export default function NewCapsulePopup({
             );
           })}
         </div>
+        ) : null}
+        {capsuleTypeOptions.some(([value]) => value === "file") && !filesInCapsules ? (
+          <p className="text-sm leading-5 text-muted-foreground">
+            {t("web.capsules.popup.planUnavailable")}
+          </p>
         ) : null}
 
         {type === "item" ? (
@@ -1306,7 +1313,7 @@ export default function NewCapsulePopup({
 
             <KeyForm mode="edit" className="gap-0">
               <KeySection variant="primary" mode="edit">
-                {type === "file" && filesInCapsules ? (
+                {type === "file" ? (
                   <KeyField
                     className="border-b-transparent"
                     label={t("web.capsules.public.secretFile")}
@@ -1365,7 +1372,7 @@ export default function NewCapsulePopup({
           </>
         )}
 
-        {forceMaxViews || accessSettingsActive ? (
+        {forceMaxViews || accessSettingsMounted ? (
           <Button
             variant="secondary"
             className="w-full"
@@ -1391,9 +1398,15 @@ export default function NewCapsulePopup({
           </Button>
         ) : null}
 
-        {advancedOpen && (forceMaxViews || accessSettingsActive) ? (
+        {(advancedOpen || (accessSettingsMounted && !accessSettingsActive)) &&
+        (forceMaxViews || accessSettingsMounted) ? (
           <div className="overflow-hidden rounded-xl bg-secondary">
-            {!accessSettingsActive && forceMaxViews ? (
+            {accessSettingsMounted && !accessSettingsActive ? (
+              <p className="px-4 pt-4 text-sm leading-5 text-muted-foreground">
+                {t("web.capsules.popup.planUnavailable")}
+              </p>
+            ) : null}
+            {!accessSettingsMounted && forceMaxViews ? (
               <AdvancedRow
                 title={t("web.capsules.popup.views.title")}
                 description={t("web.capsules.popup.views.description")}
@@ -1422,14 +1435,19 @@ export default function NewCapsulePopup({
                 </div>
               </AdvancedRow>
             ) : null}
-            {accessSettingsActive && CapsuleAccessSettingsFields ? (
+            {accessSettingsMounted && CapsuleAccessSettingsFields ? (
+              <fieldset
+                disabled={!accessSettingsActive}
+                className="min-w-0 border-0 p-0 disabled:opacity-60"
+              >
               <CapsuleAccessSettingsFields
                 t={t}
+                locked={!accessSettingsActive}
                 policies={capsulePolicies}
                 members={members}
                 isEditing={isEditing}
                 saveDefaults={saveDefaults}
-                onSaveDefaultsChange={setSaveDefaults}
+                onSaveDefaultsChange={accessSettingsActive ? setSaveDefaults : () => undefined}
                 values={{
                   viewsEnabled,
                   maxViews,
@@ -1451,6 +1469,7 @@ export default function NewCapsulePopup({
                   approvalRequired,
                 }}
                 onChange={(patch: Partial<CapsuleAccessSettingsValues>) => {
+                  if (!accessSettingsActive) return;
                   if (patch.viewsEnabled !== undefined) setViewsEnabled(patch.viewsEnabled);
                   if (patch.maxViews !== undefined) setMaxViews(patch.maxViews);
                   if (patch.viewLimitAction !== undefined) setViewLimitAction(patch.viewLimitAction);
@@ -1479,6 +1498,7 @@ export default function NewCapsulePopup({
                   activationMinimumDate,
                 }}
               />
+              </fieldset>
             ) : null}
           </div>
         ) : null}
