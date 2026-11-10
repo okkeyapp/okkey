@@ -270,6 +270,42 @@ test("logo writes must use the current key version and quota follows ciphertext 
   assert.equal(await store.getLogo(), null);
 });
 
+test("logo upload is rejected by storage quota before the ciphertext is stored", async () => {
+  const store = new MemoryWorkspaceKeyStore();
+  store.members = [OWNER_ID];
+  const service = new WorkspaceKeyService(
+    store,
+    allowAll(),
+    {
+      async assertLogoWrite(input) {
+        assert.equal(input.replacedBytes, 0);
+        assert.ok(input.additionalBytes > 0);
+        throw new WorkspaceKeyServiceError("PLAN_QUOTA_EXCEEDED", 403, "storage limit");
+      },
+    },
+  );
+  await service.publishVersion1(WORKSPACE_ID, OWNER_ID, [wrap(OWNER_ID, 1)]);
+  const ciphertext = frame(1, "over-quota");
+  await assert.rejects(
+    () => service.putLogo(WORKSPACE_ID, OWNER_ID, ciphertext),
+    (error: unknown) => error instanceof WorkspaceKeyServiceError && error.code === "PLAN_QUOTA_EXCEEDED",
+  );
+  assert.equal(await store.getLogo(), null);
+
+  const allowed = new WorkspaceKeyService(store, allowAll(), {
+    async assertLogoWrite(input) {
+      if (input.replacedBytes === 0) {
+        return;
+      }
+      assert.equal(input.replacedBytes, ciphertext.length);
+      assert.equal(input.additionalBytes, ciphertext.length);
+    },
+  });
+  await allowed.putLogo(WORKSPACE_ID, OWNER_ID, ciphertext);
+  await allowed.putLogo(WORKSPACE_ID, OWNER_ID, ciphertext);
+  assert.equal((await store.getLogo())?.ciphertextBytes, ciphertext.length);
+});
+
 test("client settings writes reject an older key version", async () => {
   const store = new MemoryWorkspaceKeyStore();
   store.members = [OWNER_ID];

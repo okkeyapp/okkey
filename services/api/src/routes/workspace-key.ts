@@ -13,13 +13,19 @@ import {
 
 type ResolveUserId = (req: IncomingMessage) => Promise<string | null>;
 
-function errorPayload(code: string, message: string, requestId: string) {
-  return { error: code, message, requestId };
+function errorPayload(code: string, message: string, requestId: string, details?: Record<string, unknown>) {
+  return {
+    error: code,
+    message,
+    requestId,
+    ...(details ? { details } : {}),
+  };
 }
 
 function handleError(requestId: string, res: ServerResponse, error: unknown): void {
   if (error instanceof WorkspaceKeyServiceError || error instanceof WorkspaceSettingsServiceError) {
-    json(res, error.statusCode, errorPayload(error.code, error.message, requestId));
+    const details = error instanceof WorkspaceKeyServiceError ? error.details : undefined;
+    json(res, error.statusCode, errorPayload(error.code, error.message, requestId, details));
     return;
   }
   console.error("[workspace-key] unexpected error", requestId, error);

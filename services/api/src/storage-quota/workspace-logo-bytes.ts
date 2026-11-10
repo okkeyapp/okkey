@@ -8,7 +8,7 @@ import type { QueryExecutor } from "../storage/postgres.ts";
  * length and `replacedBytes` = previous length (net change is new - old).
  * A delete contributes `replacedBytes` = previous length and frees the usage.
  *
- * SaaS quota measurement should add:
+ * `measureUsedBytes` adds this term:
  * `COALESCE((SELECT ciphertext_bytes FROM workspace_logos WHERE workspace_id = $1), 0)`
  */
 export const WORKSPACE_LOGO_CIPHERTEXT_BYTES_SQL =

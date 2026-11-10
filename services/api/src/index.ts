@@ -23,6 +23,7 @@ import { createStorageLayer } from "./storage/index.ts";
 import { SyncService } from "./sync/service.ts";
 import { WorkspacePersonalSyncService } from "./workspace-personal-sync/service.ts";
 import { WorkspaceKeyService, WorkspaceKeyServiceError } from "./workspace-key/service.ts";
+import { PlanQuotaExceededError } from "./storage-quota/service.ts";
 import { PgWorkspaceKeyStore } from "./workspace-key/store.ts";
 import { TwoFactorService } from "./two-factor/service.ts";
 import { WebAuthnService } from "./webauthn/service.ts";
@@ -216,6 +217,25 @@ async function main(): Promise<void> {
       } catch (error) {
         if (error instanceof WorkspacePermissionError) {
           throw new WorkspaceKeyServiceError(error.code, error.statusCode, error.message);
+        }
+        throw error;
+      }
+    },
+  }, {
+    assertLogoWrite: async ({ workspaceId, additionalBytes, replacedBytes }) => {
+      const workspace = await storage.repositories.workspaces.findById(workspaceId);
+      if (!workspace) {
+        return;
+      }
+      try {
+        await storageQuota.assertAdditionalBytes({
+          workspace,
+          additionalBytes,
+          replacedBytes,
+        });
+      } catch (error) {
+        if (error instanceof PlanQuotaExceededError) {
+          throw new WorkspaceKeyServiceError(error.code, error.statusCode, error.message, error.details);
         }
         throw error;
       }

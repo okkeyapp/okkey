@@ -109,6 +109,38 @@ test("SaaS PREMIUM is 5120 MiB and TEAM/ENTERPRISE add 5120 MiB per member plus 
   assert.notEqual(enterpriseStatus.limitBytes, null);
 });
 
+test("workspace logo ciphertext is part of measured usage and blocks the next logo byte", async () => {
+  const limit = 100 * STORAGE_QUOTA_BYTES_PER_MIB;
+  const { service, db } = quotaService("saas", (sql) => {
+    if (sql.includes("workspace_members")) {
+      return [{ count: "1" }];
+    }
+    if (sql.includes("used_bytes")) {
+      assert.match(sql, /workspace_logos/);
+      assert.match(sql, /ciphertext_bytes/);
+      return [{ used_bytes: String(limit) }];
+    }
+    return [];
+  });
+  const snapshot = await service.snapshot({ id: "1000000000000000001", planTier: "FREE" });
+  assert.equal(snapshot.usedBytes, limit);
+  await assert.rejects(
+    () =>
+      service.assertAdditionalBytes({
+        workspace: { id: "1000000000000000001", planTier: "FREE" },
+        additionalBytes: 80,
+        replacedBytes: 0,
+      }),
+    (error: unknown) => error instanceof PlanQuotaExceededError,
+  );
+  await service.assertAdditionalBytes({
+    workspace: { id: "1000000000000000001", planTier: "FREE" },
+    additionalBytes: 80,
+    replacedBytes: 80,
+  });
+  assert.ok(db.calls.some((sql) => sql.includes("FROM workspace_logos")));
+});
+
 test("replacing bytes does not count the overwritten ciphertext twice", async () => {
   const limit = 100 * STORAGE_QUOTA_BYTES_PER_MIB;
   const { service } = quotaService("saas", (sql) => {

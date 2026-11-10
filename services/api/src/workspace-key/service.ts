@@ -19,14 +19,24 @@ const WRAP_PAYLOAD_MAX_BYTES = 64 * 1024;
 export class WorkspaceKeyServiceError extends Error {
   readonly code: string;
   readonly statusCode: number;
+  readonly details?: Record<string, unknown>;
 
-  constructor(code: string, statusCode: number, message: string) {
+  constructor(code: string, statusCode: number, message: string, details?: Record<string, unknown>) {
     super(message);
     this.name = "WorkspaceKeyServiceError";
     this.code = code;
     this.statusCode = statusCode;
+    this.details = details;
   }
 }
+
+export type WorkspaceLogoQuotaCheck = {
+  assertLogoWrite(input: {
+    workspaceId: string;
+    additionalBytes: number;
+    replacedBytes: number;
+  }): Promise<void>;
+};
 
 export type WorkspaceKeyAuthorize = {
   assertMember(workspaceId: string, userId: string): Promise<void>;
@@ -41,10 +51,16 @@ export type WorkspaceKeyWrapInput = {
 export class WorkspaceKeyService {
   private readonly store: WorkspaceKeyStore;
   private readonly authorize: WorkspaceKeyAuthorize;
+  private readonly logoQuota: WorkspaceLogoQuotaCheck | undefined;
 
-  constructor(store: WorkspaceKeyStore, authorize: WorkspaceKeyAuthorize) {
+  constructor(
+    store: WorkspaceKeyStore,
+    authorize: WorkspaceKeyAuthorize,
+    logoQuota?: WorkspaceLogoQuotaCheck,
+  ) {
     this.store = store;
     this.authorize = authorize;
+    this.logoQuota = logoQuota;
   }
 
   async getForMember(workspaceId: string, userId: string) {
@@ -142,6 +158,14 @@ export class WorkspaceKeyService {
       throw new WorkspaceKeyServiceError("LOGO_TOO_LARGE", 413, "workspace logo ciphertext is empty or too large");
     }
     const keyVersion = requireCurrentCiphertext(ciphertext, await this.store.currentVersion(workspaceId));
+    const previous = await this.store.getLogo(workspaceId);
+    if (this.logoQuota) {
+      await this.logoQuota.assertLogoWrite({
+        workspaceId,
+        additionalBytes: ciphertext.length,
+        replacedBytes: previous?.ciphertextBytes ?? 0,
+      });
+    }
     const written = await this.store.putLogo(workspaceId, { keyVersion, ciphertext });
     const quota = workspaceLogoQuotaDelta(written.previousBytes, ciphertext.length);
     return {

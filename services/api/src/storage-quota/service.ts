@@ -40,6 +40,7 @@ export type StorageQuotaWorkspace = {
  * - attachment sizes
  * - capsule payload and metadata ciphertext
  * - capsule file objects
+ * - current workspace logo ciphertext (`workspace_logos.ciphertext_bytes`)
  *
  * Item history older than the latest payload is not counted, so an update replaces usage
  * and a delete frees it. Folder metadata events are not item content and are not counted.
@@ -217,6 +218,11 @@ export class WorkspaceStorageQuotaService {
             FROM capsule_files cf
             INNER JOIN capsules c ON c.id = cf.capsule_id
             WHERE c.workspace_id = $1::bigint
+          ), 0)
+          + COALESCE((
+            SELECT ciphertext_bytes
+            FROM workspace_logos
+            WHERE workspace_id = $1::bigint
           ), 0)
         )::text AS used_bytes
       `,
