@@ -37,6 +37,7 @@ import {
   clearRememberedServerKeyShares,
   commitFetchedServerKeyShare,
   ensureMlDsaIdentityOnUnlock,
+  mergeDeviceShareFromServer,
   rememberServerKeyShare,
 } from "@okkey/vault";
 
@@ -58,7 +59,6 @@ import {
   clearPendingVaultBundle,
   clearVaultBundleSessionMirror,
   mapVaultUnlockBootstrapToStored,
-  mergeDeviceShareFromServer,
   migrateLegacyVaultBundleToUser,
   readVaultBundle,
   writeVaultBundle,
