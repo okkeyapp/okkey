@@ -40,6 +40,7 @@ import { WorkspaceBuiltInRolesService } from "./workspace-roles/list-service.ts"
 import { WorkspaceBuiltInProfilesService } from "./workspace-profiles/list-service.ts";
 import { WorkspaceMeVaultProfilesService } from "./routes/workspace-me-vault-profiles.ts";
 import { WorkspaceMembersService } from "./workspace-members/service.ts";
+import { WorkspaceSharedVaultsService } from "./workspace-shared-vaults/service.ts";
 import { loadEnterprisePlugins } from "./plugins/load-enterprise-plugins.ts";
 import {
   KeyFieldFileStorage,
@@ -173,10 +174,6 @@ async function main(): Promise<void> {
     storage.repositories.workspaces,
     storage.postgres,
   );
-  const workspaceMembersService = new WorkspaceMembersService({
-    db: storage.postgres,
-    workspaces: storage.repositories.workspaces,
-  });
   if (config.enterpriseModulesRequested && !config.enterpriseModulesEnabled) {
     logger.warn(
       "ENTERPRISE_MODULES=true but enterprise backend is not loadable; continuing as FREE",
@@ -195,6 +192,21 @@ async function main(): Promise<void> {
     config = { ...config, enterpriseModulesEnabled: false };
   }
   const enterprisePlugins = enterpriseLoad.plugins;
+  const workspaceSharedVaultsService = new WorkspaceSharedVaultsService({
+    vaults: storage.repositories.vaults,
+    workspaces: storage.repositories.workspaces,
+    db: storage.postgres,
+    vaultSharing: vaultSharingService,
+    config,
+  });
+  const workspaceMembersService = new WorkspaceMembersService({
+    db: storage.postgres,
+    workspaces: storage.repositories.workspaces,
+    vaultService: workspaceSharedVaultsService,
+    emailTemplates,
+    publicAppBaseUrl: config.publicAppBaseUrl,
+    config,
+  });
   const vaultUnlockBootstrapService = new VaultUnlockBootstrapService({
     users: storage.repositories.users,
     devices: storage.repositories.devices,
@@ -319,6 +331,7 @@ async function main(): Promise<void> {
     workspaceBuiltInProfilesService,
     workspaceMeVaultProfilesService,
     workspaceMembersService,
+    workspaceSharedVaultsService,
     vaultUnlockBootstrapService,
     vaultSharingService,
     syncService,

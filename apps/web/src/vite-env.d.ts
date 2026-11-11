@@ -20,29 +20,6 @@ declare module "@okkey-enterprise/workspace-profiles" {
   export default enterpriseProfilesModule;
 }
 
-declare module "@okkey-enterprise/workspace-members" {
-  import type { CoreApiClient } from "@okkey/api";
-  import type { WorkspacePermissionsMatrixDto } from "@okkey/types";
-  import type { WorkspaceSettingsMembersModule } from "./workspace-features/registry";
-  const workspaceMembersModule: WorkspaceSettingsMembersModule;
-  export default workspaceMembersModule;
-  export function canCompletePendingVaultWraps(
-    permissions: WorkspacePermissionsMatrixDto | null | undefined,
-  ): boolean;
-  export function tryCompletePendingVaultWraps(input: {
-    core: CoreApiClient;
-    workspaceId: string;
-    userId: string;
-    accountVaultKey: Uint8Array;
-  }): Promise<{ skippedInvalidKeys: number }>;
-}
-
-declare module "@okkey-enterprise/workspace-shared-vaults" {
-  import type { WorkspaceSettingsSharedVaultsModule } from "./workspace-features/registry";
-  const enterpriseSharedVaultsModule: WorkspaceSettingsSharedVaultsModule;
-  export default enterpriseSharedVaultsModule;
-}
-
 declare module "@okkey-enterprise/workspace-capsules" {
   import type { WorkspaceSettingsCapsulesModule } from "./workspace-features/registry";
   const enterpriseCapsulesModule: WorkspaceSettingsCapsulesModule;

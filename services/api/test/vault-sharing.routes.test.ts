@@ -79,12 +79,22 @@ test("GET /vaults/:vaultId/key returns encrypted key", async () => {
   assert.equal(Buffer.from(payload.encryptedVaultKey, "base64").toString("utf8"), "k");
 });
 
-test("paid shared-vault routes are 404 without enterprise plugin", async () => {
+test("share routes are registered with the sharing service; vault create stays unwired", async () => {
   for (const [method, url] of [
     ["POST", "/workspaces/w1/vaults"],
     ["DELETE", "/vaults/v1"],
     ["GET", "/vaults/v1/access"],
     ["PUT", "/vaults/v1/access"],
+  ] as const) {
+    const res = await dispatch({
+      method,
+      url,
+      headers: { "x-user-id": "u1", "content-type": "application/json" },
+      body: {},
+    });
+    assert.equal(res.statusCode, 404, `${method} ${url}`);
+  }
+  for (const [method, url] of [
     ["GET", "/vaults/v1/shares"],
     ["POST", "/vaults/v1/shares"],
     ["POST", "/vaults/v1/shares/revoke"],
@@ -97,11 +107,11 @@ test("paid shared-vault routes are 404 without enterprise plugin", async () => {
       headers: { "x-user-id": "u1", "content-type": "application/json" },
       body: {},
     });
-    assert.equal(res.statusCode, 404, `${method} ${url}`);
+    assert.equal(res.statusCode, 400, `${method} ${url}`);
   }
 });
 
-test("paid member invite routes are 404 without enterprise plugin", async () => {
+test("member invite routes are absent until the members service is wired", async () => {
   for (const [method, url] of [
     ["POST", "/workspaces/w1/invitations"],
     ["DELETE", "/workspaces/w1/invitations/i1"],

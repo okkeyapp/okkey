@@ -134,17 +134,41 @@ import {
 } from "./routes/workspace-personal-sync.ts";
 import { createWorkspacesListRoute } from "./routes/workspaces-list.ts";
 import {
-  createVaultDeleteRoute,
   createVaultGetRoute,
   createVaultUpdateRoute,
   createWorkspaceVaultsListRoute,
 } from "./routes/vault.ts";
 import {
+  createInvitationAcceptRoute,
+  createInvitationPreviewRoute,
+  createInvitationVaultAccessGetRoute,
+  createInvitationVaultAccessPutRoute,
+  createMemberVaultAccessGetRoute,
+  createMemberVaultAccessPutRoute,
+  createPendingVaultWrapsGetRoute,
   createWorkspaceInvitationDeleteRoute,
+  createWorkspaceInvitationPatchRoute,
+  createWorkspaceInvitationsCreateRoute,
   createWorkspaceMemberDeleteRoute,
-  createWorkspaceMembersListRoute,
   createWorkspaceMemberDirectoryRoute,
+  createWorkspaceMemberPatchRoute,
+  createWorkspaceMembersListRoute,
 } from "./routes/workspace-members.ts";
+import {
+  createVaultAccessGetRoute,
+  createVaultAccessUpdateRoute,
+  createVaultDeleteRoute,
+  createVaultKeyRotateRoute,
+  createVaultMemberRoleUpdateRoute,
+  createVaultShareRevokeRoute,
+  createVaultSharesListRoute,
+  createVaultShareUpsertRoute,
+  createWorkspaceVaultCreateRoute,
+} from "./routes/workspace-shared-vaults.ts";
+import { createVaultProfileWriteGuardMiddleware } from "./vault-profile-write-guard/middleware.ts";
+import { VaultProfileWriteGuardRepository } from "./vault-profile-write-guard/repository.ts";
+import { VaultProfileWriteGuardService } from "./vault-profile-write-guard/service.ts";
+import type { WorkspaceSharedVaultsService } from "./workspace-shared-vaults/service.ts";
 import { createWorkspaceMePermissionsRoute } from "./routes/workspace-me-permissions.ts";
 import {
   createWorkspaceMeVaultProfilesRoute,
@@ -254,6 +278,7 @@ export interface AppDeps {
   workspaceBuiltInProfilesService?: WorkspaceBuiltInProfilesService;
   workspaceMeVaultProfilesService?: WorkspaceMeVaultProfilesService;
   workspaceMembersService?: WorkspaceMembersService;
+  workspaceSharedVaultsService?: WorkspaceSharedVaultsService;
   workspacePersonalSyncService?: WorkspacePersonalSyncService;
   attachmentService?: AttachmentService;
   itemFaviconService?: ItemFaviconService;
@@ -304,6 +329,13 @@ export function createApiApp(
     const session = await sessionIfDeviceTrusted(req);
     return session?.userId ?? null;
   };
+  if (options.postgres && options.vaultsRepository) {
+    const vaultProfileWriteGuard = new VaultProfileWriteGuardService(
+      new VaultProfileWriteGuardRepository(options.postgres),
+      options.vaultsRepository,
+    );
+    app.use(createVaultProfileWriteGuardMiddleware(vaultProfileWriteGuard, resolveUserId));
+  }
   /** Device list/register and the revoke guard must see an unbound Bearer so it can bind or return 403. */
   const resolveUserIdAllowUnboundDevice: (req: IncomingMessage) => Promise<string | null> =
     deps.sessionService !== undefined
@@ -686,35 +718,77 @@ export function createApiApp(
         );
       }
     }
-    // Shared vault create is registered by enterprise `workspace-shared-vaults` plugin only.
+    if (deps.workspaceSharedVaultsService) {
+      app.route(
+        "POST",
+        "/workspaces/:workspaceId/vaults",
+        gateVaultUse(
+          createWorkspaceVaultCreateRoute(deps.workspaceSharedVaultsService, resolveUserId),
+        ),
+      );
+    }
     if (deps.workspaceMembersService) {
+      const members = deps.workspaceMembersService;
       app.route(
         "GET",
         "/workspaces/:workspaceId/members",
-        createWorkspaceMembersListRoute(deps.workspaceMembersService, resolveUserId),
+        createWorkspaceMembersListRoute(members, resolveUserId),
       );
       app.route(
         "GET",
         "/workspaces/:workspaceId/member-directory",
-        createWorkspaceMemberDirectoryRoute(deps.workspaceMembersService, resolveUserId),
+        createWorkspaceMemberDirectoryRoute(members, resolveUserId),
       );
-      // Invite / member edit / vault-access routes: enterprise `workspace-members` plugin only.
-      // Without it, Core still lets downgraded workspaces revoke invitations and remove members.
-      const hasEnterpriseWorkspaceMembers = enterprisePlugins.some(
-        (plugin) => plugin.id === "workspace-members",
+      app.route(
+        "POST",
+        "/workspaces/:workspaceId/invitations",
+        createWorkspaceInvitationsCreateRoute(members, resolveUserId),
       );
-      if (!hasEnterpriseWorkspaceMembers) {
-        app.route(
-          "DELETE",
-          "/workspaces/:workspaceId/invitations/:invitationId",
-          createWorkspaceInvitationDeleteRoute(deps.workspaceMembersService, resolveUserId),
-        );
-        app.route(
-          "DELETE",
-          "/workspaces/:workspaceId/members/:userId",
-          createWorkspaceMemberDeleteRoute(deps.workspaceMembersService, resolveUserId),
-        );
-      }
+      app.route(
+        "DELETE",
+        "/workspaces/:workspaceId/invitations/:invitationId",
+        createWorkspaceInvitationDeleteRoute(members, resolveUserId),
+      );
+      app.route(
+        "PATCH",
+        "/workspaces/:workspaceId/invitations/:invitationId",
+        createWorkspaceInvitationPatchRoute(members, resolveUserId),
+      );
+      app.route(
+        "GET",
+        "/workspaces/:workspaceId/invitations/:invitationId/vault-access",
+        createInvitationVaultAccessGetRoute(members, resolveUserId),
+      );
+      app.route(
+        "PUT",
+        "/workspaces/:workspaceId/invitations/:invitationId/vault-access",
+        createInvitationVaultAccessPutRoute(members, resolveUserId),
+      );
+      app.route(
+        "PATCH",
+        "/workspaces/:workspaceId/members/:userId",
+        createWorkspaceMemberPatchRoute(members, resolveUserId),
+      );
+      app.route(
+        "DELETE",
+        "/workspaces/:workspaceId/members/:userId",
+        createWorkspaceMemberDeleteRoute(members, resolveUserId),
+      );
+      app.route(
+        "GET",
+        "/workspaces/:workspaceId/members/:userId/vault-access",
+        createMemberVaultAccessGetRoute(members, resolveUserId),
+      );
+      app.route(
+        "PUT",
+        "/workspaces/:workspaceId/members/:userId/vault-access",
+        createMemberVaultAccessPutRoute(members, resolveUserId),
+      );
+      app.route(
+        "GET",
+        "/workspaces/:workspaceId/pending-vault-wraps",
+        createPendingVaultWrapsGetRoute(members, resolveUserId),
+      );
     }
     if (deps.itemCategoryPreferencesService) {
       app.route(
@@ -854,18 +928,24 @@ export function createApiApp(
       "/vaults/:vaultId",
       gateVaultUse(createVaultUpdateRoute(deps.vaultService, resolveUserId)),
     );
-    const hasEnterpriseWorkspaceSharedVaults = enterprisePlugins.some(
-      (plugin) => plugin.id === "workspace-shared-vaults",
-    );
-    if (!hasEnterpriseWorkspaceSharedVaults) {
-      // Remnant shared vaults after modules off: allow delete without EE plugin.
+    if (deps.workspaceSharedVaultsService) {
+      const sharedVaults = deps.workspaceSharedVaultsService;
       app.route(
         "DELETE",
         "/vaults/:vaultId",
-        gateVaultUse(createVaultDeleteRoute(deps.vaultService, resolveUserId)),
+        gateVaultUse(createVaultDeleteRoute(sharedVaults, resolveUserId)),
+      );
+      app.route(
+        "GET",
+        "/vaults/:vaultId/access",
+        gateVaultUse(createVaultAccessGetRoute(sharedVaults, resolveUserId)),
+      );
+      app.route(
+        "PUT",
+        "/vaults/:vaultId/access",
+        gateVaultUse(createVaultAccessUpdateRoute(sharedVaults, resolveUserId)),
       );
     }
-    // Shared vault access routes: enterprise `workspace-shared-vaults` plugin only.
   }
   if (deps.vaultSharingService) {
     app.route(
@@ -873,7 +953,52 @@ export function createApiApp(
       "/vaults/:vaultId/key",
       gateVaultUse(createVaultKeyGetRoute(deps.vaultSharingService, resolveUserId)),
     );
-    // Shares / rotate / member-role routes: enterprise `workspace-shared-vaults` plugin only.
+    app.route(
+      "GET",
+      "/vaults/:vaultId/shares",
+      gateVaultUse(createVaultSharesListRoute(deps.vaultSharingService, resolveUserId)),
+    );
+    app.route(
+      "POST",
+      "/vaults/:vaultId/shares",
+      gateVaultUse(createVaultShareUpsertRoute(deps.vaultSharingService, resolveUserId)),
+    );
+    app.route(
+      "POST",
+      "/vaults/:vaultId/shares/revoke",
+      gateVaultUse(createVaultShareRevokeRoute(deps.vaultSharingService, resolveUserId)),
+    );
+    app.route(
+      "POST",
+      "/vaults/:vaultId/key/rotate",
+      gateVaultUse(createVaultKeyRotateRoute(deps.vaultSharingService, resolveUserId)),
+    );
+    app.route(
+      "PATCH",
+      "/vaults/:vaultId/shares/:userId",
+      gateVaultUse(createVaultMemberRoleUpdateRoute(deps.vaultSharingService, resolveUserId)),
+    );
+  }
+  const invitePreviewRateLimit = options.redis
+    ? {
+        incr: (key: string) => options.redis!.incr(key),
+        expire: (key: string, seconds: number) => options.redis!.expire(key, seconds),
+        windowSeconds: config.authRateLimitWindowSeconds,
+        maxPerIp: config.invitePreviewRateLimitPerIp,
+        trustedProxyHops: config.trustedProxyHops,
+      }
+    : undefined;
+  if (deps.workspaceMembersService) {
+    app.route(
+      "GET",
+      "/invitations/:token",
+      createInvitationPreviewRoute(deps.workspaceMembersService, invitePreviewRateLimit),
+    );
+    app.route(
+      "POST",
+      "/invitations/:token/accept",
+      createInvitationAcceptRoute(deps.workspaceMembersService, resolveUserId),
+    );
   }
   if (deps.syncService) {
     app.route(

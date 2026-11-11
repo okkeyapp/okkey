@@ -352,7 +352,13 @@ test("removeMember drops vault access and membership for a non-owner member", as
 
   await service.removeMember(WORKSPACE_ID, OWNER_ID, USER_ID);
   const deletes = db.calls.filter((call) => /^\s*DELETE FROM/.test(call.sql)).map((call) => call.sql.trim().split(/\s+/)[2]);
-  assert.deepEqual(deletes, ["vault_keys", "vault_profiles", "vault_members", "workspace_members"]);
+  assert.deepEqual(deletes, [
+    "vault_keys",
+    "vault_profiles",
+    "vault_members",
+    "workspace_invitation_vault_access",
+    "workspace_members",
+  ]);
 });
 
 test("removeMember guards owner, self, unknown members, and own-only scope", async () => {

@@ -1,8 +1,7 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { WorkspaceMemberDto } from "@okkey/types";
 
 import { publicDocsUrl } from "../../../../docs/publicDocsUrl";
 import WorkspaceSettingsMembersSection from "./WorkspaceSettingsMembersSection";
@@ -23,15 +22,21 @@ vi.mock("../../../../auth/SectionReauthContext", () => ({
   useSectionReauth: () => reauthMock,
 }));
 
-const enterpriseMembersMock = vi.hoisted(() => ({
-  AdditionalMembersSection: null as
-    | ((props: { readOnly?: boolean; emptyFallback?: ReactNode }) => JSX.Element)
-    | null,
+vi.mock("./MemberCardPopup", () => ({
+  default: () => null,
 }));
 
-vi.mock("@okkey-enterprise/workspace-members", () => ({
-  default: enterpriseMembersMock,
-  tryCompletePendingVaultWraps: vi.fn(),
+vi.mock("./InviteMembersPopup", () => ({
+  default: () => null,
+}));
+
+vi.mock("./AdditionalMembersSection", () => ({
+  default: ({ readOnly, emptyFallback }: { readOnly?: boolean; emptyFallback?: ReactNode }) => (
+    <div data-testid="members-section">
+      {readOnly ? "read-only" : "editable"}
+      {readOnly ? emptyFallback : null}
+    </div>
+  ),
 }));
 
 vi.mock("../../../../auth/AuthVaultContext", () => ({
@@ -85,34 +90,6 @@ const ownerMember = {
   lastLoginAt: null,
 };
 
-const activeMember: WorkspaceMemberDto = {
-  ...ownerMember,
-  userId: "1000000002",
-  email: "teammate@example.com",
-  firstName: "Team",
-  lastName: "Mate",
-  roleId: "r3",
-  roleBuiltinKey: "user",
-  roleName: "User",
-  invitedBy: { userId: "u1", email: "owner@example.com", firstName: "Owner", lastName: "User" },
-};
-
-const pendingInvitee: WorkspaceMemberDto = {
-  ...ownerMember,
-  userId: null,
-  email: "invitee@example.com",
-  firstName: null,
-  lastName: null,
-  publicKey: "",
-  roleId: "r3",
-  roleBuiltinKey: "user",
-  roleName: "User",
-  status: "pending",
-  invitationId: "2000000001",
-  invitedAt: "2026-01-02T00:00:00.000Z",
-  invitedBy: { userId: "u1", email: "owner@example.com", firstName: "Owner", lastName: "User" },
-};
-
 const freeWorkspace = {
   id: "w1",
   name: "WS",
@@ -148,7 +125,6 @@ describe("WorkspaceSettingsMembersSection", () => {
     coreMock.revokeWorkspaceInvitation.mockReset();
     coreMock.deleteWorkspaceMember.mockReset();
     reauthMock.requestZoneUnlock.mockClear();
-    enterpriseMembersMock.AdditionalMembersSection = null;
   });
 
   it("renders header while loading", () => {
@@ -166,7 +142,7 @@ describe("WorkspaceSettingsMembersSection", () => {
     expect(learnMore.getAttribute("rel")).toContain("noopener");
   });
 
-  it("shows additional members upsell on FREE without enterprise module", async () => {
+  it("mounts additional members as editable on FREE", async () => {
     coreMock.listWorkspaceMembers.mockResolvedValue({
       members: [ownerMember],
       actorPermissions: { members: { get: 2, post: 1, put: 1, delete: 1 } },
@@ -208,20 +184,13 @@ describe("WorkspaceSettingsMembersSection", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText("Дополнительные участники")).toBeInTheDocument();
+      expect(screen.getByTestId("members-section")).toHaveTextContent("editable");
     });
-    expect(screen.getByRole("alert")).toBeInTheDocument();
-    expect(screen.getByText("Примечание")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Invite/i })).not.toBeInTheDocument();
-    expect(screen.getByText("owner@example.com")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /owner@example.com/i })).not.toBeInTheDocument();
+    expect(screen.queryByText("Примечание")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /owner@example.com/i })).toBeInTheDocument();
   });
 
-  it("makes owner card clickable when enterprise members module is available", async () => {
-    enterpriseMembersMock.AdditionalMembersSection = () => (
-      <div data-testid="enterprise-members">Enterprise</div>
-    );
-
+  it("makes the owner card open the member popup", async () => {
     coreMock.listWorkspaceMembers.mockResolvedValue({
       members: [ownerMember],
       actorPermissions: { members: { get: 2, post: 1, put: 1, delete: 1 } },
@@ -263,19 +232,12 @@ describe("WorkspaceSettingsMembersSection", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByTestId("enterprise-members")).toBeInTheDocument();
+      expect(screen.getByTestId("members-section")).toHaveTextContent("editable");
     });
     expect(screen.getByRole("button", { name: /owner@example.com/i })).toBeInTheDocument();
   });
 
-  it("mounts enterprise members editable on FREE when module is loaded", async () => {
-    enterpriseMembersMock.AdditionalMembersSection = ({ readOnly, emptyFallback }) => (
-      <div data-testid="enterprise-members">
-        {readOnly ? "read-only" : "editable"}
-        {readOnly ? emptyFallback : null}
-      </div>
-    );
-
+  it("keeps additional members editable on FREE", async () => {
     coreMock.listWorkspaceMembers.mockResolvedValue({
       members: [ownerMember],
       actorPermissions: { members: { get: 2, post: 1, put: 1, delete: 1 } },
@@ -317,20 +279,13 @@ describe("WorkspaceSettingsMembersSection", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByTestId("enterprise-members")).toHaveTextContent("editable");
+      expect(screen.getByTestId("members-section")).toHaveTextContent("editable");
     });
     expect(screen.queryByText("Примечание")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /owner@example.com/i })).toBeInTheDocument();
   });
 
-  it("mounts enterprise members read-only when plan override forbids additionalWorkspaceMembers", async () => {
-    enterpriseMembersMock.AdditionalMembersSection = ({ readOnly, emptyFallback }) => (
-      <div data-testid="enterprise-members">
-        {readOnly ? "read-only" : "editable"}
-        {readOnly ? emptyFallback : null}
-      </div>
-    );
-
+  it("mounts additional members read-only when plan override forbids them", async () => {
     coreMock.listWorkspaceMembers.mockResolvedValue({
       members: [ownerMember],
       actorPermissions: { members: { get: 2, post: 1, put: 1, delete: 1 } },
@@ -352,78 +307,9 @@ describe("WorkspaceSettingsMembersSection", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByTestId("enterprise-members")).toHaveTextContent("read-only");
+      expect(screen.getByTestId("members-section")).toHaveTextContent("read-only");
     });
     expect(screen.getByText("Примечание")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /owner@example.com/i })).toBeInTheDocument();
-  });
-
-  it("FREE + stub: invitee/pending member visible and revocable", async () => {
-    coreMock.listWorkspaceMembers.mockResolvedValue({
-      members: [ownerMember, activeMember, pendingInvitee],
-      actorPermissions: { members: { get: 1, post: 1, put: 1, delete: 1 } },
-    });
-    coreMock.revokeWorkspaceInvitation.mockResolvedValue({ revoked: true });
-
-    render(
-      <MemoryRouter>
-        <WorkspaceSettingsMembersSection workspaceId="w1" workspace={freeWorkspace} t={t} />
-      </MemoryRouter>,
-    );
-
-    expect(await screen.findByText("invitee@example.com")).toBeInTheDocument();
-    expect(screen.getByText("teammate@example.com")).toBeInTheDocument();
-    expect(screen.getByText("Примечание")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Invite" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Remove member" })).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: "Revoke invite" }));
-    fireEvent.click(screen.getByRole("button", { name: "Confirm delete" }));
-
-    await waitFor(() => {
-      expect(coreMock.revokeWorkspaceInvitation).toHaveBeenCalledWith("w1", "2000000001");
-    });
-    expect(reauthMock.requestZoneUnlock).toHaveBeenCalledWith("deletion", { persist: false });
-    expect(coreMock.deleteWorkspaceMember).not.toHaveBeenCalled();
-    await waitFor(() => {
-      expect(coreMock.listWorkspaceMembers).toHaveBeenCalledTimes(2);
-    });
-  });
-
-  it("FREE + stub: removes an active additional member", async () => {
-    coreMock.listWorkspaceMembers.mockResolvedValue({
-      members: [ownerMember, activeMember],
-      actorPermissions: { members: { get: 1, post: 1, put: 1, delete: 1 } },
-    });
-    coreMock.deleteWorkspaceMember.mockResolvedValue({ deleted: true });
-
-    render(
-      <MemoryRouter>
-        <WorkspaceSettingsMembersSection workspaceId="w1" workspace={freeWorkspace} t={t} />
-      </MemoryRouter>,
-    );
-
-    fireEvent.click(await screen.findByRole("button", { name: "Remove member" }));
-    fireEvent.click(screen.getByRole("button", { name: "Confirm delete" }));
-
-    await waitFor(() => {
-      expect(coreMock.deleteWorkspaceMember).toHaveBeenCalledWith("w1", "1000000002");
-    });
-  });
-
-  it("FREE + stub: hides delete when actor lacks members delete permission", async () => {
-    coreMock.listWorkspaceMembers.mockResolvedValue({
-      members: [ownerMember, pendingInvitee],
-      actorPermissions: { members: { get: 1, post: 0, put: 0, delete: 0 } },
-    });
-
-    render(
-      <MemoryRouter>
-        <WorkspaceSettingsMembersSection workspaceId="w1" workspace={freeWorkspace} t={t} />
-      </MemoryRouter>,
-    );
-
-    expect(await screen.findByText("invitee@example.com")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Revoke invite" })).not.toBeInTheDocument();
   });
 });
