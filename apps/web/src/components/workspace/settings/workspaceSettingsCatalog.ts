@@ -97,6 +97,10 @@ export function workspacePatchFromSettingsResponse(
   | "tileColor"
   | "logoVaultId"
   | "logoAttachmentId"
+  | "logoKeyVersion"
+  | "logoUpdatedAt"
+  | "clientSettingsKeyVersion"
+  | "clientSettingsCiphertext"
 > {
   return {
     name: updated.name,
@@ -108,5 +112,9 @@ export function workspacePatchFromSettingsResponse(
     tileColor: updated.tile_color,
     logoVaultId: updated.logo_vault_id,
     logoAttachmentId: updated.logo_attachment_id,
+    logoKeyVersion: updated.logo_key_version ?? null,
+    logoUpdatedAt: updated.logo_updated_at ?? null,
+    clientSettingsKeyVersion: updated.client_settings_key_version ?? null,
+    clientSettingsCiphertext: updated.client_settings_ciphertext ?? null,
   };
 }

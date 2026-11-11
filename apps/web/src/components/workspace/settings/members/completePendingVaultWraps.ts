@@ -1,6 +1,8 @@
 import type { CoreApiClient } from "@okkey/api";
 import type { PendingVaultWrapDto, WorkspacePermissionsMatrixDto } from "@okkey/types";
 
+import { tryCompletePendingWorkspaceKey } from "./completePendingWorkspaceKey";
+
 /** Ed25519 public key length (registration / pending wraps). */
 const ED25519_PUBLIC_KEY_LEN = 32;
 /** ML-KEM-768 encapsulation key length (FIPS 203). */
@@ -156,6 +158,7 @@ export async function tryCompletePendingVaultWraps(
   }
   if (wraps.length === 0) {
     // Server may still report skipped invalid-key recipients with no wrappable rows.
+    await completeWorkspaceKey(input);
     return { skippedInvalidKeys };
   }
 
@@ -163,6 +166,7 @@ export async function tryCompletePendingVaultWraps(
   const bundle = deps.readVaultBundle(input.userId);
   if (!bundle) {
     logPendingWrap("expected", "no local vault bundle; skip", { userId: input.userId });
+    await completeWorkspaceKey(input);
     // Preserve server-reported skips so the admin toast can still fire.
     return { skippedInvalidKeys };
   }
@@ -239,5 +243,19 @@ export async function tryCompletePendingVaultWraps(
     }
   }
 
+  await completeWorkspaceKey(input);
   return { skippedInvalidKeys };
+}
+
+async function completeWorkspaceKey(input: {
+  core: CoreApiClient;
+  workspaceId: string;
+  userId: string;
+  accountVaultKey: Uint8Array;
+}): Promise<void> {
+  try {
+    await tryCompletePendingWorkspaceKey(input);
+  } catch {
+    // A workspace-key pass must not fail vault-wrap completion.
+  }
 }

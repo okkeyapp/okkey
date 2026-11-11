@@ -164,6 +164,17 @@ export interface Workspace {
   /** Encrypted logo attachment id. */
   logoAttachmentId?: string | null;
   /**
+   * Workspace-key version of the encrypted logo ciphertext.
+   * Null when the workspace still uses a legacy vault attachment (or has no logo).
+   */
+  logoKeyVersion?: number | null;
+  /** ISO timestamp of the encrypted logo write. */
+  logoUpdatedAt?: string | null;
+  /** Key version of the encrypted client-settings blob. */
+  clientSettingsKeyVersion?: number | null;
+  /** Base64 workspace-key ciphertext of client-side settings (tile color). */
+  clientSettingsCiphertext?: string | null;
+  /**
    * When set, a plan-change / license purchase request email was already sent for this workspace.
    * ISO timestamp string from the API.
    */
@@ -1275,6 +1286,67 @@ export interface WorkspaceSettingsResponseDto {
   tile_color: string | null;
   logo_vault_id: string | null;
   logo_attachment_id: string | null;
+  logo_key_version?: number | null;
+  logo_updated_at?: string | null;
+  client_settings_key_version?: number | null;
+  client_settings_ciphertext?: string | null;
+}
+
+/** One member's wrapped copy of a workspace key. The server never sees the raw key. */
+export interface WorkspaceKeyWrapDto {
+  user_id: string;
+  encrypted_workspace_key: EncryptedBlobDto;
+}
+
+/** `GET /workspaces/:workspaceId/workspace-key` — only the caller's wraps. */
+export interface WorkspaceKeyStateDto {
+  current_version: number | null;
+  wraps: Array<{
+    key_version: number;
+    encrypted_workspace_key: EncryptedBlobDto;
+  }>;
+}
+
+/** `POST /workspaces/:workspaceId/workspace-key` — publish version 1 for every active member. */
+export interface WorkspaceKeyPublishRequestDto {
+  wraps: WorkspaceKeyWrapDto[];
+}
+
+/** `POST /workspaces/:workspaceId/workspace-key/wraps` — wrap the current version for one member. */
+export interface WorkspaceKeyGrantWrapRequestDto {
+  user_id: string;
+  encrypted_workspace_key: EncryptedBlobDto;
+}
+
+/**
+ * Sent with member removal when a workspace key exists.
+ * Wraps of version current+1 for every remaining member, and none for the removed member.
+ */
+export interface WorkspaceKeyRotationDto {
+  wraps: WorkspaceKeyWrapDto[];
+}
+
+/** `GET /workspaces/:workspaceId/client-settings` */
+export interface WorkspaceClientSettingsResponseDto {
+  key_version: number | null;
+  ciphertext: string | null;
+}
+
+/** `PUT /workspaces/:workspaceId/client-settings` */
+export interface WorkspaceClientSettingsUpdateRequestDto {
+  ciphertext: string;
+  /** Display cache for locked clients. The ciphertext is the canonical client setting. */
+  tile_color?: string | null;
+}
+
+/** `PUT /workspaces/:workspaceId/logo` success body. */
+export interface WorkspaceLogoPutResponseDto {
+  key_version: number;
+  ciphertext_bytes: number;
+  etag: string;
+  logo_updated_at: string;
+  logo_vault_id: null;
+  logo_attachment_id: null;
 }
 
 /** `PATCH /workspaces/:workspaceId/settings` request body. */

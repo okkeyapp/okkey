@@ -24,6 +24,7 @@ import {
 import { ensureDefaultWorkspaceRoles } from "../workspace-roles/seed.ts";
 import { countOccupiedAdditionalMemberSeats } from "./additional-member-seats.ts";
 import { recipientPublicKeysAreValid } from "./recipientPublicKeys.ts";
+import { WorkspaceKeyServiceError } from "../workspace-key/service.ts";
 
 const INVITE_TTL_MS = 14 * 24 * 60 * 60 * 1000;
 
@@ -115,6 +116,10 @@ export type ListPendingVaultWrapsResult = {
   skippedInvalidKeyRecipients: PendingVaultWrapSkipped[];
 };
 
+export interface WorkspaceKeyRotationRequest {
+  wraps: Array<{ userId: string; encryptedWorkspaceKey: import("../crypto/encrypted-blob.ts").EncryptedBlob }>;
+}
+
 export interface WorkspaceMembersServiceDeps {
   db: QueryExecutor & {
     transaction?: <T>(fn: (tx: QueryExecutor) => Promise<T>) => Promise<T>;
@@ -124,6 +129,22 @@ export interface WorkspaceMembersServiceDeps {
   emailTemplates?: Pick<EmailTemplateService, "sendWorkspaceInvite">;
   publicAppBaseUrl?: string;
   config?: PlanEntitlementRuntimeConfig;
+  workspaceKeys?: {
+    rotateOnRemoval(
+      workspaceId: string,
+      removedUserId: string,
+      wraps: WorkspaceKeyRotationRequest["wraps"] | null,
+    ): Promise<{ nextVersion: number } | null>;
+    /** Drop the member's wraps and queue a later rotation. Does not publish a new version. */
+    dropWrapAndEnqueue(workspaceId: string, removedUserId: string): Promise<void>;
+    listPendingRecipients(workspaceId: string, actorId: string): Promise<string[]>;
+    listPendingRotations(workspaceId: string, actorId: string): Promise<string[]>;
+    applyDeferredRotation(
+      workspaceId: string,
+      actorId: string,
+      wraps: WorkspaceKeyRotationRequest["wraps"],
+    ): Promise<{ nextVersion: number } | null>;
+  };
 }
 
 function toIso(value: string | Date | null | undefined): string | null {
@@ -168,6 +189,7 @@ export class WorkspaceMembersService {
   private readonly emailTemplates?: Pick<EmailTemplateService, "sendWorkspaceInvite">;
   private readonly publicAppBaseUrl: string;
   private readonly config?: PlanEntitlementRuntimeConfig;
+  private readonly workspaceKeys: WorkspaceMembersServiceDeps["workspaceKeys"];
 
   constructor(deps: WorkspaceMembersServiceDeps) {
     this.db = deps.db;
@@ -176,6 +198,7 @@ export class WorkspaceMembersService {
     this.emailTemplates = deps.emailTemplates;
     this.publicAppBaseUrl = (deps.publicAppBaseUrl ?? "").replace(/\/$/, "");
     this.config = deps.config;
+    this.workspaceKeys = deps.workspaceKeys;
   }
 
   async listMembers(
@@ -684,7 +707,102 @@ export class WorkspaceMembersService {
     );
   }
 
-  async removeMember(workspaceId: string, actorId: string, targetUserId: string): Promise<void> {
+  /** Not plan-gated: after downgrade, existing additional members must remain removable. */
+  async removeMember(
+    workspaceId: string,
+    actorId: string,
+    targetUserId: string,
+    rotation: WorkspaceKeyRotationRequest | null = null,
+  ): Promise<void> {
+    await this.assertMemberCanBeRemoved(workspaceId, actorId, targetUserId);
+
+    if (this.workspaceKeys) {
+      try {
+        await this.workspaceKeys.rotateOnRemoval(workspaceId, targetUserId, rotation?.wraps ?? null);
+      } catch (error) {
+        throw this.asMembersKeyError(error);
+      }
+    }
+
+    await this.deleteMemberRecords(workspaceId, targetUserId);
+  }
+
+  /**
+   * Remove a member when the caller cannot wrap a new workspace key.
+   * Directory sync and seat reduction call this. The member's wraps are deleted,
+   * the removal is queued, and no new key version is published.
+   */
+  async removeMemberWithoutKeyHolder(
+    workspaceId: string,
+    actorId: string,
+    targetUserId: string,
+  ): Promise<void> {
+    await this.assertMemberCanBeRemoved(workspaceId, actorId, targetUserId);
+    if (this.workspaceKeys) {
+      try {
+        await this.workspaceKeys.dropWrapAndEnqueue(workspaceId, targetUserId);
+      } catch (error) {
+        throw this.asMembersKeyError(error);
+      }
+    }
+    await this.deleteMemberRecords(workspaceId, targetUserId);
+  }
+
+  async listPendingWorkspaceKeyRecipients(workspaceId: string, actorId: string): Promise<string[]> {
+    await this.requireAccessibleWorkspace(workspaceId, actorId);
+    await this.assertMembers(workspaceId, actorId, "get");
+    if (!this.workspaceKeys) {
+      return [];
+    }
+    try {
+      return await this.workspaceKeys.listPendingRecipients(workspaceId, actorId);
+    } catch (error) {
+      throw this.asMembersKeyError(error);
+    }
+  }
+
+  async listPendingWorkspaceKeyRotations(workspaceId: string, actorId: string): Promise<string[]> {
+    await this.requireAccessibleWorkspace(workspaceId, actorId);
+    await this.assertMembers(workspaceId, actorId, "get");
+    if (!this.workspaceKeys) {
+      return [];
+    }
+    try {
+      return await this.workspaceKeys.listPendingRotations(workspaceId, actorId);
+    } catch (error) {
+      throw this.asMembersKeyError(error);
+    }
+  }
+
+  async applyDeferredWorkspaceKeyRotation(
+    workspaceId: string,
+    actorId: string,
+    wraps: WorkspaceKeyRotationRequest["wraps"],
+  ): Promise<{ nextVersion: number } | null> {
+    await this.requireAccessibleWorkspace(workspaceId, actorId);
+    await this.assertMembers(workspaceId, actorId, "get");
+    if (!this.workspaceKeys) {
+      return null;
+    }
+    try {
+      return await this.workspaceKeys.applyDeferredRotation(workspaceId, actorId, wraps);
+    } catch (error) {
+      throw this.asMembersKeyError(error);
+    }
+  }
+
+  private asMembersKeyError(error: unknown): unknown {
+    if (error instanceof WorkspaceKeyServiceError) {
+      return new WorkspaceMembersServiceError(error.code, error.statusCode, error.message);
+    }
+    return error;
+  }
+
+  private async assertMemberCanBeRemoved(
+    workspaceId: string,
+    actorId: string,
+    targetUserId: string,
+  ): Promise<void> {
     const workspace = await this.requireAccessibleWorkspace(workspaceId, actorId);
     if (!isEntityId(targetUserId)) {
       throw new WorkspaceMembersServiceError("BAD_REQUEST", 400, "invalid userId");
@@ -713,8 +831,11 @@ export class WorkspaceMembersService {
       "delete",
       memberRows[0].invited_by_user_id === actorId,
     );
+  }
 
-    // Minimal revoke: drop shared vault memberships/keys/profiles (no key rotation in this iteration).
+  private async deleteMemberRecords(workspaceId: string, targetUserId: string): Promise<void> {
+    // Drop shared vault memberships/keys/profiles. Workspace-key rotation, when a key exists,
+    // already installed the next version for the remaining members and deleted this member's wraps.
     await this.db.query(
       `
         DELETE FROM vault_keys

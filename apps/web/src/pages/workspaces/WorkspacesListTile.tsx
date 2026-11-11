@@ -28,8 +28,8 @@ const badgeShadow =
   "shadow-[0px_0px_0px_1px_rgba(0,0,0,0.06),0px_1px_2px_rgba(0,0,0,0.12)] dark:shadow-[0px_0px_0px_1px_rgba(255,255,255,0.2),0px_2px_8px_rgba(255,255,255,0.07)]";
 
 export default function WorkspacesListTile({ workspace, description, onClick }: WorkspacesListTileProps) {
-  const { accessToken, vaultKey } = useAuthVault();
-  const hasCustomLogo = Boolean(workspace.logoVaultId && workspace.logoAttachmentId);
+  const { accessToken, vaultKey, userId } = useAuthVault();
+  const hasCustomLogo = Boolean(workspace.logoKeyVersion || (workspace.logoVaultId && workspace.logoAttachmentId));
   const tileColor = workspace.tileColor ?? DEFAULT_WORKSPACE_TILE_COLOR;
   const logoUrl = useWorkspaceLogoUrl({
     accessToken,
@@ -38,6 +38,8 @@ export default function WorkspacesListTile({ workspace, description, onClick }: 
     attachmentId: workspace.logoAttachmentId,
     workspaceId: workspace.id,
     enabled: hasCustomLogo,
+    logoKeyVersion: workspace.logoKeyVersion,
+    userId,
   });
   const showBusinessBadge = workspaceHasPlanFeature(workspace, "paidPlanBadge") && !hasCustomLogo;
 

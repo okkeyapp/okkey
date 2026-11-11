@@ -46,6 +46,7 @@ import VaultCardActionsMenu, {
   memberDisplayName,
   type AccessFilterValue,
 } from "@/components/workspace/settings/vaults/vaultAccessHelpers";
+import { grantWorkspaceKeyToMember } from "./completePendingWorkspaceKey";
 import DeleteMemberConfirmPopup from "./DeleteMemberConfirmPopup";
 import {
   readLatestVaultAccessVersion,
@@ -498,6 +499,15 @@ export default function MemberCardPopup({
 
           setInitialRoleId(roleId);
           setInitialVaultAccess({ ...accessByVaultId });
+          if (accountVaultKey && member.userId) {
+            await grantWorkspaceKeyToMember({
+              core,
+              workspaceId,
+              userId,
+              accountVaultKey,
+              member,
+            });
+          }
           await onSaved();
         },
       );
@@ -541,7 +551,25 @@ export default function MemberCardPopup({
           if (isPending) {
             await core.revokeWorkspaceInvitation(workspaceId, member.invitationId!);
           } else {
-            await core.deleteWorkspaceMember(workspaceId, member.userId!);
+            if (!accountVaultKey) {
+              throw new Error("VAULT_LOCKED");
+            }
+            const state = await core.getWorkspaceKey(workspaceId);
+            let rotation: Parameters<CoreApiClient["deleteWorkspaceMember"]>[2];
+            if (state.current_version != null) {
+              const { buildWorkspaceKeyRotation } = await import("../../../../workspace/workspaceKeyClient");
+              const built = await buildWorkspaceKeyRotation({
+                core,
+                workspaceId,
+                vaultKey: accountVaultKey,
+                userId,
+                removedUserId: member.userId!,
+              });
+              if (built) {
+                rotation = { workspace_key_rotation: built };
+              }
+            }
+            await core.deleteWorkspaceMember(workspaceId, member.userId!, rotation);
           }
           await onSaved();
           setDeleteConfirmOpen(false);

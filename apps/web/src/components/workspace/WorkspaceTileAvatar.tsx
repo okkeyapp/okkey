@@ -11,8 +11,10 @@ type WorkspaceTileAvatarProps = {
 };
 
 export default function WorkspaceTileAvatar({ workspace, sizeClass }: WorkspaceTileAvatarProps) {
-  const { accessToken, vaultKey } = useAuthVault();
-  const hasCustomLogo = Boolean(workspace?.logoVaultId && workspace?.logoAttachmentId);
+  const { accessToken, vaultKey, userId } = useAuthVault();
+  const hasCustomLogo = Boolean(
+    workspace?.logoKeyVersion || (workspace?.logoVaultId && workspace?.logoAttachmentId),
+  );
   const logoUrl = useWorkspaceLogoUrl({
     accessToken,
     vaultKey,
@@ -20,6 +22,8 @@ export default function WorkspaceTileAvatar({ workspace, sizeClass }: WorkspaceT
     attachmentId: workspace?.logoAttachmentId,
     workspaceId: workspace?.id ?? "",
     enabled: hasCustomLogo,
+    logoKeyVersion: workspace?.logoKeyVersion,
+    userId,
   });
 
   if (!workspace) {

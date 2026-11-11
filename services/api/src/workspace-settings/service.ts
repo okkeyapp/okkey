@@ -37,6 +37,10 @@ export type WorkspaceSettingsSnapshot = {
   tileColor: string | null;
   logoVaultId: string | null;
   logoAttachmentId: string | null;
+  logoKeyVersion: number | null;
+  logoUpdatedAt: string | null;
+  clientSettingsKeyVersion: number | null;
+  clientSettingsCiphertext: string | null;
   /** Present when the API process wires storage quota measurement. */
   storageQuota?: WorkspaceStorageQuotaStatus;
 };
@@ -278,6 +282,10 @@ function toSettingsSnapshot(workspace: {
   tileColor: string | null;
   logoVaultId: string | null;
   logoAttachmentId: string | null;
+  logoKeyVersion?: number | null;
+  logoUpdatedAt?: string | null;
+  clientSettingsKeyVersion?: number | null;
+  clientSettingsCiphertext?: string | null;
 }): WorkspaceSettingsSnapshot {
   return {
     name: workspace.name,
@@ -289,6 +297,10 @@ function toSettingsSnapshot(workspace: {
     tileColor: workspace.tileColor,
     logoVaultId: workspace.logoVaultId,
     logoAttachmentId: workspace.logoAttachmentId,
+    logoKeyVersion: workspace.logoKeyVersion ?? null,
+    logoUpdatedAt: workspace.logoUpdatedAt ?? null,
+    clientSettingsKeyVersion: workspace.clientSettingsKeyVersion ?? null,
+    clientSettingsCiphertext: workspace.clientSettingsCiphertext ?? null,
   };
 }
 

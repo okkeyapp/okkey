@@ -417,6 +417,10 @@ export interface WorkspaceRecord {
   tileColor: string | null;
   logoVaultId: string | null;
   logoAttachmentId: string | null;
+  logoKeyVersion: number | null;
+  logoUpdatedAt: string | null;
+  clientSettingsKeyVersion: number | null;
+  clientSettingsCiphertext: string | null;
   /** ISO timestamp when a plan-change / license request email was sent; null if never. */
   planChangeRequestSentAt: string | null;
   createdAt: string;
@@ -428,10 +432,10 @@ export interface WorkspaceRecord {
  * Core does not select or update that column.
  */
 const WORKSPACE_SELECT_COLUMNS =
-  "id, name, owner_id, plan_tier, plan_custom_override, plan_feature_overrides, deleted_items_retention_days, allowed_file_extensions, max_file_size_mb, files_in_items_enabled, capsule_policies, tile_color, logo_vault_id, logo_attachment_id, plan_change_request_sent_at, created_at, updated_at";
+  "id, name, owner_id, plan_tier, plan_custom_override, plan_feature_overrides, deleted_items_retention_days, allowed_file_extensions, max_file_size_mb, files_in_items_enabled, capsule_policies, tile_color, logo_vault_id, logo_attachment_id, logo_key_version, logo_updated_at, client_settings_key_version, client_settings_ciphertext, plan_change_request_sent_at, created_at, updated_at";
 
 const WORKSPACE_SELECT_COLUMNS_W =
-  "w.id, w.name, w.owner_id, w.plan_tier, w.plan_custom_override, w.plan_feature_overrides, w.deleted_items_retention_days, w.allowed_file_extensions, w.max_file_size_mb, w.files_in_items_enabled, w.capsule_policies, w.tile_color, w.logo_vault_id, w.logo_attachment_id, w.plan_change_request_sent_at, w.created_at, w.updated_at";
+  "w.id, w.name, w.owner_id, w.plan_tier, w.plan_custom_override, w.plan_feature_overrides, w.deleted_items_retention_days, w.allowed_file_extensions, w.max_file_size_mb, w.files_in_items_enabled, w.capsule_policies, w.tile_color, w.logo_vault_id, w.logo_attachment_id, w.logo_key_version, w.logo_updated_at, w.client_settings_key_version, w.client_settings_ciphertext, w.plan_change_request_sent_at, w.created_at, w.updated_at";
 
 type WorkspaceRow = BaseRow & {
   name: string;
@@ -447,6 +451,10 @@ type WorkspaceRow = BaseRow & {
   tile_color: string | null;
   logo_vault_id: string | null;
   logo_attachment_id: string | null;
+  logo_key_version?: number | null;
+  logo_updated_at?: string | Date | null;
+  client_settings_key_version?: number | null;
+  client_settings_ciphertext?: unknown;
   plan_change_request_sent_at?: string | Date | null;
 };
 
@@ -4301,6 +4309,22 @@ function mapUser(
   };
 }
 
+function byteaToBase64(value: unknown): string | null {
+  if (value == null) {
+    return null;
+  }
+  if (typeof value === "string") {
+    return value;
+  }
+  if (Buffer.isBuffer(value)) {
+    return value.toString("base64");
+  }
+  if (value instanceof Uint8Array) {
+    return Buffer.from(value).toString("base64");
+  }
+  return null;
+}
+
 function mapWorkspace(row: WorkspaceRow): WorkspaceRecord {
   const sentAt = row.plan_change_request_sent_at;
   return {
@@ -4320,6 +4344,16 @@ function mapWorkspace(row: WorkspaceRow): WorkspaceRecord {
     tileColor: row.tile_color,
     logoVaultId: row.logo_vault_id,
     logoAttachmentId: row.logo_attachment_id,
+    logoKeyVersion: row.logo_key_version == null ? null : Number(row.logo_key_version),
+    logoUpdatedAt:
+      row.logo_updated_at == null
+        ? null
+        : typeof row.logo_updated_at === "string"
+          ? row.logo_updated_at
+          : row.logo_updated_at.toISOString(),
+    clientSettingsKeyVersion:
+      row.client_settings_key_version == null ? null : Number(row.client_settings_key_version),
+    clientSettingsCiphertext: byteaToBase64(row.client_settings_ciphertext),
     planChangeRequestSentAt:
       sentAt == null
         ? null

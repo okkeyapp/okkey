@@ -22,6 +22,9 @@ import { ExtensionAuthService } from "./extension-auth/service.ts";
 import { createStorageLayer } from "./storage/index.ts";
 import { SyncService } from "./sync/service.ts";
 import { WorkspacePersonalSyncService } from "./workspace-personal-sync/service.ts";
+import { WorkspaceKeyService, WorkspaceKeyServiceError } from "./workspace-key/service.ts";
+import { PlanQuotaExceededError } from "./storage-quota/service.ts";
+import { PgWorkspaceKeyStore } from "./workspace-key/store.ts";
 import { TwoFactorService } from "./two-factor/service.ts";
 import { WebAuthnService } from "./webauthn/service.ts";
 import { WebAuthnCredentialsRepository } from "./webauthn/repository.ts";
@@ -52,6 +55,7 @@ import { ItemFaviconService } from "./favicon/service.ts";
 import { AttachmentService } from "./attachments/service.ts";
 import { WorkspaceStorageQuotaService } from "./storage-quota/service.ts";
 import {
+  assertWorkspacePermission,
   resolveWorkspacePermissions,
   WorkspacePermissionError,
 } from "./workspace-roles/permissions.ts";
@@ -200,6 +204,43 @@ async function main(): Promise<void> {
     vaultSharing: vaultSharingService,
     config,
   });
+  const workspaceKeyService = new WorkspaceKeyService(new PgWorkspaceKeyStore(storage.postgres), {
+    assertMember: async (workspaceId, userId) => {
+      const allowed = await storage.repositories.workspaces.hasAccess(workspaceId, userId);
+      if (!allowed) {
+        throw new WorkspaceKeyServiceError("ACCESS_DENIED", 403, "access denied");
+      }
+    },
+    assertSettingsPut: async (workspaceId, userId) => {
+      try {
+        await assertWorkspacePermission(storage.postgres, workspaceId, userId, "settings", "put");
+      } catch (error) {
+        if (error instanceof WorkspacePermissionError) {
+          throw new WorkspaceKeyServiceError(error.code, error.statusCode, error.message);
+        }
+        throw error;
+      }
+    },
+  }, {
+    assertLogoWrite: async ({ workspaceId, additionalBytes, replacedBytes }) => {
+      const workspace = await storage.repositories.workspaces.findById(workspaceId);
+      if (!workspace) {
+        return;
+      }
+      try {
+        await storageQuota.assertAdditionalBytes({
+          workspace,
+          additionalBytes,
+          replacedBytes,
+        });
+      } catch (error) {
+        if (error instanceof PlanQuotaExceededError) {
+          throw new WorkspaceKeyServiceError(error.code, error.statusCode, error.message, error.details);
+        }
+        throw error;
+      }
+    },
+  });
   const workspaceMembersService = new WorkspaceMembersService({
     db: storage.postgres,
     workspaces: storage.repositories.workspaces,
@@ -207,6 +248,7 @@ async function main(): Promise<void> {
     emailTemplates,
     publicAppBaseUrl: config.publicAppBaseUrl,
     config,
+    workspaceKeys: workspaceKeyService,
   });
   const vaultUnlockBootstrapService = new VaultUnlockBootstrapService({
     users: storage.repositories.users,
@@ -331,6 +373,7 @@ async function main(): Promise<void> {
     workspaceMeVaultProfilesService,
     workspaceMembersService,
     workspaceSharedVaultsService,
+    workspaceKeyService,
     vaultUnlockBootstrapService,
     vaultSharingService,
     syncService,

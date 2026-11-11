@@ -358,6 +358,23 @@ export {
 } from "./vault-key-wrap.js";
 
 export {
+  HYBRID_WORKSPACE_KEY_WRAP_SCHEME,
+  WORKSPACE_KEY_WRAP_ENTITY,
+  WORKSPACE_KEY_WRAP_ECC_MODE,
+  WORKSPACE_CIPHERTEXT_VERSION_LEN,
+  generateWorkspaceKey,
+  wrapWorkspaceKeyForMember,
+  unwrapWorkspaceKeyForSelf,
+  encryptWorkspaceScopedBytes,
+  decryptWorkspaceScopedBytes,
+  reencryptWorkspaceScopedBytes,
+  readWorkspaceCiphertextKeyVersion,
+  type WorkspaceScopedDomain,
+  type WrapWorkspaceKeyInput,
+  type UnwrapWorkspaceKeyInput,
+} from "./workspace-key.js";
+
+export {
   OKKEY_CRYPTO_PROFILE_V2,
   MLKEM768_ENCAPSULATION_KEY_LEN,
   MLKEM768_DECAPSULATION_KEY_LEN,
