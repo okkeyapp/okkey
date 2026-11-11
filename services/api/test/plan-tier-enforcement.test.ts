@@ -2,6 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { getPlanQuotaLimits, hasPlanFeature } from "@okkey/types";
 import { CapsuleService, CapsuleServiceError } from "../src/capsule/service.ts";
+import {
+  registerCapsuleAccessSettingsProvider,
+  resetCapsuleAccessSettingsProviderForTests,
+} from "../src/capsule/access-settings-provider.ts";
 import { createTestApiConfig } from "./test-api-config.ts";
 
 const blob = {
@@ -49,7 +53,7 @@ function serviceForTier(planTier: "FREE" | "ENTERPRISE"): CapsuleService {
   });
 }
 
-test("FREE denies capsule access settings and ENTERPRISE allows them", async () => {
+test("FREE and core without a provider deny capsule access settings", async () => {
   assert.equal(hasPlanFeature("FREE", "capsuleAccessSettings"), false);
   assert.equal(hasPlanFeature("ENTERPRISE", "capsuleAccessSettings"), true);
   assert.equal(getPlanQuotaLimits("FREE").maxAdditionalMembers, 3);
@@ -76,6 +80,7 @@ test("FREE denies capsule access settings and ENTERPRISE allows them", async () 
         type: "item",
         encryptedPayload: blob,
         password: "capsule-secret",
+        passwordAttemptLimit: 3,
       }),
     (error: unknown) => error instanceof Error && error.message === "PLAN_GATE_PASSED",
   );
@@ -139,4 +144,27 @@ test("self_hosted without modules denies capsule access even when plan_tier is E
       error.code === "FEATURE_NOT_AVAILABLE" &&
       error.statusCode === 403,
   );
+});
+
+test("a registered provider handles access-settings writes", async () => {
+  resetCapsuleAccessSettingsProviderForTests();
+  registerCapsuleAccessSettingsProvider({
+    prepareWrite: async () => {
+      throw new Error("PROVIDER_CALLED");
+    },
+    assertOpen: async () => ({ approvalRequestId: null }),
+  });
+  try {
+    await assert.rejects(
+      () =>
+        serviceForTier("ENTERPRISE").createCapsule("1000000000000000001", "1000000000000000003", {
+          type: "item",
+          encryptedPayload: blob,
+          password: "capsule-secret",
+        }),
+      (error: unknown) => error instanceof Error && error.message === "PROVIDER_CALLED",
+    );
+  } finally {
+    resetCapsuleAccessSettingsProviderForTests();
+  }
 });

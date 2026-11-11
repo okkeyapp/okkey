@@ -3,6 +3,7 @@ import type { AuthService } from "./auth/service.ts";
 import type { RegistrationService } from "./registration/service.ts";
 import type { ApiConfig } from "./config.ts";
 import type { DeviceService } from "./device/service.ts";
+import { bindCapsuleAccessSettingsAfterRegister, registerCapsuleAccessSettingsProvider } from "./capsule/access-settings-provider.ts";
 import { getHeader, HttpApp, type RouteHandler } from "./http.ts";
 import type { Logger } from "./logger.ts";
 import { createCorsMiddleware } from "./middleware/cors.ts";
@@ -78,17 +79,11 @@ import {
   createWebAuthnRegisterVerifyRoute,
 } from "./routes/webauthn.ts";
 import {
-  createCapsuleApprovalRequestRoute,
-  createCapsuleApprovalEligibilityRoute,
-  createCapsuleApprovalResolveRoute,
-  createCapsuleApprovalStatusRoute,
-  guardGuestSessionIdQuery,
   createCapsuleCreateRoute,
   createCapsuleDeleteRoute,
   createCapsuleMetadataRoute,
   createCapsuleOpenRoute,
   createCapsuleOwnerListRoute,
-  createCapsulePendingApprovalsRoute,
   createCapsuleRevokeRoute,
   createCapsuleStateRoute,
   createCapsuleOwnerDetailRoute,
@@ -1245,33 +1240,6 @@ export function createApiApp(
       "/capsules/:capsuleId",
       gateVaultUse(createCapsuleDeleteRoute(deps.capsuleService, resolveUserId)),
     );
-    app.route(
-      "POST",
-      "/capsules/:capsuleId/approval-requests",
-      gateVaultUse(createCapsuleApprovalRequestRoute(deps.capsuleService, resolveUserId)),
-    );
-    app.route(
-      "GET",
-      "/capsules/:capsuleId/approval-eligibility",
-      gateVaultUse(createCapsuleApprovalEligibilityRoute(deps.capsuleService, resolveUserId)),
-    );
-    app.route(
-      "GET",
-      "/capsule-approval-requests/:requestId",
-      guardGuestSessionIdQuery(
-        gateVaultUse(createCapsuleApprovalStatusRoute(deps.capsuleService, resolveUserId)),
-      ),
-    );
-    app.route(
-      "GET",
-      "/capsule-approval-requests",
-      gateVaultUse(createCapsulePendingApprovalsRoute(deps.capsuleService, resolveUserId)),
-    );
-    app.route(
-      "POST",
-      "/capsule-approval-requests/:requestId/resolve",
-      gateVaultUse(createCapsuleApprovalResolveRoute(deps.capsuleService, resolveUserId)),
-    );
   }
   if (deps.attachmentService) {
     app.route(
@@ -1302,7 +1270,7 @@ export function createApiApp(
 
   if (options.postgres && options.workspacesRepository) {
     for (const plugin of enterprisePlugins) {
-      plugin.register({
+      const registration = plugin.register({
         app,
         config,
         resolveUserId,
@@ -1318,6 +1286,11 @@ export function createApiApp(
         services: {
           vaultSharingService: deps.vaultSharingService,
         },
+      });
+      bindCapsuleAccessSettingsAfterRegister(registration, () => {
+        if (plugin.capsuleAccessSettings) {
+          registerCapsuleAccessSettingsProvider(plugin.capsuleAccessSettings);
+        }
       });
     }
   }

@@ -1,12 +1,10 @@
-import { createHash, createHmac, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
+import { createHash, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import {
   isCapsuleAllowedForMember,
   isCapsuleTypeAllowed,
   resolveEffectiveCapsulePolicies,
   sanitizePlanFeatureOverrides,
   workspaceCapsulePoliciesFromDto,
-  type CapsuleApprovalRequestDto,
-  type CapsuleApprovalStatusDto,
   type CapsuleListResponseDto,
   type CapsuleMetadataDto,
   type CapsuleOwnerDetailDto,
@@ -19,7 +17,7 @@ import {
   type WorkspaceCapsulePoliciesDto,
 } from "@okkey/types";
 import { generateEntityId, isEntityId } from "../entity-id.ts";
-import { parseGuestSessionId } from "./guest-session-id.ts";
+import { getCapsuleAccessSettingsProvider } from "./access-settings-provider.ts";
 import type { ApiConfig } from "../config.ts";
 import { workspaceHasPlanFeature } from "../plan-entitlements.ts";
 import {
@@ -349,26 +347,22 @@ export class CapsuleService {
         `capsule type "${input.type}" is not allowed by workspace policy`,
       );
     }
-    if (
-      requestsCapsuleAccessSettings(input, capsulePolicies, accessSettingsEnabled) &&
-      !accessSettingsEnabled
-    ) {
-      throw new CapsuleServiceError(
-        "FEATURE_NOT_AVAILABLE",
-        403,
-        "capsule access settings are unavailable on this plan",
-      );
-    }
-    enforceCapsulePoliciesOnWrite(capsulePolicies, input);
     this.assertFilesInCapsulesAllowed(workspace, input);
-
-    const activateAt = normalizeOptionalIsoDate(input.activateAt);
-    const deactivateAt = normalizeOptionalIsoDate(input.deactivateAt ?? input.expiresAt);
-    const deleteAt = normalizeOptionalIsoDate(input.deleteAt);
-    assertLifecycleOrder(activateAt, deactivateAt, deleteAt);
-    const maxViews = normalizeMaxViews(input.maxViews);
-    const viewLimitAction = normalizeViewLimitAction(input.viewLimitAction);
-    const passwordAttemptLimit = normalizePasswordAttemptLimit(input.passwordAttemptLimit, input.password);
+    const accessWrite = await this.resolveAccessWrite({
+      mode: "create",
+      actorId: creatorId,
+      policies: capsulePolicies,
+      accessSettingsEnabled,
+      input,
+      keyTransportMode,
+    });
+    const activateAt = accessWrite.activateAt;
+    const deactivateAt = accessWrite.deactivateAt;
+    const deleteAt = accessWrite.deleteAt;
+    const maxViews = accessWrite.maxViews;
+    const viewLimitAction = accessWrite.viewLimitAction;
+    const passwordAttemptLimit = accessWrite.passwordAttemptLimit;
+    const accessPolicy = accessWrite.accessPolicy;
     const filePayload =
       input.type === "file"
         ? serializeEncryptedBlobToStorage(
@@ -388,12 +382,6 @@ export class CapsuleService {
     const attachmentFilePayloads = parseAttachmentFilePayloads(
       input.attachmentFilePayloads,
       input.type,
-    );
-    const accessPolicy = buildAccessPolicy(
-      input.password,
-      input.allowedRecipientEmails,
-      this.config.sessionSecret,
-      keyTransportMode,
     );
     await this.assertStorageQuota(
       workspaceId,
@@ -456,7 +444,7 @@ export class CapsuleService {
           maxViews,
           viewLimitAction,
           passwordAttemptLimit,
-          Boolean(input.approvalRequired),
+          accessWrite.approvalRequired,
         ],
       );
       const created = inserted[0];
@@ -687,47 +675,33 @@ export class CapsuleService {
           `capsule type "${existingType}" is not allowed by workspace policy`,
         );
       }
-      if (
-        requestsCapsuleAccessSettings(input, capsulePolicies, accessSettingsEnabled) &&
-        !accessSettingsEnabled
-      ) {
-        throw new CapsuleServiceError(
-          "FEATURE_NOT_AVAILABLE",
-          403,
-          "capsule access settings are unavailable on this plan",
-        );
-      }
-      enforceCapsulePoliciesOnWrite(capsulePolicies, input);
       this.assertFilesInCapsulesAllowed(workspace, input);
-
-      const activateAt = normalizeOptionalIsoDate(input.activateAt);
-      const deactivateAt = normalizeOptionalIsoDate(input.deactivateAt ?? input.expiresAt);
-      const deleteAt = normalizeOptionalIsoDate(input.deleteAt);
-      assertLifecycleOrder(activateAt, deactivateAt, deleteAt);
-      const maxViews = normalizeMaxViews(input.maxViews);
-      const viewLimitAction = normalizeViewLimitAction(input.viewLimitAction);
-      const existingPolicy = parsePolicy(existing.access_policy);
-      const nextPolicy = buildAccessPolicy(
-        input.keepExistingPassword ? undefined : input.password,
-        input.keepExistingRecipients ? undefined : input.allowedRecipientEmails,
-        this.config.sessionSecret,
+      const accessWrite = await this.resolveAccessWrite({
+        mode: "update",
+        actorId: creatorId,
+        policies: capsulePolicies,
+        accessSettingsEnabled,
+        input,
         keyTransportMode,
-      );
-      if (input.keepExistingPassword && existingPolicy.password) {
-        nextPolicy.password = existingPolicy.password;
-      }
-      if (input.keepExistingRecipients && existingPolicy.allowedRecipientHashes?.length) {
-        nextPolicy.allowedRecipientHashes = existingPolicy.allowedRecipientHashes;
-        if (existingPolicy.allowedRecipientEmails?.length) {
-          nextPolicy.allowedRecipientEmails = existingPolicy.allowedRecipientEmails;
-        }
-      }
-      const passwordAttemptLimit = input.keepExistingPassword
-        ? normalizePasswordAttemptLimit(
-            input.passwordAttemptLimit ?? existing.password_attempt_limit ?? undefined,
-            nextPolicy.password ? "kept" : undefined,
-          )
-        : normalizePasswordAttemptLimit(input.passwordAttemptLimit, input.password);
+        existing: {
+          accessPolicy: existing.access_policy,
+          passwordAttemptLimit: existing.password_attempt_limit,
+          approvalRequired: existing.approval_required,
+          activateAt: existing.activate_at,
+          deactivateAt: existing.deactivate_at,
+          deleteAt: existing.delete_at,
+          maxViews: existing.view_limit,
+          viewLimitAction: existing.view_limit_action === "delete" ? "delete" : "deactivate",
+        },
+      });
+      const activateAt = accessWrite.activateAt;
+      const deactivateAt = accessWrite.deactivateAt;
+      const deleteAt = accessWrite.deleteAt;
+      const maxViews = accessWrite.maxViews;
+      const viewLimitAction = accessWrite.viewLimitAction;
+      const passwordAttemptLimit = accessWrite.passwordAttemptLimit;
+      const existingPolicy = parsePolicy(existing.access_policy);
+      const nextPolicy = accessWrite.accessPolicy;
       const replacingFile = Boolean(input.filePayload) && !input.keepExistingFile;
       const filePayload = replacingFile
         ? serializeEncryptedBlobToStorage(
@@ -831,7 +805,7 @@ export class CapsuleService {
             maxViews,
             viewLimitAction,
             passwordAttemptLimit,
-            Boolean(input.approvalRequired),
+            accessWrite.approvalRequired,
           ],
         );
         if (!updated[0]) {
@@ -961,365 +935,6 @@ export class CapsuleService {
     return ids.length;
   }
 
-  async requestCapsuleApproval(input: {
-    capsuleId: string;
-    requesterUserId?: string;
-    guestSessionId?: string;
-    requesterEmail?: string;
-    requestIp: string;
-    deviceLabel?: string;
-    platform?: string;
-    country?: string | null;
-    city?: string | null;
-  }): Promise<CapsuleApprovalStatusDto> {
-    const capsule = await this.loadCapsule(input.capsuleId);
-    ensureCapsuleAccessible(capsule);
-    if (!capsule.approval_required) {
-      throw new CapsuleServiceError("CAPSULE_APPROVAL_NOT_REQUIRED", 400, "approval is not required");
-    }
-
-    const policy = parsePolicy(capsule.access_policy);
-    const recipientRestricted = Boolean(policy.allowedRecipientHashes?.length);
-    const guestSessionId = input.guestSessionId?.trim() || undefined;
-    let requesterUserId = input.requesterUserId;
-    let requesterEmail = input.requesterEmail;
-    let requesterName: string | null = null;
-
-    if (recipientRestricted) {
-      if (!requesterUserId) {
-        throw new CapsuleServiceError("AUTH_REQUIRED", 401, "authenticated email required");
-      }
-      if (this.users) {
-        requesterEmail = (await this.users.findById(requesterUserId))?.email;
-      }
-      if (!requesterEmail) {
-        throw new CapsuleServiceError("AUTH_REQUIRED", 401, "authenticated email required");
-      }
-      validateRecipient(capsule, requesterEmail, this.config.sessionSecret);
-      requesterEmail = normalizeEmail(requesterEmail);
-    } else if (requesterUserId) {
-      if (this.users) {
-        requesterEmail = (await this.users.findById(requesterUserId))?.email;
-      }
-      if (!requesterEmail) {
-        throw new CapsuleServiceError("AUTH_REQUIRED", 401, "authenticated email required");
-      }
-      requesterEmail = normalizeEmail(requesterEmail);
-    } else if (guestSessionId) {
-      requesterUserId = undefined;
-      requesterEmail = "guest";
-      requesterName = null;
-    } else {
-      throw new CapsuleServiceError("AUTH_REQUIRED", 401, "authenticated email required");
-    }
-
-    const identityClause = requesterUserId
-      ? "requester_user_id = $2"
-      : "guest_session_id = $2";
-    const identityValue = requesterUserId ?? guestSessionId!;
-    const emailForHash = requesterUserId
-      ? requesterEmail!
-      : `guest:${guestSessionId}`;
-    const requesterEmailHash = hashRecipient(emailForHash, this.config.sessionSecret);
-
-    if (
-      await this.isRequesterBlacklisted({
-        capsuleId: input.capsuleId,
-        requesterUserId,
-        requesterEmailHash: requesterUserId ? requesterEmailHash : undefined,
-        requestIp: input.requestIp,
-      })
-    ) {
-      throw new CapsuleServiceError(
-        "CAPSULE_APPROVAL_BLACKLISTED",
-        403,
-        "capsule approval blacklisted",
-      );
-    }
-
-    const existing = await this.db.query<{ id: string; status: string }>(
-      `SELECT id, status FROM capsule_view_requests
-       WHERE capsule_id = $1 AND ${identityClause} AND status IN ('pending', 'approved')
-       ORDER BY requested_at DESC LIMIT 1`,
-      [input.capsuleId, identityValue],
-    );
-    if (existing[0]) {
-      return {
-        requestId: existing[0].id,
-        status: existing[0].status === "approved" ? "approved" : "pending",
-      };
-    }
-    const requestId = generateEntityId();
-    await this.db.query(
-      `
-        INSERT INTO capsule_view_requests (
-          id, capsule_id, requester_user_id, guest_session_id, requester_email_hash, requester_email,
-          requester_name, device_label, platform, ip_address, country, city, status
-        )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NULLIF($10, 'unknown')::inet, $11, $12, 'pending')
-      `,
-      [
-        requestId,
-        input.capsuleId,
-        requesterUserId ?? null,
-        guestSessionId ?? null,
-        requesterEmailHash,
-        requesterEmail!,
-        requesterName,
-        input.deviceLabel?.trim() || "Unknown device",
-        input.platform?.trim() || "Unknown",
-        input.requestIp,
-        input.country ?? null,
-        input.city ?? null,
-      ],
-    );
-    return { requestId, status: "pending" };
-  }
-
-  async getApprovalEligibility(input: {
-    capsuleId: string;
-    requesterUserId?: string;
-    requestIp: string;
-  }): Promise<{ eligible: boolean; reason?: "blacklisted" }> {
-    const capsule = await this.loadCapsule(input.capsuleId);
-    if (!capsule.approval_required) {
-      return { eligible: true };
-    }
-    let requesterEmailHash: string | undefined;
-    if (input.requesterUserId) {
-      let email: string | undefined;
-      if (this.users) {
-        email = (await this.users.findById(input.requesterUserId))?.email;
-      }
-      if (email) {
-        requesterEmailHash = hashRecipient(normalizeEmail(email), this.config.sessionSecret);
-      }
-    }
-    if (
-      await this.isRequesterBlacklisted({
-        capsuleId: input.capsuleId,
-        requesterUserId: input.requesterUserId,
-        requesterEmailHash,
-        requestIp: input.requestIp,
-      })
-    ) {
-      return { eligible: false, reason: "blacklisted" };
-    }
-    return { eligible: true };
-  }
-
-  private async isRequesterBlacklisted(input: {
-    capsuleId: string;
-    requesterUserId?: string;
-    requesterEmailHash?: string;
-    requestIp: string;
-  }): Promise<boolean> {
-    if (input.requesterUserId && input.requesterEmailHash) {
-      const blocked = await this.db.query<{ id: string }>(
-        `SELECT id FROM capsule_approval_blacklist
-         WHERE capsule_id = $1 AND requester_email_hash = $2
-         LIMIT 1`,
-        [input.capsuleId, input.requesterEmailHash],
-      );
-      return Boolean(blocked[0]);
-    }
-    if (!input.requesterUserId && input.requestIp && input.requestIp !== "unknown") {
-      const blocked = await this.db.query<{ id: string }>(
-        `SELECT id FROM capsule_approval_blacklist
-         WHERE capsule_id = $1 AND ip_address = $2::inet
-         LIMIT 1`,
-        [input.capsuleId, input.requestIp],
-      );
-      return Boolean(blocked[0]);
-    }
-    return false;
-  }
-
-  async getApprovalStatus(
-    requestId: string,
-    requesterUserId?: string,
-    guestSessionId?: string,
-  ): Promise<CapsuleApprovalStatusDto> {
-    const guest = parseGuestSessionId(guestSessionId);
-    if (guest.kind === "invalid") {
-      throw new CapsuleServiceError("INVALID_GUEST_SESSION_ID", 400, "guestSessionId is invalid");
-    }
-    const identityClause = requesterUserId
-      ? "requester_user_id = $2"
-      : "guest_session_id = $2";
-    const identityValue = requesterUserId ?? (guest.kind === "value" ? guest.id : undefined);
-    if (!identityValue) {
-      throw new CapsuleServiceError("AUTH_REQUIRED", 401, "authenticated email required");
-    }
-    const rows = await this.db.query<{ id: string; status: string; approval_token_hash: string | null }>(
-      `SELECT id, status, approval_token_hash
-       FROM capsule_view_requests
-       WHERE id = $1 AND ${identityClause}`,
-      [requestId, identityValue],
-    );
-    const row = rows[0];
-    if (!row) {
-      throw new CapsuleServiceError("CAPSULE_APPROVAL_NOT_FOUND", 404, "approval request not found");
-    }
-    return {
-      requestId: row.id,
-      status: normalizeApprovalStatus(row.status),
-      ...(row.status === "approved"
-        ? { approvalToken: approvalTokenForRequest(row.id, this.config.sessionSecret) }
-        : {}),
-    };
-  }
-
-  async listPendingApprovals(ownerId: string): Promise<CapsuleApprovalRequestDto[]> {
-    const rows = await this.db.query<{
-      id: string;
-      capsule_id: string;
-      type: string;
-      encrypted_metadata: Buffer | null;
-      owner_key_wrap: Buffer | null;
-      requester_user_id: string | null;
-      requester_email: string;
-      requester_name: string | null;
-      device_label: string;
-      platform: string;
-      ip_address: string | null;
-      country: string | null;
-      city: string | null;
-      requested_at: string;
-      status: string;
-    }>(
-      `
-        SELECT
-          r.id, r.capsule_id, c.type, c.encrypted_metadata, c.owner_key_wrap, r.requester_user_id,
-          r.requester_email, r.requester_name, r.device_label, r.platform,
-          host(r.ip_address) AS ip_address, r.country, r.city, r.requested_at, r.status
-        FROM capsule_view_requests r
-        JOIN capsules c ON c.id = r.capsule_id
-        WHERE c.creator_id = $1 AND r.status = 'pending'
-        ORDER BY r.requested_at ASC
-      `,
-      [ownerId],
-    );
-    const mapped: CapsuleApprovalRequestDto[] = [];
-    for (const row of rows) {
-      let country = row.country;
-      let city = row.city;
-      let ipAddress = row.ip_address ?? "unknown";
-      const originalIp = ipAddress;
-
-      if (isLoopbackIp(ipAddress)) {
-        const egress = await resolveEgressPublicIp(this.log);
-        if (egress) {
-          ipAddress = egress;
-        }
-      }
-
-      if ((!country || !city) && this.geoIp && ipAddress !== "unknown") {
-        const location = await this.geoIp.lookup(ipAddress);
-        country = country || location.country;
-        city = city || location.city;
-      }
-
-      if (ipAddress !== originalIp || country !== row.country || city !== row.city) {
-        await this.db.query(
-          `UPDATE capsule_view_requests
-           SET
-             ip_address = COALESCE(NULLIF($2, 'unknown')::inet, ip_address),
-             country = COALESCE($3, country),
-             city = COALESCE($4, city)
-           WHERE id = $1`,
-          [row.id, ipAddress, country, city],
-        );
-      }
-
-      mapped.push({
-        requestId: row.id,
-        capsuleId: row.capsule_id,
-        capsuleType: normalizeCapsuleType(row.type),
-        ...(row.encrypted_metadata
-          ? { encryptedCapsuleMetadata: decodeEncryptedBlobFromStorage(Uint8Array.from(row.encrypted_metadata)) }
-          : {}),
-        ...(row.owner_key_wrap
-          ? { ownerKeyWrap: decodeEncryptedBlobFromStorage(Uint8Array.from(row.owner_key_wrap)) }
-          : {}),
-        requesterUserId: row.requester_user_id,
-        requesterEmail: row.requester_email,
-        requesterName: row.requester_name,
-        deviceLabel: row.device_label,
-        platform: row.platform,
-        ipAddress,
-        country,
-        city,
-        requestedAt: row.requested_at,
-        status: "pending",
-      });
-    }
-    return mapped;
-  }
-
-  async resolveApproval(
-    requestId: string,
-    ownerId: string,
-    decision: "approve" | "deny" | "blacklist",
-  ): Promise<"approved" | "denied" | "blacklisted"> {
-    return this.db.transaction(async (tx) => {
-      const rows = await tx.query<{
-        capsule_id: string;
-        requester_user_id: string | null;
-        requester_email_hash: string;
-        ip_address: string | null;
-      }>(
-        `SELECT r.capsule_id, r.requester_user_id, r.requester_email_hash, host(r.ip_address) AS ip_address
-         FROM capsule_view_requests r
-         JOIN capsules c ON c.id = r.capsule_id
-         WHERE r.id = $1 AND c.creator_id = $2 AND r.status = 'pending'
-         FOR UPDATE`,
-        [requestId, ownerId],
-      );
-      const row = rows[0];
-      if (!row) {
-        throw new CapsuleServiceError("CAPSULE_APPROVAL_NOT_FOUND", 404, "approval request not found");
-      }
-      if (decision === "approve") {
-        const token = approvalTokenForRequest(requestId, this.config.sessionSecret);
-        await tx.query(
-          `UPDATE capsule_view_requests
-           SET status = 'approved', approval_token_hash = $2, resolved_at = now()
-           WHERE id = $1`,
-          [requestId, hashApprovalToken(token, this.config.sessionSecret)],
-        );
-        return "approved";
-      }
-      await tx.query(
-        `UPDATE capsule_view_requests
-         SET status = 'denied', resolved_at = now(), approval_token_hash = NULL
-         WHERE id = $1`,
-        [requestId],
-      );
-      if (decision === "blacklist") {
-        if (row.requester_user_id) {
-          await tx.query(
-            `INSERT INTO capsule_approval_blacklist (id, capsule_id, requester_email_hash, created_by)
-             VALUES ($1, $2, $3, $4)
-             ON CONFLICT DO NOTHING`,
-            [generateEntityId(), row.capsule_id, row.requester_email_hash, ownerId],
-          );
-        } else if (row.ip_address) {
-          await tx.query(
-            `INSERT INTO capsule_approval_blacklist (id, capsule_id, ip_address, created_by)
-             VALUES ($1, $2, $3::inet, $4)
-             ON CONFLICT DO NOTHING`,
-            [generateEntityId(), row.capsule_id, row.ip_address, ownerId],
-          );
-        }
-        await this.deactivateIfAllRecipientsDenied(tx, row.capsule_id);
-        return "blacklisted";
-      }
-      await this.deactivateIfAllRecipientsDenied(tx, row.capsule_id);
-      return "denied";
-    });
-  }
-
   async getCapsuleMetadata(capsuleId: string): Promise<CapsuleMetadataResponse> {
     const capsule = await this.loadCapsule(capsuleId);
     await this.assertWorkspaceCapsulesEnabled(capsule.workspace_id);
@@ -1372,67 +987,14 @@ export class CapsuleService {
       }
       await this.assertWorkspaceCapsulesEnabled(capsule.workspace_id);
       ensureCapsuleAccessible(capsule);
-      try {
-        validatePassword(capsule, password, this.config.sessionSecret);
-      } catch (error) {
-        if (
-          error instanceof CapsuleServiceError &&
-          error.code === "CAPSULE_PASSWORD_INVALID" &&
-          capsule.password_attempt_limit
-        ) {
-          const attempts = await this.redis.incr(`capsule:password:${capsule.id}:${requestIp}`);
-          if (attempts === 1) {
-            await this.redis.expire(
-              `capsule:password:${capsule.id}:${requestIp}`,
-              this.config.capsuleRateLimitWindowSeconds,
-            );
-          }
-          if (attempts >= capsule.password_attempt_limit) {
-            throw new CapsuleServiceError(
-              "CAPSULE_PASSWORD_ATTEMPTS_EXCEEDED",
-              429,
-              "password attempts exceeded",
-            );
-          }
-        }
-        throw error;
-      }
-      validateRecipient(capsule, sessionRecipientEmail, this.config.sessionSecret);
-      let approvalRequestId: string | null = null;
-      if (capsule.approval_required) {
-        if (!approvalToken) {
-          throw new CapsuleServiceError("CAPSULE_APPROVAL_REQUIRED", 403, "owner approval required");
-        }
-        const tokenHash = hashApprovalToken(approvalToken, this.config.sessionSecret);
-        const approvalRows = await tx.query<{
-          id: string;
-          requester_user_id: string | null;
-          guest_session_id: string | null;
-          approval_token_hash: string | null;
-        }>(
-          `SELECT id, requester_user_id, guest_session_id, approval_token_hash
-           FROM capsule_view_requests
-           WHERE capsule_id = $1 AND status = 'approved' AND approval_token_hash = $2
-           FOR UPDATE`,
-          [capsule.id, tokenHash],
-        );
-        const approval = approvalRows[0];
-        if (!approval) {
-          throw new CapsuleServiceError("CAPSULE_APPROVAL_INVALID", 403, "invalid approval token");
-        }
-        if (approval.requester_user_id) {
-          if (!requesterUserId || approval.requester_user_id !== requesterUserId) {
-            throw new CapsuleServiceError("CAPSULE_APPROVAL_INVALID", 403, "invalid approval token");
-          }
-        } else if (approval.guest_session_id) {
-          if (!guestSessionId || approval.guest_session_id !== guestSessionId) {
-            throw new CapsuleServiceError("CAPSULE_APPROVAL_INVALID", 403, "invalid approval token");
-          }
-        } else {
-          throw new CapsuleServiceError("CAPSULE_APPROVAL_INVALID", 403, "invalid approval token");
-        }
-        approvalRequestId = approval.id;
-      }
+      const { approvalRequestId } = await this.assertOpenAccess(tx, capsule, {
+        password,
+        recipientEmail: sessionRecipientEmail,
+        approvalToken,
+        requesterUserId,
+        guestSessionId,
+        requestIp,
+      });
 
       const nextViewCount = capsule.view_count + 1;
       const reachesLimit = capsule.view_limit !== null && nextViewCount >= capsule.view_limit;
@@ -1760,6 +1322,192 @@ export class CapsuleService {
     }
   }
 
+  private async resolveAccessWrite(args: {
+    mode: "create" | "update";
+    actorId: string;
+    policies: WorkspaceCapsulePolicies;
+    accessSettingsEnabled: boolean;
+    input: CreateCapsuleInput | UpdateCapsuleInput;
+    keyTransportMode: CapsuleKeyTransportMode;
+    existing?: {
+      accessPolicy: unknown;
+      passwordAttemptLimit: number | null;
+      approvalRequired: boolean;
+      activateAt?: string | null;
+      deactivateAt?: string | null;
+      deleteAt?: string | null;
+      maxViews?: number | null;
+      viewLimitAction?: CapsuleViewLimitAction;
+    };
+  }): Promise<{
+    accessPolicy: CapsuleAccessPolicy;
+    activateAt: string | null;
+    deactivateAt: string | null;
+    deleteAt: string | null;
+    maxViews: number | null;
+    viewLimitAction: CapsuleViewLimitAction;
+    passwordAttemptLimit: number | null;
+    approvalRequired: boolean;
+  }> {
+    const input = coerceAccessWriteNumbers(args.input);
+    enforceCapsulePoliciesOnWrite(args.policies, input);
+    if (!requestsCapsuleAccessSettings(input, args.policies, args.accessSettingsEnabled)) {
+      if (args.mode === "update" && args.existing) {
+        const stored = parsePolicy(args.existing.accessPolicy);
+        return {
+          accessPolicy: { ...stored, keyTransportMode: args.keyTransportMode },
+          activateAt: isoOrNull(args.existing.activateAt),
+          deactivateAt: isoOrNull(args.existing.deactivateAt),
+          deleteAt: isoOrNull(args.existing.deleteAt),
+          maxViews:
+            args.policies.forceMaxViews > 0
+              ? args.policies.forceMaxViews
+              : normalizeStoredCount(args.existing.maxViews),
+          viewLimitAction: args.existing.viewLimitAction === "delete" ? "delete" : "deactivate",
+          passwordAttemptLimit: normalizeStoredCount(args.existing.passwordAttemptLimit),
+          approvalRequired: args.existing.approvalRequired === true,
+        };
+      }
+      return {
+        accessPolicy: { keyTransportMode: args.keyTransportMode },
+        activateAt: null,
+        deactivateAt: null,
+        deleteAt: null,
+        maxViews: args.policies.forceMaxViews > 0 ? args.policies.forceMaxViews : null,
+        viewLimitAction: "deactivate",
+        passwordAttemptLimit: null,
+        approvalRequired: false,
+      };
+    }
+    if (!args.accessSettingsEnabled) {
+      throw new CapsuleServiceError(
+        "FEATURE_NOT_AVAILABLE",
+        403,
+        "capsule access settings are unavailable on this plan",
+      );
+    }
+    const provider = getCapsuleAccessSettingsProvider();
+    if (!provider && input.approvalRequired) {
+      throw new CapsuleServiceError(
+        "FEATURE_NOT_AVAILABLE",
+        403,
+        "capsule access settings are unavailable on this plan",
+      );
+    }
+    if (provider) {
+      const prepared = await provider.prepareWrite({
+        mode: args.mode,
+        actorId: args.actorId,
+        policies: args.policies,
+        sessionSecret: this.config.sessionSecret,
+        input,
+        existing: args.existing,
+      });
+      if (!prepared || typeof prepared !== "object") {
+        throw new CapsuleServiceError(
+          "CAPSULE_BAD_REQUEST",
+          400,
+          "capsule access settings provider returned an empty result",
+        );
+      }
+      const maxViews = normalizeStoredCount(prepared.maxViews);
+      if (args.policies.forceMaxViews > 0 && maxViews !== args.policies.forceMaxViews) {
+        throw new CapsuleServiceError(
+          "CAPSULE_BAD_REQUEST",
+          400,
+          `maxViews must be ${args.policies.forceMaxViews}`,
+        );
+      }
+      const accessPolicy =
+        prepared.accessPolicy && typeof prepared.accessPolicy === "object"
+          ? (prepared.accessPolicy as CapsuleAccessPolicy)
+          : {};
+      return {
+        accessPolicy: { ...accessPolicy, keyTransportMode: args.keyTransportMode },
+        activateAt: isoOrNull(prepared.activateAt),
+        deactivateAt: isoOrNull(prepared.deactivateAt),
+        deleteAt: isoOrNull(prepared.deleteAt),
+        maxViews,
+        viewLimitAction: prepared.viewLimitAction === "delete" ? "delete" : "deactivate",
+        passwordAttemptLimit: normalizeStoredCount(prepared.passwordAttemptLimit),
+        approvalRequired: prepared.approvalRequired === true,
+      };
+    }
+    return hashAccessWrite(args.mode, input, args.keyTransportMode, args.existing, this.config.sessionSecret);
+  }
+
+  private async assertOpenAccess(
+    tx: QueryExecutor,
+    capsule: CapsuleRow,
+    input: {
+      password?: string;
+      recipientEmail?: string;
+      approvalToken?: string;
+      requesterUserId?: string;
+      guestSessionId?: string;
+      requestIp: string;
+    },
+  ): Promise<{ approvalRequestId: string | null }> {
+    if (!capsuleStoresAccessSettings(capsule)) {
+      return { approvalRequestId: null };
+    }
+    const provider = getCapsuleAccessSettingsProvider();
+    if (!provider) {
+      try {
+        validatePassword(capsule, input.password, this.config.sessionSecret);
+      } catch (error) {
+        if (
+          error instanceof CapsuleServiceError &&
+          error.code === "CAPSULE_PASSWORD_INVALID" &&
+          capsule.password_attempt_limit
+        ) {
+          const attempts = await this.redis.incr(`capsule:password:${capsule.id}:${input.requestIp}`);
+          if (attempts === 1) {
+            await this.redis.expire(
+              `capsule:password:${capsule.id}:${input.requestIp}`,
+              this.config.capsuleRateLimitWindowSeconds,
+            );
+          }
+          if (attempts >= capsule.password_attempt_limit) {
+            throw new CapsuleServiceError(
+              "CAPSULE_PASSWORD_ATTEMPTS_EXCEEDED",
+              429,
+              "password attempts exceeded",
+            );
+          }
+        }
+        throw error;
+      }
+      validateRecipient(capsule, input.recipientEmail, this.config.sessionSecret);
+      if (capsule.approval_required) {
+        throw new CapsuleServiceError(
+          "FEATURE_NOT_AVAILABLE",
+          403,
+          "capsule access settings are unavailable on this plan",
+        );
+      }
+      return { approvalRequestId: null };
+    }
+    return provider.assertOpen({
+      tx,
+      capsule: {
+        id: capsule.id,
+        accessPolicy: capsule.access_policy,
+        approvalRequired: capsule.approval_required,
+        passwordAttemptLimit: capsule.password_attempt_limit,
+      },
+      password: input.password,
+      recipientEmail: input.recipientEmail,
+      approvalToken: input.approvalToken,
+      requesterUserId: input.requesterUserId,
+      guestSessionId: input.guestSessionId,
+      requestIp: input.requestIp,
+      sessionSecret: this.config.sessionSecret,
+      redis: this.redis,
+      passwordAttemptWindowSeconds: this.config.capsuleRateLimitWindowSeconds,
+    });
+  }
+
   private async assertActorCapabilityForWrite(
     actorId: string,
     operation: string,
@@ -1805,7 +1553,8 @@ export class CapsuleService {
   }
 }
 
-function requestsCapsuleAccessSettings(
+function hashAccessWrite(
+  mode: "create" | "update",
   input: {
     expiresAt?: string;
     activateAt?: string;
@@ -1813,41 +1562,63 @@ function requestsCapsuleAccessSettings(
     deleteAt?: string;
     maxViews?: number;
     viewLimitAction?: CapsuleViewLimitAction;
-    passwordAttemptLimit?: number;
     password?: string;
+    passwordAttemptLimit?: number;
     allowedRecipientEmails?: string[];
     approvalRequired?: boolean;
+    keepExistingPassword?: boolean;
+    keepExistingRecipients?: boolean;
   },
-  policies: WorkspaceCapsulePolicies,
-  accessSettingsEnabled: boolean,
-): boolean {
-  const hasNonViewAccess =
-    Boolean(input.expiresAt) ||
-    Boolean(input.activateAt) ||
-    Boolean(input.deactivateAt) ||
-    Boolean(input.deleteAt) ||
-    input.passwordAttemptLimit !== undefined ||
-    Boolean(input.password && input.password.length > 0) ||
-    Boolean(input.allowedRecipientEmails && input.allowedRecipientEmails.length > 0) ||
-    Boolean(input.approvalRequired);
-
-  if (hasNonViewAccess) {
-    return true;
+  keyTransportMode: CapsuleKeyTransportMode,
+  existing: { accessPolicy: unknown; passwordAttemptLimit: number | null } | undefined,
+  sessionSecret: string,
+): {
+  accessPolicy: CapsuleAccessPolicy;
+  activateAt: string | null;
+  deactivateAt: string | null;
+  deleteAt: string | null;
+  maxViews: number | null;
+  viewLimitAction: CapsuleViewLimitAction;
+  passwordAttemptLimit: number | null;
+  approvalRequired: boolean;
+} {
+  const activateAt = normalizeOptionalIsoDate(input.activateAt);
+  const deactivateAt = normalizeOptionalIsoDate(input.deactivateAt ?? input.expiresAt);
+  const deleteAt = normalizeOptionalIsoDate(input.deleteAt);
+  assertLifecycleOrder(activateAt, deactivateAt, deleteAt);
+  const existingPolicy = existing ? parsePolicy(existing.accessPolicy) : {};
+  const accessPolicy = buildAccessPolicy(
+    mode === "update" && input.keepExistingPassword ? undefined : input.password,
+    mode === "update" && input.keepExistingRecipients ? undefined : input.allowedRecipientEmails,
+    sessionSecret,
+    keyTransportMode,
+  );
+  if (mode === "update" && input.keepExistingPassword && existingPolicy.password) {
+    accessPolicy.password = existingPolicy.password;
   }
-
-  // Core "Limit views" may force maxViews on FREE; that alone is not an EE access setting.
-  if (input.maxViews !== undefined || input.viewLimitAction !== undefined) {
-    if (
-      !accessSettingsEnabled &&
-      policies.forceMaxViews > 0 &&
-      input.maxViews === policies.forceMaxViews
-    ) {
-      return false;
+  if (mode === "update" && input.keepExistingRecipients && existingPolicy.allowedRecipientHashes?.length) {
+    accessPolicy.allowedRecipientHashes = existingPolicy.allowedRecipientHashes;
+    if (existingPolicy.allowedRecipientEmails?.length) {
+      accessPolicy.allowedRecipientEmails = existingPolicy.allowedRecipientEmails;
     }
-    return true;
   }
-
-  return false;
+  const passwordAttemptLimit =
+    mode === "update" && input.keepExistingPassword
+      ? normalizePasswordAttemptLimit(
+          input.passwordAttemptLimit ?? existing?.passwordAttemptLimit ?? undefined,
+          accessPolicy.password ? "kept" : undefined,
+        )
+      : normalizePasswordAttemptLimit(input.passwordAttemptLimit, input.password);
+  return {
+    accessPolicy,
+    activateAt,
+    deactivateAt,
+    deleteAt,
+    maxViews: normalizeMaxViews(input.maxViews),
+    viewLimitAction: normalizeViewLimitAction(input.viewLimitAction),
+    passwordAttemptLimit,
+    approvalRequired: input.approvalRequired === true,
+  };
 }
 
 function enforceCapsulePoliciesOnWrite(
@@ -1916,26 +1687,8 @@ function enforceCapsulePoliciesOnWrite(
   }
 }
 
-function parseBlobOrThrow(value: unknown, fieldName: string): EncryptedBlob {
-  try {
-    return parseEncryptedBlobInput(value, {
-      fieldName,
-      maxPayloadBytes: MAX_ENCRYPTED_PAYLOAD_BYTES,
-      allowLegacyString: false,
-    }).blob;
-  } catch (error) {
-    const message = (error as Error).message;
-    if (message.includes("exceeds")) {
-      throw new CapsuleServiceError("PAYLOAD_TOO_LARGE", 413, message);
-    }
-    throw new CapsuleServiceError("CAPSULE_BAD_REQUEST", 400, message);
-  }
-}
-
 function normalizeOptionalIsoDate(iso?: string): string | null {
-  if (!iso) {
-    return null;
-  }
+  if (!iso) return null;
   const parsed = Date.parse(iso);
   if (Number.isNaN(parsed)) {
     throw new CapsuleServiceError("CAPSULE_BAD_REQUEST", 400, "lifecycle timestamp must be valid ISO date");
@@ -1960,19 +1713,13 @@ function assertLifecycleOrder(
 }
 
 function normalizeViewLimitAction(value?: string): CapsuleViewLimitAction {
-  if (!value || value === "deactivate") {
-    return "deactivate";
-  }
-  if (value === "delete") {
-    return "delete";
-  }
+  if (!value || value === "deactivate") return "deactivate";
+  if (value === "delete") return "delete";
   throw new CapsuleServiceError("CAPSULE_BAD_REQUEST", 400, "invalid view limit action");
 }
 
 function normalizePasswordAttemptLimit(value: number | undefined, password: string | undefined): number | null {
-  if (!password) {
-    return null;
-  }
+  if (!password) return null;
   const normalized = value ?? 3;
   if (!Number.isInteger(normalized) || normalized < 1 || normalized > 100) {
     throw new CapsuleServiceError("CAPSULE_BAD_REQUEST", 400, "passwordAttemptLimit must be 1..100");
@@ -1981,15 +1728,9 @@ function normalizePasswordAttemptLimit(value: number | undefined, password: stri
 }
 
 function normalizeMaxViews(maxViews?: number): number | null {
-  if (maxViews === undefined) {
-    return null;
-  }
+  if (maxViews === undefined) return null;
   if (!Number.isInteger(maxViews) || maxViews < 1 || maxViews > 10000) {
-    throw new CapsuleServiceError(
-      "CAPSULE_BAD_REQUEST",
-      400,
-      "maxViews must be an integer from 1 to 10000",
-    );
+    throw new CapsuleServiceError("CAPSULE_BAD_REQUEST", 400, "maxViews must be an integer from 1 to 10000");
   }
   return maxViews;
 }
@@ -2001,29 +1742,15 @@ function buildAccessPolicy(
   keyTransportMode: CapsuleKeyTransportMode,
 ): CapsuleAccessPolicy {
   const policy: CapsuleAccessPolicy = { keyTransportMode };
-  if (!password) {
-    // no-op
-  } else {
+  if (password) {
     if (password.length < 4) {
-      throw new CapsuleServiceError(
-        "CAPSULE_BAD_REQUEST",
-        400,
-        "password must be at least 4 characters",
-      );
+      throw new CapsuleServiceError("CAPSULE_BAD_REQUEST", 400, "password must be at least 4 characters");
     }
     const salt = randomBytes(16).toString("base64");
-    const hash = hashPassword(password, salt, secret);
-    policy.password = {
-      kdf: "scrypt-v1",
-      salt,
-      hash,
-    };
+    policy.password = { kdf: "scrypt-v1", salt, hash: hashPassword(password, salt, secret) };
   }
-
   if (allowedRecipientEmails && allowedRecipientEmails.length > 0) {
-    const emails = Array.from(
-      new Set(allowedRecipientEmails.map(normalizeEmail).filter(Boolean)),
-    );
+    const emails = Array.from(new Set(allowedRecipientEmails.map(normalizeEmail).filter(Boolean)));
     const hashes = emails.map((email) => hashRecipient(email, secret));
     if (hashes.length > 0) {
       policy.allowedRecipientHashes = hashes;
@@ -2031,6 +1758,147 @@ function buildAccessPolicy(
     }
   }
   return policy;
+}
+
+function isoOrNull(value: unknown): string | null {
+  if (value == null || value === "") return null;
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value.toISOString();
+  if (typeof value !== "string") return null;
+  const parsed = Date.parse(value);
+  return Number.isNaN(parsed) ? null : new Date(parsed).toISOString();
+}
+
+function coerceOptionalInt(value: unknown): number | undefined {
+  if (value == null || value === "") return undefined;
+  if (typeof value === "number" && Number.isInteger(value)) return value;
+  if (typeof value === "string" && /^-?\d+$/.test(value.trim())) return Number(value.trim());
+  return undefined;
+}
+
+function normalizeStoredCount(value: unknown): number | null {
+  const parsed = coerceOptionalInt(value);
+  return parsed === undefined ? null : parsed;
+}
+
+function coerceAccessWriteNumbers<T extends { maxViews?: number; passwordAttemptLimit?: number }>(input: T): T {
+  return {
+    ...input,
+    ...(input.maxViews !== undefined ? { maxViews: coerceOptionalInt(input.maxViews) } : {}),
+    ...(input.passwordAttemptLimit !== undefined
+      ? { passwordAttemptLimit: coerceOptionalInt(input.passwordAttemptLimit) }
+      : {}),
+  };
+}
+
+function requestsCapsuleAccessSettings(
+  input: {
+    expiresAt?: string;
+    activateAt?: string;
+    deactivateAt?: string;
+    deleteAt?: string;
+    maxViews?: number;
+    viewLimitAction?: CapsuleViewLimitAction;
+    passwordAttemptLimit?: number;
+    password?: string;
+    allowedRecipientEmails?: string[];
+    approvalRequired?: boolean;
+  },
+  policies: WorkspaceCapsulePolicies,
+  accessSettingsEnabled: boolean,
+): boolean {
+  const hasNonViewAccess =
+    Boolean(input.expiresAt) ||
+    Boolean(input.activateAt) ||
+    Boolean(input.deactivateAt) ||
+    Boolean(input.deleteAt) ||
+    input.passwordAttemptLimit !== undefined ||
+    Boolean(input.password && input.password.length > 0) ||
+    Boolean(input.allowedRecipientEmails && input.allowedRecipientEmails.length > 0) ||
+    Boolean(input.approvalRequired);
+
+  if (hasNonViewAccess) {
+    return true;
+  }
+
+  // Core "Limit views" may force maxViews on FREE; that alone is not an EE access setting.
+  if (input.maxViews !== undefined || input.viewLimitAction !== undefined) {
+    if (
+      !accessSettingsEnabled &&
+      policies.forceMaxViews > 0 &&
+      input.maxViews === policies.forceMaxViews
+    ) {
+      return false;
+    }
+    return true;
+  }
+
+  return false;
+}
+
+function enforceForceMaxViews(
+  policies: WorkspaceCapsulePolicies,
+  input: { maxViews?: number },
+): void {
+  if (policies.forceMaxViews > 0 && input.maxViews !== policies.forceMaxViews) {
+    throw new CapsuleServiceError(
+      "CAPSULE_BAD_REQUEST",
+      400,
+      `maxViews must be ${policies.forceMaxViews}`,
+    );
+  }
+}
+
+function capsuleStoresAccessSettings(capsule: CapsuleRow): boolean {
+  const policy = parsePolicy(capsule.access_policy);
+  return Boolean(
+    policy.password?.hash ||
+      policy.allowedRecipientHashes?.length ||
+      capsule.approval_required ||
+      capsule.activate_at ||
+      capsule.deactivate_at ||
+      capsule.delete_at ||
+      capsule.expires_at,
+  );
+}
+
+function parseAttachmentFilePayloads(
+  value: Record<string, unknown> | undefined,
+  capsuleType: string,
+): Record<string, Buffer> | null {
+  if (capsuleType !== "item" || !value || typeof value !== "object") {
+    return null;
+  }
+  const out: Record<string, Buffer> = {};
+  for (const [assetId, blob] of Object.entries(value)) {
+    const normalizedAssetId = assetId.trim();
+    if (!normalizedAssetId) {
+      continue;
+    }
+    out[normalizedAssetId] = serializeEncryptedBlobToStorage(
+      mergeEncryptedBlobMeta(parseBlobOrThrow(blob, "attachmentFilePayloads"), {
+        entity: "capsule_attachment_payload",
+        capsule_type: capsuleType,
+      }),
+    );
+  }
+  return Object.keys(out).length > 0 ? out : null;
+}
+
+
+function parseBlobOrThrow(value: unknown, fieldName: string): EncryptedBlob {
+  try {
+    return parseEncryptedBlobInput(value, {
+      fieldName,
+      maxPayloadBytes: MAX_ENCRYPTED_PAYLOAD_BYTES,
+      allowLegacyString: false,
+    }).blob;
+  } catch (error) {
+    const message = (error as Error).message;
+    if (message.includes("exceeds")) {
+      throw new CapsuleServiceError("PAYLOAD_TOO_LARGE", 413, message);
+    }
+    throw new CapsuleServiceError("CAPSULE_BAD_REQUEST", 400, message);
+  }
 }
 
 function assertSafeCapsuleKeyTransportMode(value: string | undefined): CapsuleKeyTransportMode {
@@ -2179,29 +2047,6 @@ function byteLengthOfPayloads(payloads: Record<string, Uint8Array | Buffer> | nu
   return total;
 }
 
-function parseAttachmentFilePayloads(
-  value: Record<string, unknown> | undefined,
-  capsuleType: string,
-): Record<string, Buffer> | null {
-  if (capsuleType !== "item" || !value || typeof value !== "object") {
-    return null;
-  }
-  const out: Record<string, Buffer> = {};
-  for (const [assetId, blob] of Object.entries(value)) {
-    const normalizedAssetId = assetId.trim();
-    if (!normalizedAssetId) {
-      continue;
-    }
-    out[normalizedAssetId] = serializeEncryptedBlobToStorage(
-      mergeEncryptedBlobMeta(parseBlobOrThrow(blob, "attachmentFilePayloads"), {
-        entity: "capsule_attachment_payload",
-        capsule_type: capsuleType,
-      }),
-    );
-  }
-  return Object.keys(out).length > 0 ? out : null;
-}
-
 function validateRecipient(
   capsule: CapsuleRow,
   recipientEmail: string | undefined,
@@ -2241,27 +2086,6 @@ function normalizeEmail(value: string): string {
 
 function hashRecipient(email: string, secret: string): string {
   return createHash("sha256").update(`capsule-recipient:${email}:${secret}`).digest("base64");
-}
-
-function approvalTokenForRequest(requestId: string, secret: string): string {
-  return createHmac("sha256", secret).update(`capsule-approval:${requestId}`).digest("base64url");
-}
-
-function hashApprovalToken(token: string, secret: string): string {
-  return createHmac("sha256", secret).update(`capsule-approval-token:${token}`).digest("base64url");
-}
-
-function normalizeApprovalStatus(value: string): CapsuleApprovalStatusDto["status"] {
-  if (
-    value === "pending" ||
-    value === "approved" ||
-    value === "denied" ||
-    value === "consumed" ||
-    value === "expired"
-  ) {
-    return value;
-  }
-  return "expired";
 }
 
 function parseUserAgent(userAgent: string | undefined): { deviceLabel: string; platform: string } {

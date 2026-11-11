@@ -1,5 +1,7 @@
 import { AuthService } from "./auth/service.ts";
 import { EmailChangeService } from "./account/email-change.ts";
+import { whenCapsuleAccessSettingsBound } from "./capsule/access-settings-provider.ts";
+import { CapsuleDefaultsService } from "./capsule-defaults/service.ts";
 import { CapsuleService } from "./capsule/service.ts";
 import { MmdbGeoIpLookup } from "./capsule/geoip.ts";
 import { RegistrationService } from "./registration/service.ts";
@@ -27,7 +29,6 @@ import { VaultUnlockBootstrapService } from "./account/vault-unlock-bootstrap.ts
 import { VaultService } from "./vault/service.ts";
 import { VaultSharingService } from "./vault-sharing/service.ts";
 import { ItemCategoryPreferencesService } from "./item-category-preferences/service.ts";
-import { CapsuleDefaultsService } from "./capsule-defaults/service.ts";
 import { ItemTemplatesService } from "./item-templates/service.ts";
 import { ItemPurgeService } from "./item-purge/service.ts";
 import {
@@ -353,6 +354,7 @@ async function main(): Promise<void> {
     redis: storage.redis,
     geoIp,
   });
+  await whenCapsuleAccessSettingsBound();
 
   // Public capability probe for web/UI flag sync (registered here to avoid touching app.ts).
   const enterpriseModulesActive = config.enterpriseModulesEnabled;

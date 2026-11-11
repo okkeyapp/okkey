@@ -240,14 +240,6 @@ test("capsule routes reject an account without an exported recovery key", async 
   assert.equal(owner.statusCode, 403);
   assert.equal(JSON.parse(owner.body).error, "RECOVERY_KEY_REQUIRED");
 
-  const pending = await dispatch({
-    method: "GET",
-    url: "/capsule-approval-requests",
-    exported: false,
-    includeCapsules: true,
-  });
-  assert.equal(pending.statusCode, 403);
-  assert.equal(JSON.parse(pending.body).error, "RECOVERY_KEY_REQUIRED");
 });
 
 test("guest capsule metadata stays available without a recovery key", async () => {
