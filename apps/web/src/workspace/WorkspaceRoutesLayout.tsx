@@ -26,10 +26,12 @@ import {
 import { useEffect, useMemo, useRef, useState, useCallback, type ComponentProps, type PointerEvent } from "react";
 import { Outlet, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import workspaceTenancyModule from "@okkey-enterprise/workspace-tenancy";
+import { tryCompletePendingWorkspaceKey } from "../components/workspace/settings/members/completePendingWorkspaceKey";
 import {
   canCompletePendingVaultWraps,
   tryCompletePendingVaultWraps,
 } from "../components/workspace/settings/members/completePendingVaultWraps";
+import { canCompletePendingWorkspaceKey } from "../components/workspace/settings/members/workspaceKeyAccess";
 import { refreshWorkspaceFoldersCachesForIds } from "@okkey/vault";
 import { toast } from "sonner";
 
@@ -273,6 +275,29 @@ export default function WorkspaceRoutesLayout() {
     core,
     resolvedWorkspaceId,
     t,
+    userId,
+    vaultKey,
+    vaultUnlocked,
+    workspacePermissions,
+    workspacePermissionsReady,
+  ]);
+
+  useEffect(() => {
+    if (!core || !userId || !vaultKey || !vaultUnlocked || !resolvedWorkspaceId) {
+      return;
+    }
+    if (!workspacePermissionsReady || !canCompletePendingWorkspaceKey(workspacePermissions)) {
+      return;
+    }
+    void tryCompletePendingWorkspaceKey({
+      core,
+      workspaceId: resolvedWorkspaceId,
+      userId,
+      accountVaultKey: vaultKey,
+    }).catch(() => undefined);
+  }, [
+    core,
+    resolvedWorkspaceId,
     userId,
     vaultKey,
     vaultUnlocked,
