@@ -240,6 +240,10 @@ export class AccountRecoveryRepository {
     return mapSettings(rows[0]!);
   }
 
+  /**
+   * Trusted-contacts rows. Core HTTP does not expose this directory.
+   * The account-recovery module owns invite, accept, reject, and leave.
+   */
   async listContacts(userId: string): Promise<TrustedContactRecord[]> {
     const rows = await this.db.query<ContactRow>(
       `

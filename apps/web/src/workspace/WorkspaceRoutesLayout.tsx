@@ -59,7 +59,6 @@ import NewCapsulePopup from "../components/capsules/NewCapsulePopup";
 import CapsuleApprovalController from "../components/capsules/CapsuleApprovalController";
 import DeviceApprovalController from "../components/devices/DeviceApprovalController";
 import DeviceRecoveryApprovalController from "../components/devices/DeviceRecoveryApprovalController";
-import TrustedContactInviteController from "../components/devices/TrustedContactInviteController";
 import ContactsShareReleaseController from "../components/devices/ContactsShareReleaseController";
 import accountRecoveryModule from "@okkey-enterprise/account-recovery";
 import passwordMonitoringModule from "@okkey-enterprise/monitoring";
@@ -198,6 +197,7 @@ function shellTitleKey(pathname: string): string {
   }
 }
 
+const TrustedContactInviteController = accountRecoveryModule.TrustedContactInviteController;
 const ContactsShareAutoEnrollController = accountRecoveryModule.ContactsShareAutoEnrollController;
 
 export default function WorkspaceRoutesLayout() {
@@ -1097,7 +1097,9 @@ function WorkspaceShellWithItems({
           <CapsuleApprovalController />
           <DeviceApprovalController />
           {enterpriseModulesOn ? <DeviceRecoveryApprovalController /> : null}
-          <TrustedContactInviteController />
+          {TrustedContactInviteController && enterpriseModulesOn ? (
+            <TrustedContactInviteController />
+          ) : null}
           {enterpriseModulesOn ? <ContactsShareReleaseController /> : null}
           {ContactsShareAutoEnrollController && enterpriseModulesOn ? (
             <ContactsShareAutoEnrollController />

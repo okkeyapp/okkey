@@ -66,8 +66,6 @@ import type {
   AccountRecoveryKeyWrapResponseDto,
   AccountRecoverySettingsUpdateRequestDto,
   AccountRecoveryStatusResponseDto,
-  TrustedContactInviteRequestDto,
-  TrustedContactInviteResponseDto,
   WebAuthnAuthenticatorAttachment,
   WebAuthnCeremonyOptionsResponseDto,
   WebAuthnRegisterOptionsRequestDto,
@@ -962,39 +960,6 @@ export class CoreApiClient {
   getAccountRecoveryIdentityEncryptedKey(): Promise<{ encrypted_private_key: EncryptedBlobDto }> {
     return this.api.get<{ encrypted_private_key: EncryptedBlobDto }>(
       "/account/recovery/identity-encrypted-key",
-    );
-  }
-
-  inviteTrustedContact(
-    body: TrustedContactInviteRequestDto,
-  ): Promise<TrustedContactInviteResponseDto> {
-    return this.api.post<TrustedContactInviteResponseDto>("/account/recovery/contacts", body);
-  }
-
-  deleteTrustedContact(contactId: string): Promise<AccountRecoveryStatusResponseDto> {
-    return this.api.delete<AccountRecoveryStatusResponseDto>(
-      `/account/recovery/contacts/${encodeURIComponent(contactId)}`,
-    );
-  }
-
-  acceptTrustedContactInvite(inviteId: string): Promise<AccountRecoveryStatusResponseDto> {
-    return this.api.post<AccountRecoveryStatusResponseDto>(
-      `/account/recovery/contacts/invites/${encodeURIComponent(inviteId)}/accept`,
-      {},
-    );
-  }
-
-  rejectTrustedContactInvite(inviteId: string): Promise<AccountRecoveryStatusResponseDto> {
-    return this.api.post<AccountRecoveryStatusResponseDto>(
-      `/account/recovery/contacts/invites/${encodeURIComponent(inviteId)}/reject`,
-      {},
-    );
-  }
-
-  /** Leave another owner's trusted-contact list (you are the contact). */
-  leaveTrustedContactMembership(contactId: string): Promise<AccountRecoveryStatusResponseDto> {
-    return this.api.delete<AccountRecoveryStatusResponseDto>(
-      `/account/recovery/contacts/memberships/${encodeURIComponent(contactId)}`,
     );
   }
 
