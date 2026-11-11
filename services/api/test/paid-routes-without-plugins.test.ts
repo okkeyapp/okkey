@@ -1,7 +1,7 @@
 /**
  * OKKEYAPP-230: without enterprise plugins, paid routes are not registered.
  * Core list/delete for roles and profiles, and core recovery-key routes, stay mounted.
- * A handler that answers 403 instead of 404 is left skipped: 404 vs 403 is separate.
+ * Enabling trusted contacts on the core settings route is 403, not an unregistered 404.
  */
 import assert from "node:assert/strict";
 import type { IncomingMessage, ServerResponse } from "node:http";
@@ -131,15 +131,9 @@ test("core still lists built-in roles and profiles without enterprise plugins", 
   assert.equal((await dispatch("GET", "/account/recovery/contacts")).statusCode, 404);
 });
 
-test("enabling trusted contacts without a plugin is an unregistered route", async (t) => {
+test("enabling trusted contacts without a plugin returns 403", async () => {
   const res = await dispatch("PATCH", "/account/recovery/settings", { contactsEnabled: true });
-  if (res.statusCode === 403) {
-    const payload = JSON.parse(res.body) as { error?: string };
-    t.skip(
-      `PATCH /account/recovery/settings returns ${res.statusCode} ${payload.error ?? ""} instead of 404. Whether this paid recovery switch should be 404 or 403 is tracked separately.`,
-    );
-    return;
-  }
-  assert.equal(res.statusCode, 404);
-  assert.equal((JSON.parse(res.body) as { error?: string }).error, "NOT_FOUND");
+  const payload = JSON.parse(res.body) as { error?: string };
+  assert.equal(res.statusCode, 403);
+  assert.equal(payload.error, "RECOVERY_CONTACTS_UNAVAILABLE");
 });
