@@ -105,11 +105,10 @@ jobs:
           node-version: "25"
 
       # The image ships Node 24 and a global Yarn. This job needs Node 25, which
-      # replaces that PATH, so activate the pinned Yarn before the cache step.
+      # replaces that PATH, so install the pinned Yarn before the cache step.
+      # Node's official builds used here do not put corepack on PATH.
       - name: Activate Yarn
-        env:
-          COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
-        run: corepack enable && corepack prepare yarn@1.22.22 --activate
+        run: npm install -g yarn@1.22.22
 
       - name: Cache Yarn
         uses: actions/setup-node@v4
