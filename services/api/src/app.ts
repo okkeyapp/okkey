@@ -3,7 +3,7 @@ import type { AuthService } from "./auth/service.ts";
 import type { RegistrationService } from "./registration/service.ts";
 import type { ApiConfig } from "./config.ts";
 import type { DeviceService } from "./device/service.ts";
-import { bindCapsuleAccessSettingsAfterRegister, registerCapsuleAccessSettingsProvider } from "./capsule/access-settings-provider.ts";
+import { registerCapsuleAccessSettingsProvider } from "./capsule/access-settings-provider.ts";
 import { getHeader, HttpApp, type RouteHandler } from "./http.ts";
 import type { Logger } from "./logger.ts";
 import { createCorsMiddleware } from "./middleware/cors.ts";
@@ -296,7 +296,10 @@ export function createApiApp(
   logger: Logger,
   deps: AppDeps = {},
   options: CreateApiAppOptions = {},
-): HttpApp {
+): HttpApp & {
+  /** Resolves after every plugin `register` finishes, in list order. Rejects on failure. */
+  pluginsReady: Promise<void>;
+} {
   const app = new HttpApp();
   const readyCheck = deps.readyCheck ?? (async () => {});
 
@@ -1340,32 +1343,39 @@ export function createApiApp(
     );
   }
 
-  if (options.postgres && options.workspacesRepository) {
+  const postgres = options.postgres;
+  const workspacesRepository = options.workspacesRepository;
+  const pluginsReady = (async () => {
+    if (!postgres || !workspacesRepository) {
+      return;
+    }
     for (const plugin of enterprisePlugins) {
       const registration = plugin.register({
         app,
         config,
         resolveUserId,
-        postgres: options.postgres,
+        postgres,
         redis: options.redis,
         publicAppBaseUrl: options.publicAppBaseUrl ?? config.publicAppBaseUrl,
         emailTemplates: options.emailTemplates,
         geoIp: options.geoIp,
         repositories: {
-          workspaces: options.workspacesRepository,
+          workspaces: workspacesRepository,
           vaults: options.vaultsRepository,
         },
         services: {
           vaultSharingService: deps.vaultSharingService,
         },
       });
-      bindCapsuleAccessSettingsAfterRegister(registration, () => {
-        if (plugin.capsuleAccessSettings) {
-          registerCapsuleAccessSettingsProvider(plugin.capsuleAccessSettings);
-        }
-      });
+      if (plugin.capsuleAccessSettings) {
+        registerCapsuleAccessSettingsProvider(plugin.capsuleAccessSettings);
+      }
+      await registration;
+      if (plugin.capsuleAccessSettings) {
+        registerCapsuleAccessSettingsProvider(plugin.capsuleAccessSettings);
+      }
     }
-  }
+  })();
 
-  return app;
+  return Object.assign(app, { pluginsReady });
 }

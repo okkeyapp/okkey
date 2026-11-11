@@ -397,6 +397,7 @@ async function main(): Promise<void> {
     redis: storage.redis,
     geoIp,
   });
+  await app.pluginsReady;
   await whenCapsuleAccessSettingsBound();
 
   // Public capability probe for web/UI flag sync (registered here to avoid touching app.ts).
