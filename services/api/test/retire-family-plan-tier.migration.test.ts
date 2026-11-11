@@ -7,9 +7,9 @@ import { fileURLToPath } from "node:url";
 import { isPlanTier, normalizePlanTier, readPlanTier } from "../../../packages/types/src/plan-features.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const migrationPath = path.resolve(__dirname, "../migrations/0045_retire_family_plan_tier.sql");
+const migrationPath = path.resolve(__dirname, "../migrations/0047_retire_family_plan_tier.sql");
 
-test("migration 0045 rewrites FAMILY rows to PREMIUM and leaves custom overrides", () => {
+test("FAMILY retirement migration rewrites FAMILY rows to PREMIUM and leaves custom overrides", () => {
   const sql = readFileSync(migrationPath, "utf8");
   const update = sql.match(/UPDATE\s+workspaces[\s\S]*?;/i)?.[0] ?? "";
   assert.ok(update.length > 0);
