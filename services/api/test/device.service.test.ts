@@ -370,6 +370,36 @@ test("registerDevice forwards the caller token hash", async () => {
   assert.equal(seen, "caller-hash");
 });
 
+test("registerDevice does not register when sole-device reclaim preconditions fail", async () => {
+  let registered = false;
+  const service = createService({
+    reclaimSoleTrusted: async () => null,
+    registerOrUpdate: async () => {
+      registered = true;
+      return createDeviceRecord();
+    },
+  });
+  await assert.rejects(
+    () =>
+      service.registerDevice(
+        "u1",
+        "127.0.0.1",
+        createInput({
+          reclaimSoleTrusted: true,
+          previousDeviceId: "1",
+          previousDeviceFingerprint: "ab",
+          sessionDeviceId: "1",
+        }),
+      ),
+    (error: unknown) =>
+      error instanceof DeviceServiceError &&
+      error.code === "DEVICE_RECLAIM_PRECONDITION_FAILED" &&
+      error.statusCode === 403 &&
+      error.message === "sole trusted device reclaim preconditions were not met",
+  );
+  assert.equal(registered, false);
+});
+
 test("registerDevice does not accept new keys for an existing trusted fingerprint", async () => {
   const service = createService({
     registerOrUpdate: async () => {

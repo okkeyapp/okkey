@@ -10,6 +10,7 @@ import type {
   WorkspaceCapsulePolicies,
 } from "@okkey/types";
 import {
+  canReclaimSoleTrustedDevice,
   normalizePlanTier,
   sanitizePlanFeatureOverrides,
   workspaceCapsulePoliciesFromDto,
@@ -1151,6 +1152,20 @@ async function assertCanInsertPendingDevice(
   }
 }
 
+function sameDeviceId(left: string, right: string): boolean {
+  if (left === right) {
+    return true;
+  }
+  if (!/^\d+$/.test(left) || !/^\d+$/.test(right)) {
+    return false;
+  }
+  try {
+    return BigInt(left) === BigInt(right);
+  } catch {
+    return false;
+  }
+}
+
 export class DevicesRepository {
   private readonly db: QueryExecutor & {
     transaction<T>(fn: (tx: QueryExecutor) => Promise<T>): Promise<T>;
@@ -1166,7 +1181,8 @@ export class DevicesRepository {
 
   /**
    * Rebind the user's only trusted device to a new fingerprint/public key
-   * (keeps device_share B). Returns null when the user does not have exactly one trusted device.
+   * and keep device_share. Returns null, without writing, when reclaim
+   * preconditions are not met.
    */
   async reclaimSoleTrusted(input: {
     userId: string;
@@ -1181,17 +1197,53 @@ export class DevicesRepository {
     userAgent: string;
     requestIp: string;
     now: string;
+    /** Id of the trusted row the caller claims to be rebinding. */
+    previousDeviceId: string;
+    /** Stored fingerprint the caller claims belongs to that row. */
+    previousDeviceFingerprint: string;
+    /** Device id bound to the caller's session, when the session has one. */
+    sessionDeviceId: string;
   }): Promise<DeviceRecord | null> {
-    return this.db.transaction(async (tx) => {
-      const countRows = await tx.query<{ n: string }>(
+    return withUserDeviceLock(input.userId, () => this.db.transaction(async (tx) => {
+      await lockUserDevices(tx, input.userId);
+      const trusted = await tx.query<{
+        id: string;
+        device_fingerprint: string;
+        client_type: string;
+      }>(
         `
-          SELECT COUNT(*)::text AS n
+          SELECT id, device_fingerprint, client_type
           FROM devices
           WHERE user_id = $1::bigint AND status = 'trusted'
+          FOR UPDATE
         `,
         [input.userId],
       );
-      if (Number(countRows[0]?.n ?? 0) !== 1) {
+      if (trusted.length !== 1) {
+        return null;
+      }
+      const current = trusted[0];
+      if (!current) {
+        return null;
+      }
+      const previousDeviceId = input.previousDeviceId.trim();
+      const sessionDeviceId = input.sessionDeviceId.trim();
+      const previousFingerprint = input.previousDeviceFingerprint.trim().toLowerCase();
+      const storedFingerprint = current.device_fingerprint.trim().toLowerCase();
+      if (
+        previousDeviceId === "" ||
+        sessionDeviceId === "" ||
+        previousFingerprint === "" ||
+        !sameDeviceId(previousDeviceId, current.id) ||
+        !sameDeviceId(sessionDeviceId, current.id) ||
+        previousFingerprint !== storedFingerprint ||
+        !canReclaimSoleTrustedDevice({
+          storedFingerprint: current.device_fingerprint,
+          storedClientType: current.client_type,
+          nextFingerprint: input.deviceFingerprint,
+          nextClientType: input.clientType,
+        })
+      ) {
         return null;
       }
 
@@ -1248,6 +1300,7 @@ export class DevicesRepository {
             rejection_reason = NULL,
             revoked_at = NULL
           WHERE user_id = $1::bigint
+            AND id = $13::bigint
             AND status = 'trusted'
           RETURNING
             id,
@@ -1286,11 +1339,12 @@ export class DevicesRepository {
           input.userAgent,
           input.requestIp,
           input.now,
+          current.id,
         ],
       );
 
       return rows[0] ? mapDevice(rows[0]) : null;
-    });
+    }));
   }
 
   /**

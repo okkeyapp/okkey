@@ -102,6 +102,12 @@ export interface RegisterDeviceInput {
   acceptLanguage?: string;
   /** Rebind sole trusted device instead of creating pending (local vault reclaim). */
   reclaimSoleTrusted?: boolean;
+  /** Trusted device id the caller says it is rebinding. Required when reclaiming. */
+  previousDeviceId?: string | null;
+  /** Stored fingerprint the caller says belongs to that device. Required when reclaiming. */
+  previousDeviceFingerprint?: string | null;
+  /** Device id on the caller's session. Required when reclaiming. */
+  sessionDeviceId?: string | null;
   /**
    * After account recovery on a fresh browser: become the sole trusted device
    * with a newly minted device_share (B), revoking other trusted devices.
@@ -300,14 +306,22 @@ export class DeviceService {
           userAgent: cleanString(input.userAgent, "unknown"),
           requestIp: cleanString(requestIp, "unknown"),
           now: this.now().toISOString(),
+          previousDeviceId: input.previousDeviceId?.trim() ?? "",
+          previousDeviceFingerprint: input.previousDeviceFingerprint?.trim().toLowerCase() ?? "",
+          sessionDeviceId: input.sessionDeviceId?.trim() ?? "",
         });
-        if (reclaimed) {
-          return {
-            deviceId: reclaimed.id,
-            status: "trusted",
-            created: true,
-          };
+        if (!reclaimed) {
+          throw new DeviceServiceError(
+            "DEVICE_RECLAIM_PRECONDITION_FAILED",
+            403,
+            "sole trusted device reclaim preconditions were not met",
+          );
         }
+        return {
+          deviceId: reclaimed.id,
+          status: "trusted",
+          created: true,
+        };
       }
 
       const record = await this.devices.registerOrUpdate({

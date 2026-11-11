@@ -1268,6 +1268,57 @@ test("POST /devices/register rejects non-boolean reclaim_sole_trusted and claim_
   }
 });
 
+test("POST /devices/register rejects a non-string reclaim link field", async () => {
+  const result = await registerAndCapture({
+    ...registerBody(),
+    metadata: { reclaim_sole_trusted: true, previous_device_id: 1 },
+  });
+  assert.equal(result.statusCode, 400);
+  assert.equal(result.payload.error, "DEVICE_BAD_REQUEST");
+  assert.equal(result.payload.message, "previous_device_id must be a string");
+  assert.equal(result.input, undefined);
+});
+
+test("POST /devices/register forwards reclaim link fields and the bound session device", async () => {
+  let input: RegisterDeviceInput | undefined;
+  const res = await dispatch({
+    method: "POST",
+    url: "/devices/register",
+    headers: { authorization: "Bearer reclaim-token" },
+    body: {
+      ...registerBody(),
+      metadata: {
+        reclaim_sole_trusted: true,
+        previous_device_id: "42",
+        previous_device_fingerprint: "AB".repeat(32),
+      },
+    },
+    deviceService: createDeviceServiceStub({
+      registerDevice: async (_userId, _ip, received) => {
+        input = received;
+        return { deviceId: "42", status: "trusted", created: true };
+      },
+    }),
+    sessionService: createSessionServiceStub({
+      resolveAccessToken: async () => ({
+        userId: "u1",
+        deviceId: "42",
+        scope: null,
+        tokenHash: "hash",
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+        recoveryProvedAt: null,
+        recoveryChallenge: null,
+        recoveryChallengeExpiresAt: null,
+      }),
+    }),
+  });
+  assert.equal(res.statusCode, 200);
+  assert.equal(input?.reclaimSoleTrusted, true);
+  assert.equal(input?.previousDeviceId, "42");
+  assert.equal(input?.previousDeviceFingerprint, "AB".repeat(32));
+  assert.equal(input?.sessionDeviceId, "42");
+});
+
 test("POST /devices/register keeps reclaim and claim boolean behaviour", async () => {
   const reclaimTrue = await registerAndCapture(
     registerBodyWithFlag("reclaim_sole_trusted", true, "metadata"),

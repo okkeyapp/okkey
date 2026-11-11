@@ -1,6 +1,8 @@
 import { parseBrowserEnvironment } from "./browserEnvironment";
 import { DEVICE_FINGERPRINT_KEY } from "./storageKeys";
 
+export { isLegacyHexFingerprint } from "@okkey/types";
+
 /**
  * Stable per browser/OS identity for device trust.
  * Format: `{web_app|mobile_app|desktop_app|extension}-{browser}-{os}-{os_version}`
@@ -23,9 +25,4 @@ export function getOrCreateDeviceFingerprint(): string {
   }
 
   return fingerprint;
-}
-
-/** Legacy random hex fingerprints (pre structured id). */
-export function isLegacyHexFingerprint(value: string): boolean {
-  return /^[a-f0-9]{32,128}$/i.test(value.trim());
 }

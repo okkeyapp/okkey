@@ -1,5 +1,10 @@
 export type { EntityId, UUID } from "./entity-id.js";
 export {
+  canReclaimSoleTrustedDevice,
+  isLegacyHexFingerprint,
+} from "./device-reclaim.js";
+export type { SoleTrustedReclaimInput } from "./device-reclaim.js";
+export {
   ENTITY_ID_RE,
   MAX_ENTITY_ID,
   assertEntityId,
@@ -1515,10 +1520,23 @@ export interface RegisterCompleteMetadataDto {
   user_agent?: string;
   crypto_capable?: boolean;
   /**
-   * When true on `POST /devices/register`, if the user has exactly one trusted device,
-   * rebind that row to this fingerprint/public key instead of creating a pending device.
+   * When true on `POST /devices/register`, rebind the sole trusted device to this
+   * fingerprint and public key and keep its stored device share.
+   * Accepted only when that device has a legacy hex fingerprint, its client type
+   * is compatible with this request, the caller's session is bound to it, and
+   * `previous_device_id` plus `previous_device_fingerprint` match the stored row.
    */
   reclaim_sole_trusted?: boolean;
+  /**
+   * Id of the trusted device to rebind. Required when `reclaim_sole_trusted` is true.
+   * Metadata wins over the top-level field when both are set.
+   */
+  previous_device_id?: string;
+  /**
+   * Stored fingerprint of the trusted device to rebind. Required when
+   * `reclaim_sole_trusted` is true. Metadata wins over the top-level field.
+   */
+  previous_device_fingerprint?: string;
   /**
    * When true on `POST /devices/register` after account recovery: become sole trusted
    * device with the provided device_share and revoke other trusted devices.
@@ -1553,6 +1571,16 @@ export interface DeviceRegisterRequestDto {
    * Prefer this over `Accept-Language` — browsers forbid overriding that header from fetch.
    */
   locale?: string;
+  /**
+   * Id of the trusted device to rebind. Required when `reclaim_sole_trusted` is true.
+   * Ignored when metadata contains `previous_device_id`.
+   */
+  previous_device_id?: string;
+  /**
+   * Stored fingerprint of the trusted device to rebind. Required when
+   * `reclaim_sole_trusted` is true. Ignored when metadata contains the field.
+   */
+  previous_device_fingerprint?: string;
   metadata?: RegisterCompleteMetadataDto;
 }
 
