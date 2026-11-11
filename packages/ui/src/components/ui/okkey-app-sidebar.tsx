@@ -963,13 +963,28 @@ const DEMO_FOLDER_TREE: OkkeySidebarFolderTreeNode[] = [
   { id: "company", label: "Company" },
 ];
 
+/**
+ * Help stays defined for a future assistant entry. Until that exists, the sidebar
+ * does not render it (Documentation already opens the docs home).
+ */
+const SHOW_SIDEBAR_HELP_LINK = false;
+
 function demoPlainLinkItems(locale: PublicDocsLocale): OkkeySidebarPlainLinkItem[] {
-  // okkey-docs has no separate help page. Help opens the same docs home as Documentation.
+  // okkey-docs has no separate help page. The Help item uses the same docs home as Documentation.
   const href = publicDocsUrl("home", locale);
-  return [
+  const items: OkkeySidebarPlainLinkItem[] = [
     { id: "doc", icon: <NavDocumentationIcon />, label: "Documentation", href },
-    { id: "help", icon: <NavHelpIcon />, label: "Help", href },
   ];
+  const helpItem: OkkeySidebarPlainLinkItem = {
+    id: "help",
+    icon: <NavHelpIcon />,
+    label: "Help",
+    href,
+  };
+  if (SHOW_SIDEBAR_HELP_LINK) {
+    items.push(helpItem);
+  }
+  return items;
 }
 
 /** When passed from the host app (e.g. web shell), footer user block + account menu use real identity and logout. */

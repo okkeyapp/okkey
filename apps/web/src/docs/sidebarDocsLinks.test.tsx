@@ -49,11 +49,7 @@ function renderSidebar(locale: "en" | "ru", expanded: boolean) {
   );
 }
 
-function expectFooterDocsLink(
-  name: "Documentation" | "Help",
-  locale: "en" | "ru",
-  expanded: boolean,
-) {
+function expectFooterDocsLink(name: "Documentation", locale: "en" | "ru", expanded: boolean) {
   const link = screen.getByRole("link", { name });
   const href = link.getAttribute("href") ?? "";
   expect(link.tagName).toBe("A");
@@ -82,10 +78,11 @@ describe("sidebar Documentation and Help", () => {
     ["en", false],
     ["ru", true],
     ["ru", false],
-  ] as const)("opens both footer items for %s when expanded=%s", (locale, expanded) => {
+  ] as const)("opens Documentation and hides Help for %s when expanded=%s", (locale, expanded) => {
     const view = renderSidebar(locale, expanded);
     expectFooterDocsLink("Documentation", locale, expanded);
-    expectFooterDocsLink("Help", locale, expanded);
+    expect(screen.queryByRole("link", { name: "Help" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Help" })).not.toBeInTheDocument();
     view.unmount();
   });
 });
