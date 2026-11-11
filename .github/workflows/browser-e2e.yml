@@ -119,6 +119,29 @@ jobs:
       - name: Bootstrap crypto-wasm path for Yarn
         run: node scripts/ensure-crypto-wasm-dist.mjs
 
+      # Host build scripts (wasm-bindgen, proc macros) link with cc. The Playwright
+      # image has no compiler toolchain, and this job must not install one with apt.
+      - name: Install host linker
+        run: |
+          set -euo pipefail
+          case "$(uname -m)" in
+            x86_64|amd64) ARCH=x86_64 ;;
+            *) echo "unsupported arch $(uname -m)" >&2; exit 1 ;;
+          esac
+          ZIG_VERSION=0.17.1
+          ASSET="zig-${ARCH}-linux-${ZIG_VERSION}.tar.xz"
+          SHA256=3581863e3cbcfd0fce0efc682ce7e9e93da96668a977791d356a26d2a7e9b17a
+          curl --proto '=https' --tlsv1.2 --fail --silent --show-error --location \
+            --retry 10 --retry-delay 2 --retry-all-errors \
+            --output "/tmp/${ASSET}" \
+            "https://ziglang.org/download/${ZIG_VERSION}/${ASSET}"
+          echo "${SHA256}  /tmp/${ASSET}" | sha256sum -c -
+          tar -xJf "/tmp/${ASSET}" -C /opt
+          ln -sfn "/opt/zig-${ARCH}-linux-${ZIG_VERSION}/zig" /usr/local/bin/zig
+          printf '%s\n' '#!/bin/sh' 'exec zig cc "$@"' > /usr/local/bin/cc
+          printf '%s\n' '#!/bin/sh' 'exec zig ar "$@"' > /usr/local/bin/ar
+          chmod 0755 /usr/local/bin/cc /usr/local/bin/ar
+
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@master
         with:
