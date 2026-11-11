@@ -121,6 +121,50 @@ test("offline extension unlock keeps a legacy server share on disk", async () =>
   }
 });
 
+test("a cleared server share keeps the local share and uploads an envelope", async () => {
+  const localShare = Buffer.alloc(32, 4).toString("base64");
+  const uploaded = Buffer.alloc(32, 9).toString("base64");
+  const store: Record<string, unknown> = {
+    [FINGERPRINT_KEY]: "fp-1",
+    [BUNDLE_KEY]: {
+      device_share_b64: localShare,
+      password_kdf_salt_b64: "c2FsdA",
+      password_kdf_params_version: 2,
+      encrypted_private_key: encrypted,
+    },
+  };
+  const restore = installBrowser(store);
+  let seen: string | null = null;
+  try {
+    const bundle = await ensureExtensionVaultBundle({
+      userId: USER_ID,
+      core: {
+        async getVaultUnlockBootstrap() {
+          return {
+            server_key_share: "c2VydmVy",
+            device_share: "",
+            password_kdf_salt: "c2FsdA",
+            password_kdf_params_version: 2,
+            encrypted_private_key: encrypted,
+          };
+        },
+      } as never,
+      rewriteClearedDeviceShare: async (localShareB64) => {
+        seen = localShareB64;
+        return uploaded;
+      },
+    });
+    assert.equal(seen, localShare);
+    assert.equal(bundle?.device_share_b64, uploaded);
+    assert.equal(bundle?.server_key_share_b64, "c2VydmVy");
+    const persisted = store[BUNDLE_KEY] as { device_share_b64?: string; server_key_share_b64?: string };
+    assert.equal(persisted.device_share_b64, uploaded);
+    assert.equal(persisted.server_key_share_b64, undefined);
+  } finally {
+    restore();
+  }
+});
+
 test("a migrated extension bundle cannot unlock offline with the master password", async () => {
   const store: Record<string, unknown> = {
     [FINGERPRINT_KEY]: "fp-1",

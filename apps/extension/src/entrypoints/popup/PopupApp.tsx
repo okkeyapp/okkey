@@ -70,6 +70,7 @@ import { readExtensionPinUnlockWrap } from "../../lib/extensionDeviceUnlockStore
 import {
   clearExtensionServerKeyShareMemory,
   ensureExtensionVaultBundle,
+  rewriteExtensionClearedDeviceShare,
   unlockExtensionVault,
   upgradeExtensionMlDsaIdentity,
   wipeUnlockSecrets,
@@ -823,7 +824,11 @@ export function PopupApp() {
         return false;
       }
       const core = createCoreClient(profile.apiBaseUrl, session.access_token);
-      await ensureExtensionVaultBundle({ core, userId: session.user_id });
+      await ensureExtensionVaultBundle({
+        core,
+        userId: session.user_id,
+        rewriteClearedDeviceShare: rewriteExtensionClearedDeviceShare(core, session.user_id),
+      });
       const bundle = await readExtensionVaultBundle(session.user_id);
       if (!bundle?.encrypted_private_key?.payload) {
         wipeUnlockSecrets(secrets);

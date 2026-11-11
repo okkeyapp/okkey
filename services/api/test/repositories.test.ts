@@ -441,11 +441,13 @@ test("DevicesRepository.findOwnedDeviceAuth maps a null device_share", async () 
   assert.equal(row?.deviceShare, null);
 });
 
-test("DevicesRepository.findTrustedDeviceShareById returns null when the share is cleared", async () => {
+test("DevicesRepository.findTrustedDeviceShareById distinguishes a cleared share from a missing device", async () => {
   const db = new FakeDb();
   db.enqueueResult([{ device_share: null }]);
+  db.enqueueResult([]);
   const repo = new DevicesRepository(db);
-  assert.equal(await repo.findTrustedDeviceShareById("u1", "d1"), null);
+  assert.deepEqual(await repo.findTrustedDeviceShareById("u1", "d1"), { share: null });
+  assert.equal(await repo.findTrustedDeviceShareById("u1", "missing"), null);
 });
 
 test("DevicesRepository.resolveApproval clears device_share when approval expires", async () => {
@@ -817,6 +819,54 @@ test("DevicesRepository.registerOrUpdate refreshes presence only when trusted ke
   assert.equal(
     db.queries.some((query) => /SET last_seen_at = \$3::timestamptz, ip_last = \$4/.test(query.sql)),
     true,
+  );
+});
+
+test("DevicesRepository.registerOrUpdate stores an envelope when the trusted share was cleared", async () => {
+  const storedKey = Buffer.from("original-pk").toString("base64");
+  const nextShare = new Uint8Array(40).fill(9);
+  const db = new FakeDb();
+  db.enqueueResult([]);
+  db.enqueueResult([]);
+  db.enqueueResult([
+    makeDeviceRow({
+      status: "trusted",
+      device_public_key: storedKey,
+      device_share: null,
+    }),
+  ]);
+  db.enqueueResult([
+    makeDeviceRow({
+      status: "trusted",
+      device_public_key: storedKey,
+      device_share: Buffer.from(nextShare),
+      last_seen_at: "2026-01-01T00:02:00.000Z",
+      ip_last: "10.0.0.3",
+    }),
+  ]);
+  const repo = new DevicesRepository(db);
+  const result = await repo.registerOrUpdate({
+    userId: "u1",
+    deviceFingerprint: "a".repeat(64),
+    deviceName: "Work MacBook",
+    devicePublicKey: storedKey,
+    deviceShare: nextShare,
+    platform: "desktop",
+    osName: "macOS",
+    osVersion: "14.5",
+    appVersion: "1.1.0",
+    clientType: "desktop",
+    userAgent: "ua",
+    requestIp: "10.0.0.3",
+    now: "2026-01-01T00:02:00.000Z",
+  });
+  assert.equal(result.status, "trusted");
+  assert.deepEqual(result.deviceShare, nextShare);
+  const fill = db.queries.find((query) => /device_share IS NULL/.test(query.sql));
+  assert.ok(fill);
+  assert.equal(
+    db.queries.some((query) => /SET last_seen_at = \$3::timestamptz, ip_last = \$4/.test(query.sql)),
+    false,
   );
 });
 

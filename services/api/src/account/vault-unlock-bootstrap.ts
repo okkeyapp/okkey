@@ -60,17 +60,18 @@ export class VaultUnlockBootstrapService {
       throw new VaultUnlockBootstrapError("USER_NOT_FOUND", 404, "user not found");
     }
 
-    const deviceShare = await this.devices.findTrustedDeviceShareById(
+    const found = await this.devices.findTrustedDeviceShareById(
       input.userId,
       input.deviceId,
     );
-    if (!deviceShare) {
+    if (!found) {
       throw new VaultUnlockBootstrapError(
         "VAULT_UNLOCK_DEVICE_NOT_FOUND",
         404,
         "no trusted device match for unlock bootstrap",
       );
     }
+    const deviceShare = found.share;
 
     const encryptedPrivateKey = decodeEncryptedBlobFromStorage(row.encryptedPrivateKey);
     if (
@@ -86,7 +87,7 @@ export class VaultUnlockBootstrapService {
 
     return {
       server_key_share: Buffer.from(row.serverKeyShare).toString("base64"),
-      device_share: Buffer.from(deviceShare).toString("base64"),
+      device_share: deviceShare ? Buffer.from(deviceShare).toString("base64") : "",
       password_kdf_salt: Buffer.from(row.passwordKdfSalt).toString("base64"),
       password_kdf_params_version: row.passwordKdfParamsVersion,
       encrypted_private_key: {
