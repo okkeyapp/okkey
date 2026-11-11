@@ -34,6 +34,31 @@ function quotaService(
   return { service, db };
 }
 
+test("storage quota is not enforced when the storageQuotas flag is off", async () => {
+  const limit = 100 * STORAGE_QUOTA_BYTES_PER_MIB;
+  const { service, db } = quotaService("saas", (sql) => {
+    if (sql.includes("used_bytes")) {
+      return [{ used_bytes: String(limit) }];
+    }
+    throw new Error(`unexpected query: ${sql}`);
+  });
+  const workspace = {
+    id: "1000000000000000001",
+    planTier: "FREE" as const,
+    planCustomOverride: true,
+    planFeatureOverrides: { storageQuotas: false },
+  };
+  await service.assertAdditionalBytes({
+    workspace,
+    additionalBytes: limit,
+  });
+  assert.equal(db.calls.length, 0);
+  const snapshot = await service.snapshot(workspace);
+  assert.equal(snapshot.baseMb, null);
+  assert.equal(snapshot.limitBytes, null);
+  assert.equal(snapshot.usedBytes, limit);
+});
+
 test("self-hosted storage quota never blocks writes", async () => {
   const { service, db } = quotaService("self_hosted", (sql) => {
     if (sql.includes("used_bytes")) {
@@ -50,6 +75,17 @@ test("self-hosted storage quota never blocks writes", async () => {
   assert.equal(snapshot.limitBytes, null);
   assert.equal(snapshot.baseMb, null);
   assert.equal(snapshot.usedBytes, 42);
+
+  const modulesOn = new WorkspaceStorageQuotaService({
+    db: scriptedDb(() => {
+      throw new Error("self-hosted modules on must not query usage for a write");
+    }),
+    config: { deploymentMode: "self_hosted", enterpriseModulesEnabled: true },
+  });
+  await modulesOn.assertAdditionalBytes({
+    workspace: { id: "1000000000000000001", planTier: "FREE" },
+    additionalBytes: 50 * STORAGE_QUOTA_BYTES_PER_MIB,
+  });
 });
 
 test("SaaS FREE ceiling is 100 MiB and rejects the next byte", async () => {

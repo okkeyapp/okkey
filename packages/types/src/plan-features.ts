@@ -140,7 +140,7 @@ const FREE_FEATURES = {
   filesInItems: false,
   filesInCapsules: false,
   monitoring: false,
-  storageQuotas: false,
+  storageQuotas: true,
 } as const satisfies Record<PlanFeature, boolean>;
 
 const PREMIUM_FEATURES = {
@@ -165,12 +165,13 @@ const BUSINESS_FEATURES = {
  * Source of truth for plan entitlements.
  * New catalog tiers or features = matrix cells only; call sites stay on {@link hasPlanFeature}.
  *
- * - FREE: capsules (text and item), shared vaults, and additional members (within quota).
- *   No files in items or capsules on SaaS, no monitoring / recovery / badge, no custom roles,
- *   profiles, or capsule access settings.
+ * - FREE: capsules (text and item), shared vaults, additional members (within quota),
+ *   and storage quotas on SaaS. No files in items or capsules on SaaS, no monitoring /
+ *   recovery / badge, no custom roles, profiles, or capsule access settings.
  * - Self-hosted modules off → FREE matrix plus {@link SELF_HOSTED_FREE_EXTRA}
- *   (`filesInItems`, `filesInCapsules`) and {@link SELF_HOSTED_FREE_QUOTA_OVERRIDES}.
- *   Self-hosted modules on → ENTERPRISE matrix (`plan_tier` ignored).
+ *   (`filesInItems`, `filesInCapsules`) and {@link SELF_HOSTED_FREE_QUOTA_OVERRIDES},
+ *   with `storageQuotas` forced off. Self-hosted modules on → ENTERPRISE matrix
+ *   (`plan_tier` ignored). Storage ceilings stay off for every self-hosted tier.
  * - PREMIUM: FREE plus files in items and capsules, monitoring, recovery, trusted contacts,
  *   and the paid badge.
  * - TEAM / ENTERPRISE: PREMIUM plus capsule access settings, custom roles, and custom profiles.
@@ -325,7 +326,8 @@ export function resolveEntitlementPlanTier(
 /**
  * Resolve whether a plan grants a feature.
  * When custom override is enabled, explicit featureOverrides win over the catalog matrix.
- * Self-hosted modules-off (effective FREE) also applies {@link SELF_HOSTED_FREE_EXTRA}.
+ * Self-hosted modules-off (effective FREE) also applies {@link SELF_HOSTED_FREE_EXTRA}
+ * and keeps `storageQuotas` off, so on-prem installs stay without a storage ceiling.
  */
 export function hasPlanFeature(
   planTier: string | null | undefined,
@@ -340,6 +342,13 @@ export function hasPlanFeature(
     SELF_HOSTED_FREE_EXTRA[feature] === true
   ) {
     base = true;
+  }
+  if (
+    options?.deploymentMode === "self_hosted" &&
+    effectiveTier === "FREE" &&
+    feature === "storageQuotas"
+  ) {
+    base = false;
   }
   if (!options?.customOverride) {
     return base;
