@@ -12,7 +12,7 @@ Run Okkey when you want the server under your control, and when you want to read
 
 This is on the `dev` branch and is intended for 1.0.0-beta.3. The published tag is still v1.0.0-beta.2.
 
-Since 1.0.0-beta.3, the account vault key is the XOR of three 32-byte shares: a server share stored on the server, a device share stored on the server only as a hybrid envelope for a key that stays on the device, and a password share derived from the master password with Argon2id. The master password never leaves the device. A leak of the server database or a server backup is not enough to brute-force the master password offline. This does not protect against a fully compromised server that serves a substituted web client, or against malware on the device.
+The account vault key is the XOR of three 32-byte shares: a server share stored on the server, a device share, and a password share derived from the master password with Argon2id. Since 1.0.0-beta.3, the device share is stored on the server only as a hybrid envelope (X25519 + ML-KEM-768) for a key that stays on the device. The master password never leaves the device. A leak of the server database or a server backup is not enough to brute-force the master password offline. This does not protect against a fully compromised server that serves a substituted web client, or against malware on the device.
 
 ## Quick start
 

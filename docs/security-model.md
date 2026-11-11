@@ -46,7 +46,7 @@ The account vault key is a 32-byte value. It is not stored whole. The browser re
 
 A newly chosen master password (registration, change, or recovery) must be at least 12 characters. Accounts that already have a shorter password can still unlock.
 
-The device signing key is a non-extractable WebCrypto key in IndexedDB. It is not one of the three XOR shares, and it is not the key that opens the device-share envelope.
+The device signing key is stored in the browser as a non-extractable WebCrypto key. It is not one of the three XOR shares, and it is not the key that opens the device-share envelope.
 
 When the server binds a session to a device or rebinds a device key, it can require a bind proof over the stored device-share bytes and a one-time challenge.
 
