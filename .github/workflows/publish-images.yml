@@ -28,8 +28,13 @@
 #   dev-<sha>  → keep if age ≤ 30 days OR among the newest 20; else delete
 #   :<version>-candidate and :<version>-<sha7> match the SemVer keeper (not deleted)
 #
-# Multi-arch: linux/amd64 + linux/arm64 via native runners (no QEMU), then
-# manifest-list merge. BuildKit yarn/cargo cache mounts + GHA buildx cache.
+# Multi-arch: linux/amd64 + linux/arm64 via native runners (no QEMU).
+# Each pushed digest is scanned with Trivy (CRITICAL,HIGH) before the
+# manifest tags are created and before cosign signs. A finding fails the
+# job unless .github/security/cve-exceptions.yaml has a valid unexpired
+# record for that CVE and image. Tag/sign needs the scan jobs.
+# The cleanup cron does not scan.
+# BuildKit yarn/cargo cache mounts + GHA buildx cache.
 # Cosign: keyless GitHub OIDC only (no COSIGN_KEY path).
 # GHCR Core packages are public for anonymous pull; pr-* deletion uses GITHUB_TOKEN only.
 name: Publish container images
@@ -427,17 +432,199 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+  # Vulnerability gate for the amd64 digests pushed above. Skipped when amd64
+  # was not built. The cleanup cron never reaches this job.
+  scan-amd64:
+    name: scan (amd64)
+    needs: [prep, build-amd64]
+    if: needs.build-amd64.result == 'success' && needs.prep.outputs.want_amd64 == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [api, worker, web]
+    steps:
+      - name: Checkout scan policy
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ needs.prep.outputs.revision }}
+          sparse-checkout: |
+            scripts/render-trivy-ignore.mjs
+            .github/security/cve-exceptions.yaml
+          sparse-checkout-cone-mode: false
+
+      - name: Render Trivy ignore list
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/render-trivy-ignore.mjs \
+            --exceptions .github/security/cve-exceptions.yaml \
+            --image "${{ matrix.image }}" \
+            --out .trivyignore
+
+      - name: Download digest
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: digests-${{ matrix.image }}-linux-amd64
+          path: /tmp/digests
+
+      - name: Resolve pushed digest
+        id: digest
+        shell: bash
+        env:
+          IMAGE_KEY: ${{ matrix.image }}
+          IMAGE_API: ${{ needs.prep.outputs.image_api }}
+          IMAGE_WORKER: ${{ needs.prep.outputs.image_worker }}
+          IMAGE_WEB: ${{ needs.prep.outputs.image_web }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(/tmp/digests/*)
+          if [[ ${#files[@]} -ne 1 || ! -f "${files[0]}" ]]; then
+            echo "expected exactly one digest file for ${IMAGE_KEY}" >&2
+            exit 1
+          fi
+          hex="$(basename "${files[0]}")"
+          if [[ ! "${hex}" =~ ^[a-f0-9]{64}$ ]]; then
+            echo "digest file is not sha256 hex" >&2
+            exit 1
+          fi
+          case "${IMAGE_KEY}" in
+            api) image="${IMAGE_API}" ;;
+            worker) image="${IMAGE_WORKER}" ;;
+            web) image="${IMAGE_WEB}" ;;
+            *) echo "unknown image ${IMAGE_KEY}" >&2; exit 1 ;;
+          esac
+          if [[ -z "${image}" ]]; then
+            echo "empty image name for ${IMAGE_KEY}" >&2
+            exit 1
+          fi
+          echo "ref=${image}@sha256:${hex}" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Scan pushed digest
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ steps.digest.outputs.ref }}
+          format: table
+          exit-code: "1"
+          ignore-unfixed: "false"
+          vuln-type: os,library
+          scanners: vuln
+          severity: CRITICAL,HIGH
+          timeout: 10m
+          trivyignores: .trivyignore
+
+  # Vulnerability gate for the arm64 digests pushed above. Skipped when arm64
+  # was not built. The cleanup cron never reaches this job.
+  scan-arm64:
+    name: scan (arm64)
+    needs: [prep, build-arm64]
+    if: needs.build-arm64.result == 'success' && needs.prep.outputs.want_arm64 == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [api, worker, web]
+    steps:
+      - name: Checkout scan policy
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ needs.prep.outputs.revision }}
+          sparse-checkout: |
+            scripts/render-trivy-ignore.mjs
+            .github/security/cve-exceptions.yaml
+          sparse-checkout-cone-mode: false
+
+      - name: Render Trivy ignore list
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/render-trivy-ignore.mjs \
+            --exceptions .github/security/cve-exceptions.yaml \
+            --image "${{ matrix.image }}" \
+            --out .trivyignore
+
+      - name: Download digest
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: digests-${{ matrix.image }}-linux-arm64
+          path: /tmp/digests
+
+      - name: Resolve pushed digest
+        id: digest
+        shell: bash
+        env:
+          IMAGE_KEY: ${{ matrix.image }}
+          IMAGE_API: ${{ needs.prep.outputs.image_api }}
+          IMAGE_WORKER: ${{ needs.prep.outputs.image_worker }}
+          IMAGE_WEB: ${{ needs.prep.outputs.image_web }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(/tmp/digests/*)
+          if [[ ${#files[@]} -ne 1 || ! -f "${files[0]}" ]]; then
+            echo "expected exactly one digest file for ${IMAGE_KEY}" >&2
+            exit 1
+          fi
+          hex="$(basename "${files[0]}")"
+          if [[ ! "${hex}" =~ ^[a-f0-9]{64}$ ]]; then
+            echo "digest file is not sha256 hex" >&2
+            exit 1
+          fi
+          case "${IMAGE_KEY}" in
+            api) image="${IMAGE_API}" ;;
+            worker) image="${IMAGE_WORKER}" ;;
+            web) image="${IMAGE_WEB}" ;;
+            *) echo "unknown image ${IMAGE_KEY}" >&2; exit 1 ;;
+          esac
+          if [[ -z "${image}" ]]; then
+            echo "empty image name for ${IMAGE_KEY}" >&2
+            exit 1
+          fi
+          echo "ref=${image}@sha256:${hex}" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Scan pushed digest
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ steps.digest.outputs.ref }}
+          format: table
+          exit-code: "1"
+          ignore-unfixed: "false"
+          vuln-type: os,library
+          scanners: vuln
+          severity: CRITICAL,HIGH
+          timeout: 10m
+          trivyignores: .trivyignore
+
   # Merge per-arch digests into multi-arch manifests and apply channel tags.
+  # Tags and cosign run only after the scan for every built arch succeeded.
   merge:
     name: merge-manifests
-    needs: [prep, build-amd64, build-arm64]
-    # Run when prep succeeded and every requested arch build succeeded (skipped arch = ok).
+    needs: [prep, build-amd64, build-arm64, scan-amd64, scan-arm64]
+    # A skipped arch stays skipped (build and scan both skipped). A built arch
+    # must have a successful scan. At least one arch must have been scanned.
     if: >
       always() &&
       needs.prep.result == 'success' &&
-      (needs.build-amd64.result == 'success' || needs.build-amd64.result == 'skipped') &&
-      (needs.build-arm64.result == 'success' || needs.build-arm64.result == 'skipped') &&
-      !(needs.build-amd64.result == 'skipped' && needs.build-arm64.result == 'skipped')
+      needs.scan-amd64.result == needs.build-amd64.result &&
+      needs.scan-arm64.result == needs.build-arm64.result &&
+      (needs.scan-amd64.result == 'success' || needs.scan-arm64.result == 'success')
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:

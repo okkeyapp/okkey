@@ -1,8 +1,13 @@
 # syntax=docker/dockerfile:1.7
+# Third-party bases are pinned by multi-arch index digest. The tag documents
+# the channel; the pull uses the digest. NODE_VERSION must stay 25.
 ARG NODE_VERSION=25
 
-FROM node:${NODE_VERSION}-bookworm AS builder
+# node:25-bookworm
+FROM node:25-bookworm@sha256:78839ac448c23517f8eab2e8f7943d9b4f73979eb7f8bed2c73dbf72ff869e7b AS builder
 WORKDIR /src
+ARG NODE_VERSION
+RUN test "${NODE_VERSION}" = "25"
 
 COPY package.json yarn.lock ./
 COPY scripts scripts
@@ -53,7 +58,8 @@ RUN --mount=type=cache,target=/usr/local/share/.cache/yarn \
   && yarn build:i18n \
   && yarn --cwd apps/web vite build
 
-FROM nginx:1.27-alpine AS runtime
+# nginx:1.27-alpine
+FROM nginx:1.27-alpine@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10 AS runtime
 COPY apps/web/docker/nginx.conf /etc/nginx/conf.d/default.conf
 COPY apps/web/docker/docker-entrypoint.sh /docker-entrypoint.d/40-okkey-runtime-config.sh
 COPY --from=builder /src/apps/web/dist /usr/share/nginx/html

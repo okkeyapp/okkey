@@ -17,6 +17,8 @@ services:
       args:
         OPENSSL_VERSION: ${OKKEY_PROXY_OPENSSL_VERSION:-3.5.0}
         NGINX_VERSION: ${OKKEY_PROXY_NGINX_VERSION:-1.28.0}
+    # Built by the block above. Local tag, not a third-party registry base
+    # and not ghcr.io/okkeyapp/*, so there is no upstream digest to pin.
     image: ${OKKEY_SAAS_EDGE_IMAGE:-okkey-saas-edge-nginx:openssl35}
     restart: unless-stopped
     ports:
