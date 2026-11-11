@@ -4,10 +4,15 @@ import {
   resolveWorkspaceStorageLimitBytes,
   resolveWorkspaceStorageLimitMb,
   storageWriteExceedsQuota,
+  type PlanFeatureOverrides,
+  type WorkspaceStorageQuota,
   type WorkspaceStorageQuotaStatus,
 } from "@okkey/types";
 
-import type { PlanEntitlementRuntimeConfig } from "../plan-entitlements.ts";
+import {
+  workspaceHasPlanFeature,
+  type PlanEntitlementRuntimeConfig,
+} from "../plan-entitlements.ts";
 import type { QueryExecutor } from "../storage/postgres.ts";
 
 export const PLAN_QUOTA_EXCEEDED_MESSAGE =
@@ -28,11 +33,15 @@ export class PlanQuotaExceededError extends Error {
 export type StorageQuotaWorkspace = {
   id: string;
   planTier?: string | null;
+  planCustomOverride?: boolean | null;
+  planFeatureOverrides?: PlanFeatureOverrides | null;
 };
 
 /**
- * Counts current encrypted workspace content and rejects SaaS writes over the plan ceiling.
- * Self-hosted deployments have no ceiling. Writes return before any usage query.
+ * Counts current encrypted workspace content and rejects writes over the plan ceiling
+ * when `storageQuotas` is on for the plan and deployment.
+ * Self-hosted deployments keep the flag off (modules off) or a null ceiling (modules on),
+ * so writes still return before any usage query.
  * Settings snapshots still report usage so the client can show it.
  *
  * Counted bytes:
@@ -55,10 +64,7 @@ export class WorkspaceStorageQuotaService {
   }
 
   async snapshot(workspace: StorageQuotaWorkspace): Promise<WorkspaceStorageQuotaStatus> {
-    const storageQuota = getPlanQuotaLimits(workspace.planTier, {
-      deploymentMode: this.config.deploymentMode,
-      enterpriseModulesActive: this.config.enterpriseModulesEnabled,
-    }).storageQuota;
+    const storageQuota = this.storageQuotaFor(workspace);
     if (storageQuota.baseMb === null) {
       return {
         ...storageQuota,
@@ -89,10 +95,7 @@ export class WorkspaceStorageQuotaService {
     additionalBytes: number;
     replacedBytes?: number;
   }): Promise<void> {
-    const storageQuota = getPlanQuotaLimits(input.workspace.planTier, {
-      deploymentMode: this.config.deploymentMode,
-      enterpriseModulesActive: this.config.enterpriseModulesEnabled,
-    }).storageQuota;
+    const storageQuota = this.storageQuotaFor(input.workspace);
     if (storageQuota.baseMb === null) {
       return;
     }
@@ -123,10 +126,7 @@ export class WorkspaceStorageQuotaService {
     eventType: "ITEM_CREATE" | "ITEM_UPDATE";
     nextPayloadBytes: number;
   }): Promise<void> {
-    const storageQuota = getPlanQuotaLimits(input.workspace.planTier, {
-      deploymentMode: this.config.deploymentMode,
-      enterpriseModulesActive: this.config.enterpriseModulesEnabled,
-    }).storageQuota;
+    const storageQuota = this.storageQuotaFor(input.workspace);
     if (storageQuota.baseMb === null) {
       return;
     }
@@ -156,6 +156,21 @@ export class WorkspaceStorageQuotaService {
       [vaultId, itemId],
     );
     return readNonNegative(rows[0]?.bytes);
+  }
+
+  /**
+   * Catalog ceiling when `storageQuotas` is enabled. Otherwise no ceiling, including
+   * self-hosted FREE (flag off) and any plan that turns the flag off.
+   * Self-hosted ceilings stay null in {@link getPlanQuotaLimits} even when the flag is on.
+   */
+  private storageQuotaFor(workspace: StorageQuotaWorkspace): WorkspaceStorageQuota {
+    if (!workspaceHasPlanFeature(this.config, workspace, "storageQuotas")) {
+      return { baseMb: null, perMemberMb: 0 };
+    }
+    return getPlanQuotaLimits(workspace.planTier, {
+      deploymentMode: this.config.deploymentMode,
+      enterpriseModulesActive: this.config.enterpriseModulesEnabled,
+    }).storageQuota;
   }
 
   private async countMembers(workspaceId: string): Promise<number> {

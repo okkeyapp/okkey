@@ -44,7 +44,11 @@ test("hasPlanFeature: FREE baseline", () => {
   assert.equal(hasPlanFeature("FREE", "filesInItems"), false);
   assert.equal(hasPlanFeature("FREE", "filesInCapsules"), false);
   assert.equal(hasPlanFeature("FREE", "monitoring"), false);
-  assert.equal(hasPlanFeature("FREE", "storageQuotas"), false);
+  assert.equal(hasPlanFeature("FREE", "storageQuotas"), true);
+  assert.equal(
+    hasPlanFeature("FREE", "storageQuotas", { deploymentMode: "saas" }),
+    true,
+  );
 });
 
 test("hasPlanFeature: PREMIUM personal paid", () => {
@@ -231,6 +235,27 @@ test("self_hosted entitlements: modules off → FREE; modules on → ENTERPRISE 
       enterpriseModulesActive: false,
     }),
     false,
+  );
+  assert.equal(
+    hasPlanFeature("FREE", "storageQuotas", {
+      deploymentMode: "self_hosted",
+      enterpriseModulesActive: false,
+    }),
+    false,
+  );
+  assert.equal(
+    hasPlanFeature("ENTERPRISE", "storageQuotas", {
+      deploymentMode: "self_hosted",
+      enterpriseModulesActive: false,
+    }),
+    false,
+  );
+  assert.equal(
+    hasPlanFeature("FREE", "storageQuotas", {
+      deploymentMode: "self_hosted",
+      enterpriseModulesActive: true,
+    }),
+    true,
   );
   assert.equal(
     hasPlanFeature("FREE", "sharedVaults", {
