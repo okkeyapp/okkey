@@ -328,6 +328,10 @@ describe("resolveDeviceTrust", () => {
 
     expect(registerDevice).toHaveBeenCalledOnce();
     expect(registerDevice.mock.calls[0]?.[0]?.metadata?.reclaim_sole_trusted).toBe(true);
+    expect(registerDevice.mock.calls[0]?.[0]?.metadata?.previous_device_id).toBe("d-old");
+    expect(registerDevice.mock.calls[0]?.[0]?.metadata?.previous_device_fingerprint).toBe(
+      legacyFp,
+    );
     expect(snapshot.status).toBe("trusted");
     expect(snapshot.deviceId).toBe("d-old");
   });

@@ -1,6 +1,10 @@
 import { ApiRequestError, type CoreApiClient } from "@okkey/api";
 import { deviceBindShareProof, initCrypto, wipeBytes } from "@okkey/crypto";
-import type { DeviceListItemDto, DeviceRegisterResponseDto } from "@okkey/types";
+import {
+  canReclaimSoleTrustedDevice,
+  type DeviceListItemDto,
+  type DeviceRegisterResponseDto,
+} from "@okkey/types";
 
 import { readStoredLocale } from "../locale/localeStorage";
 import { bytesToBase64 } from "./base64";
@@ -12,10 +16,7 @@ import {
   rotateDeviceSigningKey,
   signDeviceBindChallenge,
 } from "./deviceSigningKey";
-import {
-  getOrCreateDeviceFingerprint,
-  isLegacyHexFingerprint,
-} from "./deviceFingerprint";
+import { getOrCreateDeviceFingerprint } from "./deviceFingerprint";
 import {
   acceptShareDeliveryIfPresent,
   clearShareDeliveryReapproval,
@@ -215,37 +216,6 @@ async function bindDeviceWithProof(
 }
 
 /**
- * Reclaim is only for the registration browser that lost a legacy random hex fingerprint
- * but still holds the local vault bundle. Never rebind a different browser onto the sole
- * trusted device (that collapsed 4 browsers into 1 row).
- */
-function canReclaimSoleTrustedDevice(
-  sole: DeviceListItemDto,
-  nextFingerprint: string,
-  nextClientType: string,
-): boolean {
-  const oldFp = sole.device_fingerprint.trim().toLowerCase();
-  const nextFp = nextFingerprint.trim().toLowerCase();
-  if (oldFp === nextFp) {
-    return false;
-  }
-  if (!isLegacyHexFingerprint(oldFp)) {
-    // Structured id already identifies the browser — different fp ⇒ different device.
-    return false;
-  }
-  const soleClient = (sole.client_type ?? "").trim().toLowerCase();
-  if (
-    soleClient &&
-    soleClient !== "unknown" &&
-    soleClient !== "web" &&
-    soleClient !== nextClientType.trim().toLowerCase()
-  ) {
-    return false;
-  }
-  return true;
-}
-
-/**
  * Resolve whether the current browser is a trusted device; register as pending when new.
  *
  * Reclaims the sole trusted device only when migrating a legacy hex fingerprint on the
@@ -312,7 +282,12 @@ export async function resolveDeviceTrust(
   const canReclaimSole =
     hasBundle &&
     soleTrusted !== null &&
-    canReclaimSoleTrustedDevice(soleTrusted, fingerprint, env.clientType);
+    canReclaimSoleTrustedDevice({
+      storedFingerprint: soleTrusted.device_fingerprint,
+      storedClientType: soleTrusted.client_type,
+      nextFingerprint: fingerprint,
+      nextClientType: env.clientType,
+    });
   const canBootstrapTrusted = hasBundle && listed.devices.length === 0;
 
   // Re-login on an already trusted or pending fingerprint binds the session
@@ -421,6 +396,10 @@ export async function resolveDeviceTrust(
     const registered = await registerCurrentBrowserDevice(core, fingerprint, {
       userId,
       reclaimSoleTrusted: canReclaimSole,
+      previousDeviceId: canReclaimSole ? soleTrusted?.device_id : undefined,
+      previousDeviceFingerprint: canReclaimSole
+        ? soleTrusted?.device_fingerprint
+        : undefined,
     });
     if (registered.status === "trusted") {
       // POST /devices still binds the Bearer when it creates a trusted row.
@@ -675,6 +654,9 @@ export async function registerCurrentBrowserDevice(
   fingerprint = getOrCreateDeviceFingerprint(),
   options?: {
     reclaimSoleTrusted?: boolean;
+    /** Trusted row this browser is rebinding. Sent only with reclaim. */
+    previousDeviceId?: string;
+    previousDeviceFingerprint?: string;
     claimAfterRecovery?: boolean;
     /** Bind a pending sibling before recovery-key proof. Not a trusted-device claim. */
     recoveryPending?: boolean;
@@ -729,6 +711,14 @@ export async function registerCurrentBrowserDevice(
     metadata: {
       crypto_capable: true,
       reclaim_sole_trusted: options?.reclaimSoleTrusted === true,
+      ...(options?.reclaimSoleTrusted === true &&
+      options.previousDeviceId &&
+      options.previousDeviceFingerprint
+        ? {
+            previous_device_id: options.previousDeviceId,
+            previous_device_fingerprint: options.previousDeviceFingerprint,
+          }
+        : {}),
       claim_after_recovery: options?.claimAfterRecovery === true,
       recovery_pending: options?.recoveryPending === true,
     },

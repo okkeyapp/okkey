@@ -76,6 +76,8 @@ interface RegisterDeviceMetadataBody {
   claim_after_recovery?: boolean;
   /** Pending sibling for recovery proof. Does not replace a trusted device. */
   recovery_pending?: boolean;
+  previous_device_id?: string;
+  previous_device_fingerprint?: string;
 }
 
 interface RegisterDeviceBody extends RegisterDeviceMetadataBody {
@@ -90,6 +92,8 @@ interface RegisterDeviceBody extends RegisterDeviceMetadataBody {
   share_proof?: string;
   /** UI locale for approval email templates (`en` | `ru`). */
   locale?: string;
+  previous_device_id?: string;
+  previous_device_fingerprint?: string;
   metadata?: RegisterDeviceMetadataBody;
 }
 
@@ -204,6 +208,33 @@ function readRegisterBooleanFlags(
   };
 }
 
+type RegisterLinkField = "previous_device_id" | "previous_device_fingerprint";
+
+/**
+ * Link fields are optional strings. Metadata wins when the key is present.
+ * An omitted key is null. A present non-string is rejected.
+ */
+function readRegisterLinkField(
+  body: RegisterDeviceBody,
+  field: RegisterLinkField,
+): { ok: true; value: string | null } | { ok: false } {
+  const record = body as unknown as Record<string, unknown>;
+  const metadata = record.metadata;
+  const source =
+    isJsonObject(metadata) && Object.prototype.hasOwnProperty.call(metadata, field)
+      ? metadata
+      : record;
+  if (!Object.prototype.hasOwnProperty.call(source, field)) {
+    return { ok: true, value: null };
+  }
+  const value = source[field];
+  if (typeof value !== "string") {
+    return { ok: false };
+  }
+  const trimmed = value.trim();
+  return { ok: true, value: trimmed.length > 0 ? trimmed : null };
+}
+
 function getApproverDeviceId(ctx: Parameters<RouteHandler>[0]): string {
   const deviceId = getHeader(ctx.req, "x-device-id");
   if (!deviceId) {
@@ -253,7 +284,7 @@ export function createRegisterDeviceRoute(
   resolveUserId: (req: IncomingMessage) => Promise<string | null>,
   trustedProxyHops = 0,
   sessionService?: Pick<SessionDeviceBinding, "bindAccessTokenDevice"> &
-    Partial<Pick<SessionDeviceBinding, "hashAccessToken">>,
+    Partial<Pick<SessionDeviceBinding, "hashAccessToken" | "resolveAccessToken">>,
   mayClaimAfterRecovery?: (req: IncomingMessage) => Promise<boolean>,
   resolveProvedRecoveryDevice?: (
     req: IncomingMessage,
@@ -300,6 +331,28 @@ export function createRegisterDeviceRoute(
       return;
     }
     const { reclaimSoleTrusted, claimAfterRecovery, recoveryPending } = parsedFlags.flags;
+    const previousDeviceId = readRegisterLinkField(body, "previous_device_id");
+    if (!previousDeviceId.ok) {
+      json(
+        ctx.res,
+        400,
+        errorPayload("DEVICE_BAD_REQUEST", "previous_device_id must be a string", ctx.requestId),
+      );
+      return;
+    }
+    const previousDeviceFingerprint = readRegisterLinkField(body, "previous_device_fingerprint");
+    if (!previousDeviceFingerprint.ok) {
+      json(
+        ctx.res,
+        400,
+        errorPayload(
+          "DEVICE_BAD_REQUEST",
+          "previous_device_fingerprint must be a string",
+          ctx.requestId,
+        ),
+      );
+      return;
+    }
 
     try {
       const userId = await resolveUserId(ctx.req);
@@ -344,6 +397,14 @@ export function createRegisterDeviceRoute(
       }
       const requestIp = await getRequestIp(ctx.req, { trustedProxyHops });
       const accessToken = getBearerToken(ctx.req);
+      let sessionDeviceId: string | null = null;
+      if (reclaimSoleTrusted && accessToken && sessionService?.resolveAccessToken) {
+        const resolved = await sessionService.resolveAccessToken(accessToken);
+        if (resolved && resolved.userId === userId) {
+          const bound = resolved.deviceId?.trim() ?? "";
+          sessionDeviceId = bound.length > 0 ? bound : null;
+        }
+      }
       // Kept across a pending-row replacement so this session can bind to the new row.
       const preserveSessionTokenHash =
         accessToken && typeof sessionService?.hashAccessToken === "function"
@@ -363,6 +424,9 @@ export function createRegisterDeviceRoute(
         locale: typeof body.locale === "string" ? body.locale : undefined,
         acceptLanguage: getHeader(ctx.req, "accept-language"),
         reclaimSoleTrusted,
+        previousDeviceId: previousDeviceId.value,
+        previousDeviceFingerprint: previousDeviceFingerprint.value,
+        sessionDeviceId,
         claimAfterRecovery,
         provedDeviceId,
         recoveryPending,
