@@ -333,12 +333,41 @@ test("DevicesRepository.resolveApproval approves pending device", async () => {
   db.enqueueResult([
     makeDeviceRow({
       status: "trusted",
+      device_share: Buffer.from([9, 9, 9]),
       approved_by: "u1",
       approved_at: "2026-01-01T00:02:00.000Z",
       last_seen_at: "2026-01-01T00:02:00.000Z",
     }),
   ]); // UPDATE approve
 
+  const replacement = new Uint8Array([9, 9, 9]);
+  const repo = new DevicesRepository(db);
+  const result = await repo.resolveApproval({
+    deviceId: "d1",
+    userId: "u1",
+    action: "approve",
+    now: "2026-01-01T00:02:00.000Z",
+    expiresAt: "2025-12-31T23:59:00.000Z",
+    approvedBy: "u1",
+    approverDeviceId: "trusted1",
+    deviceShare: replacement,
+  });
+
+  assert.equal(result.kind, "approved");
+  assert.equal(result.device?.status, "trusted");
+  assert.equal(result.device?.approvedBy, "u1");
+  assert.equal(result.device?.approvedAt, "2026-01-01T00:02:00.000Z");
+  assert.deepEqual(result.device?.deviceShare, replacement);
+  assert.match(db.queries[2].sql, /device_share = \$5/);
+  assert.doesNotMatch(db.queries[2].sql, /approver\.device_share/);
+  assert.equal(db.queries[2].params[3], "trusted1");
+  assert.deepEqual(db.queries[2].params[4], Buffer.from(replacement));
+});
+
+test("DevicesRepository.resolveApproval does not approve without a device share", async () => {
+  const db = new FakeDb();
+  db.enqueueResult([]);
+  db.enqueueResult([makeDeviceRow({ status: "pending", device_share: Buffer.from([1, 2, 3]) })]);
   const repo = new DevicesRepository(db);
   const result = await repo.resolveApproval({
     deviceId: "d1",
@@ -349,13 +378,12 @@ test("DevicesRepository.resolveApproval approves pending device", async () => {
     approvedBy: "u1",
     approverDeviceId: "trusted1",
   });
-
-  assert.equal(result.kind, "approved");
-  assert.equal(result.device?.status, "trusted");
-  assert.equal(result.device?.approvedBy, "u1");
-  assert.equal(result.device?.approvedAt, "2026-01-01T00:02:00.000Z");
-  assert.match(db.queries[2].sql, /approver\.device_share/);
-  assert.equal(db.queries[2].params[3], "trusted1");
+  assert.equal(result.kind, "share_required");
+  assert.deepEqual(result.device?.deviceShare, new Uint8Array([1, 2, 3]));
+  assert.equal(
+    db.queries.some((query) => /status = 'trusted'/.test(query.sql)),
+    false,
+  );
 });
 
 test("DevicesRepository.resolveApproval reject ends device sessions", async () => {

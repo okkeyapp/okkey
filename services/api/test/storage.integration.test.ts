@@ -448,6 +448,7 @@ test("integration: DevicesRepository approval transitions are consistent", async
     now: "2026-01-01T00:00:10.000Z",
   });
 
+  const replacementShare = new Uint8Array([4, 4, 4]);
   const approved = await devices.resolveApproval({
     deviceId: pending.id,
     userId: user.id,
@@ -456,13 +457,51 @@ test("integration: DevicesRepository approval transitions are consistent", async
     expiresAt: "2026-01-01T00:00:00.000Z",
     approvedBy: user.id,
     approverDeviceId: trustedApprover.id,
+    deviceShare: replacementShare,
   });
 
   assert.equal(approved.kind, "approved");
   assert.equal(approved.device?.status, "trusted");
   assert.equal(approved.device?.approvedBy, user.id);
   assert.equal(approved.device?.approvedAt, "2026-01-01T00:00:20.000Z");
-  assert.deepEqual(Array.from(approved.device?.deviceShare ?? []), [7, 8, 9]);
+  assert.deepEqual(Array.from(approved.device?.deviceShare ?? []), [4, 4, 4]);
+  const approverShare = await db.query<{ device_share: Buffer }>(
+    "SELECT device_share FROM devices WHERE id = $1",
+    [trustedApprover.id],
+  );
+  assert.deepEqual(Array.from(approverShare[0]?.device_share ?? []), [7, 8, 9]);
+
+  const pendingWithoutShare = await devices.registerOrUpdate({
+    userId: user.id,
+    deviceFingerprint: "a".repeat(64),
+    deviceName: "Pending without share",
+    devicePublicKey: Buffer.from("pending-no-share").toString("base64"),
+    deviceShare: new Uint8Array([1, 2, 3]),
+    platform: "desktop",
+    osName: "macOS",
+    osVersion: "14.5",
+    appVersion: "1.0.0",
+    clientType: "desktop",
+    userAgent: "okkey-desktop/1.0.0",
+    requestIp: "10.0.1.5",
+    now: "2026-01-01T00:00:21.000Z",
+  });
+  const missingShare = await devices.resolveApproval({
+    deviceId: pendingWithoutShare.id,
+    userId: user.id,
+    action: "approve",
+    now: "2026-01-01T00:00:22.000Z",
+    expiresAt: "2026-01-01T00:00:00.000Z",
+    approvedBy: user.id,
+    approverDeviceId: trustedApprover.id,
+  });
+  assert.equal(missingShare.kind, "share_required");
+  const unchangedShare = await db.query<{ status: string; device_share: Buffer }>(
+    "SELECT status, device_share FROM devices WHERE id = $1",
+    [pendingWithoutShare.id],
+  );
+  assert.equal(unchangedShare[0]?.status, "pending");
+  assert.deepEqual(Array.from(unchangedShare[0]?.device_share ?? []), [1, 2, 3]);
 
   const approveAgain = await devices.resolveApproval({
     deviceId: pending.id,

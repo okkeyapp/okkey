@@ -615,28 +615,29 @@ export class DeviceService {
     if (shareDelivery && shareDelivery.length > 0) {
       return this.approveWithShareDelivery(userId, approverDeviceId, pendingDeviceId, shareDelivery);
     }
-    if (deviceShare) {
-      try {
-        assertSplitKeyShareB(deviceShare);
-      } catch (error: unknown) {
-        throw new DeviceServiceError(
-          "DEVICE_BAD_REQUEST",
-          400,
-          error instanceof Error ? error.message : "invalid device_share",
-        );
-      }
+    if (!deviceShare || deviceShare.length === 0) {
+      throw new DeviceServiceError("DEVICE_BAD_REQUEST", 400, "device_share is required");
     }
-    const copied = await this.resolveDeviceApproval({
+    try {
+      assertSplitKeyShareB(deviceShare);
+    } catch (error: unknown) {
+      throw new DeviceServiceError(
+        "DEVICE_BAD_REQUEST",
+        400,
+        error instanceof Error ? error.message : "invalid device_share",
+      );
+    }
+    const approved = await this.resolveDeviceApproval({
       userId,
       approverDeviceId,
       pendingDeviceId,
       action: "approve",
       deviceShare,
     });
-    if (copied.status === "trusted") {
+    if (approved.status === "trusted") {
       await this.devices.clearShareDelivery?.(userId, pendingDeviceId);
     }
-    return copied;
+    return approved;
   }
 
   async readShareDelivery(
@@ -901,6 +902,10 @@ export class DeviceService {
         410,
         "device approval challenge expired",
       );
+    }
+
+    if (result.kind === "share_required") {
+      throw new DeviceServiceError("DEVICE_BAD_REQUEST", 400, "device_share is required");
     }
 
     if (!result.device) {

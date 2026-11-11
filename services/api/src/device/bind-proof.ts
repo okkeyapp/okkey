@@ -75,7 +75,11 @@ export function issueDeviceBindChallenge(input: {
 
 const SHARE_PROOF_PREFIX = Buffer.from("okkey-device-bind-share-v1\n", "utf8");
 
-/** SHA-256(prefix || device_share || challenge). Must match `@okkey/crypto` `deviceBindShareProof`. */
+/**
+ * SHA-256(prefix || stored device_share || challenge).
+ * Must match `@okkey/crypto` `deviceBindShareProof`.
+ * The digest is unkeyed and covers the share bytes stored for the device.
+ */
 export function deviceShareBindProof(deviceShare: Uint8Array, message: Uint8Array): Buffer {
   return createHash("sha256")
     .update(SHARE_PROOF_PREFIX)
