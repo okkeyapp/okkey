@@ -132,12 +132,20 @@ jobs:
           ZIG_VERSION=0.17.1
           ASSET="zig-${ARCH}-linux-${ZIG_VERSION}.tar.xz"
           SHA256=3581863e3cbcfd0fce0efc682ce7e9e93da96668a977791d356a26d2a7e9b17a
+          # The image has no xz. busybox is a static binary that can unpack xz tarballs.
+          BUSYBOX_SHA256=6e123e7f3202a8c1e9b1f94d8941580a25135382b99e8d3e34fb858bba311348
+          curl --proto '=https' --tlsv1.2 --fail --silent --show-error --location \
+            --retry 10 --retry-delay 2 --retry-all-errors \
+            --output /tmp/busybox \
+            "https://busybox.net/downloads/binaries/1.35.0-x86_64-linux-musl/busybox"
+          echo "${BUSYBOX_SHA256}  /tmp/busybox" | sha256sum -c -
+          chmod 0755 /tmp/busybox
           curl --proto '=https' --tlsv1.2 --fail --silent --show-error --location \
             --retry 10 --retry-delay 2 --retry-all-errors \
             --output "/tmp/${ASSET}" \
             "https://ziglang.org/download/${ZIG_VERSION}/${ASSET}"
           echo "${SHA256}  /tmp/${ASSET}" | sha256sum -c -
-          tar -xJf "/tmp/${ASSET}" -C /opt
+          /tmp/busybox tar -xJf "/tmp/${ASSET}" -C /opt
           ln -sfn "/opt/zig-${ARCH}-linux-${ZIG_VERSION}/zig" /usr/local/bin/zig
           printf '%s\n' '#!/bin/sh' 'exec zig cc "$@"' > /usr/local/bin/cc
           printf '%s\n' '#!/bin/sh' 'exec zig ar "$@"' > /usr/local/bin/ar
