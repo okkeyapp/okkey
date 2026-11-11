@@ -17,6 +17,45 @@ import {
   persistSplitKeyShareWrapKey,
 } from "./split-key-share-wrap-store.js";
 
+/**
+ * Wire form of a share opened from a one-time delivery envelope.
+ * The database stores only a hybrid envelope addressed to this device's wrap key.
+ */
+export async function envelopeB64ForPlaintextShare(input: {
+  userId: string;
+  share: Uint8Array;
+}): Promise<string> {
+  const userId = input.userId.trim();
+  if (!userId) {
+    throw new Error("userId is required to seal share B");
+  }
+  if (classifySplitKeyShareBWire(input.share) === "hybrid") {
+    return bytesToBase64(input.share);
+  }
+  const stored = await loadSplitKeyShareWrapKey(userId);
+  if (stored) {
+    try {
+      const wrapped = await wrapSplitKeyShareB({
+        share: input.share,
+        recipientEd25519PublicKey: stored.ed25519PublicKey,
+        recipientMlkemEncapsulationKey: stored.mlkemEncapsulationKey,
+      });
+      return bytesToBase64(wrapped);
+    } finally {
+      wipeBytes(stored.ed25519Seed);
+      wipeBytes(stored.mlkemDecapsulationKey);
+    }
+  }
+  const sealed = await sealSplitKeyShareB(input.share);
+  try {
+    await persistSplitKeyShareWrapKey(userId, sealed.shareWrap);
+  } finally {
+    wipeBytes(sealed.shareWrap.ed25519Seed);
+    wipeBytes(sealed.shareWrap.mlkemDecapsulationKey);
+  }
+  return bytesToBase64(sealed.wrapped);
+}
+
 export async function deviceShareB64ForRegister(input: {
   userId: string;
   existingShareB64?: string | null;

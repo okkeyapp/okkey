@@ -578,6 +578,7 @@ export async function pollDeviceTrust(
       core,
       fingerprint,
       pendingBeforeTrust.device_id,
+      userId ?? "",
     ).catch(() => false);
     if (accepted) {
       listed = await core.listDevices(fingerprint);

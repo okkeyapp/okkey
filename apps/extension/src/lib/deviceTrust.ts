@@ -29,6 +29,7 @@ import {
   readDeviceDeferred,
   readDeviceFingerprint,
   readDeviceId,
+  readSession,
   writeDeviceDeferred,
   writeDeviceFingerprint,
   writeDeviceId,
@@ -350,7 +351,16 @@ export async function resolveExtensionDeviceTrust(
         needsShareReapproval: true,
       };
     }
-    if (await claimExtensionShareDelivery(core, fingerprint, pendingMatch.device_id).catch(() => false)) {
+    if (
+      await claimExtensionShareDelivery(
+        core,
+        fingerprint,
+        pendingMatch.device_id,
+        undefined,
+        undefined,
+        options?.userId ?? "",
+      ).catch(() => false)
+    ) {
       return {
         status: "trusted",
         deviceId: pendingMatch.device_id,
@@ -591,10 +601,16 @@ export async function pollExtensionDeviceTrust(
         needsShareReapproval: true,
       };
     }
+    const session = await readSession();
     if (
-      await claimExtensionShareDelivery(core, fingerprint, pendingForDelivery.device_id).catch(
-        () => false,
-      )
+      await claimExtensionShareDelivery(
+        core,
+        fingerprint,
+        pendingForDelivery.device_id,
+        undefined,
+        undefined,
+        session?.user_id ?? "",
+      ).catch(() => false)
     ) {
       const refreshed = await core.listDevices(fingerprint);
       const trustedAfter = refreshed.devices.find((device) =>

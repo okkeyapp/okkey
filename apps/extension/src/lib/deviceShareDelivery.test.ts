@@ -88,7 +88,7 @@ test("extension claims a hybrid share delivery and deletes the one-time key", as
     assert.equal(typeof store[STORAGE_KEYS.shareDeliveryKey], "object");
 
     const share = new Uint8Array(32).fill(3);
-    const expectedShareB64 = btoa(String.fromCharCode(...share));
+    const rawShareB64 = btoa(String.fromCharCode(...share));
     let confirmed: string | undefined;
     const trusted = await claimExtensionShareDelivery(
       {
@@ -104,9 +104,12 @@ test("extension claims a hybrid share delivery and deletes the one-time key", as
       "dev-1",
       async () => share,
       async () => undefined,
+      "user-1",
+      async () => "hybrid-envelope",
     );
     assert.equal(trusted, true);
-    assert.equal(confirmed, expectedShareB64);
+    assert.equal(confirmed, "hybrid-envelope");
+    assert.notEqual(confirmed, rawShareB64);
     assert.equal(store[STORAGE_KEYS.shareDeliveryKey], undefined);
   } finally {
     restore();
