@@ -122,7 +122,18 @@ test("applyMigrations on the shared test database includes latest columns", asyn
       ) AS exists
     `,
   );
-  assert.equal(blockedUntil[0]?.exists, true);
+    assert.equal(blockedUntil[0]?.exists, true);
+
+  const deviceShareNullable = await storage.postgres.query<{ is_nullable: string }>(
+    `
+      SELECT is_nullable
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = 'devices'
+        AND column_name = 'device_share'
+    `,
+  );
+  assert.equal(deviceShareNullable[0]?.is_nullable, "YES");
 
   const backupExported = await storage.postgres.query<{ exists: boolean }>(
     `

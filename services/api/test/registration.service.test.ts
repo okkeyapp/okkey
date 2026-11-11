@@ -4,6 +4,7 @@ import type { AuthService } from "../src/auth/service.ts";
 import type { ApiConfig } from "../src/config.ts";
 import type { PostgresDatabase } from "../src/storage/postgres.ts";
 import { RegistrationError, RegistrationService } from "../src/registration/service.ts";
+import { hybridDeviceShareBytes } from "./hybrid-share-fixture.ts";
 import { createMockSessionService, createTestApiConfig } from "./test-api-config.ts";
 
 const baseConfig: ApiConfig = createTestApiConfig();
@@ -26,7 +27,7 @@ function baseInput() {
     deviceFingerprint: "b".repeat(64),
     deviceName: "d",
     devicePublicKey: Buffer.from("pk").toString("base64"),
-    deviceShare: new Uint8Array(32).fill(4),
+    deviceShare: hybridDeviceShareBytes(),
     platform: "p",
     osName: "o",
     osVersion: "v",
@@ -91,7 +92,21 @@ test("completeRegistration rejects a malformed device_share", async () => {
       err instanceof RegistrationError &&
       err.code === "CRYPTO_PAYLOAD_INVALID" &&
       err.statusCode === 400 &&
-      /32 legacy bytes or a hybrid/u.test(err.message),
+      /hybrid X25519\+ML-KEM share envelope/u.test(err.message),
+  );
+});
+
+test("completeRegistration rejects a raw 32-byte device_share", async () => {
+  const service = createService();
+  const input = baseInput();
+  input.deviceShare = new Uint8Array(32).fill(4);
+  await assert.rejects(
+    () => service.completeRegistration(input),
+    (err: unknown) =>
+      err instanceof RegistrationError &&
+      err.code === "CRYPTO_PAYLOAD_INVALID" &&
+      err.statusCode === 400 &&
+      /hybrid X25519\+ML-KEM share envelope/u.test(err.message),
   );
 });
 

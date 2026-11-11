@@ -8,6 +8,7 @@ import { DeviceService } from "../src/device/service.ts";
 import { SessionService } from "../src/session/service.ts";
 import { MAX_PENDING_DEVICES_PER_ACCOUNT } from "../src/storage/repositories.ts";
 import { createIntegrationStorage } from "./integration-env.ts";
+import { hybridDeviceShareB64 } from "./hybrid-share-fixture.ts";
 import {
   applyMigrations,
   cleanupUserData,
@@ -47,7 +48,7 @@ function registerBody(input: {
 }) {
   return {
     device_public_key: input.publicKey,
-    device_share: Buffer.alloc(32, 7).toString("base64"),
+    device_share: hybridDeviceShareB64(7),
     device_fingerprint: input.fingerprint,
     device_name: "Browser",
     platform: "web",
@@ -67,6 +68,7 @@ async function dispatch(
   url: string,
   token: string,
   body?: unknown,
+  headers?: Record<string, string>,
 ): Promise<{ statusCode: number; json: Record<string, unknown> }> {
   const res = new MockResponse();
   await handler(
@@ -76,6 +78,7 @@ async function dispatch(
       headers: {
         authorization: `Bearer ${token}`,
         "x-forwarded-for": "203.0.113.10",
+        ...(headers ?? {}),
       },
       socket: { remoteAddress: "203.0.113.10" },
       body,
@@ -377,4 +380,91 @@ test("integration: pending device cap returns DEVICE_PENDING_LIMIT", async (t) =
   assert.equal(forFingerprint.length, 1);
   assert.equal(forFingerprint[0]?.id, String(replaced.json.device_id));
   assert.equal(forFingerprint[0]?.device_public_key, publicKey("recovery-key-2"));
+});
+
+test("integration: raw device share is rejected and a rejected device clears its share", async (t) => {
+  const config = loadConfig();
+  const storage = await createIntegrationStorage(t, config);
+  if (!storage) {
+    return;
+  }
+  await applyMigrations(storage);
+  const email = `share-reject-${testEntityId()}@okkey.local`;
+  const deviceService = new DeviceService({
+    devices: storage.repositories.devices,
+    config,
+    users: storage.repositories.users,
+    log: createLoggerStub(),
+  });
+  const sessionService = new SessionService({
+    sessions: storage.repositories.sessions,
+    config,
+  });
+  const handler = createApiApp(config, createLoggerStub(), {
+    deviceService,
+    sessionService,
+  }).handler();
+
+  t.after(async () => {
+    try {
+      await cleanupUserData(storage, email);
+    } finally {
+      await storage.close();
+    }
+  });
+
+  const { userId } = await registerUser(storage, config, email);
+  const trustedRows = await storage.postgres.query<{ id: string }>(
+    `SELECT id FROM devices WHERE user_id = $1::bigint AND status = 'trusted'`,
+    [userId],
+  );
+  const trusted = trustedRows[0];
+  assert.ok(trusted);
+  const approver = await sessionService.createSession(userId);
+  const bound = await storage.repositories.sessions.bindDevice({
+    tokenHash: sessionService.hashAccessToken(approver.accessToken),
+    userId,
+    deviceId: trusted.id,
+  });
+  assert.equal(bound, true);
+
+  const raw = await dispatch(handler, "POST", "/devices/register", approver.accessToken, {
+    ...registerBody({
+      fingerprint: otherFingerprint(1),
+      publicKey: publicKey("raw-share"),
+    }),
+    device_share: Buffer.alloc(32, 7).toString("base64"),
+  });
+  assert.equal(raw.statusCode, 400);
+  assert.equal(raw.json.error, "DEVICE_BAD_REQUEST");
+  assert.match(String(raw.json.message ?? ""), /hybrid X25519\+ML-KEM share envelope/u);
+
+  const pendingSession = await sessionService.createSession(userId);
+  const registered = await dispatch(
+    handler,
+    "POST",
+    "/devices/register",
+    pendingSession.accessToken,
+    registerBody({
+      fingerprint: otherFingerprint(2),
+      publicKey: publicKey("wrapped-share"),
+    }),
+  );
+  assert.equal(registered.statusCode, 200);
+  const pendingId = String(registered.json.device_id);
+  const rejected = await dispatch(
+    handler,
+    "POST",
+    `/devices/${pendingId}/reject`,
+    approver.accessToken,
+    { reason: "not this device" },
+    { "x-device-id": trusted.id },
+  );
+  assert.equal(rejected.statusCode, 200);
+  assert.equal(rejected.json.status, "revoked");
+  const rows = await storage.postgres.query<{ device_share: Buffer | null }>(
+    `SELECT device_share FROM devices WHERE id = $1::bigint`,
+    [pendingId],
+  );
+  assert.equal(rows[0]?.device_share, null);
 });

@@ -11,9 +11,35 @@ const coreMocks = vi.hoisted(() => ({
   unblockDevice: vi.fn(),
 }));
 
+const authState = vi.hoisted(() => ({ userId: undefined as string | undefined }));
+
+const shareMocks = vi.hoisted(() => ({
+  sealLocalShareForPendingDevice: vi.fn(async () => null as Uint8Array | null),
+  readVaultBundle: vi.fn(() => null as { device_share_b64: string } | null),
+  replacementDeviceShareForApproval: vi.fn(async () => "wrapped-share"),
+}));
+
 vi.mock("../../auth/AuthVaultContext", () => ({
   useAuthenticatedCoreClient: () => coreMocks,
-  useAuthVault: () => ({ hasVaultBundle: true, currentDeviceId: "d-current" }),
+  useAuthVault: () => ({
+    hasVaultBundle: true,
+    currentDeviceId: "d-current",
+    userId: authState.userId,
+  }),
+}));
+
+vi.mock("../../auth/deviceShareDelivery", () => ({
+  sealLocalShareForPendingDevice: (...args: unknown[]) =>
+    shareMocks.sealLocalShareForPendingDevice(...args),
+}));
+
+vi.mock("../../auth/localVaultBundle", () => ({
+  readVaultBundle: (...args: unknown[]) => shareMocks.readVaultBundle(...args),
+}));
+
+vi.mock("../../auth/approveDeviceShare", () => ({
+  replacementDeviceShareForApproval: (...args: unknown[]) =>
+    shareMocks.replacementDeviceShareForApproval(...args),
 }));
 
 vi.mock("../../auth/deviceFingerprint", () => ({
@@ -33,6 +59,8 @@ vi.mock("./DeviceTypeIcon", () => ({
   resolveDeviceFormIcon: () => "laptop",
   resolveDeviceBrandIcon: () => "windows",
 }));
+
+import { toast } from "sonner";
 
 import SettingsDevicesContent, { parseOsFromDeviceName } from "./SettingsDevicesContent";
 import { clearSettingsPopupCache } from "./settingsPopupCache";
@@ -110,6 +138,10 @@ describe("parseOsFromDeviceName", () => {
 describe("SettingsDevicesContent", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    authState.userId = undefined;
+    shareMocks.sealLocalShareForPendingDevice.mockResolvedValue(null);
+    shareMocks.readVaultBundle.mockReturnValue(null);
+    shareMocks.replacementDeviceShareForApproval.mockResolvedValue("wrapped-share");
     clearSettingsPopupCache();
     coreMocks.listDevices.mockResolvedValue({
       devices: [trustedDevice()],
@@ -228,11 +260,30 @@ describe("SettingsDevicesContent", () => {
     expect(screen.getAllByLabelText("web.settingsPopup.devices.actions.menu")).toHaveLength(2);
   });
 
-  it("trusts pending device via approveDevice", async () => {
+  it("does not approve a pending device that has no share wrap keys", async () => {
+    render(<SettingsDevicesContent t={t} />);
+    await screen.findByText("Desktop Windows 11");
+
+    fireEvent.click(screen.getByText("web.settingsPopup.devices.pending.trust"));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalled();
+    });
+    expect(coreMocks.approveDevice).not.toHaveBeenCalled();
+  });
+
+  it("trusts a pending device with a wrapped share", async () => {
+    authState.userId = "user-1";
+    shareMocks.readVaultBundle.mockReturnValue({ device_share_b64: "bG9jYWw=" });
     coreMocks.listDevices
       .mockResolvedValueOnce({
         devices: [trustedDevice()],
-        pending: [pendingDevice()],
+        pending: [
+          pendingDevice({
+            share_wrap_ed25519_public_key: "ZWQ=",
+            share_wrap_pq_public_key: "cHE=",
+          }),
+        ],
         blocked: [],
       })
       .mockResolvedValueOnce({
@@ -251,7 +302,7 @@ describe("SettingsDevicesContent", () => {
         "d-pending",
         "d-current",
         undefined,
-        undefined,
+        "wrapped-share",
       );
     });
   });

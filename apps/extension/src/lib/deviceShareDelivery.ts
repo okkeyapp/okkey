@@ -3,6 +3,11 @@
  * Private keys stay in extension storage until the server accepts receipt.
  */
 import type { CoreApiClient } from "@okkey/api";
+
+async function envelopeB64ForPlaintextShare(userId: string, share: Uint8Array): Promise<string> {
+  const { envelopeB64ForPlaintextShare: encode } = await import("@okkey/vault/device-share-wire");
+  return encode({ userId, share });
+}
 import {
   generateOneTimeDeliveryKeyPair,
   initCrypto,
@@ -109,6 +114,8 @@ export async function claimExtensionShareDelivery(
   deviceId: string,
   open: typeof openDeviceShareDelivery = openDeviceShareDelivery,
   init: () => Promise<void> = initCrypto,
+  userId = "",
+  encodeShare?: (share: Uint8Array, userId: string) => Promise<string>,
 ): Promise<boolean> {
   const stored = await readShareDeliveryKey();
   if (!stored || stored.fingerprint !== fingerprint) {
@@ -134,7 +141,10 @@ export async function claimExtensionShareDelivery(
       mlkemPrivateKey,
       deviceId,
     });
-    await core.confirmDeviceShareDelivery(deviceId, bytesToBase64(share));
+    const wireB64 = encodeShare
+      ? await encodeShare(share, userId)
+      : await envelopeB64ForPlaintextShare(userId, share);
+    await core.confirmDeviceShareDelivery(deviceId, wireB64);
     await discardExtensionShareDeliveryKey(fingerprint);
     await writeShareDeliveryReapproval(false);
     return true;

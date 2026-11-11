@@ -996,7 +996,7 @@ export interface DeviceRecord {
   deviceFingerprint: string;
   deviceName: string;
   devicePublicKey: string;
-  deviceShare: Uint8Array;
+  deviceShare: Uint8Array | null;
   platform: string;
   osName: string;
   osVersion: string;
@@ -1319,7 +1319,8 @@ export class DevicesRepository {
           UPDATE devices
           SET
             status = 'revoked',
-            revoked_at = $2::timestamptz
+            revoked_at = $2::timestamptz,
+            device_share = NULL
           WHERE user_id = $1::bigint
             AND status = 'trusted'
             AND device_fingerprint <> $3
@@ -2094,7 +2095,7 @@ export class DevicesRepository {
     userId: string,
     deviceId: string,
   ): Promise<Uint8Array | null> {
-    const rows = await this.db.query<{ device_share: Buffer }>(
+    const rows = await this.db.query<{ device_share: Buffer | null }>(
       `
         SELECT device_share
         FROM devices
@@ -2105,8 +2106,8 @@ export class DevicesRepository {
       `,
       [deviceId, userId],
     );
-    const row = rows[0];
-    return row ? Uint8Array.from(row.device_share) : null;
+    const share = rows[0]?.device_share;
+    return share ? Uint8Array.from(share) : null;
   }
 
   async isTrustedDevice(userId: string, deviceId: string): Promise<boolean> {
@@ -2134,7 +2135,7 @@ export class DevicesRepository {
     approvedBy: string;
     /** Trusted device that performs approval. Its device_share is copied when no replacement is set. */
     approverDeviceId?: string;
-    /** Hybrid (or legacy) share to store instead of copying the approver row. */
+    /** Hybrid share envelope to store instead of copying the approver row. */
     deviceShare?: Uint8Array;
     rejectReason?: string;
   }): Promise<DeviceApprovalState> {
@@ -2241,7 +2242,8 @@ export class DevicesRepository {
               status = 'revoked',
               rejected_at = COALESCE(rejected_at, $2::timestamptz),
               rejection_reason = COALESCE(rejection_reason, 'approval expired'),
-              revoked_at = COALESCE(revoked_at, $2::timestamptz)
+              revoked_at = COALESCE(revoked_at, $2::timestamptz),
+              device_share = NULL
             WHERE id = $1
             RETURNING
               id,
@@ -2305,9 +2307,6 @@ export class DevicesRepository {
             UPDATE devices AS pending
             SET
               status = 'trusted',
-              -- TODO(device-approval-share-delivery): remove this plaintext share copy
-              -- one release after clients deliver share B in a one-time hybrid envelope.
-              -- Deprecated path for an older client on either side of approval.
               device_share = COALESCE($5::bytea, approver.device_share),
               approved_by = $2,
               approved_at = $3::timestamptz,
@@ -2382,7 +2381,8 @@ export class DevicesRepository {
             status = 'revoked',
             rejected_at = $2::timestamptz,
             rejection_reason = $3,
-            revoked_at = $2::timestamptz
+            revoked_at = $2::timestamptz,
+            device_share = NULL
           WHERE id = $1
           RETURNING
             id,
@@ -2422,14 +2422,14 @@ export class DevicesRepository {
     id: string;
     status: string;
     devicePublicKey: string;
-    deviceShare: Uint8Array;
+    deviceShare: Uint8Array | null;
     deviceFingerprint: string;
   } | null> {
     const rows = await this.db.query<{
       id: string;
       status: string;
       device_public_key: string;
-      device_share: Buffer;
+      device_share: Buffer | null;
       device_fingerprint: string;
     }>(
       `
@@ -2448,7 +2448,7 @@ export class DevicesRepository {
       id: row.id,
       status: row.status,
       devicePublicKey: row.device_public_key,
-      deviceShare: Uint8Array.from(row.device_share),
+      deviceShare: row.device_share ? Uint8Array.from(row.device_share) : null,
       deviceFingerprint: row.device_fingerprint,
     };
   }
@@ -2929,7 +2929,8 @@ export class DevicesRepository {
             rejection_reason,
             CASE WHEN status = 'pending' THEN 'dismissed by user' ELSE 'revoked by user' END
           ),
-          revoked_at = COALESCE(revoked_at, $3::timestamptz)
+          revoked_at = COALESCE(revoked_at, $3::timestamptz),
+          device_share = NULL
         WHERE id = $1
           AND user_id = $2
           AND status IN ('trusted', 'pending')
@@ -3337,6 +3338,7 @@ export class DevicesRepository {
               rejected_at = COALESCE(rejected_at, $2::timestamptz),
               rejection_reason = COALESCE(rejection_reason, 'approval expired'),
               revoked_at = COALESCE(revoked_at, $2::timestamptz),
+              device_share = NULL,
               share_delivery_envelope = NULL,
               share_delivery_expires_at = NULL,
               one_time_x25519_public = NULL,
@@ -4411,7 +4413,7 @@ function mapDevice(row: {
   device_fingerprint: string;
   device_name: string;
   device_public_key: string;
-  device_share: Buffer;
+  device_share: Buffer | null;
   platform: string;
   os_name: string;
   os_version: string;
@@ -4436,7 +4438,7 @@ function mapDevice(row: {
     deviceFingerprint: row.device_fingerprint,
     deviceName: row.device_name,
     devicePublicKey: row.device_public_key,
-    deviceShare: Uint8Array.from(row.device_share),
+    deviceShare: row.device_share ? Uint8Array.from(row.device_share) : null,
     platform: row.platform,
     osName: row.os_name,
     osVersion: row.os_version,

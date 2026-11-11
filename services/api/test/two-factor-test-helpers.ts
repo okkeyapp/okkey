@@ -11,6 +11,7 @@ import { RegistrationService } from "../src/registration/service.ts";
 import { SessionService } from "../src/session/service.ts";
 import { createStorageLayer } from "../src/storage/index.ts";
 import { applySqlMigrations } from "../src/storage/migrate.ts";
+import { hybridDeviceShareBytes } from "./hybrid-share-fixture.ts";
 
 const helpersDir = path.dirname(fileURLToPath(import.meta.url));
 const migrationsDir = path.resolve(helpersDir, "../migrations");
@@ -719,7 +720,7 @@ export async function registerUser(
     deviceFingerprint: "f".repeat(64),
     deviceName: "2FA test device",
     devicePublicKey: Buffer.from("2fa-dpk").toString("base64"),
-    deviceShare: share32,
+    deviceShare: hybridDeviceShareBytes(),
     platform: "desktop",
     osName: "macOS",
     osVersion: "14.0",

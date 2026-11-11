@@ -518,4 +518,57 @@ test("integration: DevicesRepository approval transitions are consistent", async
   assert.equal(expired.kind, "expired");
   assert.equal(expired.device?.status, "revoked");
   assert.equal(expired.device?.rejectedAt, "2026-01-01T00:10:00.000Z");
+  assert.equal(expired.device?.deviceShare, null);
+  const expiredShare = await db.query<{ device_share: Buffer | null }>(
+    "SELECT device_share FROM devices WHERE id = $1",
+    [pendingExpired.id],
+  );
+  assert.equal(expiredShare[0]?.device_share, null);
+
+  const pendingReject = await devices.registerOrUpdate({
+    userId: user.id,
+    deviceFingerprint: "e".repeat(64),
+    deviceName: "Rejected device",
+    devicePublicKey: Buffer.from("pending-reject").toString("base64"),
+    deviceShare: new Uint8Array([4, 5, 6]),
+    platform: "desktop",
+    osName: "macOS",
+    osVersion: "14.5",
+    appVersion: "1.0.0",
+    clientType: "desktop",
+    userAgent: "okkey-desktop/1.0.0",
+    requestIp: "10.0.1.4",
+    now: "2026-01-01T00:03:00.000Z",
+  });
+  const rejected = await devices.resolveApproval({
+    deviceId: pendingReject.id,
+    userId: user.id,
+    action: "reject",
+    now: "2026-01-01T00:03:10.000Z",
+    expiresAt: "2026-01-01T00:00:00.000Z",
+    approvedBy: user.id,
+    approverDeviceId: trustedApprover.id,
+    rejectReason: "no",
+  });
+  assert.equal(rejected.kind, "rejected");
+  assert.equal(rejected.device?.deviceShare, null);
+  const rejectedShare = await db.query<{ device_share: Buffer | null }>(
+    "SELECT device_share FROM devices WHERE id = $1",
+    [pendingReject.id],
+  );
+  assert.equal(rejectedShare[0]?.device_share, null);
+
+  const revoked = await devices.revokeOwned({
+    userId: user.id,
+    deviceId: trustedApprover.id,
+    now: "2026-01-01T00:04:00.000Z",
+    reason: "revoked by user",
+  });
+  assert.equal(revoked?.status, "revoked");
+  assert.equal(revoked?.deviceShare, null);
+  const revokedShare = await db.query<{ device_share: Buffer | null }>(
+    "SELECT device_share FROM devices WHERE id = $1",
+    [trustedApprover.id],
+  );
+  assert.equal(revokedShare[0]?.device_share, null);
 });

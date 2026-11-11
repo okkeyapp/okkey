@@ -15,7 +15,7 @@ import {
 
 import { base64ToBytes, bytesToBase64 } from "./base64";
 import { readVaultBundle } from "./localVaultBundle";
-import { loadSplitKeyShareWrapKey } from "@okkey/vault";
+import { envelopeB64ForPlaintextShare, loadSplitKeyShareWrapKey } from "@okkey/vault";
 
 const STORAGE_KEY = "okkey.device.share_delivery_keypair";
 const REAPPROVAL_KEY = "okkey.device.share_delivery_reapproval";
@@ -168,6 +168,7 @@ export async function acceptShareDeliveryIfPresent(
   core: CoreApiClient,
   fingerprint: string,
   deviceId: string,
+  userId: string,
 ): Promise<boolean> {
   const stored = readStored();
   if (!stored || stored.fingerprint !== fingerprint) {
@@ -196,7 +197,8 @@ export async function acceptShareDeliveryIfPresent(
       mlkemPrivateKey,
       deviceId,
     });
-    await core.confirmDeviceShareDelivery(deviceId, bytesToBase64(share));
+    const wireB64 = await envelopeB64ForPlaintextShare({ userId, share });
+    await core.confirmDeviceShareDelivery(deviceId, wireB64);
     discardOneTimeShareDelivery(fingerprint);
     clearShareDeliveryReapproval();
     return true;

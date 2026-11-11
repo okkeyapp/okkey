@@ -4,6 +4,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { createApiApp } from "../src/app.ts";
 import { DeviceService } from "../src/device/service.ts";
 import type { SessionService } from "../src/session/service.ts";
+import { hybridDeviceShareB64 } from "./hybrid-share-fixture.ts";
 import { createTestApiConfig } from "./test-api-config.ts";
 
 const DEVICE_ID = "1234567890123456789";
@@ -12,7 +13,7 @@ const PUBLIC_KEY = Buffer.alloc(32, 3).toString("base64");
 const OTHER_KEY = Buffer.alloc(32, 9).toString("base64");
 const OTHER_FINGERPRINT = "cd".repeat(32);
 const PENDING_SHARE = Uint8Array.from(Buffer.alloc(32, 1));
-const CLAIM_SHARE = Buffer.alloc(32, 4).toString("base64");
+const CLAIM_SHARE = hybridDeviceShareB64(4);
 
 class MockResponse {
   statusCode = 200;

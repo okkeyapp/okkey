@@ -1,16 +1,15 @@
 /**
  * Split-key share transport.
  *
- * Share A stays 32 opaque bytes. Share B new writes are a hybrid
- * X25519 + ML-KEM-768 envelope (`hybrid_ecc_pq_v1`) framed for a device
- * wrap key. Readers still accept exactly 32 legacy bytes.
+ * Share A stays 32 opaque bytes. Share B is a hybrid X25519 + ML-KEM-768
+ * envelope (`hybrid_ecc_pq_v1`) framed for a device wrap key.
  * The API stores the bytes; it does not decrypt them.
  */
 import { classifySplitKeyShareBWire } from "@okkey/crypto";
 
-export type SplitKeyShareTransportMode = "hybrid_ecc_pq_v1" | "opaque";
+export type SplitKeyShareTransportMode = "hybrid_ecc_pq_v1";
 
-/** Current share-B claim: hybrid envelope, with a legacy 32-byte read path. */
+/** Share-B claim: hybrid envelope only. */
 export const SPLIT_KEY_SHARE_B_TRANSPORT_CLAIM = "hybrid_ecc_pq_v1" as const;
 
 export const SPLIT_KEY_OPAQUE_SHARE_LEN = 32 as const;
@@ -23,7 +22,6 @@ export const DEFAULT_SPLIT_KEY_SHARE_TRANSPORT_MODE: SplitKeyShareTransportMode 
 
 const SAFE_SPLIT_KEY_SHARE_TRANSPORT_MODES = new Set<SplitKeyShareTransportMode>([
   "hybrid_ecc_pq_v1",
-  "opaque",
 ]);
 
 export function normalizeSplitKeyShareTransportMode(
@@ -33,12 +31,12 @@ export function normalizeSplitKeyShareTransportMode(
   if (SAFE_SPLIT_KEY_SHARE_TRANSPORT_MODES.has(mode as SplitKeyShareTransportMode)) {
     return mode as SplitKeyShareTransportMode;
   }
-  throw new Error("unsupported split-key share transport; use hybrid_ecc_pq_v1 or opaque");
+  throw new Error("unsupported split-key share transport; use hybrid_ecc_pq_v1");
 }
 
-/** Share-B modes this release can store. `opaque` is legacy read/write compatibility. */
+/** Share-B modes this release can store. */
 export function listSafeSplitKeyShareTransportModes(): readonly SplitKeyShareTransportMode[] {
-  return ["hybrid_ecc_pq_v1", "opaque"];
+  return ["hybrid_ecc_pq_v1"];
 }
 
 /**
@@ -55,18 +53,15 @@ export function assertOpaqueSplitKeyShare(
 }
 
 /**
- * Accept a legacy 32-byte share B or a hybrid X25519+ML-KEM frame/envelope.
- * Reject every other length and header.
+ * Accept only a hybrid X25519+ML-KEM share-B frame or envelope.
+ * A raw 32-byte share is rejected.
  */
 export function assertSplitKeyShareB(bytes: Uint8Array): void {
-  if (bytes.length === 0 || bytes.length > SPLIT_KEY_SHARE_B_MAX_LEN) {
-    throw new Error(
-      "device_share must be 32 legacy bytes or a hybrid X25519+ML-KEM share envelope",
-    );
-  }
-  if (classifySplitKeyShareBWire(bytes) == null) {
-    throw new Error(
-      "device_share must be 32 legacy bytes or a hybrid X25519+ML-KEM share envelope",
-    );
+  if (
+    bytes.length === 0 ||
+    bytes.length > SPLIT_KEY_SHARE_B_MAX_LEN ||
+    classifySplitKeyShareBWire(bytes) !== "hybrid"
+  ) {
+    throw new Error("device_share must be a hybrid X25519+ML-KEM share envelope");
   }
 }

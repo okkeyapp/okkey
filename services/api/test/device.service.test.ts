@@ -12,12 +12,13 @@ import {
   TrustedDeviceKeyConflictError,
 } from "../src/storage/repositories.ts";
 import type { DeviceApprovalState } from "../src/storage/repositories.ts";
+import { hybridDeviceShareB64 } from "./hybrid-share-fixture.ts";
 
 function createInput(overrides?: Partial<RegisterDeviceInput>): RegisterDeviceInput {
   return {
     deviceFingerprint: "a".repeat(64),
     devicePublicKey: Buffer.from("public-key").toString("base64"),
-    deviceShare: Buffer.alloc(32, 5).toString("base64"),
+    deviceShare: hybridDeviceShareB64(5),
     deviceName: "MacBook Pro",
     platform: "desktop",
     osName: "macOS",
@@ -130,6 +131,33 @@ function createService(overrides?: {
   });
 }
 
+test("approveDevice rejects a raw 32-byte device share", async () => {
+  let resolved = false;
+  const service = createService({
+    resolveApproval: async () => {
+      resolved = true;
+      return { kind: "approved", device: createDeviceRecord({ status: "trusted" }) };
+    },
+  });
+
+  await assert.rejects(
+    () =>
+      service.approveDevice(
+        "u1",
+        "trusted1",
+        "pending1",
+        undefined,
+        new Uint8Array(32).fill(1),
+      ),
+    (err: unknown) =>
+      err instanceof DeviceServiceError &&
+      err.statusCode === 400 &&
+      err.code === "DEVICE_BAD_REQUEST" &&
+      /hybrid X25519\+ML-KEM share envelope/u.test(err.message),
+  );
+  assert.equal(resolved, false);
+});
+
 test("registerDevice returns pending_approval for new device", async () => {
   const service = createService({
     registerOrUpdate: async () => createDeviceRecord(),
@@ -157,7 +185,21 @@ test("registerDevice rejects a malformed device_share", async () => {
     (err: unknown) =>
       err instanceof DeviceServiceError &&
       err.code === "DEVICE_BAD_REQUEST" &&
-      /32 legacy bytes or a hybrid/u.test(err.message),
+      /hybrid X25519\+ML-KEM share envelope/u.test(err.message),
+  );
+
+  await assert.rejects(
+    () =>
+      service.registerDevice(
+        "u1",
+        "127.0.0.1",
+        createInput({ deviceShare: Buffer.alloc(32, 5).toString("base64") }),
+      ),
+    (err: unknown) =>
+      err instanceof DeviceServiceError &&
+      err.statusCode === 400 &&
+      err.code === "DEVICE_BAD_REQUEST" &&
+      /hybrid X25519\+ML-KEM share envelope/u.test(err.message),
   );
 
   await assert.rejects(
@@ -170,7 +212,7 @@ test("registerDevice rejects a malformed device_share", async () => {
     (err: unknown) =>
       err instanceof DeviceServiceError &&
       err.code === "DEVICE_BAD_REQUEST" &&
-      /32 legacy bytes or a hybrid/u.test(err.message),
+      /hybrid X25519\+ML-KEM share envelope/u.test(err.message),
   );
 });
 
@@ -210,7 +252,7 @@ test("registerDevice claimAfterRecovery requires the proved device and keeps its
   );
   assert.equal(claimed, undefined);
 
-  const mintedShare = Buffer.alloc(32, 5).toString("base64");
+  const mintedShare = hybridDeviceShareB64(9);
   const result = await service.registerDevice(
     "u1",
     "127.0.0.1",
