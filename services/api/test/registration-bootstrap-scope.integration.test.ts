@@ -14,6 +14,7 @@ import { SessionService } from "../src/session/service.ts";
 import { SESSION_SCOPE_REGISTRATION_RECOVERY } from "../src/session/scopes.ts";
 import { VaultService } from "../src/vault/service.ts";
 import { createIntegrationStorage } from "./integration-env.ts";
+import { hybridDeviceShareB64 } from "./hybrid-share-fixture.ts";
 import { applyMigrations, cleanupUserData, createLoggerStub } from "./two-factor-test-helpers.ts";
 
 const MIN_ENCRYPTED_USER_IDENTITY_BYTES = 2473;
@@ -181,7 +182,7 @@ function registerBody(authStateId: string) {
     password_kdf_params_version: 2,
     master_password_policy_version: MASTER_PASSWORD_POLICY_VERSION,
     device_public_key: Buffer.from("bootstrap-device-pk").toString("base64"),
-    device_share: Buffer.alloc(32, 11).toString("base64"),
+    device_share: hybridDeviceShareB64(11),
     device_fingerprint: "ab".repeat(32),
     device_name: "First device",
     platform: "desktop",

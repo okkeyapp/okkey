@@ -7,6 +7,7 @@ import { loadConfig } from "../src/config.ts";
 import { DeviceService } from "../src/device/service.ts";
 import { SessionService } from "../src/session/service.ts";
 import { createIntegrationStorage } from "./integration-env.ts";
+import { hybridDeviceShareB64, hybridDeviceShareBytes } from "./hybrid-share-fixture.ts";
 import {
   applyMigrations,
   cleanupUserData,
@@ -43,7 +44,7 @@ function registerBody(input: {
 }) {
   return {
     device_public_key: Buffer.from(input.publicKey).toString("base64"),
-    device_share: Buffer.alloc(32, input.shareByte).toString("base64"),
+    device_share: hybridDeviceShareB64(input.shareByte),
     device_fingerprint: input.fingerprint,
     device_name: "Browser",
     platform: "web",
@@ -240,7 +241,7 @@ test("integration: new-to-new approval delivers share B once and deletes the env
   const beforeClaim = await deviceRow(storage, pendingId);
   assert.equal(beforeClaim?.status, "pending");
   assert.ok(beforeClaim?.share_delivery_envelope);
-  assert.deepEqual(Uint8Array.from(beforeClaim.device_share), new Uint8Array(32).fill(7));
+  assert.deepEqual(Uint8Array.from(beforeClaim.device_share), hybridDeviceShareBytes(7));
   assert.notDeepEqual(Uint8Array.from(beforeClaim.device_share), Uint8Array.from(trusted.device_share));
 
   const fetched = await dispatch(
@@ -252,7 +253,7 @@ test("integration: new-to-new approval delivers share B once and deletes the env
   assert.equal(fetched.statusCode, 200);
   assert.equal(typeof fetched.json.share_delivery_envelope, "string");
 
-  const delivered = Buffer.alloc(32, 9).toString("base64");
+  const delivered = hybridDeviceShareB64(9);
   const confirmed = await dispatch(
     handler,
     "POST",
@@ -268,7 +269,7 @@ test("integration: new-to-new approval delivers share B once and deletes the env
   assert.equal(afterClaim?.share_delivery_envelope, null);
   assert.equal(afterClaim?.one_time_x25519_public, null);
   assert.equal(afterClaim?.one_time_mlkem_public, null);
-  assert.deepEqual(Uint8Array.from(afterClaim!.device_share), new Uint8Array(32).fill(9));
+  assert.deepEqual(Uint8Array.from(afterClaim!.device_share), hybridDeviceShareBytes(9));
 
   const gone = await dispatch(
     handler,
@@ -288,7 +289,7 @@ test("integration: new-to-new approval delivers share B once and deletes the env
   assert.equal(reused.statusCode, 404);
 });
 
-test("integration: older client on either side still completes approval", async (t) => {
+test("integration: approval without a replacement share copies the approver share", async (t) => {
   const config = loadConfig();
   const storage = await createIntegrationStorage(t, config);
   if (!storage) {

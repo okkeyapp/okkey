@@ -607,9 +607,6 @@ export class DeviceService {
         );
       }
     }
-    // TODO(device-approval-share-delivery): remove this plaintext share copy one release
-    // after every client publishes a one-time key and sends a hybrid envelope.
-    // Deprecated so an older client on either side can still finish approval.
     const copied = await this.resolveDeviceApproval({
       userId,
       approverDeviceId,
@@ -944,7 +941,9 @@ export class DeviceService {
 
     const isPending = record.status === "pending";
     const isBlocked = record.status === "blocked";
-    const wrapPublic = splitKeyShareBWrapPublicKeys(record.deviceShare);
+    const wrapPublic = record.deviceShare
+      ? splitKeyShareBWrapPublicKeys(record.deviceShare)
+      : null;
     return {
       deviceId: record.id,
       deviceName: record.deviceName,
@@ -1077,7 +1076,10 @@ export class DeviceService {
         "challenge_id and a device proof are required",
       );
     }
-    if (!verifyDeviceBindShareProof(device.deviceShare, message, shareProof)) {
+    if (
+      !device.deviceShare ||
+      !verifyDeviceBindShareProof(device.deviceShare, message, shareProof)
+    ) {
       throw new DeviceServiceError(
         "DEVICE_BIND_PROOF_INVALID",
         403,

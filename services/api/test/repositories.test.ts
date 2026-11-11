@@ -321,6 +321,7 @@ test("DevicesRepository.renameDevice and revokeOwned update owned rows", async (
   const revokeSql = revokeDb.queries.find((query) => /status = 'revoked'/.test(query.sql));
   const deleteSql = revokeDb.queries.find((query) => /DELETE FROM sessions/.test(query.sql));
   assert.ok(revokeSql);
+  assert.match(revokeSql?.sql ?? "", /device_share = NULL/);
   assert.ok(deleteSql);
   assert.deepEqual(deleteSql?.params, [["d1"]]);
 });
@@ -375,6 +376,8 @@ test("DevicesRepository.resolveApproval reject ends device sessions", async () =
     rejectReason: "no",
   });
   assert.equal(result.kind, "rejected");
+  const rejectSql = db.queries.find((query) => /rejection_reason = \$3/.test(query.sql));
+  assert.match(rejectSql?.sql ?? "", /device_share = NULL/);
   assert.match(db.queries.at(-1)?.sql ?? "", /DELETE FROM sessions/);
   assert.deepEqual(db.queries.at(-1)?.params, [["d1"]]);
 });
@@ -423,9 +426,80 @@ test("DevicesRepository.claimTrustedAfterRecovery ends sessions of revoked devic
     now: "2026-01-02T00:00:00.000Z",
   });
   assert.equal(claimed.id, "keep");
+  const revokeSql = db.queries.find((query) => /status = 'revoked'/.test(query.sql));
+  assert.match(revokeSql?.sql ?? "", /device_share = NULL/);
   const sessionDelete = db.queries.find((query) => /DELETE FROM sessions/.test(query.sql));
   assert.ok(sessionDelete);
   assert.deepEqual(sessionDelete?.params, [["old-device"]]);
+});
+
+test("DevicesRepository.findOwnedDeviceAuth maps a null device_share", async () => {
+  const db = new FakeDb();
+  db.enqueueResult([makeDeviceRow({ device_share: null, status: "revoked" })]);
+  const repo = new DevicesRepository(db);
+  const row = await repo.findOwnedDeviceAuth("u1", "d1");
+  assert.equal(row?.deviceShare, null);
+});
+
+test("DevicesRepository.findTrustedDeviceShareById returns null when the share is cleared", async () => {
+  const db = new FakeDb();
+  db.enqueueResult([{ device_share: null }]);
+  const repo = new DevicesRepository(db);
+  assert.equal(await repo.findTrustedDeviceShareById("u1", "d1"), null);
+});
+
+test("DevicesRepository.resolveApproval clears device_share when approval expires", async () => {
+  const db = new FakeDb();
+  db.enqueueResult([]);
+  db.enqueueResult([makeDeviceRow({ status: "pending", created_at: "2020-01-01T00:00:00.000Z" })]);
+  db.enqueueResult([
+    makeDeviceRow({
+      status: "revoked",
+      device_share: null,
+      rejection_reason: "approval expired",
+    }),
+  ]);
+  db.enqueueResult([]);
+  const repo = new DevicesRepository(db);
+  const result = await repo.resolveApproval({
+    deviceId: "d1",
+    userId: "u1",
+    action: "approve",
+    now: "2026-01-01T00:00:00.000Z",
+    expiresAt: "2025-01-01T00:00:00.000Z",
+    approvedBy: "u1",
+    approverDeviceId: "trusted1",
+  });
+  assert.equal(result.kind, "expired");
+  assert.equal(result.device?.deviceShare, null);
+  const expireSql = db.queries.find((query) => /approval expired/.test(query.sql));
+  assert.match(expireSql?.sql ?? "", /device_share = NULL/);
+});
+
+test("DevicesRepository.storeShareDelivery clears device_share when approval expires", async () => {
+  const db = new FakeDb();
+  db.enqueueResult([
+    {
+      id: "d1",
+      status: "pending",
+      created_at: "2020-01-01T00:00:00.000Z",
+      has_one_time_key: true,
+    },
+  ]);
+  db.enqueueResult([]);
+  const repo = new DevicesRepository(db);
+  const result = await repo.storeShareDelivery({
+    userId: "u1",
+    deviceId: "d1",
+    approverUserId: "u1",
+    envelope: new Uint8Array([1, 2, 3]),
+    now: "2026-01-01T00:00:00.000Z",
+    pendingCreatedBefore: "2026-01-01T00:00:00.000Z",
+    expiresAt: "2026-01-02T00:00:00.000Z",
+  });
+  assert.equal(result.kind, "expired");
+  const expireSql = db.queries.find((query) => /approval expired/.test(query.sql));
+  assert.match(expireSql?.sql ?? "", /device_share = NULL/);
 });
 
 test("DevicesRepository.registerOrUpdate does not replace trusted device keys", async () => {

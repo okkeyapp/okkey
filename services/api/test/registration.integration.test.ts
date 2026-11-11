@@ -10,6 +10,7 @@ import { EmailTemplateService } from "../src/email/service.ts";
 import { RegistrationError, RegistrationService } from "../src/registration/service.ts";
 import { SessionService } from "../src/session/service.ts";
 import { ENTITY_ID_RE } from "../../../packages/types/dist/index.js";
+import { hybridDeviceShareBytes } from "./hybrid-share-fixture.ts";
 import { applyMigrations } from "./two-factor-test-helpers.ts";
 import { createIntegrationStorage } from "./integration-env.ts";
 
@@ -112,7 +113,7 @@ test("integration: registration completes user, workspace, vault, trusted device
     deviceFingerprint: "a".repeat(64),
     deviceName: "First device",
     devicePublicKey: Buffer.from("device-pk").toString("base64"),
-    deviceShare: share32,
+    deviceShare: hybridDeviceShareBytes(),
     platform: "desktop",
     osName: "macOS",
     osVersion: "14.0",
@@ -158,7 +159,7 @@ test("integration: registration completes user, workspace, vault, trusted device
     deviceFingerprint: "a".repeat(64),
     deviceName: "First device",
     devicePublicKey: Buffer.from("device-pk").toString("base64"),
-    deviceShare: share32,
+    deviceShare: hybridDeviceShareBytes(),
     platform: "desktop",
     osName: "macOS",
     osVersion: "14.0",
@@ -253,7 +254,7 @@ test("integration: parallel completeRegistration creates single user", async (t)
     deviceFingerprint: "c".repeat(64),
     deviceName: "Parallel device",
     devicePublicKey: Buffer.from("device-pk-p").toString("base64"),
-    deviceShare: share32,
+    deviceShare: hybridDeviceShareBytes(),
     platform: "desktop",
     osName: "macOS",
     osVersion: "14.0",
@@ -352,7 +353,7 @@ test("integration: missing auth state returns AUTH_CHALLENGE_EXPIRED", async (t)
         deviceFingerprint: "d".repeat(64),
         deviceName: "x",
         devicePublicKey: Buffer.from("pk").toString("base64"),
-        deviceShare: new Uint8Array(32).fill(4),
+        deviceShare: hybridDeviceShareBytes(4),
         platform: "desktop",
         osName: "macOS",
         osVersion: "14",
@@ -443,7 +444,7 @@ test("integration: strict rollout rejects registration without PQ-capable device
         deviceFingerprint: "a".repeat(64),
         deviceName: "First device",
         devicePublicKey: Buffer.from("device-pk").toString("base64"),
-        deviceShare: new Uint8Array(32).fill(11),
+        deviceShare: hybridDeviceShareBytes(11),
         platform: "desktop",
         osName: "macOS",
         osVersion: "14.0",

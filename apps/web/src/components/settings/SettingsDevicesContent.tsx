@@ -338,14 +338,17 @@ export default function SettingsDevicesContent({ t }: SettingsDevicesContentProp
             oneTimeMlkemPublicKey: device.one_time_mlkem_public_key,
           })
         : null;
-      const deviceShareB64 =
-        !envelope && bundle && userId
-          ? await replacementDeviceShareForApproval({
-              userId,
-              localShareB64: bundle.device_share_b64,
-              pending: device,
-            })
-          : undefined;
+      let deviceShareB64: string | undefined;
+      if (!envelope) {
+        if (!userId || !bundle?.device_share_b64) {
+          throw new Error("pending device has no share wrap keys");
+        }
+        deviceShareB64 = await replacementDeviceShareForApproval({
+          userId,
+          localShareB64: bundle.device_share_b64,
+          pending: device,
+        });
+      }
       await core.approveDevice(device.device_id, currentDeviceId, envelope ?? undefined, deviceShareB64);
       toast.success(t("web.settingsPopup.devices.toast.trusted"));
       emitDevicesChanged();
