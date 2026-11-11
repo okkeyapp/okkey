@@ -8,6 +8,12 @@ Run Okkey when you want the server under your control, and when you want to read
 
 [v1.0.0-beta.2](CHANGELOG.md#v1.0.0-beta.2) is the first public beta. It is not production-ready. An independent security audit has not been done. The browser extension is not part of this release. Published container images are the web app, the API, and the worker.
 
+## Vault key (since 1.0.0-beta.3)
+
+This is on the `dev` branch and is intended for 1.0.0-beta.3. The published tag is still v1.0.0-beta.2.
+
+Since 1.0.0-beta.3, the account vault key is the XOR of three 32-byte shares: a server share stored on the server, a device share stored on the server only as a hybrid envelope for a key that stays on the device, and a password share derived from the master password with Argon2id. The master password never leaves the device. A leak of the server database or a server backup is not enough to brute-force the master password offline. This does not protect against a fully compromised server that serves a substituted web client, or against malware on the device.
+
 ## Quick start
 
 You need Docker Engine 28.0 or newer, the Docker Compose plugin, and [cosign](https://docs.sigstore.dev/cosign/system_config/installation/) on your `PATH`. Full steps are in [docs/install.md](docs/install.md).
