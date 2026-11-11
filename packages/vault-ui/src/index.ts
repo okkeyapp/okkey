@@ -55,7 +55,7 @@ export {
   type ItemPlaintextToKeyFormSectionsOptions,
 } from "./items/itemPlaintextToKeyFormSections.js";
 
-export { keyFormSectionsToItemPlaintext } from "./items/keyFormToItemPlaintext.js";
+export { keyFormSectionsToItemPlaintext, omitBlankExtraWebsiteUrls } from "./items/keyFormToItemPlaintext.js";
 
 export {
   isKeyFormFieldFilled,

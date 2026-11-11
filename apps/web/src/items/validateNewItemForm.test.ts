@@ -628,3 +628,57 @@ describe("validateNewItemForm secure_files", () => {
     expect(result.ok).toBe(true);
   });
 });
+
+describe("validateNewItemForm login website URLs", () => {
+  const loginSections = [
+    {
+      id: "credentials",
+      variant: "primary" as const,
+      fields: [
+        { id: "login", type: "text" as const, label: "login", value: "user", required: true },
+        { id: "password", type: "password" as const, label: "password", value: "secret", required: true },
+      ],
+    },
+    {
+      id: "websites",
+      variant: "primary" as const,
+      fields: [
+        { id: "website-1", type: "url" as const, label: "website URL", value: "https://example.com", required: true },
+        { id: "website-2", type: "url" as const, label: "website URL", value: "  ", required: true },
+      ],
+    },
+  ];
+
+  it("ignores a blank extra website URL even when it is marked required", () => {
+    const result = validateNewItemForm({
+      recordName: "Example",
+      vaultId: "vault-1",
+      categoryId: "login",
+      sections: loginSections,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.issues).toEqual([]);
+  });
+
+  it("still requires the primary website URL", () => {
+    const result = validateNewItemForm({
+      recordName: "Example",
+      vaultId: "vault-1",
+      categoryId: "login",
+      sections: loginSections.map((section) =>
+        section.id === "websites"
+          ? {
+              ...section,
+              fields: section.fields.map((field) =>
+                field.id === "website-1" ? { ...field, value: "   " } : field,
+              ),
+            }
+          : section,
+      ),
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.issues).toEqual([{ kind: "field", fieldId: "website-1", sectionId: "websites" }]);
+  });
+});
