@@ -58,7 +58,9 @@ import { registerCurrentBrowserDevice } from "../../auth/deviceTrust";
 import { getOrCreateDeviceFingerprint } from "../../auth/deviceFingerprint";
 import { readVaultBundle, writeVaultBundle } from "../../auth/localVaultBundle";
 import { safeRedirectPath } from "../../auth/safeRedirect";
+import type { AccountRestoreApproval } from "../../account-recovery-features/registry";
 import { useLocale } from "../../locale/LocaleContext";
+import { completeApprovedRecoveryRequest } from "./completeApprovedRecoveryRequest";
 import {
   ACCOUNT_DEVICE_PENDING_PATH,
   ACCOUNT_LOCK_PATH,
@@ -217,7 +219,10 @@ export default function AccountRestorePage() {
   const passwordValid =
     masterPasswordMeetsNewPasswordPolicy(newPassword) && newPassword === repeatPassword;
 
-  async function completeRestoreFromVaultKey(vaultKey: Uint8Array) {
+  async function completeRestoreFromVaultKey(
+    vaultKey: Uint8Array,
+    approval?: { channel: "devices" | "contacts"; requestId: string },
+  ) {
     if (!accessToken || !userId || !passwordValid) {
       throw new Error("invalid restore state");
     }
@@ -232,6 +237,7 @@ export default function AccountRestorePage() {
     let passwordChanged = false;
     let ownedVaultKey: Uint8Array | null = vaultKey;
     let mintedFreshShare = false;
+    let approvalCompleted = false;
 
     try {
       await initCrypto();
@@ -269,6 +275,15 @@ export default function AccountRestorePage() {
         deviceShare: deviceB,
         passwordKdfParamsVersion: existingBundle?.password_kdf_params_version ?? 2,
       });
+
+      if (approval) {
+        const outcome = await completeApprovedRecoveryRequest(
+          core.getHttpClient(),
+          approval.channel,
+          approval.requestId,
+        );
+        approvalCompleted = outcome === "completed";
+      }
 
       await core.changeMasterPassword({
         server_key_share: bytesToBase64(rebalanced.serverKeyShare),
@@ -319,6 +334,15 @@ export default function AccountRestorePage() {
       }
 
       if (freshBrowser || mintedFreshShare) {
+        // Key restore already bound a pending device before the possession proof.
+        // Device and contact approval mark a session that may still be unbound, so
+        // bind this browser before claim. Claim still requires that proved device.
+        if (approvalCompleted) {
+          await registerCurrentBrowserDevice(core, getOrCreateDeviceFingerprint(), {
+            userId,
+            recoveryPending: true,
+          });
+        }
         await registerCurrentBrowserDevice(core, getOrCreateDeviceFingerprint(), {
           userId,
           claimAfterRecovery: true,
@@ -370,6 +394,16 @@ export default function AccountRestorePage() {
         wipeBytes(rebalanced.passwordShareC);
       }
     }
+  }
+
+  function restoreFromApproval(channel: "devices" | "contacts") {
+    return (vaultKey: Uint8Array, approval?: AccountRestoreApproval) => {
+      const requestId = approval?.requestId.trim() ?? "";
+      return completeRestoreFromVaultKey(
+        vaultKey,
+        requestId ? { channel, requestId } : undefined,
+      );
+    };
   }
 
   function restoreErrorMessage(err: unknown): string | null {
@@ -704,7 +738,7 @@ export default function AccountRestorePage() {
                   accessToken={accessToken}
                   userId={userId}
                   t={t}
-                  onVaultKeyRecovered={completeRestoreFromVaultKey}
+                  onVaultKeyRecovered={restoreFromApproval("devices")}
                   formError={formError}
                   setFormError={setFormError}
                   newPassword={newPassword}
@@ -740,7 +774,7 @@ export default function AccountRestorePage() {
                   accessToken={accessToken}
                   userId={userId}
                   t={t}
-                  onVaultKeyRecovered={completeRestoreFromVaultKey}
+                  onVaultKeyRecovered={restoreFromApproval("contacts")}
                   formError={formError}
                   setFormError={setFormError}
                   newPassword={newPassword}

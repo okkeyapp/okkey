@@ -1,11 +1,24 @@
 import type { WebMessageValues } from "@okkey/i18n";
 import type { ComponentType } from "react";
 
+/** Approved device or contact recovery request. Core posts the plugin complete route. */
+export type AccountRestoreApproval = {
+  requestId: string;
+};
+
 export type AccountRestorePanelProps = {
   accessToken: string;
   userId: string;
   t: (messageKey: string, values?: WebMessageValues) => string;
-  onVaultKeyRecovered: (vaultKey: Uint8Array) => Promise<void>;
+  /**
+   * `approval` is set after the vault key is unwrapped.
+   * Core posts `POST /enterprise/account/recovery/{devices|contacts}/requests/:id/complete`
+   * before changing the master password. Omit it only when there is no request id.
+   */
+  onVaultKeyRecovered: (
+    vaultKey: Uint8Array,
+    approval?: AccountRestoreApproval,
+  ) => Promise<void>;
   formError: string | null;
   setFormError: (error: string | null) => void;
   newPassword: string;
