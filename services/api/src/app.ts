@@ -112,6 +112,7 @@ import {
   createWorkspaceBuiltInProfilesListRoute,
   createWorkspaceCustomProfileDeleteRoute,
 } from "./routes/workspace-built-in-profiles.ts";
+import { markCallerSessionRecoveryProved } from "./plugins/recovery-session.ts";
 import type { ApiEnterprisePlugin, ApiEnterprisePluginContext } from "./plugins/types.ts";
 import type { QueryExecutor } from "./storage/postgres.ts";
 import type { WorkspaceBuiltInRolesService } from "./workspace-roles/list-service.ts";
@@ -1354,6 +1355,20 @@ export function createApiApp(
         app,
         config,
         resolveUserId,
+        resolveUserIdAllowUnboundDevice,
+        markSessionRecoveryProved: (req, input) => {
+          if (!deps.sessionService || !resolveSessionAllowUnboundDevice) {
+            return Promise.resolve(false);
+          }
+          return markCallerSessionRecoveryProved(req, input, {
+            resolveSession: resolveSessionAllowUnboundDevice,
+            markRecoveryProved: (accessToken, userId) =>
+              deps.sessionService!.markRecoveryProved(accessToken, userId),
+            onMarked: (method) => {
+              logger.info("session recovery proved", { method });
+            },
+          });
+        },
         postgres,
         redis: options.redis,
         publicAppBaseUrl: options.publicAppBaseUrl ?? config.publicAppBaseUrl,

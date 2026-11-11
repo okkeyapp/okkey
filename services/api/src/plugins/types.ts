@@ -16,7 +16,28 @@ export type ApiEnterprisePluginRedis = {
 export type ApiEnterprisePluginContext = {
   app: HttpApp;
   config: ApiConfig;
+  /**
+   * User id for a trusted device session.
+   * An unbound or not-yet-trusted device does not resolve.
+   */
   resolveUserId: (req: IncomingMessage) => Promise<string | null>;
+  /**
+   * User id for a full session whose device may be unbound or not trusted.
+   * Same session acceptance as `GET /account/recovery`.
+   * Does not replace `resolveUserId`.
+   */
+  resolveUserIdAllowUnboundDevice: (req: IncomingMessage) => Promise<string | null>;
+  /**
+   * Set `recovery_proved_at` on the caller's current full session.
+   * Same update as `POST /account/recovery/key/prove`: the grant lasts until that
+   * session's existing `expires_at`, the challenge is cleared, and other sessions
+   * are left unchanged. `method` is a non-empty channel label and is not stored.
+   * Returns false when the bearer session is missing, not a full session, or expired.
+   */
+  markSessionRecoveryProved: (
+    req: IncomingMessage,
+    input: { method: string },
+  ) => Promise<boolean>;
   postgres: QueryExecutor & {
     transaction<T>(fn: (tx: QueryExecutor) => Promise<T>): Promise<T>;
   };
