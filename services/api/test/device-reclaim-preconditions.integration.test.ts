@@ -512,6 +512,11 @@ test("integration: legacy sole-device reclaim keeps the stored share", async (t)
   const stored = (await listTrusted(ctx.storage, ctx.userId))[0];
   assert.ok(stored);
   const caller = await ctx.sessionService.createSession(ctx.userId, { deviceId: stored.id });
+  const bound = await ctx.storage.postgres.query<{ device_id: string | null }>(
+    `SELECT device_id FROM sessions WHERE token_hash = $1`,
+    [ctx.sessionService.hashAccessToken(caller.accessToken)],
+  );
+  assert.equal(bound[0]?.device_id, stored.id);
   const nextKey = Buffer.from("legacy-upgrade-key").toString("base64");
   const response = await dispatch(
     ctx.handler,
