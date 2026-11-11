@@ -157,7 +157,7 @@ test("integration: registration + first unlock decrypts stored hybrid identity b
     deviceFingerprint: "e".repeat(64),
     deviceName: "Unlock test device",
     devicePublicKey: Buffer.from("unlock-test-device-pk").toString("base64"),
-    deviceShare: artifacts.deviceShare,
+    deviceShare: artifacts.wrappedDeviceShare,
     platform: "desktop",
     osName: "macOS",
     osVersion: "14.0",
