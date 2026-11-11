@@ -1,6 +1,5 @@
 import { encryptCapsulePayload } from "@okkey/crypto";
 import type { WebMessageValues } from "@okkey/i18n";
-import type { Locale } from "date-fns";
 import {
   DEFAULT_WORKSPACE_CAPSULE_POLICIES,
   isCapsuleAllowedForMember,
@@ -16,14 +15,13 @@ import {
   type WorkspaceMemberDirectoryEntryDto,
 } from "@okkey/types";
 import { workspaceHasPlanFeature } from "../../workspace/planEntitlements";
+import workspaceCapsulesModule from "@okkey-enterprise/workspace-capsules";
+import type { CapsuleAccessSettingsValues } from "../../workspace-features/registry";
 import {
   Alert,
   AlertDescription,
   AlertTitle,
   Button,
-  Calendar,
-  CalendarMonthYearCaption,
-  Checkbox,
   ControlGroup,
   Input,
   KeyField,
@@ -61,7 +59,6 @@ import {
   Fragment,
   useEffect,
   useMemo,
-  useRef,
   useState,
   type ReactNode,
   type SVGProps,
@@ -94,7 +91,6 @@ import { scoreItemsListRecordSearch } from "../../items/workspaceItemSearch";
 import { useWorkspaceVaultProfiles } from "../../items/WorkspaceVaultProfilesContext";
 import { useItemFaviconAttachmentUrl } from "../../items/useItemFaviconAttachmentUrl";
 import { useResolvedVaultEncryptionKey } from "../../items/useResolvedVaultEncryptionKey";
-import { getDatePickerLocale } from "../../lib/datePickerLocale";
 import { useLocale } from "../../locale/LocaleContext";
 import { createKeyFormEditorMessages } from "../key-form/keyFormI18n";
 import { resolveKeyFormFieldLabel } from "../key-form/keyFormFieldLabel";
@@ -119,15 +115,6 @@ interface NewCapsulePopupProps {
   workspaceId: string;
   workspace?: Workspace;
   onCreated?: () => void;
-}
-
-const scheduleOptionKeys: SchedulePreset[] = ["never", "now", "15m", "1h", "6h", "12h", "24h"];
-
-function getScheduleOptions(t: (messageKey: string) => string): { value: SchedulePreset; label: string }[] {
-  return scheduleOptionKeys.map((value) => ({
-    value,
-    label: t(`web.capsules.popup.schedule.${value}`),
-  }));
 }
 
 const emptyCapsuleAccessDefaults: CapsuleAccessDefaultsDto = {
@@ -166,11 +153,6 @@ function applyWorkspacePoliciesToCapsuleDefaults(
     approvalRequired: policies.requireApproval ? true : defaults.approvalRequired,
   };
 }
-const scheduleHours = Array.from({ length: 24 }, (_, index) => index);
-const scheduleMinutes = Array.from({ length: 60 }, (_, index) => index);
-const capsuleCalendarStartMonth = new Date(new Date().getFullYear() - 100, 0);
-const capsuleCalendarEndMonth = new Date(new Date().getFullYear() + 10, 11);
-
 export default function NewCapsulePopup({
   t,
   workspaceId,
@@ -207,11 +189,14 @@ export default function NewCapsulePopup({
     : "";
   const advancedAvailable = workspaceHasPlanFeature(workspace, "capsuleAccessSettings");
   const filesInCapsules = workspaceHasPlanFeature(workspace, "filesInCapsules");
+  const CapsuleAccessSettingsFields = workspaceCapsulesModule.CapsuleAccessSettingsFields;
+  const accessSettingsMounted = CapsuleAccessSettingsFields != null;
+  const accessSettingsActive = advancedAvailable && accessSettingsMounted;
   const storedCapsulePolicies: WorkspaceCapsulePolicies =
     workspace?.capsulePolicies ?? DEFAULT_WORKSPACE_CAPSULE_POLICIES;
   const capsulePolicies = useMemo(
-    () => resolveEffectiveCapsulePolicies(storedCapsulePolicies, advancedAvailable),
-    [advancedAvailable, storedCapsulePolicies],
+    () => resolveEffectiveCapsulePolicies(storedCapsulePolicies, accessSettingsActive),
+    [accessSettingsActive, storedCapsulePolicies],
   );
   const capsulesAllowedForMember = isCapsuleAllowedForMember(capsulePolicies, userId);
   const forceMaxViews = capsulePolicies.forceMaxViews > 0;
@@ -220,16 +205,7 @@ export default function NewCapsulePopup({
   const forcePassword = capsulePolicies.requirePassword;
   const forcePasswordAttemptLimit = capsulePolicies.passwordAttemptLimit > 0;
   const forceApproval = capsulePolicies.requireApproval;
-  const membersOnlyAccess = capsulePolicies.accessAudience === "workspace_members_only";
-  const datePickerLocale = useMemo(() => getDatePickerLocale(locale), [locale]);
   const keyFormMessages = useMemo(() => createKeyFormEditorMessages(locale), [locale]);
-  const scheduleOptions = useMemo(() => getScheduleOptions(t), [t]);
-  const deactivateScheduleOptions = useMemo(() => {
-    if (!forceTimeDeactivation) {
-      return scheduleOptions;
-    }
-    return scheduleOptions.filter((option) => option.value !== "never");
-  }, [forceTimeDeactivation, scheduleOptions]);
   const [type, setType] = useState<CapsuleType>("text");
   const [name, setName] = useState("");
   const [text, setText] = useState("");
@@ -286,29 +262,23 @@ export default function NewCapsulePopup({
     [t],
   );
   const capsuleTypeOptions = useMemo(() => {
-    const allowed = allCapsuleTypeOptions.filter(
-      ([value]) =>
-        isCapsuleTypeAllowed(capsulePolicies, value) &&
-        (value !== "file" || filesInCapsules),
+    const allowed = allCapsuleTypeOptions.filter(([value]) =>
+      isCapsuleTypeAllowed(capsulePolicies, value),
     );
-    if (isEditing && editingDetail && (editingDetail.type !== "file" || filesInCapsules)) {
+    if (isEditing && editingDetail) {
       const current = allCapsuleTypeOptions.find(([value]) => value === editingDetail.type);
       if (current && !allowed.some(([value]) => value === current[0])) {
         return [...allowed, current];
       }
     }
     return allowed;
-  }, [allCapsuleTypeOptions, capsulePolicies, editingDetail, filesInCapsules, isEditing]);
+  }, [allCapsuleTypeOptions, capsulePolicies, editingDetail, isEditing]);
   const allTypesDisabled = !isEditing && capsuleTypeOptions.length === 0;
-  const policyTypeLocked = Boolean(
+  const typeLocked = Boolean(
     isEditing &&
       editingDetail &&
       !isCapsuleTypeAllowed(capsulePolicies, editingDetail.type),
   );
-  const planFileLocked = Boolean(
-    isEditing && editingDetail?.type === "file" && !filesInCapsules,
-  );
-  const typeLocked = policyTypeLocked || planFileLocked;
   const popupIdentity = !open ? "closed" : isEditing ? `edit:${editingCapsuleId}` : "create";
   const activationMinimumDate = useMemo(
     () =>
@@ -368,16 +338,20 @@ export default function NewCapsulePopup({
   useEffect(() => {
     if (!open || isEditing) return;
     if (capsuleTypeOptions.length === 0) return;
-    if (!capsuleTypeOptions.some(([value]) => value === type)) {
-      setType(capsuleTypeOptions[0][0]);
+    const selectable = capsuleTypeOptions.filter(
+      ([value]) => value !== "file" || filesInCapsules,
+    );
+    if (selectable.length === 0) return;
+    if (!selectable.some(([value]) => value === type)) {
+      setType(selectable[0][0]);
     }
-  }, [capsuleTypeOptions, isEditing, open, type]);
+  }, [capsuleTypeOptions, filesInCapsules, isEditing, open, type]);
 
   useEffect(() => {
-    if (!advancedAvailable) {
+    if (!accessSettingsActive) {
       setViewLimitAction("deactivate");
     }
-  }, [advancedAvailable]);
+  }, [accessSettingsActive]);
 
   useEffect(() => {
     if (isEditing) return;
@@ -434,7 +408,7 @@ export default function NewCapsulePopup({
       setType("item");
       setSelectedItemId(sourceItemId);
     }
-    if (core && advancedAvailable) {
+    if (core && accessSettingsActive) {
       void core
         .listWorkspaceMemberDirectory(workspaceId)
         .then((result) => setMembers(result.members));
@@ -449,10 +423,10 @@ export default function NewCapsulePopup({
           });
       }
     }
-  }, [advancedAvailable, core, isEditing, open, sourceItemId, workspaceId]);
+  }, [accessSettingsActive, core, isEditing, open, sourceItemId, workspaceId]);
 
   useEffect(() => {
-    if (!open || !advancedAvailable || isEditing) return;
+    if (!open || !accessSettingsActive || isEditing) return;
     applyCapsuleAccessDefaults(savedDefaults, {
       setViewsEnabled,
       setMaxViews,
@@ -466,10 +440,10 @@ export default function NewCapsulePopup({
       setAttemptLimit,
       setApprovalRequired,
     });
-  }, [advancedAvailable, isEditing, savedDefaults, open]);
+  }, [accessSettingsActive, isEditing, savedDefaults, open]);
 
   useEffect(() => {
-    if (!open || !advancedAvailable) return;
+    if (!open || !accessSettingsActive) return;
     if (forceMaxViews) {
       setViewsEnabled(true);
       setMaxViews(capsulePolicies.forceMaxViews);
@@ -491,7 +465,7 @@ export default function NewCapsulePopup({
       setApprovalRequired(true);
     }
   }, [
-    advancedAvailable,
+    accessSettingsActive,
     capsulePolicies.forceMaxViews,
     capsulePolicies.passwordAttemptLimit,
     forceAccess,
@@ -628,7 +602,7 @@ export default function NewCapsulePopup({
   });
   const createDirty = useMemo(() => {
     const advancedBase = savedDefaults ?? emptyCapsuleAccessDefaults;
-    const advanced = advancedAvailable
+    const advanced = accessSettingsActive
       ? applyWorkspacePoliciesToCapsuleDefaults(advancedBase, capsulePolicies)
       : advancedBase;
     const baselineType: CapsuleType = sourceItemId ? "item" : "text";
@@ -667,7 +641,7 @@ export default function NewCapsulePopup({
     accessEnabled,
     activateCustom,
     activatePreset,
-    advancedAvailable,
+    accessSettingsActive,
     approvalRequired,
     attemptLimit,
     capsulePolicies,
@@ -753,22 +727,6 @@ export default function NewCapsulePopup({
   const confirmExit = () => {
     setExitConfirmOpen(false);
     close();
-  };
-
-  const addRecipient = (raw: string): boolean => {
-    const email = raw.trim().toLocaleLowerCase();
-    if (!isValidEmail(email)) return false;
-    if (
-      membersOnlyAccess &&
-      !members.some((member) => member.email.toLocaleLowerCase() === email)
-    ) {
-      return false;
-    }
-    setRecipients((current) =>
-      current.includes(email) ? current : [...current, email],
-    );
-    setRecipientInput("");
-    return true;
   };
 
   const copyEditingLink = async () => {
@@ -942,33 +900,36 @@ export default function NewCapsulePopup({
         encryptedMetadata: generated.encryptedMetadata,
         ownerKeyWrap: generated.ownerKeyWrap,
         keyTransportMode: "fragment",
-        ...(effectiveViewsEnabled
+        ...(forceMaxViews || (accessSettingsActive && viewsEnabled)
           ? {
-              maxViews: effectiveMaxViews,
-              viewLimitAction: advancedAvailable ? viewLimitAction : "deactivate",
+              maxViews: forceMaxViews ? capsulePolicies.forceMaxViews : maxViews,
+              viewLimitAction: accessSettingsActive ? viewLimitAction : "deactivate",
             }
           : {}),
-        ...(effectiveTimeEnabled
+        ...(accessSettingsActive && effectiveTimeEnabled
           ? {
               ...(activateAt ? { activateAt } : {}),
               ...(deactivateAt ? { deactivateAt } : {}),
               ...(deleteAt ? { deleteAt } : {}),
             }
           : {}),
-        ...(effectiveAccessEnabled && recipients.length > 0
+        ...(accessSettingsActive && effectiveAccessEnabled && recipients.length > 0
           ? { allowedRecipientEmails: recipients }
           : {}),
-        ...(effectivePasswordEnabled && password.length >= 4
+        ...(accessSettingsActive && effectivePasswordEnabled && password.length >= 4
           ? { password, passwordAttemptLimit: effectiveAttemptLimit }
-          : keepExistingPassword
+          : accessSettingsActive && keepExistingPassword
             ? { passwordAttemptLimit: effectiveAttemptLimit }
             : {}),
-        approvalRequired: effectiveApprovalRequired,
+        approvalRequired: accessSettingsActive ? effectiveApprovalRequired : false,
         ...(isEditing
           ? { keepExistingPassword, keepExistingRecipients, keepExistingFile }
           : {}),
       };
-      if (filesInCapsules && type === "file" && file) {
+      if (!isEditing && type === "file" && !filesInCapsules) {
+        throw new Error(t("web.capsules.popup.planUnavailable"));
+      }
+      if (type === "file" && file) {
         body.filePayload = bytesToBlob(
           await encryptCapsulePayload(
             generated.capsuleKey,
@@ -1097,12 +1058,6 @@ export default function NewCapsulePopup({
             linkKey="web.capsules.popup.typesAllDisabledLink"
             onNavigate={handleClose}
           />
-        ) : planFileLocked ? (
-          <Alert variant="info">
-            <CapsuleAlertInfoIcon className="size-4" />
-            <AlertTitle>{t("web.capsules.popup.typesNoticeTitle")}</AlertTitle>
-            <AlertDescription>{t("web.capsules.popup.planUnavailable")}</AlertDescription>
-          </Alert>
         ) : typeLocked ? (
           <CapsuleTypesSettingsAlert
             t={t}
@@ -1116,11 +1071,15 @@ export default function NewCapsulePopup({
         <div className="relative flex w-fit rounded-lg bg-secondary p-1">
           {capsuleTypeOptions.map(([value, Icon, label]) => {
             const active = type === value;
+            const planLocked =
+              value === "file" && !filesInCapsules && !(isEditing && editingDetail?.type === "file");
             return (
               <Button
                 key={value}
                 size="sm"
                 variant={active ? "outline" : "ghost"}
+                disabled={planLocked}
+                title={planLocked ? t("web.capsules.popup.planUnavailable") : undefined}
                 className={cn(
                   "relative border",
                   active
@@ -1145,7 +1104,9 @@ export default function NewCapsulePopup({
                         "active:bg-foreground/10",
                       ),
                 )}
-                onClick={() => setType(value)}
+                onClick={() => {
+                  if (!planLocked) setType(value);
+                }}
               >
                 <Icon data-icon="inline-start" />
                 {label}
@@ -1153,6 +1114,11 @@ export default function NewCapsulePopup({
             );
           })}
         </div>
+        ) : null}
+        {capsuleTypeOptions.some(([value]) => value === "file") && !filesInCapsules ? (
+          <p className="text-sm leading-5 text-muted-foreground">
+            {t("web.capsules.popup.planUnavailable")}
+          </p>
         ) : null}
 
         {type === "item" ? (
@@ -1347,7 +1313,7 @@ export default function NewCapsulePopup({
 
             <KeyForm mode="edit" className="gap-0">
               <KeySection variant="primary" mode="edit">
-                {type === "file" && filesInCapsules ? (
+                {type === "file" ? (
                   <KeyField
                     className="border-b-transparent"
                     label={t("web.capsules.public.secretFile")}
@@ -1406,310 +1372,137 @@ export default function NewCapsulePopup({
           </>
         )}
 
-        <Button
-          variant="secondary"
-          className="w-full"
-          onClick={() => setAdvancedOpen((value) => !value)}
-        >
-          {t("web.capsules.popup.advancedSettings")}
-          <span
-            className={cn(
-              "inline-flex size-5 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold leading-none",
-              advancedSettingsSummary.enabledCount === 0
-                ? "bg-input text-muted-foreground"
-                : advancedSettingsSummary.fieldsComplete
-                  ? "bg-primary text-primary-foreground"
-                  : "bg-destructive text-destructive-foreground",
-            )}
+        {forceMaxViews || accessSettingsMounted ? (
+          <Button
+            variant="secondary"
+            className="w-full"
+            onClick={() => setAdvancedOpen((value) => !value)}
           >
-            {advancedSettingsSummary.enabledCount}
-          </span>
-          <ChevronDownIcon
-            data-icon="inline-end"
-            className={advancedOpen ? "rotate-180" : undefined}
-          />
-        </Button>
+            {t("web.capsules.popup.advancedSettings")}
+            <span
+              className={cn(
+                "inline-flex size-5 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold leading-none",
+                advancedSettingsSummary.enabledCount === 0
+                  ? "bg-input text-muted-foreground"
+                  : advancedSettingsSummary.fieldsComplete
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-destructive text-destructive-foreground",
+              )}
+            >
+              {advancedSettingsSummary.enabledCount}
+            </span>
+            <ChevronDownIcon
+              data-icon="inline-end"
+              className={advancedOpen ? "rotate-180" : undefined}
+            />
+          </Button>
+        ) : null}
 
-        {advancedOpen ? (
+        {(advancedOpen || (accessSettingsMounted && !accessSettingsActive)) &&
+        (forceMaxViews || accessSettingsMounted) ? (
           <div className="overflow-hidden rounded-xl bg-secondary">
-            {!advancedAvailable ? (
-              <>
-                <AdvancedRow
-                  title={t("web.capsules.popup.views.title")}
-                  description={t("web.capsules.popup.views.description")}
-                  checked={forceMaxViews}
-                  onChange={() => undefined}
-                  disabled
-                  disabledTooltip={t("web.capsules.popup.planUnavailable")}
-                >
-                  {forceMaxViews ? (
-                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                      <label className="flex flex-col gap-3 text-sm font-normal">
-                        {t("web.capsules.popup.views.maxViews")}
-                        <Input type="number" min={1} value={capsulePolicies.forceMaxViews} disabled />
-                      </label>
-                      <label className="flex flex-col gap-3 text-sm font-normal">
-                        {t("web.capsules.popup.views.limitAction")}
-                        <CapsuleSelect
-                          value="deactivate"
-                          onChange={() => undefined}
-                          disabled
-                          options={[
-                            ["deactivate", t("web.capsules.popup.views.action.deactivate")],
-                            ["delete", t("web.capsules.popup.views.action.delete")],
-                          ]}
-                        />
-                      </label>
-                    </div>
-                  ) : null}
-                </AdvancedRow>
-                <AdvancedRow
-                  title={t("web.capsules.popup.time.title")}
-                  description={t("web.capsules.popup.time.description")}
-                  checked={false}
-                  onChange={() => undefined}
-                  disabled
-                  disabledTooltip={t("web.capsules.popup.planUnavailable")}
-                />
-                <AdvancedRow
-                  title={t("web.capsules.popup.access.title")}
-                  description={t("web.capsules.popup.access.description")}
-                  checked={false}
-                  onChange={() => undefined}
-                  disabled
-                  disabledTooltip={t("web.capsules.popup.planUnavailable")}
-                />
-                <AdvancedRow
-                  title={t("web.capsules.popup.password.title")}
-                  description={t("web.capsules.popup.password.description")}
-                  checked={false}
-                  onChange={() => undefined}
-                  disabled
-                  disabledTooltip={t("web.capsules.popup.planUnavailable")}
-                />
-                <AdvancedRow
-                  title={t("web.capsules.popup.approval.title")}
-                  description={t("web.capsules.popup.approval.description")}
-                  checked={false}
-                  onChange={() => undefined}
-                  disabled
-                  disabledTooltip={t("web.capsules.popup.planUnavailable")}
-                />
-              </>
-            ) : (
-              <>
-                <AdvancedRow
-                  title={t("web.capsules.popup.views.title")}
-                  description={t("web.capsules.popup.views.description")}
-                  checked={effectiveViewsEnabled}
-                  onChange={setViewsEnabled}
-                  disabled={forceMaxViews}
-                >
-                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                    <label className="flex flex-col gap-3 text-sm font-normal">
-                      {t("web.capsules.popup.views.maxViews")}
-                      <Input
-                        type="number"
-                        min={1}
-                        value={effectiveMaxViews}
-                        disabled={forceMaxViews}
-                        onChange={(event) =>
-                          setMaxViews(Math.max(1, Number(event.target.value)))
-                        }
-                      />
-                    </label>
-                    <label className="flex flex-col gap-3 text-sm font-normal">
-                      {t("web.capsules.popup.views.limitAction")}
-                      <CapsuleSelect
-                        value={viewLimitAction}
-                        onChange={(value) =>
-                          setViewLimitAction(value as "deactivate" | "delete")
-                        }
-                        options={[
-                          ["deactivate", t("web.capsules.popup.views.action.deactivate")],
-                          ["delete", t("web.capsules.popup.views.action.delete")],
-                        ]}
-                      />
-                    </label>
-                  </div>
-                </AdvancedRow>
-                <AdvancedRow
-                  title={t("web.capsules.popup.time.title")}
-                  description={t("web.capsules.popup.time.description")}
-                  checked={effectiveTimeEnabled}
-                  onChange={setTimeEnabled}
-                  disabled={forceTimeDeactivation}
-                >
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                    <ScheduleField
-                      t={t}
-                      scheduleOptions={scheduleOptions}
-                      label={t("web.capsules.popup.time.activate")}
-                      allowNow
-                      value={activatePreset}
-                      custom={activateCustom}
-                      invalid={activateSchedulePast}
-                      datePickerLocale={datePickerLocale}
-                      onChange={setActivatePreset}
-                      onCustom={setActivateCustom}
+            {accessSettingsMounted && !accessSettingsActive ? (
+              <p className="px-4 pt-4 text-sm leading-5 text-muted-foreground">
+                {t("web.capsules.popup.planUnavailable")}
+              </p>
+            ) : null}
+            {!accessSettingsMounted && forceMaxViews ? (
+              <AdvancedRow
+                title={t("web.capsules.popup.views.title")}
+                description={t("web.capsules.popup.views.description")}
+                checked={forceMaxViews}
+                onChange={() => undefined}
+                disabled
+                disabledTooltip={t("web.capsules.popup.planUnavailable")}
+              >
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  <label className="flex flex-col gap-3 text-sm font-normal">
+                    {t("web.capsules.popup.views.maxViews")}
+                    <Input type="number" min={1} value={capsulePolicies.forceMaxViews} disabled />
+                  </label>
+                  <label className="flex flex-col gap-3 text-sm font-normal">
+                    {t("web.capsules.popup.views.limitAction")}
+                    <CapsuleSelect
+                      value="deactivate"
+                      onChange={() => undefined}
+                      disabled
+                      options={[
+                        ["deactivate", t("web.capsules.popup.views.action.deactivate")],
+                        ["delete", t("web.capsules.popup.views.action.delete")],
+                      ]}
                     />
-                    <ScheduleField
-                      t={t}
-                      scheduleOptions={deactivateScheduleOptions}
-                      label={t("web.capsules.popup.time.deactivate")}
-                      value={deactivatePreset}
-                      custom={deactivateCustom}
-                      invalid={deactivateSchedulePast}
-                      minimumDate={activationMinimumDate}
-                      relativeToActivation
-                      datePickerLocale={datePickerLocale}
-                      onChange={setDeactivatePreset}
-                      onCustom={setDeactivateCustom}
-                    />
-                    <ScheduleField
-                      t={t}
-                      scheduleOptions={scheduleOptions}
-                      label={t("web.capsules.popup.time.delete")}
-                      value={deletePreset}
-                      custom={deleteCustom}
-                      invalid={deleteSchedulePast}
-                      minimumDate={activationMinimumDate}
-                      relativeToActivation
-                      datePickerLocale={datePickerLocale}
-                      onChange={setDeletePreset}
-                      onCustom={setDeleteCustom}
-                    />
-                  </div>
-                </AdvancedRow>
-                <AdvancedRow
-                  title={t("web.capsules.popup.access.title")}
-                  description={t("web.capsules.popup.access.description")}
-                  checked={effectiveAccessEnabled}
-                  onChange={setAccessEnabled}
-                  disabled={forceAccess}
-                >
-                  <MultiSelect
-                    filterable
-                    searchPlaceholder={t("web.capsules.popup.access.searchPlaceholder")}
-                    searchEmptyMessage={t("web.capsules.popup.access.membersEmpty")}
-                    value={recipients}
-                    onValueChange={setRecipients}
-                    onSearchQueryChange={setRecipientInput}
-                    placeholder={t("web.capsules.popup.access.placeholder")}
-                    onSearchSubmit={membersOnlyAccess ? undefined : addRecipient}
-                    renderSearchEmpty={
-                      membersOnlyAccess
-                        ? undefined
-                        : (query, submit) =>
-                            isValidEmail(query) ? (
-                              <Button
-                                type="button"
-                                variant="secondary"
-                                size="sm"
-                                className="w-full gap-1 font-medium"
-                                onClick={submit}
-                              >
-                                <CapsulePlusIcon className="size-4" />
-                                {t("web.capsules.popup.access.addEmail", { query })}
-                              </Button>
-                            ) : (
-                              <div className="flex h-8 w-full items-center justify-center text-sm leading-5 text-destructive">
-                                {t("web.capsules.popup.access.invalidEmail")}
-                              </div>
-                            )
-                    }
-                  >
-                    <MultiSelectTrigger
-                      aria-invalid={recipientsInvalid || undefined}
-                      className={cn(
-                        "font-normal",
-                        recipientsInvalid ? capsuleFieldErrorClassName : undefined,
-                      )}
-                    />
-                    <MultiSelectContent className="min-w-[min(100vw-2rem,22rem)]">
-                      {members.map((member) => (
-                        <MultiSelectItem
-                          key={member.userId}
-                          value={member.email.toLocaleLowerCase()}
-                          chipLabel={member.email}
-                          searchText={`${member.firstName ?? ""} ${member.lastName ?? ""} ${member.email}`}
-                          className="items-start py-2"
-                        >
-                          <span className="flex min-w-0 flex-col gap-0.5 leading-tight">
-                            <span className="font-medium text-foreground">
-                              {[member.firstName, member.lastName]
-                                .filter(Boolean)
-                                .join(" ") || member.email}
-                            </span>
-                            <span className="text-xs text-muted-foreground">
-                              {member.email}
-                            </span>
-                          </span>
-                        </MultiSelectItem>
-                      ))}
-                    </MultiSelectContent>
-                  </MultiSelect>
-                </AdvancedRow>
-                <AdvancedRow
-                  title={t("web.capsules.popup.password.title")}
-                  description={t("web.capsules.popup.password.description")}
-                  checked={effectivePasswordEnabled}
-                  onChange={setPasswordEnabled}
-                  disabled={forcePassword}
-                >
-                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                    <label className="flex flex-col gap-3 text-sm font-normal">
-                      {t("web.capsules.popup.password.setLabel")}
-                      <Input
-                        type="password"
-                        value={password}
-                        onChange={(event) => setPassword(event.target.value)}
-                        placeholder={
-                          isEditing && hadPassword
-                            ? t("web.capsules.popup.password.keepPlaceholder")
-                            : undefined
-                        }
-                        aria-invalid={passwordInvalid || undefined}
-                        className={passwordInvalid ? capsuleFieldErrorClassName : undefined}
-                      />
-                    </label>
-                    <label className="flex flex-col gap-3 text-sm font-normal">
-                      {t("web.capsules.popup.password.attemptLimit")}
-                      <Input
-                        type="number"
-                        min={1}
-                        value={effectiveAttemptLimit}
-                        disabled={forcePasswordAttemptLimit}
-                        onChange={(event) =>
-                          setAttemptLimit(
-                            Math.max(1, Number(event.target.value)),
-                          )
-                        }
-                      />
-                    </label>
-                  </div>
-                </AdvancedRow>
-                <AdvancedRow
-                  title={t("web.capsules.popup.approval.title")}
-                  description={t("web.capsules.popup.approval.description")}
-                  checked={effectiveApprovalRequired}
-                  onChange={setApprovalRequired}
-                  disabled={forceApproval}
-                />
-              </>
-            )}
+                  </label>
+                </div>
+              </AdvancedRow>
+            ) : null}
+            {accessSettingsMounted && CapsuleAccessSettingsFields ? (
+              <fieldset
+                disabled={!accessSettingsActive}
+                className="min-w-0 border-0 p-0 disabled:opacity-60"
+              >
+              <CapsuleAccessSettingsFields
+                t={t}
+                locked={!accessSettingsActive}
+                policies={capsulePolicies}
+                members={members}
+                isEditing={isEditing}
+                saveDefaults={saveDefaults}
+                onSaveDefaultsChange={accessSettingsActive ? setSaveDefaults : () => undefined}
+                values={{
+                  viewsEnabled,
+                  maxViews,
+                  viewLimitAction,
+                  timeEnabled,
+                  activatePreset,
+                  activateCustom,
+                  deactivatePreset,
+                  deactivateCustom,
+                  deletePreset,
+                  deleteCustom,
+                  accessEnabled,
+                  recipients,
+                  passwordEnabled,
+                  password,
+                  attemptLimit,
+                  hadPassword,
+                  hadRecipients,
+                  approvalRequired,
+                }}
+                onChange={(patch: Partial<CapsuleAccessSettingsValues>) => {
+                  if (!accessSettingsActive) return;
+                  if (patch.viewsEnabled !== undefined) setViewsEnabled(patch.viewsEnabled);
+                  if (patch.maxViews !== undefined) setMaxViews(patch.maxViews);
+                  if (patch.viewLimitAction !== undefined) setViewLimitAction(patch.viewLimitAction);
+                  if (patch.timeEnabled !== undefined) setTimeEnabled(patch.timeEnabled);
+                  if (patch.activatePreset !== undefined) setActivatePreset(patch.activatePreset);
+                  if (patch.activateCustom !== undefined) setActivateCustom(patch.activateCustom);
+                  if (patch.deactivatePreset !== undefined) setDeactivatePreset(patch.deactivatePreset);
+                  if (patch.deactivateCustom !== undefined) setDeactivateCustom(patch.deactivateCustom);
+                  if (patch.deletePreset !== undefined) setDeletePreset(patch.deletePreset);
+                  if (patch.deleteCustom !== undefined) setDeleteCustom(patch.deleteCustom);
+                  if (patch.accessEnabled !== undefined) setAccessEnabled(patch.accessEnabled);
+                  if (patch.recipients !== undefined) setRecipients(patch.recipients);
+                  if (patch.passwordEnabled !== undefined) setPasswordEnabled(patch.passwordEnabled);
+                  if (patch.password !== undefined) setPassword(patch.password);
+                  if (patch.attemptLimit !== undefined) setAttemptLimit(patch.attemptLimit);
+                  if (patch.hadPassword !== undefined) setHadPassword(patch.hadPassword);
+                  if (patch.hadRecipients !== undefined) setHadRecipients(patch.hadRecipients);
+                  if (patch.approvalRequired !== undefined) setApprovalRequired(patch.approvalRequired);
+                }}
+                validation={{
+                  activateSchedulePast,
+                  deactivateSchedulePast,
+                  deleteSchedulePast,
+                  recipientsInvalid,
+                  passwordInvalid,
+                  activationMinimumDate,
+                }}
+              />
+              </fieldset>
+            ) : null}
           </div>
         ) : null}
 
-        {advancedOpen && advancedAvailable ? (
-          <label className="flex items-center gap-2 px-4 text-sm">
-            <Checkbox
-              checked={saveDefaults}
-              onCheckedChange={(checked) => setSaveDefaults(Boolean(checked))}
-            />
-            {t("web.capsules.popup.saveDefaults")}
-          </label>
-        ) : null}
         {error ? <p className="text-sm text-destructive">{error}</p> : null}
           </>
         )}
@@ -1740,13 +1533,6 @@ function pickSharedCapsuleDefaults(
   const byType = new Map(entries.map((entry) => [entry.type, entry.settings]));
   return byType.get("text") ?? byType.get("file") ?? byType.get("item") ?? entries[0]?.settings ?? null;
 }
-
-const capsuleFieldErrorClassName =
-  "border-destructive shadow-[0_0_0_2px_hsl(var(--destructive)_/_0.4)] hover:border-destructive " +
-  "focus:border-destructive focus:shadow-[0_0_0_2px_hsl(var(--destructive)_/_0.4)] " +
-  "focus-visible:border-destructive focus-visible:shadow-[0_0_0_2px_hsl(var(--destructive)_/_0.4)] " +
-  "data-[state=open]:border-destructive data-[state=open]:shadow-[0_0_0_2px_hsl(var(--destructive)_/_0.4)] " +
-  "data-[state=open]:hover:border-destructive data-[state=open]:hover:shadow-[0_0_0_2px_hsl(var(--destructive)_/_0.4)]";
 
 function summarizeCapsuleAdvancedSettings(input: {
   viewsEnabled: boolean;
@@ -1986,251 +1772,6 @@ function CapsuleSelect({
   );
 }
 
-function ScheduleField({
-  t,
-  scheduleOptions,
-  label,
-  value,
-  custom,
-  datePickerLocale,
-  minimumDate,
-  allowNow = false,
-  relativeToActivation = false,
-  invalid = false,
-  onChange,
-  onCustom,
-}: {
-  t: (messageKey: string) => string;
-  scheduleOptions: { value: SchedulePreset; label: string }[];
-  label: string;
-  value: SchedulePreset;
-  custom: string;
-  datePickerLocale: Locale;
-  minimumDate?: Date;
-  allowNow?: boolean;
-  relativeToActivation?: boolean;
-  invalid?: boolean;
-  onChange: (value: SchedulePreset) => void;
-  onCustom: (value: string) => void;
-}) {
-  const [pickerOpen, setPickerOpen] = useState(false);
-  const earliestDate = minimumDate ?? new Date();
-  const selectedDate = custom ? new Date(custom) : undefined;
-  const [draftDate, setDraftDate] = useState<Date>(
-    () => selectedDate ?? nextAvailableDateTime(earliestDate),
-  );
-  const [calendarMonth, setCalendarMonth] = useState<Date>(draftDate);
-  const options = scheduleOptions
-    .filter((option) => allowNow || option.value !== "now")
-    .map((option) => [option.value, option.label] as const);
-  const selectOptions = custom
-    ? ([["custom", formatCapsuleDateTime(selectedDate!)], ...options] as const)
-    : options;
-
-  function handlePickerOpenChange(open: boolean) {
-    if (open) {
-      const next =
-        selectedDate && selectedDate.getTime() >= earliestDate.getTime()
-          ? selectedDate
-          : nextAvailableDateTime(earliestDate);
-      setDraftDate(next);
-      setCalendarMonth(next);
-    }
-    setPickerOpen(open);
-  }
-
-  function updateDraftTime(part: "hours" | "minutes", nextValue: number) {
-    setDraftDate((current) => {
-      const next = new Date(current);
-      if (part === "hours") next.setHours(nextValue);
-      else next.setMinutes(nextValue);
-      return next;
-    });
-  }
-
-  return (
-    <div className="flex flex-col gap-3">
-      <span className="text-sm font-normal">{label}</span>
-      <ControlGroup className="w-full">
-        <CapsuleSelect
-          value={custom ? "custom" : value}
-          onChange={(next) => {
-            if (next === "custom") return;
-            onChange(next as SchedulePreset);
-            onCustom("");
-          }}
-          options={selectOptions}
-          invalid={invalid}
-          sectionLabelAfterNever={
-            relativeToActivation ? t("web.capsules.popup.schedule.afterActivation") : undefined
-          }
-          triggerClassName={cn(
-            controlGroupItemFixedClassName,
-            "min-w-0 flex-1",
-            invalid && capsuleFieldErrorClassName,
-          )}
-        />
-        <Popover open={pickerOpen} onOpenChange={handlePickerOpenChange}>
-          <PopoverTrigger asChild>
-            <Button
-              type="button"
-              variant={invalid ? "danger" : "outline"}
-              size="icon"
-              className={cn(
-                controlGroupItemFixedClassName,
-                "h-9 w-10 shrink-0 font-normal",
-              )}
-              aria-label={t("web.capsules.popup.datePicker.selectAria")}
-            >
-              <CapsuleCalendarIcon />
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent align="end" className="w-auto p-0">
-            <div className="flex h-[352px]">
-              <Calendar
-                mode="single"
-                captionLayout="label"
-                selected={draftDate}
-                month={calendarMonth}
-                onMonthChange={setCalendarMonth}
-                locale={datePickerLocale}
-                startMonth={capsuleCalendarStartMonth}
-                endMonth={capsuleCalendarEndMonth}
-                disabled={{ before: startOfDay(earliestDate) }}
-                onSelect={(date) => {
-                  if (!date) return;
-                  const next = new Date(date);
-                  next.setHours(
-                    draftDate.getHours(),
-                    draftDate.getMinutes(),
-                    0,
-                    0,
-                  );
-                  setDraftDate(
-                    next.getTime() >= earliestDate.getTime()
-                      ? next
-                      : nextAvailableDateTime(earliestDate),
-                  );
-                }}
-                classNames={{ nav: "hidden" }}
-                components={{ MonthCaption: CalendarMonthYearCaption }}
-              />
-              <div className="flex min-h-0 flex-col border-l">
-                <div className="border-b px-3 py-2 text-center text-sm font-medium">
-                  {t("web.capsules.popup.datePicker.time")}
-                </div>
-                <div className="grid grid-cols-2 border-b text-center text-xs text-muted-foreground">
-                  <span className="px-2 py-1.5">{t("web.capsules.popup.datePicker.hour")}</span>
-                  <span className="border-l px-2 py-1.5">{t("web.capsules.popup.datePicker.minute")}</span>
-                </div>
-                <div className="flex min-h-0 flex-1">
-                  <TimeValueScroll
-                    values={scheduleHours}
-                    selected={draftDate.getHours()}
-                    date={draftDate}
-                    minimumDate={earliestDate}
-                    part="hours"
-                    onSelect={(hours) => updateDraftTime("hours", hours)}
-                  />
-                  <TimeValueScroll
-                    values={scheduleMinutes}
-                    selected={draftDate.getMinutes()}
-                    date={draftDate}
-                    minimumDate={earliestDate}
-                    part="minutes"
-                    onSelect={(minutes) => updateDraftTime("minutes", minutes)}
-                    className="border-l"
-                  />
-                </div>
-              </div>
-            </div>
-            <div className="flex items-center justify-between border-t p-3">
-              <Button
-                type="button"
-                variant="ghost"
-                disabled={
-                  startOfDay(earliestDate).getTime() > startOfToday().getTime()
-                }
-                onClick={() => {
-                  const next = nextAvailableDateTime(earliestDate);
-                  setDraftDate(next);
-                  setCalendarMonth(next);
-                }}
-              >
-                {t("web.capsules.popup.datePicker.today")}
-              </Button>
-              <Button
-                type="button"
-                disabled={draftDate.getTime() < earliestDate.getTime()}
-                onClick={() => {
-                  onCustom(toLocalDateTimeValue(draftDate));
-                  setPickerOpen(false);
-                }}
-              >
-                {t("web.capsules.popup.datePicker.done")}
-              </Button>
-            </div>
-          </PopoverContent>
-        </Popover>
-      </ControlGroup>
-    </div>
-  );
-}
-
-function TimeValueScroll({
-  values,
-  selected,
-  date,
-  minimumDate,
-  part,
-  onSelect,
-  className,
-}: {
-  values: readonly number[];
-  selected: number;
-  date: Date;
-  minimumDate: Date;
-  part: "hours" | "minutes";
-  onSelect: (value: number) => void;
-  className?: string;
-}) {
-  const selectedRef = useRef<HTMLButtonElement>(null);
-
-  useEffect(() => {
-    selectedRef.current?.scrollIntoView({ block: "center" });
-  }, [selected]);
-
-  return (
-    <ScrollArea className={cn("h-full min-h-0 w-14", className)}>
-      <div className="flex flex-col p-1">
-        {values.map((value) => {
-          const candidate = new Date(date);
-          if (part === "hours") candidate.setHours(value);
-          else candidate.setMinutes(value);
-          const disabled = candidate.getTime() < minimumDate.getTime();
-
-          return (
-            <button
-              key={value}
-              ref={selected === value ? selectedRef : undefined}
-              type="button"
-              disabled={disabled}
-              className={cn(
-                "flex h-10 w-full shrink-0 items-center justify-center rounded-md text-sm font-normal tabular-nums",
-                "hover:bg-muted disabled:pointer-events-none disabled:text-muted-foreground/40",
-                selected === value && "bg-muted text-foreground",
-              )}
-              onClick={() => onSelect(value)}
-            >
-              {String(value).padStart(2, "0")}
-            </button>
-          );
-        })}
-      </div>
-    </ScrollArea>
-  );
-}
-
 function resolveScheduleDate(
   preset: SchedulePreset,
   custom: string,
@@ -2269,20 +1810,6 @@ function capsuleFieldRounding(fieldIndex: number, fieldsCount: number) {
     fieldsCount,
     canAddField: false,
   });
-}
-
-function isValidEmail(value: string): boolean {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/u.test(value.trim());
-}
-
-function startOfToday(): Date {
-  return startOfDay(new Date());
-}
-
-function startOfDay(date: Date): Date {
-  const value = new Date(date);
-  value.setHours(0, 0, 0, 0);
-  return value;
 }
 
 function toTimeValue(value: Date): string {
@@ -2480,24 +2007,6 @@ function capsuleEditorFingerprint(input: {
   });
 }
 
-function nextAvailableDateTime(minimumDate: Date = new Date()): Date {
-  const value = new Date(
-    Math.max(Date.now(), minimumDate.getTime()) + 5 * 60_000,
-  );
-  value.setSeconds(0, 0);
-  return value;
-}
-
-function formatCapsuleDateTime(value: Date): string {
-  return new Intl.DateTimeFormat("ru-RU", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(value);
-}
-
 function CapsuleRecordFavicon({
   record,
 }: {
@@ -2530,27 +2039,6 @@ function CapsuleRecordFavicon({
       size={32}
       className="shrink-0"
     />
-  );
-}
-
-function CapsulePlusIcon(props: SVGProps<SVGSVGElement>) {
-  return (
-    <svg
-      width={16}
-      height={16}
-      viewBox="0 0 16 16"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-hidden
-      {...props}
-    >
-      <path
-        d="M3.33337 8H12.6667M8.00004 3.33337V12.6667"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
   );
 }
 
@@ -2641,26 +2129,6 @@ function CapsuleItemIcon(props: SVGProps<SVGSVGElement>) {
         d="M2.37801 10.8333C2.37801 10.4797 2.51848 10.1406 2.76853 9.89052C3.01858 9.64048 3.35772 9.5 3.71134 9.5L12.1667 9.5C12.5203 9.5 12.8594 9.64048 13.1095 9.89052C13.3595 10.1406 13.5 10.4797 13.5 10.8333V12.1667C13.5 12.5203 13.3595 12.8594 13.1095 13.1095C12.8594 13.3595 12.5203 13.5 12.1667 13.5H3.71134C3.35772 13.5 3.01858 13.3595 2.76853 13.1095C2.51848 12.8594 2.37801 12.5203 2.37801 12.1667V10.8333Z"
         stroke="currentColor"
         strokeWidth="1"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function CapsuleCalendarIcon(props: SVGProps<SVGSVGElement>) {
-  return (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 16 16"
-      fill="none"
-      aria-hidden
-      {...props}
-    >
-      <path
-        d="M5.33333 1.33325V3.99992M10.6667 1.33325V3.99992M2 6.66658H14M3.33333 2.66659H12.6667C13.403 2.66659 14 3.26354 14 3.99992V13.3333C14 14.0696 13.403 14.6666 12.6667 14.6666H3.33333C2.59695 14.6666 2 14.0696 2 13.3333V3.99992C2 3.26354 2.59695 2.66659 3.33333 2.66659Z"
-        stroke="currentColor"
         strokeLinecap="round"
         strokeLinejoin="round"
       />

@@ -76,6 +76,7 @@ const t = (key: string) =>
       "web.capsules.list.type.file": "File",
       "web.capsules.list.type.item": "Item",
       "web.capsules.popup.fileUploadLabel": "Upload file",
+      "web.capsules.popup.planUnavailable": "Not available on your current plan",
       "web.newItemPopup.cancel": "Cancel",
       "web.newItemPopup.save": "Save",
     } as Record<string, string>
@@ -124,13 +125,16 @@ describe("NewCapsulePopup file attach control", () => {
     vi.stubEnv("VITE_ENTERPRISE_MODULES_ACTIVE", "false");
   });
 
-  it("hides the file type and upload button on SaaS FREE", () => {
+  it("keeps the file type visible but disabled on SaaS FREE", () => {
     vi.stubEnv("VITE_DEPLOYMENT_MODE", "saas");
     renderPopup("FREE");
 
     expect(screen.getByRole("button", { name: "Text" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Item" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "File" })).not.toBeInTheDocument();
+    const fileType = screen.getByRole("button", { name: "File" });
+    expect(fileType).toBeDisabled();
+    expect(fileType).toHaveAttribute("title", "Not available on your current plan");
+    expect(screen.getByText("Not available on your current plan")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Upload file/ })).not.toBeInTheDocument();
   });
 

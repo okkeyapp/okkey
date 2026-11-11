@@ -6,7 +6,7 @@ import type {
   CapsuleOpenResponseDto,
   ItemPlaintextV2,
 } from "@okkey/types";
-import { Alert, AlertDescription, AlertTitle, Button, cn, Input, Spinner } from "@okkey/ui";
+import { Button, cn, Spinner } from "@okkey/ui";
 import type { KeyFieldFileValue } from "@okkey/ui";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
@@ -22,6 +22,7 @@ import { captureCapsuleFragmentKey } from "../../capsules/fragmentKey";
 import { calendarDaysBetween } from "../../lib/calendarDaysBetween";
 import PublicCapsuleContent from "./PublicCapsuleContent";
 import { useLocale } from "../../locale/LocaleContext";
+import workspaceCapsulesModule from "@okkey-enterprise/workspace-capsules";
 
 const capsulePanelClassName = cn(
   "w-full rounded-3xl bg-background text-foreground",
@@ -79,6 +80,7 @@ function getOrCreateGuestSessionId(capsuleId: string): string {
 
 export default function PublicCapsulePage() {
   const { t } = useLocale();
+  const PublicCapsuleAccessGate = workspaceCapsulesModule.PublicCapsuleAccessGate;
   const { capsuleId = "" } = useParams();
   const publicApi = useRef(createPublicApiClient());
   const core = useAuthenticatedCoreClient();
@@ -460,67 +462,33 @@ export default function PublicCapsulePage() {
             </Button>
           </Centered>
         ) : null}
-        {state === "password" || (passwordUnlocking && state !== "content") ? (
-          <div
-            className={cn("flex flex-col", passwordUnlocking && "pointer-events-none select-none")}
-            aria-busy={passwordUnlocking || undefined}
-          >
-            <div className="pb-6 pt-0 text-center text-sm text-copy-secondary">
-              {t("web.capsules.public.passwordProtected")}
-            </div>
-            <div className="-mx-6 border-t border-border" />
-            <div className="flex justify-center pb-6 pt-12">
-              <form
-                className="flex w-full max-w-[360px] flex-col gap-6"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  if (passwordUnlocking) return;
-                  void open({ fromPassword: true });
-                }}
-              >
-                {passwordErrorKey ? (
-                  <Alert variant="error">
-                    <AlertTitle>{t("unlock.errorTitle")}</AlertTitle>
-                    <AlertDescription>{t(passwordErrorKey)}</AlertDescription>
-                  </Alert>
-                ) : null}
-                <label className="flex w-full flex-col gap-3 text-sm font-medium text-copy-primary">
-                  {t("web.capsules.public.password")}
-                  <Input
-                    type="password"
-                    className="font-normal"
-                    value={password}
-                    placeholder={t("web.capsules.public.passwordPlaceholder")}
-                    disabled={passwordUnlocking}
-                    onChange={(event) => setPassword(event.target.value)}
-                    autoFocus
-                  />
-                </label>
-                <Button type="submit" className="w-full" disabled={!password || passwordUnlocking}>
-                  {t("web.capsules.public.unlock")}
-                </Button>
-                <p className="text-center text-xs leading-4 text-copy-secondary">
-                  {t("web.capsules.public.passwordAttemptsHint")}
-                </p>
-              </form>
-            </div>
-          </div>
-        ) : null}
-        {state === "approval" ? (
-          <Centered>
-            {t("web.capsules.public.approvalRequired")}
-            <Button onClick={() => void requestApproval()}>{t("web.capsules.public.requestShow")}</Button>
-          </Centered>
-        ) : null}
-        {state === "waiting" ? (
-          <Centered>
-            <Spinner />
-            {t("web.capsules.public.waitingApproval")}
-          </Centered>
-        ) : null}
-        {state === "denied" ? <Centered>{t("web.capsules.public.denied")}</Centered> : null}
-        {state === "blacklisted" ? (
-          <Centered>{t("web.capsules.public.blacklisted")}</Centered>
+        {state === "password" ||
+        state === "approval" ||
+        state === "waiting" ||
+        state === "denied" ||
+        state === "blacklisted" ||
+        (passwordUnlocking && state !== "content") ? (
+          PublicCapsuleAccessGate ? (
+            <PublicCapsuleAccessGate
+              mode={
+                state === "approval" ||
+                state === "waiting" ||
+                state === "denied" ||
+                state === "blacklisted"
+                  ? state
+                  : "password"
+              }
+              t={t}
+              password={password}
+              onPasswordChange={setPassword}
+              passwordErrorKey={passwordErrorKey}
+              passwordUnlocking={passwordUnlocking}
+              onUnlock={() => void open({ fromPassword: true })}
+              onRequestApproval={() => void requestApproval()}
+            />
+          ) : (
+            <Centered>{t("web.capsules.public.unavailable")}</Centered>
+          )
         ) : null}
         {state === "content" ? (
           <PublicCapsuleLimitsNotice metadata={metadata}>
