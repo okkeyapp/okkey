@@ -122,6 +122,7 @@ jobs:
       # Host build scripts (wasm-bindgen, proc macros) link with cc. The Playwright
       # image has no compiler toolchain, and this job must not install one with apt.
       - name: Install host linker
+        shell: bash
         run: |
           set -euo pipefail
           case "$(uname -m)" in
