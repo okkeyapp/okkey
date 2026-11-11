@@ -25,6 +25,12 @@ jobs:
     name: browser-e2e
     runs-on: ubuntu-latest
     timeout-minutes: 90
+    # Image tag tracks @playwright/test in yarn.lock (1.64.1). Chromium and its
+    # system libraries are already in the image, so this job must not use apt.
+    # The image default user is root; keep it so the mounted workspace is writable.
+    container:
+      image: mcr.microsoft.com/playwright:v1.64.1-noble
+      options: --shm-size=2g
     services:
       postgres:
         image: postgres:16
@@ -57,8 +63,9 @@ jobs:
       RUST_TOOLCHAIN: 1.86.0
       WASM_PACK_VERSION: 0.13.1
       CARGO_NET_RETRY: "10"
-      DATABASE_URL: postgresql://okkey:okkey@127.0.0.1:5432/okkey
-      REDIS_URL: redis://127.0.0.1:6379
+      # Service containers are reached by service name, not the host loopback.
+      DATABASE_URL: postgresql://okkey:okkey@postgres:5432/okkey
+      REDIS_URL: redis://redis:6379
       DEPLOY_ENV: dev
       NODE_ENV: development
       JWT_SECRET: test-jwt-secret
@@ -68,7 +75,7 @@ jobs:
       EMAIL_DEFAULT_LOCALE: en
       EMAIL_FROM: no-reply@okkey.local
       OKKEY_SALES_EMAIL: sales@okkey.test
-      EMAIL_SMTP_HOST: 127.0.0.1
+      EMAIL_SMTP_HOST: mailpit
       EMAIL_SMTP_PORT: "1025"
       EMAIL_SMTP_SECURE: "false"
       CRYPTO_ALLOWED_PROFILE_VERSIONS: "2"
@@ -82,8 +89,8 @@ jobs:
       PUBLIC_APP_BASE_URL: http://127.0.0.1:4173
       E2E_BASE_URL: http://127.0.0.1:4173
       E2E_API_BASE_URL: http://127.0.0.1:4000
-      E2E_DATABASE_URL: postgresql://okkey:okkey@127.0.0.1:5432/okkey
-      E2E_MAILPIT_URL: http://127.0.0.1:8025
+      E2E_DATABASE_URL: postgresql://okkey:okkey@postgres:5432/okkey
+      E2E_MAILPIT_URL: http://mailpit:8025
       E2E_EXTENSION: "1"
       VITE_API_BASE_URL: http://127.0.0.1:4000
       VITE_APP_ENV: development
@@ -93,6 +100,18 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "25"
+
+      # The image ships Node 24 and a global Yarn. This job needs Node 25, which
+      # replaces that PATH, so activate the pinned Yarn before the cache step.
+      - name: Activate Yarn
+        env:
+          COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+        run: corepack enable && corepack prepare yarn@1.22.22 --activate
+
+      - name: Cache Yarn
         uses: actions/setup-node@v4
         with:
           node-version: "25"
@@ -129,7 +148,8 @@ jobs:
         run: yarn build:extension:chromium
 
       - name: Install Playwright Chromium
-        run: yarn test:browser:install
+        # No --with-deps: that flag installs apt packages. Browsers are in the image.
+        run: yarn --cwd e2e playwright install chromium
 
       - name: Wait for Postgres, Redis, Mailpit
         shell: bash
@@ -146,11 +166,11 @@ jobs:
               sleep 1
             done
           }
-          wait_for_port 127.0.0.1 5432 postgres 120
-          wait_for_port 127.0.0.1 6379 redis 120
-          wait_for_port 127.0.0.1 1025 mailpit-smtp 120
-          wait_for_port 127.0.0.1 8025 mailpit-http 120
-          curl -sf http://127.0.0.1:8025/api/v1/info >/dev/null
+          wait_for_port postgres 5432 postgres 120
+          wait_for_port redis 6379 redis 120
+          wait_for_port mailpit 1025 mailpit-smtp 120
+          wait_for_port mailpit 8025 mailpit-http 120
+          curl -sf http://mailpit:8025/api/v1/info >/dev/null
 
       - name: Start API
         shell: bash
