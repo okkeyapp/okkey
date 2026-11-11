@@ -74,6 +74,7 @@ function PlusIcon({ className }: { className?: string }) {
 
 export default function SharedVaultsSection({
   workspaceId,
+  workspace,
   vaults,
   vaultsListReady = true,
   t,
