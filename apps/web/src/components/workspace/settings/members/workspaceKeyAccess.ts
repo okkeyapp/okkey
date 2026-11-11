@@ -1,4 +1,27 @@
+import type { ApiClient, CoreApiClient } from "@okkey/api";
 import type { WorkspacePermissionsMatrixDto } from "@okkey/types";
+
+/** Bound workspace-key calls. `get` and `post` are the client's `api.get` and `api.post`. */
+export type BoundWorkspaceKeyCore = {
+  getWorkspaceKey: CoreApiClient["getWorkspaceKey"];
+  grantWorkspaceKeyWrap: CoreApiClient["grantWorkspaceKeyWrap"];
+  listWorkspaceMembers: CoreApiClient["listWorkspaceMembers"];
+  deleteWorkspaceMember: CoreApiClient["deleteWorkspaceMember"];
+  get: ApiClient["get"];
+  post: ApiClient["post"];
+};
+
+export function bindWorkspaceKeyCore(core: CoreApiClient): BoundWorkspaceKeyCore {
+  const api = core.getHttpClient();
+  return {
+    getWorkspaceKey: core.getWorkspaceKey.bind(core),
+    grantWorkspaceKeyWrap: core.grantWorkspaceKeyWrap.bind(core),
+    listWorkspaceMembers: core.listWorkspaceMembers.bind(core),
+    deleteWorkspaceMember: core.deleteWorkspaceMember.bind(core),
+    get: api.get.bind(api),
+    post: api.post.bind(api),
+  };
+}
 
 /** Ed25519 public key length. */
 const ED25519_PUBLIC_KEY_LEN = 32;

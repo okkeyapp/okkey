@@ -7,7 +7,8 @@ import {
   type InvitePreviewRateLimit,
 } from "../workspace-members/invite-preview-rate-limit.ts";
 import { asVaultSharingServiceError } from "../workspace-shared-vaults/vault-sharing-error.ts";
-import { parseWorkspaceKeyWrap, WorkspaceKeyServiceError } from "../workspace-key/service.ts";
+import { parseWorkspaceKeyWrap, WorkspaceKeyRotationError } from "../workspace-key/removal.ts";
+import { WorkspaceKeyServiceError } from "../workspace-key/service.ts";
 import {
   WorkspaceMembersService,
   WorkspaceMembersServiceError,
@@ -34,7 +35,11 @@ function handleMembersError(
   res: Parameters<typeof json>[0],
   error: unknown,
 ): void {
-  if (error instanceof WorkspaceMembersServiceError || error instanceof WorkspaceKeyServiceError) {
+  if (
+    error instanceof WorkspaceMembersServiceError ||
+    error instanceof WorkspaceKeyServiceError ||
+    error instanceof WorkspaceKeyRotationError
+  ) {
     json(res, error.statusCode, errorPayload(error.code, error.message, requestId));
     return;
   }
@@ -331,6 +336,84 @@ export function createWorkspaceMemberDeleteRoute(
         : null;
       await membersService.removeMember(workspaceId, userId, targetUserId, rotation);
       json(ctx.res, 200, { deleted: true });
+    } catch (error) {
+      handleMembersError(ctx.requestId, ctx.res, error);
+    }
+  };
+}
+
+export function createWorkspaceKeyPendingRecipientsRoute(
+  membersService: WorkspaceMembersService,
+  resolveUserId: ResolveUserId,
+): RouteHandler {
+  return async (ctx) => {
+    const workspaceId = ctx.params.workspaceId;
+    if (!workspaceId) {
+      json(ctx.res, 400, errorPayload("BAD_REQUEST", "workspaceId is required", ctx.requestId));
+      return;
+    }
+    try {
+      const userId = await resolveUserId(ctx.req);
+      if (!userId) {
+        json(ctx.res, 401, errorPayload("AUTH_REQUIRED", "auth required", ctx.requestId));
+        return;
+      }
+      const userIds = await membersService.listPendingWorkspaceKeyRecipients(workspaceId, userId);
+      json(ctx.res, 200, { user_ids: userIds });
+    } catch (error) {
+      handleMembersError(ctx.requestId, ctx.res, error);
+    }
+  };
+}
+
+export function createWorkspaceKeyPendingRotationsRoute(
+  membersService: WorkspaceMembersService,
+  resolveUserId: ResolveUserId,
+): RouteHandler {
+  return async (ctx) => {
+    const workspaceId = ctx.params.workspaceId;
+    if (!workspaceId) {
+      json(ctx.res, 400, errorPayload("BAD_REQUEST", "workspaceId is required", ctx.requestId));
+      return;
+    }
+    try {
+      const userId = await resolveUserId(ctx.req);
+      if (!userId) {
+        json(ctx.res, 401, errorPayload("AUTH_REQUIRED", "auth required", ctx.requestId));
+        return;
+      }
+      const removedUserIds = await membersService.listPendingWorkspaceKeyRotations(workspaceId, userId);
+      json(ctx.res, 200, { removed_user_ids: removedUserIds });
+    } catch (error) {
+      handleMembersError(ctx.requestId, ctx.res, error);
+    }
+  };
+}
+
+export function createWorkspaceKeyDeferredRotationRoute(
+  membersService: WorkspaceMembersService,
+  resolveUserId: ResolveUserId,
+): RouteHandler {
+  return async (ctx) => {
+    const workspaceId = ctx.params.workspaceId;
+    if (!workspaceId) {
+      json(ctx.res, 400, errorPayload("BAD_REQUEST", "workspaceId is required", ctx.requestId));
+      return;
+    }
+    try {
+      const userId = await resolveUserId(ctx.req);
+      if (!userId) {
+        json(ctx.res, 401, errorPayload("AUTH_REQUIRED", "auth required", ctx.requestId));
+        return;
+      }
+      const body = await readJsonBody<{ wraps?: unknown }>(ctx.req);
+      if (!Array.isArray(body.wraps)) {
+        json(ctx.res, 400, errorPayload("BAD_REQUEST", "wraps are required", ctx.requestId));
+        return;
+      }
+      const wraps = body.wraps.map((wrap) => parseWorkspaceKeyWrap(wrap));
+      const result = await membersService.applyDeferredWorkspaceKeyRotation(workspaceId, userId, wraps);
+      json(ctx.res, 200, { current_version: result?.nextVersion ?? null });
     } catch (error) {
       handleMembersError(ctx.requestId, ctx.res, error);
     }

@@ -40,6 +40,7 @@ function runtime(): PendingWorkspaceKeyRuntime {
       payload: `wrap:${input.recipientUserId}`,
       meta: { entity: "workspace_key_wrap", key_version: input.keyVersion },
     }),
+    generateWorkspaceKey: async () => Uint8Array.from({ length: 32 }, () => 9),
     base64ToBytes: (value) => Uint8Array.from(Buffer.from(value, "base64")),
   };
 }
@@ -66,11 +67,52 @@ function member(userId: string, publicKey = VALID_PK, publicPqKey: string | null
   };
 }
 
-function core(options?: { getError?: Error; grantError?: Error }) {
+function core(options?: {
+  getError?: Error;
+  grantError?: Error;
+  holdsKey?: boolean;
+  removedUserIds?: string[];
+  pendingUserIds?: string[];
+  members?: ReturnType<typeof member>[];
+}) {
   const grants: string[] = [];
+  const calls: string[] = [];
+  const posted: unknown[] = [];
+  const http = {
+    async get(this: { post?: unknown }, path: string) {
+      if (!this.post) {
+        throw new Error("this.api undefined");
+      }
+      calls.push(path);
+      if (path.endsWith("/pending-rotations")) {
+        return { removed_user_ids: options?.removedUserIds ?? [] };
+      }
+      if (path.endsWith("/pending-recipients")) {
+        return {
+          user_ids: options?.pendingUserIds ?? [MEMBER, "bad"],
+        };
+      }
+      throw new Error(`unexpected get ${path}`);
+    },
+    async post(this: { get?: unknown }, path: string, body: unknown) {
+      if (!this.get) {
+        throw new Error("this.api undefined");
+      }
+      calls.push(path);
+      posted.push(body);
+      return { current_version: 2 };
+    },
+  };
+  const holdsKey = options?.holdsKey !== false;
   const client = {
-    api: { ready: true },
-    getWorkspaceKey(this: { api?: { ready: boolean } }) {
+    api: http,
+    getHttpClient(this: { api?: typeof http }) {
+      if (!this.api) {
+        throw new Error("this.api undefined");
+      }
+      return this.api;
+    },
+    getWorkspaceKey(this: { api?: typeof http }) {
       if (!this?.api) {
         throw new Error("this.api undefined");
       }
@@ -79,20 +121,26 @@ function core(options?: { getError?: Error; grantError?: Error }) {
       }
       return Promise.resolve({
         current_version: 1,
-        wraps: [{ key_version: 1, encrypted_workspace_key: { payload: "self" } }],
+        wraps: holdsKey ? [{ key_version: 1, encrypted_workspace_key: { payload: "self" } }] : [],
       });
     },
-    listWorkspaceMembers(this: { api?: { ready: boolean } }) {
+    listWorkspaceMembers(this: { api?: typeof http }) {
       if (!this?.api) {
         throw new Error("this.api undefined");
       }
       return Promise.resolve({
-        members: [member(ACTOR), member(MEMBER), member("bad", INVALID_PK, VALID_PQ)],
+        members: options?.members ?? [member(ACTOR), member(MEMBER), member("bad", INVALID_PK, VALID_PQ)],
         actorPermissions: { members: { get: 1, post: 1, put: 1, delete: 1 } },
       });
     },
+    deleteWorkspaceMember(this: { api?: typeof http }) {
+      if (!this?.api) {
+        throw new Error("this.api undefined");
+      }
+      return Promise.resolve({ deleted: true as const });
+    },
     grantWorkspaceKeyWrap(
-      this: { api?: { ready: boolean } },
+      this: { api?: typeof http },
       _workspaceId: string,
       body: { user_id: string },
     ) {
@@ -106,7 +154,7 @@ function core(options?: { getError?: Error; grantError?: Error }) {
       return Promise.resolve({ key_version: 1 });
     },
   };
-  return { client, grants };
+  return { client, grants, calls, posted };
 }
 
 describe("tryCompletePendingWorkspaceKey", () => {
@@ -154,6 +202,52 @@ describe("tryCompletePendingWorkspaceKey", () => {
       runtime(),
     );
     expect(result).toEqual({ granted: 0, skippedInvalidKeys: 1 });
+  });
+
+  it("does nothing when the caller does not hold the current key", async () => {
+    const { client, grants, calls } = core({ holdsKey: false });
+    const result = await tryCompletePendingWorkspaceKey(
+      {
+        core: client as never,
+        workspaceId: "w1",
+        userId: ACTOR,
+        accountVaultKey: ACCOUNT_KEY,
+      },
+      runtime(),
+    );
+    expect(result).toEqual({ granted: 0, skippedInvalidKeys: 0 });
+    expect(grants).toEqual([]);
+    expect(calls).toEqual([]);
+  });
+
+  it("rotates for remaining members before wrapping new members", async () => {
+    const removed = "2000000000000000009";
+    const added = "2000000000000000008";
+    const { client, grants, calls, posted } = core({
+      removedUserIds: [removed],
+      pendingUserIds: [added],
+      members: [member(ACTOR), member(MEMBER), member(removed), member(added)],
+    });
+    const result = await tryCompletePendingWorkspaceKey(
+      {
+        core: client as never,
+        workspaceId: "w1",
+        userId: ACTOR,
+        accountVaultKey: ACCOUNT_KEY,
+      },
+      runtime(),
+    );
+    expect(calls[0]).toContain("/pending-rotations");
+    expect(calls.some((path) => path.endsWith("/deferred-rotation"))).toBe(true);
+    const rotationIndex = calls.findIndex((path) => path.endsWith("/deferred-rotation"));
+    const recipientsIndex = calls.findIndex((path) => path.endsWith("/pending-recipients"));
+    expect(rotationIndex).toBeGreaterThanOrEqual(0);
+    expect(recipientsIndex).toBeGreaterThan(rotationIndex);
+    const body = posted[0] as { wraps: Array<{ user_id: string }> };
+    expect(body.wraps.map((wrap) => wrap.user_id).sort()).toEqual([ACTOR, MEMBER, added].sort());
+    expect(body.wraps.some((wrap) => wrap.user_id === removed)).toBe(false);
+    expect(grants).toEqual([added]);
+    expect(result.granted).toBe(1);
   });
 });
 

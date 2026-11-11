@@ -3,6 +3,7 @@ import type { EncryptedBlobDto, WorkspaceMemberDto } from "@okkey/types";
 
 import {
   bindClientMethod,
+  bindWorkspaceKeyCore,
   isSwallowableWorkspaceKeyError,
   recipientPublicKeysAreValid,
 } from "./workspaceKeyAccess";
@@ -30,6 +31,7 @@ export type PendingWorkspaceKeyRuntime = {
     recipientPublicKey: Uint8Array;
     recipientPqPublicKey: Uint8Array;
   }) => Promise<EncryptedBlobDto>;
+  generateWorkspaceKey: () => Promise<Uint8Array>;
   base64ToBytes: (value: string) => Uint8Array;
 };
 
@@ -47,12 +49,17 @@ async function loadDefaultRuntime(): Promise<PendingWorkspaceKeyRuntime> {
     decryptUserIdentityFromEncryptedBlob: crypto.decryptUserIdentityFromEncryptedBlob,
     unwrapWorkspaceKeyForSelf: crypto.unwrapWorkspaceKeyForSelf,
     wrapWorkspaceKeyForMember: crypto.wrapWorkspaceKeyForMember,
+    generateWorkspaceKey: crypto.generateWorkspaceKey,
     base64ToBytes: base64.base64ToBytes,
   };
 }
 
+type PendingRotationsResponse = { removed_user_ids?: string[] };
+type PendingRecipientsResponse = { user_ids?: string[] };
+
 /**
- * Give the current workspace key to active members who do not have it yet.
+ * On workspace open: rotate a queued removal first, then wrap the current key for members who lack it.
+ * A member who does not hold the current key does nothing.
  * A 409 from an existing wrap is success. API 403/404 stops the pass quietly.
  */
 export async function tryCompletePendingWorkspaceKey(
@@ -67,17 +74,16 @@ export async function tryCompletePendingWorkspaceKey(
   if (
     typeof input.core.getWorkspaceKey !== "function" ||
     typeof input.core.listWorkspaceMembers !== "function" ||
-    typeof input.core.grantWorkspaceKeyWrap !== "function"
+    typeof input.core.grantWorkspaceKeyWrap !== "function" ||
+    typeof input.core.getHttpClient !== "function"
   ) {
     return { granted: 0, skippedInvalidKeys: 0 };
   }
-  const getWorkspaceKey = bindClientMethod(input.core, input.core.getWorkspaceKey);
-  const listWorkspaceMembers = bindClientMethod(input.core, input.core.listWorkspaceMembers);
-  const grantWorkspaceKeyWrap = bindClientMethod(input.core, input.core.grantWorkspaceKeyWrap);
+  const bound = bindWorkspaceKeyCore(input.core);
 
   let state: Awaited<ReturnType<CoreApiClient["getWorkspaceKey"]>>;
   try {
-    state = await getWorkspaceKey(input.workspaceId);
+    state = await bound.getWorkspaceKey(input.workspaceId);
   } catch (error) {
     if (isSwallowableWorkspaceKeyError(error)) {
       return { granted: 0, skippedInvalidKeys: 0 };
@@ -101,31 +107,114 @@ export async function tryCompletePendingWorkspaceKey(
     input.accountVaultKey,
     bundle.encrypted_private_key.payload,
   );
-  const workspaceKey = await deps.unwrapWorkspaceKeyForSelf({
+  let skippedInvalidKeys = 0;
+  let workspaceKey = await deps.unwrapWorkspaceKeyForSelf({
     encryptedWorkspaceKey: currentWrap.encrypted_workspace_key,
     recipientPrivateKey: identity.ed25519SecretKey,
     recipientPqPrivateKey: identity.mlkem768DecapsulationKey,
   });
+  let keyVersion = state.current_version;
 
-  const listed = await listWorkspaceMembers(input.workspaceId);
+  const removed = new Set(await readRemovedUserIds(bound, input.workspaceId));
+  if (removed.size > 0) {
+    const listed = await bound.listWorkspaceMembers(input.workspaceId);
+    const nextKey = await deps.generateWorkspaceKey();
+    const nextVersion = keyVersion + 1;
+    const wraps = [];
+    for (const member of listed.members) {
+      if (member.status !== "active" || !member.userId || removed.has(member.userId)) {
+        continue;
+      }
+      if (
+        !recipientPublicKeysAreValid(member.publicKey, member.publicPqKey, deps.base64ToBytes)
+      ) {
+        skippedInvalidKeys += 1;
+        continue;
+      }
+      wraps.push({
+        user_id: member.userId,
+        encrypted_workspace_key: await deps.wrapWorkspaceKeyForMember({
+          workspaceKey: nextKey,
+          keyVersion: nextVersion,
+          recipientUserId: member.userId,
+          recipientPublicKey: deps.base64ToBytes(member.publicKey),
+          recipientPqPublicKey: deps.base64ToBytes(member.publicPqKey!),
+        }),
+      });
+    }
+    const remaining = listed.members.filter(
+      (member) => member.status === "active" && member.userId && !removed.has(member.userId),
+    );
+    if (skippedInvalidKeys === 0 && wraps.length === remaining.length && wraps.length > 0) {
+      await bound.post(
+        `/workspaces/${encodeURIComponent(input.workspaceId)}/workspace-key/deferred-rotation`,
+        { wraps },
+      );
+      workspaceKey = nextKey;
+      keyVersion = nextVersion;
+    }
+  }
+
+  const pendingIds = new Set(await readPendingRecipientIds(bound, input.workspaceId));
+  for (const userId of removed) {
+    pendingIds.delete(userId);
+  }
+  pendingIds.delete(input.userId);
+  if (pendingIds.size === 0) {
+    return { granted: 0, skippedInvalidKeys };
+  }
+  const listed = await bound.listWorkspaceMembers(input.workspaceId);
   let granted = 0;
-  let skippedInvalidKeys = 0;
   for (const member of listed.members) {
-    if (member.status !== "active" || !member.userId || member.userId === input.userId) {
+    if (!member.userId || !pendingIds.has(member.userId)) {
       continue;
     }
     const added = await grantCurrentWrap({
       workspaceId: input.workspaceId,
       member,
-      keyVersion: state.current_version,
+      keyVersion,
       workspaceKey,
       deps,
-      grantWorkspaceKeyWrap,
+      grantWorkspaceKeyWrap: bound.grantWorkspaceKeyWrap,
     });
     granted += added.granted;
     skippedInvalidKeys += added.skippedInvalidKeys;
   }
   return { granted, skippedInvalidKeys };
+}
+
+async function readRemovedUserIds(
+  bound: ReturnType<typeof bindWorkspaceKeyCore>,
+  workspaceId: string,
+): Promise<string[]> {
+  try {
+    const body = await bound.get<PendingRotationsResponse>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/workspace-key/pending-rotations`,
+    );
+    return Array.isArray(body.removed_user_ids) ? body.removed_user_ids : [];
+  } catch (error) {
+    if (isSwallowableWorkspaceKeyError(error)) {
+      return [];
+    }
+    throw error;
+  }
+}
+
+async function readPendingRecipientIds(
+  bound: ReturnType<typeof bindWorkspaceKeyCore>,
+  workspaceId: string,
+): Promise<string[]> {
+  try {
+    const body = await bound.get<PendingRecipientsResponse>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/workspace-key/pending-recipients`,
+    );
+    return Array.isArray(body.user_ids) ? body.user_ids : [];
+  } catch (error) {
+    if (isSwallowableWorkspaceKeyError(error)) {
+      return [];
+    }
+    throw error;
+  }
 }
 
 /** Wrap the current key for one member who was just added. Missing key or an existing wrap is not a failure. */

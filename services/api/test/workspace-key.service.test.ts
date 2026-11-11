@@ -50,6 +50,7 @@ class MemoryWorkspaceKeyStore implements WorkspaceKeyStore {
   logo: WorkspaceLogoRecord | null = null;
   clientSettings: WorkspaceClientSettingsRecord | null = null;
   tileColor: string | null = null;
+  rotationQueue: string[] = [];
 
   async currentVersion(): Promise<number | null> {
     const versions = this.wraps.map((wrap) => wrap.keyVersion);
@@ -84,6 +85,33 @@ class MemoryWorkspaceKeyStore implements WorkspaceKeyStore {
 
   async deleteUserWraps(_workspaceId: string, userId: string): Promise<void> {
     this.wraps = this.wraps.filter((wrap) => wrap.userId !== userId);
+  }
+
+  async enqueueRotation(_workspaceId: string, removedUserId: string): Promise<void> {
+    if (!this.rotationQueue.includes(removedUserId)) {
+      this.rotationQueue.push(removedUserId);
+    }
+  }
+
+  async listRotationQueue(): Promise<string[]> {
+    return [...this.rotationQueue];
+  }
+
+  async clearRotationQueue(): Promise<void> {
+    this.rotationQueue = [];
+  }
+
+  async listMembersLackingCurrentWrap(): Promise<string[]> {
+    const version = await this.currentVersion();
+    if (version == null) {
+      return [];
+    }
+    const queued = new Set(this.rotationQueue);
+    return this.members.filter(
+      (userId) =>
+        !queued.has(userId) &&
+        !this.wraps.some((wrap) => wrap.userId === userId && wrap.keyVersion === version),
+    );
   }
 
   async getLogo(): Promise<WorkspaceLogoRecord | null> {
@@ -414,6 +442,63 @@ test("removeMember keeps membership when workspace-key rotation is refused", asy
   });
   await assert.rejects(() => service.removeMember(WORKSPACE_ID, OWNER_ID, MEMBER_ID, null), {
     code: "WORKSPACE_KEY_ROTATION_REQUIRED",
+    statusCode: 409,
   });
   assert.equal(sql.some((statement) => /DELETE FROM workspace_members/.test(statement)), false);
+});
+
+test("removeMemberWithoutKeyHolder queues the removal and drops wraps without a new version", async () => {
+  const store = new MemoryWorkspaceKeyStore();
+  store.members = [OWNER_ID, REMOVED_ID];
+  const keys = new WorkspaceKeyService(store, allowAll());
+  await keys.publishVersion1(WORKSPACE_ID, OWNER_ID, [wrap(OWNER_ID, 1), wrap(REMOVED_ID, 1)]);
+
+  const sql: string[] = [];
+  const members = new WorkspaceMembersService({
+    db: {
+      async query<T>(statement: string): Promise<T[]> {
+        sql.push(statement);
+        if (/SELECT owner_id FROM workspaces/.test(statement)) {
+          return [{ owner_id: OWNER_ID }] as T[];
+        }
+        if (/SELECT id, invited_by_user_id FROM workspace_members/.test(statement)) {
+          return [{ id: "6000000000000000001", invited_by_user_id: OWNER_ID }] as T[];
+        }
+        return [] as T[];
+      },
+    },
+    workspaces: {
+      async findById() {
+        return { id: WORKSPACE_ID, ownerId: OWNER_ID } as never;
+      },
+      async hasAccess() {
+        return true;
+      },
+    },
+    workspaceKeys: keys,
+  });
+
+  await members.removeMemberWithoutKeyHolder(WORKSPACE_ID, OWNER_ID, REMOVED_ID);
+  assert.equal(sql.some((statement) => /DELETE FROM workspace_members/.test(statement)), true);
+  assert.equal((await keys.getForMember(WORKSPACE_ID, REMOVED_ID)).wraps.length, 0);
+  assert.equal((await keys.getForMember(WORKSPACE_ID, OWNER_ID)).currentVersion, 1);
+  assert.deepEqual(await keys.listPendingRotations(WORKSPACE_ID, OWNER_ID), [REMOVED_ID]);
+  assert.equal(
+    store.wraps.some((item) => item.keyVersion === 2),
+    false,
+  );
+  await assert.rejects(
+    () => keys.applyDeferredRotation(WORKSPACE_ID, OWNER_ID, [wrap(REMOVED_ID, 2)]),
+    (error: unknown) =>
+      error instanceof WorkspaceKeyServiceError && error.code === "WORKSPACE_KEY_WRAP_SET_MISMATCH",
+  );
+
+  const rotated = await keys.applyDeferredRotation(WORKSPACE_ID, OWNER_ID, [wrap(OWNER_ID, 2)]);
+  assert.equal(rotated?.nextVersion, 2);
+  assert.deepEqual(await keys.listPendingRotations(WORKSPACE_ID, OWNER_ID), []);
+  assert.deepEqual(
+    (await keys.getForMember(WORKSPACE_ID, OWNER_ID)).wraps.map((item) => item.keyVersion),
+    [1, 2],
+  );
+  assert.equal(await keys.applyDeferredRotation(WORKSPACE_ID, OWNER_ID, [wrap(OWNER_ID, 3)]), null);
 });

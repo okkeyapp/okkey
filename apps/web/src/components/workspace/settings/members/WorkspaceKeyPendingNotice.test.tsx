@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import WorkspaceKeyPendingNotice from "./WorkspaceKeyPendingNotice";
+import WorkspaceKeyPendingNotice, { WorkspaceKeyNoticeBoundary } from "./WorkspaceKeyPendingNotice";
 
 const WORKSPACE_ID = "1000000000000000001";
 
@@ -15,21 +15,28 @@ class ApiRequestError extends Error {
   }
 }
 
-function client(getWorkspaceKey: (workspaceId: string) => Promise<unknown>) {
-  return {
-    api: { ready: true },
-    getWorkspaceKey,
-  };
+class HttpApi {
+  ready = true;
+}
+
+class WorkspaceKeyClient {
+  readonly api = new HttpApi();
+
+  constructor(private readonly load: (workspaceId: string) => Promise<unknown>) {}
+
+  getWorkspaceKey(workspaceId: string) {
+    if (!this.api) {
+      throw new Error("this.api undefined");
+    }
+    return this.load(workspaceId);
+  }
 }
 
 describe("WorkspaceKeyPendingNotice", () => {
-  it("renders when the caller has no wrap for the current key version", async () => {
-    const core = client(function getWorkspaceKey(this: { api?: { ready: boolean } }, workspaceId: string) {
-      if (!this?.api) {
-        throw new Error("this.api undefined");
-      }
+  it("calls getWorkspaceKey on the client instance and renders the banner", async () => {
+    const core = new WorkspaceKeyClient(async (workspaceId) => {
       expect(workspaceId).toBe(WORKSPACE_ID);
-      return Promise.resolve({ current_version: 2, wraps: [{ key_version: 1, encrypted_workspace_key: {} }] });
+      return { current_version: 2, wraps: [{ key_version: 1, encrypted_workspace_key: {} }] };
     });
 
     render(
@@ -46,15 +53,10 @@ describe("WorkspaceKeyPendingNotice", () => {
   });
 
   it("stays hidden when the caller holds the current wrap", async () => {
-    const core = client(function getWorkspaceKey(this: { api?: { ready: boolean } }) {
-      if (!this?.api) {
-        throw new Error("this.api undefined");
-      }
-      return Promise.resolve({
-        current_version: 2,
-        wraps: [{ key_version: 2, encrypted_workspace_key: {} }],
-      });
-    });
+    const core = new WorkspaceKeyClient(async () => ({
+      current_version: 2,
+      wraps: [{ key_version: 2, encrypted_workspace_key: {} }],
+    }));
 
     render(
       <WorkspaceKeyPendingNotice
@@ -69,24 +71,38 @@ describe("WorkspaceKeyPendingNotice", () => {
     });
   });
 
-  it("swallows an API error and renders nothing", async () => {
-    const core = client(function getWorkspaceKey(this: { api?: { ready: boolean } }) {
-      if (!this?.api) {
-        throw new Error("this.api undefined");
-      }
-      return Promise.reject(new ApiRequestError(404));
+  it("does not let an API throw escape and renders nothing", async () => {
+    const core = new WorkspaceKeyClient(async () => {
+      throw new ApiRequestError(404);
     });
 
-    render(
-      <WorkspaceKeyPendingNotice
-        core={core as never}
-        workspaceId={WORKSPACE_ID}
-        t={(key) => key}
-      />,
-    );
+    expect(() =>
+      render(
+        <WorkspaceKeyPendingNotice
+          core={core as never}
+          workspaceId={WORKSPACE_ID}
+          t={(key) => key}
+        />,
+      ),
+    ).not.toThrow();
 
     await waitFor(() => {
       expect(screen.queryByRole("status")).toBeNull();
     });
+  });
+
+  it("keeps a render error inside the notice boundary", () => {
+    function Boom(): null {
+      throw new Error("notice render failed");
+    }
+
+    expect(() =>
+      render(
+        <WorkspaceKeyNoticeBoundary>
+          <Boom />
+        </WorkspaceKeyNoticeBoundary>,
+      ),
+    ).not.toThrow();
+    expect(screen.queryByRole("status")).toBeNull();
   });
 });

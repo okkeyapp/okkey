@@ -10,7 +10,6 @@ import { useLocation, useNavigate } from "react-router-dom";
 
 import { useAuthenticatedCoreClient } from "../../../../auth/AuthVaultContext";
 import AdditionalMembersSection from "./AdditionalMembersSection";
-import WorkspaceKeyPendingNotice from "./WorkspaceKeyPendingNotice";
 import {
   buildPopupQueryValue,
   EDIT_MEMBER_POPUP_ID,
@@ -94,7 +93,6 @@ export default function WorkspaceSettingsMembersSection({
   return (
     <div className="flex flex-col gap-9">
       <MembersSectionHeader t={t} />
-      {core ? <WorkspaceKeyPendingNotice core={core} workspaceId={workspaceId} t={t} /> : null}
 
       {loading ? (
         <SettingsListCardSkeleton

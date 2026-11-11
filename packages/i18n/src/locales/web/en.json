@@ -1155,7 +1155,7 @@
   "web.workspaceSettings.members.invite.sending": "Sending invitations…",
   "web.workspaceSettings.members.invite.sent": "Invitations sent",
   "web.workspace.pendingVaultWraps.skippedInvalidKeys": "Skipped {count, plural, one {# staged vault wrap} other {# staged vault wraps}}: invalid recipient public key",
-  "web.workspace.workspaceKey.pendingNotice": "This workspace has an encrypted key you cannot open yet. Ask a member who already has it to open the workspace so your copy can be created.",
+  "web.workspace.workspaceKey.pendingNotice": "Workspace key has not been shared yet",
   "web.workspaceSettings.members.invite.revoke": "Revoke",
   "web.workspaceSettings.members.invite.revoking": "Revoking invitation…",
   "web.workspaceSettings.members.invite.revoked": "Invitation revoked",

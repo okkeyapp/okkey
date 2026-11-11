@@ -1155,7 +1155,7 @@
   "web.workspaceSettings.members.invite.sending": "Отправка приглашений…",
   "web.workspaceSettings.members.invite.sent": "Приглашения отправлены",
   "web.workspace.pendingVaultWraps.skippedInvalidKeys": "{count, plural, one {Пропущен # отложенный доступ к сейфу} few {Пропущено # отложенных доступа к сейфу} many {Пропущено # отложенных доступов к сейфу} other {Пропущено # отложенных доступов к сейфу}}: недействительный публичный ключ получателя",
-  "web.workspace.workspaceKey.pendingNotice": "У этого пространства есть зашифрованный ключ, который вы ещё не можете открыть. Попросите участника, у которого он уже есть, открыть пространство, чтобы создать вашу копию.",
+  "web.workspace.workspaceKey.pendingNotice": "Ключ пространства ещё не передан",
   "web.workspaceSettings.members.invite.revoke": "Отозвать",
   "web.workspaceSettings.members.invite.revoking": "Отзыв приглашения…",
   "web.workspaceSettings.members.invite.revoked": "Приглашение отозвано",

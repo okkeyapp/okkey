@@ -1,12 +1,14 @@
 import { createHash } from "node:crypto";
 
-import type { EncryptedBlob } from "../crypto/encrypted-blob.ts";
-import { parseEncryptedBlobInput } from "../crypto/encrypted-blob.ts";
 import {
   assertWorkspaceKeyPublishSet,
+  assertWorkspaceKeyWrap,
+  planDeferredWorkspaceKeyRotation,
   planWorkspaceKeyRotation,
+  WorkspaceKeyRemoval,
   WorkspaceKeyRotationError,
-} from "./rotation.ts";
+  type WorkspaceKeyWrapInput,
+} from "./removal.ts";
 import { readWorkspaceCiphertextKeyVersion } from "./ciphertext.ts";
 import { workspaceLogoQuotaDelta } from "../storage-quota/workspace-logo-bytes.ts";
 import type { WorkspaceKeyStore, WorkspaceKeyWrapRecord } from "./store.ts";
@@ -14,7 +16,6 @@ import type { WorkspaceKeyStore, WorkspaceKeyWrapRecord } from "./store.ts";
 /** Plaintext logo cap is 1 MiB. Ciphertext adds a version word, nonce, and tag. */
 export const WORKSPACE_LOGO_CIPHERTEXT_MAX_BYTES = 1024 * 1024 + 64;
 export const WORKSPACE_CLIENT_SETTINGS_CIPHERTEXT_MAX_BYTES = 64 * 1024;
-const WRAP_PAYLOAD_MAX_BYTES = 64 * 1024;
 
 export class WorkspaceKeyServiceError extends Error {
   readonly code: string;
@@ -43,15 +44,14 @@ export type WorkspaceKeyAuthorize = {
   assertSettingsPut(workspaceId: string, userId: string): Promise<void>;
 };
 
-export type WorkspaceKeyWrapInput = {
-  userId: string;
-  encryptedWorkspaceKey: EncryptedBlob;
-};
+export type { WorkspaceKeyWrapInput } from "./removal.ts";
+export { parseWorkspaceKeyWrap } from "./removal.ts";
 
 export class WorkspaceKeyService {
   private readonly store: WorkspaceKeyStore;
   private readonly authorize: WorkspaceKeyAuthorize;
   private readonly logoQuota: WorkspaceLogoQuotaCheck | undefined;
+  private readonly removal: WorkspaceKeyRemoval;
 
   constructor(
     store: WorkspaceKeyStore,
@@ -61,6 +61,7 @@ export class WorkspaceKeyService {
     this.store = store;
     this.authorize = authorize;
     this.logoQuota = logoQuota;
+    this.removal = new WorkspaceKeyRemoval(store);
   }
 
   async getForMember(workspaceId: string, userId: string) {
@@ -129,8 +130,8 @@ export class WorkspaceKeyService {
     removedUserId: string,
     wraps: WorkspaceKeyWrapInput[] | null,
   ): Promise<{ nextVersion: number } | null> {
-    const current = await this.store.currentVersion(workspaceId);
-    const members = await this.store.activeMemberIds(workspaceId);
+    const current = await this.removal.readCurrentVersion(workspaceId);
+    const members = await this.removal.activeMembers(workspaceId);
     let plan: { nextVersion: number; recipientIds: string[] } | null;
     try {
       plan = planWorkspaceKeyRotation({
@@ -147,8 +148,62 @@ export class WorkspaceKeyService {
     }
     const nextVersion = plan.nextVersion;
     const records = wraps.map((wrap) => checkedWrap(wrap, nextVersion));
-    await this.store.insertWraps(workspaceId, records);
-    await this.store.deleteUserWraps(workspaceId, removedUserId);
+    await this.removal.insertWraps(workspaceId, records);
+    await this.removal.deleteWraps(workspaceId, removedUserId);
+    await this.removal.clearQueue(workspaceId);
+    return { nextVersion: plan.nextVersion };
+  }
+
+  /**
+   * Membership removal when nobody present can wrap a new version.
+   * Drops the removed member's wraps and queues a later rotation. Does not publish a new version.
+   */
+  async dropWrapAndEnqueue(workspaceId: string, removedUserId: string): Promise<void> {
+    const current = await this.removal.readCurrentVersion(workspaceId);
+    if (current == null) {
+      return;
+    }
+    await this.removal.deleteWraps(workspaceId, removedUserId);
+    await this.removal.enqueue(workspaceId, removedUserId);
+  }
+
+  async listPendingRecipients(workspaceId: string, actorId: string): Promise<string[]> {
+    await this.authorize.assertMember(workspaceId, actorId);
+    return this.removal.listMembersLackingCurrentWrap(workspaceId);
+  }
+
+  async listPendingRotations(workspaceId: string, actorId: string): Promise<string[]> {
+    await this.authorize.assertMember(workspaceId, actorId);
+    return this.removal.listQueue(workspaceId);
+  }
+
+  async applyDeferredRotation(
+    workspaceId: string,
+    actorId: string,
+    wraps: WorkspaceKeyWrapInput[],
+  ): Promise<{ nextVersion: number } | null> {
+    await this.authorize.assertMember(workspaceId, actorId);
+    const current = await this.removal.readCurrentVersion(workspaceId);
+    const queued = await this.removal.listQueue(workspaceId);
+    const members = await this.removal.activeMembers(workspaceId);
+    let plan: { nextVersion: number; recipientIds: string[] } | null;
+    try {
+      plan = planDeferredWorkspaceKeyRotation({
+        currentVersion: current,
+        activeMemberIds: members,
+        queuedRemovedUserIds: queued,
+        wrapUserIds: wraps.map((wrap) => wrap.userId),
+      });
+    } catch (error) {
+      throw asServiceError(error);
+    }
+    if (!plan) {
+      return null;
+    }
+    const nextVersion = plan.nextVersion;
+    const records = wraps.map((wrap) => checkedWrap(wrap, nextVersion));
+    await this.removal.insertWraps(workspaceId, records);
+    await this.removal.clearQueue(workspaceId);
     return { nextVersion: plan.nextVersion };
   }
 
@@ -226,51 +281,12 @@ export class WorkspaceKeyService {
   }
 }
 
-export function parseWorkspaceKeyWrap(value: unknown): WorkspaceKeyWrapInput {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new WorkspaceKeyServiceError("BAD_REQUEST", 400, "workspace key wrap must be an object");
-  }
-  const userId = (value as { user_id?: unknown }).user_id;
-  if (typeof userId !== "string" || userId.length === 0) {
-    throw new WorkspaceKeyServiceError("BAD_REQUEST", 400, "workspace key wrap user_id is required");
-  }
-  let parsed: { blob: EncryptedBlob };
-  try {
-    parsed = parseEncryptedBlobInput((value as { encrypted_workspace_key?: unknown }).encrypted_workspace_key, {
-      fieldName: "encrypted_workspace_key",
-      maxPayloadBytes: WRAP_PAYLOAD_MAX_BYTES,
-      allowLegacyString: false,
-    });
-  } catch (error) {
-    throw new WorkspaceKeyServiceError(
-      "BAD_REQUEST",
-      400,
-      error instanceof Error ? error.message : "invalid workspace key wrap",
-    );
-  }
-  return { userId, encryptedWorkspaceKey: parsed.blob };
-}
-
 function checkedWrap(wrap: WorkspaceKeyWrapInput, keyVersion: number): WorkspaceKeyWrapRecord {
-  const meta = wrap.encryptedWorkspaceKey.meta;
-  if (meta["entity"] !== "workspace_key_wrap") {
-    throw new WorkspaceKeyServiceError("BAD_REQUEST", 400, "encrypted blob is not a workspace key wrap");
+  try {
+    return assertWorkspaceKeyWrap(wrap, keyVersion);
+  } catch (error) {
+    throw asServiceError(error);
   }
-  if (meta["key_version"] !== keyVersion) {
-    throw new WorkspaceKeyServiceError(
-      "WORKSPACE_KEY_VERSION_MISMATCH",
-      409,
-      "workspace key wrap version does not match the required version",
-    );
-  }
-  if (meta["recipient_user_id"] != null && meta["recipient_user_id"] !== wrap.userId) {
-    throw new WorkspaceKeyServiceError("BAD_REQUEST", 400, "workspace key wrap recipient does not match user_id");
-  }
-  return {
-    userId: wrap.userId,
-    keyVersion,
-    encryptedWorkspaceKey: wrap.encryptedWorkspaceKey,
-  };
 }
 
 function requireCurrentCiphertext(ciphertext: Uint8Array, currentVersion: number | null): number {

@@ -29,6 +29,11 @@ export interface WorkspaceKeyStore {
   wrapsForUser(workspaceId: string, userId: string): Promise<WorkspaceKeyWrapRecord[]>;
   insertWraps(workspaceId: string, wraps: WorkspaceKeyWrapRecord[]): Promise<void>;
   deleteUserWraps(workspaceId: string, userId: string): Promise<void>;
+  enqueueRotation(workspaceId: string, removedUserId: string): Promise<void>;
+  listRotationQueue(workspaceId: string): Promise<string[]>;
+  clearRotationQueue(workspaceId: string): Promise<void>;
+  /** Active members who lack the current wrap and are not waiting in the rotation queue. */
+  listMembersLackingCurrentWrap(workspaceId: string): Promise<string[]>;
   getLogo(workspaceId: string): Promise<WorkspaceLogoRecord | null>;
   putLogo(
     workspaceId: string,
@@ -127,6 +132,70 @@ export class PgWorkspaceKeyStore implements WorkspaceKeyStore {
       `DELETE FROM workspace_key_wraps WHERE workspace_id = $1 AND user_id = $2`,
       [workspaceId, userId],
     );
+  }
+
+  async enqueueRotation(workspaceId: string, removedUserId: string): Promise<void> {
+    await this.db.query(
+      `
+        INSERT INTO workspace_key_rotation_queue (workspace_id, removed_user_id)
+        VALUES ($1, $2)
+        ON CONFLICT (workspace_id, removed_user_id) DO NOTHING
+      `,
+      [workspaceId, removedUserId],
+    );
+  }
+
+  async listRotationQueue(workspaceId: string): Promise<string[]> {
+    const rows = await this.db.query<{ removed_user_id: string }>(
+      `
+        SELECT removed_user_id
+        FROM workspace_key_rotation_queue
+        WHERE workspace_id = $1
+        ORDER BY created_at, removed_user_id
+      `,
+      [workspaceId],
+    );
+    return rows.map((row) => String(row.removed_user_id));
+  }
+
+  async clearRotationQueue(workspaceId: string): Promise<void> {
+    await this.db.query(
+      `DELETE FROM workspace_key_rotation_queue WHERE workspace_id = $1`,
+      [workspaceId],
+    );
+  }
+
+  async listMembersLackingCurrentWrap(workspaceId: string): Promise<string[]> {
+    const rows = await this.db.query<{ user_id: string }>(
+      `
+        SELECT member.user_id
+        FROM (
+          SELECT owner_id AS user_id FROM workspaces WHERE id = $1
+          UNION
+          SELECT user_id FROM workspace_members WHERE workspace_id = $1
+        ) AS member
+        WHERE EXISTS (
+          SELECT 1 FROM workspace_key_wraps WHERE workspace_id = $1
+        )
+          AND NOT EXISTS (
+            SELECT 1
+            FROM workspace_key_rotation_queue q
+            WHERE q.workspace_id = $1 AND q.removed_user_id = member.user_id
+          )
+          AND NOT EXISTS (
+            SELECT 1
+            FROM workspace_key_wraps w
+            WHERE w.workspace_id = $1
+              AND w.user_id = member.user_id
+              AND w.key_version = (
+                SELECT MAX(key_version) FROM workspace_key_wraps WHERE workspace_id = $1
+              )
+          )
+        ORDER BY member.user_id
+      `,
+      [workspaceId],
+    );
+    return rows.map((row) => String(row.user_id));
   }
 
   async getLogo(workspaceId: string): Promise<WorkspaceLogoRecord | null> {

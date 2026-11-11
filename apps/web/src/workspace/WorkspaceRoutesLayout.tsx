@@ -26,12 +26,14 @@ import {
 import { useEffect, useMemo, useRef, useState, useCallback, type ComponentProps, type PointerEvent } from "react";
 import { Outlet, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import workspaceTenancyModule from "@okkey-enterprise/workspace-tenancy";
-import { tryCompletePendingWorkspaceKey } from "../components/workspace/settings/members/completePendingWorkspaceKey";
 import {
   canCompletePendingVaultWraps,
   tryCompletePendingVaultWraps,
 } from "../components/workspace/settings/members/completePendingVaultWraps";
-import { canCompletePendingWorkspaceKey } from "../components/workspace/settings/members/workspaceKeyAccess";
+import WorkspaceKeyPendingNotice, {
+  WorkspaceKeyNoticeBoundary,
+} from "../components/workspace/settings/members/WorkspaceKeyPendingNotice";
+import { workspaceWithMemberAppearance } from "../workspace/workspaceAppearanceForMember";
 import { refreshWorkspaceFoldersCachesForIds } from "@okkey/vault";
 import { toast } from "sonner";
 
@@ -224,6 +226,7 @@ export default function WorkspaceRoutesLayout() {
     [isItemsMobileListView],
   );
 
+  const [workspaceKeyAccess, setWorkspaceKeyAccess] = useState<"open" | "pending" | "unknown">("unknown");
   const [phase, setPhase] = useState<"loading" | "ready">("loading");
   const [resolvedWorkspaceId, setResolvedWorkspaceId] = useState<string | null>(null);
   const [workspaceList, setWorkspaceList] = useState<Workspace[]>([]);
@@ -275,29 +278,6 @@ export default function WorkspaceRoutesLayout() {
     core,
     resolvedWorkspaceId,
     t,
-    userId,
-    vaultKey,
-    vaultUnlocked,
-    workspacePermissions,
-    workspacePermissionsReady,
-  ]);
-
-  useEffect(() => {
-    if (!core || !userId || !vaultKey || !vaultUnlocked || !resolvedWorkspaceId) {
-      return;
-    }
-    if (!workspacePermissionsReady || !canCompletePendingWorkspaceKey(workspacePermissions)) {
-      return;
-    }
-    void tryCompletePendingWorkspaceKey({
-      core,
-      workspaceId: resolvedWorkspaceId,
-      userId,
-      accountVaultKey: vaultKey,
-    }).catch(() => undefined);
-  }, [
-    core,
-    resolvedWorkspaceId,
     userId,
     vaultKey,
     vaultUnlocked,
@@ -492,6 +472,17 @@ export default function WorkspaceRoutesLayout() {
     () => workspaceList.find((w) => w.id === resolvedWorkspaceId),
     [workspaceList, resolvedWorkspaceId],
   );
+  const shownWorkspace = useMemo(
+    () =>
+      currentWorkspace
+        ? workspaceWithMemberAppearance(currentWorkspace, workspaceKeyAccess)
+        : currentWorkspace,
+    [currentWorkspace, workspaceKeyAccess],
+  );
+
+  useEffect(() => {
+    setWorkspaceKeyAccess("unknown");
+  }, [resolvedWorkspaceId]);
 
   const workspaceFoldersState = useWorkspaceFoldersState({
     userId: userId ?? "",
@@ -770,21 +761,21 @@ export default function WorkspaceRoutesLayout() {
   const workspaceSwitcherTrigger = useMemo(() => {
     return ({ expanded }: { expanded: boolean }) => (
       <>
-        <WorkspaceTileAvatar workspace={currentWorkspace} sizeClass={expanded ? "size-8" : "size-9"} />
+        <WorkspaceTileAvatar workspace={shownWorkspace} sizeClass={expanded ? "size-8" : "size-9"} />
         {expanded ? (
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-semibold leading-5 text-foreground">
-              {currentWorkspace?.name ?? "…"}
+              {shownWorkspace?.name ?? "…"}
             </p>
             <p className="truncate text-xs font-normal leading-4 text-muted-foreground">
-              {currentWorkspace ? planTierLabel(webDisplayPlanTier(currentWorkspace), t) : ""}
+              {shownWorkspace ? planTierLabel(webDisplayPlanTier(shownWorkspace), t) : ""}
             </p>
           </div>
         ) : null}
         {expanded && isMultiWorkspaceUi ? <ShellChevrons /> : null}
       </>
     );
-  }, [currentWorkspace, isMultiWorkspaceUi, t]);
+  }, [shownWorkspace, isMultiWorkspaceUi, t]);
 
   const workspaceSwitcherDropdown = useMemo(() => {
     if (!userId || !isMultiWorkspaceUi) {
@@ -809,7 +800,7 @@ export default function WorkspaceRoutesLayout() {
                   navigate(ITEMS_PATH);
                 }}
               >
-                <WorkspaceTileAvatar workspace={ws} sizeClass="size-8" />
+                <WorkspaceTileAvatar workspace={active && shownWorkspace ? shownWorkspace : ws} sizeClass="size-8" />
                 <div className="min-w-0 flex-1 text-left">
                   <p className="truncate text-sm font-semibold leading-5 text-foreground">{ws.name}</p>
                   <p className="truncate text-xs leading-4 text-muted-foreground">
@@ -852,6 +843,7 @@ export default function WorkspaceRoutesLayout() {
     setResolvedWorkspaceId,
     setPhase,
     isMultiWorkspaceUi,
+    shownWorkspace,
   ]);
 
   if (phase === "loading" || !resolvedWorkspaceId) {
@@ -951,7 +943,8 @@ export default function WorkspaceRoutesLayout() {
                 }
                 maxFileSizeMb={currentWorkspace?.maxFileSizeMb ?? DEFAULT_MAX_FILE_SIZE_MB}
                 filesInItemsEnabled={currentWorkspace?.filesInItemsEnabled ?? true}
-                currentWorkspace={currentWorkspace}
+                currentWorkspace={shownWorkspace}
+                onWorkspaceKeyAccess={setWorkspaceKeyAccess}
                 vaults={vaults}
                 vaultsListReady={vaultsListReady}
                 workspaceNavItems={workspaceNavItems}
@@ -1021,6 +1014,7 @@ type WorkspaceShellWithItemsProps = {
   refreshVaults: () => Promise<void>;
   workspacePermissions: WorkspacePermissionsMatrixDto | null;
   workspacePermissionsReady: boolean;
+  onWorkspaceKeyAccess: (access: "open" | "pending" | "unknown") => void;
 };
 
 function WorkspaceShellWithItems({
@@ -1058,6 +1052,7 @@ function WorkspaceShellWithItems({
   refreshVaults,
   workspacePermissions,
   workspacePermissionsReady,
+  onWorkspaceKeyAccess,
 }: WorkspaceShellWithItemsProps) {
   const { itemFolderByItemId, itemFavoriteByItemId } = useWorkspaceFolders();
   const { isContentBlocked, requestAccess } = useSectionReauth();
@@ -1198,6 +1193,16 @@ function WorkspaceShellWithItems({
             )}
             itemsListRecordsLoaded={workspaceItemsState.bootstrapped}
           >
+            {core ? (
+              <WorkspaceKeyNoticeBoundary>
+                <WorkspaceKeyPendingNotice
+                  core={core}
+                  workspaceId={resolvedWorkspaceId}
+                  t={t}
+                  onAccessChange={onWorkspaceKeyAccess}
+                />
+              </WorkspaceKeyNoticeBoundary>
+            ) : null}
             {isContentBlocked ? (
               <WorkspaceErrorState
                 titleKey="web.forbidden.title"

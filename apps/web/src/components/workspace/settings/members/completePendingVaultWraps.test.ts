@@ -102,6 +102,81 @@ it("a second call is a no-op once no staged wraps remain", async () => {
   assert.equal(api.vaultKeyReads.length, 0);
 });
 
+it("runs workspace key completion after an empty list, with no bundle, and after wraps", async () => {
+  let keyReads = 0;
+  const keyClient = {
+    getWorkspaceKey: async () => {
+      keyReads += 1;
+      return { current_version: null, wraps: [] };
+    },
+    getHttpClient: () => ({
+      get: async () => ({}),
+      post: async () => ({}),
+    }),
+    listWorkspaceMembers: async () => ({ members: [] }),
+    grantWorkspaceKeyWrap: async () => ({ key_version: 1 }),
+    deleteWorkspaceMember: async () => ({ deleted: true }),
+  };
+  await tryCompletePendingVaultWraps(
+    { core: { ...core([]).client, ...keyClient } as never, workspaceId: "w1", userId: "u1", accountVaultKey: ACCOUNT_KEY },
+    runtime(),
+  );
+  assert.equal(keyReads, 1);
+
+  keyReads = 0;
+  const noBundle = runtime();
+  noBundle.readVaultBundle = () => null;
+  await tryCompletePendingVaultWraps(
+    {
+      core: {
+        ...core([{ userId: "u2", vaultId: "v1", profileId: "p1", publicKey: VALID_PK, publicPqKey: VALID_PQ }]).client,
+        ...keyClient,
+      } as never,
+      workspaceId: "w1",
+      userId: "u1",
+      accountVaultKey: ACCOUNT_KEY,
+    },
+    noBundle,
+  );
+  assert.equal(keyReads, 1);
+
+  keyReads = 0;
+  await tryCompletePendingVaultWraps(
+    {
+      core: {
+        ...core([{ userId: "u2", vaultId: "v1", profileId: "p1", publicKey: VALID_PK, publicPqKey: VALID_PQ }]).client,
+        ...keyClient,
+      } as never,
+      workspaceId: "w1",
+      userId: "u1",
+      accountVaultKey: ACCOUNT_KEY,
+    },
+    runtime(),
+  );
+  assert.equal(keyReads, 1);
+});
+
+it("does not run workspace key completion when the vault wrap list returns 403 or 404", async () => {
+  let keyReads = 0;
+  const forbidden = {
+    listPendingVaultWraps: async () => {
+      const error = new Error("nope");
+      error.name = "ApiRequestError";
+      (error as { status?: number }).status = 404;
+      throw error;
+    },
+    getWorkspaceKey: async () => {
+      keyReads += 1;
+      return { current_version: null, wraps: [] };
+    },
+  };
+  await tryCompletePendingVaultWraps(
+    { core: forbidden as never, workspaceId: "w1", userId: "u1", accountVaultKey: ACCOUNT_KEY },
+    runtime(),
+  );
+  assert.equal(keyReads, 0);
+});
+
 it("403 and 404 from the pending list are ignored; other errors propagate", async () => {
   const forbidden = {
     listPendingVaultWraps: async () => {

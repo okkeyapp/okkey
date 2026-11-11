@@ -5,6 +5,7 @@ import {
   sanitizeTileColor,
   WorkspaceSettingsServiceError,
 } from "../workspace-settings/service.ts";
+import { WorkspaceKeyRotationError } from "../workspace-key/removal.ts";
 import {
   parseWorkspaceKeyWrap,
   WorkspaceKeyService,
@@ -23,7 +24,11 @@ function errorPayload(code: string, message: string, requestId: string, details?
 }
 
 function handleError(requestId: string, res: ServerResponse, error: unknown): void {
-  if (error instanceof WorkspaceKeyServiceError || error instanceof WorkspaceSettingsServiceError) {
+  if (
+    error instanceof WorkspaceKeyServiceError ||
+    error instanceof WorkspaceKeyRotationError ||
+    error instanceof WorkspaceSettingsServiceError
+  ) {
     const details = error instanceof WorkspaceKeyServiceError ? error.details : undefined;
     json(res, error.statusCode, errorPayload(error.code, error.message, requestId, details));
     return;

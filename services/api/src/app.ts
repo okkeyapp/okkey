@@ -139,6 +139,9 @@ import {
   createWorkspaceInvitationDeleteRoute,
   createWorkspaceInvitationPatchRoute,
   createWorkspaceInvitationsCreateRoute,
+  createWorkspaceKeyDeferredRotationRoute,
+  createWorkspaceKeyPendingRecipientsRoute,
+  createWorkspaceKeyPendingRotationsRoute,
   createWorkspaceMemberDeleteRoute,
   createWorkspaceMemberDirectoryRoute,
   createWorkspaceMemberPatchRoute,
@@ -775,6 +778,21 @@ export function createApiApp(
         "DELETE",
         "/workspaces/:workspaceId/members/:userId",
         createWorkspaceMemberDeleteRoute(members, resolveUserId),
+      );
+      app.route(
+        "GET",
+        "/workspaces/:workspaceId/workspace-key/pending-recipients",
+        createWorkspaceKeyPendingRecipientsRoute(members, resolveUserId),
+      );
+      app.route(
+        "GET",
+        "/workspaces/:workspaceId/workspace-key/pending-rotations",
+        createWorkspaceKeyPendingRotationsRoute(members, resolveUserId),
+      );
+      app.route(
+        "POST",
+        "/workspaces/:workspaceId/workspace-key/deferred-rotation",
+        createWorkspaceKeyDeferredRotationRoute(members, resolveUserId),
       );
       app.route(
         "GET",
