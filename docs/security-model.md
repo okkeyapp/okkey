@@ -1,8 +1,10 @@
 # Security model
 
-Okkey encrypts vault items in the browser. The server stores ciphertext, account records, and one share of the account key. The statements below match the v1.0.0-beta.2 code.
+Okkey encrypts vault items in the browser. The server stores ciphertext, account records, and key-share material as described below.
 
 An independent security audit has not been done. This release is not production-ready.
+
+The vault-key model in this page matches the 1.0.0-beta.3 code on the `dev` branch. The published tag is still v1.0.0-beta.2.
 
 ## What the browser encrypts
 
@@ -16,13 +18,15 @@ The recovery key wraps the account vault key in the browser. The server stores t
 
 Folder names and which item sits in which folder are encrypted in the browser and stored in a personal event log.
 
-The crypto implementations used for these operations live in the Rust engine under `rust/crypto-engine`, and the browser calls them through the WASM build. The engine also includes AES-256-GCM, Argon2id, X25519, and Ed25519.
+The crypto implementations used for these operations live in the Rust engine under `rust/crypto-engine`, and the browser calls them through the WASM build. The engine also includes AES-256-GCM, Argon2id, X25519, Ed25519, and ML-KEM-768.
 
 ## What the server stores
 
 The server stores account email, device records, sessions, workspaces, vault membership, and the encrypted blobs above. Item history is an event log of those ciphertext payloads.
 
 It also stores a 32-byte server share of the account key (`server_key_share`) and the Argon2id salt and params version used for the master password. The master password is not sent to the server.
+
+Since 1.0.0-beta.3, the server stores the device share only as a hybrid X25519 + ML-KEM-768 envelope (`hybrid_ecc_pq_v1`) for a key that stays on the device. A raw 32-byte device share is rejected. The stored device share is cleared when a device is revoked, rejected, or its approval expires.
 
 Authenticator app secrets are sealed on the server with a key derived from `SESSION_SECRET`, and the server opens them to check a code. Backup codes are stored as hashes peppered with `SESSION_SECRET`, not as plaintext. These values are account sign-in data. They are separate from vault items.
 
@@ -36,17 +40,21 @@ Favicon preview defaults to `FAVICON_PROVIDER=direct`. The API then requests ico
 
 The account vault key is a 32-byte value. It is not stored whole. The browser rebuilds it as the XOR of three 32-byte shares:
 
-- the server share, stored on the server and also copied into this browser's `localStorage`
-- the device share, saved in the same `localStorage` entry
-- the password share, derived with Argon2id from the **Master password** and the salt stored on the server
+- the server share, stored on the server as 32 opaque bytes (`server_key_share`). After sign-in the client fetches it and keeps it in memory for the session
+- the device share, stored on the server only as a hybrid X25519 + ML-KEM-768 envelope for a key that stays on the device (since 1.0.0-beta.3). The client opens that envelope on the device and uses the raw 32-byte share to rebuild the vault key
+- the password share, derived with Argon2id from the **Master password** and the salt stored on the server. The parameters in this code are memory cost 19456, time cost 2, and parallelism 1 (Argon2id version 0x13). The salt is 16 bytes and the output is 32 bytes. The master password itself never leaves the device
 
-The device signing key is a non-extractable WebCrypto key in IndexedDB. The two shares used in the XOR above are the `localStorage` values, not that signing key.
+A newly chosen master password (registration, change, or recovery) must be at least 12 characters. Accounts that already have a shorter password can still unlock.
+
+The device signing key is stored in the browser as a non-extractable WebCrypto key. It is not one of the three XOR shares, and it is not the key that opens the device-share envelope.
+
+When the server binds a session to a device or rebinds a device key, it can require a bind proof over the stored device-share bytes and a one-time challenge.
 
 **PIN code** and **Biometric unlock** are unlock methods on this browser. They do not replace the recovery key.
 
-A person who has only the database has the server share and the ciphertext. Rebuilding the vault key from that copy still takes the device share and the master password, or the recovery key.
+A leak of the server database or a server backup is not enough to brute-force the master password offline. The dump has item ciphertext, the server share, and the sealed device share, but not the key that opens that envelope. Rebuilding the vault key still takes the device and the master password, or the recovery key.
 
-Local unlock keeps both the server share and the device share in this site's browser data. With the master password, that data rebuilds the vault key on the device, without a new request to the server. The master password strength and the security of the device are what protect that copy.
+Unlocking on this device uses the master password together with material kept on the device and the server share fetched after sign-in. The strength of the master password and the security of the device protect that copy. This design does not protect against malware on the device, or against a fully compromised server that serves a substituted web client.
 
 ## Account recovery
 
@@ -62,8 +70,8 @@ If you lose the master password and the recovery key, this server cannot rebuild
 
 The protections in this release are aimed at these cases:
 
-- The server, or a person who can read Postgres and MinIO, sees ciphertext for vault items and files, plus the server share, and does not see the master password.
-- This browser's site data holds the server share and the device share. With the master password, that copy rebuilds the vault key on the device. The strength of the master password and the security of the device protect it.
+- The server, or a person who can read Postgres and MinIO, sees ciphertext for vault items and files, plus the server share and the sealed device share, and does not see the master password. That dump is not enough to brute-force the master password offline.
+- Material on this device, together with the master password and the server share fetched after sign-in, rebuilds the vault key. The strength of the master password and the security of the device protect it. This does not protect against malware on the device.
 - A client that submits a lower crypto version than the vault already uses is rejected.
 - A malformed encrypted blob is rejected instead of being stored as a successful write.
 - Public capsule links do not carry the decryption key in the URL query string or path. The API refuses that placement.
@@ -78,11 +86,12 @@ The default `.env` from the installer sets `DEPLOY_ENV=dev`, `CRYPTO_ALLOWED_PRO
 - An independent security audit has not been done.
 - v1.0.0-beta.2 is not production-ready.
 - The browser extension is not part of this release.
-- The master password can be 4 characters. That is the minimum the registration screen enforces.
+- A newly chosen master password must be at least 12 characters. Accounts that already have a shorter password can still unlock.
 - The server can open authenticator secrets, because it seals them with `SESSION_SECRET`.
-- A person with access to the host can read `~/okkey/.env`, the database, the object store, and the worker logs.
+- A person with access to the host can read `~/okkey/.env`, the database, the object store, and the worker logs. A fully compromised server that serves a substituted web client can obtain the master password or the vault key when someone unlocks the vault in the browser.
+- This design does not protect against malware on the device.
 - **Create vault** for a shared vault, and inviting more members, are unavailable on a default self-hosted server.
 - Capsule **Advanced settings** show "Not available on your current plan" on a default self-hosted server.
 - **Trusted devices** and **Trusted contacts** are unavailable in the web app. The restore screen says web recovery via a remote trusted device is not available yet, and interactive contact recovery in the web app is not available yet.
 - Compromised-password checks contact Have I Been Pwned, as described above.
-- Clearing this browser's site data removes the local copies of the server share and the device share. The server still stores the server share. Unlocking again on this browser takes the recovery key, or another browser that still has the site data.
+- Clearing this browser's site data removes the local device-share material used to unlock. The server still stores the server share and the sealed device share. Unlocking again on this browser takes the recovery key, or another device that still has the local material.
