@@ -7,6 +7,7 @@ import { loadConfig } from "../src/config.ts";
 import { DeviceService } from "../src/device/service.ts";
 import { SessionService } from "../src/session/service.ts";
 import { createIntegrationStorage } from "./integration-env.ts";
+import { hybridDeviceShareBytes } from "./hybrid-share-fixture.ts";
 import {
   applyMigrations,
   cleanupUserData,
@@ -42,6 +43,10 @@ type TrustedRow = {
 };
 
 type Handler = ReturnType<ReturnType<typeof createApiApp>["handler"]>;
+
+function requestShare(fill: number): Buffer {
+  return Buffer.from(hybridDeviceShareBytes(fill));
+}
 
 function registerBody(input: {
   fingerprint: string;
@@ -184,7 +189,7 @@ test("integration: reclaim_sole_trusted from an unbound new device is rejected",
   );
   assert.equal(bound[0]?.device_id ?? null, null);
 
-  const replacementShare = Buffer.alloc(32, 9);
+  const replacementShare = requestShare(9);
   const response = await dispatch(handler, "POST", "/devices/register", caller.accessToken, registerBody({
     fingerprint: NEW_BROWSER_FINGERPRINT,
     publicKey: Buffer.from("unbound-browser-key").toString("base64"),
@@ -303,7 +308,7 @@ test("integration: reclaim is rejected when the stored fingerprint is not legacy
     registerBody({
       fingerprint: NEW_BROWSER_FINGERPRINT,
       publicKey: Buffer.from("non-legacy-key").toString("base64"),
-      share: Buffer.alloc(32, 4),
+      share: requestShare(4),
       reclaimSoleTrusted: true,
       previousDeviceId: stored.id,
       previousDeviceFingerprint: stored.device_fingerprint,
@@ -333,7 +338,7 @@ test("integration: reclaim is rejected when the previous device link is missing"
     registerBody({
       fingerprint: NEW_BROWSER_FINGERPRINT,
       publicKey: Buffer.from("missing-link-key").toString("base64"),
-      share: Buffer.alloc(32, 5),
+      share: requestShare(5),
       reclaimSoleTrusted: true,
     }),
   );
@@ -374,7 +379,7 @@ test("integration: reclaim is rejected when the previous device link does not ma
     registerBody({
       fingerprint: NEW_BROWSER_FINGERPRINT,
       publicKey: Buffer.from("mismatch-fp-key").toString("base64"),
-      share: Buffer.alloc(32, 8),
+      share: requestShare(8),
       reclaimSoleTrusted: true,
       previousDeviceId: stored.id,
       previousDeviceFingerprint: "a".repeat(64),
@@ -389,7 +394,7 @@ test("integration: reclaim is rejected when the previous device link does not ma
     registerBody({
       fingerprint: NEW_BROWSER_FINGERPRINT,
       publicKey: Buffer.from("mismatch-id-key").toString("base64"),
-      share: Buffer.alloc(32, 8),
+      share: requestShare(8),
       reclaimSoleTrusted: true,
       previousDeviceId: testEntityId(),
       previousDeviceFingerprint: stored.device_fingerprint,
@@ -423,7 +428,7 @@ test("integration: reclaim is rejected when the session is not bound to the trus
     registerBody({
       fingerprint: NEW_BROWSER_FINGERPRINT,
       publicKey: Buffer.from("unbound-link-key").toString("base64"),
-      share: Buffer.alloc(32, 3),
+      share: requestShare(3),
       reclaimSoleTrusted: true,
       previousDeviceId: stored.id,
       previousDeviceFingerprint: stored.device_fingerprint,
@@ -448,7 +453,7 @@ test("integration: reclaim is rejected when the stored client type is incompatib
     registerBody({
       fingerprint: NEW_BROWSER_FINGERPRINT,
       publicKey: Buffer.from("client-type-key").toString("base64"),
-      share: Buffer.alloc(32, 2),
+      share: requestShare(2),
       reclaimSoleTrusted: true,
       previousDeviceId: trusted.id,
       previousDeviceFingerprint: trusted.device_fingerprint,
@@ -492,7 +497,7 @@ test("integration: reclaim is rejected when more than one trusted device exists"
     registerBody({
       fingerprint: NEW_BROWSER_FINGERPRINT,
       publicKey: Buffer.from("two-trusted-key").toString("base64"),
-      share: Buffer.alloc(32, 1),
+      share: requestShare(1),
       reclaimSoleTrusted: true,
       previousDeviceId: trusted.id,
       previousDeviceFingerprint: STORED_LEGACY_FINGERPRINT,
@@ -526,7 +531,7 @@ test("integration: legacy sole-device reclaim keeps the stored share", async (t)
     registerBody({
       fingerprint: NEW_BROWSER_FINGERPRINT,
       publicKey: nextKey,
-      share: Buffer.alloc(32, 15),
+      share: requestShare(15),
       reclaimSoleTrusted: true,
       previousDeviceId: stored.id,
       previousDeviceFingerprint: stored.device_fingerprint.toUpperCase(),
