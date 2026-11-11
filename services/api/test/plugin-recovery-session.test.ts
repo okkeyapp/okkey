@@ -159,7 +159,23 @@ test("plugin recovery helpers prove only the caller session and open restore rou
       row.recoveryChallengeExpiresAt = null;
       return true;
     },
-    async bindDevice() {
+    async bindDevice(input: {
+      tokenHash: string;
+      userId: string;
+      deviceId: string;
+      replaceExistingDevice?: boolean;
+    }) {
+      const row = rows.find(
+        (item) => item.tokenHash === input.tokenHash && item.userId === input.userId,
+      );
+      if (!row || Date.parse(row.expiresAt) <= clock) {
+        return false;
+      }
+      const sameDevice = row.deviceId === input.deviceId;
+      if (!input.replaceExistingDevice && row.deviceId && !sameDevice) {
+        return false;
+      }
+      row.deviceId = input.deviceId;
       return true;
     },
     async createSession() {
@@ -244,10 +260,30 @@ test("plugin recovery helpers prove only the caller session and open restore rou
   );
 
   let ctx: ApiEnterprisePluginContext | null = null;
+  let provedDeviceOnClaim: string | undefined;
   const deviceService = {
     isSessionDeviceTrusted: async () => false,
-    registerDevice: async () => {
+    registerDevice: async (
+      _userId: string,
+      _requestIp: string,
+      input: {
+        recoveryPending?: boolean;
+        claimAfterRecovery?: boolean;
+        provedDeviceId?: string;
+      },
+    ) => {
       claims += 1;
+      if (input.recoveryPending && !input.claimAfterRecovery) {
+        return { deviceId: "d-fresh", status: "pending_approval" as const, created: true };
+      }
+      if (input.claimAfterRecovery) {
+        provedDeviceOnClaim = input.provedDeviceId;
+        return {
+          deviceId: input.provedDeviceId ?? "d-pending",
+          status: "trusted" as const,
+          created: true,
+        };
+      }
       return { deviceId: "d-pending", status: "trusted" as const, created: true };
     },
   } as unknown as DeviceService;
@@ -397,6 +433,31 @@ test("plugin recovery helpers prove only the caller session and open restore rou
   const unboundClaim = await call("POST", "/devices/register", tokenD, claimBody);
   assert.equal(unboundClaim.statusCode, 403);
   assert.equal(unboundClaim.json.error, "RECOVERY_CLAIM_REQUIRES_PROVED_DEVICE");
+  assert.equal(rows[3]?.deviceId, null);
+  assert.equal(claims, 1);
+
+  const pending = await call("POST", "/devices/register", tokenD, {
+    ...claimBody,
+    metadata: { recovery_pending: true },
+  });
+  assert.equal(pending.statusCode, 200);
+  assert.equal(pending.json.device_id, "d-fresh");
+  assert.equal(pending.json.status, "pending_approval");
+  assert.equal(rows[3]?.deviceId, "d-fresh");
+  assert.equal(rows[3]?.recoveryProvedAt, "2026-06-01T00:00:00.000Z");
+  assert.equal(rows[0]?.deviceId, "d-pending");
+  assert.equal(rows[1]?.deviceId, "d-other");
+  const bound = await sessionService.resolveAccessToken(tokenD);
+  assert.equal(bound?.deviceId, "d-fresh");
+  assert.ok(bound?.recoveryProvedAt);
+
+  const claimedAfterBind = await call("POST", "/devices/register", tokenD, claimBody);
+  assert.equal(claimedAfterBind.statusCode, 200);
+  assert.equal(claimedAfterBind.json.status, "trusted");
+  assert.equal(claimedAfterBind.json.device_id, "d-fresh");
+  assert.equal(provedDeviceOnClaim, "d-fresh");
+  assert.equal(rows[3]?.deviceId, "d-fresh");
+  assert.equal(claims, 3);
 
   clock = Date.parse(EXPIRES_A);
   assert.equal(await pluginCtx.markSessionRecoveryProved(bearer(tokenA), { method: "trusted_device" }), false);
