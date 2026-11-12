@@ -103,6 +103,7 @@ export function serializeSettings(settings: ServerMailSettingsPublic) {
     email_from: settings.emailFrom,
     public_app_url: settings.publicAppUrl,
     password_set: settings.passwordSet,
+    password_unreadable: settings.passwordUnreadable,
   };
 }
 

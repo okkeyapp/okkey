@@ -53,6 +53,7 @@ function mailResponse() {
     email_from: "no-reply@example.com",
     public_app_url: "https://vault.example",
     password_set: true,
+    password_unreadable: false,
   };
 }
 
@@ -121,8 +122,29 @@ describe("server mail settings visibility", () => {
     );
     expect(screen.getByRole("button", { name: "web.workspaceSettings.serverMail.test" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "web.workspaceSettings.serverMail.clearPassword" })).toBeInTheDocument();
+    expect(screen.queryByTestId("server-mail-password-unreadable")).not.toBeInTheDocument();
     await waitFor(() => {
       expect(coreMock.getServerMailSettings).toHaveBeenCalledWith(workspace.id);
     });
+  });
+
+  it("shows a notice when the saved SMTP password cannot be read", async () => {
+    vi.stubEnv("VITE_DEPLOYMENT_MODE", "self_hosted");
+    coreMock.getServerMailSettings.mockResolvedValue({
+      ...mailResponse(),
+      password_set: false,
+      password_unreadable: true,
+    });
+    render(
+      <WorkspaceSettingsGeneralSection
+        workspaceId={workspace.id}
+        workspace={workspace}
+        vaults={[]}
+        t={t}
+      />,
+    );
+    expect(await screen.findByTestId("server-mail-password-unreadable")).toHaveTextContent(
+      "web.workspaceSettings.serverMail.passwordUnreadable",
+    );
   });
 });

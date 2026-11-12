@@ -42,6 +42,7 @@ function formFromSettings(settings: ServerMailSettingsResponseDto) {
     emailFrom: settings.email_from,
     publicAppUrl: settings.public_app_url,
     passwordSet: settings.password_set,
+    passwordUnreadable: settings.password_unreadable === true,
   };
 }
 
@@ -61,6 +62,7 @@ export default function ServerMailSettingsBlock({ workspaceId, t }: ServerMailSe
   const [emailFrom, setEmailFrom] = useState("");
   const [publicAppUrl, setPublicAppUrl] = useState("");
   const [passwordSet, setPasswordSet] = useState(false);
+  const [passwordUnreadable, setPasswordUnreadable] = useState(false);
 
   const applySettings = useCallback((settings: ServerMailSettingsResponseDto) => {
     const next = formFromSettings(settings);
@@ -71,6 +73,7 @@ export default function ServerMailSettingsBlock({ workspaceId, t }: ServerMailSe
     setEmailFrom(next.emailFrom);
     setPublicAppUrl(next.publicAppUrl);
     setPasswordSet(next.passwordSet);
+    setPasswordUnreadable(next.passwordUnreadable);
     setPassword("");
   }, []);
 
@@ -211,6 +214,15 @@ export default function ServerMailSettingsBlock({ workspaceId, t }: ServerMailSe
         </p>
       ) : (
         <div className="flex flex-col gap-4">
+          {passwordUnreadable ? (
+            <div
+              className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive"
+              role="status"
+              data-testid="server-mail-password-unreadable"
+            >
+              {t("web.workspaceSettings.serverMail.passwordUnreadable")}
+            </div>
+          ) : null}
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="flex flex-col gap-2">
               <label htmlFor="server-mail-host" className="text-sm font-medium text-foreground">

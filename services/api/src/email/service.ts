@@ -247,6 +247,7 @@ export class SmtpEmailSender implements EmailSender {
       emailFrom: config.emailFrom,
       publicAppBaseUrl: config.publicAppBaseUrl,
       passwordSet: config.smtpPassword.length > 0,
+      passwordUnreadable: false,
       useSmtpTransport: true,
     });
   }

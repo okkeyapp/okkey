@@ -2,11 +2,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
-import { deriveAes256KeyFromSessionSecret, deriveSmtpPasswordKey, openSecret } from "../src/crypto/server-aes.ts";
+import { deriveAes256KeyFromSessionSecret, deriveSmtpPasswordKey, openSecret, sealSecret } from "../src/crypto/server-aes.ts";
+import { wipeSecretBytes } from "../src/crypto/secret-lifecycle.ts";
 import { RuntimeEmailSender, type EmailMessage } from "../src/email/service.ts";
 import { registerServerMailSettingsRoutes } from "../src/mail-settings/routes.ts";
 import { MailSettingsService } from "../src/mail-settings/service.ts";
-import type { ServerMailSettingsRow, ServerMailSettingsStore } from "../src/mail-settings/types.ts";
+import type { MailDeliverySnapshot, ServerMailSettingsRow, ServerMailSettingsStore } from "../src/mail-settings/types.ts";
 import { createTestApiConfig } from "./test-api-config.ts";
 
 const WORKSPACE_ID = "1000000000000000100";
@@ -56,7 +57,7 @@ class MockResponse {
   }
 }
 
-function mailConfig() {
+function mailConfig(overrides: Partial<ReturnType<typeof createTestApiConfig>> = {}) {
   return createTestApiConfig({
     deploymentMode: "self_hosted",
     emailProvider: "logger",
@@ -67,14 +68,47 @@ function mailConfig() {
     smtpSecure: false,
     smtpUser: "env-user",
     smtpPassword: "env-secret",
+    ...overrides,
   });
 }
 
-function createService(store = new MemoryMailStore()) {
+function sealWithSessionSecret(sessionSecret: string, password: string): Buffer {
+  const key = deriveSmtpPasswordKey(sessionSecret);
+  try {
+    return sealSecret(key, Buffer.from(password, "utf8"));
+  } finally {
+    wipeSecretBytes(key);
+  }
+}
+
+function unreadableRow(): ServerMailSettingsRow {
+  return {
+    smtpHost: "smtp.db.example",
+    smtpPort: 587,
+    smtpTlsMode: "starttls",
+    smtpUsername: "db-user",
+    smtpPasswordCiphertext: sealWithSessionSecret("rotated-away-session-secret-32chars", "db-secret"),
+    emailFrom: "db@example.com",
+    publicAppUrl: "https://vault.customer.example",
+  };
+}
+
+function createService(
+  store = new MemoryMailStore(),
+  options?: {
+    config?: ReturnType<typeof mailConfig>;
+    logger?: {
+      info: (message: string, extra?: Record<string, unknown>) => void;
+      warn: (message: string, extra?: Record<string, unknown>) => void;
+      error: (message: string, extra?: Record<string, unknown>) => void;
+    };
+    sentSnapshots?: MailDeliverySnapshot[];
+  },
+) {
   const sent: EmailMessage[] = [];
   const service = new MailSettingsService({
     store,
-    config: mailConfig(),
+    config: options?.config ?? mailConfig(),
     users: {
       findById: async (id) => (id === OWNER_ID ? { email: "owner@example.com" } : null),
     },
@@ -83,7 +117,9 @@ function createService(store = new MemoryMailStore()) {
       hasAccess: async (id, userId) =>
         id === WORKSPACE_ID && (userId === OWNER_ID || userId === ADMIN_ID || userId === MEMBER_ID),
     },
-    sendSmtp: async (_snapshot, message) => {
+    logger: options?.logger,
+    sendSmtp: async (snapshot, message) => {
+      options?.sentSnapshots?.push(snapshot);
       sent.push(message);
     },
   });
@@ -109,6 +145,7 @@ test("owner reads env fallback when the database row is empty and the password i
   assert.equal(settings.emailFrom, "env@example.com");
   assert.equal(settings.publicAppUrl, "https://env.example");
   assert.equal(settings.passwordSet, true);
+  assert.equal(settings.passwordUnreadable, false);
   assert.equal("smtpPassword" in settings, false);
   assert.equal(JSON.stringify(settings).includes("env-secret"), false);
 });
@@ -241,6 +278,7 @@ test("routes: owner can read and update, non-owners get 403, saas is 404, passwo
   const readBody = JSON.parse(read.body) as Record<string, unknown>;
   assert.equal(readBody.smtp_host, "smtp.env.example");
   assert.equal(readBody.password_set, true);
+  assert.equal(readBody.password_unreadable, false);
   assert.equal(Object.hasOwn(readBody, "password"), false);
   assert.equal(read.body.includes("env-secret"), false);
 
@@ -375,6 +413,7 @@ test("runtime sender uses the database SMTP host and sender without restart", as
           emailFrom: "live@example.com",
           publicAppBaseUrl: "https://live.example",
           passwordSet: true,
+          passwordUnreadable: false,
           useSmtpTransport: true,
         };
       },
@@ -391,4 +430,183 @@ test("runtime sender uses the database SMTP host and sender without restart", as
     html: "<p>Hi</p>",
   });
   assert.deepEqual(calls, [{ host: "smtp.live.example", from: "live@example.com" }]);
+});
+
+test("unreadable stored password falls back to environment SMTP and sets the flag", async () => {
+  const warnings: string[] = [];
+  const errors: string[] = [];
+  const store = new MemoryMailStore();
+  store.row = unreadableRow();
+  const sentSnapshots: MailDeliverySnapshot[] = [];
+  const { service } = createService(store, {
+    logger: {
+      info() {},
+      warn(message, extra) {
+        warnings.push(JSON.stringify({ message, extra }));
+      },
+      error(message, extra) {
+        errors.push(JSON.stringify({ message, extra }));
+      },
+    },
+    sentSnapshots,
+  });
+
+  const sender = new RuntimeEmailSender(
+    {
+      async send() {
+        throw new Error("base provider should not send");
+      },
+    },
+    service,
+    async (snapshot, message) => {
+      sentSnapshots.push(snapshot);
+      assert.equal(message.from, "db@example.com");
+    },
+  );
+  await sender.send({
+    to: "person@example.com",
+    from: "stale@example.com",
+    subject: "Code",
+    text: "123456",
+    html: "<p>123456</p>",
+  });
+
+  assert.equal(sentSnapshots[0]?.smtpHost, "smtp.env.example");
+  assert.equal(sentSnapshots[0]?.smtpPort, 2525);
+  assert.equal(sentSnapshots[0]?.smtpTlsMode, "starttls");
+  assert.equal(sentSnapshots[0]?.smtpUsername, "env-user");
+  assert.equal(sentSnapshots[0]?.smtpPassword, "env-secret");
+  assert.equal(sentSnapshots[0]?.emailFrom, "db@example.com");
+  assert.equal(sentSnapshots[0]?.publicAppBaseUrl, "https://vault.customer.example");
+  assert.equal(sentSnapshots[0]?.passwordUnreadable, true);
+  assert.equal(sentSnapshots[0]?.useSmtpTransport, true);
+
+  const settings = await service.getForOwner(WORKSPACE_ID, OWNER_ID);
+  assert.equal(settings.passwordUnreadable, true);
+  assert.equal(settings.passwordSet, false);
+  assert.equal(settings.smtpHost, "smtp.db.example");
+  assert.equal(settings.smtpUsername, "db-user");
+  assert.equal(settings.emailFrom, "db@example.com");
+  assert.equal(JSON.stringify(settings).includes("env-secret"), false);
+  assert.equal(JSON.stringify(settings).includes("db-secret"), false);
+
+  await service.sendTestEmail(WORKSPACE_ID, OWNER_ID, {
+    smtpHost: "smtp.db.example",
+    smtpPort: 587,
+    smtpUsername: "db-user",
+  });
+  assert.equal(sentSnapshots[1]?.smtpHost, "smtp.env.example");
+  assert.equal(sentSnapshots[1]?.smtpPassword, "env-secret");
+  assert.equal(sentSnapshots[1]?.smtpUsername, "env-user");
+
+  assert.equal(errors.length, 0);
+  assert.ok(warnings.length >= 1);
+  const dumped = warnings.join("\n");
+  assert.match(dumped, /using environment smtp configuration/);
+  assert.equal(dumped.includes("env-secret"), false);
+  assert.equal(dumped.includes("db-secret"), false);
+  assert.equal(dumped.includes(mailConfig().sessionSecret), false);
+});
+
+test("unreadable stored password without an environment password is a 4xx on test email", async () => {
+  const store = new MemoryMailStore();
+  store.row = unreadableRow();
+  const sentSnapshots: MailDeliverySnapshot[] = [];
+  const { service, sent } = createService(store, {
+    config: mailConfig({ smtpPassword: "" }),
+    sentSnapshots,
+  });
+
+  const settings = await service.getForOwner(WORKSPACE_ID, OWNER_ID);
+  assert.equal(settings.passwordUnreadable, true);
+  assert.equal(settings.passwordSet, false);
+  assert.equal(settings.smtpHost, "smtp.db.example");
+
+  await assert.rejects(
+    () => service.sendTestEmail(WORKSPACE_ID, OWNER_ID, {}),
+    (error: unknown) => {
+      assert.equal((error as { statusCode?: number }).statusCode, 409);
+      assert.equal((error as { code?: string }).code, "SMTP_PASSWORD_UNAVAILABLE");
+      assert.equal((error as { message?: string }).message.includes("db-secret"), false);
+      return true;
+    },
+  );
+
+  await service.sendTestEmail(WORKSPACE_ID, OWNER_ID, {
+    smtpHost: "smtp.db.example",
+    smtpPort: 587,
+    smtpTlsMode: "starttls",
+    emailFrom: "db@example.com",
+    password: "typed-secret",
+  });
+  assert.equal(sentSnapshots[0]?.smtpHost, "smtp.db.example");
+  assert.equal(sentSnapshots[0]?.smtpPassword, "typed-secret");
+  assert.equal(JSON.stringify(sent).includes("typed-secret"), false);
+
+  const handlers = new Map<string, (ctx: {
+    requestId: string;
+    req: IncomingMessage;
+    res: MockResponse;
+    params: Record<string, string>;
+  }) => Promise<void>>();
+  registerServerMailSettingsRoutes(
+    (method, path, handler) => {
+      handlers.set(`${method} ${path}`, handler as never);
+    },
+    mailConfig(),
+    service,
+    async () => OWNER_ID,
+  );
+  const handler = handlers.get("POST /workspaces/:workspaceId/server-mail-settings/test-email");
+  assert.ok(handler);
+  const res = new MockResponse();
+  await handler({
+    requestId: "req_unreadable",
+    req: { method: "POST", headers: { "x-user-id": OWNER_ID }, body: {} } as IncomingMessage,
+    res: res as unknown as ServerResponse,
+    params: { workspaceId: WORKSPACE_ID },
+  });
+  assert.equal(res.statusCode, 409);
+  const body = JSON.parse(res.body) as { error?: string };
+  assert.equal(body.error, "SMTP_PASSWORD_UNAVAILABLE");
+
+  const read = handlers.get("GET /workspaces/:workspaceId/server-mail-settings");
+  assert.ok(read);
+  const readRes = new MockResponse();
+  await read({
+    requestId: "req_unreadable_get",
+    req: { method: "GET", headers: { "x-user-id": OWNER_ID } } as IncomingMessage,
+    res: readRes as unknown as ServerResponse,
+    params: { workspaceId: WORKSPACE_ID },
+  });
+  assert.equal(readRes.statusCode, 200);
+  assert.equal((JSON.parse(readRes.body) as { password_unreadable?: boolean }).password_unreadable, true);
+});
+
+test("saving a new password clears the unreadable state", async () => {
+  const store = new MemoryMailStore();
+  store.row = unreadableRow();
+  const { service } = createService(store);
+
+  const before = await service.getForOwner(WORKSPACE_ID, OWNER_ID);
+  assert.equal(before.passwordUnreadable, true);
+
+  const updated = await service.updateForOwner(WORKSPACE_ID, OWNER_ID, { password: "rotated-secret" });
+  assert.equal(updated.passwordUnreadable, false);
+  assert.equal(updated.passwordSet, true);
+  assert.equal(updated.smtpHost, "smtp.db.example");
+  assert.equal(JSON.stringify(updated).includes("rotated-secret"), false);
+
+  const effective = await service.effective();
+  assert.equal(effective.passwordUnreadable, false);
+  assert.equal(effective.smtpPassword, "rotated-secret");
+  assert.equal(effective.smtpHost, "smtp.db.example");
+  assert.equal(effective.smtpUsername, "db-user");
+  assert.equal(
+    openSecret(deriveSmtpPasswordKey(mailConfig().sessionSecret), store.row!.smtpPasswordCiphertext!).toString("utf8"),
+    "rotated-secret",
+  );
+
+  const again = await service.getForOwner(WORKSPACE_ID, OWNER_ID);
+  assert.equal(again.passwordUnreadable, false);
 });

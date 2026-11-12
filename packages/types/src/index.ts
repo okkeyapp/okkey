@@ -1290,7 +1290,16 @@ export interface ServerMailSettingsResponseDto {
   smtp_username: string;
   email_from: string;
   public_app_url: string;
+  /**
+   * True when a saved password, or the environment password if none is saved, can be used.
+   * False when a stored password exists but cannot be decrypted.
+   */
   password_set: boolean;
+  /**
+   * True when a stored SMTP password exists but cannot be decrypted with the current server secret.
+   * False when no password is stored or decryption succeeds.
+   */
+  password_unreadable: boolean;
 }
 
 /** `PATCH /workspaces/:workspaceId/server-mail-settings`. Empty strings clear that override. */
