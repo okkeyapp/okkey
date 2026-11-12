@@ -69,14 +69,68 @@ export function applyLocaleFromUrlAndStrip(): WebLocale | null {
   return fromUrl;
 }
 
-export function readStoredLocale(): WebLocale {
+/** Supported locale stored by an explicit choice (`okkey.locale` or a `lng` link). */
+export function readExplicitStoredLocale(): WebLocale | null {
   try {
     const raw = window.localStorage.getItem(LOCALE_STORAGE_KEY);
     if (raw != null && isWebLocale(raw)) return raw;
   } catch {
     /* ignore */
   }
+  return null;
+}
+
+/**
+ * Map a BCP 47 tag to a supported UI locale by primary subtag (`ru-RU` → `ru`).
+ * Returns null when the language is not shipped.
+ */
+export function matchLocalePrimarySubtag(tag: string): WebLocale | null {
+  const primary = tag.trim().toLowerCase().split(/[-_]/)[0] ?? "";
+  return primary.length > 0 && isWebLocale(primary) ? primary : null;
+}
+
+/**
+ * First supported language in `languages`, otherwise English.
+ * Does not write storage.
+ */
+export function detectLocaleFromLanguages(languages: readonly string[]): WebLocale {
+  for (const tag of languages) {
+    if (typeof tag !== "string" || tag.length === 0) continue;
+    const match = matchLocalePrimarySubtag(tag);
+    if (match) return match;
+  }
   return "en";
+}
+
+/**
+ * Explicit stored locale wins. Otherwise the first supported browser language.
+ * The detected value is not persisted.
+ */
+export function resolveInitialWebLocale(input: {
+  stored: string | null | undefined;
+  languages: readonly string[];
+}): WebLocale {
+  if (input.stored != null && isWebLocale(input.stored)) return input.stored;
+  return detectLocaleFromLanguages(input.languages);
+}
+
+function browserLanguageTags(): readonly string[] {
+  if (typeof navigator === "undefined") return [];
+  const list = navigator.languages;
+  if (list != null && list.length > 0) return list;
+  const single = navigator.language;
+  return single ? [single] : [];
+}
+
+/**
+ * Locale for the current document: stored choice, else browser, else English.
+ * Does not persist a browser-detected value.
+ */
+export function readStoredLocale(): WebLocale {
+  return resolveInitialWebLocale({
+    stored: readExplicitStoredLocale(),
+    languages: browserLanguageTags(),
+  });
 }
 
 export function writeStoredLocale(locale: WebLocale): void {

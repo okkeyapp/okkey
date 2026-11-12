@@ -15,6 +15,16 @@ beforeEach(() => {
     /* ignore */
   }
   document.documentElement.lang = "en";
+  // Tests that omit okkey.locale expect English. Pin the browser list so a
+  // host locale (for example ru-RU) does not change rendered copy.
+  Object.defineProperty(navigator, "languages", {
+    configurable: true,
+    get: () => ["en-US"],
+  });
+  Object.defineProperty(navigator, "language", {
+    configurable: true,
+    get: () => "en-US",
+  });
 
   Object.defineProperty(window, "matchMedia", {
     writable: true,

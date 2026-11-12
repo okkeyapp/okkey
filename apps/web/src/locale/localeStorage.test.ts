@@ -1,9 +1,13 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
+  detectLocaleFromLanguages,
   hrefWithoutLocaleQuery,
   LOCALE_QUERY_PARAM,
+  LOCALE_STORAGE_KEY,
   readLocaleFromSearch,
+  readStoredLocale,
+  resolveInitialWebLocale,
   stripLocaleFromUrlSearch,
 } from "./localeStorage";
 
@@ -37,6 +41,55 @@ describe("stripLocaleFromUrlSearch", () => {
   it("leaves search unchanged when lng is absent", () => {
     expect(stripLocaleFromUrlSearch("?popup=settings")).toBe("?popup=settings");
     expect(stripLocaleFromUrlSearch("")).toBe("");
+  });
+});
+
+describe("resolveInitialWebLocale", () => {
+  it("uses a supported stored value over the browser list", () => {
+    expect(resolveInitialWebLocale({ stored: "en", languages: ["ru-RU", "en-US"] })).toBe("en");
+    expect(resolveInitialWebLocale({ stored: "ru", languages: ["en-GB"] })).toBe("ru");
+  });
+
+  it("maps ru-RU to ru when nothing is stored", () => {
+    expect(resolveInitialWebLocale({ stored: null, languages: ["ru-RU", "en-US"] })).toBe("ru");
+    expect(detectLocaleFromLanguages(["ru-RU"])).toBe("ru");
+  });
+
+  it("falls back to English when no language is supported", () => {
+    expect(resolveInitialWebLocale({ stored: "de", languages: ["de-DE", "fr-FR"] })).toBe("en");
+    expect(detectLocaleFromLanguages(["zh-Hans", "ja"])).toBe("en");
+  });
+
+  it("falls back to English when the language list is empty", () => {
+    expect(resolveInitialWebLocale({ stored: null, languages: [] })).toBe("en");
+    expect(resolveInitialWebLocale({ stored: undefined, languages: [""] })).toBe("en");
+  });
+
+  it("matches en-GB by primary subtag", () => {
+    expect(detectLocaleFromLanguages(["en-GB"])).toBe("en");
+  });
+});
+
+describe("readStoredLocale", () => {
+  it("does not persist a browser-detected locale", () => {
+    const store = new Map<string, string>();
+    const storage = {
+      getItem: (key: string) => store.get(key) ?? null,
+      setItem: (key: string, value: string) => {
+        store.set(key, value);
+      },
+      removeItem: (key: string) => {
+        store.delete(key);
+      },
+    };
+    vi.stubGlobal("localStorage", storage);
+    Object.defineProperty(navigator, "languages", { configurable: true, get: () => ["ru-RU"] });
+    Object.defineProperty(navigator, "language", { configurable: true, get: () => "ru-RU" });
+
+    expect(readStoredLocale()).toBe("ru");
+    expect(store.has(LOCALE_STORAGE_KEY)).toBe(false);
+
+    vi.unstubAllGlobals();
   });
 });
 
