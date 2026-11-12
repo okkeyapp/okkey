@@ -137,7 +137,11 @@ function makeService(nowMs: () => number) {
   return { service, sent };
 }
 
-async function post(service: PlanChangeRequestService, workspaceId: string): Promise<MockResponse> {
+async function post(
+  service: PlanChangeRequestService,
+  workspaceId: string,
+  contactEmail = "a@b.co",
+): Promise<MockResponse> {
   const handler = createWorkspacePlanChangeRequestRoute(service, async () => "user_1");
   const req = {
     method: "POST",
@@ -145,7 +149,7 @@ async function post(service: PlanChangeRequestService, workspaceId: string): Pro
     headers: { "x-user-id": "user_1" },
     body: {
       requested_plan_tier: "ENTERPRISE",
-      contact_email: "a@b.co",
+      contact_email: contactEmail,
       locale: "en",
       region: "US",
       workspace_member_count: 3,
@@ -194,4 +198,24 @@ test("POST plan-change-requests allows 3 then 429 with Retry-After and no extra 
   const again = await post(service, WS_A);
   assert.equal(again.statusCode, 200, again.body);
   assert.equal(sent.filter((id) => id === WS_A).length, 4);
+});
+
+test("POST plan-change-requests rejects malformed contact emails", async () => {
+  let nowMs = Date.parse("2026-10-25T12:00:00.000Z");
+  const { service, sent } = makeService(() => nowMs);
+  const tooLong = `${"a".repeat(316)}@x.co`;
+  assert.equal(tooLong.length, 321);
+
+  for (const contactEmail of ["a@", "@b", "x@y", tooLong]) {
+    nowMs += 1_000;
+    const res = await post(service, WS_A, contactEmail);
+    assert.equal(res.statusCode, 400, `${contactEmail} -> ${res.body}`);
+    const payload = JSON.parse(res.body) as { error: string };
+    assert.equal(payload.error, "INVALID_REQUEST");
+  }
+
+  nowMs += 1_000;
+  const ok = await post(service, WS_A, "reply@example.com");
+  assert.equal(ok.statusCode, 200, ok.body);
+  assert.equal(sent.length, 1);
 });
