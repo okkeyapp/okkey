@@ -23,6 +23,17 @@ printf '%s\n' "${help_out}" | grep -Fq 'Verification stays on' || fail "help mus
 ${help_out}"
 head -n 30 "${INSTALL_SH}" | grep -Fq -- '--allow-candidate' || fail "script header missing --allow-candidate"
 
+# Default git ref is the documented release tag, not the dev branch.
+grep -Fq 'OKKEY_REF="${OKKEY_REF:-v1.0.0-beta.2}"' "${INSTALL_SH}" || fail "default OKKEY_REF must be v1.0.0-beta.2"
+head -n 20 "${INSTALL_SH}" | grep -Fq 'okkey/v1.0.0-beta.2/deploy/docker/install.sh' || fail "header must download install.sh from the release tag"
+if head -n 20 "${INSTALL_SH}" | grep -Fq 'okkey/dev/deploy/docker/install.sh'; then
+  fail "header must not download install.sh from the dev branch"
+fi
+grep -Fq 'published only by a manual workflow_dispatch' "${INSTALL_SH}" || fail "pull error must describe manual :dev publishing"
+if grep -Fq 'published on every push' "${INSTALL_SH}"; then
+  fail "pull error must not say :dev is published on every push"
+fi
+
 # --- unknown argument fails before docker ---
 set +e
 unknown_out="$(PATH="/usr/bin:/bin" bash "${INSTALL_SH}" --not-a-flag </dev/null 2>&1)"
