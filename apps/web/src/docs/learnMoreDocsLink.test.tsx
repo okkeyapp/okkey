@@ -64,6 +64,7 @@ describe("Learn more docs links", () => {
     fireEvent.click(screen.getByRole("button", { name: "Use Russian" }));
     const link = screen.getByRole("link", { name: "Learn more" });
     expect(link).toHaveAttribute("href", publicDocsUrl("roles", "ru"));
-    expect(decodeURI(link.getAttribute("href") ?? "")).toContain("#роли");
+    expect(link.getAttribute("href")).toContain("/workspace/roles");
+    expect(link.getAttribute("href")).not.toContain("#");
   });
 });

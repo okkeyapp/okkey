@@ -4,40 +4,40 @@ import { PUBLIC_DOCS_ORIGIN, PUBLIC_DOCS_TOPICS, publicDocsUrl } from "./publicD
 
 const DECODED: Record<(typeof PUBLIC_DOCS_TOPICS)[number], { ru: string; en: string }> = {
   home: {
-    ru: "https://okkey.app/",
-    en: "https://okkey.app/en/",
+    ru: "https://docs.okkey.io/",
+    en: "https://docs.okkey.io/en/",
   },
   roles: {
-    ru: "https://okkey.app/settings/workspace#роли",
-    en: "https://okkey.app/en/settings/workspace#roles",
+    ru: "https://docs.okkey.io/workspace/roles",
+    en: "https://docs.okkey.io/en/workspace/roles",
   },
   members: {
-    ru: "https://okkey.app/settings/workspace#участники",
-    en: "https://okkey.app/en/settings/workspace#members",
+    ru: "https://docs.okkey.io/workspace/members",
+    en: "https://docs.okkey.io/en/workspace/members",
   },
   profiles: {
-    ru: "https://okkey.app/settings/workspace#профили",
-    en: "https://okkey.app/en/settings/workspace#profiles",
+    ru: "https://docs.okkey.io/workspace/profiles",
+    en: "https://docs.okkey.io/en/workspace/profiles",
   },
   workspaceVaults: {
-    ru: "https://okkey.app/settings/workspace#сейфы",
-    en: "https://okkey.app/en/settings/workspace#vaults",
+    ru: "https://docs.okkey.io/workspace/vaults",
+    en: "https://docs.okkey.io/en/workspace/vaults",
   },
   generator: {
-    ru: "https://okkey.app/tools#генератор",
-    en: "https://okkey.app/en/tools#generator",
+    ru: "https://docs.okkey.io/tools/generator",
+    en: "https://docs.okkey.io/en/tools/generator",
   },
   import: {
-    ru: "https://okkey.app/tools#импорт",
-    en: "https://okkey.app/en/tools#import",
+    ru: "https://docs.okkey.io/tools/import",
+    en: "https://docs.okkey.io/en/tools/import",
   },
   export: {
-    ru: "https://okkey.app/tools#экспорт",
-    en: "https://okkey.app/en/tools#export",
+    ru: "https://docs.okkey.io/tools/export",
+    en: "https://docs.okkey.io/en/tools/export",
   },
   capsules: {
-    ru: "https://okkey.app/capsules",
-    en: "https://okkey.app/en/capsules",
+    ru: "https://docs.okkey.io/capsules",
+    en: "https://docs.okkey.io/en/capsules",
   },
 };
 

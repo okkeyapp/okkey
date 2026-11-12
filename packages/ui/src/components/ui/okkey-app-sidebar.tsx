@@ -970,7 +970,7 @@ const DEMO_FOLDER_TREE: OkkeySidebarFolderTreeNode[] = [
 const SHOW_SIDEBAR_HELP_LINK = false;
 
 function demoPlainLinkItems(locale: PublicDocsLocale): OkkeySidebarPlainLinkItem[] {
-  // okkey-docs has no separate help page. The Help item uses the same docs home as Documentation.
+  // The public docs site has no separate help page. The Help item uses the same docs home as Documentation.
   const href = publicDocsUrl("home", locale);
   const items: OkkeySidebarPlainLinkItem[] = [
     { id: "doc", icon: <NavDocumentationIcon />, label: "Documentation", href },

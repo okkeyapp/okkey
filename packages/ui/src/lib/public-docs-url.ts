@@ -1,9 +1,8 @@
 /**
- * Origin of the public Okkey docs site (okkey-docs).
+ * Origin of the public Okkey docs site.
  * Russian is the default locale and is not prefixed. English is under `/en/`.
- * The published docs line is v1.0 and is served at the site root.
  */
-export const PUBLIC_DOCS_ORIGIN = "https://okkey.app";
+export const PUBLIC_DOCS_ORIGIN = "https://docs.okkey.io";
 
 export type PublicDocsLocale = "en" | "ru";
 
@@ -23,12 +22,10 @@ export const PUBLIC_DOCS_TOPICS = [
 export type PublicDocsTopic = (typeof PUBLIC_DOCS_TOPICS)[number];
 
 /**
- * Paths on okkey-docs v1.0.
- * `home` is the intro page (`slug: /`). There is no separate help article, so
- * sidebar Help uses the same page as Documentation.
- * Roles, members, profiles, and workspace vaults are sections of workspace
- * settings. Generator, import, and export are sections of tools.
- * Fragments are the heading slugs for that locale.
+ * Paths on the public docs site.
+ * `home` is the intro page (`/`). There is no separate help article.
+ * Roles, members, profiles, and workspace vaults are separate workspace pages.
+ * Generator, import, and export are separate tools pages.
  */
 const PUBLIC_DOCS_PATHS: Record<PublicDocsTopic, Record<PublicDocsLocale, string>> = {
   home: {
@@ -36,32 +33,32 @@ const PUBLIC_DOCS_PATHS: Record<PublicDocsTopic, Record<PublicDocsLocale, string
     en: "/en/",
   },
   roles: {
-    ru: "/settings/workspace#роли",
-    en: "/en/settings/workspace#roles",
+    ru: "/workspace/roles",
+    en: "/en/workspace/roles",
   },
   members: {
-    ru: "/settings/workspace#участники",
-    en: "/en/settings/workspace#members",
+    ru: "/workspace/members",
+    en: "/en/workspace/members",
   },
   profiles: {
-    ru: "/settings/workspace#профили",
-    en: "/en/settings/workspace#profiles",
+    ru: "/workspace/profiles",
+    en: "/en/workspace/profiles",
   },
   workspaceVaults: {
-    ru: "/settings/workspace#сейфы",
-    en: "/en/settings/workspace#vaults",
+    ru: "/workspace/vaults",
+    en: "/en/workspace/vaults",
   },
   generator: {
-    ru: "/tools#генератор",
-    en: "/en/tools#generator",
+    ru: "/tools/generator",
+    en: "/en/tools/generator",
   },
   import: {
-    ru: "/tools#импорт",
-    en: "/en/tools#import",
+    ru: "/tools/import",
+    en: "/en/tools/import",
   },
   export: {
-    ru: "/tools#экспорт",
-    en: "/en/tools#export",
+    ru: "/tools/export",
+    en: "/en/tools/export",
   },
   capsules: {
     ru: "/capsules",
