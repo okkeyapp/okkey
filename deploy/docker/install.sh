@@ -1,12 +1,9 @@
 #!/usr/bin/env bash
 # Okkey Core — one-command self-host installer (Docker Compose).
 #
-# Tracking / QA (default image tag `dev`):
-#   curl -fsSL https://raw.githubusercontent.com/okkeyapp/okkey/dev/deploy/docker/install.sh | bash
-#
-# Production — pin a SemVer image (never `:latest`):
-#   curl -fsSL https://raw.githubusercontent.com/okkeyapp/okkey/dev/deploy/docker/install.sh \
-#     | OKKEY_IMAGE_TAG=1.0.0-beta.2 bash
+# Release pin (script, compose files, and container tag). Never `:latest`.
+#   curl -fsSL https://raw.githubusercontent.com/okkeyapp/okkey/v1.0.0-beta.2/deploy/docker/install.sh \
+#     | OKKEY_REF=v1.0.0-beta.2 OKKEY_IMAGE_TAG=1.0.0-beta.2 bash
 #
 # Env must be on the right of `|` so bash sees it (`VAR=x curl | bash` does not).
 #
@@ -26,9 +23,10 @@ if [[ -n "${OKKEY_RAW_BASE:-}" ]]; then
   OKKEY_REPO_RAW_BASE="${OKKEY_RAW_BASE}"
 fi
 OKKEY_REPO_RAW_BASE="${OKKEY_REPO_RAW_BASE:-https://raw.githubusercontent.com/okkeyapp/okkey}"
-# Git ref for raw file downloads (branch, tag, or commit SHA). Default `dev`.
+# Git ref for raw file downloads (branch, tag, or commit SHA).
+# Default is the current release tag (v*), matching the documented install pin.
 # Not the same as OKKEY_IMAGE_TAG (GHCR container tag; see .env.example).
-OKKEY_REF="${OKKEY_REF:-dev}"
+OKKEY_REF="${OKKEY_REF:-v1.0.0-beta.2}"
 # Historical production pin name (first planned SemVer). Not published in GHCR yet —
 # OKKEY_CHANNEL=prod is refused until a SemVer exists (or OKKEY_PROD_CHANNEL_FORCE=1).
 # Used only when OKKEY_CHANNEL=prod is forced and OKKEY_IMAGE_TAG is unset. Never `:latest`.
@@ -489,8 +487,8 @@ fetch_file() {
 tried:
   ${url}
 hint: set OKKEY_REF on the right of \`|\` so bash sees it, e.g.
-  curl -fsSL https://raw.githubusercontent.com/okkeyapp/okkey/dev/deploy/docker/install.sh \\
-    | OKKEY_REF=dev bash"
+  curl -fsSL https://raw.githubusercontent.com/okkeyapp/okkey/v1.0.0-beta.2/deploy/docker/install.sh \\
+    | OKKEY_REF=v1.0.0-beta.2 bash"
 }
 
 parse_args "$@"
@@ -614,7 +612,7 @@ else
   if ! run_compose .env pull; then
     die "docker compose pull failed (OKKEY_IMAGE_TAG=${image_tag}).
 hint: the tag must exist in GHCR (ghcr.io/okkeyapp/{api,web,worker}).
-  Tracking channel: OKKEY_IMAGE_TAG=dev (published on every push to the \`dev\` branch after CI lands).
+  Tracking channel: OKKEY_IMAGE_TAG=dev (published only by a manual workflow_dispatch of .github/workflows/publish-images.yml on refs/heads/dev; a push to the dev branch does not publish :dev).
   Production: pin a published SemVer with OKKEY_IMAGE_TAG=<semver> (OKKEY_CHANNEL=prod is gated until SemVer exists).
   Or set OKKEY_SKIP_PULL=1 with local images."
   fi
