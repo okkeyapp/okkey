@@ -94,6 +94,24 @@ test("encodeUnstructuredHeader encodes ASCII that looks like an encoded-word", (
   assert.equal(encodedWordsIn(encoded).map(decodeEncodedWord).join(""), fake);
 });
 
+test("formatUnstructuredHeader keeps a 989-char subject token on one line", () => {
+  const subject = "A".repeat(989);
+  const field = formatUnstructuredHeader("Subject", subject);
+  assert.equal(field, `Subject: ${subject}`);
+  assert.equal(field.length, 998);
+});
+
+test("formatUnstructuredHeader encodes a single subject token longer than 989 chars", () => {
+  const subject = "B".repeat(990);
+  const field = formatUnstructuredHeader("Subject", subject);
+  assert.match(field, /^Subject: =\?UTF-8\?B\?/);
+  assert.equal(encodedWordsIn(field).map(decodeEncodedWord).join(""), subject);
+  assert.match(field, /\r\n /);
+  for (const line of field.split("\r\n")) {
+    assert.ok(line.length <= 76, `line ${line.length}`);
+  }
+});
+
 test("formatUnstructuredHeader encodes ASCII that looks like an encoded-word", () => {
   const fake = "=?UTF-8?B?SGVsbG8=?=";
   const field = formatUnstructuredHeader("Subject", fake);
@@ -210,6 +228,52 @@ test("formatMailboxHeader preserves multi-quote display-name", () => {
   assert.equal(field, `From: "\\"QA\\" Okkey \\"Team\\"" <no-reply@okkey.local>`);
 });
 
+test("encodeMailboxHeader encodes a display name that looks like an encoded-word", () => {
+  const display = "=?UTF-8?B?SGVsbG8=?=";
+  const encoded = encodeMailboxHeader(`${display} <no-reply@okkey.local>`);
+  assert.match(encoded, /^=\?UTF-8\?B\?[A-Za-z0-9+/=]+\?= <no-reply@okkey\.local>$/);
+  assert.equal(encodedWordsIn(encoded).map(decodeEncodedWord).join(""), display);
+  assert.doesNotMatch(encoded, /^"=\?UTF-8/);
+});
+
+test("formatMailboxHeader encodes a display name that looks like an encoded-word", () => {
+  const display = "=?UTF-8?B?SGVsbG8=?=";
+  const field = formatMailboxHeader("From", `${display} <no-reply@okkey.local>`);
+  assert.match(field, /^From: =\?UTF-8\?B\?/);
+  assert.equal(encodedWordsIn(field).map(decodeEncodedWord).join(""), display);
+  assert.match(field, /<no-reply@okkey\.local>$/);
+  assert.doesNotMatch(field, /^From: "=\?UTF-8/);
+  assert.doesNotMatch(field, /^From: =\?UTF-8\?B\?SGVsbG8=\?=/);
+  assertHeaderLinesWithEncodedWordsAtMost76(field);
+});
+
+test("formatMailboxHeader folds a long quoted display name before the address", () => {
+  const display = `Okkey, ${"N".repeat(50)}`;
+  const addr = "no-reply@okkey.local";
+  const quoted = `"${display}"`;
+  const singleLine = `From: ${quoted} <${addr}>`;
+  assert.ok(singleLine.length > 78 && singleLine.length <= 998);
+  assert.ok(`From: ${quoted}`.length <= 78);
+
+  const field = formatMailboxHeader("From", `${display} <${addr}>`);
+  const lines = field.split("\r\n");
+  assert.deepEqual(lines, [`From: ${quoted}`, ` <${addr}>`]);
+  for (const line of lines) {
+    assert.ok(line.length <= 78, `line ${line.length}: ${line}`);
+  }
+  assert.equal(field.replace(/\r\n /g, " "), singleLine);
+});
+
+test("formatMailboxHeader RFC 2047-encodes non-ASCII display names", () => {
+  const display = "Служба поддержки Okkey";
+  const field = formatMailboxHeader("To", `${display} <user@example.com>`);
+  assert.match(field, /^To: =\?UTF-8\?B\?/);
+  assert.equal(encodedWordsIn(field).map(decodeEncodedWord).join(""), display);
+  assert.match(field, /<user@example\.com>$/);
+  assert.doesNotMatch(field, /[^\x00-\x7F]/);
+  assertHeaderLinesWithEncodedWordsAtMost76(field);
+});
+
 test("encodeMailboxHeader RFC 2047-encodes non-ASCII display names", () => {
   const encoded = encodeMailboxHeader("Оккей <no-reply@okkey.local>");
   assert.match(encoded, /^=\?UTF-8\?B\?[A-Za-z0-9+/=]+\?= <no-reply@okkey\.local>$/);
@@ -289,6 +353,81 @@ test("buildRawMimeEmail sends long ASCII To/From/Subject without throwing", () =
   assert.equal(subjectField.replace(/\r\n /g, " "), `Subject: ${longSubject}`);
   const oversize = raw.split(/\r\n/).filter((line) => line.length > 998);
   assert.deepEqual(oversize, []);
+});
+
+test("buildRawMimeEmail encodes a display name that looks like an encoded-word", () => {
+  const display = "=?UTF-8?B?SGVsbG8=?=";
+  const raw = buildRawMimeEmail(
+    {
+      ...baseMessage,
+      from: `${display} <no-reply@okkey.local>`,
+      html: "<p>no logo</p>",
+    },
+    { now: fixedNow, messageId: fixedMessageId },
+  ).toString("utf8");
+  const fromField = raw.split("\r\n").find((line) => line.startsWith("From:"));
+  assert.ok(fromField);
+  assert.match(fromField, /^From: =\?UTF-8\?B\?/);
+  assert.equal(encodedWordsIn(fromField).map(decodeEncodedWord).join(""), display);
+  assert.doesNotMatch(raw, /^From: =\?UTF-8\?B\?SGVsbG8=\?=/m);
+});
+
+test("buildRawMimeEmail folds a long quoted From before the address", () => {
+  const display = `Okkey, ${"N".repeat(50)}`;
+  const raw = buildRawMimeEmail(
+    {
+      ...baseMessage,
+      from: `${display} <no-reply@okkey.local>`,
+      html: "<p>no logo</p>",
+    },
+    { now: fixedNow, messageId: fixedMessageId },
+  ).toString("utf8");
+  assert.match(raw, new RegExp(`^From: "${display}"\\r\\n <no-reply@okkey\\.local>\\r\\n`, "m"));
+  const fromLines = raw.split("\r\n").filter((line, i, all) => {
+    if (line.startsWith("From:")) {
+      return true;
+    }
+    return all[i - 1]?.startsWith("From:");
+  });
+  for (const line of fromLines) {
+    assert.ok(line.length <= 78, `From line ${line.length}`);
+  }
+});
+
+test("buildRawMimeEmail encodes a subject token longer than 989 chars", () => {
+  const subject = "C".repeat(1000);
+  const raw = buildRawMimeEmail(
+    {
+      ...baseMessage,
+      subject,
+      html: "<p>no logo</p>",
+    },
+    { now: fixedNow, messageId: fixedMessageId },
+  ).toString("utf8");
+  const header = raw.split(/\r\n\r\n/)[0]!;
+  assert.match(header, /^Subject: =\?UTF-8\?B\?/m);
+  assert.equal(encodedWordsIn(header).map(decodeEncodedWord).join(""), subject);
+  assertHeaderLinesWithEncodedWordsAtMost76(raw);
+  const oversize = raw.split(/\r\n/).filter((line) => line.length > 998);
+  assert.deepEqual(oversize, []);
+});
+
+test("buildRawMimeEmail encodes a non-ASCII From display name", () => {
+  const display = "Оккей Поддержка";
+  const raw = buildRawMimeEmail(
+    {
+      ...baseMessage,
+      from: `${display} <no-reply@okkey.local>`,
+      html: "<p>no logo</p>",
+    },
+    { now: fixedNow, messageId: fixedMessageId },
+  ).toString("utf8");
+  assert.match(raw, /^From: =\?UTF-8\?B\?/m);
+  assert.doesNotMatch(raw, /^From:.*[^\x00-\x7F]/m);
+  const fromLines = raw.split("\r\n").filter((line) => line.startsWith("From:") || line.startsWith(" =?"));
+  const fromText = fromLines.filter((line) => line.startsWith("From:") || line.includes("=?")).join("\r\n");
+  assert.equal(encodedWordsIn(fromText).map(decodeEncodedWord).join(""), display);
+  assertHeaderLinesWithEncodedWordsAtMost76(raw);
 });
 
 test("buildRawMimeEmail encodes subject that looks like an encoded-word", () => {
