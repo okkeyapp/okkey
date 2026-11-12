@@ -14,7 +14,7 @@ import {
   type WorkspaceCapsulePolicies,
   type WorkspaceMemberDirectoryEntryDto,
 } from "@okkey/types";
-import { workspaceHasPlanFeature } from "../../workspace/planEntitlements";
+import { webPlanFeatureAccess, workspaceHasPlanFeature } from "../../workspace/planEntitlements";
 import workspaceCapsulesModule from "@okkey-enterprise/workspace-capsules";
 import type { CapsuleAccessSettingsValues } from "../../workspace-features/registry";
 import {
@@ -187,7 +187,8 @@ export default function NewCapsulePopup({
   const sourceItemId = open
     ? (searchParams.get(CAPSULE_FROM_ITEM_QUERY_PARAM)?.trim() ?? "")
     : "";
-  const advancedAvailable = workspaceHasPlanFeature(workspace, "capsuleAccessSettings");
+  const capsuleAccess = webPlanFeatureAccess(workspace, "capsuleAccessSettings");
+  const advancedAvailable = capsuleAccess === "granted";
   const filesInCapsules = workspaceHasPlanFeature(workspace, "filesInCapsules");
   const CapsuleAccessSettingsFields = workspaceCapsulesModule.CapsuleAccessSettingsFields;
   const accessSettingsMounted = CapsuleAccessSettingsFields != null;
@@ -1403,7 +1404,19 @@ export default function NewCapsulePopup({
           <div className="overflow-hidden rounded-xl bg-secondary">
             {accessSettingsMounted && !accessSettingsActive ? (
               <p className="px-4 pt-4 text-sm leading-5 text-muted-foreground">
-                {t("web.capsules.popup.planUnavailable")}
+                {capsuleAccess === "lapsed" ? (
+                  <>
+                    {t("web.plan.lapsedModulePrefix")}
+                    <Link
+                      to={settingsPath("plan")}
+                      className="font-medium text-foreground underline decoration-border underline-offset-4"
+                    >
+                      {t("web.plan.lapsedModuleLink")}
+                    </Link>
+                  </>
+                ) : (
+                  t("web.capsules.popup.planUnavailable")
+                )}
               </p>
             ) : null}
             {!accessSettingsMounted && forceMaxViews ? (

@@ -9,6 +9,12 @@ export type PasswordMonitoringPageProps = {
   vaults: readonly Vault[];
   workspacePermissions: WorkspacePermissionsMatrixDto | null;
   patchWorkspace?: (workspaceId: string, patch: Partial<Workspace>) => void;
+  /**
+   * Plan does not grant monitoring (including a lapsed enterprise license).
+   * Keep existing results visible and deletable. Do not create or edit checks.
+   * Link the user to workspace plan settings for a license request.
+   */
+  readOnly?: boolean;
 };
 
 export type MonitoringIssueItemIdsInput = {

@@ -2,9 +2,11 @@ import {
   getPlanQuotaLimits,
   hasPlanFeature,
   planEntitlementOptionsFromWorkspace,
+  planFeatureWriteDecision,
   type PlanEntitlementOptions,
   type PlanFeature,
   type PlanFeatureOverrides,
+  type PlanFeatureWriteDecision,
   type PlanQuotaLimits,
 } from "@okkey/types";
 
@@ -21,7 +23,7 @@ export type WorkspacePlanEntitlementSource = {
   planFeatureOverrides?: PlanFeatureOverrides | null;
 };
 
-/** Runtime entitlement context from API config (self-host: modules → ENTERPRISE / FREE; SaaS: plan_tier). */
+/** Runtime entitlement context from API config (deployment mode and whether modules loaded). */
 export function planEntitlementRuntimeFromConfig(
   config: PlanEntitlementRuntimeConfig,
 ): Pick<PlanEntitlementOptions, "deploymentMode" | "enterpriseModulesActive"> {
@@ -41,7 +43,25 @@ export function workspacePlanEntitlementOptions(
   };
 }
 
-/** Feature gate: self-host modules on → ENTERPRISE; modules off → FREE; SaaS → `plan_tier`. */
+/** Runtime options for one workspace, including deployment mode and loaded modules. */
+export function workspacePlanFeatureWriteDecision(
+  config: PlanEntitlementRuntimeConfig,
+  workspace: WorkspacePlanEntitlementSource,
+  feature: PlanFeature,
+): PlanFeatureWriteDecision {
+  return planFeatureWriteDecision(
+    workspace.planTier,
+    feature,
+    workspacePlanEntitlementOptions(config, workspace),
+  );
+}
+
+/**
+ * Feature gate for create and update.
+ * Self-hosted modules on and a paid plan → ENTERPRISE.
+ * Self-hosted modules on and FREE → FREE, with enterprise modules lapsed.
+ * Modules off → FREE. SaaS → `plan_tier`.
+ */
 export function workspaceHasPlanFeature(
   config: PlanEntitlementRuntimeConfig,
   workspace: WorkspacePlanEntitlementSource,

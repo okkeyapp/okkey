@@ -32,11 +32,13 @@ import {
   Switch,
 } from "@okkey/ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 
 import workspaceCapsulesModule from "@okkey-enterprise/workspace-capsules";
 import workspaceTenancyModule from "@okkey-enterprise/workspace-tenancy";
 
-import { webDeploymentMode, workspaceHasPlanFeature } from "../../../workspace/planEntitlements";
+import { webDeploymentMode, webPlanFeatureAccess } from "../../../workspace/planEntitlements";
+import { settingsPath } from "../../../routes/paths";
 
 import { deleteKeyFieldFileAttachment } from "../../../api/key-field-files";
 import { assertWorkspaceLogoImage, commitWorkspaceLogoReplacement } from "../../../workspace/logoImage";
@@ -137,10 +139,11 @@ export default function WorkspaceSettingsGeneralSection({
 
   const isOwner = Boolean(workspace && userId && workspace.ownerId === userId);
   const canEdit = canPut ?? isOwner;
-  const canManageCapsuleAccessSettings = workspaceHasPlanFeature(workspace, "capsuleAccessSettings");
+  const capsuleAccess = webPlanFeatureAccess(workspace, "capsuleAccessSettings");
+  const canManageCapsuleAccessSettings = capsuleAccess === "granted";
   const CapsulesAdvancedPoliciesSection = workspaceCapsulesModule.CapsulesAdvancedPoliciesSection;
   const showCapsuleAccessSettings = Boolean(
-    CapsulesAdvancedPoliciesSection && canManageCapsuleAccessSettings,
+    CapsulesAdvancedPoliciesSection && capsuleAccess !== "unavailable",
   );
   const DangerZoneSection = workspaceTenancyModule.DangerZoneSection;
   const showDangerZone = Boolean(isOwner && DangerZoneSection);
@@ -820,12 +823,25 @@ export default function WorkspaceSettingsGeneralSection({
             </SettingsFieldRow>
 
             {showCapsuleAccessSettings && CapsulesAdvancedPoliciesSection ? (
-              <CapsulesAdvancedPoliciesSection
-                policies={capsulePolicies}
-                canEdit={canEdit}
-                t={t}
-                onPersist={persistCapsulePolicies}
-              />
+              <>
+                {capsuleAccess === "lapsed" ? (
+                  <p className="text-sm text-muted-foreground">
+                    {t("web.plan.lapsedModulePrefix")}
+                    <Link
+                      to={settingsPath("plan")}
+                      className="font-medium text-foreground underline decoration-border underline-offset-4"
+                    >
+                      {t("web.plan.lapsedModuleLink")}
+                    </Link>
+                  </p>
+                ) : null}
+                <CapsulesAdvancedPoliciesSection
+                  policies={capsulePolicies}
+                  canEdit={canEdit && canManageCapsuleAccessSettings}
+                  t={t}
+                  onPersist={persistCapsulePolicies}
+                />
+              </>
             ) : null}
           </div>
         </div>

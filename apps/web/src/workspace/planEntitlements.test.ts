@@ -10,27 +10,45 @@ beforeEach(async () => {
 });
 
 describe("web plan entitlements (self_hosted)", () => {
-  it("EE + FREE shows FREE and still unlocks paid features from installed modules", async () => {
+  it("EE + FREE shows FREE and lapses enterprise module writes", async () => {
     vi.stubEnv("VITE_DEPLOYMENT_MODE", "self_hosted");
     vi.stubEnv("VITE_ENTERPRISE_MODULES_ACTIVE", "true");
-    const { workspaceHasPlanFeature, webDisplayPlanTier } = await import("./planEntitlements");
+    const {
+      workspaceHasPlanFeature,
+      webDisplayPlanTier,
+      webEnterpriseModuleReadOnly,
+      webPlanFeatureAccess,
+    } = await import("./planEntitlements");
     expect(workspaceHasPlanFeature({ planTier: "FREE" }, "sharedVaults")).toBe(true);
-    expect(workspaceHasPlanFeature({ planTier: "FREE" }, "customWorkspaceRoles")).toBe(true);
+    expect(workspaceHasPlanFeature({ planTier: "FREE" }, "customWorkspaceRoles")).toBe(false);
+    expect(workspaceHasPlanFeature({ planTier: "FREE" }, "monitoring")).toBe(false);
     expect(workspaceHasPlanFeature({ planTier: "FREE" }, "filesInItems")).toBe(true);
     expect(workspaceHasPlanFeature({ planTier: "FREE" }, "filesInCapsules")).toBe(true);
+    expect(webPlanFeatureAccess({ planTier: "FREE" }, "customWorkspaceRoles")).toBe("lapsed");
+    expect(webPlanFeatureAccess({ planTier: "FREE" }, "monitoring")).toBe("lapsed");
+    expect(webPlanFeatureAccess({ planTier: "FREE" }, "sharedVaults")).toBe("granted");
+    expect(webEnterpriseModuleReadOnly({ planTier: "FREE" }, "customWorkspaceRoles")).toBe(true);
     expect(webDisplayPlanTier({ planTier: "FREE" })).toBe("FREE");
     expect(webDisplayPlanTier({ planTier: null })).toBe("FREE");
   });
 
-  it("EE + paid shows the workspace plan tier", async () => {
+  it("EE + paid shows the workspace plan tier and keeps enterprise writes", async () => {
     vi.stubEnv("VITE_DEPLOYMENT_MODE", "self_hosted");
     vi.stubEnv("VITE_ENTERPRISE_MODULES_ACTIVE", "true");
-    const { workspaceHasPlanFeature, webDisplayPlanTier } = await import("./planEntitlements");
+    const {
+      workspaceHasPlanFeature,
+      webDisplayPlanTier,
+      webEnterpriseModuleReadOnly,
+      webPlanFeatureAccess,
+    } = await import("./planEntitlements");
     expect(workspaceHasPlanFeature({ planTier: "ENTERPRISE" }, "sharedVaults")).toBe(true);
     expect(workspaceHasPlanFeature({ planTier: "ENTERPRISE" }, "customWorkspaceRoles")).toBe(true);
+    expect(webPlanFeatureAccess({ planTier: "ENTERPRISE" }, "monitoring")).toBe("granted");
+    expect(webEnterpriseModuleReadOnly({ planTier: "ENTERPRISE" }, "monitoring")).toBe(false);
     expect(webDisplayPlanTier({ planTier: "ENTERPRISE" })).toBe("ENTERPRISE");
     expect(webDisplayPlanTier({ planTier: "TEAM" })).toBe("TEAM");
     expect(webDisplayPlanTier({ planTier: "PREMIUM" })).toBe("PREMIUM");
+    expect(workspaceHasPlanFeature({ planTier: "TEAM" }, "capsuleAccessSettings")).toBe(true);
   });
 
   it("downgrades when API reports enterpriseModulesActive=false", async () => {

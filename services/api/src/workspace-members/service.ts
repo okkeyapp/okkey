@@ -7,6 +7,7 @@ import { generateEntityId, isEntityId } from "../entity-id.ts";
 import {
   workspaceGetPlanQuotaLimits,
   workspaceHasPlanFeature,
+  workspacePlanFeatureWriteDecision,
   type PlanEntitlementRuntimeConfig,
   type WorkspacePlanEntitlementSource,
 } from "../plan-entitlements.ts";
@@ -1409,12 +1410,18 @@ export class WorkspaceMembersService {
     if (role.builtinKey === "admin" || role.builtinKey === "user") {
       return;
     }
-    if (
-      role.builtinKey == null &&
-      this.config &&
-      workspaceHasPlanFeature(this.config, workspace, "customWorkspaceRoles")
-    ) {
-      return;
+    if (role.builtinKey == null && this.config) {
+      const decision = workspacePlanFeatureWriteDecision(
+        this.config,
+        workspace,
+        "customWorkspaceRoles",
+      );
+      if (decision.allowed) {
+        return;
+      }
+      if (decision.code === "PLAN_LICENSE_LAPSED") {
+        throw new WorkspaceMembersServiceError(decision.code, decision.status, decision.message);
+      }
     }
     throw new WorkspaceMembersServiceError(
       "PLAN_FEATURE_REQUIRED",
@@ -1447,11 +1454,18 @@ export class WorkspaceMembersService {
     if (row.builtin_key === "extended" || row.builtin_key === "simple") {
       return;
     }
-    if (
-      this.config &&
-      workspaceHasPlanFeature(this.config, workspace, "customWorkspaceProfiles")
-    ) {
-      return;
+    if (this.config) {
+      const decision = workspacePlanFeatureWriteDecision(
+        this.config,
+        workspace,
+        "customWorkspaceProfiles",
+      );
+      if (decision.allowed) {
+        return;
+      }
+      if (decision.code === "PLAN_LICENSE_LAPSED") {
+        throw new WorkspaceMembersServiceError(decision.code, decision.status, decision.message);
+      }
     }
     throw new WorkspaceMembersServiceError(
       "PLAN_FEATURE_REQUIRED",

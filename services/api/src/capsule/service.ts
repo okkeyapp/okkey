@@ -19,7 +19,7 @@ import {
 import { generateEntityId, isEntityId } from "../entity-id.ts";
 import { getCapsuleAccessSettingsProvider } from "./access-settings-provider.ts";
 import type { ApiConfig } from "../config.ts";
-import { workspaceHasPlanFeature } from "../plan-entitlements.ts";
+import { workspaceHasPlanFeature, workspacePlanFeatureWriteDecision } from "../plan-entitlements.ts";
 import {
   PlanQuotaExceededError,
   type WorkspaceStorageQuotaService,
@@ -353,6 +353,7 @@ export class CapsuleService {
       actorId: creatorId,
       policies: capsulePolicies,
       accessSettingsEnabled,
+      workspacePlan: workspace,
       input,
       keyTransportMode,
     });
@@ -681,6 +682,7 @@ export class CapsuleService {
         actorId: creatorId,
         policies: capsulePolicies,
         accessSettingsEnabled,
+        workspacePlan: workspace,
         input,
         keyTransportMode,
         existing: {
@@ -1327,6 +1329,11 @@ export class CapsuleService {
     actorId: string;
     policies: WorkspaceCapsulePolicies;
     accessSettingsEnabled: boolean;
+    workspacePlan: {
+      planTier: string | null;
+      planCustomOverride: boolean;
+      planFeatureOverrides: PlanFeatureOverrides;
+    };
     input: CreateCapsuleInput | UpdateCapsuleInput;
     keyTransportMode: CapsuleKeyTransportMode;
     existing?: {
@@ -1380,6 +1387,14 @@ export class CapsuleService {
       };
     }
     if (!args.accessSettingsEnabled) {
+      const decision = workspacePlanFeatureWriteDecision(
+        this.config,
+        args.workspacePlan,
+        "capsuleAccessSettings",
+      );
+      if (!decision.allowed && decision.code === "PLAN_LICENSE_LAPSED") {
+        throw new CapsuleServiceError(decision.code, decision.status, decision.message);
+      }
       throw new CapsuleServiceError(
         "FEATURE_NOT_AVAILABLE",
         403,

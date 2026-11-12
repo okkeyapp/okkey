@@ -2,9 +2,11 @@ import {
   hasPlanFeature,
   normalizePlanTier,
   planEntitlementOptionsFromWorkspace,
+  planFeatureAccess,
   type DeploymentMode,
   type PlanEntitlementOptions,
   type PlanFeature,
+  type PlanFeatureAccess,
   type PlanFeatureOverrides,
   type PlanTier,
 } from "@okkey/types";
@@ -73,7 +75,7 @@ export function webPlanEntitlementOptions(workspace?: WorkspaceLike | null): Pla
  * Self-hosted without modules → FREE (paid catalog is not installed).
  * Self-hosted with modules → workspace `plan_tier` (a lapsed license stays FREE).
  * SaaS → workspace `plan_tier`.
- * Feature gates stay on the entitlement matrix (self-hosted modules on still unlock paid features).
+ * Feature writes follow {@link webPlanFeatureAccess}: a lapsed license does not grant enterprise modules.
  */
 export function webDisplayPlanTier(workspace?: WorkspaceLike | null): PlanTier {
   if (webDeploymentMode() === "self_hosted" && !webEnterpriseModulesActive()) {
@@ -82,10 +84,34 @@ export function webDisplayPlanTier(workspace?: WorkspaceLike | null): PlanTier {
   return normalizePlanTier(workspace?.planTier);
 }
 
-/** Web feature gate: self-host modules on → ENTERPRISE; modules off → FREE (+ extras); SaaS → `plan_tier`. */
+/**
+ * Web feature gate for create and update.
+ * Self-hosted modules on and a paid plan → ENTERPRISE.
+ * Self-hosted modules on and FREE → FREE; enterprise modules are lapsed (readable, not writable).
+ * Modules off → FREE. SaaS → `plan_tier`.
+ */
 export function workspaceHasPlanFeature(
   workspace: WorkspaceLike | null | undefined,
   feature: PlanFeature,
 ): boolean {
   return hasPlanFeature(workspace?.planTier, feature, webPlanEntitlementOptions(workspace));
+}
+
+/** Granted, lapsed, or unavailable for this client. */
+export function webPlanFeatureAccess(
+  workspace: WorkspaceLike | null | undefined,
+  feature: PlanFeature,
+): PlanFeatureAccess {
+  return planFeatureAccess(workspace?.planTier, feature, webPlanEntitlementOptions(workspace));
+}
+
+/**
+ * Enterprise-module screens stay visible after a license lapses.
+ * `true` hides create and edit. List and delete stay available.
+ */
+export function webEnterpriseModuleReadOnly(
+  workspace: WorkspaceLike | null | undefined,
+  feature: PlanFeature,
+): boolean {
+  return webPlanFeatureAccess(workspace, feature) !== "granted";
 }

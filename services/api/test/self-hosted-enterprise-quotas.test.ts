@@ -1,8 +1,7 @@
 /**
  * Self-hosted entitlements:
- * modules on → ENTERPRISE matrix, numeric caps unlimited (`null`);
- * modules off → FREE quotas (10 additional members, 1 shared vault) even when
- * the stored plan_tier is ENTERPRISE. `plan_tier` is not read.
+ * modules on and a paid plan → ENTERPRISE quotas (numeric caps unlimited, `null`);
+ * modules on and FREE, or modules off → FREE quotas (10 additional members, 1 shared vault).
  */
 import assert from "node:assert/strict";
 import { test } from "node:test";
@@ -33,13 +32,19 @@ const selfHostedOss = entitlementConfig({
   enterpriseModulesEnabled: false,
 });
 
-test("self-hosted modules map quotas to unlimited ENTERPRISE, not the stored FREE tier", () => {
-  const limits = getPlanQuotaLimits("FREE", {
+test("self-hosted modules follow the stored plan: FREE keeps 10/1, paid is unlimited", () => {
+  const lapsed = getPlanQuotaLimits("FREE", {
     deploymentMode: "self_hosted",
     enterpriseModulesActive: true,
   });
-  assert.equal(limits.maxAdditionalMembers, null);
-  assert.equal(limits.maxSharedVaults, null);
+  assert.equal(lapsed.maxAdditionalMembers, 10);
+  assert.equal(lapsed.maxSharedVaults, 1);
+  const paid = getPlanQuotaLimits("ENTERPRISE", {
+    deploymentMode: "self_hosted",
+    enterpriseModulesActive: true,
+  });
+  assert.equal(paid.maxAdditionalMembers, null);
+  assert.equal(paid.maxSharedVaults, null);
   const oss = getPlanQuotaLimits("ENTERPRISE", {
     deploymentMode: "self_hosted",
     enterpriseModulesActive: false,
@@ -48,7 +53,7 @@ test("self-hosted modules map quotas to unlimited ENTERPRISE, not the stored FRE
   assert.equal(oss.maxSharedVaults, 1);
 });
 
-test("self-hosted modules allow an invite far past FAMILY and TEAM seat caps when plan_tier is FREE", async () => {
+test("self-hosted modules allow an invite far past FAMILY and TEAM seat caps on a paid plan", async () => {
   let inserts = 0;
   const service = new WorkspaceMembersService({
     db: {
@@ -86,7 +91,7 @@ test("self-hosted modules allow an invite far past FAMILY and TEAM seat caps whe
         id: workspaceId,
         name: "On-prem",
         ownerId: actorId,
-        planTier: "FREE",
+        planTier: "ENTERPRISE",
         createdAt: "",
         updatedAt: "",
       }),
@@ -163,7 +168,62 @@ test("self-hosted without modules applies the FREE seat cap even when plan_tier 
   assert.equal(inserts, 0);
 });
 
-test("self-hosted modules allow a shared vault far past the TEAM cap when plan_tier is FREE", async () => {
+test("lapsed self-hosted modules reject an invite past the FREE seat cap", async () => {
+  let inserts = 0;
+  const service = new WorkspaceMembersService({
+    db: {
+      query: async (sql: string) => {
+        if (sql.includes("SELECT owner_id FROM workspaces")) {
+          return [{ owner_id: actorId }];
+        }
+        if (sql.includes("COUNT") && sql.includes("workspace_members")) {
+          return [{ count: "10" }];
+        }
+        if (sql.includes("COUNT") && sql.includes("workspace_invitations")) {
+          return [{ count: "0" }];
+        }
+        if (sql.includes("INSERT INTO workspace_invitations")) {
+          inserts += 1;
+        }
+        return [];
+      },
+    } as never,
+    workspaces: {
+      findById: async () => ({
+        id: workspaceId,
+        name: "On-prem",
+        ownerId: actorId,
+        planTier: "FREE",
+        createdAt: "",
+        updatedAt: "",
+      }),
+      hasAccess: async () => true,
+    },
+    vaultService: {
+      getVaultAccess: async () => ({ members: [], invitations: [] }),
+      updateVaultAccess: async () => {},
+    },
+    publicAppBaseUrl: "http://localhost:5173",
+    emailTemplates: { sendWorkspaceInvite: async () => {} },
+    config: selfHostedEnterprise,
+  });
+
+  await assert.rejects(
+    () =>
+      service.createInvitations(workspaceId, actorId, [
+        { email: "new@example.com", roleId },
+      ]),
+    (error: unknown) => {
+      assert.ok(error instanceof WorkspaceMembersServiceError);
+      assert.equal(error.code, "PLAN_QUOTA_EXCEEDED");
+      assert.equal(error.statusCode, 403);
+      return true;
+    },
+  );
+  assert.equal(inserts, 0);
+});
+
+test("self-hosted modules allow a shared vault far past the TEAM cap on a paid plan", async () => {
   let vaultInserts = 0;
   const service = new WorkspaceSharedVaultsService({
     vaults: {
@@ -183,7 +243,7 @@ test("self-hosted modules allow a shared vault far past the TEAM cap when plan_t
         id: "w1",
         name: "On-prem",
         ownerId: actorId,
-        planTier: "FREE",
+        planTier: "ENTERPRISE",
         createdAt: "",
         updatedAt: "",
       }),

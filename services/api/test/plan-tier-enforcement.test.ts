@@ -146,6 +146,121 @@ test("self_hosted without modules denies capsule access even when plan_tier is E
   );
 });
 
+test("self_hosted modules on and FREE reject new capsule access settings", async () => {
+  const service = new CapsuleService({
+    db: {
+      query: async (sql: string) => {
+        if (sql.includes("FROM workspaces")) {
+          return [
+            {
+              exists: true,
+              can_access: true,
+              plan_tier: "FREE",
+              plan_custom_override: false,
+              plan_feature_overrides: {},
+              capsule_policies: {},
+            },
+          ];
+        }
+        if (sql.includes("DELETE FROM capsules")) {
+          return [{ id: "1000000000000000009" }];
+        }
+        return [];
+      },
+      transaction: async () => {
+        throw new Error("PLAN_GATE_PASSED");
+      },
+    },
+    redis: {
+      incr: async () => 1,
+      expire: async () => true,
+    },
+    objectStorage: {
+      putObject: async () => {},
+      getObject: async () => null,
+      deleteObject: async () => {},
+    },
+    config: createTestApiConfig({
+      deploymentMode: "self_hosted",
+      enterpriseModulesEnabled: true,
+      allowedCryptoProfileVersions: [2],
+    }),
+  });
+
+  await assert.rejects(
+    () =>
+      service.createCapsule("1000000000000000001", "1000000000000000003", {
+        type: "item",
+        encryptedPayload: blob,
+        password: "capsule-secret",
+      }),
+    (error: unknown) =>
+      error instanceof CapsuleServiceError &&
+      error.code === "PLAN_LICENSE_LAPSED" &&
+      error.statusCode === 402,
+  );
+
+  await assert.rejects(
+    () =>
+      service.createCapsule("1000000000000000001", "1000000000000000003", {
+        type: "item",
+        encryptedPayload: blob,
+      }),
+    (error: unknown) => error instanceof Error && error.message === "PLAN_GATE_PASSED",
+  );
+
+  await service.deleteCapsule("1000000000000000009", "1000000000000000003");
+});
+
+test("self_hosted modules on and a paid plan still allow capsule access settings", async () => {
+  const service = new CapsuleService({
+    db: {
+      query: async (sql: string) => {
+        if (sql.includes("FROM workspaces")) {
+          return [
+            {
+              exists: true,
+              can_access: true,
+              plan_tier: "ENTERPRISE",
+              plan_custom_override: false,
+              plan_feature_overrides: {},
+              capsule_policies: {},
+            },
+          ];
+        }
+        return [];
+      },
+      transaction: async () => {
+        throw new Error("PLAN_GATE_PASSED");
+      },
+    },
+    redis: {
+      incr: async () => 1,
+      expire: async () => true,
+    },
+    objectStorage: {
+      putObject: async () => {},
+      getObject: async () => null,
+    },
+    config: createTestApiConfig({
+      deploymentMode: "self_hosted",
+      enterpriseModulesEnabled: true,
+      allowedCryptoProfileVersions: [2],
+    }),
+  });
+
+  await assert.rejects(
+    () =>
+      service.createCapsule("1000000000000000001", "1000000000000000003", {
+        type: "item",
+        encryptedPayload: blob,
+        password: "capsule-secret",
+        passwordAttemptLimit: 3,
+      }),
+    (error: unknown) => error instanceof Error && error.message === "PLAN_GATE_PASSED",
+  );
+});
+
 test("a registered provider handles access-settings writes", async () => {
   resetCapsuleAccessSettingsProviderForTests();
   registerCapsuleAccessSettingsProvider({
