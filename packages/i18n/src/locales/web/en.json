@@ -1252,6 +1252,7 @@
   "web.workspaceSettings.serverMail.password": "Password",
   "web.workspaceSettings.serverMail.passwordPlaceholder": "Leave blank to keep the current password",
   "web.workspaceSettings.serverMail.passwordSet": "A password is saved",
+  "web.workspaceSettings.serverMail.passwordUnreadable": "The saved SMTP password can't be read after a server secret change. Please enter it again.",
   "web.workspaceSettings.serverMail.clearPassword": "Clear saved password",
   "web.workspaceSettings.serverMail.clearing": "Clearing…",
   "web.workspaceSettings.serverMail.clearPasswordSuccess": "Saved password cleared",

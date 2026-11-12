@@ -111,6 +111,23 @@ export function toPublicMailSettings(snapshot: MailDeliverySnapshot): ServerMail
     emailFrom: snapshot.emailFrom,
     publicAppUrl: snapshot.publicAppBaseUrl,
     passwordSet: snapshot.passwordSet,
+    passwordUnreadable: snapshot.passwordUnreadable,
+  };
+}
+
+type PasswordResolution = {
+  /** Decrypted password, or the environment password when nothing is stored. Empty when stored ciphertext cannot be opened. */
+  password: string;
+  unreadable: boolean;
+};
+
+function messageIdentity(
+  row: ServerMailSettingsRow,
+  config: MailSettingsServiceDeps["config"],
+): { emailFrom: string; publicAppBaseUrl: string } {
+  return {
+    emailFrom: row.emailFrom?.trim() || config.emailFrom,
+    publicAppBaseUrl: (row.publicAppUrl?.trim() || config.publicAppBaseUrl).replace(/\/$/, ""),
   };
 }
 
@@ -121,6 +138,7 @@ export class MailSettingsService {
   private readonly workspaces: MailSettingsServiceDeps["workspaces"];
   private readonly logger?: MailSettingsServiceDeps["logger"];
   private readonly sendSmtp?: MailSettingsServiceDeps["sendSmtp"];
+  private unreadableWarned = false;
 
   constructor(deps: MailSettingsServiceDeps) {
     this.store = deps.store;
@@ -136,25 +154,13 @@ export class MailSettingsService {
   }
 
   async effective(): Promise<MailDeliverySnapshot> {
-    const row = (await this.store.read()) ?? EMPTY_ROW;
-    const password = this.resolvePassword(row);
-    const dbHost = row.smtpHost?.trim() || null;
-    return {
-      smtpHost: dbHost ?? this.config.smtpHost,
-      smtpPort: row.smtpPort ?? this.config.smtpPort,
-      smtpTlsMode: row.smtpTlsMode ?? envTlsMode(this.config.smtpSecure),
-      smtpUsername: row.smtpUsername ?? this.config.smtpUser,
-      smtpPassword: password,
-      emailFrom: row.emailFrom?.trim() || this.config.emailFrom,
-      publicAppBaseUrl: (row.publicAppUrl?.trim() || this.config.publicAppBaseUrl).replace(/\/$/, ""),
-      passwordSet: password.length > 0,
-      useSmtpTransport: this.config.emailProvider === "smtp" || Boolean(dbHost),
-    };
+    const row = await this.loadRow();
+    return this.snapshotForDelivery(row, this.resolvePassword(row));
   }
 
   async getForOwner(workspaceId: string, userId: string): Promise<ServerMailSettingsPublic> {
     await this.requireOwner(workspaceId, userId);
-    return toPublicMailSettings(await this.effective());
+    return this.publicSettings();
   }
 
   async updateForOwner(
@@ -224,7 +230,7 @@ export class MailSettingsService {
       userId,
       fields: changed,
     });
-    return toPublicMailSettings(await this.effective());
+    return this.publicSettings();
   }
 
   async sendTestEmail(
@@ -239,46 +245,75 @@ export class MailSettingsService {
       throw new MailSettingsError("OWNER_EMAIL_MISSING", 400, "owner email is missing");
     }
 
-    const saved = await this.effective();
+    const row = await this.loadRow();
+    const resolved = this.resolvePassword(row);
+    const saved = this.snapshotForDelivery(row, resolved);
+    const replacingPassword = patch.password !== undefined && patch.password.length > 0;
     let snapshot: MailDeliverySnapshot;
     try {
-      const host = patch.smtpHost !== undefined ? parseSmtpHost(patch.smtpHost) : saved.smtpHost;
-      const port = patch.smtpPort !== undefined ? parseSmtpPort(patch.smtpPort) : saved.smtpPort;
-      const tls =
-        patch.smtpTlsMode !== undefined ? parseSmtpTlsMode(patch.smtpTlsMode) : saved.smtpTlsMode;
-      const username =
-        patch.smtpUsername !== undefined ? parseSmtpUsername(patch.smtpUsername) : saved.smtpUsername;
-      const emailFrom =
-        patch.emailFrom !== undefined ? parseEmailFrom(patch.emailFrom) : saved.emailFrom;
-      const publicAppUrl =
-        patch.publicAppUrl !== undefined
-          ? parsePublicAppUrl(patch.publicAppUrl)
-          : saved.publicAppBaseUrl;
-      let password = saved.smtpPassword;
-      if (patch.clearPassword) {
-        password = this.config.smtpPassword;
+      if (resolved.unreadable && !patch.clearPassword && !replacingPassword) {
+        if (this.config.smtpPassword.length === 0) {
+          throw new MailSettingsError(
+            "SMTP_PASSWORD_UNAVAILABLE",
+            409,
+            "stored smtp password could not be decrypted",
+          );
+        }
+        const identity = messageIdentity(row, this.config);
+        const emailFrom =
+          patch.emailFrom !== undefined ? parseEmailFrom(patch.emailFrom) : identity.emailFrom;
+        const publicAppUrl =
+          patch.publicAppUrl !== undefined
+            ? parsePublicAppUrl(patch.publicAppUrl)
+            : identity.publicAppBaseUrl;
+        if (!this.config.smtpHost || !emailFrom) {
+          throw new MailSettingsError(
+            "SMTP_NOT_CONFIGURED",
+            400,
+            "smtp host, port, encryption, and sender address are required to send a test email",
+          );
+        }
+        snapshot = this.envDeliverySnapshot(emailFrom, publicAppUrl ?? "");
+      } else {
+        const host = patch.smtpHost !== undefined ? parseSmtpHost(patch.smtpHost) : saved.smtpHost;
+        const port = patch.smtpPort !== undefined ? parseSmtpPort(patch.smtpPort) : saved.smtpPort;
+        const tls =
+          patch.smtpTlsMode !== undefined ? parseSmtpTlsMode(patch.smtpTlsMode) : saved.smtpTlsMode;
+        const username =
+          patch.smtpUsername !== undefined ? parseSmtpUsername(patch.smtpUsername) : saved.smtpUsername;
+        const emailFrom =
+          patch.emailFrom !== undefined ? parseEmailFrom(patch.emailFrom) : saved.emailFrom;
+        const publicAppUrl =
+          patch.publicAppUrl !== undefined
+            ? parsePublicAppUrl(patch.publicAppUrl)
+            : saved.publicAppBaseUrl;
+        let password = saved.smtpPassword;
+        if (patch.clearPassword) {
+          password = this.config.smtpPassword;
+        }
+        if (replacingPassword && patch.password !== undefined) {
+          password = parseSmtpPassword(patch.password);
+        }
+        if (!host || port === null || !tls || !emailFrom) {
+          throw new MailSettingsError(
+            "SMTP_NOT_CONFIGURED",
+            400,
+            "smtp host, port, encryption, and sender address are required to send a test email",
+          );
+        }
+        snapshot = {
+          smtpHost: host,
+          smtpPort: port,
+          smtpTlsMode: tls,
+          smtpUsername: username ?? "",
+          smtpPassword: password,
+          emailFrom,
+          publicAppBaseUrl: publicAppUrl ?? "",
+          passwordSet: password.length > 0,
+          passwordUnreadable: false,
+          useSmtpTransport: true,
+        };
       }
-      if (patch.password !== undefined && patch.password.length > 0) {
-        password = parseSmtpPassword(patch.password);
-      }
-      if (!host || port === null || !tls || !emailFrom) {
-        throw new MailSettingsError(
-          "SMTP_NOT_CONFIGURED",
-          400,
-          "smtp host, port, encryption, and sender address are required to send a test email",
-        );
-      }
-      snapshot = {
-        smtpHost: host,
-        smtpPort: port,
-        smtpTlsMode: tls,
-        smtpUsername: username ?? "",
-        smtpPassword: password,
-        emailFrom,
-        publicAppBaseUrl: publicAppUrl ?? "",
-        passwordSet: password.length > 0,
-        useSmtpTransport: true,
-      };
     } catch (error) {
       if (error instanceof MailSettingsError) {
         throw error;
@@ -335,30 +370,100 @@ export class MailSettingsService {
     }
   }
 
-  private resolvePassword(row: ServerMailSettingsRow): string {
+  private async loadRow(): Promise<ServerMailSettingsRow> {
+    return (await this.store.read()) ?? EMPTY_ROW;
+  }
+
+  private async publicSettings(): Promise<ServerMailSettingsPublic> {
+    const row = await this.loadRow();
+    return toPublicMailSettings(this.mergedSnapshot(row, this.resolvePassword(row)));
+  }
+
+  /**
+   * Delivery snapshot. When the stored password cannot be opened and SMTP is required,
+   * use the environment SMTP host, port, encryption, username, and password together.
+   * Sender address and public app URL stay on the saved values.
+   */
+  private snapshotForDelivery(row: ServerMailSettingsRow, resolved: PasswordResolution): MailDeliverySnapshot {
+    const dbHost = row.smtpHost?.trim() || null;
+    const needsSmtp = this.config.emailProvider === "smtp" || Boolean(dbHost);
+    if (resolved.unreadable && needsSmtp && this.config.smtpPassword.length > 0) {
+      const identity = messageIdentity(row, this.config);
+      return this.envDeliverySnapshot(identity.emailFrom, identity.publicAppBaseUrl);
+    }
+    return this.mergedSnapshot(row, resolved);
+  }
+
+  private mergedSnapshot(row: ServerMailSettingsRow, resolved: PasswordResolution): MailDeliverySnapshot {
+    const dbHost = row.smtpHost?.trim() || null;
+    const identity = messageIdentity(row, this.config);
+    return {
+      smtpHost: dbHost ?? this.config.smtpHost,
+      smtpPort: row.smtpPort ?? this.config.smtpPort,
+      smtpTlsMode: row.smtpTlsMode ?? envTlsMode(this.config.smtpSecure),
+      smtpUsername: row.smtpUsername ?? this.config.smtpUser,
+      smtpPassword: resolved.password,
+      emailFrom: identity.emailFrom,
+      publicAppBaseUrl: identity.publicAppBaseUrl,
+      passwordSet: !resolved.unreadable && resolved.password.length > 0,
+      passwordUnreadable: resolved.unreadable,
+      useSmtpTransport: this.config.emailProvider === "smtp" || Boolean(dbHost),
+    };
+  }
+
+  private envDeliverySnapshot(emailFrom: string, publicAppBaseUrl: string): MailDeliverySnapshot {
+    return {
+      smtpHost: this.config.smtpHost,
+      smtpPort: this.config.smtpPort,
+      smtpTlsMode: envTlsMode(this.config.smtpSecure),
+      smtpUsername: this.config.smtpUser,
+      smtpPassword: this.config.smtpPassword,
+      emailFrom,
+      publicAppBaseUrl,
+      passwordSet: this.config.smtpPassword.length > 0,
+      passwordUnreadable: true,
+      useSmtpTransport: true,
+    };
+  }
+
+  private resolvePassword(row: ServerMailSettingsRow): PasswordResolution {
     if (!row.smtpPasswordCiphertext) {
-      return this.config.smtpPassword;
+      this.unreadableWarned = false;
+      return { password: this.config.smtpPassword, unreadable: false };
     }
     const key = deriveSmtpPasswordKey(this.config.sessionSecret);
     try {
       const plain = openSecret(key, row.smtpPasswordCiphertext);
       try {
-        return plain.toString("utf8");
+        this.unreadableWarned = false;
+        return { password: plain.toString("utf8"), unreadable: false };
       } finally {
         wipeSecretBytes(plain);
       }
     } catch (error) {
-      this.logger?.error("stored smtp password could not be decrypted", {
-        message: error instanceof Error ? error.message : "decrypt failed",
-      });
-      throw new MailSettingsError(
-        "SMTP_PASSWORD_UNAVAILABLE",
-        500,
-        "stored smtp password could not be decrypted",
-      );
+      this.warnUnreadable(row, error);
+      return { password: "", unreadable: true };
     } finally {
       wipeSecretBytes(key);
     }
+  }
+
+  private warnUnreadable(row: ServerMailSettingsRow, error: unknown): void {
+    if (this.unreadableWarned) {
+      return;
+    }
+    this.unreadableWarned = true;
+    const raw = error instanceof Error ? error.message : "decrypt failed";
+    const reason = redactSecret(redactSecret(raw, this.config.smtpPassword), this.config.sessionSecret).slice(0, 200);
+    const dbHost = row.smtpHost?.trim() || null;
+    const needsSmtp = this.config.emailProvider === "smtp" || Boolean(dbHost);
+    const usingEnv = needsSmtp && this.config.smtpPassword.length > 0;
+    this.logger?.warn(
+      usingEnv
+        ? "stored smtp password could not be decrypted; using environment smtp configuration"
+        : "stored smtp password could not be decrypted",
+      { reason },
+    );
   }
 
   private sealPassword(password: string): Buffer {

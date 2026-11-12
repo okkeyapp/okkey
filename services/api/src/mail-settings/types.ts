@@ -11,8 +11,13 @@ export type MailDeliverySnapshot = {
   smtpPassword: string;
   emailFrom: string;
   publicAppBaseUrl: string;
-  /** True when a password is configured (database ciphertext or environment). */
+  /** True when a usable password is configured (decrypted database value or environment). */
   passwordSet: boolean;
+  /**
+   * True when a stored ciphertext exists but cannot be opened with the current server secret.
+   * Delivery may still use `EMAIL_SMTP_*` when that password is set.
+   */
+  passwordUnreadable: boolean;
   /**
    * Send through SMTP instead of the process email provider.
    * True when `EMAIL_PROVIDER=smtp` or the database stores an SMTP host.
@@ -38,6 +43,11 @@ export type ServerMailSettingsPublic = {
   emailFrom: string;
   publicAppUrl: string;
   passwordSet: boolean;
+  /**
+   * True when a stored SMTP password exists but cannot be decrypted.
+   * False when there is no stored password or the current server secret can open it.
+   */
+  passwordUnreadable: boolean;
 };
 
 export type ServerMailSettingsPatch = {

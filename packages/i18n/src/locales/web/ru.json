@@ -1252,6 +1252,7 @@
   "web.workspaceSettings.serverMail.password": "Пароль",
   "web.workspaceSettings.serverMail.passwordPlaceholder": "Оставьте пустым, чтобы сохранить текущий пароль",
   "web.workspaceSettings.serverMail.passwordSet": "Пароль сохранён",
+  "web.workspaceSettings.serverMail.passwordUnreadable": "Сохранённый пароль SMTP не удаётся прочитать после смены секрета сервера. Введите его снова.",
   "web.workspaceSettings.serverMail.clearPassword": "Удалить сохранённый пароль",
   "web.workspaceSettings.serverMail.clearing": "Удаление…",
   "web.workspaceSettings.serverMail.clearPasswordSuccess": "Сохранённый пароль удалён",
