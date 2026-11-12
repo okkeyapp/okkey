@@ -1,7 +1,7 @@
 import {
   hasPlanFeature,
+  normalizePlanTier,
   planEntitlementOptionsFromWorkspace,
-  resolveEntitlementPlanTier,
   type DeploymentMode,
   type PlanEntitlementOptions,
   type PlanFeature,
@@ -68,12 +68,18 @@ export function webPlanEntitlementOptions(workspace?: WorkspaceLike | null): Pla
 }
 
 /**
- * Catalog tier for plan labels /settings/plan on this client.
- * Self-hosted: modules off → FREE; modules on → ENTERPRISE (`plan_tier` ignored).
+ * Catalog tier for plan labels and the settings plan page on this client.
+ * Edition (enterprise modules installed) and paid plan tier are separate.
+ * Self-hosted without modules → FREE (paid catalog is not installed).
+ * Self-hosted with modules → workspace `plan_tier` (a lapsed license stays FREE).
  * SaaS → workspace `plan_tier`.
+ * Feature gates stay on the entitlement matrix (self-hosted modules on still unlock paid features).
  */
 export function webDisplayPlanTier(workspace?: WorkspaceLike | null): PlanTier {
-  return resolveEntitlementPlanTier(workspace?.planTier, webPlanEntitlementOptions(workspace));
+  if (webDeploymentMode() === "self_hosted" && !webEnterpriseModulesActive()) {
+    return "FREE";
+  }
+  return normalizePlanTier(workspace?.planTier);
 }
 
 /** Web feature gate: self-host modules on → ENTERPRISE; modules off → FREE (+ extras); SaaS → `plan_tier`. */

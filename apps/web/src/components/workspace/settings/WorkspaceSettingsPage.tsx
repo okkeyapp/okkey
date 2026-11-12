@@ -87,7 +87,8 @@ export default function WorkspaceSettingsPage({
   const activeSection = requestedSection;
   const sectionPermissions = settingsSectionPermissionCell(workspacePermissions, activeSection);
   const displayPlanTier = webDisplayPlanTier(workspace);
-  // Self-hosted without modules → Core FREE notice + sales; with modules → EE plan section.
+  // Self-hosted FREE (including an installed EE edition whose plan lapsed) → license request.
+  // Paid self-hosted and SaaS → enterprise plan section when that package is loaded.
   const PlanSection =
     webDeploymentMode() === "self_hosted" && displayPlanTier === "FREE"
       ? SelfHostedFreePlanSection
