@@ -2250,6 +2250,20 @@ export class DevicesRepository {
     return { share: share ? Uint8Array.from(share) : null };
   }
 
+  /** Stored share bytes for every device of the user, including pending rows. */
+  async listDeviceShares(userId: string): Promise<Uint8Array[]> {
+    const rows = await this.db.query<{ device_share: Buffer }>(
+      `
+        SELECT device_share
+        FROM devices
+        WHERE user_id = $1::bigint
+          AND device_share IS NOT NULL
+      `,
+      [userId],
+    );
+    return rows.map((row) => Uint8Array.from(row.device_share));
+  }
+
   async isTrustedDevice(userId: string, deviceId: string): Promise<boolean> {
     const rows = await this.db.query<{ is_trusted: boolean }>(
       `
