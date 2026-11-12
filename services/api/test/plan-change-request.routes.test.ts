@@ -161,6 +161,27 @@ async function post(service: PlanChangeRequestService, workspaceId: string): Pro
   return res;
 }
 
+test("POST plan-change-requests rejects malformed JSON with INVALID_JSON", async () => {
+  const { service } = makeService(() => Date.parse("2026-10-25T12:00:00.000Z"));
+  const handler = createWorkspacePlanChangeRequestRoute(service, async () => "user_1");
+  const req = {
+    method: "POST",
+    url: `/workspaces/${WS_A}/plan-change-requests`,
+    headers: { "content-type": "application/json" },
+    body: "{not-json",
+  } as IncomingMessage;
+  const res = new MockResponse();
+  await handler({
+    requestId: "req_bad_json",
+    req,
+    res: res as unknown as ServerResponse,
+    params: { workspaceId: WS_A },
+  });
+  assert.equal(res.statusCode, 400);
+  const payload = JSON.parse(res.body) as { error: string };
+  assert.equal(payload.error, "INVALID_JSON");
+});
+
 test("POST plan-change-requests allows 3 then 429 with Retry-After and no extra email", async () => {
   let nowMs = Date.parse("2026-10-25T12:00:00.000Z");
   const { service, sent } = makeService(() => nowMs);

@@ -289,4 +289,60 @@ describe("SelfHostedFreePlanSection", () => {
       screen.getByRole("button", { name: "web.workspaceSettings.plan.request.sendAgain" }),
     ).toBeDisabled();
   });
+
+  it("shows the generic translated error instead of the API message", async () => {
+    getStatus.mockResolvedValue({
+      submitted: false,
+      sent_at: null,
+      sales_email_deliverable: true,
+      sales_email: "sales@example.com",
+    });
+    requestChange.mockRejectedValue(
+      new ApiRequestError(400, {
+        error: "INVALID_REQUEST",
+        message: "contact email is invalid",
+        requestId: "req_2",
+      }),
+    );
+    useCore.mockReturnValue({
+      getWorkspacePlanChangeRequestStatus: getStatus,
+      requestWorkspacePlanChange: requestChange,
+    });
+
+    render(
+      <SelfHostedFreePlanSection
+        workspaceId="ws-1"
+        planTier="FREE"
+        canRequest
+        t={(key) => key}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: "web.workspaceSettings.plan.selfHosted.requestCta" }),
+      ).toBeEnabled();
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "web.workspaceSettings.plan.selfHosted.requestCta" }),
+    );
+    fireEvent.change(screen.getByLabelText("web.workspaceSettings.plan.request.emailLabel"), {
+      target: { value: "reply@okkey.local" },
+    });
+    fireEvent.change(screen.getByLabelText("web.workspaceSettings.plan.request.memberCountLabel"), {
+      target: { value: "3" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "web.workspaceSettings.plan.selfHosted.requestSubmit" }),
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("web.workspaceSettings.plan.request.errorGeneric"),
+      ).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/contact email is invalid/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/INVALID_REQUEST/)).not.toBeInTheDocument();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
 });
