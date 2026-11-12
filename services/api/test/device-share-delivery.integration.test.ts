@@ -7,7 +7,26 @@ import { loadConfig } from "../src/config.ts";
 import { DeviceService } from "../src/device/service.ts";
 import { SessionService } from "../src/session/service.ts";
 import { createIntegrationStorage } from "./integration-env.ts";
+import { encodeSplitKeyShareBFrame } from "@okkey/crypto";
+import {
+  APPROVAL_SHARE_MUST_BE_NEW,
+  APPROVAL_SHARE_WRONG_RECIPIENT,
+} from "../src/device/approval-share.ts";
 import { hybridDeviceShareB64, hybridDeviceShareBytes } from "./hybrid-share-fixture.ts";
+
+function framedShare(recipientFill: number, envelopeFill: number): Uint8Array {
+  const envelope = new Uint8Array(1148 + 48);
+  envelope[0] = 1;
+  envelope[1] = 1;
+  envelope[2] = 1;
+  envelope[3] = 0;
+  envelope[4] = envelopeFill & 0xff;
+  return encodeSplitKeyShareBFrame({
+    ed25519PublicKey: new Uint8Array(32).fill(recipientFill & 0xff),
+    mlkemEncapsulationKey: new Uint8Array(1184).fill(recipientFill & 0xff),
+    envelope,
+  });
+}
 import {
   applyMigrations,
   cleanupUserData,
@@ -289,7 +308,7 @@ test("integration: new-to-new approval delivers share B once and deletes the env
   assert.equal(reused.statusCode, 404);
 });
 
-test("integration: approval without a replacement share copies the approver share", async (t) => {
+test("integration: approval requires an enveloped device share", async (t) => {
   const config = loadConfig();
   const storage = await createIntegrationStorage(t, config);
   if (!storage) {
@@ -330,63 +349,109 @@ test("integration: approval without a replacement share copies the approver shar
   const approver = await sessionService.createSession(userId);
   await bindApprover(storage, sessionService, userId, approver.accessToken, trusted.id);
 
-  const oldPendingSession = await sessionService.createSession(userId);
-  const oldPending = await dispatch(
+  const pendingSession = await sessionService.createSession(userId);
+  const pending = await dispatch(
     handler,
     "POST",
     "/devices/register",
-    oldPendingSession.accessToken,
+    pendingSession.accessToken,
     registerBody({
       fingerprint: fingerprint("c"),
-      publicKey: "pending-old",
+      publicKey: "pending-enveloped",
       shareByte: 5,
-    }),
-  );
-  assert.equal(oldPending.statusCode, 200);
-  const oldPendingId = String(oldPending.json.device_id);
-  const oldApproved = await dispatch(
-    handler,
-    "POST",
-    `/devices/${oldPendingId}/approve`,
-    approver.accessToken,
-    {},
-    { "x-device-id": trusted.id },
-  );
-  assert.equal(oldApproved.statusCode, 200);
-  assert.equal(oldApproved.json.status, "trusted");
-  const oldRow = await deviceRow(storage, oldPendingId);
-  assert.deepEqual(Uint8Array.from(oldRow!.device_share), Uint8Array.from(trusted.device_share));
-
-  const newPendingSession = await sessionService.createSession(userId);
-  const newPending = await dispatch(
-    handler,
-    "POST",
-    "/devices/register",
-    newPendingSession.accessToken,
-    registerBody({
-      fingerprint: fingerprint("d"),
-      publicKey: "pending-with-key",
-      shareByte: 6,
       oneTime: true,
     }),
   );
-  assert.equal(newPending.statusCode, 200);
-  const newPendingId = String(newPending.json.device_id);
-  const legacyApproved = await dispatch(
+  assert.equal(pending.statusCode, 200);
+  const pendingId = String(pending.json.device_id);
+  const registeredShare = hybridDeviceShareBytes(5);
+
+  const missing = await dispatch(
     handler,
     "POST",
-    `/devices/${newPendingId}/approve`,
+    `/devices/${pendingId}/approve`,
     approver.accessToken,
     {},
     { "x-device-id": trusted.id },
   );
-  assert.equal(legacyApproved.statusCode, 200);
-  assert.equal(legacyApproved.json.status, "trusted");
-  const newRow = await deviceRow(storage, newPendingId);
-  assert.deepEqual(Uint8Array.from(newRow!.device_share), Uint8Array.from(trusted.device_share));
-  assert.equal(newRow?.share_delivery_envelope, null);
-  assert.equal(newRow?.one_time_x25519_public, null);
-  assert.equal(newRow?.one_time_mlkem_public, null);
+  assert.equal(missing.statusCode, 400);
+  assert.equal(missing.json.error, "DEVICE_BAD_REQUEST");
+  assert.equal(missing.json.message, "device_share is required");
+
+  const raw = await dispatch(
+    handler,
+    "POST",
+    `/devices/${pendingId}/approve`,
+    approver.accessToken,
+    { device_share: Buffer.alloc(32, 1).toString("base64") },
+    { "x-device-id": trusted.id },
+  );
+  assert.equal(raw.statusCode, 400);
+  assert.equal(raw.json.error, "DEVICE_BAD_REQUEST");
+  assert.match(String(raw.json.message), /hybrid X25519\+ML-KEM share envelope/);
+
+  const copiedDelivery = await dispatch(
+    handler,
+    "POST",
+    `/devices/${pendingId}/approve`,
+    approver.accessToken,
+    { share_delivery_envelope: Buffer.from(trusted.device_share).toString("base64") },
+    { "x-device-id": trusted.id },
+  );
+  assert.equal(copiedDelivery.statusCode, 400);
+  assert.equal(copiedDelivery.json.error, "DEVICE_BAD_REQUEST");
+  assert.equal(copiedDelivery.json.message, APPROVAL_SHARE_MUST_BE_NEW);
+
+  const copiedShare = await dispatch(
+    handler,
+    "POST",
+    `/devices/${pendingId}/approve`,
+    approver.accessToken,
+    { device_share: Buffer.from(trusted.device_share).toString("base64") },
+    { "x-device-id": trusted.id },
+  );
+  assert.equal(copiedShare.statusCode, 400);
+  assert.equal(copiedShare.json.error, "DEVICE_BAD_REQUEST");
+  assert.equal(copiedShare.json.message, APPROVAL_SHARE_MUST_BE_NEW);
+
+  const otherRecipient = await dispatch(
+    handler,
+    "POST",
+    `/devices/${pendingId}/approve`,
+    approver.accessToken,
+    { device_share: Buffer.from(framedShare(9, 4)).toString("base64") },
+    { "x-device-id": trusted.id },
+  );
+  assert.equal(otherRecipient.statusCode, 400);
+  assert.equal(otherRecipient.json.error, "DEVICE_BAD_REQUEST");
+  assert.equal(otherRecipient.json.message, APPROVAL_SHARE_WRONG_RECIPIENT);
+
+  const unchanged = await deviceRow(storage, pendingId);
+  assert.equal(unchanged?.status, "pending");
+  assert.deepEqual(Uint8Array.from(unchanged!.device_share), registeredShare);
+  assert.ok(unchanged?.one_time_x25519_public);
+  assert.notDeepEqual(Uint8Array.from(unchanged!.device_share), Uint8Array.from(trusted.device_share));
+
+  const replacement = framedShare(5, 9);
+  const approved = await dispatch(
+    handler,
+    "POST",
+    `/devices/${pendingId}/approve`,
+    approver.accessToken,
+    { device_share: Buffer.from(replacement).toString("base64") },
+    { "x-device-id": trusted.id },
+  );
+  assert.equal(approved.statusCode, 200);
+  assert.equal(approved.json.status, "trusted");
+  const row = await deviceRow(storage, pendingId);
+  assert.equal(row?.status, "trusted");
+  assert.deepEqual(Uint8Array.from(row!.device_share), replacement);
+  assert.notDeepEqual(Uint8Array.from(row!.device_share), Uint8Array.from(trusted.device_share));
+  assert.equal(row?.share_delivery_envelope, null);
+  assert.equal(row?.one_time_x25519_public, null);
+  assert.equal(row?.one_time_mlkem_public, null);
+  const approverRow = await deviceRow(storage, trusted.id);
+  assert.deepEqual(Uint8Array.from(approverRow!.device_share), Uint8Array.from(trusted.device_share));
 });
 
 test("integration: expired unclaimed share delivery envelope is deleted", async (t) => {
@@ -521,7 +586,7 @@ test("integration: empty approve of an already-trusted device is 409", async (t)
     "POST",
     `/devices/${trusted.id}/approve`,
     approver.accessToken,
-    {},
+    { device_share: Buffer.from(framedShare(3, 4)).toString("base64") },
     { "x-device-id": trusted.id },
   );
   assert.equal(again.statusCode, 409);

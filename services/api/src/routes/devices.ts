@@ -1011,6 +1011,14 @@ export function createApproveDeviceRoute(
       let deviceShare: Uint8Array | undefined;
       const shareB64 = body.device_share?.trim() ?? "";
       if (shareB64) {
+        if (!isBase64(shareB64)) {
+          json(
+            ctx.res,
+            400,
+            errorPayload("DEVICE_BAD_REQUEST", "device_share must be base64", ctx.requestId),
+          );
+          return;
+        }
         deviceShare = Uint8Array.from(Buffer.from(shareB64, "base64"));
       }
       const result = await deviceService.approveDevice(

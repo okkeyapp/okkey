@@ -18,6 +18,12 @@ import {
 import { splitKeyShareBWrapPublicKeys } from "@okkey/crypto";
 import { assertSplitKeyShareB } from "../registration/split-key-transport-policy.ts";
 import {
+  APPROVAL_SHARE_MUST_BE_NEW,
+  APPROVAL_SHARE_WRONG_RECIPIENT,
+  approvalShareRejection,
+  matchesStoredShare,
+} from "./approval-share.ts";
+import {
   DEVICE_BIND_CHALLENGE_TTL_SECONDS,
   deviceBindChallengeKey,
   issueDeviceBindChallenge,
@@ -60,6 +66,7 @@ export interface DeviceServiceDeps {
     | "unblockDevice"
     | "clearExpiredBlocks"
     | "findOwnedDeviceAuth"
+    | "listDeviceShares"
     | "updateActiveDeviceMetadata"
     | "rotateActiveDevicePublicKey"
     | "requestKeyRebind"
@@ -613,30 +620,35 @@ export class DeviceService {
     deviceShare?: Uint8Array,
   ): Promise<ResolveDeviceApprovalResult> {
     if (shareDelivery && shareDelivery.length > 0) {
+      if (await this.shareMatchesStoredDeviceShare(userId, shareDelivery)) {
+        throw new DeviceServiceError("DEVICE_BAD_REQUEST", 400, APPROVAL_SHARE_MUST_BE_NEW);
+      }
       return this.approveWithShareDelivery(userId, approverDeviceId, pendingDeviceId, shareDelivery);
     }
-    if (deviceShare) {
-      try {
-        assertSplitKeyShareB(deviceShare);
-      } catch (error: unknown) {
-        throw new DeviceServiceError(
-          "DEVICE_BAD_REQUEST",
-          400,
-          error instanceof Error ? error.message : "invalid device_share",
-        );
-      }
+    if (!deviceShare || deviceShare.length === 0) {
+      throw new DeviceServiceError("DEVICE_BAD_REQUEST", 400, "device_share is required");
     }
-    const copied = await this.resolveDeviceApproval({
+    try {
+      assertSplitKeyShareB(deviceShare);
+    } catch (error: unknown) {
+      throw new DeviceServiceError(
+        "DEVICE_BAD_REQUEST",
+        400,
+        error instanceof Error ? error.message : "invalid device_share",
+      );
+    }
+    await this.assertApprovalShareForPending(userId, pendingDeviceId, deviceShare);
+    const approved = await this.resolveDeviceApproval({
       userId,
       approverDeviceId,
       pendingDeviceId,
       action: "approve",
       deviceShare,
     });
-    if (copied.status === "trusted") {
+    if (approved.status === "trusted") {
       await this.devices.clearShareDelivery?.(userId, pendingDeviceId);
     }
-    return copied;
+    return approved;
   }
 
   async readShareDelivery(
@@ -755,6 +767,33 @@ export class DeviceService {
         400,
         "one-time delivery key was not stored",
       );
+    }
+  }
+
+  private async shareMatchesStoredDeviceShare(
+    userId: string,
+    envelope: Uint8Array,
+  ): Promise<boolean> {
+    const stored = await this.devices.listDeviceShares(userId);
+    return matchesStoredShare(envelope, stored);
+  }
+
+  private async assertApprovalShareForPending(
+    userId: string,
+    pendingDeviceId: string,
+    deviceShare: Uint8Array,
+  ): Promise<void> {
+    const pending = await this.devices.findOwnedDeviceAuth(userId, pendingDeviceId);
+    if (!pending) {
+      return;
+    }
+    const stored = await this.devices.listDeviceShares(userId);
+    const problem = approvalShareRejection(deviceShare, pending.deviceShare, stored);
+    if (problem === "reused") {
+      throw new DeviceServiceError("DEVICE_BAD_REQUEST", 400, APPROVAL_SHARE_MUST_BE_NEW);
+    }
+    if (problem === "recipient") {
+      throw new DeviceServiceError("DEVICE_BAD_REQUEST", 400, APPROVAL_SHARE_WRONG_RECIPIENT);
     }
   }
 
@@ -901,6 +940,10 @@ export class DeviceService {
         410,
         "device approval challenge expired",
       );
+    }
+
+    if (result.kind === "share_required") {
+      throw new DeviceServiceError("DEVICE_BAD_REQUEST", 400, "device_share is required");
     }
 
     if (!result.device) {

@@ -1025,7 +1025,8 @@ export interface DeviceApprovalState {
     | "already_trusted"
     | "already_revoked"
     | "not_found"
-    | "access_denied";
+    | "access_denied"
+    | "share_required";
   device: DeviceRecord | null;
 }
 
@@ -2249,6 +2250,20 @@ export class DevicesRepository {
     return { share: share ? Uint8Array.from(share) : null };
   }
 
+  /** Stored share bytes for every device of the user, including pending rows. */
+  async listDeviceShares(userId: string): Promise<Uint8Array[]> {
+    const rows = await this.db.query<{ device_share: Buffer }>(
+      `
+        SELECT device_share
+        FROM devices
+        WHERE user_id = $1::bigint
+          AND device_share IS NOT NULL
+      `,
+      [userId],
+    );
+    return rows.map((row) => Uint8Array.from(row.device_share));
+  }
+
   async isTrustedDevice(userId: string, deviceId: string): Promise<boolean> {
     const rows = await this.db.query<{ is_trusted: boolean }>(
       `
@@ -2272,9 +2287,9 @@ export class DevicesRepository {
     now: string;
     expiresAt: string;
     approvedBy: string;
-    /** Trusted device that performs approval. Its device_share is copied when no replacement is set. */
+    /** Trusted device that performs approval. */
     approverDeviceId?: string;
-    /** Hybrid share envelope to store instead of copying the approver row. */
+    /** Hybrid share envelope to store on the pending device. Required when action is approve. */
     deviceShare?: Uint8Array;
     rejectReason?: string;
   }): Promise<DeviceApprovalState> {
@@ -2418,6 +2433,10 @@ export class DevicesRepository {
         if (!input.approverDeviceId) {
           return { kind: "access_denied", device: mapDevice(current) };
         }
+        const deviceShare = input.deviceShare;
+        if (!deviceShare || deviceShare.length === 0) {
+          return { kind: "share_required", device: mapDevice(current) };
+        }
         const approvedRows = await tx.query<{
           id: string;
           user_id: string;
@@ -2446,7 +2465,7 @@ export class DevicesRepository {
             UPDATE devices AS pending
             SET
               status = 'trusted',
-              device_share = COALESCE($5::bytea, approver.device_share),
+              device_share = $5,
               approved_by = $2,
               approved_at = $3::timestamptz,
               last_seen_at = $3::timestamptz,
@@ -2482,7 +2501,7 @@ export class DevicesRepository {
               pending.rejection_reason,
               pending.revoked_at
           `,
-          [input.deviceId, input.approvedBy, input.now, input.approverDeviceId, input.deviceShare ?? null],
+          [input.deviceId, input.approvedBy, input.now, input.approverDeviceId, Buffer.from(deviceShare)],
         );
         if (!approvedRows[0]) {
           return { kind: "access_denied", device: mapDevice(current) };

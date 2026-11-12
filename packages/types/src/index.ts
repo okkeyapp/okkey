@@ -1738,11 +1738,14 @@ export interface DeviceListItemDto {
   share_wrap_pq_public_key?: string | null;
 }
 
-/** `POST /devices/:deviceId/approve` when the pending device published a one-time key. */
+/** `POST /devices/:deviceId/approve`. */
 export interface DeviceApproveRequestDto {
-  /** Base64 hybrid envelope of the approver's 32-byte share B. Omit to use the deprecated copy. */
+  /** Base64 hybrid envelope of the approver's 32-byte share B for one-time delivery. */
   share_delivery_envelope?: string;
-  /** Base64 share B to store on the pending device instead of copying the approver row. */
+  /**
+   * Base64 hybrid share-B envelope to store on the pending device.
+   * Required when `share_delivery_envelope` is omitted.
+   */
   device_share?: string;
 }
 
