@@ -21,6 +21,7 @@ import {
   applyFaviconToItem,
   lookupWebsiteFaviconFromNetwork,
   shouldAttachWebsiteFaviconInBackground,
+  shouldSkipWebsiteFaviconSyncOnEdit,
   syncItemFaviconForPlaintext,
   websiteFaviconUrlsEqual,
 } from "./syncItemFavicon";
@@ -80,6 +81,44 @@ describe("websiteFaviconUrlsEqual", () => {
   it("compares trimmed URL lists", () => {
     expect(websiteFaviconUrlsEqual(["https://a.example/"], ["https://a.example/"])).toBe(true);
     expect(websiteFaviconUrlsEqual(["https://a.example/"], ["https://b.example/"])).toBe(false);
+  });
+});
+
+describe("shouldSkipWebsiteFaviconSyncOnEdit", () => {
+  it("skips when a stored website icon's normalized URLs did not change", () => {
+    const previous = loginWithUrl("https://example.com", {
+      faviconId: "1000000000000000011",
+      faviconSource: "website",
+    });
+    const edited = loginWithUrl(" https://example.com ", { title: "Renamed" });
+    expect(shouldSkipWebsiteFaviconSyncOnEdit(previous, edited)).toBe(true);
+  });
+
+  it("does not skip when the URL list changes, the icon is manual, or there is nothing to keep", () => {
+    const previous = loginWithUrl("https://example.com", {
+      faviconId: "1000000000000000011",
+      faviconSource: "website",
+    });
+    expect(shouldSkipWebsiteFaviconSyncOnEdit(previous, loginWithUrl("https://other.example"))).toBe(false);
+    expect(
+      shouldSkipWebsiteFaviconSyncOnEdit(previous, loginWithUrl(""), {
+        /* empty next URL list must still clear the icon */
+      }),
+    ).toBe(false);
+    expect(shouldSkipWebsiteFaviconSyncOnEdit(loginWithUrl("https://example.com"), loginWithUrl("https://example.com"))).toBe(
+      false,
+    );
+    expect(
+      shouldSkipWebsiteFaviconSyncOnEdit(
+        loginWithUrl("https://example.com", { faviconId: "1000000000000000011", faviconSource: "manual" }),
+        loginWithUrl("https://example.com"),
+      ),
+    ).toBe(false);
+    expect(
+      shouldSkipWebsiteFaviconSyncOnEdit(previous, loginWithUrl("https://example.com"), {
+        manualFaviconPng: new Uint8Array([1, 2, 3]),
+      }),
+    ).toBe(false);
   });
 });
 

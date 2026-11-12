@@ -22,7 +22,9 @@ import {
   lookupWebsiteFaviconFromNetwork,
   seedFaviconUrlCacheAfterUpload,
   shouldAttachWebsiteFaviconInBackground,
+  shouldSkipWebsiteFaviconSyncOnEdit,
   syncItemFaviconForPlaintext,
+  type SyncItemFaviconResult,
 } from "../../items/syncItemFavicon";
 import { useWorkspaceItemTemplates } from "../../items/useWorkspaceItemTemplates";
 import { useWorkspaceItems } from "../../items/WorkspaceItemsContext";
@@ -272,23 +274,26 @@ export default function EditItemPopup({
             const { payload: uploadedPayload, uploadedFiles } = await formRef.current!.uploadPendingFiles(payload);
             let updatedItem = buildItemFromEditSavePayload(uploadedPayload, uploadedPayload.createdAtMs!, item);
             let uploadedFavicon: KeyFieldFileValue | undefined;
+            let faviconSync: SyncItemFaviconResult | undefined;
             try {
-              // Reuse form preview / keep icon when URLs unchanged — never block Save on site fetch.
-              const faviconSync = await syncItemFaviconForPlaintext(
-                accessToken,
-                itemVaultKey,
-                updatedItem,
-                item,
-                faviconSyncInput,
-              );
-              updatedItem = faviconSync.item;
-              uploadedFavicon = faviconSync.uploadedFavicon;
-              seedFaviconUrlCacheAfterUpload({
-                vaultId: uploadedPayload.vaultId,
-                itemId: uploadedPayload.itemId,
-                uploadedFavicon: faviconSync.uploadedFavicon,
-                uploadedPngBytes: faviconSync.uploadedPngBytes,
-              });
+              // Unchanged website URLs: keep faviconId. Do not preview, upload, or delete.
+              if (!shouldSkipWebsiteFaviconSyncOnEdit(item, updatedItem, faviconSyncInput)) {
+                faviconSync = await syncItemFaviconForPlaintext(
+                  accessToken,
+                  itemVaultKey,
+                  updatedItem,
+                  item,
+                  faviconSyncInput,
+                );
+                updatedItem = faviconSync.item;
+                uploadedFavicon = faviconSync.uploadedFavicon;
+                seedFaviconUrlCacheAfterUpload({
+                  vaultId: uploadedPayload.vaultId,
+                  itemId: uploadedPayload.itemId,
+                  uploadedFavicon: faviconSync.uploadedFavicon,
+                  uploadedPngBytes: faviconSync.uploadedPngBytes,
+                });
+              }
               await updateItem(updatedItem);
               // Only drop the previous attachment after a successful replacement upload in this save.
               // Clearing without a new upload is reserved for a positive background "absent" result.
@@ -308,7 +313,7 @@ export default function EditItemPopup({
                 shouldAttachWebsiteFaviconInBackground(updatedItem, faviconSyncInput, faviconSync)
               ) {
                 const keptFaviconId = updatedItem.faviconId;
-                const clearIfAbsent = Boolean(faviconSync.clearFaviconIfBackgroundAbsent);
+                const clearIfAbsent = Boolean(faviconSync?.clearFaviconIfBackgroundAbsent);
                 void lookupWebsiteFaviconFromNetwork(accessToken, itemVaultKey, updatedItem)
                   .then(async (lookup) => {
                     if (lookup.status === "found") {
