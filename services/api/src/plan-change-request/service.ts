@@ -250,7 +250,8 @@ export class PlanChangeRequestService {
     }
 
     const contactEmail = input.contactEmail.trim();
-    if (!contactEmail.includes("@") || contactEmail.length > 320) {
+    // Same practical check as auth, recovery, and mail settings (`isValidEmail`).
+    if (contactEmail.length > 320 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail)) {
       throw new PlanChangeRequestServiceError(
         "INVALID_REQUEST",
         400,

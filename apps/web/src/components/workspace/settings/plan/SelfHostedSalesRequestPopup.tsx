@@ -88,7 +88,9 @@ export default function SelfHostedSalesRequestPopup({
 
   const emailTrimmed = email.trim();
   const memberCount = parseMemberCount(memberCountInput);
-  const emailOk = emailTrimmed.includes("@");
+  // Same practical check as auth, recovery, and mail settings (`isValidEmail`).
+  const emailOk =
+    emailTrimmed.length <= 320 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailTrimmed);
   const canSubmit = emailOk && memberCount !== null && !submitting;
 
   return (
@@ -120,7 +122,7 @@ export default function SelfHostedSalesRequestPopup({
           if (!canSubmit || memberCount === null) {
             return;
           }
-          if (!emailTrimmed.includes("@") || emailTrimmed.length < 3) {
+          if (!emailOk) {
             setLocalError(t("web.workspaceSettings.plan.request.invalidEmail"));
             return;
           }
