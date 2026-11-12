@@ -10,8 +10,14 @@ const IPV4_HOST_RE = /^\d{1,3}(\.\d{1,3}){3}$/;
 /** Hosts used to capture Google's generic “no favicon” placeholder bytes (google provider only). */
 const GENERIC_FAVICON_SENTINEL_HOSTS = ["invalid.invalid", "this-domain-does-not-exist.okkey"] as const;
 
-/** Well-known origin-relative paths tried for the explicit `direct` provider. */
-const DIRECT_FAVICON_PATHS = ["/favicon.ico", "/apple-touch-icon.png", "/apple-touch-icon-precomposed.png"] as const;
+/** Well-known origin-relative paths. Apple touch icons are preferred over `/favicon.ico`. */
+const DIRECT_FAVICON_PATHS = ["/apple-touch-icon.png", "/apple-touch-icon-precomposed.png", "/favicon.ico"] as const;
+
+/**
+ * Reject rasters whose header claims an edge this large (decompression bombs).
+ * 512px icons stay eligible and are downscaled by the client to 80px.
+ */
+export const MAX_FAVICON_SOURCE_EDGE_PX = 8192;
 
 /** Browser-like UA so sites (and Cloudflare) are less likely to challenge favicon/HTML probes. */
 const FAVICON_USER_AGENT =
@@ -409,6 +415,18 @@ export function expandFaviconProbeUrls(input: string): string[] {
   return out;
 }
 
+/**
+ * Probe order across Website URL fields:
+ * for each field, full URL → subdomain/origin root → registrable domain root.
+ */
+export function faviconLookupProbeUrls(urls: readonly string[]): string[] {
+  const probes: string[] = [];
+  for (const rawUrl of urls) {
+    probes.push(...expandFaviconProbeUrls(rawUrl));
+  }
+  return probes;
+}
+
 /** @deprecated Use {@link hostsFromUrls} + {@link fetchRemoteFaviconBytesFromUrls}. */
 export function primaryHostFromUrls(urls: readonly string[]): string | null {
   return hostsFromUrls(urls)[0] ?? null;
@@ -480,6 +498,97 @@ export function looksLikeImageBytes(bytes: Uint8Array): boolean {
   }
 
   return false;
+}
+
+function readUint32BE(bytes: Uint8Array, offset: number): number {
+  return (
+    ((bytes[offset] ?? 0) << 24) |
+    ((bytes[offset + 1] ?? 0) << 16) |
+    ((bytes[offset + 2] ?? 0) << 8) |
+    (bytes[offset + 3] ?? 0)
+  ) >>> 0;
+}
+
+function readUint16BE(bytes: Uint8Array, offset: number): number {
+  return ((bytes[offset] ?? 0) << 8) | (bytes[offset + 1] ?? 0);
+}
+
+/** Header width/height when the format is recognized; null when it cannot be parsed. */
+export function readDeclaredImageEdges(bytes: Uint8Array): { width: number; height: number } | null {
+  if (bytes.byteLength >= 24 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) {
+    const length = readUint32BE(bytes, 8);
+    const type = String.fromCharCode(bytes[12] ?? 0, bytes[13] ?? 0, bytes[14] ?? 0, bytes[15] ?? 0);
+    if (type === "IHDR" && length >= 8) {
+      return { width: readUint32BE(bytes, 16), height: readUint32BE(bytes, 20) };
+    }
+    return null;
+  }
+  if (bytes.byteLength >= 10 && bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46) {
+    const width = (bytes[6] ?? 0) | ((bytes[7] ?? 0) << 8);
+    const height = (bytes[8] ?? 0) | ((bytes[9] ?? 0) << 8);
+    return { width, height };
+  }
+  if (bytes.byteLength >= 4 && bytes[0] === 0xff && bytes[1] === 0xd8) {
+    let offset = 2;
+    while (offset + 8 < bytes.byteLength) {
+      if (bytes[offset] !== 0xff) {
+        return null;
+      }
+      const marker = bytes[offset + 1] ?? 0;
+      if (marker === 0xd8 || marker === 0xd9) {
+        offset += 2;
+        continue;
+      }
+      const segmentLength = readUint16BE(bytes, offset + 2);
+      if (segmentLength < 2) {
+        return null;
+      }
+      const isSof =
+        marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc;
+      if (isSof && offset + 9 < bytes.byteLength) {
+        const height = readUint16BE(bytes, offset + 5);
+        const width = readUint16BE(bytes, offset + 7);
+        return { width, height };
+      }
+      offset += 2 + segmentLength;
+    }
+  }
+  return null;
+}
+
+/** False when a parsed header claims a zero or enormous edge. Unparsed images are allowed. */
+export function declaredImageEdgesAllowed(bytes: Uint8Array): boolean {
+  const edges = readDeclaredImageEdges(bytes);
+  if (!edges) {
+    return true;
+  }
+  return (
+    edges.width >= 1 &&
+    edges.height >= 1 &&
+    edges.width <= MAX_FAVICON_SOURCE_EDGE_PX &&
+    edges.height <= MAX_FAVICON_SOURCE_EDGE_PX
+  );
+}
+
+function looksLikeSvgBytes(bytes: Uint8Array): boolean {
+  if (bytes.byteLength < 4) {
+    return false;
+  }
+  let start = 0;
+  if (bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) {
+    start = 3;
+  }
+  const sample = new TextDecoder("utf-8", { fatal: false })
+    .decode(bytes.subarray(start, Math.min(bytes.byteLength, start + 512)))
+    .trimStart()
+    .toLowerCase();
+  if (sample.startsWith("<svg")) {
+    return true;
+  }
+  if (!sample.startsWith("<?xml")) {
+    return false;
+  }
+  return /<svg[\s>/]/.test(sample) && !/<html[\s>]/.test(sample);
 }
 
 function headerValue(headers: http.IncomingHttpHeaders, name: string): string | null {
@@ -597,6 +706,11 @@ async function fetchOutboundBytes(
       return { status: "miss" };
     }
     if (kind === "image" && !looksLikeImageBytes(bytes)) {
+      if (!looksLikeSvgBytes(bytes)) {
+        return { status: "miss" };
+      }
+    }
+    if (kind === "image" && looksLikeImageBytes(bytes) && !declaredImageEdgesAllowed(bytes)) {
       return { status: "miss" };
     }
     return { status: "ok", bytes, contentType };
@@ -671,6 +785,13 @@ export function extractIconCandidatesFromHtml(html: string, baseUrl: string): Ht
   return out;
 }
 
+function isSvgIconCandidate(candidate: HtmlIconCandidate): boolean {
+  if (/\.svg(\?|#|$)/i.test(candidate.href)) {
+    return true;
+  }
+  return candidate.rel.includes("mask-icon");
+}
+
 function maxSizeHint(sizes: string): number {
   if (!sizes || sizes === "any") {
     return sizes === "any" ? 512 : 0;
@@ -689,21 +810,22 @@ function maxSizeHint(sizes: string): number {
   return best;
 }
 
+/**
+ * Largest raster first (apple-touch and `sizes` links by declared area).
+ * Unsized apple-touch icons count as 180px. `/favicon.ico` (no sizes) is last among rasters.
+ * SVG, including mask-icon, is only used when no raster candidate is available.
+ */
+export function orderHtmlIconCandidates<T extends HtmlIconCandidate>(candidates: readonly T[]): T[] {
+  return candidates.slice().sort((a, b) => scoreHtmlIconCandidate(b) - scoreHtmlIconCandidate(a));
+}
+
 function scoreHtmlIconCandidate(candidate: HtmlIconCandidate): number {
-  const rel = candidate.rel;
-  let score = maxSizeHint(candidate.sizes);
-  if (rel.includes("apple-touch-icon")) {
-    score += 10_000;
-  } else if (/\bicon\b/.test(rel)) {
-    score += 5_000;
-  } else if (rel.includes("mask-icon")) {
-    score += 1_000;
+  let size = maxSizeHint(candidate.sizes);
+  if (size === 0 && candidate.rel.includes("apple-touch-icon")) {
+    size = 180 * 180;
   }
-  // Prefer raster-looking paths over SVG (we do not rasterize SVG).
-  if (/\.svg(\?|#|$)/i.test(candidate.href)) {
-    score -= 50_000;
-  }
-  return score;
+  const rasterBoost = isSvgIconCandidate(candidate) ? 0 : 1_000_000_000;
+  return rasterBoost + size;
 }
 
 async function fetchBestIconFromHtmlPage(pageUrl: string): Promise<FaviconRemoteLookupResult> {
@@ -718,6 +840,15 @@ async function fetchBestIconFromHtmlPage(pageUrl: string): Promise<FaviconRemote
   if (
     page.contentType.startsWith("image/") &&
     looksLikeImageBytes(page.bytes) &&
+    declaredImageEdgesAllowed(page.bytes) &&
+    page.bytes.byteLength >= 48 &&
+    page.bytes.byteLength <= MAX_FAVICON_RESPONSE_BYTES
+  ) {
+    return { status: "found", bytes: page.bytes };
+  }
+
+  if (
+    looksLikeSvgBytes(page.bytes) &&
     page.bytes.byteLength >= 48 &&
     page.bytes.byteLength <= MAX_FAVICON_RESPONSE_BYTES
   ) {
@@ -725,17 +856,12 @@ async function fetchBestIconFromHtmlPage(pageUrl: string): Promise<FaviconRemote
   }
 
   const html = new TextDecoder("utf-8", { fatal: false }).decode(page.bytes);
-  const candidates = extractIconCandidatesFromHtml(html, pageUrl)
-    .slice()
-    .sort((a, b) => scoreHtmlIconCandidate(b) - scoreHtmlIconCandidate(a));
+  const candidates = orderHtmlIconCandidates(extractIconCandidatesFromHtml(html, pageUrl));
 
   let sawUnavailable = false;
   for (const candidate of candidates) {
-    if (/\.svg(\?|#|$)/i.test(candidate.href)) {
-      continue;
-    }
     const image = await fetchImageBytes(candidate.href);
-    if (image.status === "ok" && image.bytes.byteLength >= 48) {
+    if (image.status === "ok" && image.bytes.byteLength >= 48 && declaredImageEdgesAllowed(image.bytes)) {
       return { status: "found", bytes: image.bytes };
     }
     if (image.status === "unavailable") {
@@ -745,11 +871,7 @@ async function fetchBestIconFromHtmlPage(pageUrl: string): Promise<FaviconRemote
   // Page HTML was reachable; missing/broken candidate icons are absence, not outage —
   // unless every candidate fetch failed with a network/5xx error and none succeeded.
   if (sawUnavailable && candidates.length > 0) {
-    const nonSvg = candidates.filter((c) => !/\.svg(\?|#|$)/i.test(c.href));
-    if (nonSvg.length > 0) {
-      // At least one candidate was tried; HTML itself proved reachability → absent.
-      return { status: "absent" };
-    }
+    return { status: "absent" };
   }
   return { status: "absent" };
 }
@@ -823,7 +945,7 @@ async function fetchDirectWellKnownFaviconBytes(host: string): Promise<FaviconRe
   let sawMiss = false;
   for (const url of buildDirectFaviconUrls(host)) {
     const image = await fetchImageBytes(url);
-    if (image.status === "ok" && image.bytes.byteLength >= 48) {
+    if (image.status === "ok" && image.bytes.byteLength >= 48 && declaredImageEdgesAllowed(image.bytes)) {
       return { status: "found", bytes: image.bytes };
     }
     if (image.status === "unavailable") {

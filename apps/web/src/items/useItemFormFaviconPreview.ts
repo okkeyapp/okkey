@@ -3,6 +3,8 @@ import { resolveWebsiteIconDisplay } from "@okkey/ui";
 import { useEffect, useRef, useState } from "react";
 
 import { previewItemFavicon } from "../api/item-favicons";
+import { isFaviconImageNormalizeError } from "../lib/faviconImageError";
+import { normalizeFaviconImageBytesToPng } from "../lib/resizeFaviconImage";
 import { useFaviconProviderMode } from "./faviconMode";
 
 const DEBOUNCE_MS = 400;
@@ -192,7 +194,23 @@ export function useItemFormFaviconPreview(input: {
           }
 
           if (blob) {
-            const bytes = new Uint8Array(await blob.arrayBuffer());
+            const raw = new Uint8Array(await blob.arrayBuffer());
+            if (seq !== requestSeqRef.current) {
+              return;
+            }
+            let bytes: Uint8Array;
+            try {
+              bytes = await normalizeFaviconImageBytesToPng(raw);
+            } catch (error) {
+              if (!isFaviconImageNormalizeError(error)) {
+                throw error;
+              }
+              // Not a drawable icon (or SVG could not be rasterized). Letter tile.
+              clearPreview();
+              lastFetchedUrlsKeyRef.current = urlsKey;
+              lastFetchedNameRevisionRef.current = nameFetchRevision;
+              return;
+            }
             if (seq !== requestSeqRef.current) {
               return;
             }

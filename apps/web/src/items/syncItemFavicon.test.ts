@@ -17,6 +17,7 @@ vi.mock("../lib/resizeFaviconImage", () => ({
 
 import * as itemFaviconsApi from "../api/item-favicons";
 import * as keyFieldFilesApi from "../api/key-field-files";
+import { normalizeFaviconImageBytesToPng } from "../lib/resizeFaviconImage";
 import {
   applyFaviconToItem,
   lookupWebsiteFaviconFromNetwork,
@@ -58,6 +59,7 @@ function loginWithUrl(url: string, overrides: Partial<ItemPlaintextV2> = {}): It
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(normalizeFaviconImageBytesToPng).mockImplementation(async (bytes: Uint8Array) => bytes);
 });
 
 describe("applyFaviconToItem", () => {
@@ -433,5 +435,52 @@ describe("lookupWebsiteFaviconFromNetwork", () => {
     if (result.status === "found") {
       expect(result.sync.item.faviconId).toBe("1000000000000000015");
     }
+  });
+
+  it("returns absent and does not upload when the icon cannot be normalized", async () => {
+    const previewBytes = new Uint8Array([1, 2, 3, 4]);
+    vi.mocked(itemFaviconsApi.previewItemFavicon).mockResolvedValue({
+      arrayBuffer: async () =>
+        previewBytes.buffer.slice(previewBytes.byteOffset, previewBytes.byteOffset + previewBytes.byteLength),
+    } as Blob);
+    vi.mocked(normalizeFaviconImageBytesToPng).mockRejectedValue(
+      Object.assign(new Error("IMAGE_DIMENSIONS"), { name: "FaviconImageNormalizeError" }),
+    );
+
+    const result = await lookupWebsiteFaviconFromNetwork(
+      "token",
+      new Uint8Array([1]),
+      loginWithUrl("https://example.com"),
+    );
+
+    expect(result).toEqual({ status: "absent" });
+    expect(keyFieldFilesApi.uploadEncryptedAttachment).not.toHaveBeenCalled();
+  });
+
+  it("uploads normalized PNG bytes rather than the fetched payload", async () => {
+    const previewBytes = new Uint8Array([9, 9, 9, 9]);
+    const normalized = new Uint8Array([80, 80, 80, 80]);
+    vi.mocked(itemFaviconsApi.previewItemFavicon).mockResolvedValue({
+      arrayBuffer: async () =>
+        previewBytes.buffer.slice(previewBytes.byteOffset, previewBytes.byteOffset + previewBytes.byteLength),
+    } as Blob);
+    vi.mocked(normalizeFaviconImageBytesToPng).mockResolvedValue(normalized);
+    vi.mocked(keyFieldFilesApi.uploadEncryptedAttachment).mockResolvedValue({
+      attachmentId: "1000000000000000016",
+      name: "favicon.png",
+      mimeType: "image/png",
+      sizeBytes: normalized.byteLength,
+    });
+
+    const result = await lookupWebsiteFaviconFromNetwork(
+      "token",
+      new Uint8Array([1]),
+      loginWithUrl("https://example.com"),
+    );
+
+    expect(result.status).toBe("found");
+    expect(keyFieldFilesApi.uploadEncryptedAttachment).toHaveBeenCalledWith(
+      expect.objectContaining({ plaintext: normalized, sizeBytes: normalized.byteLength }),
+    );
   });
 });

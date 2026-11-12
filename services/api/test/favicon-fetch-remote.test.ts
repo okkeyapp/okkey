@@ -3,14 +3,18 @@ import { afterEach, describe, test } from "node:test";
 
 import {
   bytesEqual,
+  declaredImageEdgesAllowed,
   expandFaviconProbeUrls,
   extractIconCandidatesFromHtml,
+  faviconLookupProbeUrls,
   hostsFromUrls,
   isAllowedFaviconFetchUrl,
   isDisallowedResolvedAddress,
   isHostSuitableForFaviconLookup,
   looksLikeImageBytes,
   MAX_FAVICON_RESPONSE_BYTES,
+  MAX_FAVICON_SOURCE_EDGE_PX,
+  orderHtmlIconCandidates,
   faviconProviderFetchesOnServer,
   parseFaviconProvider,
   registrableDomainFromHost,
@@ -606,3 +610,197 @@ describe("fetchRemoteFaviconBytes provider=direct", () => {
     assert.equal(result.status, "absent");
   });
 });
+
+describe("favicon candidate and lookup order", () => {
+  test("orders apple-touch and sizes links by largest edge, then favicon.ico, then SVG", () => {
+    const ordered = orderHtmlIconCandidates([
+      { href: "https://example.com/favicon.ico", rel: "shortcut icon", sizes: "" },
+      { href: "https://example.com/16.png", rel: "icon", sizes: "16x16" },
+      { href: "https://example.com/32.png", rel: "icon", sizes: "32x32" },
+      { href: "https://example.com/apple.png", rel: "apple-touch-icon", sizes: "180x180" },
+      { href: "https://example.com/512.png", rel: "icon", sizes: "512x512" },
+      { href: "https://example.com/icon.svg", rel: "icon", sizes: "any" },
+    ]);
+    assert.deepEqual(
+      ordered.map((candidate) => candidate.href),
+      [
+        "https://example.com/512.png",
+        "https://example.com/apple.png",
+        "https://example.com/32.png",
+        "https://example.com/16.png",
+        "https://example.com/favicon.ico",
+        "https://example.com/icon.svg",
+      ],
+    );
+  });
+
+  test("treats an unsized apple-touch icon as larger than a 32px link", () => {
+    const ordered = orderHtmlIconCandidates([
+      { href: "https://example.com/32.png", rel: "icon", sizes: "32x32" },
+      { href: "https://example.com/apple.png", rel: "apple-touch-icon", sizes: "" },
+    ]);
+    assert.equal(ordered[0]?.href, "https://example.com/apple.png");
+  });
+
+  test("walks full URL, subdomain root, domain root, then the next website URL field", () => {
+    assert.deepEqual(
+      faviconLookupProbeUrls([
+        "https://docs.github.com/en/start",
+        "https://login.example.co.uk/app",
+      ]),
+      [
+        "https://docs.github.com/en/start",
+        "https://docs.github.com/",
+        "https://github.com/",
+        "https://login.example.co.uk/app",
+        "https://login.example.co.uk/",
+        "https://example.co.uk/",
+      ],
+    );
+  });
+
+  test("fetches probes in lookup order", async () => {
+    setFaviconHostResolverForTests(async () => ["93.184.216.34"]);
+    const urls = ["https://docs.github.com/en/start", "https://login.example.co.uk/app"];
+    const { requested } = mockOutbound(() => ({ status: 404 }));
+    const result = await fetchRemoteFaviconBytesFromUrls(urls, { provider: "direct" });
+    assert.equal(result.status, "absent");
+    const probes = faviconLookupProbeUrls(urls);
+    const seen = requested.map((entry) => entry.href).filter((href) => probes.includes(href));
+    assert.deepEqual(seen, probes);
+  });
+
+  test("fetches the 512px icon before smaller links and favicon.ico", async () => {
+    setFaviconHostResolverForTests(async () => ["93.184.216.34"]);
+    const large = pngBytes(220);
+    const { requested } = mockOutbound((url) => {
+      if (url.href === "https://icons.example.com/") {
+        return {
+          status: 200,
+          headers: { "content-type": "text/html" },
+          body: new TextEncoder().encode(`<html><head>
+            <link rel="icon" href="/favicon.ico">
+            <link rel="icon" sizes="16x16" href="/16.png">
+            <link rel="icon" sizes="32x32" href="/32.png">
+            <link rel="apple-touch-icon" sizes="180x180" href="/apple.png">
+            <link rel="icon" sizes="512x512" href="/512.png">
+          </head></html>`),
+        };
+      }
+      if (url.pathname === "/512.png") {
+        return { status: 200, headers: { "content-type": "image/png" }, body: large };
+      }
+      return { status: 404 };
+    });
+
+    const result = await fetchRemoteFaviconBytesFromUrls(["https://icons.example.com/"], { provider: "direct" });
+    assert.equal(result.status, "found");
+    if (result.status === "found") {
+      assert.equal(result.bytes.byteLength, large.byteLength);
+    }
+    assert.ok(requested.some((entry) => entry.href === "https://icons.example.com/512.png"));
+    assert.ok(!requested.some((entry) => entry.href.endsWith("/favicon.ico")));
+    assert.ok(!requested.some((entry) => entry.href.endsWith("/16.png")));
+  });
+
+  test("prefers apple-touch-icon.png over /favicon.ico when the page has no link tags", async () => {
+    setFaviconHostResolverForTests(async () => ["93.184.216.34"]);
+    const apple = pngBytes(180);
+    const ico = pngBytes(64);
+    const { requested } = mockOutbound((url) => {
+      if (url.pathname === "/" || url.pathname === "") {
+        return {
+          status: 200,
+          headers: { "content-type": "text/html" },
+          body: new TextEncoder().encode("<html><head></head></html>"),
+        };
+      }
+      if (url.pathname === "/apple-touch-icon.png") {
+        return { status: 200, headers: { "content-type": "image/png" }, body: apple };
+      }
+      if (url.pathname === "/favicon.ico") {
+        return { status: 200, headers: { "content-type": "image/x-icon" }, body: ico };
+      }
+      return { status: 404 };
+    });
+
+    const result = await fetchRemoteFaviconBytes("example.com", { provider: "direct" });
+    assert.equal(result.status, "found");
+    if (result.status === "found") {
+      assert.equal(result.bytes.byteLength, apple.byteLength);
+    }
+    const appleAt = requested.findIndex((entry) => entry.href.endsWith("/apple-touch-icon.png"));
+    const icoAt = requested.findIndex((entry) => entry.href.endsWith("/favicon.ico"));
+    assert.ok(appleAt >= 0);
+    assert.equal(icoAt, -1);
+  });
+
+  test("returns an SVG document when the site has no raster icon", async () => {
+    setFaviconHostResolverForTests(async () => ["93.184.216.34"]);
+    const svg = new TextEncoder().encode(
+      '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32"><script>alert(1)</script><rect width="32" height="32"/></svg>',
+    );
+    const { requested } = mockOutbound((url) => {
+      if (url.pathname === "/" || url.pathname === "") {
+        return {
+          status: 200,
+          headers: { "content-type": "text/html" },
+          body: new TextEncoder().encode(
+            '<html><head><link rel="icon" type="image/svg+xml" href="/icon.svg"></head></html>',
+          ),
+        };
+      }
+      if (url.pathname === "/icon.svg") {
+        return { status: 200, headers: { "content-type": "image/svg+xml" }, body: svg };
+      }
+      return { status: 404 };
+    });
+
+    const result = await fetchRemoteFaviconBytesFromUrls(["https://svg-only.example.com/"], { provider: "direct" });
+    assert.equal(result.status, "found");
+    if (result.status === "found") {
+      assert.equal(bytesEqual(result.bytes, svg), true);
+    }
+    assert.ok(!requested.some((entry) => entry.href.endsWith("/favicon.ico")));
+  });
+
+  test("skips a PNG whose header claims an edge above the source limit", async () => {
+    setFaviconHostResolverForTests(async () => ["93.184.216.34"]);
+    const bomb = new Uint8Array(64);
+    bomb.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    const view = new DataView(bomb.buffer);
+    view.setUint32(8, 13);
+    bomb.set([0x49, 0x48, 0x44, 0x52], 12);
+    view.setUint32(16, MAX_FAVICON_SOURCE_EDGE_PX + 1);
+    view.setUint32(20, MAX_FAVICON_SOURCE_EDGE_PX + 1);
+    const ok = pngBytes(96);
+    assert.equal(declaredImageEdgesAllowed(bomb), false);
+    assert.equal(declaredImageEdgesAllowed(ok), true);
+
+    mockOutbound((url) => {
+      if (url.pathname === "/" || url.pathname === "") {
+        return {
+          status: 200,
+          headers: { "content-type": "text/html" },
+          body: new TextEncoder().encode(
+            '<html><head><link rel="icon" sizes="512x512" href="/big.png"><link rel="icon" sizes="32x32" href="/ok.png"></head></html>',
+          ),
+        };
+      }
+      if (url.pathname === "/big.png") {
+        return { status: 200, headers: { "content-type": "image/png" }, body: bomb };
+      }
+      if (url.pathname === "/ok.png") {
+        return { status: 200, headers: { "content-type": "image/png" }, body: ok };
+      }
+      return { status: 404 };
+    });
+
+    const result = await fetchRemoteFaviconBytesFromUrls(["https://edges.example.com/"], { provider: "direct" });
+    assert.equal(result.status, "found");
+    if (result.status === "found") {
+      assert.equal(result.bytes.byteLength, ok.byteLength);
+    }
+  });
+});
+

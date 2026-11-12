@@ -6,6 +6,8 @@ import type { ItemFormFaviconSyncInput } from "./useItemFormFavicon";
 import { downloadKeyFieldFileAttachmentBytes, uploadEncryptedAttachment } from "../api/key-field-files";
 import { FaviconPreviewDisabledError, previewItemFavicon } from "../api/item-favicons";
 import { collectWebsiteUrlsFromSections } from "../lib/domainRecordTitle";
+import { isFaviconImageNormalizeError } from "../lib/faviconImageError";
+import { normalizeFaviconImageBytesToPng } from "../lib/resizeFaviconImage";
 import { keyFieldFileValueFromFaviconId } from "./syncItemFavicon";
 
 const TEMPLATE_FAVICON_NAME = "favicon.png";
@@ -16,6 +18,17 @@ async function blobToBytes(blob: Blob): Promise<Uint8Array> {
     return new Uint8Array(await blob.arrayBuffer());
   }
   return new Uint8Array(await new Response(blob).arrayBuffer());
+}
+
+async function normalizeWebsiteIcon(bytes: Uint8Array): Promise<Uint8Array | null> {
+  try {
+    return await normalizeFaviconImageBytesToPng(bytes);
+  } catch (error) {
+    if (isFaviconImageNormalizeError(error)) {
+      return null;
+    }
+    throw error;
+  }
 }
 
 export type ItemTemplateFormSnapshot = {
@@ -179,7 +192,11 @@ export async function syncTemplateFaviconForSnapshot(
     return { faviconSource: "manual" };
   }
   if (syncInput?.websiteFaviconPng && syncInput.websiteFaviconPng.byteLength > 0) {
-    return uploadTemplateFavicon(syncInput.websiteFaviconPng, "website");
+    const pngBytes = await normalizeWebsiteIcon(syncInput.websiteFaviconPng);
+    if (!pngBytes) {
+      return {};
+    }
+    return uploadTemplateFavicon(pngBytes, "website");
   }
   if (snapshot.categoryId === ITEM_CATEGORY_LOGIN) {
     const urls = collectWebsiteUrlsFromSections(snapshot.sections);
@@ -187,7 +204,10 @@ export async function syncTemplateFaviconForSnapshot(
       try {
         const previewBlob = await previewItemFavicon(accessToken, urls);
         if (previewBlob) {
-          return uploadTemplateFavicon(await blobToBytes(previewBlob), "website");
+          const pngBytes = await normalizeWebsiteIcon(await blobToBytes(previewBlob));
+          if (pngBytes) {
+            return uploadTemplateFavicon(pngBytes, "website");
+          }
         }
       } catch (error) {
         if (!(error instanceof FaviconPreviewDisabledError)) {

@@ -1,6 +1,11 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
+vi.mock("../lib/resizeFaviconImage", () => ({
+  normalizeFaviconImageBytesToPng: vi.fn(async () => new Uint8Array([80, 80, 80, 80])),
+}));
+
 import * as itemFaviconsApi from "../api/item-favicons";
+import { normalizeFaviconImageBytesToPng } from "../lib/resizeFaviconImage";
 import * as keyFieldFilesApi from "../api/key-field-files";
 import type { KeyFormEditorSection } from "../components/key-form/KeyFormEditor";
 import {
@@ -138,6 +143,8 @@ describe("structure-only template payloads", () => {
 
 describe("syncTemplateFaviconForSnapshot", () => {
   it("uploads website favicon preview as an encrypted template attachment", async () => {
+    const normalized = new Uint8Array([80, 80, 80, 80]);
+    vi.mocked(normalizeFaviconImageBytesToPng).mockResolvedValue(normalized);
     const pngBytes = new Uint8Array([137, 80, 78, 71]);
     vi.spyOn(itemFaviconsApi, "previewItemFavicon").mockResolvedValue({
       arrayBuffer: async () => pngBytes.buffer,
@@ -157,15 +164,16 @@ describe("syncTemplateFaviconForSnapshot", () => {
       snapshot([websitesSection("https://example.com")]),
     );
 
+    expect(normalizeFaviconImageBytesToPng).toHaveBeenCalledWith(pngBytes);
     expect(upload).toHaveBeenCalledWith({
       accessToken: "token",
       vaultId: "1000000000000000001",
       itemId: "1000000000000000002",
       vaultKey,
-      plaintext: pngBytes,
+      plaintext: normalized,
       name: "favicon.png",
       mimeType: "image/png",
-      sizeBytes: pngBytes.byteLength,
+      sizeBytes: normalized.byteLength,
       purpose: "item-favicon",
     });
     expect(synced.faviconId).toBe("1000000000000000003");

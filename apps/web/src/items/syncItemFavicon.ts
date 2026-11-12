@@ -5,6 +5,7 @@ import { keyFieldFileValueFromFaviconId as faviconAttachmentValue } from "@okkey
 
 import { downloadKeyFieldFileAttachmentBytes, uploadEncryptedAttachment } from "../api/key-field-files";
 import { previewItemFavicon } from "../api/item-favicons";
+import { isFaviconImageNormalizeError } from "../lib/faviconImageError";
 import { normalizeFaviconImageBytesToPng } from "../lib/resizeFaviconImage";
 import type { ItemFormFaviconSyncInput } from "./useItemFormFavicon";
 import { seedItemFaviconAttachmentUrl } from "./useItemFaviconAttachmentUrl";
@@ -114,12 +115,8 @@ async function normalizeAndUploadWebsiteFavicon(input: {
   item: ItemPlaintextV2;
   rawBytes: Uint8Array;
 }): Promise<SyncItemFaviconResult> {
-  let pngBytes = input.rawBytes;
-  try {
-    pngBytes = await normalizeFaviconImageBytesToPng(input.rawBytes);
-  } catch {
-    // Fall back to original bytes if the browser cannot decode (tests / exotic formats).
-  }
+  // Undecodable bytes throw. Callers must not store the original (16px or 512px) payload.
+  const pngBytes = await normalizeFaviconImageBytesToPng(input.rawBytes);
   const uploadedFavicon = await uploadFaviconAttachment({
     accessToken: input.accessToken,
     vaultKey: input.vaultKey,
@@ -223,7 +220,11 @@ export async function lookupWebsiteFaviconFromNetwork(
       rawBytes: await readPreviewBlobBytes(previewBlob),
     });
     return { status: "found", sync };
-  } catch {
+  } catch (error) {
+    if (isFaviconImageNormalizeError(error)) {
+      // Bytes arrived but are not a usable icon. Letter tile; do not store them.
+      return { status: "absent" };
+    }
     // Network / client timeout / 503 FAVICON_UNAVAILABLE / 5xx — keep previous icon.
     return { status: "unavailable" };
   } finally {
@@ -344,7 +345,13 @@ export async function syncItemFaviconForPlaintext(
         item,
         rawBytes: await readPreviewBlobBytes(previewBlob),
       });
-    } catch {
+    } catch (error) {
+      if (isFaviconImageNormalizeError(error)) {
+        if (urlsUnchanged && previousHasWebsiteIcon && previous) {
+          return { item: keepPreviousWebsiteFavicon(item, previous) };
+        }
+        return { item: applyFaviconToItem(item, undefined, undefined) };
+      }
       // Network / client timeout / 503 FAVICON_UNAVAILABLE / 5xx — never treat as absence.
       if (previousHasWebsiteIcon && previous) {
         return { item: keepPreviousWebsiteFavicon(item, previous) };
