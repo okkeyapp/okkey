@@ -456,48 +456,58 @@ function buildDirectFaviconUrls(host: string): string[] {
   return DIRECT_FAVICON_PATHS.map((path) => `https://${host}${path}`);
 }
 
+export type FaviconImageMediaType =
+  | "image/png"
+  | "image/x-icon"
+  | "image/jpeg"
+  | "image/gif"
+  | "image/webp"
+  | "image/svg+xml";
+
+/** Media type from file magic (and SVG markup). Null when the bytes are not an image. */
+export function detectFaviconImageMediaType(bytes: Uint8Array): FaviconImageMediaType | null {
+  if (bytes.byteLength >= 16) {
+    // PNG
+    if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) {
+      return "image/png";
+    }
+    // JPEG
+    if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) {
+      return "image/jpeg";
+    }
+    // GIF
+    if (bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x38) {
+      return "image/gif";
+    }
+    // ICO / CUR
+    if (bytes[0] === 0x00 && bytes[1] === 0x00 && (bytes[2] === 0x01 || bytes[2] === 0x02) && bytes[3] === 0x00) {
+      return "image/x-icon";
+    }
+    // WEBP (RIFF....WEBP)
+    if (
+      bytes[0] === 0x52 &&
+      bytes[1] === 0x49 &&
+      bytes[2] === 0x46 &&
+      bytes[3] === 0x46 &&
+      bytes[8] === 0x57 &&
+      bytes[9] === 0x45 &&
+      bytes[10] === 0x42 &&
+      bytes[11] === 0x50
+    ) {
+      return "image/webp";
+    }
+  }
+
+  if (looksLikeSvgBytes(bytes)) {
+    return "image/svg+xml";
+  }
+  return null;
+}
+
 /** True when bytes look like a common raster/icon image (not HTML/error pages). */
 export function looksLikeImageBytes(bytes: Uint8Array): boolean {
-  if (bytes.byteLength < 16) {
-    return false;
-  }
-
-  // PNG
-  if (
-    bytes[0] === 0x89 &&
-    bytes[1] === 0x50 &&
-    bytes[2] === 0x4e &&
-    bytes[3] === 0x47
-  ) {
-    return true;
-  }
-  // JPEG
-  if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) {
-    return true;
-  }
-  // GIF
-  if (bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x38) {
-    return true;
-  }
-  // ICO / CUR
-  if (bytes[0] === 0x00 && bytes[1] === 0x00 && (bytes[2] === 0x01 || bytes[2] === 0x02) && bytes[3] === 0x00) {
-    return true;
-  }
-  // WEBP (RIFF....WEBP)
-  if (
-    bytes[0] === 0x52 &&
-    bytes[1] === 0x49 &&
-    bytes[2] === 0x46 &&
-    bytes[3] === 0x46 &&
-    bytes[8] === 0x57 &&
-    bytes[9] === 0x45 &&
-    bytes[10] === 0x42 &&
-    bytes[11] === 0x50
-  ) {
-    return true;
-  }
-
-  return false;
+  const mediaType = detectFaviconImageMediaType(bytes);
+  return mediaType !== null && mediaType !== "image/svg+xml";
 }
 
 function readUint32BE(bytes: Uint8Array, offset: number): number {

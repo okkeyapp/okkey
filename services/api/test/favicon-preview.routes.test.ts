@@ -3,12 +3,18 @@ import assert from "node:assert/strict";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
 import {
+  detectFaviconImageMediaType,
   setFaviconHostResolverForTests,
   setFaviconOutboundRequestForTests,
+  type FaviconRemoteLookupResult,
 } from "../src/favicon/fetch-remote.ts";
 import { ItemFaviconService } from "../src/favicon/service.ts";
 import type { RequestContext } from "../src/http.ts";
-import { createItemFaviconConfigRoute, createItemFaviconPreviewRoute } from "../src/routes/item-favicons.ts";
+import {
+  createItemFaviconConfigRoute,
+  createItemFaviconPreviewRoute,
+  FAVICON_SVG_PREVIEW_CONTENT_SECURITY_POLICY,
+} from "../src/routes/item-favicons.ts";
 
 class MockResponse {
   statusCode = 200;
@@ -214,5 +220,130 @@ test("POST /favicon/preview returns 200 with image bytes when an icon is found",
   const res = await dispatch({ urls: ["https://has-icon.example.com"] });
   assert.equal(res.statusCode, 200);
   assert.equal(res.getHeader("content-type"), "image/png");
+  assert.equal(res.getHeader("x-content-type-options"), "nosniff");
   assert.equal(res.body.byteLength, 96);
+});
+
+function rasterBytes(prefix: number[]): Uint8Array {
+  const bytes = new Uint8Array(32);
+  bytes.set(prefix);
+  return bytes;
+}
+
+test("detectFaviconImageMediaType maps magic bytes and rejects non-images", () => {
+  assert.equal(detectFaviconImageMediaType(rasterBytes([0x89, 0x50, 0x4e, 0x47])), "image/png");
+  assert.equal(detectFaviconImageMediaType(rasterBytes([0x00, 0x00, 0x01, 0x00])), "image/x-icon");
+  assert.equal(detectFaviconImageMediaType(rasterBytes([0xff, 0xd8, 0xff, 0xe0])), "image/jpeg");
+  assert.equal(detectFaviconImageMediaType(rasterBytes([0x47, 0x49, 0x46, 0x38, 0x39, 0x61])), "image/gif");
+  const webp = rasterBytes([0x52, 0x49, 0x46, 0x46]);
+  webp.set([0x57, 0x45, 0x42, 0x50], 8);
+  assert.equal(detectFaviconImageMediaType(webp), "image/webp");
+  assert.equal(
+    detectFaviconImageMediaType(new TextEncoder().encode('<svg xmlns="http://www.w3.org/2000/svg"></svg>')),
+    "image/svg+xml",
+  );
+  assert.equal(
+    detectFaviconImageMediaType(new TextEncoder().encode("<!doctype html><html><body>nope</body></html>")),
+    null,
+  );
+  assert.equal(detectFaviconImageMediaType(new TextEncoder().encode("%PDF-1.7 not an image")), null);
+  assert.equal(detectFaviconImageMediaType(new Uint8Array([0x89, 0x50, 0x4e, 0x47])), null);
+});
+
+test("POST /favicon/preview sends the detected ICO type and nosniff", async () => {
+  const icon = new Uint8Array(64);
+  icon.set([0x00, 0x00, 0x01, 0x00]);
+  setFaviconHostResolverForTests(async () => ["93.184.216.34"]);
+  setFaviconOutboundRequestForTests(async (url) => {
+    if (url.pathname === "/favicon.ico") {
+      return {
+        status: 200,
+        headers: { "content-type": "image/png" },
+        readBody: async () => icon,
+      };
+    }
+    if (url.pathname === "/" || url.pathname === "") {
+      return {
+        status: 200,
+        headers: { "content-type": "text/html" },
+        readBody: async () => new TextEncoder().encode("<html></html>"),
+      };
+    }
+    return { status: 404, headers: {}, readBody: async () => new Uint8Array() };
+  });
+
+  const res = await dispatch({ urls: ["https://ico.example.com"] });
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.getHeader("content-type"), "image/x-icon");
+  assert.equal(res.getHeader("x-content-type-options"), "nosniff");
+  assert.equal(res.getHeader("content-disposition"), undefined);
+  assert.deepEqual(res.body, Buffer.from(icon));
+});
+
+test("POST /favicon/preview sends SVG as image/svg+xml with document headers", async () => {
+  const svg = new TextEncoder().encode(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32"><script>alert(1)</script><rect width="32" height="32"/></svg>',
+  );
+  setFaviconHostResolverForTests(async () => ["93.184.216.34"]);
+  setFaviconOutboundRequestForTests(async (url) => {
+    if (url.pathname === "/" || url.pathname === "") {
+      return {
+        status: 200,
+        headers: { "content-type": "text/html" },
+        readBody: async () =>
+          new TextEncoder().encode('<html><head><link rel="icon" type="image/svg+xml" href="/icon.svg"></head></html>'),
+      };
+    }
+    if (url.pathname === "/icon.svg") {
+      return {
+        status: 200,
+        headers: { "content-type": "image/png" },
+        readBody: async () => svg,
+      };
+    }
+    return { status: 404, headers: {}, readBody: async () => new Uint8Array() };
+  });
+
+  const res = await dispatch({ urls: ["https://svg-only.example.com/"] });
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.getHeader("content-type"), "image/svg+xml");
+  assert.equal(res.getHeader("x-content-type-options"), "nosniff");
+  assert.equal(res.getHeader("content-security-policy"), FAVICON_SVG_PREVIEW_CONTENT_SECURITY_POLICY);
+  assert.equal(res.getHeader("content-disposition"), "attachment");
+  assert.deepEqual(res.body, Buffer.from(svg));
+});
+
+test("POST /favicon/preview rejects a non-image payload", async () => {
+  class NonImagePreviewService extends ItemFaviconService {
+    override async previewFromUrls(): Promise<FaviconRemoteLookupResult> {
+      return {
+        status: "found",
+        bytes: new TextEncoder().encode("<!doctype html><html><body>not an icon</body></html>"),
+      };
+    }
+  }
+
+  const handler = createItemFaviconPreviewRoute(
+    new NonImagePreviewService({ provider: "direct" }),
+    async () => "1000000000000000009",
+  );
+  const req = {
+    method: "POST",
+    url: "/favicon/preview",
+    headers: { "content-type": "application/json" },
+    body: { urls: ["https://html.example.com"] },
+  } as IncomingMessage & { body?: unknown };
+  const res = new MockResponse();
+  await handler({
+    requestId: "req-not-image",
+    req,
+    res: res as unknown as ServerResponse,
+    params: {},
+  });
+
+  assert.equal(res.statusCode, 415);
+  assert.equal(res.getHeader("x-content-type-options"), "nosniff");
+  assert.equal(res.getHeader("content-type"), "application/json; charset=utf-8");
+  const payload = JSON.parse(res.body.toString()) as { error: string };
+  assert.equal(payload.error, "UNSUPPORTED_MEDIA_TYPE");
 });
