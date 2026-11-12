@@ -275,8 +275,20 @@ test("AMO sources allowlist includes a rebuildable workspace slice", () => {
     assert.ok(source.includes(entry), entry);
   }
   assert.match(source, /description:\s*"__MSG_extDescription__"/);
+  assert.match(source, /default_title:\s*"__MSG_actionTitle__"/);
   assert.match(source, /default_locale:\s*"en"/);
   assert.match(source, /data_collection_permissions:/);
+  assert.match(source, /!\*\*\/\*\.test\.ts/);
+  assert.match(source, /!\*\*\/\*\.test\.tsx/);
+  const popupHtml = readFileSync(`${extensionRoot}/src/entrypoints/popup/index.html`, "utf8");
+  assert.match(popupHtml, /<title>__MSG_actionTitle__<\/title>/);
+  for (const locale of ["en", "ru"]) {
+    const messages = JSON.parse(
+      readFileSync(`${extensionRoot}/public/_locales/${locale}/messages.json`, "utf8"),
+    ) as { actionTitle?: { message?: string } };
+    assert.equal(typeof messages.actionTitle?.message, "string");
+    assert.ok(messages.actionTitle.message.length > 0);
+  }
 });
 
 test("wxt.config.ts does not hardcode a manifest version", () => {

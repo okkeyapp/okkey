@@ -86,6 +86,8 @@ Not declared: third-party analytics, ad trackers, or Okkey-operated cloud. All n
 |------|----------|-------------|
 | `MISSING_DATA_COLLECTION_PERMISSIONS` | error (submit blocker) | **Fixed** — see gecko `data_collection_permissions` above. |
 | Unsupported `offscreen` permission | warning/error on Firefox | **Fixed** — `offscreen` is Chromium-only in `wxt.config.ts`. |
+| `KEY_FIREFOX_UNSUPPORTED_BY_MIN_VERSION` | warning | **Accepted.** `data_collection_permissions` exists from Firefox 140, and `strict_min_version` stays `121.0` (MV3 / API floor, above). Firefox 121–139 ignore the unknown key. On those versions the consent copy is this document plus [PRIVACY.md](./PRIVACY.md), not the built-in Firefox 140 UI. Raising the floor to 140 only to clear the warning would drop supported browsers. |
+| `KEY_FIREFOX_ANDROID_UNSUPPORTED_BY_MIN_VERSION` | warning | **Accepted.** The same key needs Firefox for Android 142. With no `gecko_android` override, `gecko.strict_min_version` is also the Android floor, so the linter warns that 121 predates Android support for the key. The desktop API floor stays 121; we do not add an Android-only minimum just to silence the warning. |
 | `UNSAFE_VAR_ASSIGNMENT` | warning | **Keep with justification** — content-script / generator overlays assign to `innerHTML` / `insertAdjacentHTML` inside an extension **shadow DOM**. Dynamic user strings go through `escapeHtml`; markup templates and SVG icon snippets are extension-controlled constants (not remote HTML). No page-origin HTML is assigned into the overlay. Refactoring every assignment to pure DOM APIs is out of scope for this pack; treat remaining hits as reviewed false positives for XSS. |
 
 Sources rebuild: [SOURCES.md](./SOURCES.md).
