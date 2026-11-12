@@ -86,6 +86,9 @@ import type {
   WorkspaceItemTemplatesListResponseDto,
   WorkspaceSettingsResponseDto,
   WorkspaceSettingsUpdateRequestDto,
+  ServerMailSettingsResponseDto,
+  ServerMailSettingsUpdateRequestDto,
+  ServerMailTestEmailRequestDto,
   WorkspaceDeleteRequestDto,
   WorkspacePlanChangeRequestDto,
   WorkspacePlanChangeRequestResponseDto,
@@ -722,6 +725,32 @@ export class CoreApiClient {
   ): Promise<WorkspaceSettingsResponseDto> {
     return this.api.patch<WorkspaceSettingsResponseDto>(
       `/workspaces/${encodeURIComponent(workspaceId)}/settings`,
+      body,
+    );
+  }
+
+  getServerMailSettings(workspaceId: string): Promise<ServerMailSettingsResponseDto> {
+    return this.api.get<ServerMailSettingsResponseDto>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/server-mail-settings`,
+    );
+  }
+
+  updateServerMailSettings(
+    workspaceId: string,
+    body: ServerMailSettingsUpdateRequestDto,
+  ): Promise<ServerMailSettingsResponseDto> {
+    return this.api.patch<ServerMailSettingsResponseDto>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/server-mail-settings`,
+      body,
+    );
+  }
+
+  sendServerMailTestEmail(
+    workspaceId: string,
+    body: ServerMailTestEmailRequestDto,
+  ): Promise<{ ok: true }> {
+    return this.api.post<{ ok: true }>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/server-mail-settings/test-email`,
       body,
     );
   }

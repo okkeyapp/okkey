@@ -19,6 +19,8 @@ import { loadConfig } from "./config.ts";
 import { initEntityIdGenerator } from "./entity-id.ts";
 import { resolveDeadLetterSealKey, startEmailQueueConsumer } from "./email/queue.ts";
 import { createTransportEmailSender } from "./email/service.ts";
+import { MailSettingsService } from "./mail-settings/service.ts";
+import { PostgresServerMailSettingsStore } from "./mail-settings/store.ts";
 import { ItemPurgeService } from "./item-purge/service.ts";
 import { startBackgroundJobs } from "./jobs/background-jobs.ts";
 import { createLogger } from "./logger.ts";
@@ -109,7 +111,14 @@ async function main(): Promise<void> {
 
   // Validate/create transport before starting jobs so a bad EMAIL_* env exits
   // instead of leaving purge/capsule timers + open Redis/Postgres sockets alive.
-  const emailTransport = await createTransportEmailSender(config, logger);
+  const mailSettings = new MailSettingsService({
+    store: new PostgresServerMailSettingsStore(storage.postgres),
+    config,
+    users: storage.repositories.users,
+    workspaces: storage.repositories.workspaces,
+    logger,
+  });
+  const emailTransport = await createTransportEmailSender(config, logger, mailSettings);
 
   const jobs = startBackgroundJobs({
     itemPurgeService,

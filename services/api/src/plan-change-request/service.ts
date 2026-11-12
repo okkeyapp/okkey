@@ -11,6 +11,7 @@ import { assertWorkspacePermission } from "../workspace-roles/permissions.ts";
 import type { QueryExecutor } from "../storage/postgres.ts";
 import type { UsersRepository, WorkspacesRepository } from "../storage/repositories.ts";
 import type { EmailTemplateService } from "../email/service.ts";
+import { resolveLinkBaseUrl, type PublicAppUrlResolver } from "../mail-settings/public-url.ts";
 
 /** Max license / plan-change request attempts per workspace per rolling 24h window. */
 export const PLAN_CHANGE_REQUEST_DAILY_LIMIT = 3;
@@ -100,8 +101,10 @@ export class PlanChangeRequestService {
   private readonly redis: RateLimitRedis;
   private readonly salesEmail: string;
   private readonly salesEmailDeliverable: boolean;
+  private readonly resolveSalesEmailDeliverable?: () => Promise<boolean>;
   private readonly deploymentMode: DeploymentMode;
   private readonly publicAppBaseUrl: string;
+  private readonly resolvePublicAppBaseUrl?: PublicAppUrlResolver;
   private readonly nowMs: () => number;
 
   constructor(deps: {
@@ -119,8 +122,12 @@ export class PlanChangeRequestService {
      * submit is rejected and clients should use mailto instead.
      */
     salesEmailDeliverable?: boolean;
+    /** Re-checked at request time so UI SMTP settings apply without a restart. */
+    resolveSalesEmailDeliverable?: () => Promise<boolean>;
     deploymentMode: DeploymentMode;
     publicAppBaseUrl?: string;
+    /** Effective public origin at send time (database, otherwise env). */
+    resolvePublicAppBaseUrl?: PublicAppUrlResolver;
     /** Injectable clock for rolling-window tests (epoch ms). */
     nowMs?: () => number;
   }) {
@@ -131,8 +138,10 @@ export class PlanChangeRequestService {
     this.redis = deps.redis;
     this.salesEmail = deps.salesEmail.trim();
     this.salesEmailDeliverable = deps.salesEmailDeliverable ?? true;
+    this.resolveSalesEmailDeliverable = deps.resolveSalesEmailDeliverable;
     this.deploymentMode = deps.deploymentMode;
     this.publicAppBaseUrl = (deps.publicAppBaseUrl ?? "").trim().replace(/\/$/, "");
+    this.resolvePublicAppBaseUrl = deps.resolvePublicAppBaseUrl;
     this.nowMs = deps.nowMs ?? (() => Date.now());
   }
 
@@ -166,7 +175,7 @@ export class PlanChangeRequestService {
       );
     }
 
-    const salesEmailDeliverable = this.isSalesEmailDeliverable();
+    const salesEmailDeliverable = await this.isSalesEmailDeliverable();
     // Already-sent / no-resend only applies when outbound email is deliverable (real SMTP).
     // Logger / mailto path always reports not submitted so clients keep showing mailto.
     const submitted =
@@ -179,8 +188,14 @@ export class PlanChangeRequestService {
     };
   }
 
-  private isSalesEmailDeliverable(): boolean {
-    return Boolean(this.salesEmail) && this.salesEmailDeliverable;
+  private async isSalesEmailDeliverable(): Promise<boolean> {
+    if (!this.salesEmail) {
+      return false;
+    }
+    if (this.resolveSalesEmailDeliverable) {
+      return this.resolveSalesEmailDeliverable();
+    }
+    return this.salesEmailDeliverable;
   }
 
   private async consumeDailyRateLimit(workspaceId: string): Promise<void> {
@@ -224,7 +239,7 @@ export class PlanChangeRequestService {
   }
 
   async submit(input: PlanChangeRequestInput): Promise<{ submitted: true }> {
-    if (!this.isSalesEmailDeliverable()) {
+    if (!(await this.isSalesEmailDeliverable())) {
       throw new PlanChangeRequestServiceError(
         "EMAIL_NOT_CONFIGURED",
         503,
@@ -322,7 +337,10 @@ export class PlanChangeRequestService {
     const workspaceMemberCount = clientMemberCountValid
       ? (rawMemberCount as number)
       : await this.workspaces.countMembers(input.workspaceId);
-    const workspaceUrl = this.publicAppBaseUrl;
+    const workspaceUrl = await resolveLinkBaseUrl(
+      this.publicAppBaseUrl,
+      this.resolvePublicAppBaseUrl,
+    );
 
     try {
       await this.emailTemplates.sendPlanChangeRequest({

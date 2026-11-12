@@ -1280,6 +1280,36 @@ export interface SyncAppendEventRequestDto {
   itemDeletedAtMs?: number;
 }
 
+export type SmtpTlsMode = "none" | "starttls" | "tls";
+
+/** `GET /workspaces/:workspaceId/server-mail-settings`. The SMTP password is never included. */
+export interface ServerMailSettingsResponseDto {
+  smtp_host: string;
+  smtp_port: number;
+  smtp_tls_mode: SmtpTlsMode;
+  smtp_username: string;
+  email_from: string;
+  public_app_url: string;
+  password_set: boolean;
+}
+
+/** `PATCH /workspaces/:workspaceId/server-mail-settings`. Empty strings clear that override. */
+export interface ServerMailSettingsUpdateRequestDto {
+  smtp_host?: string;
+  smtp_port?: number | null;
+  smtp_tls_mode?: SmtpTlsMode | null;
+  smtp_username?: string;
+  email_from?: string;
+  public_app_url?: string;
+  /** Empty or omitted keeps the stored password. */
+  password?: string;
+  /** Drop the stored password so the environment value is used again. */
+  clear_password?: boolean;
+}
+
+/** `POST /workspaces/:workspaceId/server-mail-settings/test-email` body. */
+export type ServerMailTestEmailRequestDto = ServerMailSettingsUpdateRequestDto;
+
 /** `GET /workspaces/:workspaceId/settings` success body. */
 export interface WorkspaceSettingsResponseDto {
   name: string;

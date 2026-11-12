@@ -2,6 +2,7 @@ import { createHash, randomInt } from "node:crypto";
 import { generateEntityId } from "../entity-id.ts";
 import type { ApiConfig } from "../config.ts";
 import { buildEmailAppPathUrl, type EmailTemplateService } from "../email/service.ts";
+import { resolveLinkBaseUrl, type PublicAppUrlResolver } from "../mail-settings/public-url.ts";
 import { UniqueConstraintError } from "../storage/errors.ts";
 import type { UsersRepository } from "../storage/repositories.ts";
 
@@ -78,6 +79,8 @@ export interface EmailChangeServiceDeps {
     "sendAuthEmailCode" | "sendAccountEmailChangedBestEffort"
   >;
   config: ApiConfig;
+  /** Effective public origin at send time (database, otherwise env). */
+  resolvePublicAppBaseUrl?: PublicAppUrlResolver;
   now?: () => Date;
   generateCode?: () => string;
   generateId?: () => string;
@@ -130,6 +133,7 @@ export class EmailChangeService {
   private readonly users: EmailChangeServiceDeps["users"];
   private readonly emailTemplates: EmailChangeServiceDeps["emailTemplates"];
   private readonly config: ApiConfig;
+  private readonly resolvePublicAppBaseUrl?: PublicAppUrlResolver;
   private readonly now: () => Date;
   private readonly generateCode: () => string;
   private readonly generateId: () => string;
@@ -139,6 +143,7 @@ export class EmailChangeService {
     this.users = deps.users;
     this.emailTemplates = deps.emailTemplates;
     this.config = deps.config;
+    this.resolvePublicAppBaseUrl = deps.resolvePublicAppBaseUrl;
     this.now = deps.now ?? (() => new Date());
     this.generateCode = deps.generateCode ?? createCode;
     this.generateId = deps.generateId ?? generateEntityId;
@@ -285,7 +290,7 @@ export class EmailChangeService {
         newEmailMasked: maskEmailForNotice(challenge.email),
         occurredAtIso: this.now().toISOString(),
         securitySettingsUrl: buildEmailAppPathUrl(
-          this.config.publicAppBaseUrl,
+          await resolveLinkBaseUrl(this.config.publicAppBaseUrl, this.resolvePublicAppBaseUrl),
           "/items?popup=settings|twoFactor",
         ),
       },

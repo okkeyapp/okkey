@@ -2,6 +2,7 @@ import type { ApiConfig } from "../config.ts";
 import type { GeoIpLookup } from "../capsule/geoip.ts";
 import type { EmailTemplateService } from "../email/service.ts";
 import { buildEmailAppPathUrl } from "../email/service.ts";
+import { resolveLinkBaseUrl, type PublicAppUrlResolver } from "../mail-settings/public-url.ts";
 import type { Logger } from "../logger.ts";
 import type { UserRecord, UsersRepository } from "../storage/repositories.ts";
 import { UniqueConstraintError } from "../storage/errors.ts";
@@ -76,6 +77,8 @@ export interface DeviceServiceDeps {
       >
     >;
   config: Pick<ApiConfig, "deviceApprovalTtlSeconds" | "publicAppBaseUrl">;
+  /** Effective public origin at send time (database, otherwise env). */
+  resolvePublicAppBaseUrl?: PublicAppUrlResolver;
   users?: Pick<UsersRepository, "findById">;
   emailTemplates?: Pick<EmailTemplateService, "sendDeviceApprovalRequest">;
   geoIp?: Pick<GeoIpLookup, "lookup">;
@@ -205,6 +208,7 @@ export interface RenameDeviceResult {
 export class DeviceService {
   private readonly devices: DeviceServiceDeps["devices"];
   private readonly config: DeviceServiceDeps["config"];
+  private readonly resolvePublicAppBaseUrl?: PublicAppUrlResolver;
   private readonly users?: Pick<UsersRepository, "findById">;
   private readonly emailTemplates?: Pick<EmailTemplateService, "sendDeviceApprovalRequest">;
   private readonly geoIp?: Pick<GeoIpLookup, "lookup">;
@@ -220,6 +224,7 @@ export class DeviceService {
   constructor(deps: DeviceServiceDeps) {
     this.devices = deps.devices;
     this.config = deps.config;
+    this.resolvePublicAppBaseUrl = deps.resolvePublicAppBaseUrl;
     this.users = deps.users;
     this.emailTemplates = deps.emailTemplates;
     this.geoIp = deps.geoIp;
@@ -527,7 +532,7 @@ export class DeviceService {
         country,
         city,
         helpUrl: buildEmailAppPathUrl(
-          this.config.publicAppBaseUrl,
+          await resolveLinkBaseUrl(this.config.publicAppBaseUrl, this.resolvePublicAppBaseUrl),
           "/items?popup=settings|devices",
         ),
         requestedAtIso: requestedAt.toISOString(),
