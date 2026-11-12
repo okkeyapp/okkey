@@ -1,7 +1,9 @@
 # AMO sources.zip — rebuild instructions for reviewers
 
-**Artifact:** `apps/extension/output/okkeyextension-1.0.0.2-sources.zip`  
+**Artifact:** `apps/extension/output/okkeyextension-1.0.0.1000-sources.zip`  
 (produced by `yarn zip:extension:firefox` from the monorepo root)
+
+The manifest version is the store number for product SemVer `1.0.0` (`1.0.0` → `1.0.0.1000`). It must stay above `store/LAST_SUBMITTED_MANIFEST_VERSION`.
 
 ## Why this zip is monorepo-shaped
 
@@ -14,7 +16,9 @@ The extension imports shared packages (`@okkey/vault`, `@okkey/crypto`, …) and
 | `apps/extension/**` | Extension source + WXT config |
 | `packages/{api,auth,crypto,i18n,id,sync,types,ui,vault,vault-ui}/**` | Client packages the extension aliases |
 | `rust/crypto-engine/**` | WASM crypto engine source + `Cargo.lock` |
+| `scripts/ensure-crypto-wasm-dist.mjs` | Placeholder `packages/crypto/dist` so Yarn can link before `wasm-pack` |
 | `scripts/verify-crypto-bootstrap.mjs` | Post-`wasm-pack` verify step |
+| `packages/email-templates`, `packages/import` | Workspace packages the root `package.json` / lockfile install expects |
 
 Excluded on purpose: `node_modules`, build `dist`/`output`, store screenshot PNGs, prebuilt `.wasm` (rebuild via `yarn build:wasm`), fuzz targets, tests, unrelated monorepo apps (`apps/web`, `services/*`, …).  
 WXT’s zip filter is `include || !exclude`; `excludeSources: ["**"]` in `wxt.config.ts` forces a true allowlist via `includeSources`.
@@ -27,8 +31,8 @@ Requirements: Node `>=25 <26`, Yarn `1.22.x`, Rust (see `rust-toolchain.toml`), 
 
 ```bash
 # From the extracted sources root (same layout as the GitHub monorepo top-level)
+node scripts/ensure-crypto-wasm-dist.mjs
 yarn install --frozen-lockfile
-yarn build:wasm
 yarn zip:extension:firefox
 ```
 
@@ -37,8 +41,8 @@ Expected outputs:
 ```text
 apps/extension/output/
   firefox-mv3/
-  okkeyextension-1.0.0.2-firefox.zip
-  okkeyextension-1.0.0.2-sources.zip
+  okkeyextension-1.0.0.1000-firefox.zip
+  okkeyextension-1.0.0.1000-sources.zip
 ```
 
 Lint the unpacked Firefox build:
@@ -52,6 +56,6 @@ Expect **0 errors**. Warnings that remain after triage are documented in [PERMIS
 ## Notes for AMO
 
 - Gecko id: `extension@okkey.io`
-- Manifest version: `1.0.0.2`
+- Manifest version: `1.0.0.1000` (product SemVer `1.0.0`)
 - `browser_specific_settings.gecko.data_collection_permissions` is set (required for new AMO submissions).
 - Chromium-only permission `offscreen` is **omitted** from the Firefox manifest; clipboard clear uses the Firefox background path.

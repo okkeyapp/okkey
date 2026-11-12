@@ -1,6 +1,6 @@
 # Permissions justification — Okkey extension (store review)
 
-**Version:** `1.0.0.2`  
+**Version:** `1.0.0.1000`  
 
 **Single purpose:** A password manager that unlocks a client-side encrypted vault and autofills credentials the user saved for websites they visit, against a **user-configured self-hosted** Okkey instance.
 

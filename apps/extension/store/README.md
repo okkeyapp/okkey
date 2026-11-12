@@ -1,7 +1,7 @@
 # Okkey extension — store packaging (E5)
 
-**Extension / store version:** `1.0.0.2`  
-**Manifest `version`:** `1.0.0.2`  
+**Extension / store version:** `1.0.0.1000`  
+**Manifest `version`:** `1.0.0.1000` (product SemVer `1.0.0` in `apps/extension/package.json`)  
 **`apps/extension/package.json`:** `1.0.0` (Yarn workspace SemVer — four-part `1.0.0.N` is invalid there)
 
 Store packaging uses **Chrome / Edge / AMO numeric** `1.0.0.N` only. Do **not** put product SemVer with a beta string (`1.0.0-beta.2`) in `manifest.version`, `version_name`, listing version fields, or zip filenames. No Chromium `version_name`.
@@ -16,6 +16,7 @@ This folder is the **ready-to-submit** pack for browser stores. It does **not** 
 | [LOCALES.md](./LOCALES.md) | How EN+RU locales work on CWS / Edge / AMO; package `_locales` prerequisite |
 | [PERMISSIONS.md](./PERMISSIONS.md) | Store review justification (autofill / host access); Firefox data_collection + lint triage |
 | [SOURCES.md](./SOURCES.md) | AMO `*-sources.zip` layout + reviewer rebuild steps |
+| [BUILD.md](./BUILD.md) | Short rebuild steps copied into `*-sources.zip` |
 | [LISTING.en.md](./LISTING.en.md) | Chrome/Edge/Opera/AMO listing copy (EN) |
 | [LISTING.ru.md](./LISTING.ru.md) | Listing copy (RU) — required this release |
 | [URLS.md](./URLS.md) | Store privacy / support / homepage URLs + live-check notes |
@@ -27,10 +28,10 @@ This folder is the **ready-to-submit** pack for browser stores. It does **not** 
 
 | Target | Build / zip | Upload to |
 |--------|-------------|-----------|
-| Chrome | `yarn zip:extension:chromium` → `apps/extension/output/okkeyextension-1.0.0.2-chrome.zip` | [Chrome Web Store](https://chrome.google.com/webstore/devconsole) |
+| Chrome | `yarn zip:extension:chromium` → `apps/extension/output/okkeyextension-1.0.0.1000-chrome.zip` | [Chrome Web Store](https://chrome.google.com/webstore/devconsole) |
 | Edge | **Same Chromium zip** | [Edge Add-ons](https://partner.microsoft.com/dashboard) |
 | Opera | **Same Chromium zip** | [Opera Add-ons](https://addons.opera.com/developer/) |
 | Yandex Browser | Install from **CWS** (no separate package) | via Chrome Web Store listing |
-| Firefox | `yarn zip:extension:firefox` → `apps/extension/output/okkeyextension-1.0.0.2-firefox.zip` (+ monorepo `*-sources.zip` for AMO; see [SOURCES.md](./SOURCES.md)) | [AMO](https://addons.mozilla.org/developers/) — pack/lint prep; smoke + submit manual (see checklist) |
+| Firefox | `yarn zip:extension:firefox` → `apps/extension/output/okkeyextension-1.0.0.1000-firefox.zip` (+ monorepo `*-sources.zip` for AMO; see [SOURCES.md](./SOURCES.md)) | [AMO](https://addons.mozilla.org/developers/) — pack/lint prep; smoke + submit manual (see checklist) |
 
 Zips are gitignored (`*.zip`, `apps/extension/output/`). Rebuild before each upload.
