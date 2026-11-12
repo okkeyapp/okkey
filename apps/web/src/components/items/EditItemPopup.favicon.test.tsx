@@ -210,7 +210,33 @@ async function waitPastDebounce() {
   });
 }
 
+function installMemoryLocalStorage() {
+  const store = new Map<string, string>();
+  const storage = {
+    getItem: (key: string) => store.get(key) ?? null,
+    setItem: (key: string, value: string) => {
+      store.set(key, value);
+    },
+    removeItem: (key: string) => {
+      store.delete(key);
+    },
+    clear: () => {
+      store.clear();
+    },
+    key: (index: number) => [...store.keys()][index] ?? null,
+    get length() {
+      return store.size;
+    },
+  };
+  Object.defineProperty(window, "localStorage", {
+    configurable: true,
+    value: storage,
+  });
+}
+
 beforeEach(() => {
+  // Node 25 exposes a broken global localStorage when --localstorage-file has no path.
+  installMemoryLocalStorage();
   mocks.item = buildLoginItem();
   mocks.syncSpy.mockReset();
   mocks.previewItemFavicon.mockReset();
