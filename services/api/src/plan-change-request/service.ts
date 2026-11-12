@@ -310,8 +310,9 @@ export class PlanChangeRequestService {
     // `plan_change_request_sent_at` so the UI can show the latest datetime and “Send again”.
 
     const currentPlanTier = normalizePlanTier(workspace.planTier);
-    // Self-hosted license purchase is not a SaaS catalog upgrade: Core FREE UI ignores DB
-    // `plan_tier` (modules gate). Skip the ladder so ENTERPRISE→ENTERPRISE license requests work.
+    // Self-hosted license requests are not catalog upgrades. Skip the SaaS ladder so a
+    // request is accepted when the stored plan_tier is already at or above the requested
+    // tier (for example ENTERPRISE to ENTERPRISE). SaaS still requires a higher tier.
     if (
       this.deploymentMode === "saas" &&
       !canRequestPlanUpgrade(currentPlanTier, requestedPlanTier)

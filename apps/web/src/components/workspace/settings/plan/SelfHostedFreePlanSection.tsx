@@ -273,13 +273,6 @@ export default function SelfHostedFreePlanSection({
       markSubmitted(new Date().toISOString());
       setPopupOpen(false);
     } catch (error) {
-      if (error instanceof ApiRequestError && error.body.error === "ALREADY_SUBMITTED") {
-        // Legacy servers may still reject re-send; show success and keep form usable after refresh.
-        markSubmitted(sentAt ?? new Date().toISOString());
-        setPopupOpen(false);
-        setSubmitError(null);
-        return;
-      }
       if (error instanceof ApiRequestError && error.body.error === "RATE_LIMITED") {
         const retryRaw = error.body.details?.retryAfterSeconds;
         const retrySeconds =
@@ -301,11 +294,7 @@ export default function SelfHostedFreePlanSection({
         setPopupOpen(false);
         return;
       }
-      const message =
-        error instanceof ApiRequestError
-          ? error.message
-          : t("web.workspaceSettings.plan.request.errorGeneric");
-      setSubmitError(message);
+      setSubmitError(t("web.workspaceSettings.plan.request.errorGeneric"));
     } finally {
       setSubmitting(false);
     }
