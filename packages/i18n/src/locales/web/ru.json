@@ -457,6 +457,8 @@
   "web.tools.import.errors.generic": "Не удалось выполнить импорт",
   "web.tools.import.errors.emptyResult": "Не найдено записей для импорта",
   "web.tools.import.errors.noVaultAccess": "Нет доступа для записи в выбранный сейф",
+  "web.tools.import.errors.incomplete": "Импорт приостановлен из-за ошибки сервера. Сохранённые записи остаются в сейфе. Повторите импорт, чтобы догрузить остальные.",
+  "web.tools.import.errors.conflict": "Импорт остановился из-за конфликта. Сохранённые записи остаются в сейфе.",
   "web.tools.import.exportPassword.title": "Пароль экспорта",
   "web.tools.import.exportPassword.description": "Импортируемый файл защищён паролем. Введите пароль, который вы задали при экспорте.",
   "web.tools.import.exportPassword.label": "Пароль экспорта",

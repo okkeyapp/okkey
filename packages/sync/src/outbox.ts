@@ -1,6 +1,8 @@
 import {
   PLAN_QUOTA_EXCEEDED,
+  SYNC_EVENTS_BATCH_MAX,
   type SyncAppendEventRequestDto,
+  type SyncAppendEventsBatchResponseDto,
   type SyncEventWireDto,
   type SyncEventsListResponseDto,
 } from "@okkey/types";
@@ -34,6 +36,15 @@ export interface OutboxStore {
 export interface OutboxTransport {
   appendVaultEvent(vaultId: string, body: SyncAppendEventRequestDto): Promise<SyncEventWireDto>;
   listVaultEvents(vaultId: string, afterVersion: number): Promise<SyncEventsListResponseDto>;
+  /**
+   * Optional batch append. Drain uses it when at least two pending entries
+   * share a vault. Each event keeps its idempotency key so a retry cannot
+   * insert a second row.
+   */
+  appendVaultEventsBatch?: (
+    vaultId: string,
+    body: { events: SyncAppendEventRequestDto[] },
+  ) => Promise<SyncAppendEventsBatchResponseDto>;
 }
 
 export interface VersionMismatchDetails {
@@ -78,6 +89,8 @@ export interface OutboxClientOptions {
     context: ItemUpdateRebaseContext,
   ) => Promise<Pick<SyncAppendEventRequestDto, "encryptedBlob">>;
   hooks?: OutboxHooks;
+  /** Test hook. Production waits out the backoff delay. */
+  sleep?: (ms: number) => Promise<void>;
 }
 
 const DEFAULT_MAX_ATTEMPTS = 8;
@@ -114,22 +127,36 @@ function versionMismatchFromDetails(
  *
  * Do not require `details.code`; the server puts the code on `error` / top-level `code`.
  */
-function toOutboxError(err: unknown): { code: string; message: string; versionMismatch?: VersionMismatchDetails } {
+type OutboxParsedError = {
+  code: string;
+  message: string;
+  status?: number;
+  versionMismatch?: VersionMismatchDetails;
+};
+
+function readHttpStatus(err: Record<string, unknown>): number | undefined {
+  if (typeof err.status === "number") return err.status;
+  if (typeof err.statusCode === "number") return err.statusCode;
+  return undefined;
+}
+
+function toOutboxError(err: unknown): OutboxParsedError {
   if (isObject(err)) {
     const directCode = typeof err.code === "string" ? err.code : undefined;
     const directMsg = typeof err.message === "string" ? err.message : "unknown error";
+    const status = readHttpStatus(err);
 
     if (directCode === "VERSION_MISMATCH" && isObject(err.details)) {
       const mismatch = versionMismatchFromDetails(err.details);
       if (mismatch) {
-        return { code: "VERSION_MISMATCH", message: directMsg, versionMismatch: mismatch };
+        return { code: "VERSION_MISMATCH", message: directMsg, status, versionMismatch: mismatch };
       }
     }
 
     if (typeof err.error === "string" && err.error === "VERSION_MISMATCH" && isObject(err.details)) {
       const mismatch = versionMismatchFromDetails(err.details);
       if (mismatch) {
-        return { code: "VERSION_MISMATCH", message: directMsg, versionMismatch: mismatch };
+        return { code: "VERSION_MISMATCH", message: directMsg, status, versionMismatch: mismatch };
       }
     }
 
@@ -138,7 +165,7 @@ function toOutboxError(err: unknown): { code: string; message: string; versionMi
       if (details) {
         const mismatch = versionMismatchFromDetails(details);
         if (mismatch) {
-          return { code: "VERSION_MISMATCH", message: directMsg, versionMismatch: mismatch };
+          return { code: "VERSION_MISMATCH", message: directMsg, status, versionMismatch: mismatch };
         }
       }
     }
@@ -148,12 +175,14 @@ function toOutboxError(err: unknown): { code: string; message: string; versionMi
       return {
         code: err.body.error,
         message: bodyMessage || directMsg,
+        status,
       };
     }
 
     return {
       code: directCode ?? "UNKNOWN",
       message: directMsg,
+      status,
     };
   }
 
@@ -198,6 +227,7 @@ export class SyncOutboxClient {
   private readonly maxQueueSize: number;
   private readonly nowMs: () => number;
   private readonly random: () => number;
+  private readonly sleep: (ms: number) => Promise<void>;
 
   constructor(
     private readonly store: OutboxStore,
@@ -211,6 +241,7 @@ export class SyncOutboxClient {
     this.maxQueueSize = options.maxQueueSize ?? DEFAULT_MAX_QUEUE_SIZE;
     this.nowMs = options.nowMs ?? (() => Date.now());
     this.random = options.random ?? (() => Math.random());
+    this.sleep = options.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
   }
 
   private async ensureLoaded(): Promise<void> {
@@ -354,66 +385,290 @@ export class SyncOutboxClient {
     this.options.hooks?.onConflictResolved?.(entry);
   }
 
+  private nextSendableBatch(vaultId?: string): OutboxEntry[] {
+    const first = this.nextSendableEntry(vaultId);
+    if (!first) {
+      return [];
+    }
+    const now = this.nowMs();
+    const batch: OutboxEntry[] = [first];
+    const rest = this.entries
+      .filter(
+        (entry) =>
+          entry.id !== first.id &&
+          entry.vaultId === first.vaultId &&
+          (entry.status === "pending" || entry.status === "failed") &&
+          entry.nextAttemptAtMs <= now,
+      )
+      .sort((a, b) => a.createdAtMs - b.createdAtMs || a.id.localeCompare(b.id));
+    for (const entry of rest) {
+      if (batch.length >= SYNC_EVENTS_BATCH_MAX) {
+        break;
+      }
+      batch.push(entry);
+    }
+    return batch;
+  }
+
+  /** Assign contiguous base versions to every due entry, oldest first. */
+  private renumberPendingBaseVersions(vaultId: string, startVersion: number): void {
+    const now = this.nowMs();
+    const pending = this.entries
+      .filter(
+        (entry) =>
+          entry.vaultId === vaultId &&
+          (entry.status === "pending" || entry.status === "failed") &&
+          entry.nextAttemptAtMs <= now,
+      )
+      .sort((a, b) => a.createdAtMs - b.createdAtMs || a.id.localeCompare(b.id));
+    let version = startVersion;
+    for (const entry of pending) {
+      entry.request = { ...entry.request, baseVersion: version };
+      entry.updatedAtMs = now;
+      version += 1;
+    }
+  }
+
+  private isTerminalConflict(parsed: OutboxParsedError): boolean {
+    if (parsed.versionMismatch) {
+      return false;
+    }
+    return (
+      parsed.status === 409 ||
+      parsed.code === "VERSION_MISMATCH" ||
+      parsed.code === "SYNC_ITEM_ALREADY_EXISTS"
+    );
+  }
+
+  private applyTransportFailure(entry: OutboxEntry, parsed: OutboxParsedError): void {
+    entry.attemptCount += 1;
+    entry.lastErrorCode = parsed.code;
+    entry.lastErrorMessage = parsed.message;
+    entry.updatedAtMs = this.nowMs();
+    if (
+      this.isTerminalConflict(parsed) ||
+      entry.attemptCount >= this.maxAttempts ||
+      parsed.code === PLAN_QUOTA_EXCEEDED
+    ) {
+      entry.status = "dead";
+      entry.nextAttemptAtMs = Number.MAX_SAFE_INTEGER;
+      return;
+    }
+    entry.status = "failed";
+    entry.nextAttemptAtMs =
+      this.nowMs() +
+      computeBackoffDelayMs(
+        entry.attemptCount,
+        this.baseDelayMs,
+        this.maxDelayMs,
+        this.jitterRatio,
+        this.random,
+      );
+  }
+
+  private failConflict(entries: OutboxEntry[], parsed: OutboxParsedError): void {
+    const now = this.nowMs();
+    for (const entry of entries) {
+      entry.status = "dead";
+      entry.lastErrorCode = parsed.code || "VERSION_MISMATCH";
+      entry.lastErrorMessage = parsed.message;
+      entry.nextAttemptAtMs = Number.MAX_SAFE_INTEGER;
+      entry.updatedAtMs = now;
+    }
+  }
+
+  /**
+   * One rebase for this conflict. Every in-flight entry is pending before
+   * renumber so a later sibling is not left on a stale baseVersion.
+   */
+  private async recoverVersionMismatch(
+    batch: OutboxEntry[],
+    conflict: VersionMismatchDetails,
+  ): Promise<void> {
+    const now = this.nowMs();
+    for (const entry of batch) {
+      if (entry.status === "sending") {
+        entry.status = "pending";
+        entry.nextAttemptAtMs = now;
+        entry.updatedAtMs = now;
+      }
+    }
+    const first = batch[0]!;
+    await this.handleVersionMismatch(first, conflict);
+    const start =
+      first.status === "dead" ? conflict.latestVersion : first.request.baseVersion;
+    this.renumberPendingBaseVersions(first.vaultId, start);
+  }
+
+  private async sendOne(
+    entry: OutboxEntry,
+    appended: SyncEventWireDto[],
+    rebasedOnce: Set<string>,
+  ): Promise<void> {
+    entry.status = "sending";
+    entry.updatedAtMs = this.nowMs();
+    await this.flush();
+    try {
+      const created = await this.transport.appendVaultEvent(entry.vaultId, entry.request);
+      appended.push(created);
+      this.entries = this.entries.filter((candidate) => candidate.id !== entry.id);
+      await this.flush();
+    } catch (err) {
+      const parsed = toOutboxError(err);
+      if (parsed.versionMismatch) {
+        if (rebasedOnce.has(entry.id)) {
+          this.failConflict([entry], parsed);
+          await this.flush();
+          return;
+        }
+        rebasedOnce.add(entry.id);
+        await this.recoverVersionMismatch([entry], parsed.versionMismatch);
+        await this.flush();
+        return;
+      }
+      this.applyTransportFailure(entry, parsed);
+      await this.flush();
+    }
+  }
+
+  /**
+   * @returns true when this batch failed and later events for the vault must
+   * wait, so a following chunk is not appended against a tip the failed batch
+   * has not moved yet.
+   */
+  private async sendBatch(
+    batch: OutboxEntry[],
+    appended: SyncEventWireDto[],
+    rebasedOnce: Set<string>,
+  ): Promise<boolean> {
+    const sendBatch = this.transport.appendVaultEventsBatch;
+    if (!sendBatch) {
+      return false;
+    }
+    const now = this.nowMs();
+    for (const entry of batch) {
+      entry.status = "sending";
+      entry.updatedAtMs = now;
+    }
+    await this.flush();
+    try {
+      const response = await sendBatch(batch[0]!.vaultId, {
+        events: batch.map((entry) => entry.request),
+      });
+      appended.push(...response.events);
+      const sentIds = new Set(batch.map((entry) => entry.id));
+      this.entries = this.entries.filter((entry) => !sentIds.has(entry.id));
+      await this.flush();
+      return false;
+    } catch (err) {
+      const parsed = toOutboxError(err);
+      if (parsed.versionMismatch) {
+        if (batch.every((entry) => rebasedOnce.has(entry.id))) {
+          this.failConflict(batch, parsed);
+          await this.flush();
+          return true;
+        }
+        for (const entry of batch) {
+          rebasedOnce.add(entry.id);
+        }
+        await this.recoverVersionMismatch(batch, parsed.versionMismatch);
+        await this.flush();
+        return false;
+      }
+      for (const entry of batch) {
+        this.applyTransportFailure(entry, parsed);
+      }
+      await this.flush();
+      return true;
+    }
+  }
+
+  private finishDrain(appended: SyncEventWireDto[]): SyncEventWireDto[] {
+    const stalled = this.entries.filter((entry) => entry.status === "dead");
+    if (stalled.length) {
+      this.options.hooks?.onQueueStalled?.(
+        stalled.map((entry) => ({ ...entry, request: { ...entry.request } })),
+      );
+    }
+    return appended;
+  }
+
   /**
    * Drain pending appends. Returns successfully appended wire events in order
    * so callers can materialize local state without a follow-up list GET when
    * versions are contiguous from the last applied tip.
+   *
+   * A 409 is handled once: version mismatch is rebased and retried a single
+   * time, any other conflict is reported and not retried. Transient failures
+   * take one attempt here and wait out their backoff.
    */
   async drain(vaultId?: string): Promise<SyncEventWireDto[]> {
     await this.ensureLoaded();
     const appended: SyncEventWireDto[] = [];
+    const rebasedOnce = new Set<string>();
+    const canBatch = typeof this.transport.appendVaultEventsBatch === "function";
+    const maxSteps = Math.max(8, this.entries.length * 3 + 8);
+    let steps = 0;
 
-    // eslint-disable-next-line no-constant-condition
     while (true) {
+      steps += 1;
+      if (steps > maxSteps) {
+        const now = this.nowMs();
+        for (const entry of this.entries) {
+          if (entry.status === "sending" || entry.status === "pending") {
+            entry.status = "failed";
+            entry.lastErrorCode = entry.lastErrorCode ?? "UNKNOWN";
+            entry.lastErrorMessage = entry.lastErrorMessage ?? "drain step limit";
+            entry.nextAttemptAtMs = now + this.maxDelayMs;
+            entry.updatedAtMs = now;
+          }
+        }
+        await this.flush();
+        return this.finishDrain(appended);
+      }
+
+      const batch = canBatch ? this.nextSendableBatch(vaultId) : [];
+      if (batch.length >= 2) {
+        const halt = await this.sendBatch(batch, appended, rebasedOnce);
+        if (halt) {
+          return this.finishDrain(appended);
+        }
+        continue;
+      }
+
       const entry = this.nextSendableEntry(vaultId);
       if (!entry) {
-        const stalled = this.entries.filter((e) => e.status === "dead");
-        if (stalled.length) {
-          this.options.hooks?.onQueueStalled?.(stalled.map((e) => ({ ...e, request: { ...e.request } })));
-        }
         await this.flush();
+        return this.finishDrain(appended);
+      }
+      await this.sendOne(entry, appended, rebasedOnce);
+    }
+  }
+
+  /**
+   * Drain, then retry entries that are waiting on backoff. Stops after
+   * `maxRounds` passes or when nothing retryable remains. Conflicts marked
+   * dead are not retried.
+   */
+  async drainRetrying(vaultId?: string, maxRounds?: number): Promise<SyncEventWireDto[]> {
+    await this.ensureLoaded();
+    const rounds = Math.max(1, maxRounds ?? this.maxAttempts);
+    const appended: SyncEventWireDto[] = [];
+    for (let round = 0; round < rounds; round += 1) {
+      appended.push(...(await this.drain(vaultId)));
+      const waiting = this.entries.filter(
+        (entry) =>
+          (!vaultId || entry.vaultId === vaultId) &&
+          entry.status === "failed" &&
+          entry.nextAttemptAtMs > this.nowMs(),
+      );
+      if (waiting.length === 0 || round === rounds - 1) {
         return appended;
       }
-
-      entry.status = "sending";
-      entry.updatedAtMs = this.nowMs();
-      await this.flush();
-
-      try {
-        const created = await this.transport.appendVaultEvent(entry.vaultId, entry.request);
-        appended.push(created);
-        this.entries = this.entries.filter((e) => e.id !== entry.id);
-        await this.flush();
-        continue;
-      } catch (err) {
-        const parsed = toOutboxError(err);
-        if (parsed.versionMismatch) {
-          await this.handleVersionMismatch(entry, parsed.versionMismatch);
-          await this.flush();
-          continue;
-        }
-
-        entry.attemptCount += 1;
-        entry.lastErrorCode = parsed.code;
-        entry.lastErrorMessage = parsed.message;
-        entry.updatedAtMs = this.nowMs();
-        if (entry.attemptCount >= this.maxAttempts || parsed.code === PLAN_QUOTA_EXCEEDED) {
-          entry.status = "dead";
-          entry.nextAttemptAtMs = Number.MAX_SAFE_INTEGER;
-        } else {
-          entry.status = "failed";
-          entry.nextAttemptAtMs =
-            this.nowMs() +
-            computeBackoffDelayMs(
-              entry.attemptCount,
-              this.baseDelayMs,
-              this.maxDelayMs,
-              this.jitterRatio,
-              this.random,
-            );
-        }
-        await this.flush();
-      }
+      const nextAt = Math.min(...waiting.map((entry) => entry.nextAttemptAtMs));
+      const delay = Math.min(this.maxDelayMs, Math.max(0, nextAt - this.nowMs()));
+      await this.sleep(delay);
     }
+    return appended;
   }
 }

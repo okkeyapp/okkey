@@ -1359,3 +1359,134 @@ test("appendEvent returns existing ITEM_CREATE on matching idempotency retry", a
   assert.equal(result.version, 1);
   assert.equal(result.referencedItemId, TEST_ITEM_ID);
 });
+
+test("appendEvents retries the same idempotency keys without a second insert", async () => {
+  const vaultId = "1000000000000000002";
+  const userId = "1000000000000000003";
+  const itemId = testEntityId();
+  const idempotencyKey = testEntityId();
+  const stored: Array<{
+    id: string;
+    vaultId: string;
+    actorId: string | null;
+    eventType: string;
+    encryptedPayload: Uint8Array;
+    payloadSchemaVersion: number;
+    idempotencyKey: string | null;
+    clientCreatedAt: string | null;
+    referencedItemId: string | null;
+    itemSoftDeleted: boolean | null;
+    version: number;
+    createdAt: string;
+  }> = [];
+  let insertCalls = 0;
+  const service = new SyncService({
+    vaults: {
+      findById: async () => ({
+        id: vaultId,
+        workspaceId: "1000000000000000001",
+        name: "Vault",
+        isPersonal: true,
+        ownerId: userId,
+        cryptoVersion: 2,
+        createdAt: "",
+        updatedAt: "",
+      }),
+      canReadVault: async () => true,
+    },
+    events: {
+      listAfterVersion: async () => [],
+      hasItemCreateEvent: async (_vault, referencedItemId) =>
+        stored.some(
+          (row) => row.referencedItemId === referencedItemId && row.eventType === "ITEM_CREATE",
+        ),
+      findByIdempotencyKey: async (_vault, key) =>
+        stored.find((row) => row.idempotencyKey === key) ?? null,
+      append: async () => {
+        throw new Error("single append must not be used");
+      },
+      appendBatch: async (inputs) =>
+        inputs.map((input) => {
+          const existing = stored.find((row) => row.idempotencyKey === input.idempotencyKey);
+          if (existing) return existing;
+          insertCalls += 1;
+          const row = {
+            id: `e${stored.length + 1}`,
+            vaultId: input.vaultId,
+            actorId: input.actorId ?? null,
+            eventType: input.eventType,
+            encryptedPayload: input.encryptedPayload,
+            payloadSchemaVersion: input.payloadSchemaVersion ?? 2,
+            idempotencyKey: input.idempotencyKey ?? null,
+            clientCreatedAt: input.clientCreatedAt ?? null,
+            referencedItemId: input.referencedItemId ?? null,
+            itemSoftDeleted: input.itemSoftDeleted ?? false,
+            version: stored.length + 1,
+            createdAt: "2026-01-01T00:00:00.000Z",
+          };
+          stored.push(row);
+          return row;
+        }),
+    },
+  });
+
+  const input = {
+    eventType: "ITEM_CREATE",
+    encryptedBlob: mkBlob("batch"),
+    baseVersion: 0,
+    idempotencyKey,
+    referencedItemId: itemId,
+  };
+  const first = await service.appendEvents(vaultId, userId, [input]);
+  const second = await service.appendEvents(vaultId, userId, [{ ...input, baseVersion: 99 }]);
+  assert.equal(insertCalls, 1);
+  assert.equal(stored.length, 1);
+  assert.equal(second[0]?.id, first[0]?.id);
+  assert.equal(second[0]?.version, first[0]?.version);
+});
+
+test("appendEvents maps a batch version conflict to 409", async () => {
+  const service = new SyncService({
+    vaults: {
+      findById: async () => ({
+        id: "1000000000000000002",
+        workspaceId: "1000000000000000001",
+        name: "Vault",
+        isPersonal: true,
+        ownerId: "1000000000000000003",
+        cryptoVersion: 2,
+        createdAt: "",
+        updatedAt: "",
+      }),
+      canReadVault: async () => true,
+    },
+    events: {
+      listAfterVersion: async () => [],
+      hasItemCreateEvent: async () => false,
+      findByIdempotencyKey: async () => null,
+      append: async () => {
+        throw new Error("not used");
+      },
+      appendBatch: async () => {
+        throw new VersionConflictError(0, 4);
+      },
+    },
+  });
+
+  await assert.rejects(
+    () =>
+      service.appendEvents("1000000000000000002", "1000000000000000003", [
+        {
+          eventType: "ITEM_CREATE",
+          encryptedBlob: mkBlob("x"),
+          baseVersion: 0,
+          idempotencyKey: testEntityId(),
+          referencedItemId: testEntityId(),
+        },
+      ]),
+    (error: unknown) =>
+      error instanceof SyncServiceError &&
+      error.code === "VERSION_MISMATCH" &&
+      error.statusCode === 409,
+  );
+});

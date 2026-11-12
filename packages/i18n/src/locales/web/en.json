@@ -457,6 +457,8 @@
   "web.tools.import.errors.generic": "Import failed",
   "web.tools.import.errors.emptyResult": "No records found to import",
   "web.tools.import.errors.noVaultAccess": "You cannot write to the selected vault",
+  "web.tools.import.errors.incomplete": "Import paused after a server error. Saved records stay in the vault. Try again to finish the rest.",
+  "web.tools.import.errors.conflict": "Import hit a conflict and stopped. Saved records stay in the vault.",
   "web.tools.import.exportPassword.title": "Export password",
   "web.tools.import.exportPassword.description": "The imported file is password-protected. Enter the password you set when exporting.",
   "web.tools.import.exportPassword.label": "Export password",

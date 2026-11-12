@@ -44,6 +44,7 @@ export type WorkspaceItemsContextValue = {
   getItemById: (itemId: string) => ItemPlaintextV2 | undefined;
   getItemActivityById: (itemId: string) => ItemActivityWireEntry[];
   createItem: (item: ItemPlaintextV2) => Promise<string>;
+  createItems: (items: ItemPlaintextV2[]) => Promise<string[]>;
   updateItem: (item: ItemPlaintextV2) => Promise<string>;
   updateItemQuiet: (item: ItemPlaintextV2) => Promise<string>;
   resolveVaultEncryptionKey: (vaultId: string) => Promise<Uint8Array>;
@@ -236,6 +237,17 @@ export function useWorkspaceItemsState(input: {
     [runMutation],
   );
 
+  const createItems = useCallback(
+    async (items: ItemPlaintextV2[]) => {
+      let createdIds: string[] = [];
+      await runMutation(async (controller) => {
+        createdIds = await controller.createItems(items);
+      });
+      return createdIds;
+    },
+    [runMutation],
+  );
+
   const updateItem = useCallback(
     async (item: ItemPlaintextV2) => {
       let updatedId = "";
@@ -418,6 +430,7 @@ export function useWorkspaceItemsState(input: {
       getItemActivityById,
       getItemCreatedByUserId,
       createItem,
+      createItems,
       updateItem,
       updateItemQuiet,
       resolveVaultEncryptionKey,
@@ -443,6 +456,7 @@ export function useWorkspaceItemsState(input: {
       getItemActivityById,
       getItemCreatedByUserId,
       createItem,
+      createItems,
       updateItem,
       updateItemQuiet,
       resolveVaultEncryptionKey,
