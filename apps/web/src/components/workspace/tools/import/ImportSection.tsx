@@ -31,6 +31,8 @@ import { useEffect, useMemo, useState, type SVGProps } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 
+import { formatImportFailureMessage } from "../../../../import/importFailureMessage";
+
 import { useAuthVault } from "../../../../auth/AuthVaultContext";
 import { useWorkspaceFolders } from "../../../../folders/WorkspaceFoldersContext";
 import { NO_FOLDER_VALUE } from "../../../../folders/workspaceFolderTree";
@@ -84,7 +86,14 @@ export default function ImportSection({
   const { t, locale } = useLocale();
   const { accessToken } = useAuthVault();
   const { canPostToVault } = useWorkspaceVaultProfiles();
-  const { createItem, updateItem, resolveVaultEncryptionKey, maxFileSizeMb, allowedFileExtensions } = useWorkspaceItems();
+  const {
+    createItem,
+    createItems,
+    updateItem,
+    resolveVaultEncryptionKey,
+    maxFileSizeMb,
+    allowedFileExtensions,
+  } = useWorkspaceItems();
   const { assignItemToFolder, createFolder, setItemFavorite } = useWorkspaceFolders();
 
   const formatOptions = useMemo(() => listImportFormatOptions(), []);
@@ -202,7 +211,12 @@ export default function ImportSection({
         setPasswordPopupOpen(true);
         return;
       }
-      toast.error(error instanceof Error ? error.message : t("web.tools.import.errors.generic"));
+      toast.error(
+        formatImportFailureMessage(
+          error instanceof Error ? error.message : "",
+          t,
+        ),
+      );
     } finally {
       setImporting(false);
       setProgressLabel("");
@@ -233,6 +247,7 @@ export default function ImportSection({
         vaultKey,
         exportPassword,
         createItem,
+        createItems,
         updateItem,
         assignItemToFolder,
         createFolder,
@@ -251,7 +266,17 @@ export default function ImportSection({
       });
 
       if (result.createdCount === 0) {
-        toast.error(result.errors[0] ?? t("web.tools.import.errors.emptyResult"));
+        const internal = result.errors.find((message) =>
+          /OUTBOX_ENTRY_NOT_APPENDED|VERSION_MISMATCH|SYNC_ITEM_ALREADY_EXISTS|ITEM_UPDATE_CONFLICT|CREATE_ITEMS_MIXED_VAULT/.test(
+            message,
+          ),
+        );
+        const message = internal ?? result.errors.find((entry) => entry.trim());
+        toast.error(
+          message
+            ? formatImportFailureMessage(message, t)
+            : t("web.tools.import.errors.emptyResult"),
+        );
       } else {
         toast.success(
           t("web.tools.import.success", {
@@ -262,7 +287,16 @@ export default function ImportSection({
       }
 
       if (result.errors.length > 0 && result.createdCount > 0) {
-        toast.message(t("web.tools.import.partialErrors", { count: result.errors.length }));
+        const internal = result.errors.find((message) =>
+          /OUTBOX_ENTRY_NOT_APPENDED|VERSION_MISMATCH|SYNC_ITEM_ALREADY_EXISTS|ITEM_UPDATE_CONFLICT/.test(
+            message,
+          ),
+        );
+        toast.message(
+          internal
+            ? formatImportFailureMessage(internal, t)
+            : t("web.tools.import.partialErrors", { count: result.errors.length }),
+        );
       }
 
       setSelectedFile(null);
@@ -280,7 +314,12 @@ export default function ImportSection({
         setPasswordPopupOpen(true);
         return;
       }
-      toast.error(error instanceof Error ? error.message : t("web.tools.import.errors.generic"));
+      toast.error(
+        formatImportFailureMessage(
+          error instanceof Error ? error.message : "",
+          t,
+        ),
+      );
       setPasswordPopupOpen(false);
     } finally {
       setImporting(false);

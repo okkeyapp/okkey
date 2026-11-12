@@ -451,3 +451,240 @@ test("outbox marks entry dead after max attempts and emits stall hook", async ()
   assert.equal(left[0]?.status, "dead");
   assert.equal(stalled > 0, true);
 });
+
+test("batch drain retries a 500 on batch 2 without duplicating saved rows", async () => {
+  const vaultId = testEntityId();
+  const total = 250;
+  const store = new InMemoryOutboxStore();
+  let now = 1_000;
+  let calls = 0;
+  let version = 0;
+  const inserted = new Map<string, ReturnType<typeof mkEvent>>();
+  const requestKeys: string[][] = [];
+  const transport: OutboxTransport = {
+    async appendVaultEvent() {
+      throw new Error("single append should not run for a multi-event import");
+    },
+    async appendVaultEventsBatch(_vaultId, body) {
+      calls += 1;
+      const keys = body.events.map((event) => event.idempotencyKey ?? "");
+      requestKeys.push(keys);
+      if (calls === 2) {
+        throw {
+          status: 500,
+          message: "INTERNAL_SERVER_ERROR: boom",
+          body: { error: "INTERNAL_SERVER_ERROR", message: "boom" },
+        };
+      }
+      const events = [];
+      for (const event of body.events) {
+        const key = event.idempotencyKey ?? "";
+        const existing = inserted.get(key);
+        if (existing) {
+          events.push(existing);
+          continue;
+        }
+        if (event.baseVersion !== version) {
+          throw new Error(`stale base ${event.baseVersion} tip ${version}`);
+        }
+        version += 1;
+        const wire = mkEvent(vaultId, version, { eventType: event.eventType });
+        inserted.set(key, wire);
+        events.push(wire);
+      }
+      return { vaultId, events, latestVersion: version };
+    },
+    async listVaultEvents(vId, afterVersion) {
+      return mkList(vId, afterVersion, []);
+    },
+  };
+
+  const outbox = new SyncOutboxClient(store, transport, {
+    nowMs: () => now,
+    sleep: async (ms) => {
+      now += ms;
+    },
+    random: () => 0.5,
+    baseDelayMs: 500,
+    maxDelayMs: 30_000,
+  });
+
+  for (let index = 0; index < total; index += 1) {
+    await outbox.enqueue({ vaultId, request: mkReq(index, "ITEM_CREATE") });
+  }
+
+  const appended = await outbox.drainRetrying(vaultId);
+  assert.equal(inserted.size, total);
+  assert.equal(version, total);
+  assert.equal(appended.length, total);
+  assert.equal((await outbox.list()).length, 0);
+  assert.equal(calls, 4);
+  const savedFirstBatch = new Set(requestKeys[0]);
+  assert.equal(savedFirstBatch.size, 100);
+  for (const keys of requestKeys.slice(1)) {
+    for (const key of keys) {
+      assert.equal(savedFirstBatch.has(key), false);
+    }
+  }
+  const retried = requestKeys[2] ?? [];
+  assert.deepEqual(retried, requestKeys[1]);
+});
+
+test("same-base batch conflict rebases to the committed tip and commits once", async () => {
+  const vaultId = testEntityId();
+  const store = new InMemoryOutboxStore();
+  let version = 0;
+  let calls = 0;
+  const inserted = new Map<string, SyncEventWireDto>();
+  const transport: OutboxTransport = {
+    async appendVaultEvent() {
+      throw new Error("single append should not run");
+    },
+    async appendVaultEventsBatch(_vaultId, body) {
+      calls += 1;
+      if (calls > 2) {
+        throw new Error(`retry loop: ${calls} batch requests`);
+      }
+      const events = [];
+      const staged: Array<[string, SyncEventWireDto]> = [];
+      let cursor = version;
+      for (const event of body.events) {
+        const key = event.idempotencyKey ?? "";
+        const existing = inserted.get(key);
+        if (existing) {
+          events.push(existing);
+          continue;
+        }
+        if (event.baseVersion !== cursor) {
+          throw {
+            status: 409,
+            message: "VERSION_MISMATCH: baseVersion is stale",
+            body: {
+              error: "VERSION_MISMATCH",
+              message: "baseVersion is stale",
+              details: { expectedBaseVersion: event.baseVersion, latestVersion: version },
+            },
+          };
+        }
+        cursor += 1;
+        const wire = mkEvent(vaultId, cursor, { eventType: event.eventType });
+        staged.push([key, wire]);
+        events.push(wire);
+      }
+      for (const [key, wire] of staged) {
+        inserted.set(key, wire);
+      }
+      version = cursor;
+      return { vaultId, events, latestVersion: version };
+    },
+    async listVaultEvents(vId, afterVersion) {
+      return mkList(vId, afterVersion, []);
+    },
+  };
+  const outbox = new SyncOutboxClient(store, transport, {
+    nowMs: () => 1_000,
+    sleep: async () => {
+      throw new Error("committed-tip rebase must not wait on backoff");
+    },
+    random: () => 0.5,
+  });
+  await outbox.enqueue({ vaultId, request: mkReq(0, "ITEM_CREATE") });
+  await outbox.enqueue({ vaultId, request: mkReq(0, "ITEM_CREATE") });
+  const appended = await outbox.drain(vaultId);
+  assert.equal(calls, 2);
+  assert.equal(version, 2);
+  assert.equal(inserted.size, 2);
+  assert.equal(appended.length, 2);
+  assert.equal((await outbox.list()).length, 0);
+});
+
+test("a 409 on a batch is handled once and does not loop", { timeout: 3_000 }, async () => {
+  const vaultId = testEntityId();
+  const store = new InMemoryOutboxStore();
+  let now = 1_000;
+  let calls = 0;
+  const transport: OutboxTransport = {
+    async appendVaultEvent() {
+      throw new Error("single append should not run");
+    },
+    async appendVaultEventsBatch() {
+      calls += 1;
+      if (calls > 3) {
+        throw new Error(`retry loop: ${calls} batch requests`);
+      }
+      throw {
+        status: 409,
+        message: "VERSION_MISMATCH: baseVersion is stale",
+        body: {
+          error: "VERSION_MISMATCH",
+          message: "baseVersion is stale",
+          details: { expectedBaseVersion: 0, latestVersion: 5 },
+        },
+      };
+    },
+    async listVaultEvents(vId, afterVersion) {
+      return mkList(vId, afterVersion, []);
+    },
+  };
+  const outbox = new SyncOutboxClient(store, transport, {
+    nowMs: () => now,
+    sleep: async (ms) => {
+      now += ms;
+    },
+    random: () => 0.5,
+    baseDelayMs: 1,
+    maxDelayMs: 1,
+  });
+  await outbox.enqueue({ vaultId, request: mkReq(0, "ITEM_CREATE") });
+  await outbox.enqueue({ vaultId, request: mkReq(1, "ITEM_CREATE") });
+  await outbox.drainRetrying(vaultId);
+  assert.ok(calls <= 2, `expected at most 2 requests, got ${calls}`);
+  const left = await outbox.list();
+  assert.equal(left.length, 2);
+  assert.ok(left.every((entry) => entry.status === "dead"));
+  assert.ok(left.every((entry) => entry.lastErrorCode === "VERSION_MISMATCH"));
+});
+
+test("a non-version 409 is reported once", { timeout: 3_000 }, async () => {
+  const vaultId = testEntityId();
+  const store = new InMemoryOutboxStore();
+  let calls = 0;
+  const transport: OutboxTransport = {
+    async appendVaultEvent() {
+      throw new Error("single append should not run");
+    },
+    async appendVaultEventsBatch() {
+      calls += 1;
+      if (calls > 2) {
+        throw new Error(`retry loop: ${calls} batch requests`);
+      }
+      throw {
+        status: 409,
+        message: "SYNC_ITEM_ALREADY_EXISTS: exists",
+        body: {
+          error: "SYNC_ITEM_ALREADY_EXISTS",
+          message: "ITEM_CREATE already exists for this item id",
+          details: { referencedItemId: testEntityId() },
+        },
+      };
+    },
+    async listVaultEvents(vId, afterVersion) {
+      return mkList(vId, afterVersion, []);
+    },
+  };
+  const outbox = new SyncOutboxClient(store, transport, {
+    nowMs: () => 1_000,
+    sleep: async () => {
+      throw new Error("409 must not be retried with backoff");
+    },
+    random: () => 0.5,
+  });
+  await outbox.enqueue({ vaultId, request: mkReq(0, "ITEM_CREATE") });
+  await outbox.enqueue({ vaultId, request: mkReq(1, "ITEM_CREATE") });
+  await outbox.drainRetrying(vaultId);
+  assert.equal(calls, 1);
+  const left = await outbox.list();
+  assert.equal(left.length, 2);
+  assert.ok(left.every((entry) => entry.status === "dead"));
+  assert.ok(left.every((entry) => entry.lastErrorCode === "SYNC_ITEM_ALREADY_EXISTS"));
+});

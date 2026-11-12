@@ -331,3 +331,30 @@ test("POST /vaults/:vaultId/events accepts signature for VAULT_KEY_ROTATION", as
 
   assert.equal(res.statusCode, 201);
 });
+
+test("POST /vaults/:vaultId/events/batch rejects a null body", async () => {
+  const res = await dispatch({
+    method: "POST",
+    url: "/vaults/1000000000000000001/events/batch",
+    headers: { "x-user-id": "u1" },
+    body: null,
+  });
+
+  assert.equal(res.statusCode, 400);
+  const payload = JSON.parse(res.body) as { error: string };
+  assert.equal(payload.error, "SYNC_BAD_REQUEST");
+});
+
+test("POST /vaults/:vaultId/events/batch rejects events: [null]", async () => {
+  const res = await dispatch({
+    method: "POST",
+    url: "/vaults/1000000000000000001/events/batch",
+    headers: { "x-user-id": "u1" },
+    body: { events: [null] },
+  });
+
+  assert.equal(res.statusCode, 400);
+  const payload = JSON.parse(res.body) as { error: string; message: string };
+  assert.equal(payload.error, "SYNC_BAD_REQUEST");
+  assert.match(payload.message, /each event must be an object/);
+});

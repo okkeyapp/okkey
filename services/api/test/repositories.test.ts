@@ -968,6 +968,60 @@ test("EventsRepository.append increments version in transaction", async () => {
   assert.match(db.queries[4].sql, /UPDATE vaults/);
 });
 
+test("EventsRepository.appendBatch reports the committed tip when a later event conflicts", async () => {
+  const db = new FakeDb();
+  db.enqueueResult([{ id: "v1", crypto_version: 2 }]); // lock vault
+  db.enqueueResult([{ current_version: 0 }]); // committed tip
+  db.enqueueResult([{ m: null }]); // MAX(payload_schema_version)
+  db.enqueueResult([]); // idempotency miss for the first event
+  db.enqueueResult([
+    {
+      id: "e1",
+      vault_id: "v1",
+      actor_id: "u1",
+      event_type: "ITEM_CREATE",
+      encrypted_payload: Buffer.from([1]),
+      payload_schema_version: 2,
+      idempotency_key: "1156820912149301",
+      client_created_at: null,
+      referenced_item_id: "item-1",
+      item_soft_deleted: false,
+      version: 1,
+      created_at: "2026-01-01T00:00:00.000Z",
+    },
+  ]);
+  db.enqueueResult([]); // idempotency miss for the second event
+
+  const repo = new EventsRepository(db);
+  await assert.rejects(
+    () =>
+      repo.appendBatch([
+        {
+          vaultId: "v1",
+          actorId: "u1",
+          eventType: "ITEM_CREATE",
+          encryptedPayload: new Uint8Array([1]),
+          baseVersion: 0,
+          idempotencyKey: "1156820912149301",
+          referencedItemId: "item-1",
+        },
+        {
+          vaultId: "v1",
+          actorId: "u1",
+          eventType: "ITEM_CREATE",
+          encryptedPayload: new Uint8Array([2]),
+          baseVersion: 0,
+          idempotencyKey: "1156820912149302",
+          referencedItemId: "item-2",
+        },
+      ]),
+    (error: unknown) =>
+      error instanceof VersionConflictError &&
+      error.expectedVersion === 0 &&
+      error.actualVersion === 0,
+  );
+});
+
 test("EventsRepository.append throws VersionConflictError", async () => {
   const db = new FakeDb();
   db.enqueueResult([{ id: "v1", crypto_version: 2 }]); // lock vault

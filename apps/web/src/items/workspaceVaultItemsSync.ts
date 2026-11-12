@@ -1,7 +1,12 @@
 import type { CoreClient } from "@okkey/api";
 import { decryptVaultItemPayload } from "@okkey/crypto";
 import type { ItemPlaintextV2, SyncAppendEventRequestDto, SyncEventWireDto, Vault } from "@okkey/types";
-import { PLAN_QUOTA_EXCEEDED, generateEntityId, parseAndNormalizeItemPlaintextUtf8 } from "@okkey/types";
+import {
+  PLAN_QUOTA_EXCEEDED,
+  SYNC_EVENTS_BATCH_MAX,
+  generateEntityId,
+  parseAndNormalizeItemPlaintextUtf8,
+} from "@okkey/types";
 import {
   IndexedDbOutboxStore,
   SyncOutboxClient,
@@ -22,6 +27,18 @@ const CACHE_STORE = "materialized_state";
 const ITEM_EVENT_TYPES = new Set(["ITEM_CREATE", "ITEM_UPDATE", "ITEM_DELETE"]);
 /** Plaintext item schema versions. Not the crypto profile (vault items require qday v2). */
 const SUPPORTED_PAYLOAD_SCHEMA_VERSIONS = new Set([1, 2]);
+/** Bounded automatic retries for a transient batch failure during import. */
+const IMPORT_DRAIN_ROUNDS = 4;
+
+export class VaultItemsAppendIncompleteError extends Error {
+  readonly createdItemIds: readonly string[];
+
+  constructor(message: string, createdItemIds: readonly string[]) {
+    super(message);
+    this.name = "VaultItemsAppendIncompleteError";
+    this.createdItemIds = createdItemIds;
+  }
+}
 
 type VaultItemsMaterializedState = {
   items: Map<string, ItemPlaintextV2>;
@@ -272,6 +289,12 @@ export type WorkspaceVaultItemsSyncController = {
   refresh: () => Promise<void>;
   drainOutbox: () => Promise<void>;
   createItem: (item: ItemPlaintextV2) => Promise<string>;
+  /**
+   * Enqueue many ITEM_CREATE events with contiguous base versions and drain
+   * them in batches. A transient failure is retried with backoff. Already
+   * appended rows keep their idempotency keys.
+   */
+  createItems: (items: ItemPlaintextV2[]) => Promise<string[]>;
   updateItem: (item: ItemPlaintextV2) => Promise<string>;
   resolveVaultEncryptionKey: (vaultId: string) => Promise<Uint8Array>;
   getItemsByVault: (vaultId: string) => ItemPlaintextV2[];
@@ -298,6 +321,7 @@ export function createWorkspaceVaultItemsSyncController(input: {
     }),
     {
       appendVaultEvent: (vaultId, body) => input.core.appendVaultEvent(vaultId, body),
+      appendVaultEventsBatch: (vaultId, body) => input.core.appendVaultEventsBatch(vaultId, body),
       listVaultEvents: (vaultId, afterVersion) => input.core.listVaultEvents(vaultId, afterVersion),
     },
     {
@@ -382,35 +406,25 @@ export function createWorkspaceVaultItemsSyncController(input: {
     }
   }
 
-  async function enqueue(request: SyncAppendEventRequestDto, vaultId: string): Promise<void> {
-    const queued = await outbox.enqueue({ vaultId, request });
-    const stateBefore = ensureVaultState(vaultId);
-    const tipBefore = stateBefore.lastAppliedVersion;
-    const appended = await outbox.drain(vaultId);
-    const remaining = (await outbox.list()).find((entry) => entry.id === queued.id);
-    if (remaining) {
-      // Pull peer writes into local state even when this append did not commit.
-      try {
-        await replayVaultIncremental(vaultId);
-        await writeCachedState(input.userId, input.workspaceId, vaultStates);
-      } catch {
-        // Best-effort; surface the append failure either way.
-      }
-      if (remaining.lastErrorCode === PLAN_QUOTA_EXCEEDED) {
-        const quotaMessage = remaining.lastErrorMessage?.trim();
-        throw new Error(
-          quotaMessage && !/^[A-Z0-9_]+$/.test(quotaMessage)
-            ? quotaMessage
-            : "This workspace has reached its storage limit. Delete something or upgrade the plan to save more.",
-        );
-      }
-      throw new Error(
-        remaining.lastErrorCode
-          ? `OUTBOX_ENTRY_NOT_APPENDED:${remaining.lastErrorCode}`
-          : "OUTBOX_ENTRY_NOT_APPENDED",
-      );
+  function outboxFailureMessage(lastErrorCode: string | undefined, lastErrorMessage: string | undefined): string {
+    if (lastErrorCode === PLAN_QUOTA_EXCEEDED) {
+      const quotaMessage = lastErrorMessage?.trim();
+      return quotaMessage && !/^[A-Z0-9_]+$/.test(quotaMessage)
+        ? quotaMessage
+        : "This workspace has reached its storage limit. Delete something or upgrade the plan to save more.";
     }
-    // Clean write: apply POST response locally and skip list GET (incl. empty tail).
+    return lastErrorCode
+      ? `OUTBOX_ENTRY_NOT_APPENDED:${lastErrorCode}`
+      : "OUTBOX_ENTRY_NOT_APPENDED";
+  }
+
+  async function materializeAfterDrain(
+    vaultId: string,
+    stateBefore: VaultItemsMaterializedState,
+    tipBefore: number,
+    appended: SyncEventWireDto[],
+  ): Promise<void> {
+    // Clean write: apply POST/batch response locally and skip list GET (incl. empty tail).
     // After VERSION_MISMATCH rebase, versions may gap — fall back to incremental replay.
     if (areContiguousEventVersions(appended, tipBefore)) {
       const vaultKey = await resolveVaultKey(vaultId);
@@ -427,6 +441,55 @@ export function createWorkspaceVaultItemsSyncController(input: {
       await replayVaultIncremental(vaultId);
     }
     await writeCachedState(input.userId, input.workspaceId, vaultStates);
+  }
+
+  async function enqueue(request: SyncAppendEventRequestDto, vaultId: string): Promise<void> {
+    const queued = await outbox.enqueue({ vaultId, request });
+    const stateBefore = ensureVaultState(vaultId);
+    const tipBefore = stateBefore.lastAppliedVersion;
+    const appended = await outbox.drain(vaultId);
+    const remaining = (await outbox.list()).find((entry) => entry.id === queued.id);
+    if (remaining) {
+      // Pull peer writes into local state even when this append did not commit.
+      try {
+        await replayVaultIncremental(vaultId);
+        await writeCachedState(input.userId, input.workspaceId, vaultStates);
+      } catch {
+        // Best-effort; surface the append failure either way.
+      }
+      throw new Error(outboxFailureMessage(remaining.lastErrorCode, remaining.lastErrorMessage));
+    }
+    await materializeAfterDrain(vaultId, stateBefore, tipBefore, appended);
+  }
+
+  async function enqueueMany(requests: SyncAppendEventRequestDto[], vaultId: string): Promise<void> {
+    if (requests.length === 0) {
+      return;
+    }
+    if (requests.length === 1) {
+      await enqueue(requests[0]!, vaultId);
+      return;
+    }
+    const queuedIds: string[] = [];
+    for (const request of requests) {
+      const queued = await outbox.enqueue({ vaultId, request });
+      queuedIds.push(queued.id);
+    }
+    const stateBefore = ensureVaultState(vaultId);
+    const tipBefore = stateBefore.lastAppliedVersion;
+    const appended = await outbox.drainRetrying(vaultId, IMPORT_DRAIN_ROUNDS);
+    const remaining = (await outbox.list()).filter((entry) => queuedIds.includes(entry.id));
+    if (remaining.length > 0) {
+      try {
+        await replayVaultIncremental(vaultId);
+        await writeCachedState(input.userId, input.workspaceId, vaultStates);
+      } catch {
+        // Best-effort; surface the append failure either way.
+      }
+      const first = remaining[0]!;
+      throw new Error(outboxFailureMessage(first.lastErrorCode, first.lastErrorMessage));
+    }
+    await materializeAfterDrain(vaultId, stateBefore, tipBefore, appended);
   }
 
   return {
@@ -457,7 +520,7 @@ export function createWorkspaceVaultItemsSyncController(input: {
     },
     refresh,
     drainOutbox: async () => {
-      await outbox.drain();
+      await outbox.drainRetrying(undefined, IMPORT_DRAIN_ROUNDS);
       await refresh();
     },
     resolveVaultEncryptionKey: resolveVaultKey,
@@ -475,6 +538,47 @@ export function createWorkspaceVaultItemsSyncController(input: {
       );
       await enqueue(request, item.vaultId);
       return item.itemId;
+    },
+    createItems: async (items) => {
+      if (items.length === 0) {
+        return [];
+      }
+      const vaultId = items[0]!.vaultId;
+      for (const item of items) {
+        if (item.vaultId !== vaultId) {
+          throw new Error("CREATE_ITEMS_MIXED_VAULT");
+        }
+      }
+      const createdIds: string[] = [];
+      for (let offset = 0; offset < items.length; offset += SYNC_EVENTS_BATCH_MAX) {
+        const chunk = items.slice(offset, offset + SYNC_EVENTS_BATCH_MAX);
+        const state = ensureVaultState(vaultId);
+        const vaultKey = await resolveVaultKey(vaultId);
+        const tip = state.lastAppliedVersion;
+        const requests: SyncAppendEventRequestDto[] = [];
+        for (let index = 0; index < chunk.length; index += 1) {
+          const item = chunk[index]!;
+          requests.push(
+            buildItemSyncMetadataFromPlaintext(
+              await buildItemCreateAppendRequest(
+                vaultKey,
+                item,
+                tip + index,
+                generateEntityId(),
+              ),
+              item,
+            ),
+          );
+        }
+        try {
+          await enqueueMany(requests, vaultId);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "OUTBOX_ENTRY_NOT_APPENDED";
+          throw new VaultItemsAppendIncompleteError(message, createdIds);
+        }
+        createdIds.push(...chunk.map((item) => item.itemId));
+      }
+      return createdIds;
     },
     updateItem: async (item) => {
       const state = ensureVaultState(item.vaultId);

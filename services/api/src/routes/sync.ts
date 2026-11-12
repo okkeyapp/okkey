@@ -2,7 +2,7 @@ import type { IncomingMessage } from "node:http";
 import { isSignatureRequired } from "../crypto/signature-requirement.ts";
 import type { CryptoRolloutMode } from "../crypto/policy-matrix.ts";
 import { json, readJsonBody, type RouteHandler } from "../http.ts";
-import { SyncService, SyncServiceError } from "../sync/service.ts";
+import { SYNC_EVENTS_BATCH_MAX, SyncService, SyncServiceError } from "../sync/service.ts";
 
 interface AppendEventBody {
   eventType?: string;
@@ -14,6 +14,14 @@ interface AppendEventBody {
   referencedItemId?: string;
   itemSoftDeleted?: boolean;
   itemDeletedAtMs?: number;
+}
+
+interface AppendEventsBatchBody {
+  events?: unknown;
+}
+
+function isJsonObject(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
 export function createSyncEventsListRoute(
@@ -65,13 +73,22 @@ export function createSyncEventsAppendRoute(
       return;
     }
 
-    let body: AppendEventBody;
+    let raw: unknown;
     try {
-      body = await readJsonBody<AppendEventBody>(ctx.req);
+      raw = await readJsonBody<unknown>(ctx.req);
     } catch {
       json(ctx.res, 400, errorPayload("SYNC_BAD_REQUEST", "invalid json", ctx.requestId));
       return;
     }
+    if (!isJsonObject(raw)) {
+      json(
+        ctx.res,
+        400,
+        errorPayload("SYNC_BAD_REQUEST", "request body must be a JSON object", ctx.requestId),
+      );
+      return;
+    }
+    const body = raw as AppendEventBody;
 
     if (!body.eventType || !body.encryptedBlob || body.baseVersion === undefined) {
       json(
@@ -123,6 +140,135 @@ export function createSyncEventsAppendRoute(
         itemDeletedAtMs: body.itemDeletedAtMs,
       });
       json(ctx.res, 201, created);
+    } catch (error) {
+      handleSyncError(ctx.requestId, ctx.res, error);
+    }
+  };
+}
+
+export function createSyncEventsAppendBatchRoute(
+  syncService: SyncService,
+  resolveUserId: (req: IncomingMessage) => Promise<string | null>,
+  rolloutMode: CryptoRolloutMode,
+): RouteHandler {
+  return async (ctx) => {
+    const vaultId = ctx.params.vaultId;
+    if (!vaultId) {
+      json(ctx.res, 400, errorPayload("SYNC_BAD_REQUEST", "vaultId is required", ctx.requestId));
+      return;
+    }
+
+    let raw: unknown;
+    try {
+      raw = await readJsonBody<unknown>(ctx.req);
+    } catch {
+      json(ctx.res, 400, errorPayload("SYNC_BAD_REQUEST", "invalid json", ctx.requestId));
+      return;
+    }
+    if (!isJsonObject(raw)) {
+      json(
+        ctx.res,
+        400,
+        errorPayload("SYNC_BAD_REQUEST", "request body must be a JSON object", ctx.requestId),
+      );
+      return;
+    }
+    const body = raw as AppendEventsBatchBody;
+
+    if (!Array.isArray(body.events) || body.events.length === 0) {
+      json(
+        ctx.res,
+        400,
+        errorPayload("SYNC_BAD_REQUEST", "events must be a non-empty array", ctx.requestId),
+      );
+      return;
+    }
+    if (body.events.length > SYNC_EVENTS_BATCH_MAX) {
+      json(
+        ctx.res,
+        400,
+        errorPayload(
+          "SYNC_BAD_REQUEST",
+          `events batch exceeds max of ${SYNC_EVENTS_BATCH_MAX}`,
+          ctx.requestId,
+        ),
+      );
+      return;
+    }
+
+    const events: AppendEventBody[] = [];
+    for (const event of body.events) {
+      if (!isJsonObject(event)) {
+        json(
+          ctx.res,
+          400,
+          errorPayload("SYNC_BAD_REQUEST", "each event must be an object", ctx.requestId),
+        );
+        return;
+      }
+      const parsed = event as AppendEventBody;
+      if (!parsed.eventType || !parsed.encryptedBlob || parsed.baseVersion === undefined) {
+        json(
+          ctx.res,
+          400,
+          errorPayload(
+            "SYNC_BAD_REQUEST",
+            "eventType, encryptedBlob and baseVersion are required for each event",
+            ctx.requestId,
+          ),
+        );
+        return;
+      }
+      if (
+        isSignatureRequired({
+          rolloutMode,
+          operation: "sync.append",
+          eventType: parsed.eventType,
+        }) &&
+        !parsed.signature
+      ) {
+        json(
+          ctx.res,
+          400,
+          errorPayload(
+            "SIGNATURE_REQUIRED",
+            "signature is required for this eventType",
+            ctx.requestId,
+          ),
+        );
+        return;
+      }
+      events.push(parsed);
+    }
+
+    try {
+      const userId = await resolveUserId(ctx.req);
+      if (!userId) {
+        json(ctx.res, 401, errorPayload("AUTH_REQUIRED", "auth required", ctx.requestId));
+        return;
+      }
+      const created = await syncService.appendEvents(
+        vaultId,
+        userId,
+        events.map((event) => ({
+          eventType: event.eventType!,
+          encryptedBlob: event.encryptedBlob,
+          signature: event.signature,
+          baseVersion: event.baseVersion!,
+          idempotencyKey: event.idempotencyKey,
+          clientCreatedAt: event.clientCreatedAt,
+          referencedItemId: event.referencedItemId,
+          itemSoftDeleted: event.itemSoftDeleted,
+          itemDeletedAtMs: event.itemDeletedAtMs,
+        })),
+      );
+      const latestVersion =
+        created.length > 0 ? (created[created.length - 1]?.version ?? 0) : 0;
+      json(ctx.res, 201, {
+        vaultId,
+        events: created,
+        latestVersion,
+      });
     } catch (error) {
       handleSyncError(ctx.requestId, ctx.res, error);
     }
