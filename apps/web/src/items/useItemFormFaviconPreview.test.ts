@@ -10,6 +10,12 @@ vi.mock("../api/item-favicons", () => ({
   previewItemFavicon: vi.fn(),
 }));
 
+// This case checks that a settled preview is not refetched. Rasterizing the
+// stub bytes is covered by the favicon image tests.
+vi.mock("../lib/resizeFaviconImage", () => ({
+  normalizeFaviconImageBytesToPng: async (bytes: Uint8Array) => bytes,
+}));
+
 import { previewItemFavicon } from "../api/item-favicons";
 import {
   useItemFormFaviconPreview,

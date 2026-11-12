@@ -1,7 +1,12 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 
-import { json, readJsonBody, type RouteHandler } from "../http.ts";
+import { detectFaviconImageMediaType, type FaviconImageMediaType } from "../favicon/fetch-remote.ts";
 import { ItemFaviconService, ItemFaviconServiceError } from "../favicon/service.ts";
+import { json, readJsonBody, type RouteHandler } from "../http.ts";
+
+/** Document policy sent with SVG preview bodies. */
+export const FAVICON_SVG_PREVIEW_CONTENT_SECURITY_POLICY =
+  "default-src 'none'; style-src 'unsafe-inline'; sandbox";
 
 function sendBinary(
   res: ServerResponse,
@@ -19,6 +24,30 @@ function sendBinary(
   }
   res.end(Buffer.from(body));
 }
+
+function sendJson(res: ServerResponse, statusCode: number, payload: unknown): void {
+  if (!res.writableEnded) {
+    res.setHeader("X-Content-Type-Options", "nosniff");
+  }
+  json(res, statusCode, payload);
+}
+
+function previewImageHeaders(bytes: Uint8Array, mediaType: FaviconImageMediaType): Record<string, string> {
+  const headers: Record<string, string> = {
+    "Content-Type": mediaType,
+    "Content-Length": String(bytes.byteLength),
+    "Cache-Control": "private, no-store",
+    "X-Content-Type-Options": "nosniff",
+  };
+  if (mediaType === "image/svg+xml") {
+    // fetch() callers still read the raw bytes (they sanitize and rasterize SVG).
+    // These headers apply when the response is opened as a document.
+    headers["Content-Security-Policy"] = FAVICON_SVG_PREVIEW_CONTENT_SECURITY_POLICY;
+    headers["Content-Disposition"] = "attachment";
+  }
+  return headers;
+}
+
 type PreviewBody = {
   urls?: string[];
 };
@@ -37,7 +66,7 @@ export function createItemFaviconPreviewRoute(
   return async (ctx) => {
     if (!service.serverFetchesWebsiteIcons()) {
       // Refuse before reading the body so item domains are not parsed on the private default.
-      json(ctx.res, 403, {
+      sendJson(ctx.res, 403, {
         error: "FAVICON_DISABLED",
         message: "Website icon lookup is disabled",
         requestId: ctx.requestId,
@@ -47,7 +76,7 @@ export function createItemFaviconPreviewRoute(
 
     const userId = await resolveUserId(ctx.req);
     if (!userId) {
-      json(ctx.res, 401, { error: "UNAUTHORIZED", message: "Authentication required", requestId: ctx.requestId });
+      sendJson(ctx.res, 401, { error: "UNAUTHORIZED", message: "Authentication required", requestId: ctx.requestId });
       return;
     }
 
@@ -55,7 +84,7 @@ export function createItemFaviconPreviewRoute(
     try {
       body = (await readJsonBody(ctx.req)) as PreviewBody;
     } catch {
-      json(ctx.res, 400, { error: "BAD_REQUEST", message: "Invalid JSON body", requestId: ctx.requestId });
+      sendJson(ctx.res, 400, { error: "BAD_REQUEST", message: "Invalid JSON body", requestId: ctx.requestId });
       return;
     }
 
@@ -66,7 +95,7 @@ export function createItemFaviconPreviewRoute(
       if (lookup.status === "unavailable") {
         // Site could not be reached (DNS / refused / timeout / 5xx). Not a positive absence —
         // clients must keep any previously stored favicon.
-        json(ctx.res, 503, {
+        sendJson(ctx.res, 503, {
           error: "FAVICON_UNAVAILABLE",
           message: "Website unreachable; favicon temporarily unavailable",
           requestId: ctx.requestId,
@@ -74,25 +103,31 @@ export function createItemFaviconPreviewRoute(
         return;
       }
       if (lookup.status === "absent") {
-        json(ctx.res, 404, { error: "NOT_FOUND", message: "Favicon not found", requestId: ctx.requestId });
+        sendJson(ctx.res, 404, { error: "NOT_FOUND", message: "Favicon not found", requestId: ctx.requestId });
         return;
       }
 
-      sendBinary(ctx.res, 200, lookup.bytes, {
-        "Content-Type": "image/png",
-        "Content-Length": String(lookup.bytes.byteLength),
-        "Cache-Control": "private, no-store",
-      });
+      const mediaType = detectFaviconImageMediaType(lookup.bytes);
+      if (!mediaType) {
+        sendJson(ctx.res, 415, {
+          error: "UNSUPPORTED_MEDIA_TYPE",
+          message: "Favicon payload is not a supported image",
+          requestId: ctx.requestId,
+        });
+        return;
+      }
+
+      sendBinary(ctx.res, 200, lookup.bytes, previewImageHeaders(lookup.bytes, mediaType));
     } catch (error) {
       if (error instanceof ItemFaviconServiceError) {
-        json(ctx.res, error.statusCode, {
+        sendJson(ctx.res, error.statusCode, {
           error: error.code,
           message: error.message,
           requestId: ctx.requestId,
         });
         return;
       }
-      json(ctx.res, 500, {
+      sendJson(ctx.res, 500, {
         error: "FAVICON_PREVIEW_FAILED",
         message: error instanceof Error ? error.message : "Favicon preview failed",
         requestId: ctx.requestId,

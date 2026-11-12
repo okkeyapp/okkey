@@ -162,6 +162,8 @@ test("GET /vaults/:vaultId/items/:itemId/attachments/:attachmentId returns encry
 
   assert.equal(res.statusCode, 200);
   assert.deepEqual(res.body, Buffer.from([4, 5, 6]));
+  assert.equal(res.getHeader("content-type"), "application/octet-stream");
+  assert.equal(res.getHeader("x-content-type-options"), "nosniff");
   assert.equal(res.getHeader("x-encrypted-key"), Buffer.from([1, 2, 3]).toString("base64"));
   assert.equal(res.getHeader("x-file-mime-type"), "application/pdf");
 });
