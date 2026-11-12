@@ -82,7 +82,7 @@ test("vault routes reject pending, revoked, and blocked devices and keep device 
         if (deviceId !== "d1" || deviceStatus !== "trusted") {
           return null;
         }
-        return Uint8Array.from({ length: 32 }, (_, i) => i + 1);
+        return { share: Uint8Array.from({ length: 32 }, (_, i) => i + 1) };
       },
     },
   });

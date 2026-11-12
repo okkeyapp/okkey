@@ -56,6 +56,63 @@ export async function envelopeB64ForPlaintextShare(input: {
   return bytesToBase64(sealed.wrapped);
 }
 
+function shareKind(shareB64: string | null | undefined): "hybrid" | "legacy" | null {
+  const trimmed = shareB64?.trim() ?? "";
+  if (!trimmed) {
+    return null;
+  }
+  try {
+    const kind = classifySplitKeyShareBWire(base64ToBytes(trimmed));
+    return kind === "hybrid" || kind === "legacy" ? kind : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Keep a local share when the server copy was cleared or is still raw.
+ * `rewrite` means the client should upload an envelope. A missing local share
+ * is not replaced with a newly minted one.
+ */
+export function mergeDeviceShareFromServer(input: {
+  localShareB64?: string | null;
+  serverShareB64?: string | null;
+}): { deviceShareB64: string; rewrite: boolean } | null {
+  const serverKind = shareKind(input.serverShareB64);
+  if (serverKind === "hybrid") {
+    return { deviceShareB64: input.serverShareB64!.trim(), rewrite: false };
+  }
+  const local = input.localShareB64?.trim() ?? "";
+  const localKind = shareKind(local);
+  if (localKind !== "legacy" && localKind !== "hybrid") {
+    return null;
+  }
+  return { deviceShareB64: local, rewrite: true };
+}
+
+/**
+ * Envelope to upload for a cleared server share.
+ * Returns null when the local bytes are not a legacy share or an envelope,
+ * so a missing share is never replaced with a new random term.
+ */
+export async function deviceShareRewriteB64(input: {
+  userId: string;
+  localShareB64: string;
+}): Promise<string | null> {
+  const kind = shareKind(input.localShareB64);
+  if (kind === "hybrid") {
+    return input.localShareB64.trim();
+  }
+  if (kind !== "legacy") {
+    return null;
+  }
+  const wire = await deviceShareB64ForRegister({
+    userId: input.userId,
+    existingShareB64: input.localShareB64,
+  });
+  return wire.shareB64;
+}
+
 export async function deviceShareB64ForRegister(input: {
   userId: string;
   existingShareB64?: string | null;

@@ -35,7 +35,7 @@ test("getForBoundDevice returns the session device share", async () => {
         if (deviceId !== "d-session") {
           return null;
         }
-        return share;
+        return { share };
       },
     },
   });
@@ -56,6 +56,41 @@ test("getForBoundDevice returns the session device share", async () => {
     (err: unknown) =>
       err instanceof VaultUnlockBootstrapError && err.code === "VAULT_UNLOCK_DEVICE_NOT_FOUND",
   );
+});
+
+test("getForBoundDevice keeps unlock material when the stored share was cleared", async () => {
+  const identityBlob = Uint8Array.from(
+    Buffer.from(
+      JSON.stringify({
+        crypto_version: 2,
+        algorithm: "opaque",
+        payload: Buffer.alloc(16, 7).toString("base64"),
+        meta: {},
+      }),
+      "utf8",
+    ),
+  );
+  const service = new VaultUnlockBootstrapService({
+    users: {
+      loadVaultUnlockRow: async () => ({
+        serverKeyShare: Buffer.alloc(32, 9),
+        passwordKdfSalt: Buffer.alloc(16, 8),
+        passwordKdfParamsVersion: 2,
+        encryptedPrivateKey: identityBlob,
+      }),
+    },
+    devices: {
+      findTrustedDeviceShareById: async () => ({ share: null }),
+    },
+  });
+
+  const result = await service.getForBoundDevice({
+    userId: "u1",
+    deviceId: "d-session",
+  });
+  assert.equal(result.device_share, "");
+  assert.equal(result.server_key_share, Buffer.alloc(32, 9).toString("base64"));
+  assert.equal(result.password_kdf_params_version, 2);
 });
 
 test("getForBoundDevice tells an older client to update when the identity bundle is ML-DSA", async () => {
@@ -80,7 +115,7 @@ test("getForBoundDevice tells an older client to update when the identity bundle
       }),
     },
     devices: {
-      findTrustedDeviceShareById: async () => Buffer.alloc(32, 4),
+      findTrustedDeviceShareById: async () => ({ share: Buffer.alloc(32, 4) }),
     },
   });
 

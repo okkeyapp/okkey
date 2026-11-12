@@ -29,6 +29,7 @@ import {
   KeyFieldFileStorage,
   loadKeyFieldFileStorageConfigFromEnv,
 } from "./storage/key-field-file-storage.ts";
+import { backfillLegacyDeviceShares } from "./device/legacy-device-share-backfill.ts";
 import { applySqlMigrations } from "./storage/migrate.ts";
 
 const workerDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../worker");
@@ -65,6 +66,10 @@ async function main(): Promise<void> {
 
   // Worker can apply migrations if it starts before API (compose race); idempotent.
   await applySqlMigrations(storage.postgres, { logger });
+  await backfillLegacyDeviceShares(storage.postgres, {
+    approvalTtlMs: config.deviceApprovalTtlSeconds * 1000,
+    logger,
+  });
 
   const geoIp = new MmdbGeoIpLookup(config.geoIpEnabled, config.geoIpDbPath, logger);
   const storageQuota = new WorkspaceStorageQuotaService({ db: storage.postgres, config });

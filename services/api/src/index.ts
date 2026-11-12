@@ -52,6 +52,7 @@ import {
   KeyFieldFileStorage,
   loadKeyFieldFileStorageConfigFromEnv,
 } from "./storage/key-field-file-storage.ts";
+import { backfillLegacyDeviceShares } from "./device/legacy-device-share-backfill.ts";
 import { applySqlMigrations } from "./storage/migrate.ts";
 import { ItemFaviconService } from "./favicon/service.ts";
 import { AttachmentService } from "./attachments/service.ts";
@@ -70,6 +71,10 @@ async function main(): Promise<void> {
   const logger = createLogger();
   const storage = await createStorageLayer(config, logger);
   await applySqlMigrations(storage.postgres, { logger });
+  await backfillLegacyDeviceShares(storage.postgres, {
+    approvalTtlMs: config.deviceApprovalTtlSeconds * 1000,
+    logger,
+  });
   const mailSettings = new MailSettingsService({
     store: new PostgresServerMailSettingsStore(storage.postgres),
     config,

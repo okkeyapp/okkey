@@ -1795,6 +1795,84 @@ export class DevicesRepository {
               created: row.inserted === true,
             };
           }
+          const storedShare = current.device_share as Buffer | null;
+          if (storedShare == null) {
+            const filled = await tx.query<{
+              id: string;
+              user_id: string;
+              device_fingerprint: string;
+              device_name: string;
+              device_public_key: string;
+              device_share: Buffer | null;
+              platform: string;
+              os_name: string;
+              os_version: string;
+              app_version: string;
+              client_type: string;
+              user_agent: string;
+              ip_first: string;
+              ip_last: string;
+              status: "trusted" | "pending" | "revoked" | "blocked";
+              created_at: string | Date;
+              last_seen_at: string | Date | null;
+              approved_by: string | null;
+              approved_at: string | Date | null;
+              rejected_at: string | Date | null;
+              rejection_reason: string | null;
+              revoked_at: string | Date | null;
+              blocked_until: string | Date | null;
+            }>(
+              `
+                UPDATE devices
+                SET
+                  device_share = $3,
+                  last_seen_at = $4::timestamptz,
+                  ip_last = $5
+                WHERE id = $1
+                  AND user_id = $2::bigint
+                  AND status = 'trusted'
+                  AND device_share IS NULL
+                RETURNING
+                  id,
+                  user_id,
+                  device_fingerprint,
+                  device_name,
+                  device_public_key,
+                  device_share,
+                  platform,
+                  os_name,
+                  os_version,
+                  app_version,
+                  client_type,
+                  user_agent,
+                  ip_first,
+                  ip_last,
+                  status,
+                  created_at,
+                  last_seen_at,
+                  approved_by,
+                  approved_at,
+                  rejected_at,
+                  rejection_reason,
+                  revoked_at,
+                  blocked_until
+              `,
+              [
+                current.id,
+                input.userId,
+                Buffer.from(input.deviceShare),
+                input.now,
+                input.requestIp,
+              ],
+            );
+            if (filled[0]) {
+              return {
+                ...mapDevice(filled[0]),
+                sendApprovalEmail: false,
+                created: false,
+              };
+            }
+          }
           await tx.query(
             `
               UPDATE devices
@@ -2144,11 +2222,15 @@ export class DevicesRepository {
     }
   }
 
-  /** Share of the trusted device bound to the session. Does not search by fingerprint. */
+  /**
+   * Share of the trusted device bound to the session. Does not search by fingerprint.
+   * `null` means the device is missing. `{ share: null }` means the row is trusted
+   * and its stored share was cleared.
+   */
   async findTrustedDeviceShareById(
     userId: string,
     deviceId: string,
-  ): Promise<Uint8Array | null> {
+  ): Promise<{ share: Uint8Array | null } | null> {
     const rows = await this.db.query<{ device_share: Buffer | null }>(
       `
         SELECT device_share
@@ -2160,8 +2242,11 @@ export class DevicesRepository {
       `,
       [deviceId, userId],
     );
+    if (rows.length === 0) {
+      return null;
+    }
     const share = rows[0]?.device_share;
-    return share ? Uint8Array.from(share) : null;
+    return { share: share ? Uint8Array.from(share) : null };
   }
 
   async isTrustedDevice(userId: string, deviceId: string): Promise<boolean> {

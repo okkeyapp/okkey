@@ -28,7 +28,12 @@ export {
   type UnlockWithMasterPasswordResult,
 } from "./unlock-with-master-password.js";
 export { ensureMlDsaIdentityOnUnlock } from "./mldsa-identity-upgrade.js";
-export { deviceShareB64ForRegister, envelopeB64ForPlaintextShare } from "./device-share-wire.js";
+export {
+  deviceShareB64ForRegister,
+  deviceShareRewriteB64,
+  envelopeB64ForPlaintextShare,
+  mergeDeviceShareFromServer,
+} from "./device-share-wire.js";
 export {
   clearSplitKeyShareWrapKey,
   loadSplitKeyShareWrapKey,

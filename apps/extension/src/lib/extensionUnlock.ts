@@ -1,6 +1,11 @@
 import { UnsupportedIdentityBundleError, wipeBytes } from "@okkey/crypto";
 import { isClientUpgradeRequiredError, type CoreApiClient } from "@okkey/api";
-import { ensureMlDsaIdentityOnUnlock, loadSplitKeyShareWrapKey } from "@okkey/vault";
+import {
+  deviceShareRewriteB64,
+  ensureMlDsaIdentityOnUnlock,
+  loadSplitKeyShareWrapKey,
+  mergeDeviceShareFromServer,
+} from "@okkey/vault";
 import {
   unlockWithMasterPassword,
   type UnlockWithMasterPasswordResult,
@@ -40,13 +45,42 @@ export async function upgradeExtensionMlDsaIdentity(input: {
         return null;
       }
       const dto = await input.core.getVaultUnlockBootstrap(fingerprint);
-      return mapVaultUnlockBootstrapToStored(dto);
+      const mapped = mapVaultUnlockBootstrapToStored(dto);
+      const merged = mergeDeviceShareFromServer({
+        localShareB64: input.bundle.device_share_b64,
+        serverShareB64: dto.device_share,
+      });
+      return {
+        ...mapped,
+        device_share_b64: merged?.deviceShareB64 || input.bundle.device_share_b64,
+      };
     },
   });
   if (next.encrypted_private_key.payload !== input.bundle.encrypted_private_key.payload) {
     await writeExtensionVaultBundle(input.userId, next);
   }
   return next;
+}
+
+export function rewriteExtensionClearedDeviceShare(
+  core: CoreApiClient,
+  userId: string,
+): (localShareB64: string) => Promise<string | null> {
+  return async (localShareB64) => {
+    const uploaded = await deviceShareRewriteB64({
+      userId,
+      localShareB64,
+    });
+    if (!uploaded) {
+      return null;
+    }
+    const { registerExtensionDevice } = await import("./deviceTrust.ts");
+    await registerExtensionDevice(core, {
+      userId,
+      existingShareB64: uploaded,
+    });
+    return uploaded;
+  };
 }
 
 export async function unlockExtensionVault(input: {
@@ -58,6 +92,7 @@ export async function unlockExtensionVault(input: {
   const bundle = await ensureExtensionVaultBundle({
     core: input.core,
     userId: input.userId,
+    rewriteClearedDeviceShare: rewriteExtensionClearedDeviceShare(input.core, input.userId),
   });
   if (!bundle) {
     return { ok: false, reason: "no_bundle" };

@@ -37,6 +37,7 @@ import {
   clearRememberedServerKeyShares,
   commitFetchedServerKeyShare,
   ensureMlDsaIdentityOnUnlock,
+  mergeDeviceShareFromServer,
   rememberServerKeyShare,
 } from "@okkey/vault";
 
@@ -566,7 +567,10 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
         if (!commitFetchedServerKeyShare(userId, dto.server_key_share, begunAt)) {
           return;
         }
-        writeVaultBundle(mapVaultUnlockBootstrapToStored(dto), userId);
+        const stored = mapVaultUnlockBootstrapToStored(dto);
+        if (stored.device_share_b64.trim()) {
+          writeVaultBundle(stored, userId);
+        }
       } catch (error) {
         if (isClientUpgradeRequiredError(error)) {
           setClientUpgradeRequired(true);
@@ -596,7 +600,11 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       const client = createAuthenticatedCoreClient(accessToken);
       const dto = await client.getVaultUnlockBootstrap(fp);
       rememberServerKeyShare(userId, dto.server_key_share);
-      writeVaultBundle(mapVaultUnlockBootstrapToStored(dto), userId);
+      const stored = mapVaultUnlockBootstrapToStored(dto);
+      if (!stored.device_share_b64.trim()) {
+        return false;
+      }
+      writeVaultBundle(stored, userId);
       return true;
     } catch (error) {
       if (isClientUpgradeRequiredError(error)) {
@@ -834,7 +842,15 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
             const dto = await createAuthenticatedCoreClient(token).getVaultUnlockBootstrap(
               getOrCreateDeviceFingerprint(),
             );
-            return mapVaultUnlockBootstrapToStored(dto);
+            const mapped = mapVaultUnlockBootstrapToStored(dto);
+            const merged = mergeDeviceShareFromServer({
+              localShareB64: bundle.device_share_b64,
+              serverShareB64: dto.device_share,
+            });
+            return {
+              ...mapped,
+              device_share_b64: merged?.deviceShareB64 || bundle.device_share_b64,
+            };
           },
         });
         if (next.encrypted_private_key.payload !== bundle.encrypted_private_key.payload) {

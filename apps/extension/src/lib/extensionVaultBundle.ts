@@ -3,6 +3,7 @@ import {
   acquireServerKeyShare,
   clearRememberedServerKeyShares,
 } from "@okkey/vault/server-key-share-memory";
+import { mergeDeviceShareFromServer } from "@okkey/vault/device-share-wire";
 import {
   mapVaultUnlockBootstrapToStored,
   type StoredVaultBundle,
@@ -28,6 +29,8 @@ export function clearExtensionServerKeyShareMemory(): void {
 export async function ensureExtensionVaultBundle(input: {
   core: CoreApiClient;
   userId: string;
+  /** Upload an envelope when the server share was cleared. */
+  rewriteClearedDeviceShare?: (localShareB64: string) => Promise<string | null>;
 }): Promise<StoredVaultBundle | null> {
   const existing = await readExtensionVaultBundle(input.userId);
   let fetched: StoredVaultBundle | null = null;
@@ -42,7 +45,25 @@ export async function ensureExtensionVaultBundle(input: {
       }
       try {
         const dto = await input.core.getVaultUnlockBootstrap(fingerprint);
-        fetched = mapVaultUnlockBootstrapToStored(dto);
+        const mapped = mapVaultUnlockBootstrapToStored(dto);
+        const merged = mergeDeviceShareFromServer({
+          localShareB64: existing?.device_share_b64,
+          serverShareB64: dto.device_share,
+        });
+        let deviceShareB64 = merged?.deviceShareB64 ?? mapped.device_share_b64;
+        if (merged?.rewrite && input.rewriteClearedDeviceShare) {
+          try {
+            const uploaded = await input.rewriteClearedDeviceShare(deviceShareB64);
+            if (uploaded?.trim()) {
+              deviceShareB64 = uploaded.trim();
+            }
+          } catch {
+            /* Unlock keeps the local share when the upload cannot run. */
+          }
+        }
+        if (deviceShareB64.trim()) {
+          fetched = { ...mapped, device_share_b64: deviceShareB64 };
+        }
         return dto.server_key_share;
       } catch (error) {
         if (isClientUpgradeRequiredError(error)) {
@@ -57,11 +78,13 @@ export async function ensureExtensionVaultBundle(input: {
   }
 
   if (acquired?.source === "server") {
-    const fresh: StoredVaultBundle | null = fetched;
+    const fresh = fetched ?? existing;
     if (!fresh) {
       return null;
     }
-    await writeExtensionVaultBundle(input.userId, fresh);
+    if (fetched) {
+      await writeExtensionVaultBundle(input.userId, fetched);
+    }
     return { ...fresh, server_key_share_b64: acquired.shareB64 };
   }
 
