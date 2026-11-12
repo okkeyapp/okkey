@@ -36,6 +36,40 @@ export function websiteFaviconUrlsEqual(a: readonly string[], b: readonly string
   return websiteUrlsLookupKey(a) === websiteUrlsLookupKey(b);
 }
 
+/**
+ * Edit save of a login that already has a website icon and the same normalized URL list.
+ * Callers must not invoke {@link syncItemFaviconForPlaintext}: that would re-fetch, upload a
+ * replacement attachment, and delete the previous one. Manual icon replacement still syncs.
+ */
+export function shouldSkipWebsiteFaviconSyncOnEdit(
+  previous: ItemPlaintextV2,
+  next: ItemPlaintextV2,
+  syncInput?: ItemFormFaviconSyncInput,
+): boolean {
+  if (previous.categoryId !== ITEM_CATEGORY_LOGIN || next.categoryId !== ITEM_CATEGORY_LOGIN) {
+    return false;
+  }
+  if (!previous.faviconId) {
+    return false;
+  }
+  if (syncInput?.manualFaviconPng && syncInput.manualFaviconPng.byteLength > 0) {
+    return false;
+  }
+  if (
+    syncInput?.faviconSource === "manual" ||
+    previous.faviconSource === "manual" ||
+    next.faviconSource === "manual"
+  ) {
+    return false;
+  }
+  const nextUrls = collectWebsiteUrlsFromItem(next);
+  // An empty URL list must still run sync so the stored icon is cleared.
+  if (nextUrls.length === 0) {
+    return false;
+  }
+  return websiteFaviconUrlsEqual(collectWebsiteUrlsFromItem(previous), nextUrls);
+}
+
 export function applyFaviconToItem(
   item: ItemPlaintextV2,
   faviconId?: string,
