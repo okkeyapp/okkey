@@ -28,7 +28,18 @@ function readPackageVersion(pkgPath: string): string {
 function syncCryptoWasmPublicAsset(): void {
   // Background SW must fetch a real extension URL (not Vite data: inline) under MV3 CSP.
   fs.mkdirSync(path.dirname(cryptoWasmPublic), { recursive: true });
-  fs.copyFileSync(cryptoWasmSrc, cryptoWasmPublic);
+  if (fs.existsSync(cryptoWasmSrc)) {
+    fs.copyFileSync(cryptoWasmSrc, cryptoWasmPublic);
+    return;
+  }
+  // A previous `yarn build:wasm` may already have copied the module into public/.
+  // Store zips still require that file; fail only when neither copy exists.
+  if (fs.existsSync(cryptoWasmPublic)) {
+    return;
+  }
+  throw new Error(
+    `Missing ${cryptoWasmSrc}. Run \`yarn build:wasm\` from the repo root before packaging the extension.`,
+  );
 }
 
 // See https://wxt.dev/api/config.html
@@ -64,6 +75,7 @@ export default defineConfig({
       "ARCHITECTURE.md",
       "README.md",
       "scripts/verify-crypto-bootstrap.mjs",
+      "scripts/ensure-crypto-wasm-dist.mjs",
       // Extension (no output/, node_modules/, store screenshot assets, prebuilt wasm)
       "apps/extension/package.json",
       "apps/extension/wxt.config.ts",
@@ -78,6 +90,7 @@ export default defineConfig({
       "apps/extension/public/icons/**",
       "apps/extension/public/icon-*.png",
       "apps/extension/scripts/store-version.ts",
+      "apps/extension/scripts/ensure-store-wasm.mjs",
       "apps/extension/store/*.md",
       "apps/extension/store/LAST_SUBMITTED_MANIFEST_VERSION",
       // Shared packages — sources only (rebuild dist / wasm)
@@ -94,7 +107,14 @@ export default defineConfig({
       "packages/crypto/src/**",
       "packages/i18n/package.json",
       "packages/i18n/tsconfig.json",
+      "packages/i18n/scripts/**",
       "packages/i18n/src/**",
+      "packages/email-templates/package.json",
+      "packages/email-templates/tsconfig.json",
+      "packages/email-templates/src/**",
+      "packages/import/package.json",
+      "packages/import/tsconfig.json",
+      "packages/import/src/**",
       "packages/id/package.json",
       "packages/id/tsconfig.json",
       "packages/id/src/**",

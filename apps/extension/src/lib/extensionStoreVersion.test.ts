@@ -237,6 +237,48 @@ test("this checkout's manifest version respects the submitted floor", () => {
   assert.ok(compareStoreVersions(resolved.manifestVersion, floor) > 0);
 });
 
+test("store zip scripts pass the extension package version as the product SemVer", () => {
+  const pkg = JSON.parse(readFileSync(`${extensionRoot}/package.json`, "utf8")) as {
+    scripts: Record<string, string>;
+  };
+  for (const name of ["zip", "zip:chromium", "zip:firefox", "zip:store"] as const) {
+    const script = pkg.scripts[name];
+    assert.equal(typeof script, "string");
+    assert.match(script, /OKKEY_EXTENSION_STORE_RELEASE=1/);
+    assert.match(script, /OKKEY_PRODUCT_VERSION=/);
+    assert.match(script, /ensure-store-wasm\.mjs/);
+    assert.match(script, /package\.json/);
+  }
+});
+
+test("AMO sources allowlist includes a rebuildable workspace slice", () => {
+  const source = readFileSync(wxtConfigPath, "utf8");
+  for (const entry of [
+    '"package.json"',
+    '"yarn.lock"',
+    '"scripts/ensure-crypto-wasm-dist.mjs"',
+    '"apps/extension/store/*.md"',
+    '"packages/api/src/**"',
+    '"packages/auth/src/**"',
+    '"packages/crypto/src/**"',
+    '"packages/crypto/scripts/**"',
+    '"packages/i18n/src/**"',
+    '"packages/email-templates/package.json"',
+    '"packages/sync/src/**"',
+    '"packages/types/src/**"',
+    '"packages/ui/src/**"',
+    '"packages/vault/src/**"',
+    '"packages/vault-ui/src/**"',
+    '"rust/crypto-engine/Cargo.toml"',
+    '"rust/crypto-engine/Cargo.lock"',
+  ]) {
+    assert.ok(source.includes(entry), entry);
+  }
+  assert.match(source, /description:\s*"__MSG_extDescription__"/);
+  assert.match(source, /default_locale:\s*"en"/);
+  assert.match(source, /data_collection_permissions:/);
+});
+
 test("wxt.config.ts does not hardcode a manifest version", () => {
   const source = readFileSync(wxtConfigPath, "utf8");
   assert.match(source, /resolveExtensionManifestVersion/);
