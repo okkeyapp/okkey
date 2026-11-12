@@ -530,6 +530,74 @@ test("batch drain retries a 500 on batch 2 without duplicating saved rows", asyn
   assert.deepEqual(retried, requestKeys[1]);
 });
 
+test("same-base batch conflict rebases to the committed tip and commits once", async () => {
+  const vaultId = testEntityId();
+  const store = new InMemoryOutboxStore();
+  let version = 0;
+  let calls = 0;
+  const inserted = new Map<string, SyncEventWireDto>();
+  const transport: OutboxTransport = {
+    async appendVaultEvent() {
+      throw new Error("single append should not run");
+    },
+    async appendVaultEventsBatch(_vaultId, body) {
+      calls += 1;
+      if (calls > 2) {
+        throw new Error(`retry loop: ${calls} batch requests`);
+      }
+      const events = [];
+      const staged: Array<[string, SyncEventWireDto]> = [];
+      let cursor = version;
+      for (const event of body.events) {
+        const key = event.idempotencyKey ?? "";
+        const existing = inserted.get(key);
+        if (existing) {
+          events.push(existing);
+          continue;
+        }
+        if (event.baseVersion !== cursor) {
+          throw {
+            status: 409,
+            message: "VERSION_MISMATCH: baseVersion is stale",
+            body: {
+              error: "VERSION_MISMATCH",
+              message: "baseVersion is stale",
+              details: { expectedBaseVersion: event.baseVersion, latestVersion: version },
+            },
+          };
+        }
+        cursor += 1;
+        const wire = mkEvent(vaultId, cursor, { eventType: event.eventType });
+        staged.push([key, wire]);
+        events.push(wire);
+      }
+      for (const [key, wire] of staged) {
+        inserted.set(key, wire);
+      }
+      version = cursor;
+      return { vaultId, events, latestVersion: version };
+    },
+    async listVaultEvents(vId, afterVersion) {
+      return mkList(vId, afterVersion, []);
+    },
+  };
+  const outbox = new SyncOutboxClient(store, transport, {
+    nowMs: () => 1_000,
+    sleep: async () => {
+      throw new Error("committed-tip rebase must not wait on backoff");
+    },
+    random: () => 0.5,
+  });
+  await outbox.enqueue({ vaultId, request: mkReq(0, "ITEM_CREATE") });
+  await outbox.enqueue({ vaultId, request: mkReq(0, "ITEM_CREATE") });
+  const appended = await outbox.drain(vaultId);
+  assert.equal(calls, 2);
+  assert.equal(version, 2);
+  assert.equal(inserted.size, 2);
+  assert.equal(appended.length, 2);
+  assert.equal((await outbox.list()).length, 0);
+});
+
 test("a 409 on a batch is handled once and does not loop", { timeout: 3_000 }, async () => {
   const vaultId = testEntityId();
   const store = new InMemoryOutboxStore();

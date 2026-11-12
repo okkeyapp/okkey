@@ -3965,6 +3965,10 @@ export class EventsRepository {
         [vaultId],
       );
       let currentVersion = Number(versionRows[0]?.current_version ?? 0);
+      // A conflict rolls the whole batch back, so callers must rebase against the
+      // tip that is actually committed. Using the in-transaction cursor would
+      // advertise a version this batch inserted and then aborted.
+      const committedVersion = currentVersion;
 
       const maxSchemaRows = await tx.query<{ m: number | null }>(
         "SELECT MAX(payload_schema_version) AS m FROM events WHERE vault_id = $1",
@@ -4014,7 +4018,7 @@ export class EventsRepository {
         }
 
         if (input.baseVersion !== currentVersion) {
-          throw new VersionConflictError(input.baseVersion, currentVersion);
+          throw new VersionConflictError(input.baseVersion, committedVersion);
         }
 
         const nextVersion = currentVersion + 1;
