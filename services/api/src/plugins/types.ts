@@ -43,6 +43,8 @@ export type ApiEnterprisePluginContext = {
   };
   redis?: ApiEnterprisePluginRedis;
   publicAppBaseUrl?: string;
+  /** Effective public origin at send time (database, otherwise env). */
+  resolvePublicAppBaseUrl?: () => Promise<string>;
   emailTemplates?: Pick<
     EmailTemplateService,
     | "sendWorkspaceInvite"

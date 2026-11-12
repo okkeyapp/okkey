@@ -32,6 +32,7 @@ const BETA2_LAST = "0043_recovery_possession.sql";
 const WORKSPACE_KEYS = "0048_workspace_keys.sql";
 const ROTATION_QUEUE = "0049_workspace_key_rotation_queue.sql";
 const SHARE_NULLABLE = "0050_device_share_nullable.sql";
+const SERVER_MAIL = "0051_server_mail_settings.sql";
 const FAMILY_TIER = "0047_retire_family_plan_tier.sql";
 
 test("duplicateMigrationNumbers reports shared prefixes only", () => {
@@ -75,6 +76,7 @@ test("migration numbers are unique and legacy filenames are aliases only", () =>
     WORKSPACE_KEYS,
     ROTATION_QUEUE,
     SHARE_NULLABLE,
+    SERVER_MAIL,
   ];
   const tail = files.slice(files.indexOf(ordered[0]));
   assert.deepEqual(tail, ordered);
@@ -123,6 +125,7 @@ test("upgrade from v1.0.0-beta.2 applies migrations after 0043 once", async (t) 
     WORKSPACE_KEYS,
     ROTATION_QUEUE,
     SHARE_NULLABLE,
+    SERVER_MAIL,
   ]);
 
   await withSchema(async ({ db, query }) => {

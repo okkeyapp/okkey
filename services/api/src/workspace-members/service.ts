@@ -14,6 +14,7 @@ import type { QueryExecutor } from "../storage/postgres.ts";
 import type { WorkspacesRepository } from "../storage/repositories.ts";
 import type { VaultAccessUpdateInput, WorkspaceSharedVaultsService } from "../workspace-shared-vaults/service.ts";
 import type { EmailTemplateService } from "../email/service.ts";
+import { resolveLinkBaseUrl, type PublicAppUrlResolver } from "../mail-settings/public-url.ts";
 import {
   assertWorkspacePermission,
   assertWorkspacePermissionOnObject,
@@ -128,6 +129,8 @@ export interface WorkspaceMembersServiceDeps {
   vaultService?: Pick<WorkspaceSharedVaultsService, "updateVaultAccess" | "getVaultAccess">;
   emailTemplates?: Pick<EmailTemplateService, "sendWorkspaceInvite">;
   publicAppBaseUrl?: string;
+  /** Effective public origin at send time (database, otherwise env). */
+  resolvePublicAppBaseUrl?: PublicAppUrlResolver;
   config?: PlanEntitlementRuntimeConfig;
   workspaceKeys?: {
     rotateOnRemoval(
@@ -188,6 +191,7 @@ export class WorkspaceMembersService {
   private readonly vaultService?: Pick<WorkspaceSharedVaultsService, "updateVaultAccess" | "getVaultAccess">;
   private readonly emailTemplates?: Pick<EmailTemplateService, "sendWorkspaceInvite">;
   private readonly publicAppBaseUrl: string;
+  private readonly resolvePublicAppBaseUrl?: PublicAppUrlResolver;
   private readonly config?: PlanEntitlementRuntimeConfig;
   private readonly workspaceKeys: WorkspaceMembersServiceDeps["workspaceKeys"];
 
@@ -197,6 +201,7 @@ export class WorkspaceMembersService {
     this.vaultService = deps.vaultService;
     this.emailTemplates = deps.emailTemplates;
     this.publicAppBaseUrl = (deps.publicAppBaseUrl ?? "").replace(/\/$/, "");
+    this.resolvePublicAppBaseUrl = deps.resolvePublicAppBaseUrl;
     this.config = deps.config;
     this.workspaceKeys = deps.workspaceKeys;
   }
@@ -302,7 +307,11 @@ export class WorkspaceMembersService {
     if (!inviter) {
       throw new WorkspaceMembersServiceError("ACCESS_DENIED", 403, "access denied");
     }
-    if (!this.emailTemplates || !this.publicAppBaseUrl) {
+    const publicAppBaseUrl = await resolveLinkBaseUrl(
+      this.publicAppBaseUrl,
+      this.resolvePublicAppBaseUrl,
+    );
+    if (!this.emailTemplates || !publicAppBaseUrl) {
       throw new WorkspaceMembersServiceError(
         "EMAIL_NOT_CONFIGURED",
         503,
@@ -384,7 +393,7 @@ export class WorkspaceMembersService {
         [invitationId, workspaceId, email, item.roleId, actorId, tokenHash, expiresAt],
       );
 
-      const inviteUrl = `${this.publicAppBaseUrl}/invite/${rawToken}`;
+      const inviteUrl = `${publicAppBaseUrl}/invite/${rawToken}`;
       // Recipient profile locale wins; inviter Accept-Language is only a fallback
       // for unknown recipients / null profile locale (see resolveEmailLocaleForRecipient).
       const recipientLocale = await this.loadUserLocaleByEmail(email);

@@ -1,5 +1,6 @@
 import type { Logger } from "../logger.ts";
 import type { ApiConfig } from "../config.ts";
+import type { MailDeliverySnapshot } from "../mail-settings/types.ts";
 import {
   renderEmailTemplate,
   type AccountEmailChangedVariables,
@@ -58,9 +59,17 @@ export interface EmailTemplateServiceOptions {
   from: string;
   defaultLocale: string;
   publicAppBaseUrl: string;
+  /** Read at send time. Falls back to `from` when omitted or blank. */
+  resolveFrom?: () => Promise<string>;
+  /** Read at send time. Falls back to `publicAppBaseUrl` when omitted. */
+  resolvePublicAppBaseUrl?: () => Promise<string>;
   /** When send fails after successful render; omit to throw */
   logger?: Pick<Logger, "warn" | "error">;
 }
+
+export type MailDeliveryRuntime = {
+  effective(): Promise<MailDeliverySnapshot>;
+};
 
 /**
  * Build an absolute app URL for email CTAs.
@@ -185,43 +194,82 @@ type NodemailerSendMailOptions = {
   attachments?: NodemailerAttachment[];
 };
 
-export class SmtpEmailSender implements EmailSender {
-  private readonly transport: {
-    sendMail(options: NodemailerSendMailOptions): Promise<unknown>;
-  };
+type SmtpTransport = {
+  sendMail(options: NodemailerSendMailOptions): Promise<unknown>;
+  close?: () => void;
+};
 
-  constructor(transport: {
-    sendMail(options: NodemailerSendMailOptions): Promise<unknown>;
-  }) {
+function smtpAuth(username: string, password: string): { user: string; pass: string } | undefined {
+  if (!username || !password) {
+    return undefined;
+  }
+  return { user: username, pass: password };
+}
+
+function smtpSocketOptions(mode: MailDeliverySnapshot["smtpTlsMode"]): {
+  secure: boolean;
+  ignoreTLS?: boolean;
+} {
+  if (mode === "tls") {
+    return { secure: true };
+  }
+  if (mode === "none") {
+    return { secure: false, ignoreTLS: true };
+  }
+  return { secure: false };
+}
+
+function redactSecret(message: string, secret: string): string {
+  if (!secret) {
+    return message;
+  }
+  return message.split(secret).join("[redacted]");
+}
+
+export class SmtpEmailSender implements EmailSender {
+  private readonly transport: SmtpTransport;
+  private readonly password: string;
+  private readonly closeAfterSend: boolean;
+
+  constructor(transport: SmtpTransport, password = "", closeAfterSend = false) {
     this.transport = transport;
+    this.password = password;
+    this.closeAfterSend = closeAfterSend;
   }
 
   static async fromConfig(config: ApiConfig): Promise<SmtpEmailSender> {
+    return SmtpEmailSender.fromSnapshot({
+      smtpHost: config.smtpHost,
+      smtpPort: config.smtpPort,
+      smtpTlsMode: config.smtpSecure ? "tls" : "starttls",
+      smtpUsername: config.smtpUser,
+      smtpPassword: config.smtpPassword,
+      emailFrom: config.emailFrom,
+      publicAppBaseUrl: config.publicAppBaseUrl,
+      passwordSet: config.smtpPassword.length > 0,
+      useSmtpTransport: true,
+    });
+  }
+
+  static async fromSnapshot(snapshot: MailDeliverySnapshot): Promise<SmtpEmailSender> {
     const nodemailerModule = (await import("nodemailer")) as {
       createTransport(options: {
         host: string;
         port: number;
         secure: boolean;
+        ignoreTLS?: boolean;
         auth?: { user: string; pass: string };
-      }): {
-        sendMail(options: NodemailerSendMailOptions): Promise<unknown>;
-      };
+      }): SmtpTransport;
     };
-
+    const socket = smtpSocketOptions(snapshot.smtpTlsMode);
     const transport = nodemailerModule.createTransport({
-      host: config.smtpHost,
-      port: config.smtpPort,
-      secure: config.smtpSecure,
-      auth:
-        config.smtpUser && config.smtpPassword
-          ? {
-              user: config.smtpUser,
-              pass: config.smtpPassword,
-            }
-          : undefined,
+      host: snapshot.smtpHost,
+      port: snapshot.smtpPort,
+      secure: socket.secure,
+      ...(socket.ignoreTLS ? { ignoreTLS: true } : {}),
+      auth: smtpAuth(snapshot.smtpUsername, snapshot.smtpPassword),
     });
-
-    return new SmtpEmailSender(transport);
+    return new SmtpEmailSender(transport, snapshot.smtpPassword, true);
   }
 
   async send(message: EmailMessage): Promise<void> {
@@ -246,12 +294,57 @@ export class SmtpEmailSender implements EmailSender {
         ...(attachments ? { attachments } : {}),
       });
     } catch (cause) {
+      const raw = cause instanceof Error ? cause.message : String(cause);
       throw new EmailTemplateError(
         "EMAIL_TRANSPORT_ERROR",
         "smtp send failed",
-        { cause: cause instanceof Error ? cause.message : String(cause) },
+        { cause: redactSecret(raw, this.password).slice(0, 500) },
       );
+    } finally {
+      if (this.closeAfterSend) {
+        this.transport.close?.();
+      }
     }
+  }
+}
+
+/**
+ * Applies database mail settings at send time.
+ * SMTP is used when the snapshot says so; otherwise the process provider runs
+ * with the effective sender address.
+ */
+export class RuntimeEmailSender implements EmailSender {
+  private readonly base: EmailSender;
+  private readonly runtime: MailDeliveryRuntime;
+  private readonly sendViaSmtp: (
+    snapshot: MailDeliverySnapshot,
+    message: EmailMessage,
+  ) => Promise<void>;
+
+  constructor(
+    base: EmailSender,
+    runtime: MailDeliveryRuntime,
+    sendViaSmtp?: (snapshot: MailDeliverySnapshot, message: EmailMessage) => Promise<void>,
+  ) {
+    this.base = base;
+    this.runtime = runtime;
+    this.sendViaSmtp =
+      sendViaSmtp ??
+      (async (snapshot, message) => {
+        const smtp = await SmtpEmailSender.fromSnapshot(snapshot);
+        await smtp.send(message);
+      });
+  }
+
+  async send(message: EmailMessage): Promise<void> {
+    const snapshot = await this.runtime.effective();
+    const from = snapshot.emailFrom.trim() || message.from;
+    const next = from === message.from ? message : { ...message, from };
+    if (snapshot.useSmtpTransport) {
+      await this.sendViaSmtp(snapshot, next);
+      return;
+    }
+    await this.base.send(next);
   }
 }
 
@@ -404,8 +497,17 @@ export function isOutboundEmailDeliverable(config: ApiConfig): boolean {
 export async function createTransportEmailSender(
   config: ApiConfig,
   logger: Logger,
+  mailRuntime?: MailDeliveryRuntime,
 ): Promise<EmailSender> {
   assertEmailTransportConfig(config);
+  const sender = await createStaticTransportEmailSender(config, logger);
+  return mailRuntime ? new RuntimeEmailSender(sender, mailRuntime) : sender;
+}
+
+async function createStaticTransportEmailSender(
+  config: ApiConfig,
+  logger: Logger,
+): Promise<EmailSender> {
   switch (config.emailProvider) {
     case "logger":
       return new LoggerEmailSender(logger, {
@@ -446,12 +548,13 @@ export async function createOutboundEmailSender(
   config: ApiConfig,
   logger: Logger,
   redis: EmailQueueRedis,
+  mailRuntime?: MailDeliveryRuntime,
 ): Promise<EmailSender> {
   assertEmailTransportConfig(config);
   if (config.emailDeliveryMode === "queue") {
     return new QueuedEmailSender(redis, logger);
   }
-  return createTransportEmailSender(config, logger);
+  return createTransportEmailSender(config, logger, mailRuntime);
 }
 
 /** @deprecated Prefer {@link createTransportEmailSender} or {@link createOutboundEmailSender}. */
@@ -491,6 +594,8 @@ export class EmailTemplateService {
   private readonly from: string;
   private readonly defaultLocale: string;
   private readonly publicAppBaseUrl: string;
+  private readonly resolveFrom?: () => Promise<string>;
+  private readonly resolvePublicAppBaseUrl?: () => Promise<string>;
   private readonly logger?: Pick<Logger, "warn" | "error">;
 
   constructor(sender: EmailSender, options: EmailTemplateServiceOptions) {
@@ -498,6 +603,8 @@ export class EmailTemplateService {
     this.from = options.from;
     this.defaultLocale = options.defaultLocale;
     this.publicAppBaseUrl = options.publicAppBaseUrl;
+    this.resolveFrom = options.resolveFrom;
+    this.resolvePublicAppBaseUrl = options.resolvePublicAppBaseUrl;
     this.logger = options.logger;
   }
 
@@ -507,11 +614,26 @@ export class EmailTemplateService {
     return resolveEmailLocaleForRecipient(toHintsInput(hints, this.defaultLocale));
   }
 
+  private async currentFrom(): Promise<string> {
+    if (!this.resolveFrom) {
+      return this.from;
+    }
+    const from = (await this.resolveFrom()).trim();
+    return from || this.from;
+  }
+
+  private async currentPublicAppBaseUrl(): Promise<string> {
+    if (!this.resolvePublicAppBaseUrl) {
+      return this.publicAppBaseUrl;
+    }
+    return (await this.resolvePublicAppBaseUrl()).trim().replace(/\/$/, "");
+  }
+
   /** Encode deep-link query values and attach `lng` for the resolved template locale. */
-  private withLocalizedAppUrls<T extends object>(variables: T, locale: string): T {
+  private async withLocalizedAppUrls<T extends object>(variables: T, locale: string): Promise<T> {
     return applyEmailAppUrlLocale(
       variables as T & Record<string, unknown>,
-      this.publicAppBaseUrl,
+      await this.currentPublicAppBaseUrl(),
       locale,
     );
   }
@@ -520,7 +642,7 @@ export class EmailTemplateService {
     try {
       await this.sender.send({
         to,
-        from: this.from,
+        from: await this.currentFrom(),
         subject: rendered.subject,
         text: rendered.text,
         html: rendered.html,
@@ -573,7 +695,7 @@ export class EmailTemplateService {
     const rendered = await renderEmailTemplate(
       "device_approval_request",
       locale,
-      this.withLocalizedAppUrls(input.variables, locale),
+      await this.withLocalizedAppUrls(input.variables, locale),
     );
     await this.dispatchRendered(input.to, rendered);
   }
@@ -587,7 +709,7 @@ export class EmailTemplateService {
     const rendered = await renderEmailTemplate(
       "workspace_invite",
       locale,
-      this.withLocalizedAppUrls(input.variables, locale),
+      await this.withLocalizedAppUrls(input.variables, locale),
     );
     await this.dispatchRendered(input.to, rendered);
   }
@@ -611,7 +733,7 @@ export class EmailTemplateService {
     const rendered = await renderEmailTemplate(
       "two_factor_enabled",
       locale,
-      this.withLocalizedAppUrls(input.variables, locale),
+      await this.withLocalizedAppUrls(input.variables, locale),
     );
     await this.dispatchRendered(input.to, rendered);
   }
@@ -625,7 +747,7 @@ export class EmailTemplateService {
     const rendered = await renderEmailTemplate(
       "two_factor_disabled",
       locale,
-      this.withLocalizedAppUrls(input.variables, locale),
+      await this.withLocalizedAppUrls(input.variables, locale),
     );
     await this.dispatchRendered(input.to, rendered);
   }
@@ -639,7 +761,7 @@ export class EmailTemplateService {
     const rendered = await renderEmailTemplate(
       "two_factor_backup_codes_regenerated",
       locale,
-      this.withLocalizedAppUrls(input.variables, locale),
+      await this.withLocalizedAppUrls(input.variables, locale),
     );
     await this.dispatchRendered(input.to, rendered);
   }
@@ -702,7 +824,7 @@ export class EmailTemplateService {
     const rendered = await renderEmailTemplate(
       "account_email_changed",
       locale,
-      this.withLocalizedAppUrls(input.variables, locale),
+      await this.withLocalizedAppUrls(input.variables, locale),
     );
     await this.dispatchRendered(input.to, rendered);
   }
@@ -733,7 +855,7 @@ export class EmailTemplateService {
     const rendered = await renderEmailTemplate(
       "device_recovery_approval_request",
       locale,
-      this.withLocalizedAppUrls(input.variables, locale),
+      await this.withLocalizedAppUrls(input.variables, locale),
     );
     await this.dispatchRendered(input.to, rendered);
   }
@@ -761,7 +883,7 @@ export class EmailTemplateService {
     const rendered = await renderEmailTemplate(
       "contact_recovery_release_request",
       locale,
-      this.withLocalizedAppUrls(input.variables, locale),
+      await this.withLocalizedAppUrls(input.variables, locale),
     );
     await this.dispatchRendered(input.to, rendered);
   }
@@ -789,7 +911,7 @@ export class EmailTemplateService {
     const rendered = await renderEmailTemplate(
       "trusted_contact_invite",
       locale,
-      this.withLocalizedAppUrls(input.variables, locale),
+      await this.withLocalizedAppUrls(input.variables, locale),
     );
     await this.dispatchRendered(input.to, rendered);
   }

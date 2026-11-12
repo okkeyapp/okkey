@@ -36,7 +36,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import workspaceCapsulesModule from "@okkey-enterprise/workspace-capsules";
 import workspaceTenancyModule from "@okkey-enterprise/workspace-tenancy";
 
-import { workspaceHasPlanFeature } from "../../../workspace/planEntitlements";
+import { webDeploymentMode, workspaceHasPlanFeature } from "../../../workspace/planEntitlements";
 
 import { deleteKeyFieldFileAttachment } from "../../../api/key-field-files";
 import { assertWorkspaceLogoImage, commitWorkspaceLogoReplacement } from "../../../workspace/logoImage";
@@ -45,6 +45,7 @@ import { useWorkspaceLogoUrl } from "../../../hooks/useWorkspaceLogoUrl";
 import { runSaveWithToast } from "../../../lib/saveWithToast";
 import WorkspaceLogoTile from "../WorkspaceLogoTile";
 import FileExtensionTagsInput from "./FileExtensionTagsInput";
+import ServerMailSettingsBlock from "./ServerMailSettingsBlock";
 import WorkspaceSettingsCapsulesSkeleton from "./WorkspaceSettingsCapsulesSkeleton";
 import WorkspaceSettingsGeneralSkeleton from "./WorkspaceSettingsGeneralSkeleton";
 import WorkspaceSettingsItemsSkeleton from "./WorkspaceSettingsItemsSkeleton";
@@ -567,6 +568,10 @@ export default function WorkspaceSettingsGeneralSection({
               onBlur={() => void handleNameBlur()}
             />
           </div>
+
+          {isOwner && webDeploymentMode() === "self_hosted" ? (
+            <ServerMailSettingsBlock workspaceId={workspaceId} t={t} />
+          ) : null}
         </div>
         ) : null}
 

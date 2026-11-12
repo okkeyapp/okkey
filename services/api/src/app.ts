@@ -229,6 +229,8 @@ import {
   unavailableUpdateAgent,
 } from "./system-updates/agent-client.ts";
 import { registerSystemUpdateRoutes } from "./system-updates/routes.ts";
+import { registerServerMailSettingsRoutes } from "./mail-settings/routes.ts";
+import type { MailSettingsService } from "./mail-settings/service.ts";
 import {
   createSystemUpdateService,
   type SystemUpdateService,
@@ -290,6 +292,8 @@ export interface AppDeps {
   itemFaviconService?: ItemFaviconService;
   /** Self-host system updates. Tests inject this; production builds it from config. */
   systemUpdateService?: SystemUpdateService;
+  /** Self-host SMTP and public app URL. Absent in tests that do not exercise mail settings. */
+  mailSettingsService?: MailSettingsService;
 }
 
 export function createApiApp(
@@ -476,6 +480,14 @@ export function createApiApp(
     systemUpdateService,
     resolveUserId,
   );
+  if (deps.mailSettingsService) {
+    registerServerMailSettingsRoutes(
+      (method, path, handler) => app.route(method, path, handler),
+      config,
+      deps.mailSettingsService,
+      resolveUserId,
+    );
+  }
   app.route("GET", "/ready", createReadyRouteHandler(readyCheck));
   if (deps.authService) {
     app.route(
@@ -1372,6 +1384,9 @@ export function createApiApp(
         postgres,
         redis: options.redis,
         publicAppBaseUrl: options.publicAppBaseUrl ?? config.publicAppBaseUrl,
+        resolvePublicAppBaseUrl: deps.mailSettingsService
+          ? () => deps.mailSettingsService!.publicAppBaseUrl()
+          : undefined,
         emailTemplates: options.emailTemplates,
         geoIp: options.geoIp,
         repositories: {

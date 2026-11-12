@@ -16,6 +16,8 @@ import {
   EmailTemplateService,
   isOutboundEmailDeliverable,
 } from "./email/service.ts";
+import { MailSettingsService } from "./mail-settings/service.ts";
+import { PostgresServerMailSettingsStore } from "./mail-settings/store.ts";
 import { createLogger } from "./logger.ts";
 import { SessionService } from "./session/service.ts";
 import { ExtensionAuthService } from "./extension-auth/service.ts";
@@ -68,11 +70,20 @@ async function main(): Promise<void> {
   const logger = createLogger();
   const storage = await createStorageLayer(config, logger);
   await applySqlMigrations(storage.postgres, { logger });
-  const emailSender = await createOutboundEmailSender(config, logger, storage.redis);
+  const mailSettings = new MailSettingsService({
+    store: new PostgresServerMailSettingsStore(storage.postgres),
+    config,
+    users: storage.repositories.users,
+    workspaces: storage.repositories.workspaces,
+    logger,
+  });
+  const emailSender = await createOutboundEmailSender(config, logger, storage.redis, mailSettings);
   const emailTemplates = new EmailTemplateService(emailSender, {
     from: config.emailFrom,
     defaultLocale: config.defaultEmailLocale,
     publicAppBaseUrl: config.publicAppBaseUrl,
+    resolveFrom: async () => (await mailSettings.effective()).emailFrom,
+    resolvePublicAppBaseUrl: () => mailSettings.publicAppBaseUrl(),
     logger,
   });
   logger.info("email outbound ready", {
@@ -90,6 +101,7 @@ async function main(): Promise<void> {
     users: storage.repositories.users,
     emailTemplates,
     config,
+    resolvePublicAppBaseUrl: () => mailSettings.publicAppBaseUrl(),
   });
   const sessionService = new SessionService({
     sessions: storage.repositories.sessions,
@@ -106,6 +118,7 @@ async function main(): Promise<void> {
     authService,
     sessionService,
     config,
+    resolvePublicAppBaseUrl: () => mailSettings.publicAppBaseUrl(),
     emailTemplates,
   });
   const webauthnService = new WebAuthnService({
@@ -161,8 +174,16 @@ async function main(): Promise<void> {
     redis: storage.redis,
     salesEmail: config.salesEmail,
     salesEmailDeliverable: isOutboundEmailDeliverable(config),
+    resolveSalesEmailDeliverable: async () => {
+      const snapshot = await mailSettings.effective();
+      if (snapshot.useSmtpTransport) {
+        return snapshot.smtpHost.trim().length > 0;
+      }
+      return isOutboundEmailDeliverable(config);
+    },
     deploymentMode: config.deploymentMode,
     publicAppBaseUrl: config.publicAppBaseUrl,
+    resolvePublicAppBaseUrl: () => mailSettings.publicAppBaseUrl(),
   });
   const workspaceBuiltInRolesService = new WorkspaceBuiltInRolesService({
     roles: storage.repositories.workspaceRoles,
@@ -247,6 +268,7 @@ async function main(): Promise<void> {
     vaultService: workspaceSharedVaultsService,
     emailTemplates,
     publicAppBaseUrl: config.publicAppBaseUrl,
+    resolvePublicAppBaseUrl: () => mailSettings.publicAppBaseUrl(),
     config,
     workspaceKeys: workspaceKeyService,
   });
@@ -287,6 +309,7 @@ async function main(): Promise<void> {
     config,
     users: storage.repositories.users,
     emailTemplates,
+    resolvePublicAppBaseUrl: () => mailSettings.publicAppBaseUrl(),
     geoIp,
     log: logger,
     bindChallenges: new RedisDeviceBindChallengeStore(storage.redis),
@@ -387,6 +410,7 @@ async function main(): Promise<void> {
     capsuleService,
     attachmentService,
     itemFaviconService,
+    mailSettingsService: mailSettings,
   }, {
     enterprisePlugins,
     postgres: storage.postgres,

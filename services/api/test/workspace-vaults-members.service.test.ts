@@ -485,6 +485,7 @@ function paidMembersService(overrides: {
   db?: ConstructorParameters<typeof WorkspaceMembersService>[0]["db"];
   emailTemplates?: ConstructorParameters<typeof WorkspaceMembersService>[0]["emailTemplates"];
   publicAppBaseUrl?: string;
+  resolvePublicAppBaseUrl?: () => Promise<string>;
 }): WorkspaceMembersService {
   return new WorkspaceMembersService({
     db: overrides.db ?? ({ query: async () => [] } as never),
@@ -504,6 +505,7 @@ function paidMembersService(overrides: {
       updateVaultAccess: async () => {},
     },
     publicAppBaseUrl: overrides.publicAppBaseUrl ?? "",
+    resolvePublicAppBaseUrl: overrides.resolvePublicAppBaseUrl,
     emailTemplates: overrides.emailTemplates,
     config: entitlementConfig(),
   });
@@ -599,6 +601,25 @@ test("WorkspaceMembersService.createInvitations rolls back when send fails", asy
   );
   assert.equal(deleted.length, 1);
   assert.ok(deleted[0]);
+});
+
+test("WorkspaceMembersService.createInvitations uses the effective public app URL", async () => {
+  let sentUrl = "";
+  const service = paidMembersService({
+    publicAppBaseUrl: "http://localhost:5173",
+    resolvePublicAppBaseUrl: async () => "https://vault.customer.example/",
+    emailTemplates: {
+      sendWorkspaceInvite: async (input) => {
+        sentUrl = input.variables.inviteUrl;
+      },
+    },
+    db: { query: ownerAwareQuery() } as never,
+  });
+
+  await service.createInvitations("1000000000000000100", "u1", [
+    { email: "a@example.com", roleId: "1000000000000000001" },
+  ]);
+  assert.match(sentUrl, /^https:\/\/vault\.customer\.example\/invite\/[A-Za-z0-9_-]+$/);
 });
 
 test("WorkspaceMembersService.createInvitations sends /invite/:token with Accept-Language", async () => {
