@@ -169,6 +169,10 @@ API runs with `RUN_BACKGROUND_JOBS=false` and `EMAIL_DELIVERY_MODE=queue`; the w
 
 Default `EMAIL_PROVIDER=logger` (codes appear in **worker** logs when queued). For real mail set SMTP vars in `.env` (see `.env.example` and [`docs/backend-email.md`](../../docs/backend-email.md)).
 
+On a self-hosted install the workspace owner can also set SMTP, the sender address, and the public app URL in the web UI: workspace settings → **Server mail**. Saved values apply to the whole server. A saved host, port, encryption mode, username, password, sender address, or public app URL overrides the matching value from `.env`. When that value is not saved, the server uses `.env`. Leaving the password box blank keeps the saved password. The API uses the public app URL in server-generated links. The API and the worker use the saved SMTP settings when sending mail. `OKKEY_API_PUBLIC_URL`, `CORS_ORIGIN`, and `WEBAUTHN_*` stay in `.env`.
+
+The saved SMTP password is encrypted with `SESSION_SECRET`. After `SESSION_SECRET` changes, that password cannot be decrypted. Enter it again, or use **Clear saved password** to drop the saved password and use `EMAIL_SMTP_PASSWORD` with the other saved fields. While the saved password cannot be decrypted and `EMAIL_SMTP_PASSWORD` is set, outbound mail uses the SMTP host, port, encryption, username, and password from `.env` together. The sender address and the public app URL stay on the saved values when those are set.
+
 Self-host uses Redis keys `okkey:email:queue` / `okkey:email:delayed` / `okkey:email:dead`. Keep the worker up or mail will sit in the queue.
 
 ### Re-queue a dead-letter job
@@ -201,7 +205,7 @@ docker compose -f docker-compose.prod.yml -f proxy/docker-compose.proxy.yml \
 
 Then set in `.env`:
 
-- `PUBLIC_APP_URL=https://app.example.com`
+- `PUBLIC_APP_URL=https://app.example.com` (the workspace owner can also set this public app URL under **Server mail**; a saved value overrides `PUBLIC_APP_URL` for server-generated links)
 - `OKKEY_API_PUBLIC_URL=https://api.example.com`
 - `CORS_ORIGIN` / `WEBAUTHN_ORIGINS` / `WEBAUTHN_RP_ID` accordingly
 - `OKKEY_WEB_HOST` / `OKKEY_API_HOST` (proxy server_name values)
