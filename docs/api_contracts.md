@@ -419,14 +419,14 @@ Stores a recovery-key wrap for the authenticated user (or for a `registration_re
 
 **Auth:** `Authorization: Bearer <access_token>`. Full session or `scope: registration_recovery` from `POST /auth/register/complete`.
 
-**Request body:** `{ "encryptedBlob": EncryptedBlob }` (`encrypted_blob` accepted as an alias). Optional `possessionPublicKey` (`possession_public_key` alias): standard base64 of a 32-byte Ed25519 verifying key. Omitted, empty, or whitespace is stored as absent. `meta.entity` must be `vault_key_recovery_wrap`. The handler does not check `key_scope`.
+**Request body:** `{ "encryptedBlob": EncryptedBlob }` (`encrypted_blob` accepted as an alias). Optional `possessionPublicKey` (`possession_public_key` alias): standard base64 of a 32-byte Ed25519 verifying key. Omitted, empty, or whitespace is stored as absent. `meta.entity` must be `vault_key_recovery_wrap` and `meta.key_scope` must be `account`. Any other `entity` or `key_scope` is `400 RECOVERY_BAD_REQUEST`.
 
 **Response `200`:** `{ key: { enrolled, createdAt, rotatedAt, exportedAt }, settings: { keyEnabled, devicesEnabled, contactsEnabled } }`.
 
 | `error` | HTTP | When |
 |---------|------|------|
 | `AUTH_REQUIRED` | 401 | Missing/invalid Bearer |
-| `RECOVERY_BAD_REQUEST` | 400 | Invalid JSON, missing blob, `meta.entity` is not `vault_key_recovery_wrap`, or `possessionPublicKey` is not a base64 Ed25519 public key |
+| `RECOVERY_BAD_REQUEST` | 400 | Invalid JSON, missing blob, `meta.entity` is not `vault_key_recovery_wrap`, `meta.key_scope` is not `account`, or `possessionPublicKey` is not a base64 Ed25519 public key |
 | `RECOVERY_ROTATE_FORBIDDEN` | 403 | A wrap already exists and this session may not replace it (bootstrap scope, or a full session that is neither a trusted device nor recovery-proved). Concurrent losers of the atomic insert also receive this code |
 
 A `registration_recovery` bootstrap token, and a full session that is neither a trusted device nor recovery-proved, enroll with **atomic insert-if-absent** (`ON CONFLICT DO NOTHING`). A trusted device, or a full session that has completed `POST /account/recovery/key/prove`, may call enroll when a wrap already exists: that replaces the wrap (sets `rotatedAt`, clears `exportedAt`). `POST /account/recovery/key/rotate` is the dedicated replace route for those same sessions.
@@ -437,14 +437,14 @@ Replaces the stored recovery-key wrap. Ciphertext only. The server never sees th
 
 **Auth:** `Authorization: Bearer <access_token>` for a trusted device, or a full session that has proved the recovery key (`recovery_proved_at` set). Not `registration_recovery`. Any other session is `401 AUTH_REQUIRED`.
 
-**Request body:** Same as enroll (`encryptedBlob` / `encrypted_blob`, optional possession public key).
+**Request body:** Same as enroll (`encryptedBlob` / `encrypted_blob`, optional possession public key). `meta.entity` must be `vault_key_recovery_wrap` and `meta.key_scope` must be `account`.
 
 **Response `200`:** Same shape as enroll. A replace sets `rotatedAt` and clears `exportedAt`. A first insert from this route also sets `rotatedAt`.
 
 | `error` | HTTP | When |
 |---------|------|------|
 | `AUTH_REQUIRED` | 401 | Missing/invalid Bearer, or the session is not trusted and has not proved the recovery key |
-| `RECOVERY_BAD_REQUEST` | 400 | Invalid JSON, missing blob, bad `meta.entity`, or bad possession public key |
+| `RECOVERY_BAD_REQUEST` | 400 | Invalid JSON, missing blob, `meta.entity` is not `vault_key_recovery_wrap`, `meta.key_scope` is not `account`, or bad possession public key |
 
 ### `POST /account/recovery/key/ack-export`
 
@@ -1083,9 +1083,27 @@ Registers or updates a device for the authenticated user. May return `pending_ap
 | `user_agent` | string | No | Falls back to HTTP `User-Agent` or `unknown`. |
 | `recovery_pending` | boolean | No | JSON boolean only. Omitted means false. Registers the device as pending during recovery and does not replace a trusted device's key. |
 | `claim_after_recovery` | boolean | No | JSON boolean only. Omitted means false. Accepted only for the device bound to the session that completed `POST /account/recovery/key/prove`. When true, `recovery_pending` is treated as false. |
-| `metadata` | object | No | Optional nested object with the same optional string fields and these two booleans. For each string field, `metadata` overrides the top-level value when both are set. For each boolean, when `metadata` is a JSON object and contains that key, the `metadata` value is used (including `null`, which is rejected). Otherwise the top-level field is used. |
+| `reclaim_sole_trusted` | boolean | No | JSON boolean only. Omitted means false. Migration path: rebinds the account's single trusted device from a legacy hex fingerprint to the fingerprint and public key in this request and keeps the stored device share. See below. |
+| `previous_device_id` | string | No | Id of the trusted device to rebind. Used when `reclaim_sole_trusted` is true. |
+| `previous_device_fingerprint` | string | No | Stored fingerprint of that trusted device. Used when `reclaim_sole_trusted` is true. |
+| `metadata` | object | No | Optional nested object with the same optional string fields (`platform`, `os_name`, `os_version`, `app_version`, `client_type`, `user_agent`), the three booleans, and `previous_device_id` / `previous_device_fingerprint`. For each string field other than the two previous-device fields, `metadata` overrides the top-level value when both are set. For each boolean and for `previous_device_id` / `previous_device_fingerprint`, when `metadata` is a JSON object and contains that key, the `metadata` value is used (including `null`, which is rejected). Otherwise the top-level field is used. |
 
-`recovery_pending` and `claim_after_recovery` accept only JSON booleans. An omitted flag is false. A non-boolean value, including `null`, a string, or a number, is `400 DEVICE_BAD_REQUEST`.
+`recovery_pending`, `claim_after_recovery`, and `reclaim_sole_trusted` accept only JSON booleans. An omitted flag is false. A non-boolean value, including `null`, a string, or a number, is `400 DEVICE_BAD_REQUEST`.
+
+`previous_device_id` and `previous_device_fingerprint` are optional strings. An omitted key is treated as absent. A present value that is not a string, including `null`, is `400 DEVICE_BAD_REQUEST`. A string that is empty or only whitespace is treated as absent. When `metadata` contains the key, that value is used and the top-level field is ignored.
+
+When `reclaim_sole_trusted` is true, the handler rebinds that one trusted row in place: the device id and the stored device share stay the same, and the fingerprint and public key become the values from this request. Name, platform, OS, app version, client type, user agent, and last IP are updated from the request. The request must still include a valid `device_share`; that value is checked and is not written. Rows for the new fingerprint that are not trusted are removed so the fingerprint can move onto the trusted row. If `claim_after_recovery` is also true, that path runs instead and this flag is not applied.
+
+The rebind runs only when every precondition holds:
+
+- the account has exactly one device with status `trusted`;
+- the caller's session is bound to that device;
+- `previous_device_id` matches that device id (decimal ids compare as integers);
+- `previous_device_fingerprint` matches that row's fingerprint (case-insensitive);
+- the stored fingerprint is legacy hex (32–128 hexadecimal characters) and differs from `device_fingerprint` (case-insensitive);
+- the stored client type is compatible with this request: empty, `unknown`, and `web` match any request client type; any other stored client type must equal the request `client_type` (case-insensitive; default `unknown` when omitted).
+
+If any precondition fails, the response is `403 DEVICE_RECLAIM_PRECONDITION_FAILED` and no device row changes.
 
 A pending registration with the same fingerprint replaces the existing pending entry. An account can hold at most 20 pending devices. Only `status = pending` rows count. Trusted, blocked, and revoked rows do not. Replacing the pending row for a fingerprint that already has one does not use another slot, including when the account is already at the cap. The first device on an account with no trusted device is stored as trusted and does not use a pending slot.
 
@@ -1101,12 +1119,13 @@ A pending registration with the same fingerprint replaces the existing pending e
 
 | `error` | HTTP | When |
 |---------|------|------|
-| `DEVICE_BAD_REQUEST` | 400 | Invalid JSON; missing required fields; invalid `device_share`; a flag is not a JSON boolean. |
+| `DEVICE_BAD_REQUEST` | 400 | Invalid JSON; missing required fields; invalid `device_share`; a flag is not a JSON boolean; `previous_device_id` or `previous_device_fingerprint` is present and not a string. |
 | `DEVICE_INVALID_FINGERPRINT` | 400 | Fingerprint format invalid. |
 | `DEVICE_INVALID_PUBLIC_KEY` | 400 | Public key not valid base64. |
 | `DEVICE_DUPLICATE_CONFLICT` | 409 | Unique constraint / duplicate registration conflict. |
 | `DEVICE_FINGERPRINT_ALREADY_TRUSTED` | 409 | This fingerprint is already trusted and the public key differs, and `recovery_pending` is not set. |
 | `DEVICE_PENDING_LIMIT` | 409 | The account already has 20 pending devices. `details.limit` is that cap (number). |
+| `DEVICE_RECLAIM_PRECONDITION_FAILED` | 403 | `reclaim_sole_trusted` is true and a precondition above is not met. No device row changes. |
 | `RECOVERY_PROOF_REQUIRED` | 403 | No proof in session. |
 | `RECOVERY_CLAIM_REQUIRES_PROVED_DEVICE` | 403 | No proved device. |
 | `RECOVERY_CLAIM_DEVICE_MISMATCH` | 403 | Device differs from the proved one. |

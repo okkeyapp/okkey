@@ -1016,13 +1016,43 @@ components:
             bound to the session that completed POST /account/recovery/key/prove.
             When metadata is an object and contains this key, that value is used
             instead of this top-level field.
+        reclaim_sole_trusted:
+          type: boolean
+          description: >
+            JSON boolean only. Omitted means false. When metadata is an object
+            and contains this key, that value is used instead of this top-level
+            field, including null (rejected as DEVICE_BAD_REQUEST). When true,
+            rebinds the account's single trusted device from a legacy hex
+            fingerprint to this request's fingerprint and public key and keeps
+            the stored device share. Requires exactly one trusted device, a
+            session bound to it, previous_device_id and
+            previous_device_fingerprint matching that row, a different
+            fingerprint, and a compatible client type. Otherwise
+            DEVICE_RECLAIM_PRECONDITION_FAILED (403) and nothing changes.
+            If claim_after_recovery is also true, that path runs instead.
+        previous_device_id:
+          type: string
+          description: >
+            Id of the trusted device to rebind. Used when reclaim_sole_trusted
+            is true. Ignored when metadata contains previous_device_id. A
+            present non-string, including null, is DEVICE_BAD_REQUEST. Empty or
+            whitespace is treated as absent.
+        previous_device_fingerprint:
+          type: string
+          description: >
+            Stored fingerprint of the trusted device to rebind. Used when
+            reclaim_sole_trusted is true. Ignored when metadata contains this
+            key. A present non-string, including null, is DEVICE_BAD_REQUEST.
+            Empty or whitespace is treated as absent.
         metadata:
           type: object
           description: >
-            Optional nested fields. For each string field, metadata overrides the
-            top-level value when both are set. For recovery_pending and
-            claim_after_recovery, a key present on this object wins over the
-            top-level field, including null (rejected).
+            Optional nested fields. For platform, os, app, client type, and user
+            agent, metadata overrides the top-level value when both are set. For
+            recovery_pending, claim_after_recovery, reclaim_sole_trusted,
+            previous_device_id, and previous_device_fingerprint, a key present
+            on this object wins over the top-level field, including null
+            (rejected).
           properties:
             platform:
               type: string
@@ -1044,6 +1074,18 @@ components:
               type: boolean
               description: >
                 Same meaning as the top-level flag. Used when this key is present.
+            reclaim_sole_trusted:
+              type: boolean
+              description: >
+                Same meaning as the top-level flag. Used when this key is present.
+            previous_device_id:
+              type: string
+              description: >
+                Same meaning as the top-level field. Used when this key is present.
+            previous_device_fingerprint:
+              type: string
+              description: >
+                Same meaning as the top-level field. Used when this key is present.
 
     DeviceRegisterResponse:
       type: object
@@ -1432,7 +1474,8 @@ paths:
       description: >
         Accepts a full session Bearer or a short-lived registration_recovery bootstrap
         token from POST /auth/register/complete. meta.entity must be
-        vault_key_recovery_wrap. key_scope is not checked. Bootstrap scope, and a
+        vault_key_recovery_wrap and meta.key_scope must be account. Any other
+        entity or key_scope is RECOVERY_BAD_REQUEST (400). Bootstrap scope, and a
         full session that is neither a trusted device nor recovery-proved, are
         insert-if-absent only. A second enroll or a concurrent loser returns
         RECOVERY_ROTATE_FORBIDDEN (403). A trusted device or a recovery-proved
@@ -1492,8 +1535,9 @@ paths:
       summary: Replace the recovery key wrap
       description: >
         Trusted device, or a full session that has proved the recovery key.
-        Not registration_recovery. Same body as enroll. A replace sets rotatedAt
-        and clears exportedAt. Ciphertext only.
+        Not registration_recovery. Same body as enroll. meta.entity must be
+        vault_key_recovery_wrap and meta.key_scope must be account. A replace
+        sets rotatedAt and clears exportedAt. Ciphertext only.
       security:
         - bearerAuth: []
       requestBody:
@@ -2800,17 +2844,29 @@ paths:
       tags: [Devices]
       summary: Register or update a device
       description: >
-        recovery_pending and claim_after_recovery are optional JSON booleans.
-        Omitted means false. When metadata is an object and contains the key,
-        that value is used. Otherwise the top-level field is used. A non-boolean,
-        including null, is 400. claim_after_recovery true forces recovery_pending
-        off. claim_after_recovery is accepted only for the device bound to the
-        session that completed POST /account/recovery/key/prove.
+        recovery_pending, claim_after_recovery, and reclaim_sole_trusted are
+        optional JSON booleans. Omitted means false. When metadata is an object
+        and contains the key, that value is used. Otherwise the top-level field
+        is used. A non-boolean, including null, is 400 DEVICE_BAD_REQUEST.
+        previous_device_id and previous_device_fingerprint are optional strings
+        with the same metadata-wins rule. A present non-string, including null,
+        is 400. Empty or whitespace is treated as absent. claim_after_recovery
+        true forces recovery_pending off and is accepted only for the device
+        bound to the session that completed POST /account/recovery/key/prove.
         recovery_pending registers the device as pending during recovery and does
-        not replace a trusted device's key. A pending registration with the same
-        fingerprint replaces the existing pending entry. An account can hold at
-        most 20 pending devices. Only status pending counts. Replacing an existing
-        pending row for that fingerprint does not use another slot.
+        not replace a trusted device's key. reclaim_sole_trusted rebinds the
+        account's single trusted device from a legacy hex fingerprint to this
+        fingerprint and public key and keeps the stored device share. It requires
+        exactly one trusted device, a session bound to it, matching
+        previous_device_id and previous_device_fingerprint, a different
+        fingerprint, and a compatible client type (empty, unknown, or web match
+        any request client type; any other stored client type must equal the
+        request client type). Otherwise 403 DEVICE_RECLAIM_PRECONDITION_FAILED
+        and nothing changes. If claim_after_recovery is also true, that path
+        runs instead. A pending registration with the same fingerprint replaces
+        the existing pending entry. An account can hold at most 20 pending
+        devices. Only status pending counts. Replacing an existing pending row
+        for that fingerprint does not use another slot.
       security:
         - bearerAuth: []
       parameters:
@@ -2831,8 +2887,9 @@ paths:
         "400":
           description: >
             DEVICE_BAD_REQUEST (invalid JSON, missing fields, invalid device_share,
-            or a flag is not a JSON boolean), DEVICE_INVALID_FINGERPRINT, or
-            DEVICE_INVALID_PUBLIC_KEY.
+            a flag is not a JSON boolean, or previous_device_id /
+            previous_device_fingerprint is present and not a string),
+            DEVICE_INVALID_FINGERPRINT, or DEVICE_INVALID_PUBLIC_KEY.
           content:
             application/json:
               schema:
@@ -2845,9 +2902,11 @@ paths:
                 $ref: "#/components/schemas/ErrorBody"
         "403":
           description: >
-            RECOVERY_PROOF_REQUIRED (no proof in session),
-            RECOVERY_CLAIM_REQUIRES_PROVED_DEVICE (no proved device), or
-            RECOVERY_CLAIM_DEVICE_MISMATCH (device differs from the proved one).
+            DEVICE_RECLAIM_PRECONDITION_FAILED (reclaim_sole_trusted preconditions
+            were not met; no device row changes), RECOVERY_PROOF_REQUIRED (no
+            proof in session), RECOVERY_CLAIM_REQUIRES_PROVED_DEVICE (no proved
+            device), or RECOVERY_CLAIM_DEVICE_MISMATCH (device differs from the
+            proved one).
           content:
             application/json:
               schema:
