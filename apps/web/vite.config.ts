@@ -181,6 +181,8 @@ export default defineConfig(({ mode }) => {
         "@okkey-enterprise/api": enterpriseModules ? enterpriseApiPath : enterpriseApiStubPath,
         "@okkey/popup-query": path.resolve(__dirname, "./src/routes/popupQuery.ts"),
         "date-fns": path.resolve(__dirname, "../../node_modules/date-fns"),
+        "lucide-react": path.resolve(__dirname, "../../node_modules/lucide-react"),
+        "sonner": path.resolve(__dirname, "../../node_modules/sonner"),
         "react-router-dom": path.resolve(__dirname, "../../node_modules/react-router-dom"),
       },
     },
