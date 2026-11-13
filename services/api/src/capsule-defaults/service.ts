@@ -1,8 +1,10 @@
 /**
- * Per-member capsule access defaults. Core does not mount the HTTP routes.
- * The capsules module registers GET/PUT `/workspaces/:workspaceId/capsule-defaults`
- * and should keep this normalization.
+ * Per-member capsule access defaults.
+ * Core mounts GET/PUT `/workspaces/:workspaceId/capsule-defaults` and matches first,
+ * so a later enterprise plugin route does not see the write. The PUT path rejects a
+ * lapsed enterprise license. GET stays open. Other plans keep the previous write behaviour.
  */
+import { workspacePlanFeatureWriteDecision, type PlanEntitlementRuntimeConfig } from "../plan-entitlements.ts";
 import type { WorkspacesRepository } from "../storage/repositories.ts";
 import type {
   CapsuleDefaultsType,
@@ -63,15 +65,18 @@ export class CapsuleDefaultsServiceError extends Error {
 export interface CapsuleDefaultsServiceDeps {
   defaults: WorkspaceMemberCapsuleDefaultsRepository;
   workspaces: Pick<WorkspacesRepository, "findById" | "hasAccess">;
+  config?: PlanEntitlementRuntimeConfig;
 }
 
 export class CapsuleDefaultsService {
   private readonly defaults: CapsuleDefaultsServiceDeps["defaults"];
   private readonly workspaces: CapsuleDefaultsServiceDeps["workspaces"];
+  private readonly config: PlanEntitlementRuntimeConfig | undefined;
 
   constructor(deps: CapsuleDefaultsServiceDeps) {
     this.defaults = deps.defaults;
     this.workspaces = deps.workspaces;
+    this.config = deps.config;
   }
 
   async listDefaults(workspaceId: string, userId: string): Promise<CapsuleDefaultsEntry[]> {
@@ -88,7 +93,8 @@ export class CapsuleDefaultsService {
     userId: string,
     settings: CapsuleAccessDefaults,
   ): Promise<{ settings: CapsuleAccessDefaults }> {
-    await this.assertWorkspaceAccess(workspaceId, userId);
+    const workspace = await this.assertWorkspaceAccess(workspaceId, userId);
+    this.assertWritable(workspace);
     const normalized = normalizeCapsuleAccessDefaults(settings);
     let lastSettings = normalized;
     for (const capsuleType of CAPSULE_TYPE_VALUES) {
@@ -103,7 +109,7 @@ export class CapsuleDefaultsService {
     return { settings: lastSettings };
   }
 
-  private async assertWorkspaceAccess(workspaceId: string, userId: string): Promise<void> {
+  private async assertWorkspaceAccess(workspaceId: string, userId: string) {
     const workspace = await this.workspaces.findById(workspaceId);
     if (!workspace) {
       throw new CapsuleDefaultsServiceError("WORKSPACE_NOT_FOUND", 404, "workspace not found");
@@ -111,6 +117,26 @@ export class CapsuleDefaultsService {
     const hasAccess = await this.workspaces.hasAccess(workspaceId, userId);
     if (!hasAccess) {
       throw new CapsuleDefaultsServiceError("FORBIDDEN", 403, "workspace access required");
+    }
+    return workspace;
+  }
+
+  /** Lapsed enterprise modules cannot save new defaults. Other plans are unchanged. */
+  private assertWritable(workspace: {
+    planTier?: string | null;
+    planCustomOverride?: boolean | null;
+    planFeatureOverrides?: import("@okkey/types").PlanFeatureOverrides | null;
+  }): void {
+    if (!this.config) {
+      return;
+    }
+    const decision = workspacePlanFeatureWriteDecision(
+      this.config,
+      workspace,
+      "capsuleAccessSettings",
+    );
+    if (!decision.allowed && decision.code === "PLAN_LICENSE_LAPSED") {
+      throw new CapsuleDefaultsServiceError(decision.code, decision.status, decision.message);
     }
   }
 }

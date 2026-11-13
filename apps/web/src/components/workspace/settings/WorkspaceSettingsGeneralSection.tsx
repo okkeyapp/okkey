@@ -140,6 +140,7 @@ export default function WorkspaceSettingsGeneralSection({
   const isOwner = Boolean(workspace && userId && workspace.ownerId === userId);
   const canEdit = canPut ?? isOwner;
   const capsuleAccess = webPlanFeatureAccess(workspace, "capsuleAccessSettings");
+  const canEditCapsules = canEdit && capsuleAccess !== "lapsed";
   const canManageCapsuleAccessSettings = capsuleAccess === "granted";
   const CapsulesAdvancedPoliciesSection = workspaceCapsulesModule.CapsulesAdvancedPoliciesSection;
   const showCapsuleAccessSettings = Boolean(
@@ -343,7 +344,7 @@ export default function WorkspaceSettingsGeneralSection({
   }
 
   async function persistCapsulePolicies(next: WorkspaceCapsulePolicies) {
-    if (capsulePoliciesEqual(next, capsulePolicies)) {
+    if (!canEditCapsules || capsulePoliciesEqual(next, capsulePolicies)) {
       return;
     }
     const previous = cloneCapsulePolicies(capsulePolicies);
@@ -695,11 +696,22 @@ export default function WorkspaceSettingsGeneralSection({
             </p>
           </div>
           <div className="flex flex-col">
+            {capsuleAccess === "lapsed" ? (
+              <p className="mb-4 text-sm text-muted-foreground">
+                {t("web.plan.lapsedModulePrefix")}
+                <Link
+                  to={settingsPath("plan")}
+                  className="font-medium text-foreground underline decoration-border underline-offset-4"
+                >
+                  {t("web.plan.lapsedModuleLink")}
+                </Link>
+              </p>
+            ) : null}
             <SettingsFieldRow
               control={
                 <Select
                   value={capsulePolicies.allowMode}
-                  disabled={!canEdit}
+                  disabled={!canEditCapsules}
                   onValueChange={(value) => void handleCapsuleAllowModeChange(value as CapsuleAllowMode)}
                 >
                   <SelectTrigger id="capsule-allow-mode" className="h-9 w-full shrink-0 sm:w-[150px]">
@@ -733,7 +745,7 @@ export default function WorkspaceSettingsGeneralSection({
                   value={capsulePolicies.allowMemberIds}
                   onValueChange={(value) => void handleCapsuleAllowMembersChange(value)}
                   placeholder={t("web.workspaceSettings.capsules.allow.membersPlaceholder")}
-                  disabled={!canEdit}
+                  disabled={!canEditCapsules}
                 >
                   <MultiSelectTrigger className="font-normal" />
                   <MultiSelectContent className="min-w-[min(100vw-2rem,22rem)]">
@@ -767,7 +779,7 @@ export default function WorkspaceSettingsGeneralSection({
                   value={capsulePolicies.allowedCapsuleTypes}
                   onValueChange={(value) => void handleAllowedCapsuleTypesChange(value)}
                   placeholder={t("web.workspaceSettings.capsules.allowedTypes.placeholder")}
-                  disabled={!canEdit}
+                  disabled={!canEditCapsules}
                   displayMode="summary"
                   selectionSummaryText={
                     capsulePolicies.allowedCapsuleTypes.length === ALL_CAPSULE_TYPES.length
@@ -808,7 +820,7 @@ export default function WorkspaceSettingsGeneralSection({
                   inputMode="numeric"
                   className="w-full shrink-0 sm:w-[150px]"
                   value={forceMaxViewsInput}
-                  disabled={!canEdit}
+                  disabled={!canEditCapsules}
                   onChange={(event) => setForceMaxViewsInput(event.target.value.replace(/[^\d]/g, ""))}
                   onBlur={() => void handleForceMaxViewsBlur()}
                 />
@@ -823,25 +835,12 @@ export default function WorkspaceSettingsGeneralSection({
             </SettingsFieldRow>
 
             {showCapsuleAccessSettings && CapsulesAdvancedPoliciesSection ? (
-              <>
-                {capsuleAccess === "lapsed" ? (
-                  <p className="text-sm text-muted-foreground">
-                    {t("web.plan.lapsedModulePrefix")}
-                    <Link
-                      to={settingsPath("plan")}
-                      className="font-medium text-foreground underline decoration-border underline-offset-4"
-                    >
-                      {t("web.plan.lapsedModuleLink")}
-                    </Link>
-                  </p>
-                ) : null}
-                <CapsulesAdvancedPoliciesSection
-                  policies={capsulePolicies}
-                  canEdit={canEdit && canManageCapsuleAccessSettings}
-                  t={t}
-                  onPersist={persistCapsulePolicies}
-                />
-              </>
+              <CapsulesAdvancedPoliciesSection
+                policies={capsulePolicies}
+                canEdit={canEditCapsules && canManageCapsuleAccessSettings}
+                t={t}
+                onPersist={persistCapsulePolicies}
+              />
             ) : null}
           </div>
         </div>

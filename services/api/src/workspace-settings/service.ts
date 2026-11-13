@@ -1,7 +1,7 @@
 import type { VaultsRepository, WorkspacesRepository } from "../storage/repositories.ts";
 import type { QueryExecutor } from "../storage/postgres.ts";
 import type { ApiConfig } from "../config.ts";
-import { workspaceHasPlanFeature } from "../plan-entitlements.ts";
+import { workspacePlanFeatureWriteDecision } from "../plan-entitlements.ts";
 import {
   assertWorkspacePermission,
   resolveWorkspacePermissions,
@@ -126,16 +126,24 @@ export class WorkspaceSettingsService {
     }
     if (patch.capsulePolicies !== undefined) {
       const sanitized = sanitizeCapsulePolicies(patch.capsulePolicies);
-      const accessSettingsEnabled = workspaceHasPlanFeature(
+      const decision = workspacePlanFeatureWriteDecision(
         this.config,
         workspace,
         "capsuleAccessSettings",
       );
-      update.capsulePolicies = mergeCapsulePoliciesForPlan(
+      const merged = mergeCapsulePoliciesForPlan(
         workspace.capsulePolicies,
         sanitized,
-        accessSettingsEnabled,
+        decision.allowed,
       );
+      if (
+        !decision.allowed &&
+        decision.code === "PLAN_LICENSE_LAPSED" &&
+        JSON.stringify(merged) !== JSON.stringify(workspace.capsulePolicies)
+      ) {
+        throw new WorkspaceSettingsServiceError(decision.code, decision.status, decision.message);
+      }
+      update.capsulePolicies = merged;
     }
     if (patch.tileColor !== undefined) {
       update.tileColor = patch.tileColor === null ? null : sanitizeTileColor(patch.tileColor);
