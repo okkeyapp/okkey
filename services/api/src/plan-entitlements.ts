@@ -58,9 +58,9 @@ export function workspacePlanFeatureWriteDecision(
 
 /**
  * Feature gate for create and update.
- * Self-hosted modules on and a paid plan → ENTERPRISE.
- * Self-hosted modules on and FREE → FREE, with enterprise modules lapsed.
- * Modules off → FREE. SaaS → `plan_tier`.
+ * Self-hosted modules on → ENTERPRISE for every stored `plan_tier`.
+ * Self-hosted modules off → FREE for every stored `plan_tier`.
+ * SaaS → `plan_tier`. A lapsed license is a separate signal and is not read from `plan_tier`.
  */
 export function workspaceHasPlanFeature(
   config: PlanEntitlementRuntimeConfig,

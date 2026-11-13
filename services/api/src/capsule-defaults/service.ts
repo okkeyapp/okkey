@@ -2,7 +2,8 @@
  * Per-member capsule access defaults.
  * Core mounts GET/PUT `/workspaces/:workspaceId/capsule-defaults` and matches first,
  * so a later enterprise plugin route does not see the write. The PUT path rejects a
- * lapsed enterprise license. GET stays open. Other plans keep the previous write behaviour.
+ * lapsed enterprise license when a license check sets that signal. GET stays open.
+ * Self-hosted `plan_tier` does not select that state.
  */
 import { workspacePlanFeatureWriteDecision, type PlanEntitlementRuntimeConfig } from "../plan-entitlements.ts";
 import type { WorkspacesRepository } from "../storage/repositories.ts";

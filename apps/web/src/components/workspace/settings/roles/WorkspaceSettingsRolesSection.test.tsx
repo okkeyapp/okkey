@@ -284,15 +284,25 @@ describe("WorkspaceSettingsRolesSection", () => {
     });
   });
 
-  it("self-hosted enterprise modules and FREE keep custom roles read-only with a plan link", () => {
+  it("self-hosted enterprise modules and FREE keep custom roles editable", () => {
     vi.stubEnv("VITE_DEPLOYMENT_MODE", "self_hosted");
     vi.stubEnv("VITE_ENTERPRISE_MODULES_ACTIVE", "true");
     enterpriseModuleMock.EnterpriseRolesSection = EnterpriseReadOnlyStub as ComponentType<unknown>;
     enterpriseModuleMock.BuiltInRoleCardPopup = null;
     renderRolesSection("FREE");
 
+    expect(screen.getByText("Enterprise roles editable")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Change your plan" })).not.toBeInTheDocument();
+  });
+
+  it("self-hosted without modules keeps custom roles read-only when plan_tier is ENTERPRISE", () => {
+    vi.stubEnv("VITE_DEPLOYMENT_MODE", "self_hosted");
+    vi.stubEnv("VITE_ENTERPRISE_MODULES_ACTIVE", "false");
+    enterpriseModuleMock.EnterpriseRolesSection = EnterpriseReadOnlyStub as ComponentType<unknown>;
+    enterpriseModuleMock.BuiltInRoleCardPopup = null;
+    renderRolesSection("ENTERPRISE");
+
     expect(screen.getByText("Enterprise roles read-only")).toBeInTheDocument();
-    expect(screen.queryByText("Enterprise roles editable")).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Change your plan" })).toHaveAttribute("href", "/settings/plan");
     expect(screen.queryByRole("button", { name: "Create" })).not.toBeInTheDocument();
   });

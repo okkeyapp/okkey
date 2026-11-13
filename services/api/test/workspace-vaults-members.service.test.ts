@@ -436,6 +436,8 @@ test("self_hosted: modules active unlocks shared vaults even when plan_tier is F
     (error: unknown) => {
       assert.ok(error instanceof WorkspaceSharedVaultsServiceError);
       assert.notEqual(error.code, "PLAN_FEATURE_REQUIRED");
+      assert.notEqual(error.code, "PLAN_LICENSE_LAPSED");
+      assert.notEqual(error.code, "PLAN_QUOTA_EXCEEDED");
       return true;
     },
   );
@@ -476,6 +478,8 @@ test("self_hosted: modules active unlocks invitations even when plan_tier is FRE
     (error: unknown) => {
       assert.ok(error instanceof WorkspaceMembersServiceError);
       assert.notEqual(error.code, "PLAN_FEATURE_REQUIRED");
+      assert.notEqual(error.code, "PLAN_LICENSE_LAPSED");
+      assert.notEqual(error.code, "PLAN_QUOTA_EXCEEDED");
       return true;
     },
   );

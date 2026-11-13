@@ -14,8 +14,10 @@ import {
   storageWriteExceedsQuota,
   STORAGE_QUOTA_BYTES_PER_MIB,
   isPlanTier,
+  isSelfHostedEnterpriseLicenseLapsed,
   normalizePlanTier,
   planEntitlementOptionsFromWorkspace,
+  planFeatureReadable,
   resolveEntitlementPlanTier,
   resolvePlanFeatures,
   sanitizePlanFeatureOverrides,
@@ -195,35 +197,32 @@ test("PLAN_QUOTA_LIMITS: catalog seats stay; storage ceilings are fixed or per m
   assert.deepEqual(getPlanQuotaLimits("FAMILY"), getPlanQuotaLimits("PREMIUM"));
 });
 
-test("self_hosted entitlements: modules off → FREE; paid modules on → ENTERPRISE; FREE modules on → lapsed", () => {
-  assert.equal(
-    resolveEntitlementPlanTier("ENTERPRISE", {
-      deploymentMode: "self_hosted",
-      enterpriseModulesActive: false,
-    }),
-    "FREE",
-  );
-  assert.equal(
-    resolveEntitlementPlanTier("FREE", {
-      deploymentMode: "self_hosted",
-      enterpriseModulesActive: true,
-    }),
-    "FREE",
-  );
-  assert.equal(
-    resolveEntitlementPlanTier("ENTERPRISE", {
-      deploymentMode: "self_hosted",
-      enterpriseModulesActive: true,
-    }),
-    "ENTERPRISE",
-  );
-  assert.equal(
-    resolveEntitlementPlanTier("TEAM", {
-      deploymentMode: "self_hosted",
-      enterpriseModulesActive: true,
-    }),
-    "ENTERPRISE",
-  );
+test("self_hosted entitlements ignore plan_tier: modules off → FREE; modules on → ENTERPRISE", () => {
+  for (const planTier of ["FREE", "PREMIUM", "TEAM", "ENTERPRISE", "FAMILY", null, "unknown"]) {
+    assert.equal(
+      resolveEntitlementPlanTier(planTier, {
+        deploymentMode: "self_hosted",
+        enterpriseModulesActive: false,
+      }),
+      "FREE",
+      String(planTier),
+    );
+    assert.equal(
+      resolveEntitlementPlanTier(planTier, {
+        deploymentMode: "self_hosted",
+        enterpriseModulesActive: true,
+      }),
+      "ENTERPRISE",
+      String(planTier),
+    );
+    assert.equal(
+      isSelfHostedEnterpriseLicenseLapsed({
+        deploymentMode: "self_hosted",
+        enterpriseModulesActive: true,
+      }),
+      false,
+    );
+  }
   assert.equal(
     hasPlanFeature("ENTERPRISE", "sharedVaults", {
       deploymentMode: "self_hosted",
@@ -264,34 +263,50 @@ test("self_hosted entitlements: modules off → FREE; paid modules on → ENTERP
       deploymentMode: "self_hosted",
       enterpriseModulesActive: true,
     }),
-    false,
+    true,
+  );
+  assert.equal(
+    hasPlanFeature("ENTERPRISE", "storageQuotas", {
+      deploymentMode: "self_hosted",
+      enterpriseModulesActive: true,
+    }),
+    true,
   );
   assert.equal(
     hasPlanFeature("FREE", "monitoring", {
       deploymentMode: "self_hosted",
       enterpriseModulesActive: true,
     }),
-    false,
+    true,
   );
-  const lapsedModules = {
+  const modulesOn = {
     deploymentMode: "self_hosted" as const,
     enterpriseModulesActive: true,
   };
-  assert.equal(planFeatureAccess("FREE", "customWorkspaceRoles", lapsedModules), "lapsed");
-  assert.equal(planFeatureAccess("FREE", "monitoring", lapsedModules), "lapsed");
-  assert.equal(planFeatureAccess("FREE", "sharedVaults", lapsedModules), "granted");
+  for (const feature of [
+    "capsuleAccessSettings",
+    "customWorkspaceRoles",
+    "customWorkspaceProfiles",
+    "accountRecovery",
+    "trustedContacts",
+    "monitoring",
+  ] as const) {
+    assert.equal(planFeatureAccess("FREE", feature, modulesOn), "granted", feature);
+    assert.equal(planFeatureAccess("ENTERPRISE", feature, modulesOn), "granted", feature);
+    const write = planFeatureWriteDecision("FREE", feature, modulesOn);
+    assert.equal(write.allowed, true, feature);
+  }
+  assert.equal(planFeatureAccess("FREE", "sharedVaults", modulesOn), "granted");
   assert.equal(planFeatureAccess("FREE", "customWorkspaceRoles", {
     deploymentMode: "self_hosted",
     enterpriseModulesActive: false,
   }), "unavailable");
+  assert.equal(planFeatureAccess("ENTERPRISE", "customWorkspaceRoles", {
+    deploymentMode: "self_hosted",
+    enterpriseModulesActive: false,
+  }), "unavailable");
   assert.equal(planFeatureAccess("FREE", "customWorkspaceRoles"), "unavailable");
-  assert.equal(planFeatureAccess("ENTERPRISE", "monitoring", lapsedModules), "granted");
-  const lapsedWrite = planFeatureWriteDecision("FREE", "customWorkspaceRoles", lapsedModules);
-  assert.equal(lapsedWrite.allowed, false);
-  if (!lapsedWrite.allowed) {
-    assert.equal(lapsedWrite.code, "PLAN_LICENSE_LAPSED");
-    assert.equal(lapsedWrite.status, 402);
-  }
+  assert.equal(planFeatureAccess("ENTERPRISE", "monitoring", modulesOn), "granted");
   const missingWrite = planFeatureWriteDecision("FREE", "customWorkspaceRoles");
   assert.equal(missingWrite.allowed, false);
   if (!missingWrite.allowed) {
@@ -302,6 +317,13 @@ test("self_hosted entitlements: modules off → FREE; paid modules on → ENTERP
     hasPlanFeature("FREE", "customWorkspaceRoles", {
       deploymentMode: "self_hosted",
       enterpriseModulesActive: true,
+    }),
+    true,
+  );
+  assert.equal(
+    hasPlanFeature("PREMIUM", "customWorkspaceRoles", {
+      deploymentMode: "self_hosted",
+      enterpriseModulesActive: false,
     }),
     false,
   );
@@ -386,7 +408,21 @@ test("self_hosted entitlements: modules off → FREE; paid modules on → ENTERP
       deploymentMode: "self_hosted",
       enterpriseModulesActive: true,
     }).maxAdditionalMembers,
-    10,
+    null,
+  );
+  assert.equal(
+    getPlanQuotaLimits("FREE", {
+      deploymentMode: "self_hosted",
+      enterpriseModulesActive: true,
+    }).maxSharedVaults,
+    null,
+  );
+  assert.equal(
+    getPlanQuotaLimits("TEAM", {
+      deploymentMode: "self_hosted",
+      enterpriseModulesActive: false,
+    }).maxSharedVaults,
+    1,
   );
   assert.equal(
     getPlanQuotaLimits("ENTERPRISE", {
@@ -526,4 +562,96 @@ test("saas entitlements still use plan_tier", () => {
     true,
   );
   assert.equal(resolveEntitlementPlanTier("TEAM", { deploymentMode: "saas" }), "TEAM");
+  assert.equal(
+    resolveEntitlementPlanTier("FREE", {
+      deploymentMode: "saas",
+      enterpriseModulesActive: true,
+      enterpriseLicenseLapsed: true,
+    }),
+    "FREE",
+  );
+  assert.equal(
+    resolveEntitlementPlanTier("ENTERPRISE", {
+      deploymentMode: "saas",
+      enterpriseModulesActive: false,
+    }),
+    "ENTERPRISE",
+  );
+  assert.equal(
+    hasPlanFeature("FREE", "monitoring", {
+      deploymentMode: "saas",
+      enterpriseModulesActive: true,
+    }),
+    false,
+  );
+  assert.equal(
+    planFeatureAccess("FREE", "monitoring", {
+      deploymentMode: "saas",
+      enterpriseModulesActive: true,
+      enterpriseLicenseLapsed: true,
+    }),
+    "unavailable",
+  );
+  assert.equal(
+    hasPlanFeature("ENTERPRISE", "customWorkspaceRoles", {
+      deploymentMode: "saas",
+      enterpriseModulesActive: false,
+    }),
+    true,
+  );
+});
+
+test("self_hosted license lapse is a license signal, not plan_tier", () => {
+  const lapsed = {
+    deploymentMode: "self_hosted" as const,
+    enterpriseModulesActive: true,
+    enterpriseLicenseLapsed: true,
+  };
+  for (const planTier of ["FREE", "PREMIUM", "TEAM", "ENTERPRISE"]) {
+    assert.equal(isSelfHostedEnterpriseLicenseLapsed(lapsed), true);
+    assert.equal(resolveEntitlementPlanTier(planTier, lapsed), "FREE");
+    assert.equal(planFeatureAccess(planTier, "customWorkspaceRoles", lapsed), "lapsed");
+    assert.equal(planFeatureAccess(planTier, "monitoring", lapsed), "lapsed");
+    assert.equal(planFeatureReadable(planTier, "monitoring", lapsed), true);
+    assert.equal(planFeatureAccess(planTier, "sharedVaults", lapsed), "granted");
+    assert.equal(hasPlanFeature(planTier, "customWorkspaceRoles", lapsed), false);
+    const write = planFeatureWriteDecision(planTier, "accountRecovery", lapsed);
+    assert.equal(write.allowed, false);
+    if (!write.allowed) {
+      assert.equal(write.code, "PLAN_LICENSE_LAPSED");
+      assert.equal(write.status, 402);
+    }
+    assert.equal(getPlanQuotaLimits(planTier, lapsed).maxAdditionalMembers, 10);
+    assert.equal(getPlanQuotaLimits(planTier, lapsed).maxSharedVaults, 1);
+  }
+  assert.equal(
+    planFeatureAccess("ENTERPRISE", "monitoring", {
+      ...lapsed,
+      customOverride: true,
+      featureOverrides: { monitoring: true },
+    }),
+    "granted",
+  );
+  assert.equal(
+    isSelfHostedEnterpriseLicenseLapsed({
+      deploymentMode: "self_hosted",
+      enterpriseModulesActive: false,
+      enterpriseLicenseLapsed: true,
+    }),
+    false,
+  );
+  assert.equal(
+    planFeatureAccess("FREE", "customWorkspaceRoles", {
+      deploymentMode: "self_hosted",
+      enterpriseModulesActive: false,
+      enterpriseLicenseLapsed: true,
+    }),
+    "unavailable",
+  );
+  const missingWrite = planFeatureWriteDecision("FREE", "customWorkspaceRoles");
+  assert.equal(missingWrite.allowed, false);
+  if (!missingWrite.allowed) {
+    assert.equal(missingWrite.code, "PLAN_FEATURE_REQUIRED");
+    assert.equal(missingWrite.status, 403);
+  }
 });

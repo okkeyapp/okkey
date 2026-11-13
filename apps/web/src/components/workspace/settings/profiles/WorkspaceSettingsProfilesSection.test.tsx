@@ -224,7 +224,7 @@ describe("WorkspaceSettingsProfilesSection", () => {
     expect(screen.getByText("Change your plan")).toBeInTheDocument();
   });
 
-  it("self-hosted enterprise modules and FREE keep custom profiles read-only", async () => {
+  it("self-hosted enterprise modules and FREE keep custom profiles editable", async () => {
     vi.stubEnv("VITE_DEPLOYMENT_MODE", "self_hosted");
     vi.stubEnv("VITE_ENTERPRISE_MODULES_ACTIVE", "true");
     function EnterpriseStub({
@@ -244,6 +244,33 @@ describe("WorkspaceSettingsProfilesSection", () => {
     enterpriseModuleMock.EnterpriseProfilesSection = EnterpriseStub as ComponentType<unknown>;
     enterpriseModuleMock.BuiltInProfileCardPopup = null;
     renderProfilesSection("FREE");
+
+    await waitFor(() => {
+      expect(screen.getByText("Enterprise profiles editable")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Change your plan")).not.toBeInTheDocument();
+  });
+
+  it("self-hosted without modules keeps custom profiles read-only when plan_tier is ENTERPRISE", async () => {
+    vi.stubEnv("VITE_DEPLOYMENT_MODE", "self_hosted");
+    vi.stubEnv("VITE_ENTERPRISE_MODULES_ACTIVE", "false");
+    function EnterpriseStub({
+      readOnly,
+      emptyFallback,
+    }: {
+      readOnly?: boolean;
+      emptyFallback?: ReactNode;
+    }) {
+      return (
+        <>
+          <p>{readOnly ? "Enterprise profiles read-only" : "Enterprise profiles editable"}</p>
+          {readOnly ? emptyFallback : null}
+        </>
+      );
+    }
+    enterpriseModuleMock.EnterpriseProfilesSection = EnterpriseStub as ComponentType<unknown>;
+    enterpriseModuleMock.BuiltInProfileCardPopup = null;
+    renderProfilesSection("ENTERPRISE");
 
     await waitFor(() => {
       expect(screen.getByText("Enterprise profiles read-only")).toBeInTheDocument();
