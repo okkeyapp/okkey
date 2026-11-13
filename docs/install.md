@@ -53,16 +53,20 @@ Only profile 2 is allowed (`CRYPTO_ALLOWED_PROFILE_VERSIONS=2`). New registratio
 
 `EMAIL_PROVIDER` defaults to `logger`. One-time email codes are written to the worker logs. To send real mail, set the `EMAIL_SMTP_*` variables in `.env`. The names are in [`deploy/docker/.env.example`](../deploy/docker/.env.example).
 
+On a self-hosted server the workspace owner can also set SMTP, the sender address, and the public app URL in the web UI. Open workspace settings and use **Server mail**. Those saved values apply to the whole server. A saved host, port, encryption mode, username, password, sender address, or public app URL overrides the matching value from `.env`. When that value is not saved, the server uses `.env`. Leaving the password box blank keeps the saved password. The API uses the public app URL in server-generated links. The API and the worker use the saved SMTP settings when sending mail. `OKKEY_API_PUBLIC_URL`, `CORS_ORIGIN`, and `WEBAUTHN_*` stay in `.env`.
+
+The saved SMTP password is encrypted with `SESSION_SECRET`. After you change `SESSION_SECRET`, that password cannot be decrypted. Enter it again in **Server mail**, or choose **Clear saved password** to drop the saved password and use `EMAIL_SMTP_PASSWORD` with the other saved fields. While the saved password cannot be decrypted and `EMAIL_SMTP_PASSWORD` is set, outbound mail uses the SMTP host, port, encryption, username, and password from `.env` together. The sender address and the public app URL stay on the saved values when those are set.
+
 ## Verify image signatures
 
-After `docker compose pull`, `install.sh` runs cosign against the pulled digest of `api`, `worker`, and `web`. Signatures are keyless, from GitHub Actions OIDC (`https://token.actions.githubusercontent.com`), for `.github/workflows/publish-images.yml` on `refs/heads/dev` or on a tag matching `refs/tags/v...`. Postgres, Redis, and MinIO images are not signed by that workflow.
+After `docker compose pull`, `install.sh` runs cosign against the pulled digest of `api`, `worker`, and `web`. Signatures are keyless, from GitHub Actions OIDC (`https://token.actions.githubusercontent.com`), for `.github/workflows/publish-images.yml` on `refs/heads/dev` or on a SemVer tag `refs/tags/v<major>.<minor>.<patch>` with an optional pre-release suffix. Postgres, Redis, and MinIO images are not signed by that workflow.
 
-To check one image yourself after it has been pulled:
+To check one image yourself after it has been pulled, use the same anchored identity regexp as `OKKEY_COSIGN_DEFAULT_IDENTITY_REGEXP` in [`deploy/docker/install.sh`](../deploy/docker/install.sh):
 
 ```bash
 digest="$(docker image inspect --format '{{index .RepoDigests 0}}' ghcr.io/okkeyapp/api:1.0.0-beta.2)"
 cosign verify \
-  --certificate-identity-regexp 'https://github.com/okkeyapp/okkey/\.github/workflows/publish-images\.yml@refs/(heads/dev|tags/v.+)' \
+  --certificate-identity-regexp '^https://github\.com/okkeyapp/okkey/\.github/workflows/publish-images\.yml@refs/(?:heads/dev|tags/v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?)$' \
   --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
   "$digest"
 ```

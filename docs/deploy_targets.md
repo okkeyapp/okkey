@@ -51,17 +51,16 @@ SaaS (initial cluster per environment):
 
 ## Networking, Domains, TLS
 
-- HTTPS is required for all clients.
-- Use a public domain for the API and web app.
-- WebSocket must be allowed for sync.
-- TLS certificates must be managed (ACME/Let’s Encrypt or equivalent).
+Self-hosted Docker Compose serves the web app on plain HTTP. The host port is `8080` (`WEB_PORT`); the container listens on port 80. The API listens on port 4000 and is published on the host at `127.0.0.1:4000` only. Sync uses the HTTP API (`/vaults/:vaultId/events` and `/workspaces/:workspaceId/personal-events`).
+
+For a domain and HTTPS, terminate TLS on an external reverse proxy. The template in this repository is [`deploy/docker/proxy`](../deploy/docker/proxy/README.md). It uses a domain for the web app and the API (`OKKEY_WEB_HOST`, `OKKEY_API_HOST`) and reads TLS certificates from `fullchain.pem` and `privkey.pem`.
 
 Recommended ports:
-- API: 4000 (internal), 443 (external)
-- Web: 3000 (internal), 443 (external)
+- API: 4000 on `127.0.0.1` (Compose host), 443 (reverse proxy)
+- Web: 8080 (Compose host) to container port 80, 443 (reverse proxy)
 - Postgres: 5432 (internal)
 - Redis: 6379 (internal)
-- S3: 9000 (internal), 9001 (console)
+- S3: 9000 (internal), 9001 (console, internal)
 
 ## Email/Notifications
 
