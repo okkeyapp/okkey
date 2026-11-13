@@ -29,6 +29,7 @@ import {
   isOffscreenClearMessage,
   wireExtensionVaultLifecycle,
 } from "../lib/extensionVaultLifecycle";
+import { handleHttpAuthRuntimeMessage, wireHttpBasicAuth } from "../lib/httpAuthBrowser";
 import { EXTENSION_DATA_WIPED_MSG } from "../lib/storage";
 
 /** Probe device trust while unlocked so web Revoke clears session without opening the popup. */
@@ -37,6 +38,7 @@ const DEVICE_TRUST_PERIOD_MINUTES = 1;
 
 export default defineBackground(() => {
   console.info(`[okkey] background ready (channel=${EXTENSION_DEVICE_CHANNEL})`);
+  wireHttpBasicAuth();
   wirePendingSaveTabCleanup();
   wireExtensionVaultLifecycle();
 
@@ -50,6 +52,10 @@ export default defineBackground(() => {
   void runBackgroundDeviceTrustProbe();
 
   browser.runtime.onMessage.addListener((message, sender) => {
+    const httpAuthResponse = handleHttpAuthRuntimeMessage(message);
+    if (httpAuthResponse) {
+      return httpAuthResponse;
+    }
     // Handled by wireExtensionVaultLifecycle or the offscreen document — do not swallow.
     if (isClipboardScheduleMessage(message) || isOffscreenClearMessage(message)) {
       return undefined;
