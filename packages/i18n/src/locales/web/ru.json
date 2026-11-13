@@ -1037,6 +1037,8 @@
   "web.capsules.popup.advancedSettings": "Расширенные настройки",
   "web.capsules.popup.enterpriseHint": "Расширенные настройки доступны в тарифе Enterprise.",
   "web.capsules.popup.planUnavailable": "Недоступно на текущем тарифе",
+  "web.plan.lapsedModulePrefix": "Модуль установлен, но платный план не активен. ",
+  "web.plan.lapsedModuleLink": "Запросить лицензию",
   "web.capsules.popup.availableFields": "Доступные поля:",
   "web.capsules.popup.scope.all": "Все",
   "web.capsules.popup.scope.allExcept": "Все кроме",

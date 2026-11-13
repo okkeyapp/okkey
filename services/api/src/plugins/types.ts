@@ -1,6 +1,9 @@
 import type { IncomingMessage } from "node:http";
 
+import type { PlanFeature, PlanFeatureWriteDecision } from "@okkey/types";
+
 import type { ApiConfig } from "../config.ts";
+import type { WorkspacePlanEntitlementSource } from "../plan-entitlements.ts";
 import type { EmailTemplateService } from "../email/service.ts";
 import type { HttpApp } from "../http.ts";
 import type { QueryExecutor } from "../storage/postgres.ts";
@@ -75,6 +78,17 @@ export type ApiEnterprisePluginContext = {
   services: {
     vaultSharingService?: VaultSharingService;
   };
+  /**
+   * Create/update gate for an enterprise-module feature.
+   * Call this on POST, PUT, and PATCH. Do not call it on GET, list, or DELETE:
+   * a lapsed plan keeps existing rows readable and deletable.
+   * `allowed: false` with `PLAN_LICENSE_LAPSED` is HTTP 402. `PLAN_FEATURE_REQUIRED` is HTTP 403.
+   * The deployment mode and whether modules are loaded come from API config, not from the caller.
+   */
+  assertEnterpriseModuleWrite(
+    workspace: WorkspacePlanEntitlementSource,
+    feature: PlanFeature,
+  ): PlanFeatureWriteDecision;
 };
 
 export interface ApiEnterprisePlugin {

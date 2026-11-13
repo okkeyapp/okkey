@@ -2,6 +2,7 @@ import type { IncomingMessage } from "node:http";
 import type { AuthService } from "./auth/service.ts";
 import type { RegistrationService } from "./registration/service.ts";
 import type { ApiConfig } from "./config.ts";
+import { workspacePlanFeatureWriteDecision } from "./plan-entitlements.ts";
 import type { DeviceService } from "./device/service.ts";
 import { registerCapsuleAccessSettingsProvider } from "./capsule/access-settings-provider.ts";
 import { getHeader, HttpApp, type RouteHandler } from "./http.ts";
@@ -1404,6 +1405,8 @@ export function createApiApp(
         services: {
           vaultSharingService: deps.vaultSharingService,
         },
+        assertEnterpriseModuleWrite: (workspace, feature) =>
+          workspacePlanFeatureWriteDecision(config, workspace, feature),
       });
       if (plugin.capsuleAccessSettings) {
         registerCapsuleAccessSettingsProvider(plugin.capsuleAccessSettings);

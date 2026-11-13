@@ -10,6 +10,7 @@ import ItemsDetailPanelEmptyState from "../../components/items/ItemsDetailPanelE
 import WorkspaceSettingsPage from "../../components/workspace/settings/WorkspaceSettingsPage";
 import ToolsPage from "../../components/workspace/tools/ToolsPage";
 import passwordMonitoringModule from "@okkey-enterprise/monitoring";
+import { webEnterpriseModuleReadOnly } from "../../workspace/planEntitlements";
 
 import CapsulesPage from "../capsules/CapsulesPage";
 import { useLocale } from "../../locale/LocaleContext";
@@ -129,6 +130,7 @@ export default function WorkspaceSectionPage() {
         vaults={vaults}
         workspacePermissions={workspacePermissions ?? null}
         patchWorkspace={patchWorkspace}
+        readOnly={webEnterpriseModuleReadOnly(workspace, "monitoring")}
       />
     );
   }

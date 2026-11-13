@@ -1037,6 +1037,8 @@
   "web.capsules.popup.advancedSettings": "Advanced settings",
   "web.capsules.popup.enterpriseHint": "Advanced settings are available on the Enterprise plan.",
   "web.capsules.popup.planUnavailable": "Not available on your current plan",
+  "web.plan.lapsedModulePrefix": "This enterprise module is installed, but the paid plan is not active. ",
+  "web.plan.lapsedModuleLink": "Request a license",
   "web.capsules.popup.availableFields": "Available fields:",
   "web.capsules.popup.scope.all": "All",
   "web.capsules.popup.scope.allExcept": "All except",

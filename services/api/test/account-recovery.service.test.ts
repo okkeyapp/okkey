@@ -438,9 +438,36 @@ test("self-hosted modules off ignores plan_tier ENTERPRISE for trusted recovery"
   );
 });
 
-test("self-hosted modules on grants trusted recovery when plan_tier is FREE", async () => {
+test("self-hosted modules on and FREE lapse trusted recovery writes", async () => {
   const blocked = createService({
     workspaces: [{ planTier: "FREE" }],
+    devices: [
+      mockDevice({ fingerprint: "fp-current", status: "trusted" }),
+      mockDevice({ fingerprint: "fp-other", status: "trusted" }),
+    ],
+    config: { deploymentMode: "self_hosted", enterpriseModulesEnabled: true },
+  });
+  const status = await blocked.getStatus("u1");
+  assert.equal(status.entitlements.recoveryKey, true);
+  assert.equal(status.entitlements.trustedDevices, false);
+  assert.equal(status.entitlements.trustedContacts, false);
+  await assert.rejects(
+    () =>
+      blocked.updateSettings(
+        "u1",
+        { devicesEnabled: true },
+        { currentFingerprint: "fp-current" },
+      ),
+    (err: unknown) =>
+      err instanceof AccountRecoveryError &&
+      err.code === "PLAN_LICENSE_LAPSED" &&
+      err.statusCode === 402,
+  );
+});
+
+test("self-hosted modules on and a paid plan grant trusted recovery", async () => {
+  const blocked = createService({
+    workspaces: [{ planTier: "ENTERPRISE" }],
     devices: [mockDevice({ fingerprint: "fp-current", status: "trusted" })],
     config: { deploymentMode: "self_hosted", enterpriseModulesEnabled: true },
   });
@@ -460,7 +487,7 @@ test("self-hosted modules on grants trusted recovery when plan_tier is FREE", as
   );
 
   const allowed = createService({
-    workspaces: [{ planTier: "FREE" }],
+    workspaces: [{ planTier: "ENTERPRISE" }],
     devices: [
       mockDevice({ fingerprint: "fp-current", status: "trusted" }),
       mockDevice({ fingerprint: "fp-other", status: "trusted" }),

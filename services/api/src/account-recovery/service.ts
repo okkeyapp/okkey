@@ -2,6 +2,7 @@ import {
   canEnableTrustedDevicesRecovery,
   MIN_TRUSTED_CONTACTS_CONFIRMED,
   MIN_TRUSTED_DEVICES_FOR_RECOVERY,
+  planFeatureWriteDecision,
   resolveAccountRecoveryEntitlements,
   type AccountRecoveryEntitlements,
   type AccountRecoveryKeyEnrollResponseDto,
@@ -214,6 +215,20 @@ export class AccountRecoveryService {
 
     if (patch.devicesEnabled === true) {
       if (!entitlements.trustedDevices) {
+        const workspaces = await this.workspaces.listAccessibleByUser(userId);
+        const runtime = this.config ? planEntitlementRuntimeFromConfig(this.config) : undefined;
+        const lapsed = workspaces
+          .map((workspace) =>
+            planFeatureWriteDecision(workspace.planTier, "accountRecovery", {
+              ...runtime,
+              customOverride: workspace.planCustomOverride,
+              featureOverrides: workspace.planFeatureOverrides,
+            }),
+          )
+          .find((decision) => !decision.allowed && decision.code === "PLAN_LICENSE_LAPSED");
+        if (lapsed && !lapsed.allowed) {
+          throw new AccountRecoveryError(lapsed.code, lapsed.status, lapsed.message);
+        }
         throw new AccountRecoveryError(
           "RECOVERY_ENTITLEMENT_REQUIRED",
           403,

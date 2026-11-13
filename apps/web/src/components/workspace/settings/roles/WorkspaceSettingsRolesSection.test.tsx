@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ComponentType, ReactNode } from "react";
 import { MemoryRouter } from "react-router-dom";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PlanTier, WorkspaceResourcePermissionDto, WorkspaceRoleListItemDto } from "@okkey/types";
 
 import { LocaleProvider } from "../../../../locale/LocaleContext";
@@ -53,6 +53,26 @@ beforeEach(() => {
   coreMock.deleteWorkspaceRole.mockClear();
   reauthMock.requestZoneUnlock.mockClear();
 });
+
+afterEach(() => {
+  vi.stubEnv("VITE_DEPLOYMENT_MODE", "saas");
+  vi.stubEnv("VITE_ENTERPRISE_MODULES_ACTIVE", "false");
+});
+
+function EnterpriseReadOnlyStub({
+  readOnly,
+  emptyFallback,
+}: {
+  readOnly?: boolean;
+  emptyFallback?: ReactNode;
+}) {
+  return (
+    <>
+      <p>{readOnly ? "Enterprise roles read-only" : "Enterprise roles editable"}</p>
+      {readOnly ? emptyFallback : null}
+    </>
+  );
+}
 
 function renderRolesSection(
   planTier: PlanTier = "FREE",
@@ -262,6 +282,30 @@ describe("WorkspaceSettingsRolesSection", () => {
     await waitFor(() => {
       expect(screen.queryByText("Auditors")).not.toBeInTheDocument();
     });
+  });
+
+  it("self-hosted enterprise modules and FREE keep custom roles read-only with a plan link", () => {
+    vi.stubEnv("VITE_DEPLOYMENT_MODE", "self_hosted");
+    vi.stubEnv("VITE_ENTERPRISE_MODULES_ACTIVE", "true");
+    enterpriseModuleMock.EnterpriseRolesSection = EnterpriseReadOnlyStub as ComponentType<unknown>;
+    enterpriseModuleMock.BuiltInRoleCardPopup = null;
+    renderRolesSection("FREE");
+
+    expect(screen.getByText("Enterprise roles read-only")).toBeInTheDocument();
+    expect(screen.queryByText("Enterprise roles editable")).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Change your plan" })).toHaveAttribute("href", "/settings/plan");
+    expect(screen.queryByRole("button", { name: "Create" })).not.toBeInTheDocument();
+  });
+
+  it("self-hosted enterprise modules and a paid plan keep custom roles editable", () => {
+    vi.stubEnv("VITE_DEPLOYMENT_MODE", "self_hosted");
+    vi.stubEnv("VITE_ENTERPRISE_MODULES_ACTIVE", "true");
+    enterpriseModuleMock.EnterpriseRolesSection = EnterpriseReadOnlyStub as ComponentType<unknown>;
+    enterpriseModuleMock.BuiltInRoleCardPopup = null;
+    renderRolesSection("ENTERPRISE");
+
+    expect(screen.getByText("Enterprise roles editable")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Change your plan" })).not.toBeInTheDocument();
   });
 
   it("FREE + stub: hides delete for custom role without delete permission", async () => {

@@ -64,6 +64,56 @@ export type WorkspaceStorageQuotaStatus = WorkspaceStorageQuota & {
 /** HTTP error code when a write would exceed the workspace storage ceiling. */
 export const PLAN_QUOTA_EXCEEDED = "PLAN_QUOTA_EXCEEDED";
 
+/**
+ * HTTP error code when enterprise modules are installed but the workspace plan is FREE.
+ * Create and update of those modules are rejected. Read, list, and delete stay allowed.
+ */
+export const PLAN_LICENSE_LAPSED = "PLAN_LICENSE_LAPSED";
+
+/** Payment Required: the installed edition is present, the paid plan is not. */
+export const PLAN_LICENSE_LAPSED_STATUS = 402;
+
+export const PLAN_LICENSE_LAPSED_MESSAGE =
+  "this enterprise module requires an active paid plan";
+
+/**
+ * Features that belong to installed enterprise modules.
+ * On a lapsed self-hosted plan they stay readable and deletable, and writes are rejected.
+ * Core self-hosted FREE features (shared vaults, files, capsules, member seats) are not in this set.
+ */
+export const ENTERPRISE_MODULE_FEATURES = [
+  "capsuleAccessSettings",
+  "customWorkspaceRoles",
+  "customWorkspaceProfiles",
+  "accountRecovery",
+  "trustedContacts",
+  "monitoring",
+] as const satisfies readonly PlanFeature[];
+
+const ENTERPRISE_MODULE_FEATURE_SET: ReadonlySet<string> = new Set(ENTERPRISE_MODULE_FEATURES);
+
+export function isEnterpriseModuleFeature(feature: PlanFeature): boolean {
+  return ENTERPRISE_MODULE_FEATURE_SET.has(feature);
+}
+
+/** How a plan feature applies: full use, installed-but-unpaid, or absent. */
+export type PlanFeatureAccess = "granted" | "lapsed" | "unavailable";
+
+export type PlanFeatureWriteDecision =
+  | { allowed: true }
+  | {
+      allowed: false;
+      code: typeof PLAN_LICENSE_LAPSED;
+      status: typeof PLAN_LICENSE_LAPSED_STATUS;
+      message: string;
+    }
+  | {
+      allowed: false;
+      code: "PLAN_FEATURE_REQUIRED";
+      status: 403;
+      message: string;
+    };
+
 /** Soft numeric limits associated with a catalog tier (null = unlimited). */
 export type PlanQuotaLimits = {
   /**
@@ -88,7 +138,8 @@ export type PlanEntitlementOptions = {
   /**
    * Self-hosted:
    * - modules off → FREE matrix (plus {@link SELF_HOSTED_FREE_EXTRA} and {@link SELF_HOSTED_FREE_QUOTA_OVERRIDES})
-   * - modules on → ENTERPRISE matrix (workspace `plan_tier` ignored)
+   * - modules on and a paid `plan_tier` → ENTERPRISE matrix (`plan_tier` otherwise ignored)
+   * - modules on and `plan_tier` FREE → FREE matrix; {@link ENTERPRISE_MODULE_FEATURES} are lapsed
    * SaaS / omitted mode: catalog `plan_tier`.
    */
   deploymentMode?: DeploymentMode | null;
@@ -170,8 +221,10 @@ const BUSINESS_FEATURES = {
  *   recovery / badge, no custom roles, profiles, or capsule access settings.
  * - Self-hosted modules off → FREE matrix plus {@link SELF_HOSTED_FREE_EXTRA}
  *   (`filesInItems`, `filesInCapsules`) and {@link SELF_HOSTED_FREE_QUOTA_OVERRIDES},
- *   with `storageQuotas` forced off. Self-hosted modules on → ENTERPRISE matrix
- *   (`plan_tier` ignored). Storage ceilings stay off for every self-hosted tier.
+ *   with `storageQuotas` forced off. Self-hosted modules on and a paid plan → ENTERPRISE
+ *   matrix. Self-hosted modules on and FREE → the same FREE matrix; enterprise-module
+ *   features are {@link PlanFeatureAccess} `"lapsed"`. Storage ceilings stay off for
+ *   every self-hosted tier.
  * - PREMIUM: FREE plus files in items and capsules, monitoring, recovery, trusted contacts,
  *   and the paid badge.
  * - TEAM / ENTERPRISE: PREMIUM plus capsule access settings, custom roles, and custom profiles.
@@ -309,8 +362,25 @@ export function sanitizePlanFeatureOverrides(
 }
 
 /**
+ * Installed enterprise modules with a FREE workspace plan (license not renewed).
+ * Paid self-hosted tiers and SaaS are not lapsed.
+ */
+export function isSelfHostedEnterpriseLicenseLapsed(
+  workspacePlanTier: string | null | undefined,
+  options?: Pick<PlanEntitlementOptions, "deploymentMode" | "enterpriseModulesActive">,
+): boolean {
+  return (
+    options?.deploymentMode === "self_hosted" &&
+    options.enterpriseModulesActive === true &&
+    normalizePlanTier(workspacePlanTier) === "FREE"
+  );
+}
+
+/**
  * Effective catalog tier used for feature / quota checks.
- * Self-hosted: modules off → FREE; modules on → ENTERPRISE (`plan_tier` ignored).
+ * Self-hosted modules off → FREE.
+ * Self-hosted modules on and a paid plan → ENTERPRISE (specific paid tier is not used).
+ * Self-hosted modules on and FREE → FREE (the real plan, not the installed edition).
  * SaaS / omitted mode: workspace `plan_tier` (legacy FAMILY reads as PREMIUM).
  */
 export function resolveEntitlementPlanTier(
@@ -318,46 +388,117 @@ export function resolveEntitlementPlanTier(
   options?: Pick<PlanEntitlementOptions, "deploymentMode" | "enterpriseModulesActive">,
 ): PlanTier {
   if (options?.deploymentMode === "self_hosted") {
-    return options.enterpriseModulesActive ? "ENTERPRISE" : "FREE";
+    if (!options.enterpriseModulesActive) {
+      return "FREE";
+    }
+    if (normalizePlanTier(workspacePlanTier) === "FREE") {
+      return "FREE";
+    }
+    return "ENTERPRISE";
   }
   return normalizePlanTier(workspacePlanTier);
 }
 
+function featureGrantedOnTier(
+  tier: PlanTier,
+  feature: PlanFeature,
+  deploymentMode: DeploymentMode | null | undefined,
+): boolean {
+  let base = PLAN_FEATURE_MATRIX[tier][feature];
+  if (deploymentMode === "self_hosted" && tier === "FREE" && SELF_HOSTED_FREE_EXTRA[feature] === true) {
+    base = true;
+  }
+  if (deploymentMode === "self_hosted" && tier === "FREE" && feature === "storageQuotas") {
+    base = false;
+  }
+  return base;
+}
+
 /**
- * Resolve whether a plan grants a feature.
+ * Granted, lapsed (installed enterprise module, unpaid plan), or unavailable.
+ * Custom overrides win over both the catalog and the lapsed state.
+ */
+export function planFeatureAccess(
+  planTier: string | null | undefined,
+  feature: PlanFeature,
+  options?: PlanEntitlementOptions,
+): PlanFeatureAccess {
+  const effectiveTier = resolveEntitlementPlanTier(planTier, options);
+  const base = featureGrantedOnTier(effectiveTier, feature, options?.deploymentMode);
+  if (options?.customOverride) {
+    const overridden = options.featureOverrides?.[feature];
+    if (typeof overridden === "boolean") {
+      return overridden ? "granted" : "unavailable";
+    }
+  }
+  if (base) {
+    return "granted";
+  }
+  if (
+    isSelfHostedEnterpriseLicenseLapsed(planTier, options) &&
+    isEnterpriseModuleFeature(feature) &&
+    featureGrantedOnTier("ENTERPRISE", feature, options?.deploymentMode)
+  ) {
+    return "lapsed";
+  }
+  return "unavailable";
+}
+
+/**
+ * True when the feature may be read or listed, including a lapsed enterprise module.
+ * Writes use {@link planFeatureWriteDecision}.
+ */
+export function planFeatureReadable(
+  planTier: string | null | undefined,
+  feature: PlanFeature,
+  options?: PlanEntitlementOptions,
+): boolean {
+  const access = planFeatureAccess(planTier, feature, options);
+  return access === "granted" || access === "lapsed";
+}
+
+/**
+ * Create and update gate.
+ * Lapsed enterprise modules return {@link PLAN_LICENSE_LAPSED} (402).
+ * Features the plan never included return `PLAN_FEATURE_REQUIRED` (403).
+ */
+export function planFeatureWriteDecision(
+  planTier: string | null | undefined,
+  feature: PlanFeature,
+  options?: PlanEntitlementOptions,
+): PlanFeatureWriteDecision {
+  const access = planFeatureAccess(planTier, feature, options);
+  if (access === "granted") {
+    return { allowed: true };
+  }
+  if (access === "lapsed") {
+    return {
+      allowed: false,
+      code: PLAN_LICENSE_LAPSED,
+      status: PLAN_LICENSE_LAPSED_STATUS,
+      message: PLAN_LICENSE_LAPSED_MESSAGE,
+    };
+  }
+  return {
+    allowed: false,
+    code: "PLAN_FEATURE_REQUIRED",
+    status: 403,
+    message: "this feature is not included in the current plan",
+  };
+}
+
+/**
+ * Resolve whether a plan grants a feature for create and update.
+ * Lapsed enterprise modules are not granted ({@link planFeatureReadable} still allows read and delete).
  * When custom override is enabled, explicit featureOverrides win over the catalog matrix.
- * Self-hosted modules-off (effective FREE) also applies {@link SELF_HOSTED_FREE_EXTRA}
- * and keeps `storageQuotas` off, so on-prem installs stay without a storage ceiling.
+ * Self-hosted FREE also applies {@link SELF_HOSTED_FREE_EXTRA} and keeps `storageQuotas` off.
  */
 export function hasPlanFeature(
   planTier: string | null | undefined,
   feature: PlanFeature,
   options?: PlanEntitlementOptions,
 ): boolean {
-  const effectiveTier = resolveEntitlementPlanTier(planTier, options);
-  let base = PLAN_FEATURE_MATRIX[effectiveTier][feature];
-  if (
-    options?.deploymentMode === "self_hosted" &&
-    effectiveTier === "FREE" &&
-    SELF_HOSTED_FREE_EXTRA[feature] === true
-  ) {
-    base = true;
-  }
-  if (
-    options?.deploymentMode === "self_hosted" &&
-    effectiveTier === "FREE" &&
-    feature === "storageQuotas"
-  ) {
-    base = false;
-  }
-  if (!options?.customOverride) {
-    return base;
-  }
-  const overridden = options.featureOverrides?.[feature];
-  if (typeof overridden === "boolean") {
-    return overridden;
-  }
-  return base;
+  return planFeatureAccess(planTier, feature, options) === "granted";
 }
 
 export function getPlanQuotaLimits(

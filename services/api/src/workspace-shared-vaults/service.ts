@@ -2,6 +2,7 @@ import { generateEntityId, isEntityId } from "../entity-id.ts";
 import {
   workspaceGetPlanQuotaLimits,
   workspaceHasPlanFeature,
+  workspacePlanFeatureWriteDecision,
   type PlanEntitlementRuntimeConfig,
   type WorkspacePlanEntitlementSource,
 } from "../plan-entitlements.ts";
@@ -1014,8 +1015,16 @@ export class WorkspaceSharedVaultsService {
     if (row.builtin_key === "extended" || row.builtin_key === "simple") {
       return;
     }
-    if (workspaceHasPlanFeature(this.config, workspace, "customWorkspaceProfiles")) {
+    const decision = workspacePlanFeatureWriteDecision(
+      this.config,
+      workspace,
+      "customWorkspaceProfiles",
+    );
+    if (decision.allowed) {
       return;
+    }
+    if (decision.code === "PLAN_LICENSE_LAPSED") {
+      throw new WorkspaceSharedVaultsServiceError(decision.code, decision.status, decision.message);
     }
     throw new WorkspaceSharedVaultsServiceError(
       "PLAN_FEATURE_REQUIRED",

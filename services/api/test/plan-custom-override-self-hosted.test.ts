@@ -56,9 +56,11 @@ test("self-hosted FREE override can enable monitoring and disable filesInItems",
 });
 
 test("self-hosted ENTERPRISE override can turn flags on and off over the modules-on matrix", () => {
-  assert.equal(hasPlanFeature("FREE", "monitoring", modulesOn), true);
+  assert.equal(hasPlanFeature("FREE", "monitoring", modulesOn), false);
   assert.equal(hasPlanFeature("FREE", "filesInItems", modulesOn), true);
-  assert.equal(hasPlanFeature("FREE", "capsuleAccessSettings", modulesOn), true);
+  assert.equal(hasPlanFeature("FREE", "capsuleAccessSettings", modulesOn), false);
+  assert.equal(hasPlanFeature("ENTERPRISE", "monitoring", modulesOn), true);
+  assert.equal(hasPlanFeature("ENTERPRISE", "capsuleAccessSettings", modulesOn), true);
 
   const disablePaid: PlanEntitlementOptions = {
     ...modulesOn,
@@ -81,8 +83,18 @@ test("self-hosted ENTERPRISE override can turn flags on and off over the modules
     featureOverrides: { customWorkspaceProfiles: false },
   };
   assert.equal(hasPlanFeature("FREE", "customWorkspaceProfiles", enableOnlyMonitoring), false);
-  assert.equal(hasPlanFeature("FREE", "customWorkspaceRoles", enableOnlyMonitoring), true);
-  assert.equal(hasPlanFeature("FREE", "monitoring", enableOnlyMonitoring), true);
+  assert.equal(hasPlanFeature("FREE", "customWorkspaceRoles", enableOnlyMonitoring), false);
+  assert.equal(hasPlanFeature("FREE", "monitoring", enableOnlyMonitoring), false);
+  assert.equal(hasPlanFeature("ENTERPRISE", "customWorkspaceRoles", enableOnlyMonitoring), true);
+  assert.equal(hasPlanFeature("ENTERPRISE", "monitoring", enableOnlyMonitoring), true);
+
+  const grantLapsed: PlanEntitlementOptions = {
+    ...modulesOn,
+    customOverride: true,
+    featureOverrides: { monitoring: true },
+  };
+  assert.equal(hasPlanFeature("FREE", "monitoring", grantLapsed), true);
+  assert.equal(hasPlanFeature("FREE", "capsuleAccessSettings", grantLapsed), false);
 });
 
 test("self-hosted feature overrides do not change the 10/1 quotas", () => {
@@ -116,6 +128,6 @@ test("self-hosted feature overrides do not change the 10/1 quotas", () => {
       planFeatureOverrides: { sharedVaults: false, additionalWorkspaceMembers: false },
     },
   );
-  assert.equal(modulesOnQuotas.maxAdditionalMembers, null);
-  assert.equal(modulesOnQuotas.maxSharedVaults, null);
+  assert.equal(modulesOnQuotas.maxAdditionalMembers, 10);
+  assert.equal(modulesOnQuotas.maxSharedVaults, 1);
 });

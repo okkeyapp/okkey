@@ -162,6 +162,7 @@ async function main(): Promise<void> {
   const capsuleDefaultsService = new CapsuleDefaultsService({
     defaults: storage.repositories.workspaceMemberCapsuleDefaults,
     workspaces: storage.repositories.workspaces,
+    config,
   });
   const storageQuota = new WorkspaceStorageQuotaService({ db: storage.postgres, config });
   const workspaceSettingsService = new WorkspaceSettingsService({
