@@ -1,6 +1,6 @@
 # Okkey browser extension — Privacy policy
 
-**Applies to:** Okkey browser extension (Chrome / Edge / Opera / Firefox), version `1.0.0.2` and later store builds.  
+**Applies to:** the Okkey browser extension distributed through the Chrome Web Store, Microsoft Edge Add-ons, Opera Add-ons, and Firefox Add-ons. This notice covers the extension as shipped in the current store release and is not pinned to a manifest build number.  
 **Product:** open-source, self-hosted password manager ([github.com/okkeyapp/okkey](https://github.com/okkeyapp/okkey)).
 
 This notice describes how the **browser extension** handles data. It is written for store review (CWS / Edge / Opera / AMO) and for self-hosted deployments of the open-source Core. It is not a substitute for an organisation’s own privacy policy if that organisation processes personal data of others on a private Okkey instance.

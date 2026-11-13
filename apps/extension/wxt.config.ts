@@ -137,6 +137,11 @@ export default defineConfig({
       "rust/crypto-engine/Cargo.toml",
       "rust/crypto-engine/Cargo.lock",
       "rust/crypto-engine/src/**",
+      // WXT 0.20 keeps a path when it matches includeSources, even if excludeSources
+      // also matches (`include || !exclude`). Negate tests here so they stay out of
+      // the AMO sources zip (see store/SOURCES.md).
+      "!**/*.test.ts",
+      "!**/*.test.tsx",
     ],
     // WXT filter is `includeMatch || !excludeMatch` (not a pure allowlist).
     // Excluding `**` forces only `includeSources` paths into the AMO sources zip.
