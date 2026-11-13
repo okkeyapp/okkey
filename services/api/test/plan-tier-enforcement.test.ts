@@ -45,7 +45,7 @@ function serviceForTier(planTier: "FREE" | "ENTERPRISE"): CapsuleService {
       putObject: async () => {},
       getObject: async () => null,
     },
-    // SaaS: honor workspace plan_tier (self_hosted with modules also honors plan_tier).
+    // SaaS: honor workspace plan_tier. Self-hosted ignores it and follows loaded modules.
     config: createTestApiConfig({
       deploymentMode: "saas",
       allowedCryptoProfileVersions: [2],
@@ -146,7 +146,7 @@ test("self_hosted without modules denies capsule access even when plan_tier is E
   );
 });
 
-test("self_hosted modules on and FREE reject new capsule access settings", async () => {
+test("self_hosted modules on and FREE still allow capsule access settings", async () => {
   const service = new CapsuleService({
     db: {
       query: async (sql: string) => {
@@ -194,10 +194,12 @@ test("self_hosted modules on and FREE reject new capsule access settings", async
         encryptedPayload: blob,
         password: "capsule-secret",
       }),
-    (error: unknown) =>
-      error instanceof CapsuleServiceError &&
-      error.code === "PLAN_LICENSE_LAPSED" &&
-      error.statusCode === 402,
+    (error: unknown) => {
+      assert.ok(error instanceof Error);
+      assert.equal(error.message, "PLAN_GATE_PASSED");
+      assert.ok(!(error instanceof CapsuleServiceError) || error.code !== "PLAN_LICENSE_LAPSED");
+      return true;
+    },
   );
 
   await assert.rejects(

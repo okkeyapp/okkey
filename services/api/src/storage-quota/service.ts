@@ -40,8 +40,8 @@ export type StorageQuotaWorkspace = {
 /**
  * Counts current encrypted workspace content and rejects writes over the plan ceiling
  * when `storageQuotas` is on for the plan and deployment.
- * Self-hosted deployments keep the flag off (modules off) or a null ceiling (modules on),
- * so writes still return before any usage query.
+ * Self-hosted deployments keep a null ceiling (modules off forces the flag off; modules on
+ * still replace the catalog ceiling with none), so writes return before any usage query.
  * Settings snapshots still report usage so the client can show it.
  *
  * Counted bytes:

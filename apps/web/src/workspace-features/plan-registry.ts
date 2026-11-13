@@ -13,8 +13,8 @@ export type WorkspaceSettingsPlanSectionProps = {
 /**
  * Enterprise may replace Core’s self-hosted FREE plan notice.
  * - SaaS: full catalog + change-plan popup (`plan_tier`)
- * - Self-hosted with a paid `plan_tier`: EE plan section
- * - Self-hosted FREE (modules off, or modules on with a FREE plan): Core license request
+ * - Self-hosted with modules loaded: EE plan section (stored `plan_tier` is ignored)
+ * - Self-hosted without modules: Core license request (FREE), for every stored `plan_tier`
  */
 export type WorkspaceSettingsPlanModule = {
   PlanSection: ComponentType<WorkspaceSettingsPlanSectionProps> | null;

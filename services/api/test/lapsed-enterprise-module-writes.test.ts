@@ -1,5 +1,5 @@
 /**
- * Lapsed self-hosted enterprise license: custom role assignment is a write.
+ * Self-hosted custom role assignment follows loaded modules, not `plan_tier`.
  * List and delete of remnant roles stay on WorkspaceBuiltInRolesService and are not plan-gated.
  */
 import assert from "node:assert/strict";
@@ -60,18 +60,17 @@ function membersService(planTier: "FREE" | "ENTERPRISE") {
   };
 }
 
-test("lapsed enterprise license blocks assigning a custom role", async () => {
-  const { service, memberUpdates } = membersService("FREE");
+test("self-hosted modules and plan_tier FREE do not lapse custom role assignment", async () => {
+  const { service } = membersService("FREE");
   await assert.rejects(
     () => service.updateMemberRole(workspaceId, actorId, targetId, roleId),
     (error: unknown) => {
       assert.ok(error instanceof WorkspaceMembersServiceError);
-      assert.equal(error.code, "PLAN_LICENSE_LAPSED");
-      assert.equal(error.statusCode, 402);
+      assert.notEqual(error.code, "PLAN_LICENSE_LAPSED");
+      assert.notEqual(error.code, "PLAN_FEATURE_REQUIRED");
       return true;
     },
   );
-  assert.equal(memberUpdates(), 0);
 });
 
 test("paid self-hosted plan does not lapse custom role assignment", async () => {

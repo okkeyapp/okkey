@@ -65,8 +65,10 @@ export type WorkspaceStorageQuotaStatus = WorkspaceStorageQuota & {
 export const PLAN_QUOTA_EXCEEDED = "PLAN_QUOTA_EXCEEDED";
 
 /**
- * HTTP error code when enterprise modules are installed but the workspace plan is FREE.
+ * HTTP error code when a self-hosted license check reports the installed edition as lapsed.
  * Create and update of those modules are rejected. Read, list, and delete stay allowed.
+ * `workspaces.plan_tier` is not an input. No license check is wired yet, so a self-hosted
+ * workspace with modules loaded does not return this code.
  */
 export const PLAN_LICENSE_LAPSED = "PLAN_LICENSE_LAPSED";
 
@@ -78,8 +80,9 @@ export const PLAN_LICENSE_LAPSED_MESSAGE =
 
 /**
  * Features that belong to installed enterprise modules.
- * On a lapsed self-hosted plan they stay readable and deletable, and writes are rejected.
- * Core self-hosted FREE features (shared vaults, files, capsules, member seats) are not in this set.
+ * When a future license check marks the edition lapsed they stay readable and deletable,
+ * and writes are rejected. Core self-hosted FREE features (shared vaults, files, capsules,
+ * member seats) are not in this set. `workspaces.plan_tier` does not select that state.
  */
 export const ENTERPRISE_MODULE_FEATURES = [
   "capsuleAccessSettings",
@@ -136,15 +139,21 @@ export type PlanEntitlementOptions = {
   customOverride?: boolean | null;
   featureOverrides?: PlanFeatureOverrides | null;
   /**
-   * Self-hosted:
-   * - modules off → FREE matrix (plus {@link SELF_HOSTED_FREE_EXTRA} and {@link SELF_HOSTED_FREE_QUOTA_OVERRIDES})
-   * - modules on and a paid `plan_tier` → ENTERPRISE matrix (`plan_tier` otherwise ignored)
-   * - modules on and `plan_tier` FREE → FREE matrix; {@link ENTERPRISE_MODULE_FEATURES} are lapsed
+   * Self-hosted: loaded modules → ENTERPRISE matrix and quotas. No modules → FREE matrix
+   * (plus {@link SELF_HOSTED_FREE_EXTRA} and {@link SELF_HOSTED_FREE_QUOTA_OVERRIDES}).
+   * `workspaces.plan_tier` is ignored for every stored value.
    * SaaS / omitted mode: catalog `plan_tier`.
    */
   deploymentMode?: DeploymentMode | null;
   /** True only when enterprise modules were requested and successfully loaded. */
   enterpriseModulesActive?: boolean | null;
+  /**
+   * Explicit self-hosted license-lapsed signal. Not derived from `plan_tier`.
+   * Only applies when `deploymentMode` is `self_hosted` and modules are loaded.
+   * Leave unset until a license check exists; then create/update of
+   * {@link ENTERPRISE_MODULE_FEATURES} is lapsed and quotas fall back to self-hosted FREE.
+   */
+  enterpriseLicenseLapsed?: boolean | null;
 };
 
 export const PLAN_TIERS: readonly PlanTier[] = [
@@ -221,10 +230,11 @@ const BUSINESS_FEATURES = {
  *   recovery / badge, no custom roles, profiles, or capsule access settings.
  * - Self-hosted modules off → FREE matrix plus {@link SELF_HOSTED_FREE_EXTRA}
  *   (`filesInItems`, `filesInCapsules`) and {@link SELF_HOSTED_FREE_QUOTA_OVERRIDES},
- *   with `storageQuotas` forced off. Self-hosted modules on and a paid plan → ENTERPRISE
- *   matrix. Self-hosted modules on and FREE → the same FREE matrix; enterprise-module
- *   features are {@link PlanFeatureAccess} `"lapsed"`. Storage ceilings stay off for
- *   every self-hosted tier.
+ *   with `storageQuotas` forced off, for every stored `plan_tier`.
+ *   Self-hosted modules on → ENTERPRISE matrix and quotas, again for every stored
+ *   `plan_tier`. A future license check may set {@link PlanEntitlementOptions.enterpriseLicenseLapsed};
+ *   until then that flag stays unset and self-host with modules is never
+ *   {@link PlanFeatureAccess} `"lapsed"`. Storage ceilings stay off for every self-hosted tier.
  * - PREMIUM: FREE plus files in items and capsules, monitoring, recovery, trusted contacts,
  *   and the paid badge.
  * - TEAM / ENTERPRISE: PREMIUM plus capsule access settings, custom roles, and custom profiles.
@@ -362,36 +372,39 @@ export function sanitizePlanFeatureOverrides(
 }
 
 /**
- * Installed enterprise modules with a FREE workspace plan (license not renewed).
- * Paid self-hosted tiers and SaaS are not lapsed.
+ * Installed enterprise modules whose license check reported a lapse.
+ * `workspaces.plan_tier` is not read. SaaS and self-host without modules are not lapsed.
+ * With no license check wired, callers leave `enterpriseLicenseLapsed` unset and this is false.
  */
 export function isSelfHostedEnterpriseLicenseLapsed(
-  workspacePlanTier: string | null | undefined,
-  options?: Pick<PlanEntitlementOptions, "deploymentMode" | "enterpriseModulesActive">,
+  options?: Pick<
+    PlanEntitlementOptions,
+    "deploymentMode" | "enterpriseModulesActive" | "enterpriseLicenseLapsed"
+  >,
 ): boolean {
   return (
     options?.deploymentMode === "self_hosted" &&
     options.enterpriseModulesActive === true &&
-    normalizePlanTier(workspacePlanTier) === "FREE"
+    options.enterpriseLicenseLapsed === true
   );
 }
 
 /**
  * Effective catalog tier used for feature / quota checks.
- * Self-hosted modules off → FREE.
- * Self-hosted modules on and a paid plan → ENTERPRISE (specific paid tier is not used).
- * Self-hosted modules on and FREE → FREE (the real plan, not the installed edition).
+ * Self-hosted modules off → FREE, for every stored `plan_tier`.
+ * Self-hosted modules on → ENTERPRISE, for every stored `plan_tier`.
+ * Self-hosted modules on and `enterpriseLicenseLapsed` → FREE (license signal, not `plan_tier`).
  * SaaS / omitted mode: workspace `plan_tier` (legacy FAMILY reads as PREMIUM).
  */
 export function resolveEntitlementPlanTier(
   workspacePlanTier: string | null | undefined,
-  options?: Pick<PlanEntitlementOptions, "deploymentMode" | "enterpriseModulesActive">,
+  options?: Pick<
+    PlanEntitlementOptions,
+    "deploymentMode" | "enterpriseModulesActive" | "enterpriseLicenseLapsed"
+  >,
 ): PlanTier {
   if (options?.deploymentMode === "self_hosted") {
-    if (!options.enterpriseModulesActive) {
-      return "FREE";
-    }
-    if (normalizePlanTier(workspacePlanTier) === "FREE") {
+    if (!options.enterpriseModulesActive || options.enterpriseLicenseLapsed === true) {
       return "FREE";
     }
     return "ENTERPRISE";
@@ -415,8 +428,9 @@ function featureGrantedOnTier(
 }
 
 /**
- * Granted, lapsed (installed enterprise module, unpaid plan), or unavailable.
+ * Granted, lapsed (installed enterprise module, license check lapsed), or unavailable.
  * Custom overrides win over both the catalog and the lapsed state.
+ * Self-hosted lapsed is {@link PlanEntitlementOptions.enterpriseLicenseLapsed}, never `plan_tier`.
  */
 export function planFeatureAccess(
   planTier: string | null | undefined,
@@ -435,7 +449,7 @@ export function planFeatureAccess(
     return "granted";
   }
   if (
-    isSelfHostedEnterpriseLicenseLapsed(planTier, options) &&
+    isSelfHostedEnterpriseLicenseLapsed(options) &&
     isEnterpriseModuleFeature(feature) &&
     featureGrantedOnTier("ENTERPRISE", feature, options?.deploymentMode)
   ) {
@@ -503,7 +517,10 @@ export function hasPlanFeature(
 
 export function getPlanQuotaLimits(
   planTier: string | null | undefined,
-  options?: Pick<PlanEntitlementOptions, "deploymentMode" | "enterpriseModulesActive">,
+  options?: Pick<
+    PlanEntitlementOptions,
+    "deploymentMode" | "enterpriseModulesActive" | "enterpriseLicenseLapsed"
+  >,
 ): PlanQuotaLimits {
   const effectiveTier = resolveEntitlementPlanTier(planTier, options);
   const catalog =

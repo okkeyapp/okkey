@@ -91,24 +91,14 @@ describe("workspace settings plan section", () => {
     resetBackendEnterpriseModulesActiveForTests();
   });
 
-  it("EE + FREE shows the license request form and opens it", async () => {
+  it("EE + FREE plan_tier shows the enterprise plan section", () => {
     vi.stubEnv("VITE_DEPLOYMENT_MODE", "self_hosted");
     vi.stubEnv("VITE_ENTERPRISE_MODULES_ACTIVE", "true");
 
     renderPlanPage("FREE");
 
-    expect(screen.queryByTestId("ee-plan-section")).not.toBeInTheDocument();
-    const cta = await screen.findByRole("button", { name: licenseCtaName });
-    await waitFor(() => {
-      expect(cta).toBeEnabled();
-    });
-    expect(
-      screen.queryByText("web.workspaceSettings.plan.selfHosted.requestTitle"),
-    ).not.toBeInTheDocument();
-    fireEvent.click(cta);
-    expect(
-      screen.getAllByText("web.workspaceSettings.plan.selfHosted.requestTitle").length,
-    ).toBeGreaterThan(0);
+    expect(screen.getByTestId("ee-plan-section")).toHaveTextContent("ee-plan:ENTERPRISE");
+    expect(screen.queryByRole("button", { name: licenseCtaName })).not.toBeInTheDocument();
   });
 
   it("EE + paid keeps the enterprise plan section", () => {

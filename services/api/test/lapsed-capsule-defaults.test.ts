@@ -1,6 +1,6 @@
 /**
- * Lapsed self-hosted enterprise license: capsule default writes are rejected.
- * GET stays available. SaaS and self-hosted without modules keep the previous write behaviour.
+ * Capsule default writes on self-host follow loaded modules, not `plan_tier`.
+ * GET stays available. SaaS still follows `plan_tier` and does not lapse from it.
  */
 import assert from "node:assert/strict";
 import type { IncomingMessage, ServerResponse } from "node:http";
@@ -9,10 +9,7 @@ import test from "node:test";
 import { DEFAULT_WORKSPACE_CAPSULE_POLICIES } from "@okkey/types";
 import { CapsuleDefaultsService } from "../src/capsule-defaults/service.ts";
 import { createWorkspaceCapsuleDefaultsRoute } from "../src/routes/workspace-capsule-defaults.ts";
-import {
-  WorkspaceSettingsService,
-  WorkspaceSettingsServiceError,
-} from "../src/workspace-settings/service.ts";
+import { WorkspaceSettingsService } from "../src/workspace-settings/service.ts";
 import { createTestApiConfig } from "./test-api-config.ts";
 
 const WORKSPACE_ID = "1000000000000000100";
@@ -112,13 +109,13 @@ async function dispatch(
   return res;
 }
 
-test("EE + FREE rejects PUT capsule-defaults and still lists them", async () => {
+test("EE + FREE saves PUT capsule-defaults and still lists them", async () => {
   const { handler, writes } = routeFor("FREE", true);
   const put = await dispatch(handler, "PUT", { settings });
   const payload = JSON.parse(put.body) as { error?: string };
-  assert.equal(put.statusCode, 402);
-  assert.equal(payload.error, "PLAN_LICENSE_LAPSED");
-  assert.equal(writes(), 0);
+  assert.equal(put.statusCode, 200);
+  assert.notEqual(payload.error, "PLAN_LICENSE_LAPSED");
+  assert.equal(writes(), 3);
 
   const get = await dispatch(handler, "GET");
   assert.equal(get.statusCode, 200);
@@ -146,31 +143,31 @@ test("SaaS FREE still saves capsule-defaults", async () => {
   assert.equal(writes(), 3);
 });
 
-test("EE + FREE rejects a capsule policy change and leaves stored policies", async () => {
+test("EE + FREE saves a capsule policy change", async () => {
   let saved = false;
+  const current = {
+    ...workspace("FREE"),
+    deletedItemsRetentionDays: 30,
+    allowedFileExtensions: [],
+    maxFileSizeMb: 25,
+    filesInItemsEnabled: true,
+    capsulePolicies: DEFAULT_WORKSPACE_CAPSULE_POLICIES,
+    tileColor: null,
+    logoVaultId: null,
+    logoAttachmentId: null,
+    logoKeyVersion: null,
+    logoUpdatedAt: null,
+    clientSettingsKeyVersion: null,
+    clientSettingsCiphertext: null,
+    planChangeRequestSentAt: null,
+  };
   const service = new WorkspaceSettingsService({
     workspaces: {
-      findById: async () =>
-        ({
-          ...workspace("FREE"),
-          deletedItemsRetentionDays: 30,
-          allowedFileExtensions: [],
-          maxFileSizeMb: 25,
-          filesInItemsEnabled: true,
-          capsulePolicies: DEFAULT_WORKSPACE_CAPSULE_POLICIES,
-          tileColor: null,
-          logoVaultId: null,
-          logoAttachmentId: null,
-          logoKeyVersion: null,
-          logoUpdatedAt: null,
-          clientSettingsKeyVersion: null,
-          clientSettingsCiphertext: null,
-          planChangeRequestSentAt: null,
-        }) as never,
+      findById: async () => current as never,
       hasAccess: async () => true,
-      updateGeneralSettings: async () => {
+      updateGeneralSettings: async (_workspaceId: string, update: { capsulePolicies?: typeof current.capsulePolicies }) => {
         saved = true;
-        throw new Error("should not save");
+        return { ...current, ...update } as never;
       },
       deleteOwnedWorkspace: async () => false,
     },
@@ -182,17 +179,9 @@ test("EE + FREE rejects a capsule policy change and leaves stored policies", asy
     }),
   });
 
-  await assert.rejects(
-    () =>
-      service.updateSettings(WORKSPACE_ID, USER_ID, {
-        capsulePolicies: { ...DEFAULT_WORKSPACE_CAPSULE_POLICIES, allowMode: "none" },
-      }),
-    (error: unknown) => {
-      assert.ok(error instanceof WorkspaceSettingsServiceError);
-      assert.equal(error.code, "PLAN_LICENSE_LAPSED");
-      assert.equal(error.statusCode, 402);
-      return true;
-    },
-  );
-  assert.equal(saved, false);
+  const updated = await service.updateSettings(WORKSPACE_ID, USER_ID, {
+    capsulePolicies: { ...DEFAULT_WORKSPACE_CAPSULE_POLICIES, allowMode: "none" },
+  });
+  assert.equal(saved, true);
+  assert.equal(updated.capsulePolicies.allowMode, "none");
 });

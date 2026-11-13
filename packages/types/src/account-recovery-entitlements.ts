@@ -67,7 +67,8 @@ export function canEnableTrustedDevicesRecovery(
 /**
  * Resolve account-level recovery method entitlements from the user's
  * accessible workspaces (owner or member). Empty list → FREE-only (key only).
- * Pass deployment runtime in `options`. A lapsed self-hosted plan does not grant trusted devices or contacts.
+ * Pass deployment runtime in `options`. Self-hosted grants follow loaded modules, not `plan_tier`.
+ * A license-lapsed signal (`enterpriseLicenseLapsed`) does not grant trusted devices or contacts.
  */
 export function resolveAccountRecoveryEntitlements(
   workspaces: readonly AccountRecoveryWorkspaceLike[],
