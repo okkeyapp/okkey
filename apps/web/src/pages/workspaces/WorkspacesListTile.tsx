@@ -1,6 +1,6 @@
-import type { SVGProps } from "react";
 import type { Workspace } from "@okkey/types";
 
+import workspacePlanModule from "@okkey-enterprise/workspace-plan";
 import { workspaceHasPlanFeature } from "../../workspace/planEntitlements";
 import { cn, workspaceTileElevatedShadowClassName } from "@okkey/ui";
 
@@ -14,18 +14,6 @@ type WorkspacesListTileProps = {
   description: string;
   onClick: () => void;
 };
-
-function BriefcaseGlyph(props: SVGProps<SVGSVGElement>) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden {...props}>
-      <path d="M16 20V4a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
-      <rect width="20" height="14" x="2" y="6" rx="2" />
-    </svg>
-  );
-}
-
-const badgeShadow =
-  "shadow-[0px_0px_0px_1px_rgba(0,0,0,0.06),0px_1px_2px_rgba(0,0,0,0.12)] dark:shadow-[0px_0px_0px_1px_rgba(255,255,255,0.2),0px_2px_8px_rgba(255,255,255,0.07)]";
 
 export default function WorkspacesListTile({ workspace, description, onClick }: WorkspacesListTileProps) {
   const { accessToken, vaultKey, userId } = useAuthVault();
@@ -41,7 +29,11 @@ export default function WorkspacesListTile({ workspace, description, onClick }: 
     logoKeyVersion: workspace.logoKeyVersion,
     userId,
   });
-  const showBusinessBadge = workspaceHasPlanFeature(workspace, "paidPlanBadge") && !hasCustomLogo;
+  const ListTileBadge = workspacePlanModule.ListTileBadge;
+  const showPlanBadge =
+    Boolean(ListTileBadge) &&
+    !hasCustomLogo &&
+    workspaceHasPlanFeature(workspace, "paidPlanBadge");
 
   return (
     <button
@@ -61,16 +53,7 @@ export default function WorkspacesListTile({ workspace, description, onClick }: 
           imageSrc={logoUrl.imageSrc}
           loading={logoUrl.loading}
         />
-        {showBusinessBadge ? (
-          <div
-            className={cn(
-              "absolute -bottom-0.5 -right-0.5 flex size-6 items-center justify-center rounded-lg bg-card",
-              badgeShadow,
-            )}
-          >
-            <BriefcaseGlyph className="size-3.5 text-foreground" />
-          </div>
-        ) : null}
+        {showPlanBadge && ListTileBadge ? <ListTileBadge workspace={workspace} /> : null}
       </div>
       <div className="flex min-w-0 w-full flex-col items-center gap-0.5 text-center">
         <p className="w-full min-w-0 truncate text-base font-semibold leading-relaxed text-foreground">
