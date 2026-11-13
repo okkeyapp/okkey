@@ -140,8 +140,9 @@ SDK for communicating with Okkey API.
 Contains:
 
 - REST client
-- WebSocket client
 - API types
+
+Sync uses the HTTP API (`/vaults/:vaultId/events` and `/workspaces/:workspaceId/personal-events`).
 
 Used by:
 

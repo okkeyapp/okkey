@@ -54,8 +54,8 @@ Soft numeric limits live in `PLAN_QUOTA_LIMITS` / `getPlanQuotaLimits` (same sel
 | `accountRecovery` | no | yes | yes | yes | yes |
 | `trustedContacts` | no | yes | yes | yes | yes |
 | `storageQuotas` | no | yes | yes | yes | yes |
-| `sharedVaults` | no | no | yes | yes | yes |
-| `additionalWorkspaceMembers` | no | no | yes | yes | yes |
+| `sharedVaults` | yes | yes | yes | yes | yes |
+| `additionalWorkspaceMembers` | yes | yes | yes | yes | yes |
 | `customWorkspaceRoles` | no | no | yes | yes | yes |
 | `customWorkspaceProfiles` | no | no | yes | yes | yes |
 | `paidPlanBadge` | no | yes | yes | yes | yes |
@@ -70,7 +70,7 @@ Two gates on self-hosted:
 
 | Gate | Meaning |
 |---|---|
-| Enterprise modules on? | `ENTERPRISE_MODULES` / `VITE_ENTERPRISE_MODULES=true` **and** loadable sibling `okkey-enterprise` → EE UI/plugins available. Without modules, paid routes are absent (404) and matrix is FREE even if SQL says ENTERPRISE. |
+| Enterprise modules on? | `ENTERPRISE_MODULES` / `VITE_ENTERPRISE_MODULES=true` **and** loadable sibling `okkey-enterprise` → EE UI/plugins available. Without modules, only plugin routes (custom workspace roles, custom profiles, and similar paid plugins) are absent (404). Invitations (`POST /workspaces/:id/invitations`) and shared vaults (`/vaults`) are Core routes: on FREE they return 2xx within quota and `403 PLAN_QUOTA_EXCEEDED` above it (self-hosted FREE: 10 additional members, 1 shared vault). The feature matrix is FREE even if SQL says ENTERPRISE. |
 | Workspace feature matrix | With modules loaded → ENTERPRISE matrix via `resolveEntitlementPlanTier` / `hasPlanFeature` (`plan_tier` ignored). Modules off → FREE + `SELF_HOSTED_FREE_EXTRA`. |
 
 Setting `plan_tier=ENTERPRISE` alone does **not** load modules. Future signed license from **`okkey-license`** may bind instance claims; interim self-host paid access is modules-only.
@@ -128,7 +128,7 @@ The open-source Core provides the FREE plan baseline:
 - 2FA: authenticator app and backup codes.
 - Self-hosted: only one workspace; enterprise feature modules unavailable in OSS builds.
 - SaaS multi-workspace create is **not** open-source (lives in `okkey-enterprise`).
-- One personal vault per workspace; shared vaults are unavailable.
+- One personal vault per workspace. Shared vaults are Core (`sharedVaults` is granted on every catalog tier, including FREE) and limited by `maxSharedVaults` (self-hosted FREE: 1; over quota `403 PLAN_QUOTA_EXCEEDED`).
 - Folders are available.
 - Capsules are available; access settings are unavailable (no expiry, view limits, password, or recipient restrictions).
 - Monitoring is unavailable.
@@ -136,8 +136,8 @@ The open-source Core provides the FREE plan baseline:
 - Workspace settings: main settings available.
 - Workspace settings: roles view-only for default roles (custom roles require a plan with `customWorkspaceRoles` + enterprise module).
 - Workspace settings: profiles view-only for default profiles.
-- Workspace settings: members — owner only in OSS; inviting additional members requires enterprise `workspace-members` plugin **and** `additionalWorkspaceMembers` plan feature.
-- Workspace settings: vaults — personal vault metadata editable when `workspace-shared-vaults` module is injected (popup); default name is set only at create/register. Shared vaults require the same plugin **and** `sharedVaults` plan feature.
+- Workspace settings: members — invitations are Core (`POST /workspaces/:id/invitations`, preview `GET /invitations/:token`, accept `POST /invitations/:token/accept`). `additionalWorkspaceMembers` is granted on every catalog tier, including FREE; seats are limited by `maxAdditionalMembers` (self-hosted FREE: 10 additional members via `SELF_HOSTED_FREE_QUOTA_OVERRIDES`; SaaS FREE catalog: 3). Over quota the API returns `403 PLAN_QUOTA_EXCEEDED`.
+- Workspace settings: vaults — personal and shared vault routes are Core (`POST /workspaces/:id/vaults`, `/vaults`, shares and key wrap/rotate). `sharedVaults` is granted on every catalog tier, including FREE, and limited by `maxSharedVaults` (self-hosted FREE: 1; SaaS FREE catalog: 1). Over quota the API returns `403 PLAN_QUOTA_EXCEEDED`. The personal vault default name is set only at create/register.
 - Files in items: enabled on self-hosted FREE (`SELF_HOSTED_FREE_EXTRA`); on SaaS require PREMIUM+ `filesInItems` (and workspace toggle either way).
 - Workspace settings: change plan / payments / license surfaces exist as product shells.
 - Personal settings: main settings available.
@@ -165,9 +165,9 @@ Private SaaS / paid surfaces (examples):
 
 - `workspace-roles` — custom roles CRUD
 - `workspace-profiles` — custom profiles CRUD
-- `workspace-members` — invite / manage additional members + vault-access orchestration, including public invite preview (`GET /invitations/:token`), accept (`POST /invitations/:token/accept`), and pending VaultKey wraps (Core keeps `GET …/members` + list loaders)
-- `workspace-shared-vaults` — shared vault create/delete/access/shares orchestration + UI popups (Core keeps list/get/patch personal + `GET …/key`; wrap/rotate crypto in Core `VaultSharingService`)
 - `workspace-tenancy` — `POST /workspaces` when deployment mode is `saas`
+
+Invitations and shared vaults are not enterprise plugins. They are Core routes, quota-limited by `additionalWorkspaceMembers` / `maxAdditionalMembers` and `sharedVaults` / `maxSharedVaults`.
 
 ---
 
@@ -189,8 +189,6 @@ Enterprise implements:
 - admin & reporting
 - SaaS workspace tenancy
 - custom workspace roles
-- additional workspace members (invite / vault-access)
-- shared vaults product surface (create/share/access UI + routes)
 
 ---
 
