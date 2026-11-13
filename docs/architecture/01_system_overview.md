@@ -48,7 +48,7 @@ Key product concepts (see `docs/glossary.md`):
                     │  Browser Extension         │
                     └─────────────┬──────────────┘
                                   │
-                                  │ HTTPS / WebSocket
+                                  │ HTTPS / REST
                                   │
                     ┌─────────────▼──────────────┐
                     │       Okkey Core API       │
@@ -187,7 +187,7 @@ Vault items require crypto profile `v2` (`qday_default`) for read and write in e
 ```
 Clients
 │
-│ HTTPS / WebSocket
+│ HTTPS / REST
 ▼
 Okkey Core API
 │
