@@ -1,10 +1,20 @@
-import { decideHttpBasicAuth, type HttpAuthBlockingResponse } from "./httpAuthDecision.ts";
 import {
-  HTTP_AUTH_CONSENT_TIMEOUT_MS,
+  challengeIdFromHttpAuthAlarm,
+  createHttpAuthConsentTracker,
+  HTTP_AUTH_PENDING_SESSION_KEY,
+  httpAuthTimeoutAlarmName,
+  parseHttpAuthPendingBag,
+  type HttpAuthConsentTracker,
+  type HttpAuthPendingSession,
+} from "./httpAuthConsentTimeout.ts";
+import { decideHttpBasicAuth, type HttpAuthBlockingResponse } from "./httpAuthDecision.ts";
+import { extensionSessionStorage } from "./extensionStorageApi.ts";
+import {
   HTTP_AUTH_PORT_PREFIX,
   isHttpAuthRuntimeMessage,
   parseHttpAuthDecision,
   parseHttpAuthReady,
+  parseHttpAuthTimeout,
   type HttpAuthConsentResult,
   type HttpAuthPromptView,
 } from "./httpAuthMessages.ts";
@@ -32,15 +42,54 @@ type AuthEvent = {
   ) => void;
 };
 
-type PendingConsent = {
-  view: HttpAuthPromptView;
-  settled: boolean;
-  windowId: number | null;
-  timer: ReturnType<typeof setTimeout>;
-  resolve: (result: HttpAuthConsentResult) => void;
-};
+const promptViews = new Map<string, HttpAuthPromptView>();
+let consentTracker: HttpAuthConsentTracker | null = null;
 
-const pendingById = new Map<string, PendingConsent>();
+function activeConsentTracker(): HttpAuthConsentTracker {
+  if (!consentTracker) {
+    consentTracker = createHttpAuthConsentTracker({
+      now: () => Date.now(),
+      setTimer: (callback, delayMs) => setTimeout(() => void callback(), delayMs),
+      clearTimer: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
+      scheduleAlarm: (challengeId, whenMs) => {
+        // Chromium delays alarms closer than ~30s and rejects periodInMinutes
+        // below 1. The consent deadline is 90s, so this is an absolute `when`.
+        void browser.alarms.create(httpAuthTimeoutAlarmName(challengeId), { when: whenMs }).catch(() => undefined);
+      },
+      clearAlarm: (challengeId) => {
+        void browser.alarms.clear(httpAuthTimeoutAlarmName(challengeId)).catch(() => undefined);
+      },
+      closeWindow: (windowId) => {
+        void browser.windows.remove(windowId).catch(() => undefined);
+      },
+      log: logHttpAuth,
+      readPending: readConsentSession,
+      writePending: writeConsentSession,
+    });
+  }
+  return consentTracker;
+}
+
+async function readConsentSession(): Promise<Record<string, HttpAuthPendingSession>> {
+  const area = extensionSessionStorage();
+  if (!area) {
+    return {};
+  }
+  const stored = await area.get(HTTP_AUTH_PENDING_SESSION_KEY);
+  return parseHttpAuthPendingBag(stored[HTTP_AUTH_PENDING_SESSION_KEY]);
+}
+
+async function writeConsentSession(records: Record<string, HttpAuthPendingSession>): Promise<void> {
+  const area = extensionSessionStorage();
+  if (!area) {
+    return;
+  }
+  if (Object.keys(records).length === 0) {
+    await area.remove(HTTP_AUTH_PENDING_SESSION_KEY);
+    return;
+  }
+  await area.set({ [HTTP_AUTH_PENDING_SESSION_KEY]: records });
+}
 
 function isFirefoxBuild(): boolean {
   // Direct `import.meta.env.BROWSER` so the bundler inlines "firefox" or "chrome".
@@ -51,37 +100,19 @@ function emptyResponse(): Record<string, never> {
   return {};
 }
 
-function settleConsent(challengeId: string, result: HttpAuthConsentResult): void {
-  const pending = pendingById.get(challengeId);
-  if (!pending || pending.settled) {
-    return;
-  }
-  pending.settled = true;
-  clearTimeout(pending.timer);
-  pendingById.delete(challengeId);
-  pending.resolve(result);
-  const windowId = pending.windowId;
-  if (windowId != null) {
-    void browser.windows.remove(windowId).catch(() => {
-      // The user may already have closed the window.
-    });
-  }
-}
-
 function requestHttpAuthConsent(view: HttpAuthPromptView): Promise<HttpAuthConsentResult> {
   const challengeId = crypto.randomUUID();
+  const tracker = activeConsentTracker();
+  promptViews.set(challengeId, view);
   return new Promise((resolve) => {
-    const timer = setTimeout(() => {
-      settleConsent(challengeId, { outcome: "timeout" });
-    }, HTTP_AUTH_CONSENT_TIMEOUT_MS);
-    const pending: PendingConsent = {
-      view,
-      settled: false,
-      windowId: null,
-      timer,
-      resolve,
-    };
-    pendingById.set(challengeId, pending);
+    void tracker.open({
+      challengeId,
+      origin: view.origin,
+      resolve: (result) => {
+        promptViews.delete(challengeId);
+        resolve(result);
+      },
+    });
     const pageUrl = browser.runtime.getURL("http-auth-prompt.html");
     const url = `${pageUrl}?challenge=${encodeURIComponent(challengeId)}`;
     void browser.windows
@@ -93,40 +124,54 @@ function requestHttpAuthConsent(view: HttpAuthPromptView): Promise<HttpAuthConse
         focused: true,
       })
       .then((created) => {
-        if (pending.settled) {
-          if (created?.id != null) {
-            void browser.windows.remove(created.id).catch(() => undefined);
-          }
+        if (created?.id == null) {
           return;
         }
-        pending.windowId = created?.id ?? null;
+        void tracker.attachWindow(challengeId, created.id);
       })
       .catch(() => {
-        settleConsent(challengeId, { outcome: "closed" });
+        void tracker.finish(challengeId, { outcome: "closed" });
       });
   });
 }
 
 export function handleHttpAuthRuntimeMessage(
   message: unknown,
-): Promise<{ ok: boolean; prompt?: HttpAuthPromptView }> | undefined {
+): Promise<{ ok: boolean; prompt?: HttpAuthPromptView; deadlineMs?: number }> | undefined {
   const ready = parseHttpAuthReady(message);
-  if (ready) {
-    const pending = pendingById.get(ready.challengeId);
-    if (!pending || pending.settled) {
+  const decision = parseHttpAuthDecision(message);
+  const timeout = parseHttpAuthTimeout(message);
+  const challengeId = ready?.challengeId ?? decision?.challengeId ?? timeout?.challengeId ?? null;
+  if (!challengeId) {
+    if (isHttpAuthRuntimeMessage(message)) {
       return Promise.resolve({ ok: false });
     }
-    return Promise.resolve({ ok: true, prompt: pending.view });
+    return undefined;
   }
-  const decision = parseHttpAuthDecision(message);
-  if (decision) {
-    settleConsent(decision.challengeId, decision.result);
-    return Promise.resolve({ ok: true });
-  }
-  if (isHttpAuthRuntimeMessage(message)) {
-    return Promise.resolve({ ok: false });
-  }
-  return undefined;
+  const tracker = activeConsentTracker();
+  return (async () => {
+    if (timeout) {
+      await tracker.forceTimeout(challengeId);
+      return { ok: true };
+    }
+    const state = await tracker.onActivity(challengeId);
+    if (state === "expired") {
+      return { ok: false };
+    }
+    if (ready) {
+      const view = promptViews.get(challengeId);
+      const deadlineMs = tracker.getDeadline(challengeId);
+      if (!view || deadlineMs == null) {
+        return { ok: false };
+      }
+      return { ok: true, prompt: view, deadlineMs };
+    }
+    if (decision) {
+      await tracker.finish(challengeId, decision.result);
+      return { ok: true };
+    }
+    return { ok: false };
+  })();
 }
 
 function logHttpAuth(line: string): void {
@@ -188,6 +233,18 @@ function authRequiredEvent(): AuthEvent | null {
  * Firefox: `blocking` plus a returned Promise (`webRequestBlocking`, Firefox 121+).
  */
 export function wireHttpBasicAuth(): void {
+  const tracker = activeConsentTracker();
+  // A Firefox event page starts from scratch after suspend. The stored
+  // deadline closes a consent window whose setTimeout did not survive.
+  void tracker.restoreLostTimers().catch(() => undefined);
+  browser.alarms.onAlarm.addListener((alarm) => {
+    const challengeId = challengeIdFromHttpAuthAlarm(alarm.name);
+    if (!challengeId) {
+      return;
+    }
+    void tracker.onAlarm(challengeId);
+  });
+
   let enabled = false;
   void readHttpBasicAuthEnabled().then((value) => {
     enabled = value;
@@ -210,11 +267,7 @@ export function wireHttpBasicAuth(): void {
     }
     const challengeId = port.name.slice(HTTP_AUTH_PORT_PREFIX.length);
     port.onDisconnect.addListener(() => {
-      const pending = pendingById.get(challengeId);
-      if (!pending || pending.settled) {
-        return;
-      }
-      settleConsent(challengeId, { outcome: "closed" });
+      void tracker.finish(challengeId, { outcome: "closed" });
     });
   });
 

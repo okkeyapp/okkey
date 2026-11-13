@@ -4,15 +4,26 @@ import { Alert, AlertDescription, AlertTitle, Button } from "@okkey/ui";
 
 import { applyExtensionStoredTheme } from "../../lib/applyExtensionTheme";
 import {
+  HTTP_AUTH_CONSENT_TIMEOUT_MS,
   HTTP_AUTH_DECISION,
   HTTP_AUTH_PORT_PREFIX,
   HTTP_AUTH_READY,
+  HTTP_AUTH_TIMEOUT,
   parseHttpAuthPromptResponse,
+  readHttpAuthDeadlineMs,
   type HttpAuthPromptView,
 } from "../../lib/httpAuthMessages";
 import { loadExtensionLocale, readStoredExtensionLocale } from "../../lib/locale";
 
 type Phase = "loading" | "choose" | "http-warning" | "gone";
+
+// Keep the port alive for the life of the window. A discarded Port can be
+// collected, and Firefox would then treat the consent dialog as closed.
+type ConsentPort = {
+  onDisconnect: { addListener: (listener: () => void) => void };
+};
+
+const retainedConsentPorts = new Set<ConsentPort>();
 
 export function HttpAuthPromptApp() {
   const [locale, setLocale] = useState(readStoredExtensionLocale);
@@ -43,13 +54,19 @@ export function HttpAuthPromptApp() {
       setPhase("gone");
       return;
     }
+    let port: ConsentPort;
     try {
-      browser.runtime.connect({ name: `${HTTP_AUTH_PORT_PREFIX}${challengeId}` });
+      port = browser.runtime.connect({ name: `${HTTP_AUTH_PORT_PREFIX}${challengeId}` }) as ConsentPort;
+      retainedConsentPorts.add(port);
+      port.onDisconnect.addListener(() => {
+        retainedConsentPorts.delete(port);
+      });
     } catch {
       setPhase("gone");
       return;
     }
     let cancelled = false;
+    let timeoutId = 0;
     void browser.runtime
       .sendMessage({ type: HTTP_AUTH_READY, challengeId })
       .then((response: unknown) => {
@@ -64,6 +81,10 @@ export function HttpAuthPromptApp() {
         setView(prompt);
         setSelectedId(prompt.items.length === 1 ? (prompt.items[0]?.itemId ?? null) : null);
         setPhase("choose");
+        const deadlineMs = readHttpAuthDeadlineMs(response) ?? Date.now() + HTTP_AUTH_CONSENT_TIMEOUT_MS;
+        timeoutId = window.setTimeout(() => {
+          void sendTimeout(challengeId);
+        }, Math.max(0, deadlineMs - Date.now()));
       })
       .catch(() => {
         if (!cancelled) {
@@ -72,8 +93,22 @@ export function HttpAuthPromptApp() {
       });
     return () => {
       cancelled = true;
+      window.clearTimeout(timeoutId);
     };
   }, []);
+
+  async function sendTimeout(challengeId: string): Promise<void> {
+    if (decidedRef.current) {
+      return;
+    }
+    decidedRef.current = true;
+    try {
+      await browser.runtime.sendMessage({ type: HTTP_AUTH_TIMEOUT, challengeId });
+    } catch {
+      // The background may already have closed this window from its own timer.
+    }
+    window.close();
+  }
 
   async function sendDecision(body: {
     outcome: "decline" | "confirm";

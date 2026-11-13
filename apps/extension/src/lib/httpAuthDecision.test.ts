@@ -5,6 +5,8 @@ import { decideHttpBasicAuth, sanitizeHttpAuthLog, type HttpAuthMatch } from "./
 import {
   parseHttpAuthDecision,
   parseHttpAuthPromptResponse,
+  parseHttpAuthTimeout,
+  readHttpAuthDeadlineMs,
   toHttpAuthPromptView,
 } from "./httpAuthMessages.ts";
 
@@ -234,5 +236,9 @@ describe("http auth prompt messages", () => {
       },
     });
     assert.equal(JSON.stringify(response).includes(PASSWORD), false);
+    assert.equal(readHttpAuthDeadlineMs({ ok: true, deadlineMs: 90_000, password: PASSWORD }), 90_000);
+    assert.deepEqual(parseHttpAuthTimeout({ type: "okkey.httpAuth.timeout", challengeId: "c1", password: PASSWORD }), {
+      challengeId: "c1",
+    });
   });
 });

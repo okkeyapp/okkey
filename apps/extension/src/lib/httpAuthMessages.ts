@@ -1,5 +1,6 @@
 export const HTTP_AUTH_READY = "okkey.httpAuth.ready";
 export const HTTP_AUTH_DECISION = "okkey.httpAuth.decision";
+export const HTTP_AUTH_TIMEOUT = "okkey.httpAuth.timeout";
 export const HTTP_AUTH_PORT_PREFIX = "okkey.httpAuth.";
 
 /** How long the confirmation window may stay open before the challenge is declined. */
@@ -108,6 +109,25 @@ export function parseHttpAuthPromptResponse(response: unknown): HttpAuthPromptVi
     insecureHttp: prompt.insecureHttp === true,
     items,
   };
+}
+
+export function readHttpAuthDeadlineMs(response: unknown): number | null {
+  const record = readRecord(response);
+  if (!record || typeof record.deadlineMs !== "number" || !Number.isFinite(record.deadlineMs)) {
+    return null;
+  }
+  return record.deadlineMs;
+}
+
+export function parseHttpAuthTimeout(message: unknown): { challengeId: string } | null {
+  const record = readRecord(message);
+  if (!record || record.type !== HTTP_AUTH_TIMEOUT) {
+    return null;
+  }
+  if (typeof record.challengeId !== "string" || record.challengeId.length === 0) {
+    return null;
+  }
+  return { challengeId: record.challengeId };
 }
 
 export function parseHttpAuthDecision(
