@@ -25,9 +25,10 @@ Commercial workspace plan is `workspace.plan_tier` (catalog):
 |---|---|---|
 | `FREE` | Personal | Open-source / SaaS default baseline |
 | `PREMIUM` | Personal | Individual paid |
-| `FAMILY` | Personal | Multi-seat personal (vaults / members / roles) |
 | `TEAM` | Business | Team paid |
 | `ENTERPRISE` | Business | Top catalog tier (full matrix today) |
+
+`FAMILY` is not a catalog tier. Migration rewrites stored rows to `PREMIUM`; `normalizePlanTier` still reads an unmigrated `FAMILY` token as `PREMIUM`.
 
 **Custom / “by request”** is **not** a `plan_tier` value. Use:
 
@@ -45,22 +46,24 @@ Entitlements are resolved via `hasPlanFeature` in `@okkey/types` (`PLAN_FEATURE_
 
 Soft numeric limits live in `PLAN_QUOTA_LIMITS` / `getPlanQuotaLimits` (same self-host rule).
 
-| Feature | FREE | PREMIUM | FAMILY | TEAM | ENTERPRISE |
-|---|---|---|---|---|---|
-| `capsules` | yes | yes | yes | yes | yes |
-| `capsuleAccessSettings` | no | yes | yes | yes | yes |
-| `filesInItems` | no† | yes | yes | yes | yes |
-| `monitoring` | no | yes | yes | yes | yes |
-| `accountRecovery` | no | yes | yes | yes | yes |
-| `trustedContacts` | no | yes | yes | yes | yes |
-| `storageQuotas` | no | yes | yes | yes | yes |
-| `sharedVaults` | yes | yes | yes | yes | yes |
-| `additionalWorkspaceMembers` | yes | yes | yes | yes | yes |
-| `customWorkspaceRoles` | no | no | yes | yes | yes |
-| `customWorkspaceProfiles` | no | no | yes | yes | yes |
-| `paidPlanBadge` | no | yes | yes | yes | yes |
+| Feature | FREE | PREMIUM | TEAM | ENTERPRISE |
+|---|---|---|---|---|
+| `capsules` | yes | yes | yes | yes |
+| `capsuleAccessSettings` | no | no | yes | yes |
+| `filesInItems` | no† | yes | yes | yes |
+| `monitoring` | no | yes | yes | yes |
+| `accountRecovery` | no | yes | yes | yes |
+| `trustedContacts` | no | yes | yes | yes |
+| `storageQuotas` | yes‡ | yes | yes | yes |
+| `sharedVaults` | yes | yes | yes | yes |
+| `additionalWorkspaceMembers` | yes | yes | yes | yes |
+| `customWorkspaceRoles` | no | no | yes | yes |
+| `customWorkspaceProfiles` | no | no | yes | yes |
+| `paidPlanBadge` | no | yes | yes | yes |
 
 † SaaS FREE keeps `filesInItems` off (PREMIUM+). Self-hosted FREE enables `filesInItems` via `SELF_HOSTED_FREE_EXTRA` — attachments stay free on-prem.
+
+‡ `PLAN_FEATURE_MATRIX.FREE.storageQuotas` is true (SaaS FREE). Self-hosted FREE forces `storageQuotas` off.
 
 Do **not** confuse `plan_tier` with `ENTERPRISE_MODULES` (plugin loading).
 

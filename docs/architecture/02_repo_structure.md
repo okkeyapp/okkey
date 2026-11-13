@@ -142,7 +142,7 @@ Contains:
 - REST client
 - API types
 
-Sync uses the HTTP API (`/vaults/:vaultId/events` and `/workspaces/:workspaceId/personal-events`).
+Sync uses the HTTP API (`GET`/`POST /vaults/:vaultId/events`, `POST /vaults/:vaultId/events/batch`, and `GET`/`POST /workspaces/:workspaceId/personal-events`).
 
 Used by:
 

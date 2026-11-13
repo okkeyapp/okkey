@@ -209,7 +209,7 @@ Scope (first iteration):
 - sync append path for critical events (`VAULT_SHARE`, `VAULT_KEY_ROTATION`);
 - sharing/rotation operations that produce these events (`share/revoke/rotate/update-role`);
 - replay pipeline validation for configured critical event types.
-- invite artifacts are planned by product scope; invite HTTP (`GET/POST /invitations/:token`) lives on the enterprise `workspace-members` plugin, not Core.
+- invite artifacts are planned by product scope; invite HTTP (`GET /invitations/:token`, `POST /invitations/:token/accept`, `POST /workspaces/:id/invitations`) is Core and limited by the plan member quota.
 
 Out of scope:
 
