@@ -281,7 +281,7 @@ test("one feed can fail while the other component still reports an update", asyn
   });
   const partial = await failedEnterprise.statusFor("owner");
   assert.equal(partial.feedError, null);
-  assert.equal(partial.offlineArchiveSupported, false);
+  assert.equal(partial.offlineArchiveSupported, true);
   assert.deepEqual(
     partial.updates.map((update) => update.component),
     ["okkey"],

@@ -10,7 +10,7 @@ import {
 import { SystemUpdateError } from "./errors.ts";
 import { parseVersion } from "./versions.ts";
 
-/** The only self-host update package format. Feed URLs and uploaded files both use it. */
+/** Signed self-host update package. Feed URLs and uploaded files both use it. */
 export const OFFLINE_PACKAGE_FORMAT = "okkey-offline-package";
 export const OFFLINE_PACKAGE_FORMAT_VERSION = 1;
 export const UPDATE_FEED_SCHEMA = "okkey.update-feed.v1";

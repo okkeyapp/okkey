@@ -1899,7 +1899,9 @@
   "web.systemUpdate.progressVerifying": "Verifying package signature…",
   "web.systemUpdate.progressApplying": "Applying update…",
   "web.systemUpdate.progressSucceeded": "Update applied. Okkey is restarting on {version}.",
+  "web.systemUpdate.progressBundleSucceeded": "Okkey {core} and Enterprise {enterprise} were applied.",
   "web.systemUpdate.progressFailed": "Update failed. This instance is still on the previous version.",
+  "web.systemUpdate.progressBundlePartial": "Okkey was applied. Enterprise was not applied.",
   "web.systemUpdate.error.SIGNATURE_MISSING": "The package has no signature, so it was not applied.",
   "web.systemUpdate.error.SIGNATURE_INVALID": "The package signature is invalid, so it was not applied.",
   "web.systemUpdate.error.VERIFICATION_INTERRUPTED": "Signature verification was interrupted, so the package was not applied.",
@@ -1911,6 +1913,7 @@
   "web.systemUpdate.error.CORE_UPDATE_REQUIRED": "Update core first. This enterprise package needs a newer core, so nothing was changed.",
   "web.systemUpdate.error.CORE_RESTART_TIMEOUT": "Okkey did not report {version} in time. Enterprise was not started.",
   "web.systemUpdate.error.APPLY_FAILED": "Apply failed. This instance is still on the previous version.",
+  "web.systemUpdate.error.BUNDLE_PARTIAL": "Okkey was applied. Enterprise was not applied and was rolled back.",
   "web.systemUpdate.error.PACKAGE_INVALID": "The file is not an Okkey offline package.",
   "web.systemUpdate.error.generic": "Update failed. This instance is still on the previous version."
 }

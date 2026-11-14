@@ -1217,11 +1217,15 @@ paths:
   /system/updates/apply:
     post:
       tags: [System]
-      summary: Ask the update agent to verify and apply one offline package
+      summary: Ask the update agent to verify and apply one offline package or bundle
       description: |
         Starts only when a workspace owner calls this route.
         The agent verifies an okkey package with the core trusted key and an enterprise package with the enterprise trusted key.
         An enterprise package includes minCoreVersion. When the running core is older, the job fails with CORE_UPDATE_REQUIRED and nothing is changed.
+        A file may instead be an okkey-offline-bundle document (`format`, `formatVersion`, `archiveBase64`).
+        The archive is a zip. Core is verified with the core key and enterprise with the enterprise key.
+        The manifest hashes and the apply order (core, then enterprise) are checked before anything changes.
+        If enterprise apply fails after core succeeded, enterprise is rolled back, core stays, and the job is BUNDLE_PARTIAL.
         Short-lived registry pull credentials from the feed are forwarded only for an enterprise apply and are not stored.
         The web container does not receive the Docker socket.
       security: [{ bearerAuth: [] }]

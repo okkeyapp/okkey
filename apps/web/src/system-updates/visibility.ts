@@ -46,6 +46,7 @@ export type SystemUpdateStatus = {
   dismissed: Partial<Record<SystemUpdateComponent, string>>;
   /** Last feed version opened in the system-update popup, per component. */
   seen: Partial<Record<SystemUpdateComponent, string>>;
+  offlineArchiveSupported?: boolean;
   feedError: string | null;
   /** Combined archives are applied only after the API can read them. */
   offlineArchiveSupported?: boolean;
@@ -60,6 +61,11 @@ export type SystemUpdateJob = {
   toVersion: string;
   errorCode?: string;
   errorMessage?: string;
+  components?: Array<{
+    component: SystemUpdateComponent;
+    version: string;
+    applied: boolean;
+  }>;
 };
 
 type ParsedVersion = {

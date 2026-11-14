@@ -59,9 +59,15 @@ export type SystemUpdateStatus = {
   feedError: string | null;
   /**
    * Combined offline archives are listed in the popup.
-   * Apply stays off until a later API can read that file.
+   * True when POST /system/updates/apply accepts an okkey-offline-bundle document.
    */
   offlineArchiveSupported: boolean;
+};
+
+export type UpdateComponentResult = {
+  component: UpdateComponent;
+  version: string;
+  applied: boolean;
 };
 
 export type UpdateJobPhase = "verifying" | "downloading" | "applying" | "succeeded" | "failed";
@@ -75,11 +81,13 @@ export type UpdateJob = {
   toVersion: string;
   errorCode?: string;
   errorMessage?: string;
+  /** Set for an offline bundle. Core is first. */
+  components?: UpdateComponentResult[];
 };
 
 export type UpdateAgentClient = {
   start(
-    document: SignedOfflinePackage,
+    document: unknown,
     options?: { registryCredentials?: RegistryPullCredentials },
   ): Promise<UpdateJob>;
   get(jobId: string): Promise<UpdateJob | null>;
@@ -167,7 +175,7 @@ export function createSystemUpdateService(options: SystemUpdateServiceOptions) {
         dismissed,
         seen,
         feedError: aggregateFeedError(loads),
-        offlineArchiveSupported: false,
+        offlineArchiveSupported: true,
       };
       return base;
     },
@@ -381,7 +389,7 @@ async function resolveApplyDocument(
   input: { source: "feed" | "file"; component?: UpdateComponent; document?: unknown },
   options: SystemUpdateServiceOptions,
   fetchImpl: FeedFetch,
-): Promise<{ document: SignedOfflinePackage; registryCredentials?: RegistryPullCredentials }> {
+): Promise<{ document: unknown; registryCredentials?: RegistryPullCredentials }> {
   if (input.source === "file") {
     if (!input.document || typeof input.document !== "object" || Array.isArray(input.document)) {
       throw new SystemUpdateError(400, "PACKAGE_INVALID", "A package file is required");
