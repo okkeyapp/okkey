@@ -390,9 +390,11 @@ describe("system update popup", () => {
     fireEvent.change(input);
 
     const list = await screen.findByTestId("system-update-offline-list");
-    expect(list).toHaveTextContent("Enterprise 3.1.0");
-    expect(list).toHaveTextContent("Okkey 1.2.0");
-    expect(list).toHaveTextContent("Combined archive both.okbundle");
+    await waitFor(() => {
+      expect(list).toHaveTextContent("Enterprise 3.1.0");
+      expect(list).toHaveTextContent("Okkey 1.2.0");
+      expect(list).toHaveTextContent("Combined archive both.okbundle");
+    });
     expect(screen.getByTestId("system-update-archive-pending")).toBeInTheDocument();
     expect(applied).toHaveLength(0);
 
@@ -425,5 +427,44 @@ describe("system update popup", () => {
       expect(applied).toHaveLength(1);
     });
     expect(applied[0]).toMatchObject({ source: "file", document: archive });
+  });
+
+  it("uses the import file field, keeps several packages, and clears one", async () => {
+    renderModal(status({ updates: [], currentVersion: "1.0.0" }));
+    const zone = screen.getByRole("button", { name: /Upload file/i });
+    expect(zone.className).toContain("hover:border-accent");
+    expect(zone.className).toContain("focus-visible:border-accent");
+    expect(screen.getByText(/okpkg, json, okbundle, zip/)).toBeInTheDocument();
+
+    const input = document.getElementById("system-update-file") as HTMLInputElement;
+    expect(input.multiple).toBe(true);
+    const files = [
+      new File(
+        [JSON.stringify({ payload: { component: "okkey", version: "1.4.0" }, signature: "sig" })],
+        "okkey.okpkg",
+        { type: "application/json" },
+      ),
+      new File(
+        [JSON.stringify({ payload: { component: "enterprise", version: "3.4.0" }, signature: "sig" })],
+        "enterprise.okpkg",
+        { type: "application/json" },
+      ),
+    ];
+    Object.defineProperty(input, "files", { configurable: true, value: files });
+    fireEvent.change(input);
+
+    const list = await screen.findByTestId("system-update-offline-list");
+    await waitFor(() => {
+      expect(list).toHaveTextContent("Okkey 1.4.0");
+      expect(list).toHaveTextContent("Enterprise 3.4.0");
+    });
+    expect(screen.getAllByRole("button", { name: "Remove file" })).toHaveLength(2);
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Remove file" })[0]!);
+    await waitFor(() => {
+      expect(screen.getByTestId("system-update-offline-list")).not.toHaveTextContent("Okkey 1.4.0");
+    });
+    expect(screen.getByTestId("system-update-offline-list")).toHaveTextContent("Enterprise 3.4.0");
+    expect(screen.getAllByRole("button", { name: "Remove file" })).toHaveLength(1);
   });
 });

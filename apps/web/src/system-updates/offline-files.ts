@@ -3,8 +3,14 @@ import type { SystemUpdateComponent } from "./visibility";
 /** Combined package archives. Reading them belongs to a later API. */
 export const OFFLINE_ARCHIVE_EXTENSIONS = [".okbundle", ".zip"] as const;
 
+/** Signed package plus the combined archive extensions the picker accepts. */
+export const OFFLINE_PACKAGE_EXTENSIONS = ["okpkg", "json", "okbundle", "zip"] as const;
+
+/** Upper bound for one offline package or archive in the file field. */
+export const OFFLINE_PACKAGE_MAX_SIZE_MB = 1024;
+
 export const OFFLINE_FILE_ACCEPT =
-  "application/json,.okpkg,.json,.okbundle,.zip,application/zip";
+  ".okpkg,.json,.okbundle,.zip,application/json,application/zip";
 
 export type OfflinePackageChoice = {
   kind: "package";

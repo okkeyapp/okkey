@@ -304,6 +304,14 @@ export type KeyFieldProps = Omit<
   fileUploadHintLabels?: KeyFieldFileUploadHintLabels;
   /** When false, the file field cannot be cleared in edit mode (delete field instead). */
   fileClearEnabled?: boolean;
+  /** Keep the drop zone and upload every file from one selection. */
+  fileUploadMultiple?: boolean;
+  /** `accept` for the file picker. Omitted leaves it unfiltered. */
+  fileAccept?: string;
+  /** Id forwarded to the hidden file input. */
+  fileInputId?: string;
+  /** Disables the drop zone. A selected file can still be cleared when `fileClearEnabled` is true. */
+  fileUploadDisabled?: boolean;
   valuePlaceholder?: string;
   surfaceRounding?: KeyFieldSurfaceRounding;
   datePickerLocale?: Locale;
@@ -378,6 +386,10 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
       fileClearLabel = "Delete file",
       fileUploadHintLabels,
       fileClearEnabled = true,
+      fileUploadMultiple = false,
+      fileAccept,
+      fileInputId,
+      fileUploadDisabled = false,
       valuePlaceholder,
       surfaceRounding,
       datePickerLocale,
@@ -1302,6 +1314,10 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
                     onValidationErrorChange={setFileValidationError}
                     uploadLabel={fileUploadLabel}
                     uploadHintLabels={fileUploadHintLabels}
+                    uploadMultiple={fileUploadMultiple}
+                    accept={fileAccept}
+                    inputId={fileInputId}
+                    disabled={fileUploadDisabled}
                     onClear={fileClearEnabled ? handleFileClear : undefined}
                     deleteLabel={fileClearLabel}
                   />

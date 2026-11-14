@@ -1,11 +1,27 @@
 import type { WebMessageValues } from "@okkey/i18n";
-import { Alert, AlertDescription, AlertTitle, Button, Popup } from "@okkey/ui";
-import { useState } from "react";
+import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+  Button,
+  KeyField,
+  KeyForm,
+  KeySection,
+  Popup,
+  buildKeyFieldFileUploadConstraints,
+  getKeyFieldSurfaceRounding,
+  serializeKeyFieldFileValue,
+  type KeyFieldFileUploadHintLabels,
+  type KeyFieldFileValue,
+} from "@okkey/ui";
+import { useMemo, useRef, useState } from "react";
 
 import { applySystemUpdate, fetchSystemUpdateJob, fetchSystemUpdateStatus } from "./api";
 import {
   classifyOfflineFile,
   OFFLINE_FILE_ACCEPT,
+  OFFLINE_PACKAGE_EXTENSIONS,
+  OFFLINE_PACKAGE_MAX_SIZE_MB,
   type OfflineArchiveChoice,
   type OfflineChoice,
   type OfflinePackageChoice,
@@ -23,6 +39,12 @@ import type {
 type Translate = (key: string, values?: WebMessageValues) => string;
 
 type Phase = "idle" | "downloading" | "running" | "succeeded" | "failed";
+
+type StoredOfflineFile = {
+  id: string;
+  file: File;
+  choice: OfflineChoice;
+};
 
 type UpdateRow = {
   component: SystemUpdateComponent;
@@ -68,8 +90,8 @@ export default function SystemUpdateModal({
   /** Tests shorten the restart poll. Production uses the defaults. */
   coreRestart?: CoreRestartPoll;
 }) {
-  const [choices, setChoices] = useState<OfflineChoice[]>([]);
-  const [fileError, setFileError] = useState("");
+  const [choices, setChoices] = useState<StoredOfflineFile[]>([]);
+  const fileIdRef = useRef(0);
   const [phase, setPhase] = useState<Phase>("idle");
   const [job, setJob] = useState<SystemUpdateJob | null>(null);
   const [errorCode, setErrorCode] = useState("");
@@ -79,8 +101,12 @@ export default function SystemUpdateModal({
   const progress =
     phase === "downloading" ? 30 : phase === "succeeded" ? 100 : job?.progress ?? (phase === "running" ? 15 : 0);
   const rows = componentRows(status, updates);
-  const packages = choices.filter((choice): choice is OfflinePackageChoice => choice.kind === "package");
-  const archives = choices.filter((choice): choice is OfflineArchiveChoice => choice.kind === "archive");
+  const packages = choices
+    .map((item) => item.choice)
+    .filter((choice): choice is OfflinePackageChoice => choice.kind === "package");
+  const archives = choices
+    .map((item) => item.choice)
+    .filter((choice): choice is OfflineArchiveChoice => choice.kind === "archive");
   const usingFiles = packages.length > 0 || archives.length > 0;
   const feedPlan = planComponentUpdateOrder(updates, status.currentVersion);
   const filePlan = planComponentUpdateOrder(
@@ -236,6 +262,50 @@ export default function SystemUpdateModal({
     }
   }
 
+  const fileUploadConstraints = useMemo(
+    () => buildKeyFieldFileUploadConstraints(OFFLINE_PACKAGE_EXTENSIONS, OFFLINE_PACKAGE_MAX_SIZE_MB),
+    [],
+  );
+  const fileUploadHintLabels = useMemo<KeyFieldFileUploadHintLabels>(
+    () => ({
+      maxPrefix: t("web.keyForm.file.uploadHintMaxPrefix"),
+      maxSizeOnlyPrefix: t("web.keyForm.file.uploadHintMaxSizeOnlyPrefix"),
+    }),
+    [t],
+  );
+  const fieldRounding = useMemo(
+    () =>
+      getKeyFieldSurfaceRounding({
+        mode: "edit",
+        sectionVariant: "primary",
+        fieldIndex: 0,
+        fieldsCount: 1,
+        canAddField: false,
+      }),
+    [],
+  );
+
+  const fileContentError = choices.some((item) => item.choice.kind === "invalid")
+    ? t("web.systemUpdate.error.PACKAGE_INVALID")
+    : "";
+
+  async function onOfflineFile(file: File): Promise<KeyFieldFileValue> {
+    fileIdRef.current += 1;
+    const id = `offline-${fileIdRef.current}`;
+    const choice = classifyOfflineFile(file.name, await readFileText(file));
+    setChoices((current) => [...current, { id, file, choice }]);
+    return {
+      attachmentId: id,
+      name: file.name,
+      mimeType: file.type || "application/octet-stream",
+      sizeBytes: file.size,
+    };
+  }
+
+  function clearOfflineFile(id: string) {
+    setChoices((current) => current.filter((item) => item.id !== id));
+  }
+
   const errorText = errorCode
     ? t(ERROR_KEYS.has(errorCode) ? `web.systemUpdate.error.${errorCode}` : "web.systemUpdate.error.generic", {
         version: restartTarget,
@@ -351,46 +421,71 @@ export default function SystemUpdateModal({
         ) : null}
 
         <div className="flex flex-col gap-2">
-          <label className="text-sm font-medium text-foreground" htmlFor="system-update-file">
-            {t("web.systemUpdate.fileLabel")}
-          </label>
           <p className="text-sm text-muted-foreground">{t("web.systemUpdate.fileHint")}</p>
-          <input
-            id="system-update-file"
-            className="text-sm text-foreground file:me-3 file:rounded-md file:border-0 file:bg-secondary file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-secondary-foreground"
-            type="file"
-            multiple
-            accept={OFFLINE_FILE_ACCEPT}
-            disabled={busy || !status.canApply}
-            onChange={(event) => {
-              const selected = [...(event.target.files ?? [])];
-              setFileError("");
-              setChoices([]);
-              if (selected.length === 0) {
-                return;
-              }
-              void Promise.all(selected.map(async (file) => classifyOfflineFile(file.name, await readFileText(file)))).then(
-                (next) => {
-                  setChoices(next);
-                  if (next.some((choice) => choice.kind === "invalid")) {
-                    setFileError(t("web.systemUpdate.error.PACKAGE_INVALID"));
-                  }
-                },
-              );
-            }}
-          />
+          <KeyForm mode="edit" className="gap-0">
+            <KeySection variant="primary" mode="edit">
+              <KeyField
+                className="border-b-transparent"
+                label={t("web.systemUpdate.fileLabel")}
+                mode="edit"
+                editableValue
+                fileValue
+                value=""
+                fileUploadMultiple
+                fileAccept={OFFLINE_FILE_ACCEPT}
+                fileInputId="system-update-file"
+                fileUploadDisabled={busy || !status.canApply}
+                onFileUpload={(file) => onOfflineFile(file)}
+                fileUploadConstraints={fileUploadConstraints}
+                fileUploadHintLabels={fileUploadHintLabels}
+                fileUploadLabel={t("web.tools.import.uploadFile")}
+                fileClearLabel={t("web.tools.import.fileClearLabel")}
+                surfaceRounding={fieldRounding}
+              />
+              {choices.map((item, index) => (
+                <KeyField
+                  key={item.id}
+                  className="border-b-transparent"
+                  label={t("web.systemUpdate.fileSelected")}
+                  mode="edit"
+                  editableValue
+                  fileValue
+                  value={serializeKeyFieldFileValue({
+                    attachmentId: item.id,
+                    name: item.file.name,
+                    mimeType: item.file.type || "application/octet-stream",
+                    sizeBytes: item.file.size,
+                  })}
+                  onValueChange={(value) => {
+                    if (!value) {
+                      clearOfflineFile(item.id);
+                    }
+                  }}
+                  fileClearEnabled={!busy}
+                  fileClearLabel={t("web.tools.import.fileClearLabel")}
+                  surfaceRounding={getKeyFieldSurfaceRounding({
+                    mode: "edit",
+                    sectionVariant: "primary",
+                    fieldIndex: index + 1,
+                    fieldsCount: choices.length + 1,
+                    canAddField: false,
+                  })}
+                />
+              ))}
+            </KeySection>
+          </KeyForm>
           {choices.length > 0 ? (
             <ul className="flex flex-col gap-1" data-testid="system-update-offline-list">
-              {choices.map((choice) => (
-                <li key={`${choice.kind}-${choice.fileName}`} className="text-xs text-muted-foreground">
-                  {choice.kind === "package"
+              {choices.map((item) => (
+                <li key={item.id} className="text-xs text-muted-foreground">
+                  {item.choice.kind === "package"
                     ? t("web.systemUpdate.offlinePackage", {
-                        component: componentName(t, choice.component),
-                        version: choice.version,
+                        component: componentName(t, item.choice.component),
+                        version: item.choice.version,
                       })
-                    : choice.kind === "archive"
-                      ? t("web.systemUpdate.offlineArchive", { name: choice.fileName })
-                      : choice.fileName}
+                    : item.choice.kind === "archive"
+                      ? t("web.systemUpdate.offlineArchive", { name: item.choice.fileName })
+                      : item.choice.fileName}
                 </li>
               ))}
             </ul>
@@ -400,7 +495,7 @@ export default function SystemUpdateModal({
               {t("web.systemUpdate.offlineArchivePending")}
             </p>
           ) : null}
-          {fileError ? <p className="text-sm text-destructive">{fileError}</p> : null}
+          {fileContentError ? <p className="text-sm text-destructive">{fileContentError}</p> : null}
         </div>
 
         {phase !== "idle" ? (
