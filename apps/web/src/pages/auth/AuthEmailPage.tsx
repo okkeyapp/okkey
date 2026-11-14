@@ -56,7 +56,7 @@ export default function AuthEmailPage() {
       navigate(ACCOUNT_NEW_PATH, { replace: true });
       return;
     }
-    setEmailChallenge(trimmed, start.challengeId, start.resendAvailableAt);
+    setEmailChallenge(trimmed, start.challengeId, start.resendAvailableAt, start.emailDeliverable);
     if (shouldPromptMasterPasswordLogin(start)) {
       navigate(AUTH_MASTER_PASSWORD_PATH, { replace: true });
       return;

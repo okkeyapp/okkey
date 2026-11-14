@@ -107,6 +107,7 @@ export function parseEmailJob(raw: string): EmailJob {
     }
   }
   const inlineAttachments = parseInlineAttachments(msg.inlineAttachments);
+  const authCodeLog = parseAuthCodeLog(msg.authCodeLog);
   const sealedDelivery =
     typeof record.sealedDelivery === "string" && record.sealedDelivery.length > 0
       ? record.sealedDelivery
@@ -124,6 +125,7 @@ export function parseEmailJob(raw: string): EmailJob {
       text: msg.text as string,
       html: msg.html as string,
       ...(inlineAttachments ? { inlineAttachments } : {}),
+      ...(authCodeLog ? { authCodeLog } : {}),
     },
   };
 }
@@ -180,6 +182,7 @@ export function unsealEmailDelivery(sealed: string, key: Buffer): EmailMessage {
     }
   }
   const inlineAttachments = parseInlineAttachments(msg.inlineAttachments);
+  const authCodeLog = parseAuthCodeLog(msg.authCodeLog);
   return {
     to: msg.to as string,
     from: msg.from as string,
@@ -187,6 +190,7 @@ export function unsealEmailDelivery(sealed: string, key: Buffer): EmailMessage {
     text: msg.text as string,
     html: msg.html as string,
     ...(inlineAttachments ? { inlineAttachments } : {}),
+    ...(authCodeLog ? { authCodeLog } : {}),
   };
 }
 
@@ -196,19 +200,17 @@ export function unsealEmailDelivery(sealed: string, key: Buffer): EmailMessage {
  */
 export function prepareEmailDeadLetterJob(job: EmailJob, sealKey: Buffer): EmailJob {
   const code = extractLeadingEmailVerificationCode(job.message.subject);
-  if (!code) {
+  const redacted = redactEmailMessageForDeadLetter(job.message);
+  if (!code && !job.message.authCodeLog) {
     // Already redacted (re-dead-letter after requeue) or non-code mail — keep as-is.
     return {
       ...job,
-      message: {
-        ...job.message,
-        subject: sanitizeEmailSubjectForLogs(job.message.subject),
-      },
+      message: redacted,
     };
   }
   return {
     ...job,
-    message: redactEmailMessageForDeadLetter(job.message),
+    message: redacted,
     sealedDelivery: sealEmailDelivery(job.message, sealKey),
   };
 }
@@ -219,6 +221,24 @@ export function resolveEmailJobDeliveryMessage(job: EmailJob, sealKey: Buffer): 
     return job.message;
   }
   return unsealEmailDelivery(job.sealedDelivery, sealKey);
+}
+
+function parseAuthCodeLog(value: unknown): EmailMessage["authCodeLog"] | undefined {
+  if (!value || typeof value !== "object") {
+    return undefined;
+  }
+  const row = value as Record<string, unknown>;
+  if (typeof row.code !== "string" || !/^\d{6}$/.test(row.code)) {
+    return undefined;
+  }
+  if (typeof row.expiresAt !== "string") {
+    return undefined;
+  }
+  const expiresAt = row.expiresAt.trim();
+  if (!expiresAt || Number.isNaN(Date.parse(expiresAt))) {
+    return undefined;
+  }
+  return { code: row.code, expiresAt };
 }
 
 function parseInlineAttachments(

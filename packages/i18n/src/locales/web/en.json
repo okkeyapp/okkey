@@ -1546,6 +1546,8 @@
   "auth.otp.errorInvalid": "Invalid code. Try again.",
   "auth.otp.attemptsLeft": "Attempts left: {n}",
   "auth.otp.resendCountdownAria": "Resend available in {seconds} seconds",
+  "auth.otp.mailNotConfiguredHint": "Mail is not configured on this server. The confirmation code is in the worker logs. Run:",
+  "auth.otp.mailNotConfiguredCommand": "docker compose logs worker",
   "auth.masterPassword.title": "Welcome to Okkey",
   "auth.masterPassword.description": "Enter your master password. It stays on this device.",
   "auth.masterPassword.label": "Master password",

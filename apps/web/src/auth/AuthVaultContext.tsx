@@ -126,11 +126,21 @@ export type AuthVaultContextValue = {
   emailChallengeId: string | null;
   /** ISO time from last start/resend until another resend is allowed */
   emailResendAvailableAt: string | null;
+  /**
+   * From `/auth/email/start`. False when this server cannot deliver mail.
+   * Null until that response is stored. No other mail configuration is kept here.
+   */
+  emailDeliverable: boolean | null;
   registrationAuthStateId: string | null;
   twoFactorAuthStateId: string | null;
   authClient: AuthClient;
   profile: LocalProfile | null;
-  setEmailChallenge: (email: string, challengeId: string, resendAvailableAt?: string) => void;
+  setEmailChallenge: (
+    email: string,
+    challengeId: string,
+    resendAvailableAt?: string,
+    emailDeliverable?: boolean,
+  ) => void;
   /** Clears OTP / resend state after login or registration (profile email is unchanged). */
   clearEmailLoginFlow: () => void;
   setRegistrationAuthStateId: (id: string | null) => void;
@@ -394,6 +404,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
   const [pendingEmail, setPendingEmail] = useState<string | null>(null);
   const [emailChallengeId, setEmailChallengeId] = useState<string | null>(null);
   const [emailResendAvailableAt, setEmailResendAvailableAt] = useState<string | null>(null);
+  const [emailDeliverable, setEmailDeliverable] = useState<boolean | null>(null);
   const [registrationAuthStateId, setRegistrationAuthStateId] = useState<string | null>(null);
   const [twoFactorAuthStateId, setTwoFactorAuthStateIdState] = useState<string | null>(null);
   const [profile, setProfile] = useState<LocalProfile | null>(() =>
@@ -678,16 +689,23 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
     }
   }, [userId]);
 
-  const setEmailChallenge = useCallback((email: string, challengeId: string, resendAvailableAt?: string) => {
+  const setEmailChallenge = useCallback((
+    email: string,
+    challengeId: string,
+    resendAvailableAt?: string,
+    emailDeliverableFlag?: boolean,
+  ) => {
     setPendingEmail(email);
     setEmailChallengeId(challengeId);
     setEmailResendAvailableAt(resendAvailableAt ?? null);
+    setEmailDeliverable(typeof emailDeliverableFlag === "boolean" ? emailDeliverableFlag : null);
   }, []);
 
   const clearEmailLoginFlow = useCallback(() => {
     setPendingEmail(null);
     setEmailChallengeId(null);
     setEmailResendAvailableAt(null);
+    setEmailDeliverable(null);
   }, []);
 
   const applyAccessTokenResponse = useCallback((dto: AccessTokenResponseDto) => {
@@ -738,6 +756,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
     setPendingEmail(null);
     setEmailChallengeId(null);
     setEmailResendAvailableAt(null);
+    setEmailDeliverable(null);
     setRegistrationAuthStateId(null);
     setTwoFactorAuthStateIdState(null);
     setProfile(null);
@@ -1350,6 +1369,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       pendingEmail,
       emailChallengeId,
       emailResendAvailableAt,
+      emailDeliverable,
       registrationAuthStateId,
       twoFactorAuthStateId,
       authClient,
@@ -1396,6 +1416,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       pendingEmail,
       emailChallengeId,
       emailResendAvailableAt,
+      emailDeliverable,
       registrationAuthStateId,
       twoFactorAuthStateId,
       authClient,

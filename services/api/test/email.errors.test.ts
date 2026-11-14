@@ -47,6 +47,17 @@ test("redactEmailMessageForDeadLetter strips the leading code from subject and b
   assert.equal(JSON.stringify(redacted).includes("109836"), false);
 });
 
+test("redactEmailMessageForDeadLetter drops the worker auth-code field", () => {
+  const redacted = redactEmailMessageForDeadLetter({
+    subject: "Hello",
+    text: "body",
+    html: "<p>body</p>",
+    authCodeLog: { code: "654321", expiresAt: "2026-01-01T00:05:00.000Z" },
+  });
+  assert.equal("authCodeLog" in redacted, false);
+  assert.equal(JSON.stringify(redacted).includes("654321"), false);
+});
+
 test("toPublicEmailErrorResponse strips transport cause from client payload", () => {
   const error = new EmailTemplateError("EMAIL_SEND_FAILED", "smtp send failed", {
     cause: "connect ECONNREFUSED 127.0.0.1:4019",
