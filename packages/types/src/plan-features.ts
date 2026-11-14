@@ -374,7 +374,7 @@ export function sanitizePlanFeatureOverrides(
 /**
  * Installed enterprise modules whose license check reported a lapse.
  * `workspaces.plan_tier` is not read. SaaS and self-host without modules are not lapsed.
- * With no license check wired, callers leave `enterpriseLicenseLapsed` unset and this is false.
+ * Callers leave `enterpriseLicenseLapsed` unset until an enterprise feed check reports expiry.
  */
 export function isSelfHostedEnterpriseLicenseLapsed(
   options?: Pick<

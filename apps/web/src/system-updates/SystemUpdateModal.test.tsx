@@ -429,6 +429,36 @@ describe("system update popup", () => {
     expect(applied[0]).toMatchObject({ source: "file", document: archive });
   });
 
+  it("says the enterprise license expired instead of a generic feed error", () => {
+    const value = status({ updates: [] });
+    value.components = [
+      {
+        component: "okkey",
+        installedVersion: "1.0.0",
+        update: null,
+        checkError: null,
+        feedConfigured: true,
+        minCoreVersion: null,
+        releaseNotesUrl: null,
+      },
+      {
+        component: "enterprise",
+        installedVersion: "1.0.0",
+        update: null,
+        checkError: "LICENSE_EXPIRED",
+        feedConfigured: true,
+        minCoreVersion: null,
+        releaseNotesUrl: null,
+      },
+    ];
+    renderModal(value);
+    expect(screen.getByTestId("system-update-license-expired")).toHaveTextContent(
+      "The enterprise license has expired.",
+    );
+    expect(screen.queryByText("Enterprise could not be checked.")).toBeNull();
+    expect(screen.queryByText("The update feed could not be read. Nothing was applied.")).toBeNull();
+  });
+
   it("uses the import file field, keeps several packages, and clears one", async () => {
     renderModal(status({ updates: [], currentVersion: "1.0.0" }));
     const zone = screen.getByRole("button", { name: /Upload file/i });

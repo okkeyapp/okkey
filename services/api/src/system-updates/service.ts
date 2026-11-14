@@ -24,7 +24,7 @@ export type AvailableUpdate = {
   releaseNotesUrl: string | null;
 };
 
-export type ComponentCheckError = "FEED_FETCH_FAILED" | "FEED_INVALID";
+export type ComponentCheckError = "FEED_FETCH_FAILED" | "FEED_INVALID" | "LICENSE_EXPIRED";
 
 /** One component in the system-update popup. A check failure stays on this row. */
 export type ComponentUpdateStatus = {
@@ -57,6 +57,8 @@ export type SystemUpdateStatus = {
    * A single feed failure is `components[].checkError` and leaves the other row usable.
    */
   feedError: string | null;
+  /** Same signal as plan writes: true only after the enterprise feed reports an expired license. */
+  enterpriseLicenseLapsed: boolean;
   /**
    * Combined offline archives are listed in the popup.
    * True when POST /system/updates/apply accepts an okkey-offline-bundle document.
@@ -106,6 +108,11 @@ export type SystemUpdateServiceOptions = {
   coreFeedUrl: string;
   /** Separate enterprise feed. Empty keeps enterprise packages on the core feed. */
   enterpriseFeedUrl?: string;
+  /** Sent only on the enterprise feed request. Never logged. */
+  enterpriseLicenseKey?: string;
+  /** Current lapse flag. A feed check updates it through `setEnterpriseLicenseLapsed`. */
+  enterpriseLicenseLapsed?: boolean;
+  setEnterpriseLicenseLapsed?: (lapsed: boolean) => void;
   isolated: boolean;
   /** Clock for the once-a-day feed cache. */
   now?: () => number;
@@ -123,6 +130,7 @@ export function createSystemUpdateService(options: SystemUpdateServiceOptions) {
   const dismissals =
     options.dismissals ??
     (options.db ? postgresDismissalStore(options.db) : memoryDismissalStore());
+  let enterpriseLicenseLapsed = options.enterpriseLicenseLapsed === true;
   const isAdmin =
     options.isAdmin ??
     (async (userId: string) => {
@@ -150,9 +158,10 @@ export function createSystemUpdateService(options: SystemUpdateServiceOptions) {
       const loads =
         options.deploymentMode === "saas"
           ? []
-          : await loadComponentFeeds(options, enterpriseFeedUrl, (url) =>
-              feedCache.load(url, options.isolated, fetchImpl),
+          : await loadComponentFeeds(options, enterpriseFeedUrl, (url, headers) =>
+              feedCache.load(url, options.isolated, fetchImpl, headers),
             );
+      enterpriseLicenseLapsed = syncEnterpriseLicense(options, loads, enterpriseLicenseLapsed);
       const installed = {
         okkey: options.currentVersion || "unknown",
         enterprise: options.enterpriseInstalled ? options.enterpriseVersion || "unknown" : null,
@@ -175,6 +184,7 @@ export function createSystemUpdateService(options: SystemUpdateServiceOptions) {
         dismissed,
         seen,
         feedError: aggregateFeedError(loads),
+        enterpriseLicenseLapsed,
         offlineArchiveSupported: true,
       };
       return base;
@@ -228,32 +238,63 @@ type FeedLoad = {
 async function loadComponentFeeds(
   options: SystemUpdateServiceOptions,
   enterpriseFeedUrl: string,
-  load: (url: string) => Promise<{ packages: readonly UpdateFeedPackage[] } | null>,
+  load: (
+    url: string,
+    headers?: Record<string, string>,
+  ) => Promise<{ packages: readonly UpdateFeedPackage[] } | null>,
 ): Promise<FeedLoad[]> {
   const loads: FeedLoad[] = [await readFeed("okkey", options.coreFeedUrl, options.isolated, load)];
   if (options.enterpriseInstalled) {
-    loads.push(await readFeed("enterprise", enterpriseFeedUrl, options.isolated, load));
+    const licenseKey = (options.enterpriseLicenseKey ?? "").trim();
+    const headers =
+      licenseKey === "" ? undefined : { "X-Okkey-License-Key": licenseKey };
+    loads.push(await readFeed("enterprise", enterpriseFeedUrl, options.isolated, load, headers));
   }
   return loads;
+}
+
+function syncEnterpriseLicense(
+  options: SystemUpdateServiceOptions,
+  loads: readonly FeedLoad[],
+  current: boolean,
+): boolean {
+  const enterprise = loads.find((load) => load.component === "enterprise");
+  let lapsed = current;
+  if (!enterprise || !enterprise.configured || options.isolated) {
+    return lapsed;
+  }
+  if (enterprise.error === "LICENSE_EXPIRED") {
+    lapsed = true;
+    options.setEnterpriseLicenseLapsed?.(true);
+  } else if (enterprise.document && enterprise.error === null) {
+    lapsed = false;
+    options.setEnterpriseLicenseLapsed?.(false);
+  }
+  return lapsed;
 }
 
 async function readFeed(
   component: UpdateComponent,
   feedUrl: string,
   isolated: boolean,
-  load: (url: string) => Promise<{ packages: readonly UpdateFeedPackage[] } | null>,
+  load: (
+    url: string,
+    headers?: Record<string, string>,
+  ) => Promise<{ packages: readonly UpdateFeedPackage[] } | null>,
+  headers?: Record<string, string>,
 ): Promise<FeedLoad> {
   const configured = feedUrl.trim() !== "";
   if (!configured || isolated) {
     return { component, configured, document: null, error: null };
   }
   try {
-    const document = await load(feedUrl);
+    const document = await load(feedUrl, headers);
     return { component, configured: true, document, error: null };
   } catch (error) {
     const code =
-      error instanceof SystemUpdateError && error.code === "FEED_INVALID"
-        ? "FEED_INVALID"
+      error instanceof SystemUpdateError &&
+      (error.code === "FEED_INVALID" || error.code === "LICENSE_EXPIRED")
+        ? error.code
         : "FEED_FETCH_FAILED";
     return { component, configured: true, document: null, error: code };
   }

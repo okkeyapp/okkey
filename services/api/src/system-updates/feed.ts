@@ -43,12 +43,13 @@ export async function fetchUpdateFeed(
   feedUrl: string,
   isolated: boolean,
   fetchImpl: FeedFetch,
+  headers?: Record<string, string>,
 ): Promise<UpdateFeedDocument | null> {
   const url = feedRequestUrl(feedUrl, isolated);
   if (!url) {
     return null;
   }
-  const body = await fetchText(url, fetchImpl);
+  const body = await fetchText(url, fetchImpl, headers);
   let parsed: unknown;
   try {
     parsed = JSON.parse(body);
@@ -82,6 +83,18 @@ export async function downloadSignedPackage(
   return parsed as SignedOfflinePackage;
 }
 
+function isLicenseExpiredBody(text: string): boolean {
+  if (Buffer.byteLength(text) > 256) {
+    return false;
+  }
+  try {
+    const parsed = JSON.parse(text) as { error?: unknown };
+    return parsed.error === "LICENSE_EXPIRED";
+  } catch {
+    return false;
+  }
+}
+
 function allowedRedirectTarget(current: URL, next: URL): boolean {
   if (next.protocol !== "http:" && next.protocol !== "https:") {
     return false;
@@ -101,7 +114,11 @@ function allowedRedirectTarget(current: URL, next: URL): boolean {
   );
 }
 
-async function fetchText(url: string, fetchImpl: FeedFetch): Promise<string> {
+async function fetchText(
+  url: string,
+  fetchImpl: FeedFetch,
+  headers?: Record<string, string>,
+): Promise<string> {
   let current = url;
   for (let hop = 0; hop <= MAX_REDIRECTS; hop += 1) {
     let response: Response;
@@ -112,6 +129,7 @@ async function fetchText(url: string, fetchImpl: FeedFetch): Promise<string> {
         headers: {
           Accept: "application/json",
           "User-Agent": "okkey-update-feed",
+          ...headers,
         },
         signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
       });
@@ -124,6 +142,10 @@ async function fetchText(url: string, fetchImpl: FeedFetch): Promise<string> {
       );
     }
     if (response.status >= 300 && response.status < 400) {
+      if (headers && Object.keys(headers).length > 0) {
+        await response.body?.cancel().catch(() => undefined);
+        throw new SystemUpdateError(502, "FEED_FETCH_FAILED", "Update source redirect was not allowed");
+      }
       const location = response.headers.get("location");
       await response.body?.cancel().catch(() => undefined);
       if (!location || hop === MAX_REDIRECTS) {
@@ -148,6 +170,10 @@ async function fetchText(url: string, fetchImpl: FeedFetch): Promise<string> {
       continue;
     }
     if (!response.ok) {
+      const text = await response.text();
+      if (response.status === 403 && isLicenseExpiredBody(text)) {
+        throw new SystemUpdateError(403, "LICENSE_EXPIRED", "The enterprise license has expired.");
+      }
       throw new SystemUpdateError(
         502,
         "FEED_FETCH_FAILED",

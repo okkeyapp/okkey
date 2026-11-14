@@ -16,7 +16,7 @@ export type SystemUpdateAvailable = {
   releaseNotesUrl?: string | null;
 };
 
-export type SystemUpdateCheckError = "FEED_FETCH_FAILED" | "FEED_INVALID";
+export type SystemUpdateCheckError = "FEED_FETCH_FAILED" | "FEED_INVALID" | "LICENSE_EXPIRED";
 
 export type SystemUpdateComponentStatus = {
   component: SystemUpdateComponent;
@@ -47,6 +47,8 @@ export type SystemUpdateStatus = {
   /** Last feed version opened in the system-update popup, per component. */
   seen: Partial<Record<SystemUpdateComponent, string>>;
   feedError: string | null;
+  /** True when the enterprise feed refused because the license expired. */
+  enterpriseLicenseLapsed?: boolean;
   /** Combined archives are applied only after the API can read them. */
   offlineArchiveSupported?: boolean;
 };
