@@ -25,6 +25,8 @@ export const AUTH_REGISTRATION_LEGACY_PATH = "/auth/registration";
 
 export const ACCOUNT_LOCK_PATH = "/account/lock";
 export const ACCOUNT_DEVICE_PENDING_PATH = "/account/device-pending";
+/** Extension opens this tab so WebAuthn runs on the website origin. */
+export const ACCOUNT_PASSKEY_APPROVAL_PATH = "/account/passkey-approval";
 export const ACCOUNT_NEW_PATH = "/account/new";
 export const ACCOUNT_RESTORE_PATH = "/account/restore";
 

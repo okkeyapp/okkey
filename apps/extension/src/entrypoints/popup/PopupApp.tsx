@@ -65,6 +65,12 @@ import {
   retryExtensionDeviceRegistration,
   revokeExtensionDeviceBestEffort,
 } from "../../lib/deviceTrust";
+import {
+  PASSKEY_HANDOFF_START,
+  PASSKEY_HANDOFF_STORAGE_KEY,
+  passkeyHandoffPageUrl,
+  type PasskeyHandoffStored,
+} from "../../lib/passkeyHandoffPoll";
 import { clearExtensionDeviceSigningKey } from "../../lib/deviceSigningKey";
 import { readExtensionPinUnlockWrap } from "../../lib/extensionDeviceUnlockStore";
 import {
@@ -209,6 +215,10 @@ export function PopupApp() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [retrying, setRetrying] = useState(false);
+  const [handoffNotice, setHandoffNotice] = useState<
+    "opening" | PasskeyHandoffStored["status"] | "error" | null
+  >(null);
+  const confirmedHandoffRef = useRef<string | null>(null);
   const [masterPassword, setMasterPassword] = useState("");
   const [suggestLongerMasterPassword, setSuggestLongerMasterPassword] = useState(false);
   const [unlockBusy, setUnlockBusy] = useState(false);
@@ -493,6 +503,33 @@ export function PopupApp() {
     [applyTrustSnapshot, loadIdentity, wipeLocalAndReset],
   );
 
+  const onPasskeyHandoff = useCallback(async () => {
+    if (!profile || !session || !trust?.deviceId) {
+      return;
+    }
+    if (handoffNotice === "opening" || handoffNotice === "waiting") {
+      return;
+    }
+    setHandoffNotice("opening");
+    try {
+      const core = createCoreClient(profile.apiBaseUrl, session.access_token);
+      const created = await core.createPasskeyHandoff(trust.deviceId);
+      await browser.tabs.create({
+        url: passkeyHandoffPageUrl(profile.webBaseUrl, created.request_id),
+      });
+      await browser.runtime.sendMessage({
+        type: PASSKEY_HANDOFF_START,
+        apiBaseUrl: profile.apiBaseUrl,
+        accessToken: session.access_token,
+        deviceId: trust.deviceId,
+        requestId: created.request_id,
+      });
+      setHandoffNotice("waiting");
+    } catch {
+      setHandoffNotice("error");
+    }
+  }, [handoffNotice, profile, session, trust?.deviceId]);
+
   useEffect(() => {
     void applyExtensionStoredTheme();
   }, []);
@@ -688,6 +725,46 @@ export function PopupApp() {
     }, 4_000);
     return () => window.clearInterval(timer);
   }, [screen, profile, session, trust?.deviceId, applyTrustSnapshot]);
+
+  useEffect(() => {
+    if (screen !== "pending" || !profile || !session) {
+      return;
+    }
+    const area = browser.storage?.session;
+    if (!area) {
+      return;
+    }
+    let cancelled = false;
+    const deviceId = trust?.deviceId ?? null;
+    const applyStored = (value: PasskeyHandoffStored | undefined) => {
+      if (!value || (deviceId && value.deviceId !== deviceId)) {
+        return;
+      }
+      setHandoffNotice(value.status);
+      if (value.status === "confirmed" && confirmedHandoffRef.current !== value.requestId) {
+        confirmedHandoffRef.current = value.requestId;
+        void refreshTrust(profile.apiBaseUrl, session.access_token, session.user_id);
+      }
+    };
+    void area.get(PASSKEY_HANDOFF_STORAGE_KEY).then((stored) => {
+      if (cancelled) {
+        return;
+      }
+      applyStored(stored[PASSKEY_HANDOFF_STORAGE_KEY] as PasskeyHandoffStored | undefined);
+    });
+    const onChanged: Parameters<typeof area.onChanged.addListener>[0] = (changes) => {
+      const change = changes[PASSKEY_HANDOFF_STORAGE_KEY];
+      if (!change) {
+        return;
+      }
+      applyStored(change.newValue as PasskeyHandoffStored | undefined);
+    };
+    area.onChanged.addListener(onChanged);
+    return () => {
+      cancelled = true;
+      area.onChanged.removeListener(onChanged);
+    };
+  }, [screen, profile, session, trust?.deviceId, refreshTrust]);
 
   const onSaveServerAndLogin = async (event?: FormEvent) => {
     event?.preventDefault();
@@ -1256,6 +1333,7 @@ export function PopupApp() {
       : rejected
         ? t("web.devicePending.rejectedBody")
         : undefined;
+    const handoffNoticeKey = passkeyHandoffNoticeKey(handoffNotice);
 
     return (
       <PopupFrame>
@@ -1284,6 +1362,28 @@ export function PopupApp() {
                     ? t("web.devicePending.shareDeliveryReset")
                     : t("web.devicePending.bodyCompact")}
                 </p>
+                {trust?.deviceId ? (
+                  <div className="flex w-full flex-col gap-3">
+                    <Button
+                      type="button"
+                      className="w-full"
+                      disabled={handoffNotice === "opening" || handoffNotice === "waiting"}
+                      onClick={() => void onPasskeyHandoff()}
+                    >
+                      {handoffNotice === "opening" || handoffNotice === "waiting" ? (
+                        <Spinner className="size-4" />
+                      ) : null}
+                      {handoffNotice === "opening" || handoffNotice === "waiting"
+                        ? t("web.devicePending.passkeyBusy")
+                        : t("web.devicePending.passkeyApprove")}
+                    </Button>
+                    {handoffNoticeKey ? (
+                      <p className="text-center text-sm text-muted-foreground" role="status">
+                        {t(handoffNoticeKey)}
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
               </div>
             ) : null}
 
@@ -1492,6 +1592,28 @@ export function PopupApp() {
       </AuthShell>
     </PopupFrame>
   );
+}
+
+function passkeyHandoffNoticeKey(
+  notice: "opening" | PasskeyHandoffStored["status"] | "error" | null,
+): string | null {
+  switch (notice) {
+    case "opening":
+    case "waiting":
+      return "web.devicePending.passkeyHandoff.waiting";
+    case "confirmed":
+      return "web.devicePending.passkeyHandoff.confirmed";
+    case "rejected":
+      return "web.devicePending.passkeyHandoff.rejected";
+    case "expired":
+      return "web.devicePending.passkeyHandoff.expired";
+    case "timeout":
+      return "web.devicePending.passkeyHandoff.timeout";
+    case "error":
+      return "web.devicePending.passkeyHandoff.openFailed";
+    default:
+      return null;
+  }
 }
 
 function PopupFrame({ children }: { children: React.ReactNode }) {

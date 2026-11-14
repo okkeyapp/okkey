@@ -32,6 +32,10 @@ describe("isAllowedPathWithoutBearerSession", () => {
     ).toBe(true);
   });
 
+  it("allows the extension passkey approval tab without a Bearer session", () => {
+    expect(isAllowedPathWithoutBearerSession("/account/passkey-approval", guest)).toBe(true);
+  });
+
   it("allows extension auth start without a Bearer session", () => {
     expect(isAllowedPathWithoutBearerSession("/auth/extension/start", guest)).toBe(true);
   });
