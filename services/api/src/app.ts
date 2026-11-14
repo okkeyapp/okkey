@@ -482,6 +482,11 @@ export function createApiApp(
       enterpriseVersion: config.enterpriseVersion,
       coreFeedUrl: config.updateCoreFeedUrl,
       enterpriseFeedUrl: config.updateEnterpriseFeedUrl,
+      enterpriseLicenseKey: config.enterpriseLicenseKey,
+      enterpriseLicenseLapsed: config.enterpriseLicenseLapsed,
+      setEnterpriseLicenseLapsed: (lapsed) => {
+        config.enterpriseLicenseLapsed = lapsed;
+      },
       isolated: config.updateIsolated,
       agent:
         config.updateAgentUrl.trim() && config.updateAgentToken.trim()
@@ -1478,6 +1483,9 @@ export function createApiApp(
         },
         assertEnterpriseModuleWrite: (workspace, feature) =>
           workspacePlanFeatureWriteDecision(config, workspace, feature),
+        setEnterpriseLicenseLapsed: (lapsed) => {
+          config.enterpriseLicenseLapsed = lapsed;
+        },
       });
       if (plugin.capsuleAccessSettings) {
         registerCapsuleAccessSettingsProvider(plugin.capsuleAccessSettings);

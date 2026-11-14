@@ -1908,6 +1908,7 @@
   "web.systemUpdate.error.TRUST_KEY_MISSING": "Не задан доверенный открытый ключ, поэтому пакет не применён.",
   "web.systemUpdate.error.FEED_UNAVAILABLE": "Лента обновлений не задана. Выберите файл офлайн-пакета.",
   "web.systemUpdate.error.FEED_FETCH_FAILED": "Не удалось прочитать ленту обновлений. Ничего не применено.",
+  "web.systemUpdate.error.LICENSE_EXPIRED": "Срок лицензии Enterprise истёк.",
   "web.systemUpdate.error.UPDATE_AGENT_UNAVAILABLE": "Агент обновлений недоступен. Ничего не применено.",
   "web.systemUpdate.error.ENTERPRISE_APPLY_UNAVAILABLE": "Подпись пакета Enterprise проверена, но эта установка не может применить модуль Enterprise. Okkey не изменён.",
   "web.systemUpdate.error.CORE_UPDATE_REQUIRED": "Сначала обновите ядро. Этому пакету Enterprise нужна более новая версия ядра, поэтому ничего не изменено.",

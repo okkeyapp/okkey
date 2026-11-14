@@ -362,6 +362,94 @@ test("one feed can fail while the other component still reports an update", asyn
   );
 });
 
+test("an expired enterprise license refuses the feed, sets the lapse flag, and a renewal clears both", async () => {
+  const licenseKey = "do-not-log-this-license-key";
+  let expired = true;
+  const headersSeen: Array<string | null> = [];
+  const coreFeed = {
+    schema: "okkey.update-feed.v1",
+    packages: [
+      {
+        component: "okkey",
+        version: "1.1.0",
+        fromVersion: "1.0.0",
+        summary: "Core",
+        releasedAt: "2026-11-01T00:00:00.000Z",
+        packageUrl: "http://updates.internal/okkey-1.1.0.okpkg",
+        packageSha256: "ab".repeat(32),
+      },
+    ],
+  };
+  const enterpriseFeed = {
+    schema: "okkey.update-feed.v1",
+    packages: [
+      {
+        component: "enterprise",
+        version: "1.2.0",
+        fromVersion: "1.0.0",
+        summary: "Enterprise",
+        releasedAt: "2026-11-01T00:00:00.000Z",
+        packageUrl: "http://updates.internal/enterprise-1.2.0.okpkg",
+        packageSha256: "cd".repeat(32),
+        minCoreVersion: "1.0.0",
+      },
+    ],
+  };
+  let lapsed = false;
+  const service = createSystemUpdateService({
+    deploymentMode: "self_hosted",
+    currentVersion: "1.0.0",
+    enterpriseInstalled: true,
+    enterpriseVersion: "1.0.0",
+    coreFeedUrl: "http://updates.internal/feed.json",
+    enterpriseFeedUrl: "http://updates.internal/enterprise.json",
+    enterpriseLicenseKey: licenseKey,
+    enterpriseLicenseLapsed: false,
+    setEnterpriseLicenseLapsed: (value) => {
+      lapsed = value;
+    },
+    isolated: false,
+    feedCacheTtlMs: 0,
+    fetchImpl: async (url, init) => {
+      const headers = new Headers(init?.headers);
+      if (String(url).includes("enterprise")) {
+        headersSeen.push(headers.get("X-Okkey-License-Key"));
+        if (expired) {
+          return new Response(JSON.stringify({ error: "LICENSE_EXPIRED" }), { status: 403 });
+        }
+        return new Response(JSON.stringify(enterpriseFeed), { status: 200 });
+      }
+      return new Response(JSON.stringify(coreFeed), { status: 200 });
+    },
+    agent: {
+      async start() {
+        throw new Error("apply");
+      },
+      async get() {
+        return null;
+      },
+    },
+    isAdmin: async () => true,
+  });
+  const refused = await service.statusFor("owner");
+  assert.equal(lapsed, true);
+  assert.equal(refused.enterpriseLicenseLapsed, true);
+  assert.equal(
+    refused.components.find((row) => row.component === "enterprise")?.checkError,
+    "LICENSE_EXPIRED",
+  );
+  assert.equal(refused.components.find((row) => row.component === "okkey")?.checkError, null);
+  assert.equal(JSON.stringify(refused).includes(licenseKey), false);
+  assert.deepEqual(headersSeen, [licenseKey]);
+
+  expired = false;
+  const renewed = await service.statusFor("owner");
+  assert.equal(lapsed, false);
+  assert.equal(renewed.enterpriseLicenseLapsed, false);
+  assert.equal(renewed.components.find((row) => row.component === "enterprise")?.checkError, null);
+  assert.equal(JSON.stringify(renewed).includes(licenseKey), false);
+});
+
 test("an invalid enterprise feed does not drop the core update", async () => {
   const service = createSystemUpdateService({
     deploymentMode: "self_hosted",

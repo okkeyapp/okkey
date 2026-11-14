@@ -363,6 +363,13 @@ export default function SystemUpdateModal({
                     <p className="mt-1 text-sm text-foreground">
                       {t("web.systemUpdate.newVersion", { version: row.update.toVersion })}
                     </p>
+                  ) : row.checkError === "LICENSE_EXPIRED" ? (
+                    <p
+                      className="mt-1 text-sm text-muted-foreground"
+                      data-testid="system-update-license-expired"
+                    >
+                      {t("web.systemUpdate.error.LICENSE_EXPIRED")}
+                    </p>
                   ) : row.checkError ? (
                     <p
                       className="mt-1 text-sm text-muted-foreground"

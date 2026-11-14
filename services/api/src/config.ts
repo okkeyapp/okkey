@@ -58,6 +58,8 @@ export interface ApiConfig {
    * Contacted only when enterprise modules are installed.
    */
   updateEnterpriseFeedUrl: string;
+  /** Enterprise feed credential (`OKKEY_LICENSE_KEY`). Sent only on that feed. */
+  enterpriseLicenseKey: string;
   /** When true, update checks and feed downloads do not call the network. */
   updateIsolated: boolean;
   /** Base URL of the dedicated update agent. Empty disables apply. */
@@ -119,6 +121,11 @@ export interface ApiConfig {
   /** Load enterprise backend plugins from `enterpriseModulesPath`. */
   enterpriseModulesEnabled: boolean;
   enterpriseModulesPath: string;
+  /**
+   * Self-hosted license lapse. Set only when the enterprise update feed reports
+   * an expired license. Not read from the environment.
+   */
+  enterpriseLicenseLapsed: boolean;
   defaultEmailLocale: string;
   /** Base URL for links in transactional email (e.g. https://app.example.com); empty = text-only hints */
   publicAppBaseUrl: string;
@@ -462,6 +469,8 @@ export function loadConfig(): ApiConfig {
       process.env.OKKEY_UPDATE_FEED_URL,
     ),
     updateEnterpriseFeedUrl: (process.env.OKKEY_UPDATE_ENTERPRISE_FEED_URL ?? "").trim(),
+    enterpriseLicenseKey: (process.env.OKKEY_LICENSE_KEY ?? "").trim(),
+    enterpriseLicenseLapsed: false,
     updateIsolated: parseBoolean(process.env.OKKEY_UPDATE_ISOLATED, false),
     updateAgentUrl: (process.env.OKKEY_UPDATE_AGENT_URL ?? "").trim(),
     updateAgentToken: (process.env.OKKEY_UPDATE_AGENT_TOKEN ?? "").trim(),
