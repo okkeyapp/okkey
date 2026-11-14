@@ -25,6 +25,16 @@ test("version tags publish a signed core feed after images, and betas are not pr
   );
   assert.match(job, /contents: write/);
   assert.match(job, /secrets\.OKKEY_CORE_RELEASE_SIGNING_KEY/);
+  assert.match(
+    job,
+    /Secret OKKEY_CORE_RELEASE_SIGNING_KEY is not set\. Refusing to build or publish an unsigned core update package or feed\.json\./,
+  );
+  assert.match(job, /Refusing to publish an unsigned core package\./);
+  const requireAt = job.indexOf("name: Require core release signing key");
+  const buildAt = job.indexOf("name: Build and sign the core offline package");
+  const uploadAt = job.indexOf("name: Upload feed.json and the core package");
+  const releaseAt = job.indexOf("gh release ");
+  assert.ok(requireAt > 0 && buildAt > requireAt && uploadAt > buildAt && releaseAt > uploadAt);
   assert.match(job, /build-core-release-package\.ts/);
   assert.match(job, /releases\/download\/\$\{RELEASE_TAG\}\/okkey-\$\{IMAGE_VERSION\}\.okpkg/);
   assert.match(job, /feed\.json/);

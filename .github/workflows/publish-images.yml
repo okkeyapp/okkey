@@ -824,6 +824,19 @@ jobs:
     permissions:
       contents: write
     steps:
+      # Fail before checkout, image lookups, or any Release API call.
+      # An empty or whitespace secret must not produce feed.json or a package.
+      - name: Require core release signing key
+        env:
+          OKKEY_CORE_RELEASE_SIGNING_KEY: ${{ secrets.OKKEY_CORE_RELEASE_SIGNING_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${OKKEY_CORE_RELEASE_SIGNING_KEY//[[:space:]]/}" ]]; then
+            echo "::error::Secret OKKEY_CORE_RELEASE_SIGNING_KEY is not set. Refusing to build or publish an unsigned core update package or feed.json."
+            exit 1
+          fi
+
       - name: Checkout
         uses: actions/checkout@v4
         with:
@@ -844,8 +857,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [[ -z "${OKKEY_CORE_RELEASE_SIGNING_KEY}" ]]; then
-            echo "Secret OKKEY_CORE_RELEASE_SIGNING_KEY is required to sign the core update package." >&2
+          if [[ -z "${OKKEY_CORE_RELEASE_SIGNING_KEY//[[:space:]]/}" ]]; then
+            echo "::error::Secret OKKEY_CORE_RELEASE_SIGNING_KEY is not set. Refusing to build or publish an unsigned core update package or feed.json."
             exit 1
           fi
           OUT="${RUNNER_TEMP}/core-update"
@@ -896,6 +909,26 @@ jobs:
             echo "core update assets are missing" >&2
             exit 1
           fi
+          # Do not upload unless the package carries a signature. The feed is
+          # published in the same step, so a missing signature publishes neither.
+          python3 - "${PKG}" "${FEED}" <<'PY'
+          import json, sys
+          package_path, feed_path = sys.argv[1], sys.argv[2]
+          package = json.load(open(package_path))
+          signature = package.get("signature")
+          payload = package.get("payload")
+          if not isinstance(signature, str) or not signature.strip() or not isinstance(payload, dict):
+              print("Refusing to publish an unsigned core package.", file=sys.stderr)
+              sys.exit(1)
+          if payload.get("format") != "okkey-offline-package" or payload.get("component") != "okkey":
+              print("Refusing to publish a package that is not a signed core offline package.", file=sys.stderr)
+              sys.exit(1)
+          feed = json.load(open(feed_path))
+          packages = feed.get("packages")
+          if feed.get("schema") != "okkey.update-feed.v1" or not isinstance(packages, list) or len(packages) == 0:
+              print("Refusing to publish a core feed without a signed package entry.", file=sys.stderr)
+              sys.exit(1)
+          PY
           if gh release view "${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
             gh release upload "${RELEASE_TAG}" "${FEED}" "${PKG}" --clobber --repo "${GITHUB_REPOSITORY}"
             # Clear pre-release before make_latest. GitHub rejects latest on a pre-release.
