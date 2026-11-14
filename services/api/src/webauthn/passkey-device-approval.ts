@@ -2,7 +2,10 @@ import { randomBytes } from "node:crypto";
 import { generateEntityId } from "../entity-id.ts";
 import type { ApiConfig } from "../config.ts";
 import type { Logger } from "../logger.ts";
-import { assertOpaqueSplitKeyShare } from "../registration/split-key-transport-policy.ts";
+import {
+  assertSplitKeyShareB,
+  SPLIT_KEY_SHARE_B_MAX_LEN,
+} from "../registration/split-key-transport-policy.ts";
 import type { DevicesRepository } from "../storage/repositories.ts";
 import {
   generateAuthenticationOptions,
@@ -13,8 +16,9 @@ import {
 } from "@simplewebauthn/server";
 import type { WebAuthnCredentialRecord, WebAuthnCredentialsRepository } from "./repository.ts";
 
-/** Must match `PASSKEY_SHARE_WRAP_LEN` in `@okkey/crypto`. */
-const PASSKEY_SHARE_WRAP_LEN = 73;
+/** Must match `PASSKEY_SHARE_WRAP_OVERHEAD` / max length in `@okkey/crypto`. */
+const PASSKEY_SHARE_WRAP_OVERHEAD = 41;
+const PASSKEY_SHARE_WRAP_MAX_LEN = PASSKEY_SHARE_WRAP_OVERHEAD + SPLIT_KEY_SHARE_B_MAX_LEN;
 const PASSKEY_SHARE_WRAP_VERSION = 1;
 const PASSKEY_SHARE_WRAP_SALT_LEN = 32;
 
@@ -124,7 +128,8 @@ function sameBytes(left: Uint8Array, right: Uint8Array): boolean {
 function isWrapped(record: WebAuthnCredentialRecord): boolean {
   return Boolean(
     record.shareWrap &&
-      record.shareWrap.length === PASSKEY_SHARE_WRAP_LEN &&
+      record.shareWrap.length >= PASSKEY_SHARE_WRAP_OVERHEAD &&
+      record.shareWrap.length <= PASSKEY_SHARE_WRAP_MAX_LEN &&
       record.shareWrap[0] === PASSKEY_SHARE_WRAP_VERSION &&
       record.shareWrapSalt &&
       record.shareWrapSalt.length === PASSKEY_SHARE_WRAP_SALT_LEN &&
@@ -224,7 +229,12 @@ export class PasskeyDeviceApprovalService {
       input,
     );
     const wrap = decodeBase64(input.shareWrapB64);
-    if (!wrap || wrap.length !== PASSKEY_SHARE_WRAP_LEN || wrap[0] !== PASSKEY_SHARE_WRAP_VERSION) {
+    if (
+      !wrap ||
+      wrap.length < PASSKEY_SHARE_WRAP_OVERHEAD ||
+      wrap.length > PASSKEY_SHARE_WRAP_MAX_LEN ||
+      wrap[0] !== PASSKEY_SHARE_WRAP_VERSION
+    ) {
       this.audit("wrap_rejected", input);
       throw new PasskeyDeviceApprovalError(
         "PASSKEY_SHARE_WRAP_REJECTED",
@@ -371,7 +381,7 @@ export class PasskeyDeviceApprovalService {
       if (!decoded) {
         throw new Error("invalid device_share");
       }
-      assertOpaqueSplitKeyShare(decoded, "device_share");
+      assertSplitKeyShareB(decoded);
       deviceShare = decoded;
     } catch {
       this.audit("share_rejected", input);

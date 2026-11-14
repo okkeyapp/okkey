@@ -345,7 +345,8 @@ export {
 } from "./device-unlock-wrap.js";
 
 export {
-  PASSKEY_SHARE_WRAP_LEN,
+  PASSKEY_SHARE_WRAP_MAX_LEN,
+  PASSKEY_SHARE_WRAP_OVERHEAD,
   PASSKEY_SHARE_WRAP_SALT_LEN,
   PASSKEY_SHARE_WRAP_VERSION,
   openPasskeyShareWrap,

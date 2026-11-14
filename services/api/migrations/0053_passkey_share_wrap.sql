@@ -21,9 +21,10 @@ ALTER TABLE user_webauthn_credentials
     OR (
       share_wrap IS NOT NULL
       AND share_wrap_salt IS NOT NULL
-      AND octet_length(share_wrap) = 73
+      AND octet_length(share_wrap) BETWEEN 41 AND 4137
       AND octet_length(share_wrap_salt) = 32
       AND share_wrap_version = 1
+      AND get_byte(share_wrap, 0) = 1
     )
   );
 

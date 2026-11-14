@@ -5,7 +5,7 @@ import { readFile } from "node:fs/promises";
 import {
   initCrypto,
   openPasskeyShareWrap,
-  PASSKEY_SHARE_WRAP_LEN,
+  PASSKEY_SHARE_WRAP_OVERHEAD,
   sealPasskeyShareWrap,
 } from "../dist/index.js";
 
@@ -28,7 +28,7 @@ test("PRF wrap round-trips share B and hides it", async () => {
     salt,
     credentialId: "cred-1",
   });
-  assert.equal(wrap.length, PASSKEY_SHARE_WRAP_LEN);
+  assert.equal(wrap.length, PASSKEY_SHARE_WRAP_OVERHEAD + deviceShare.length);
   assert.equal(wrap[0], 1);
   assert.equal(Buffer.from(wrap).includes(Buffer.from(deviceShare)), false);
   assert.equal(Buffer.from(wrap).includes(Buffer.from(prfOutput)), false);
@@ -68,4 +68,24 @@ test("PRF wrap rejects a tampered ciphertext and a different credential id", asy
       credentialId: "cred-2",
     }),
   );
+});
+
+test("PRF wrap round-trips a hybrid-sized share", async () => {
+  const deviceShare = crypto.getRandomValues(new Uint8Array(2400));
+  const prfOutput = random32();
+  const salt = random32();
+  const wrap = await sealPasskeyShareWrap({
+    deviceShare,
+    prfOutput,
+    salt,
+    credentialId: "cred-hybrid",
+  });
+  assert.equal(wrap.length, PASSKEY_SHARE_WRAP_OVERHEAD + deviceShare.length);
+  const opened = await openPasskeyShareWrap({
+    wrap,
+    prfOutput,
+    salt,
+    credentialId: "cred-hybrid",
+  });
+  assert.deepEqual(opened, deviceShare);
 });

@@ -9,10 +9,11 @@ import {
 } from "../src/webauthn/passkey-device-approval.ts";
 import { shareWrapBodyRejection } from "../src/routes/passkey-device-approval.ts";
 import type { WebAuthnCredentialRecord } from "../src/webauthn/repository.ts";
+import { hybridDeviceShareBytes } from "./hybrid-share-fixture.ts";
 
-const SHARE = new Uint8Array(32).fill(9);
+const SHARE = hybridDeviceShareBytes(9);
 const SHARE_B64 = Buffer.from(SHARE).toString("base64");
-const OTHER_SHARE = new Uint8Array(32).fill(1);
+const OTHER_SHARE = hybridDeviceShareBytes(1);
 
 class MemoryRedis {
   private readonly values = new Map<string, string>();

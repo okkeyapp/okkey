@@ -1,5 +1,6 @@
 /**
- * AEAD wrap of the 32-byte device share under a WebAuthn PRF output.
+ * AEAD wrap of device share B under a WebAuthn PRF output.
+ * Share B is the hybrid frame the unlocked client already holds.
  * The PRF output never leaves the client. The server stores only this ciphertext.
  */
 import { aead_decrypt, aead_encrypt, random_bytes, sha256 } from "@okkey/crypto-wasm";
@@ -7,16 +8,18 @@ import { mapWasmError } from "./errors.js";
 import { wipeBytes } from "./secret-buffer.js";
 import { ensureWasm } from "./wasm-init.js";
 
-const SHARE_LEN = 32;
 const SALT_LEN = 32;
 const PRF_LEN = 32;
 const NONCE_LEN = 24;
 const AEAD_TAG_LEN = 16;
+/** Same ceiling as the API share-B transport (`SPLIT_KEY_SHARE_B_MAX_LEN`). */
+const SHARE_MAX_LEN = 4096;
 
 export const PASSKEY_SHARE_WRAP_VERSION = 1;
 export const PASSKEY_SHARE_WRAP_SALT_LEN = SALT_LEN;
-/** version || nonce || XChaCha20-Poly1305(share). */
-export const PASSKEY_SHARE_WRAP_LEN = 1 + NONCE_LEN + SHARE_LEN + AEAD_TAG_LEN;
+/** version || nonce || AEAD tag, before the share plaintext. */
+export const PASSKEY_SHARE_WRAP_OVERHEAD = 1 + NONCE_LEN + AEAD_TAG_LEN;
+export const PASSKEY_SHARE_WRAP_MAX_LEN = PASSKEY_SHARE_WRAP_OVERHEAD + SHARE_MAX_LEN;
 
 const KEY_DOMAIN = new TextEncoder().encode("okkey-passkey-share-wrap-key-v1\n");
 
@@ -42,8 +45,11 @@ function assertInputs(input: {
   salt: Uint8Array;
   credentialId: string;
 }): void {
-  if (input.deviceShare && input.deviceShare.length !== SHARE_LEN) {
-    throw new Error("device share must be 32 bytes");
+  if (
+    input.deviceShare &&
+    (input.deviceShare.length === 0 || input.deviceShare.length > SHARE_MAX_LEN)
+  ) {
+    throw new Error("device share length is outside the passkey wrap limit");
   }
   if (input.prfOutput.length !== PRF_LEN) {
     throw new Error("PRF output must be 32 bytes");
@@ -76,7 +82,7 @@ export async function sealPasskeyShareWrap(input: {
       wrapAad(input.credentialId),
       shareCopy,
     );
-    const out = new Uint8Array(PASSKEY_SHARE_WRAP_LEN);
+    const out = new Uint8Array(PASSKEY_SHARE_WRAP_OVERHEAD + shareCopy.length);
     out[0] = PASSKEY_SHARE_WRAP_VERSION;
     out.set(nonce, 1);
     out.set(ciphertext, 1 + NONCE_LEN);
@@ -99,7 +105,8 @@ export async function openPasskeyShareWrap(input: {
   await ensureWasm();
   assertInputs({ ...input, deviceShare: undefined });
   if (
-    input.wrap.length !== PASSKEY_SHARE_WRAP_LEN ||
+    input.wrap.length < PASSKEY_SHARE_WRAP_OVERHEAD ||
+    input.wrap.length > PASSKEY_SHARE_WRAP_MAX_LEN ||
     input.wrap[0] !== PASSKEY_SHARE_WRAP_VERSION
   ) {
     throw new Error("passkey share wrap is malformed");
@@ -113,9 +120,9 @@ export async function openPasskeyShareWrap(input: {
       wrapAad(input.credentialId),
       input.wrap.slice(1 + NONCE_LEN),
     );
-    if (share.length !== SHARE_LEN) {
+    if (share.length === 0 || share.length > SHARE_MAX_LEN) {
       wipeBytes(share);
-      throw new Error("passkey share wrap plaintext must be 32 bytes");
+      throw new Error("passkey share wrap plaintext length is invalid");
     }
     return share;
   } catch (error) {

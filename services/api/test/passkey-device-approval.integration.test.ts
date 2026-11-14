@@ -10,6 +10,7 @@ import {
   createLoggerStub,
   registerUser,
 } from "./two-factor-test-helpers.ts";
+import { hybridDeviceShareB64, hybridDeviceShareBytes } from "./hybrid-share-fixture.ts";
 
 test("integration: passkey approval writes the client share and leaves the trusted share", async (t) => {
   const config = loadConfig();
@@ -37,7 +38,7 @@ test("integration: passkey approval writes the client share and leaves the trust
   const pending = await deviceService.registerDevice(registered.userId, "127.0.0.1", {
     deviceFingerprint: "a".repeat(64),
     devicePublicKey: Buffer.from("pending-passkey-device").toString("base64"),
-    deviceShare: Buffer.alloc(32, 2).toString("base64"),
+    deviceShare: hybridDeviceShareB64(2),
     deviceName: "Pending browser",
     platform: "web",
     osName: "Linux",
@@ -48,7 +49,7 @@ test("integration: passkey approval writes the client share and leaves the trust
   });
   assert.equal(pending.status, "pending_approval");
 
-  const clientShare = new Uint8Array(32).fill(9);
+  const clientShare = hybridDeviceShareBytes(9);
   const written = await storage.repositories.devices.approvePendingWithClientShare({
     userId: registered.userId,
     deviceId: pending.deviceId,
@@ -76,7 +77,7 @@ test("integration: passkey approval writes the client share and leaves the trust
   assert.ok(trusted);
   assert.ok(approved);
   assert.equal(trusted.status, "trusted");
-  assert.deepEqual(Uint8Array.from(trusted.device_share), new Uint8Array(32).fill(11));
+  assert.deepEqual(Uint8Array.from(trusted.device_share), hybridDeviceShareBytes());
   assert.equal(approved.status, "trusted");
   assert.equal(approved.approval_method, "passkey");
   assert.deepEqual(Uint8Array.from(approved.device_share), clientShare);

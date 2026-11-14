@@ -2306,7 +2306,8 @@ export class DevicesRepository {
               status = 'revoked',
               rejected_at = COALESCE(rejected_at, $2::timestamptz),
               rejection_reason = COALESCE(rejection_reason, 'approval expired'),
-              revoked_at = COALESCE(revoked_at, $2::timestamptz)
+              revoked_at = COALESCE(revoked_at, $2::timestamptz),
+              device_share = NULL
             WHERE id = $1
           `,
           [input.deviceId, input.now],

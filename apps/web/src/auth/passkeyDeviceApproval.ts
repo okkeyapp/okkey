@@ -130,7 +130,7 @@ export async function establishPasskeyShareWrap(
   core: CoreApiClient,
   input: { credentialRowId: string; deviceShare: Uint8Array },
 ): Promise<{ ok: true } | { ok: false; code: PasskeyWrapErrorCode }> {
-  if (input.deviceShare.length !== 32) {
+  if (input.deviceShare.length === 0) {
     return { ok: false, code: "needs_unlock" };
   }
   let prfOutput: Uint8Array | null = null;
