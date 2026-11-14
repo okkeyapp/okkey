@@ -16,6 +16,12 @@
  * Chromium may delay alarms closer than about 30 seconds; 90 seconds is
  * past that floor, and the in-memory timer stays the fast path while the
  * page is awake.
+ *
+ * Those timers follow monotonic time. A system sleep or a frozen VM
+ * advances `Date.now()` while they stay pending, so the stored deadline
+ * is also checked on focus, visibility, and wake without waiting for the
+ * original timer. The deadline value is wall-clock (`Date.now()` plus the
+ * consent window) and is what gets written to storage.session.
  */
 import { sanitizeHttpAuthLog } from "./httpAuthDecision.ts";
 import type { HttpAuthConsentResult } from "./httpAuthMessages.ts";
@@ -89,6 +95,71 @@ export function parseHttpAuthPendingBag(raw: unknown): Record<string, HttpAuthPe
 
 export function isHttpAuthConsentExpired(deadlineMs: number, nowMs: number): boolean {
   return nowMs >= deadlineMs;
+}
+
+export type HttpAuthWallClockPorts = {
+  now: () => number;
+  setTimer: (callback: () => void, delayMs: number) => unknown;
+  clearTimer: (handle: unknown) => void;
+  /** Focus, visibility, and wake. The listener must be safe to call often. */
+  subscribe: (listener: () => void) => () => void;
+  onExpire: () => void;
+};
+
+/**
+ * Arm a monotonic timer for the remaining wall-clock delay, and expire as
+ * soon as a wake/focus/visibility signal observes `now >= deadline`.
+ * An early timer fire schedules whatever wall-clock time is still left.
+ */
+export function armHttpAuthWallClock(deadlineMs: number, ports: HttpAuthWallClockPorts): () => void {
+  let timer: unknown = null;
+  let stopped = false;
+  let lastSeenMs = ports.now();
+
+  function clearArmedTimer(): void {
+    if (timer == null) {
+      return;
+    }
+    ports.clearTimer(timer);
+    timer = null;
+  }
+
+  function armRemaining(): void {
+    clearArmedTimer();
+    const delayMs = Math.max(0, deadlineMs - ports.now());
+    timer = ports.setTimer(() => {
+      timer = null;
+      check(true);
+    }, delayMs);
+  }
+
+  function check(fromTimer: boolean): void {
+    if (stopped) {
+      return;
+    }
+    const nowMs = ports.now();
+    // A monotonic timer does not observe a wall-clock jump. More than a
+    // second since the last check means the machine slept or stalled.
+    const jumped = nowMs - lastSeenMs > 1000;
+    lastSeenMs = nowMs;
+    if (isHttpAuthConsentExpired(deadlineMs, nowMs)) {
+      stopped = true;
+      clearArmedTimer();
+      ports.onExpire();
+      return;
+    }
+    if (fromTimer || timer == null || jumped) {
+      armRemaining();
+    }
+  }
+
+  const unsubscribe = ports.subscribe(() => check(false));
+  check(true);
+  return () => {
+    stopped = true;
+    clearArmedTimer();
+    unsubscribe();
+  };
 }
 
 type MemoryRow = {
