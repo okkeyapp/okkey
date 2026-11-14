@@ -1,32 +1,67 @@
 # Okkey edge — OPTIONAL classical-only compatibility listeners (q3-4).
 # Enabled only when OKKEY_COMPAT_ENABLED=1 (see docker-entrypoint.sh).
 #
-# Policy (runbook 6.19):
+# Policy (runbook 6.19 + Vasya retest#3/#4):
 #   - explicit opt-in (disabled by default)
-#   - isolated: separate server_name hosts (never the default app/api hosts)
-#   - time-boxed: OKKEY_COMPAT_SUNSET (YYYY-MM-DD) required; entrypoint refuses past dates
-#   - classical curves only (X25519) — hybrid group never listed here; no merge onto default route
+#   - isolated hostnames (never the default app/api hosts)
+#   - isolated listen port (default ${OKKEY_COMPAT_HTTPS_PORT} / 8443)
+#   - catch-all on compat port is the default SSL_CTX for the listen socket:
+#     MUST set the same classical ssl_protocols / ssl_ecdh_curve / ssl_ciphers
+#     as named compat servers (retest#3 finding 1), else OpenSSL defaults leak
+#     hybrid/P-256 onto compat SNI.
+#   - catch-all: ssl_reject_handshake on (foreign/missing SNI) + location / → 421
+#     (no html root — retest#3 finding 2; HTTP/1.1 Host rematch hits catch-all)
+#   - ssl_session_cache/tickets off — TLS1.2 resume must not bypass reject (finding 3)
+#   - classical curves only (X25519); ECDHE+AEAD ciphers; prefer_server_ciphers on
 #
 # Substituted at container start.
 
+# --- Compat port catch-all (default SSL_CTX for this listen socket) ---
+server {
+  listen ${OKKEY_COMPAT_HTTPS_PORT} ssl default_server;
+  listen [::]:${OKKEY_COMPAT_HTTPS_PORT} ssl default_server;
+  server_name _;
+
+  # Same classical TLS profile as named compat servers (finding 1).
+  ssl_protocols TLSv1.2 TLSv1.3;
+  ssl_ecdh_curve X25519;
+  ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305;
+  ssl_prefer_server_ciphers on;
+  ssl_session_cache off;
+  ssl_session_tickets off;
+
+  # Reject unknown / missing SNI at handshake (N1).
+  ssl_reject_handshake on;
+
+  # HTTP/1.1 Host rematch lands here after a valid compat SNI (finding 2).
+  location / {
+    return 421;
+  }
+}
+
 # --- Compat web (classical) ---
 server {
-  listen 443 ssl;
-  listen [::]:443 ssl;
+  listen ${OKKEY_COMPAT_HTTPS_PORT} ssl;
+  listen [::]:${OKKEY_COMPAT_HTTPS_PORT} ssl;
   http2 on;
   server_name ${OKKEY_COMPAT_WEB_HOST};
 
-  ssl_certificate     /etc/nginx/certs/fullchain.pem;
-  ssl_certificate_key /etc/nginx/certs/privkey.pem;
+  ssl_certificate     /etc/nginx/certs/compat-fullchain.pem;
+  ssl_certificate_key /etc/nginx/certs/compat-privkey.pem;
 
-  # Classical-only profile (legacy clients). Not hybrid.
   ssl_protocols TLSv1.2 TLSv1.3;
   ssl_ecdh_curve X25519;
-  ssl_prefer_server_ciphers off;
-  ssl_session_timeout 1d;
-  ssl_session_cache shared:SSL:10m;
+  ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305;
+  ssl_prefer_server_ciphers on;
+  ssl_session_cache off;
+  ssl_session_tickets off;
 
   include /etc/nginx/conf.d/compat-allow.inc;
+
+  # Belt-and-suspenders if Host rematch somehow stays on this server.
+  if ($host != "${OKKEY_COMPAT_WEB_HOST}") {
+    return 421;
+  }
 
   add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
   add_header X-Okkey-Tls-Profile "compat-classical" always;
@@ -44,21 +79,26 @@ server {
 
 # --- Compat API (classical) ---
 server {
-  listen 443 ssl;
-  listen [::]:443 ssl;
+  listen ${OKKEY_COMPAT_HTTPS_PORT} ssl;
+  listen [::]:${OKKEY_COMPAT_HTTPS_PORT} ssl;
   http2 on;
   server_name ${OKKEY_COMPAT_API_HOST};
 
-  ssl_certificate     /etc/nginx/certs/fullchain.pem;
-  ssl_certificate_key /etc/nginx/certs/privkey.pem;
+  ssl_certificate     /etc/nginx/certs/compat-fullchain.pem;
+  ssl_certificate_key /etc/nginx/certs/compat-privkey.pem;
 
   ssl_protocols TLSv1.2 TLSv1.3;
   ssl_ecdh_curve X25519;
-  ssl_prefer_server_ciphers off;
-  ssl_session_timeout 1d;
-  ssl_session_cache shared:SSL:10m;
+  ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305;
+  ssl_prefer_server_ciphers on;
+  ssl_session_cache off;
+  ssl_session_tickets off;
 
   include /etc/nginx/conf.d/compat-allow.inc;
+
+  if ($host != "${OKKEY_COMPAT_API_HOST}") {
+    return 421;
+  }
 
   add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
   add_header X-Okkey-Tls-Profile "compat-classical" always;

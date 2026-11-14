@@ -1,0 +1,14 @@
+# Optional overlay: publish the classical compat HTTPS port.
+# Use ONLY when OKKEY_COMPAT_ENABLED=1 (N8 — base proxy overlay must not expose 8443).
+#
+#   docker compose -f docker-compose.prod.yml \
+#     -f proxy/docker-compose.proxy.yml \
+#     -f proxy/docker-compose.compat.yml \
+#     --env-file .env up -d --build proxy
+#
+# Paths are relative to the Compose project directory (install dir / deploy/docker).
+
+services:
+  proxy:
+    ports:
+      - "${OKKEY_COMPAT_HTTPS_PORT:-8443}:${OKKEY_COMPAT_HTTPS_PORT:-8443}"

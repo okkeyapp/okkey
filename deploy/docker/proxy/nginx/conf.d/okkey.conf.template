@@ -2,6 +2,10 @@
 # nginx + OpenSSL ≥ 3.5, hybrid group X25519MLKEM768, TLS 1.3 only.
 # Classical groups are intentionally omitted → no silent downgrade.
 #
+# default_server on the first HTTPS listens: when optional compat listeners exist
+# on another port they must never become the catch-all SSL_CTX for :443
+# (TLS 1.3 key_share is selected from the default server context).
+#
 # Substituted at container start (see docker-entrypoint.sh).
 
 map $http_upgrade $connection_upgrade {
@@ -22,8 +26,8 @@ server {
 
 # --- Web (SPA) ---
 server {
-  listen 443 ssl;
-  listen [::]:443 ssl;
+  listen 443 ssl default_server;
+  listen [::]:443 ssl default_server;
   http2 on;
   server_name ${OKKEY_WEB_HOST};
 
