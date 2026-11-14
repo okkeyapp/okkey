@@ -3,11 +3,18 @@
  *
  * Firefox suspends the background while onAuthRequired's blocking promise
  * is still pending, and a plain setTimeout is discarded with the realm.
- * The deadline lives in storage.session. A browser.alarms entry (absolute
- * `when`, not a repeating period) and a timer inside the consent window
- * wake the page when that deadline arrives. Chromium's alarm scheduler
- * delays alarms that are less than about 30 seconds away, so a 90 second
- * `when` is used and the in-memory timer stays the fast path while the
+ * The deadline lives in storage.session. The background closes the consent
+ * window itself: an in-memory timer while this realm is awake, and a
+ * browser.alarms entry (absolute `when`, not a repeating period) if the
+ * realm is suspended. The consent window's own timer only wakes a discarded
+ * event page; Firefox throttles timers in an unfocused window, so that
+ * timer is not what settles the auth request.
+ *
+ * Firefox can run setTimeout or an alarm slightly before `Date.now()`
+ * reaches the deadline. Both are one-shot, so an early fire re-arms the
+ * in-memory timer for the remaining delay and creates the alarm again.
+ * Chromium may delay alarms closer than about 30 seconds; 90 seconds is
+ * past that floor, and the in-memory timer stays the fast path while the
  * page is awake.
  */
 import { sanitizeHttpAuthLog } from "./httpAuthDecision.ts";
@@ -174,8 +181,34 @@ export function createHttpAuthConsentTracker(ports: HttpAuthConsentPorts): HttpA
     try {
       ports.scheduleAlarm(challengeId, whenMs);
     } catch {
-      // The consent window timer still wakes the background at the deadline.
+      // The in-memory timer still settles the request while this realm is awake.
     }
+  }
+
+  /**
+   * Put a live timer and a fresh alarm back on a deadline that has not been
+   * reached. An early one-shot callback must not be the last timer.
+   */
+  function keepAlive(challengeId: string, deadlineMs: number): void {
+    const nowMs = ports.now();
+    const delayMs = Math.max(0, deadlineMs - nowMs);
+    const row = memory.get(challengeId);
+    if (row && !row.settled) {
+      clearRowTimer(row);
+      row.deadlineMs = deadlineMs;
+      row.timer = armTimer(challengeId, delayMs);
+    } else if (!row) {
+      const stored = mirror?.[challengeId];
+      memory.set(challengeId, {
+        settled: false,
+        deadlineMs,
+        windowId: stored?.windowId ?? null,
+        origin: stored?.origin ?? "",
+        timer: armTimer(challengeId, delayMs),
+        resolve: null,
+      });
+    }
+    schedule(challengeId, deadlineMs);
   }
 
   function takeRow(challengeId: string): MemoryRow | null {
@@ -224,13 +257,8 @@ export function createHttpAuthConsentTracker(ports: HttpAuthConsentPorts): HttpA
     if (deadlineMs == null) {
       return "missing";
     }
-    if (source !== "force" && source !== "timer" && !isHttpAuthConsentExpired(deadlineMs, ports.now())) {
-      if (source === "alarm") {
-        schedule(challengeId, deadlineMs);
-      }
-      return "pending";
-    }
-    if (source === "timer" && !isHttpAuthConsentExpired(deadlineMs, ports.now())) {
+    if (source !== "force" && !isHttpAuthConsentExpired(deadlineMs, ports.now())) {
+      keepAlive(challengeId, deadlineMs);
       return "pending";
     }
     const taken = takeRow(challengeId);

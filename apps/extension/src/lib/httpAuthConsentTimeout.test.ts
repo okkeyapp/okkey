@@ -78,6 +78,15 @@ function harness(session: Record<string, HttpAuthPendingSession>) {
         await timer.callback();
       }
     },
+    /** Invoke the live one-shot timer even though the clock has not reached it. */
+    async fireLiveTimerEarly() {
+      const timer = timers.find((entry) => !entry.cleared);
+      if (!timer) {
+        throw new Error("no live timer");
+      }
+      timer.cleared = true;
+      await timer.callback();
+    },
     liveTimers() {
       return timers.filter((timer) => !timer.cleared);
     },
@@ -157,13 +166,18 @@ describe("http auth consent timeout", () => {
       origin: "https://files.example",
       resolve: (result) => results.push(result),
     });
+    const deadline = clock.alarms.get("c1");
     clock.jump(10_000);
     assert.equal(await clock.tracker.onAlarm("c1"), "pending");
     assert.deepEqual(results, []);
     assert.equal(session.c1?.origin, "https://files.example");
+    assert.equal(clock.alarms.get("c1"), deadline);
+    assert.equal(clock.liveTimers().length, 1);
+    assert.equal(clock.liveTimers()[0]?.at, deadline);
     clock.jump(80_000);
     assert.equal(await clock.tracker.onAlarm("c1"), "expired");
     assert.deepEqual(results, [{ outcome: "timeout" }]);
+    assert.equal(clock.liveTimers().length, 0);
   });
 
   it("rejects a late confirm and clears a decline before a later wake", async () => {
@@ -201,7 +215,55 @@ describe("http auth consent timeout", () => {
     assert.equal(session.early, undefined);
   });
 
-  it("fires the in-memory timer once the deadline is reached", async () => {
+  it("re-arms a timer that fires a few milliseconds before the deadline", async () => {
+    const session: Record<string, HttpAuthPendingSession> = {};
+    const clock = harness(session);
+    const results: HttpAuthConsentResult[] = [];
+    const deadline = await clock.tracker.open({
+      challengeId: "c1",
+      origin: "https://files.example",
+      resolve: (result) => results.push(result),
+    });
+    await clock.tracker.attachWindow("c1", 11);
+    clock.jump(90_000 - 5);
+    await clock.fireLiveTimerEarly();
+    assert.deepEqual(results, []);
+    assert.equal(clock.closed.length, 0);
+    assert.equal(clock.alarms.get("c1"), deadline);
+    assert.equal(clock.liveTimers().length, 1);
+    assert.equal(clock.liveTimers()[0]?.at, deadline);
+    clock.jump(5);
+    await clock.fireDue();
+    assert.deepEqual(results, [{ outcome: "timeout" }]);
+    assert.deepEqual(clock.closed, [11]);
+    assert.equal(clock.liveTimers().length, 0);
+    assert.equal(session.c1, undefined);
+  });
+
+  it("re-arms an alarm that fires a few milliseconds before the deadline", async () => {
+    const session: Record<string, HttpAuthPendingSession> = {};
+    const clock = harness(session);
+    const results: HttpAuthConsentResult[] = [];
+    const deadline = await clock.tracker.open({
+      challengeId: "c1",
+      origin: "https://files.example",
+      resolve: (result) => results.push(result),
+    });
+    await clock.tracker.attachWindow("c1", 12);
+    clock.jump(90_000 - 5);
+    assert.equal(await clock.tracker.onAlarm("c1"), "pending");
+    assert.deepEqual(results, []);
+    assert.equal(clock.alarms.get("c1"), deadline);
+    assert.equal(clock.liveTimers().length, 1);
+    assert.equal(clock.liveTimers()[0]?.at, deadline);
+    clock.jump(5);
+    assert.equal(await clock.tracker.onAlarm("c1"), "expired");
+    assert.deepEqual(results, [{ outcome: "timeout" }]);
+    assert.deepEqual(clock.closed, [12]);
+    assert.equal(clock.alarms.has("c1"), false);
+  });
+
+  it("expires from the background timer when the consent window timer never fires", async () => {
     const session: Record<string, HttpAuthPendingSession> = {};
     const clock = harness(session);
     const results: HttpAuthConsentResult[] = [];
