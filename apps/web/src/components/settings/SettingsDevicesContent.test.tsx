@@ -287,7 +287,14 @@ describe("SettingsDevicesContent", () => {
         blocked: [],
       })
       .mockResolvedValueOnce({
-        devices: [trustedDevice(), trustedDevice({ device_id: "d-pending", is_current: false })],
+        devices: [
+          trustedDevice(),
+          trustedDevice({
+            device_id: "d-pending",
+            device_name: "Desktop Windows 11",
+            is_current: false,
+          }),
+        ],
         pending: [],
         blocked: [],
       });
