@@ -1899,7 +1899,9 @@
   "web.systemUpdate.progressVerifying": "Проверяем подпись пакета…",
   "web.systemUpdate.progressApplying": "Применяем обновление…",
   "web.systemUpdate.progressSucceeded": "Обновление применено. Okkey перезапускается на {version}.",
+  "web.systemUpdate.progressBundleSucceeded": "Okkey {core} и Enterprise {enterprise} применены.",
   "web.systemUpdate.progressFailed": "Обновление не применено. Экземпляр остался на прежней версии.",
+  "web.systemUpdate.progressBundlePartial": "Okkey применён. Enterprise не применён.",
   "web.systemUpdate.error.SIGNATURE_MISSING": "У пакета нет подписи, поэтому он не применён.",
   "web.systemUpdate.error.SIGNATURE_INVALID": "Подпись пакета недействительна, поэтому он не применён.",
   "web.systemUpdate.error.VERIFICATION_INTERRUPTED": "Проверка подписи прервана, поэтому пакет не применён.",
@@ -1911,6 +1913,7 @@
   "web.systemUpdate.error.CORE_UPDATE_REQUIRED": "Сначала обновите ядро. Этому пакету Enterprise нужна более новая версия ядра, поэтому ничего не изменено.",
   "web.systemUpdate.error.CORE_RESTART_TIMEOUT": "Okkey не сообщил версию {version} вовремя. Enterprise не запускался.",
   "web.systemUpdate.error.APPLY_FAILED": "Не удалось применить обновление. Экземпляр остался на прежней версии.",
+  "web.systemUpdate.error.BUNDLE_PARTIAL": "Okkey применён. Enterprise не применён и откачен.",
   "web.systemUpdate.error.PACKAGE_INVALID": "Файл не является офлайн-пакетом Okkey.",
   "web.systemUpdate.error.generic": "Обновление не применено. Экземпляр остался на прежней версии."
 }

@@ -60,6 +60,11 @@ export type SystemUpdateJob = {
   toVersion: string;
   errorCode?: string;
   errorMessage?: string;
+  components?: Array<{
+    component: SystemUpdateComponent;
+    version: string;
+    applied: boolean;
+  }>;
 };
 
 type ParsedVersion = {

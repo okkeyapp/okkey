@@ -3,14 +3,21 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 
 import { isSystemUpdateError, SystemUpdateError } from "../system-updates/errors.ts";
 import {
+  isOfflineBundleDocument,
+  verifyOfflineBundle,
+  type VerifiedOfflineBundle,
+} from "../system-updates/offline-bundle.ts";
+import {
   claimedPackageComponent,
+  normalizePublicKey,
   takeRegistryCredentials,
   verifyOfflinePackage,
   type OfflinePackagePayload,
   type RegistryPullCredentials,
 } from "../system-updates/package-format.ts";
-import type { UpdateJob } from "../system-updates/service.ts";
+import type { UpdateComponentResult, UpdateJob } from "../system-updates/service.ts";
 import { applyVerifiedCorePackage, nodeEnvFileEngine, type UpdateApplyEngine } from "./apply.ts";
+import { applyVerifiedOfflineBundle } from "./bundle-apply.ts";
 import { applyVerifiedEnterprisePackage } from "./enterprise-apply.ts";
 import { credentialSecrets, scrubSecrets } from "./registry-auth.ts";
 
@@ -72,6 +79,10 @@ export function createUpdateAgent(options: UpdateAgentOptions) {
       return;
     }
     const secrets = credentialSecrets(registryCredentials);
+    if (isOfflineBundleDocument(document)) {
+      await executeBundle(job, document);
+      return;
+    }
     const claimed = claimedPackageComponent(document);
     let payload: OfflinePackagePayload;
     try {
@@ -126,6 +137,83 @@ export function createUpdateAgent(options: UpdateAgentOptions) {
       job.progress = 100;
     } catch (error) {
       fail(job, error, "APPLY_FAILED", secrets);
+    }
+  }
+
+  async function executeBundle(job: StoredJob, document: unknown): Promise<void> {
+    if (!normalizePublicKey(options.publicKeyPem)) {
+      fail(
+        job,
+        new SystemUpdateError(
+          400,
+          "TRUST_KEY_MISSING",
+          "No trusted core public key is configured, so the bundle was not applied",
+        ),
+      );
+      return;
+    }
+    if (!normalizePublicKey(options.enterprisePublicKeyPem ?? "")) {
+      fail(
+        job,
+        new SystemUpdateError(
+          400,
+          "TRUST_KEY_MISSING",
+          "No trusted enterprise public key is configured, so the bundle was not applied",
+        ),
+      );
+      return;
+    }
+    let bundle: VerifiedOfflineBundle;
+    try {
+      bundle = verifyOfflineBundle(document, {
+        corePublicKeyPem: options.publicKeyPem,
+        enterprisePublicKeyPem: options.enterprisePublicKeyPem ?? "",
+      });
+    } catch (error) {
+      fail(job, error, "VERIFICATION_INTERRUPTED");
+      return;
+    }
+    const report: UpdateComponentResult[] = [
+      { component: "okkey", version: bundle.core.version, applied: false },
+      { component: "enterprise", version: bundle.enterprise.version, applied: false },
+    ];
+    job.component = "okkey";
+    job.fromVersion = bundle.core.fromVersion;
+    job.toVersion = bundle.core.version;
+    job.components = report;
+    job.status = "applying";
+    job.progress = 40;
+    try {
+      await applyVerifiedOfflineBundle({
+        bundle,
+        engine,
+        project: options.project,
+        envFilePath: options.envFilePath,
+        isolated: options.isolated,
+        coreVersionHint: options.coreVersion ?? "",
+      });
+      report[0] = { component: "okkey", version: bundle.core.version, applied: true };
+      report[1] = { component: "enterprise", version: bundle.enterprise.version, applied: true };
+      job.components = report;
+      job.status = "succeeded";
+      job.progress = 100;
+    } catch (error) {
+      if (isSystemUpdateError(error) && error.code === "BUNDLE_PARTIAL") {
+        report[0] = { component: "okkey", version: bundle.core.version, applied: true };
+        job.components = report;
+        fail(job, error, "APPLY_FAILED");
+        return;
+      }
+      const reason = error instanceof Error ? error.message : "Core apply failed";
+      const clear = reason.includes("Nothing was applied") || reason.includes("Nothing was changed");
+      fail(
+        job,
+        new SystemUpdateError(
+          isSystemUpdateError(error) ? error.statusCode : 500,
+          isSystemUpdateError(error) ? error.code : "APPLY_FAILED",
+          clear ? reason : `Nothing was applied. ${reason}`,
+        ),
+      );
     }
   }
 
@@ -227,6 +315,7 @@ function publicJob(job: StoredJob): UpdateJob {
     fromVersion: job.fromVersion,
     toVersion: job.toVersion,
     ...(job.errorCode ? { errorCode: job.errorCode, errorMessage: job.errorMessage } : {}),
+    ...(job.components ? { components: job.components } : {}),
   };
 }
 

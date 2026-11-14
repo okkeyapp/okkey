@@ -39,6 +39,13 @@
 # GHCR Core packages are public for anonymous pull; pr-* deletion uses GITHUB_TOKEN only.
 # Version tags also publish a signed core offline package and feed.json
 # as GitHub Release assets (job publish-core-update-feed).
+#
+# Optional air-gap archive (workflow_dispatch only):
+#   Set enterprise_package_path to a signed enterprise package and
+#   core_package_path to a signed core package. The offline-bundle job packs
+#   them with scripts/build-offline-bundle.mjs. Leave enterprise_package_path
+#   empty for a core-only image publish. That job is skipped and image publish
+#   does not depend on it. Push and schedule runs never pack an archive.
 name: Publish container images
 
 on:
@@ -71,6 +78,14 @@ on:
         required: false
         type: boolean
         default: false
+      core_package_path:
+        description: "Signed core package. Used only when enterprise_package_path is set."
+        required: false
+        default: ""
+      enterprise_package_path:
+        description: "Signed enterprise package. When set, also write an .okbundle archive. Empty keeps the core-only publish."
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -1153,3 +1168,44 @@ jobs:
                       file=sys.stderr,
                   )
           PY
+
+  # Skipped unless a dispatch supplies an enterprise package. Image jobs do not need it.
+  offline-bundle:
+    name: offline-bundle
+    needs: prep
+    if: >
+      github.event_name == 'workflow_dispatch' &&
+      github.event.inputs.enterprise_package_path != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "25"
+
+      - name: Build offline bundle
+        shell: bash
+        env:
+          CORE_PACKAGE: ${{ github.event.inputs.core_package_path }}
+          ENTERPRISE_PACKAGE: ${{ github.event.inputs.enterprise_package_path }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${CORE_PACKAGE}" || -z "${ENTERPRISE_PACKAGE}" ]]; then
+            echo "core_package_path and enterprise_package_path are both required to build the archive" >&2
+            exit 1
+          fi
+          node --experimental-strip-types scripts/build-offline-bundle.mjs \
+            --core "${CORE_PACKAGE}" \
+            --enterprise "${ENTERPRISE_PACKAGE}" \
+            --out dist/okkey-offline.okbundle
+
+      - name: Upload offline bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: okkey-offline-bundle
+          path: dist/okkey-offline.okbundle
+          if-no-files-found: error

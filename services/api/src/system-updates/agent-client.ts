@@ -1,5 +1,5 @@
 import { SystemUpdateError } from "./errors.ts";
-import type { RegistryPullCredentials, SignedOfflinePackage } from "./package-format.ts";
+import type { RegistryPullCredentials } from "./package-format.ts";
 import type { UpdateAgentClient, UpdateJob } from "./service.ts";
 
 export function createHttpUpdateAgentClient(options: {
@@ -13,7 +13,7 @@ export function createHttpUpdateAgentClient(options: {
 
   return {
     async start(
-      document: SignedOfflinePackage,
+      document: unknown,
       startOptions?: { registryCredentials?: RegistryPullCredentials },
     ): Promise<UpdateJob> {
       const credentials = startOptions?.registryCredentials;
