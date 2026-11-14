@@ -1156,6 +1156,8 @@ export interface WebAuthnCredentialPublicDto {
   name: string;
   created_at: string;
   last_used_at: string | null;
+  /** True when this credential stores a PRF wrap of share B. */
+  has_share_wrap: boolean;
 }
 
 /** `GET /account/login-methods` and mutating login-method responses. */
@@ -1217,6 +1219,55 @@ export interface WebAuthnLoginVerifyResponseDto {
   authStateId: string;
   userExists: true;
   nextStep: "device_check" | "two_factor";
+}
+
+/** `POST /account/webauthn/credentials/:credentialId/share-wrap/options` success. */
+export interface PasskeyShareWrapOptionsResponseDto {
+  challengeId: string;
+  options: Record<string, unknown>;
+  prf_salt: string;
+  credential_id: string;
+}
+
+/** `POST /account/webauthn/credentials/:credentialId/share-wrap/verify` request. */
+export interface PasskeyShareWrapVerifyRequestDto {
+  challengeId: string;
+  response: Record<string, unknown>;
+  share_wrap: string;
+}
+
+/** `POST /account/webauthn/credentials/:credentialId/share-wrap/verify` success. */
+export interface PasskeyShareWrapVerifyResponseDto {
+  credential_id: string;
+  has_share_wrap: true;
+}
+
+export interface PasskeyShareWrapCredentialDto {
+  credential_id: string;
+  share_wrap: string;
+  share_wrap_salt: string;
+  share_wrap_version: number;
+}
+
+/** `POST /devices/:deviceId/passkey-approval/options` success. */
+export interface PasskeyApprovalOptionsResponseDto {
+  challengeId: string;
+  options: Record<string, unknown>;
+  prf_salt: string;
+  credentials: PasskeyShareWrapCredentialDto[];
+}
+
+/** `POST /devices/:deviceId/passkey-approval/verify` request. */
+export interface PasskeyApprovalVerifyRequestDto {
+  challengeId: string;
+  response: Record<string, unknown>;
+  device_share: string;
+}
+
+/** `POST /devices/:deviceId/passkey-approval/verify` success. */
+export interface PasskeyApprovalVerifyResponseDto {
+  device_id: string;
+  status: "trusted";
 }
 
 /** One event as returned by sync HTTP API (opaque base64 payload). */

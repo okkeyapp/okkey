@@ -211,6 +211,13 @@ import type { SyncService } from "./sync/service.ts";
 import type { WorkspacePersonalSyncService } from "./workspace-personal-sync/service.ts";
 import type { TwoFactorService } from "./two-factor/service.ts";
 import type { WebAuthnService } from "./webauthn/service.ts";
+import type { PasskeyDeviceApprovalService } from "./webauthn/passkey-device-approval.ts";
+import {
+  createPasskeyApprovalOptionsRoute,
+  createPasskeyApprovalVerifyRoute,
+  createPasskeyShareWrapOptionsRoute,
+  createPasskeyShareWrapVerifyRoute,
+} from "./routes/passkey-device-approval.ts";
 import type { VaultService } from "./vault/service.ts";
 import type { VaultSharingService } from "./vault-sharing/service.ts";
 import type { CapsuleService } from "./capsule/service.ts";
@@ -282,6 +289,7 @@ export interface AppDeps {
   extensionAuthService?: ExtensionAuthService;
   twoFactorService?: TwoFactorService;
   webauthnService?: WebAuthnService;
+  passkeyDeviceApprovalService?: PasskeyDeviceApprovalService;
   capsuleService?: CapsuleService;
   itemCategoryPreferencesService?: ItemCategoryPreferencesService;
   capsuleDefaultsService?: CapsuleDefaultsService;
@@ -638,6 +646,46 @@ export function createApiApp(
       "/account/webauthn/credentials",
       createWebAuthnCredentialsBulkDeleteRoute(deps.webauthnService, resolveUserId),
     );
+  }
+  if (deps.passkeyDeviceApprovalService) {
+    app.route(
+      "POST",
+      "/account/webauthn/credentials/:credentialId/share-wrap/options",
+      createPasskeyShareWrapOptionsRoute(
+        deps.passkeyDeviceApprovalService,
+        resolveUserId,
+        config.trustedProxyHops,
+      ),
+    );
+    app.route(
+      "POST",
+      "/account/webauthn/credentials/:credentialId/share-wrap/verify",
+      createPasskeyShareWrapVerifyRoute(
+        deps.passkeyDeviceApprovalService,
+        resolveUserId,
+        config.trustedProxyHops,
+      ),
+    );
+    if (resolveSessionAllowUnboundDevice) {
+      app.route(
+        "POST",
+        "/devices/:deviceId/passkey-approval/options",
+        createPasskeyApprovalOptionsRoute(
+          deps.passkeyDeviceApprovalService,
+          resolveSessionAllowUnboundDevice,
+          config.trustedProxyHops,
+        ),
+      );
+      app.route(
+        "POST",
+        "/devices/:deviceId/passkey-approval/verify",
+        createPasskeyApprovalVerifyRoute(
+          deps.passkeyDeviceApprovalService,
+          resolveSessionAllowUnboundDevice,
+          config.trustedProxyHops,
+        ),
+      );
+    }
   }
   if (deps.vaultUnlockBootstrapService) {
     app.route(

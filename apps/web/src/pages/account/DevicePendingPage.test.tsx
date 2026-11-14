@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -21,12 +21,27 @@ const auth = vi.hoisted(() => ({
   deviceNeedsRecovery: false,
   refreshDeviceTrust: vi.fn(async () => undefined),
   retryDeviceRegistration: vi.fn(async () => undefined),
+  currentDeviceId: "device-1" as string | null,
   profile: { email: "user@okkey.local", firstName: "Test", lastName: "User" },
   logout: vi.fn(),
 }));
 
+const passkey = vi.hoisted(() => ({
+  approvePendingDeviceWithPasskey: vi.fn(
+    async (): Promise<{ ok: true } | { ok: false; code: "prf_unavailable" }> => ({
+      ok: true,
+    }),
+  ),
+}));
+
+vi.mock("../../auth/passkeyDeviceApproval", () => ({
+  approvePendingDeviceWithPasskey: passkey.approvePendingDeviceWithPasskey,
+  passkeyApprovalErrorMessageKey: (code: string) => `web.devicePending.passkey.${code}`,
+}));
+
 vi.mock("../../auth/AuthVaultContext", () => ({
   useAuthVault: () => auth,
+  useAuthenticatedCoreClient: () => ({}) as never,
 }));
 
 function ensureLocalStorage(): void {
@@ -72,6 +87,9 @@ describe("DevicePendingPage copy", () => {
     auth.deviceNeedsRecovery = false;
     auth.refreshDeviceTrust.mockClear();
     auth.retryDeviceRegistration.mockClear();
+    auth.currentDeviceId = "device-1";
+    passkey.approvePendingDeviceWithPasskey.mockReset();
+    passkey.approvePendingDeviceWithPasskey.mockResolvedValue({ ok: true });
     localStorage.setItem(LOCALE_STORAGE_KEY, "en");
   });
 
@@ -128,5 +146,19 @@ describe("DevicePendingPage copy", () => {
     expect(screen.getByRole("link", { name: /restore with recovery key/i })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "This device was denied" })).not.toBeInTheDocument();
     expect(screen.queryByText(/a trusted device rejected this sign-in/i)).not.toBeInTheDocument();
+  });
+
+  it("shows the passkey button and a clear error when PRF is missing", async () => {
+    passkey.approvePendingDeviceWithPasskey.mockResolvedValue({
+      ok: false,
+      code: "prf_unavailable",
+    });
+    renderPage();
+    auth.refreshDeviceTrust.mockClear();
+
+    fireEvent.click(screen.getByRole("button", { name: "Approve with passkey" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/did not copy a device share/i);
+    expect(auth.refreshDeviceTrust).not.toHaveBeenCalled();
   });
 });

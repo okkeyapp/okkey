@@ -2356,6 +2356,81 @@ export class DevicesRepository {
     return rows.map((row) => Uint8Array.from(row.device_share));
   }
 
+  /**
+   * Mark a pending device trusted with the share the client unwrapped locally.
+   * Does not read or copy any other row's device_share.
+   */
+  async approvePendingWithClientShare(input: {
+    userId: string;
+    deviceId: string;
+    deviceShare: Uint8Array;
+    now: string;
+    /** Pending rows created before this instant are expired. */
+    pendingCreatedBefore: string;
+  }): Promise<"approved" | "not_found" | "not_pending" | "expired"> {
+    return withUserDeviceLock(input.userId, () => this.db.transaction(async (tx) => {
+      await lockUserDevices(tx, input.userId);
+      const rows = await tx.query<{
+        user_id: string;
+        status: string;
+        created_at: string | Date;
+      }>(
+        `
+          SELECT user_id, status, created_at
+          FROM devices
+          WHERE id = $1
+          FOR UPDATE
+        `,
+        [input.deviceId],
+      );
+      const current = rows[0];
+      if (!current || current.user_id !== input.userId) {
+        return "not_found";
+      }
+      if (current.status !== "pending") {
+        return "not_pending";
+      }
+      if (new Date(current.created_at).getTime() < new Date(input.pendingCreatedBefore).getTime()) {
+        await tx.query(
+          `
+            UPDATE devices
+            SET
+              status = 'revoked',
+              rejected_at = COALESCE(rejected_at, $2::timestamptz),
+              rejection_reason = COALESCE(rejection_reason, 'approval expired'),
+              revoked_at = COALESCE(revoked_at, $2::timestamptz),
+              device_share = NULL
+            WHERE id = $1
+          `,
+          [input.deviceId, input.now],
+        );
+        await deleteSessionsForDevices(tx, [input.deviceId]);
+        return "expired";
+      }
+      const updated = await tx.query<{ id: string }>(
+        `
+          UPDATE devices
+          SET
+            status = 'trusted',
+            device_share = $4,
+            approval_method = 'passkey',
+            approved_by = $2,
+            approved_at = $3::timestamptz,
+            last_seen_at = $3::timestamptz,
+            rejected_at = NULL,
+            rejection_reason = NULL,
+            revoked_at = NULL
+          WHERE id = $1
+            AND user_id = $2::bigint
+            AND status = 'pending'
+          RETURNING id
+        `,
+        [input.deviceId, input.userId, input.now, Buffer.from(input.deviceShare)],
+      );
+      return updated[0] ? "approved" : "not_pending";
+    }));
+  }
+
   async isTrustedDevice(userId: string, deviceId: string): Promise<boolean> {
     const rows = await this.db.query<{ is_trusted: boolean }>(
       `
@@ -2558,6 +2633,7 @@ export class DevicesRepository {
             SET
               status = 'trusted',
               device_share = $5,
+              approval_method = 'device',
               approved_by = $2,
               approved_at = $3::timestamptz,
               last_seen_at = $3::timestamptz,
