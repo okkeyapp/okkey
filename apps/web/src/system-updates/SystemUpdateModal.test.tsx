@@ -124,6 +124,9 @@ describe("system update popup", () => {
       if (target.includes("/system/updates/jobs/")) {
         return json({ job: succeededJob("okkey") });
       }
+      if (target.endsWith("/system/updates")) {
+        return json(status({ currentVersion: "9.9.9", updates: [] }));
+      }
       throw new Error(`unexpected ${target}`);
     });
   });
@@ -195,6 +198,114 @@ describe("system update popup", () => {
       expect(applied).toHaveLength(2);
     });
     expect(applied.map((body) => (body as { component: string }).component)).toEqual(["okkey", "enterprise"]);
+  });
+
+  it("does not apply enterprise until the running core reports the new version", async () => {
+    const calls: string[] = [];
+    let clock = 0;
+    let statusReads = 0;
+    fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
+      const target = String(url);
+      const method = init?.method ?? "GET";
+      if (target.endsWith("/system/updates") && method === "GET") {
+        statusReads += 1;
+        const version = statusReads >= 2 ? "2.0.0" : "1.0.0";
+        calls.push(`status:${version}`);
+        return json(status({ currentVersion: version, updates: [] }));
+      }
+      if (target.endsWith("/system/updates/apply")) {
+        const body = JSON.parse(String(init?.body)) as { component?: string };
+        calls.push(`apply:${body.component}`);
+        applied.push(body);
+        return json({ job: succeededJob(body.component ?? "okkey") }, 202);
+      }
+      if (target.includes("/system/updates/jobs/")) {
+        return json({ job: succeededJob("okkey") });
+      }
+      throw new Error(`unexpected ${target}`);
+    });
+    render(
+      <SystemUpdateModal
+        t={t}
+        accessToken="token"
+        status={status()}
+        updates={status().updates}
+        onClose={() => undefined}
+        onIgnore={() => undefined}
+        onApplied={() => undefined}
+        coreRestart={{
+          timeoutMs: 60_000,
+          initialDelayMs: 1_000,
+          maxDelayMs: 8_000,
+          now: () => clock,
+          sleep: async (ms) => {
+            clock += ms;
+          },
+        }}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("system-update-apply-all"));
+    await waitFor(() => {
+      expect(applied).toHaveLength(2);
+    });
+    expect(calls.filter((call) => call.startsWith("apply") || call.startsWith("status"))).toEqual([
+      "apply:okkey",
+      "status:1.0.0",
+      "status:2.0.0",
+      "apply:enterprise",
+    ]);
+    expect(clock).toBe(1_000);
+  });
+
+  it("stops before enterprise when the core never reports the target version", async () => {
+    const calls: string[] = [];
+    let clock = 0;
+    let reloaded = 0;
+    fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
+      const target = String(url);
+      const method = init?.method ?? "GET";
+      if (target.endsWith("/system/updates") && method === "GET") {
+        calls.push("status");
+        return json(status({ currentVersion: "1.0.0", updates: [] }));
+      }
+      if (target.endsWith("/system/updates/apply")) {
+        const body = JSON.parse(String(init?.body)) as { component?: string };
+        calls.push(`apply:${body.component}`);
+        applied.push(body);
+        return json({ job: succeededJob(body.component ?? "okkey") }, 202);
+      }
+      if (target.includes("/system/updates/jobs/")) {
+        return json({ job: succeededJob("okkey") });
+      }
+      throw new Error(`unexpected ${target}`);
+    });
+    render(
+      <SystemUpdateModal
+        t={t}
+        accessToken="token"
+        status={status()}
+        updates={status().updates}
+        onClose={() => undefined}
+        onIgnore={() => undefined}
+        onApplied={() => {
+          reloaded += 1;
+        }}
+        coreRestart={{
+          timeoutMs: 2_500,
+          initialDelayMs: 1_000,
+          maxDelayMs: 1_000,
+          now: () => clock,
+          sleep: async (ms) => {
+            clock += ms;
+          },
+        }}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("system-update-apply-all"));
+    expect(await screen.findByText("Okkey did not report 2.0.0 in time. Enterprise was not started.")).toBeInTheDocument();
+    expect(calls.filter((call) => call.startsWith("apply"))).toEqual(["apply:okkey"]);
+    expect(calls.filter((call) => call === "status").length).toBeGreaterThan(1);
+    expect(reloaded).toBe(1);
   });
 
   it("skips enterprise when the core update is still older than minCoreVersion", async () => {

@@ -64,6 +64,7 @@ export type UpdateFeedPackage = {
   /** Set on an enterprise package that must not run before this core version. */
   minCoreVersion: string | null;
   releaseNotesUrl: string | null;
+  registryCredentials?: RegistryPullCredentials;
 };
 
 export type UpdateFeedDocument = {
@@ -356,6 +357,7 @@ export function parseUpdateFeed(value: unknown): UpdateFeedDocument {
       ...(registryCredentials ? { registryCredentials } : {}),
       minCoreVersion: optionalVersion(item.minCoreVersion),
       releaseNotesUrl: optionalHttpUrl(item.releaseNotesUrl),
+      ...(registryCredentials ? { registryCredentials } : {}),
     });
   }
   const registryCredentials = readRegistryCredentials(record.registryCredentials, "FEED_INVALID");

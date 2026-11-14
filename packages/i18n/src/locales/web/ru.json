@@ -1895,6 +1895,7 @@
   "web.systemUpdate.upToDate": "Эта установка уже на актуальной версии.",
   "web.systemUpdate.emptyFeed": "Лента обновлений не задана. Можно применить файл пакета.",
   "web.systemUpdate.progressDownloading": "Скачиваем пакет…",
+  "web.systemUpdate.progressRestarting": "Ждём, пока Okkey {version} поднимется, и только потом обновим Enterprise.",
   "web.systemUpdate.progressVerifying": "Проверяем подпись пакета…",
   "web.systemUpdate.progressApplying": "Применяем обновление…",
   "web.systemUpdate.progressSucceeded": "Обновление применено. Okkey перезапускается на {version}.",
@@ -1908,6 +1909,7 @@
   "web.systemUpdate.error.UPDATE_AGENT_UNAVAILABLE": "Агент обновлений недоступен. Ничего не применено.",
   "web.systemUpdate.error.ENTERPRISE_APPLY_UNAVAILABLE": "Подпись пакета Enterprise проверена, но эта установка не может применить модуль Enterprise. Okkey не изменён.",
   "web.systemUpdate.error.CORE_UPDATE_REQUIRED": "Сначала обновите ядро. Этому пакету Enterprise нужна более новая версия ядра, поэтому ничего не изменено.",
+  "web.systemUpdate.error.CORE_RESTART_TIMEOUT": "Okkey не сообщил версию {version} вовремя. Enterprise не запускался.",
   "web.systemUpdate.error.APPLY_FAILED": "Не удалось применить обновление. Экземпляр остался на прежней версии.",
   "web.systemUpdate.error.PACKAGE_INVALID": "Файл не является офлайн-пакетом Okkey.",
   "web.systemUpdate.error.generic": "Обновление не применено. Экземпляр остался на прежней версии."

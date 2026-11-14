@@ -7,6 +7,7 @@ import {
   type RegistryPullCredentials,
   type SignedOfflinePackage,
   type UpdateComponent,
+  type UpdateFeedDocument,
   type UpdateFeedPackage,
 } from "./package-format.ts";
 import { isNewerVersion, shouldShowUpdate } from "./versions.ts";
@@ -388,7 +389,11 @@ async function resolveApplyDocument(
     const record = { ...(input.document as Record<string, unknown>) };
     const registryCredentials = readRegistryCredentials(record.registryCredentials, "PACKAGE_INVALID");
     delete record.registryCredentials;
-    return { document: record as SignedOfflinePackage, registryCredentials };
+    const document = record as SignedOfflinePackage;
+    if (document.payload?.component !== "enterprise") {
+      return { document };
+    }
+    return { document, registryCredentials };
   }
   if (input.component !== "okkey" && input.component !== "enterprise") {
     throw new SystemUpdateError(400, "PACKAGE_INVALID", "A package component is required");

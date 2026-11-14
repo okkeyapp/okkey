@@ -28,11 +28,11 @@ export function planComponentUpdateOrder<T extends OrderableUpdate>(
   const enterprise = selected.find((update) => update.component === "enterprise");
   const core = selected.find((update) => update.component === "okkey");
   const minCoreVersion = enterprise?.minCoreVersion?.trim() || null;
-  if (!enterprise || !minCoreVersion || meetsMinimum(currentCoreVersion, minCoreVersion)) {
+  if (!enterprise || !minCoreVersion || versionSatisfies(currentCoreVersion, minCoreVersion)) {
     return { order: selected, notice: null };
   }
   const coreAfter = core?.toVersion ?? currentCoreVersion;
-  if (core && meetsMinimum(coreAfter, minCoreVersion)) {
+  if (core && versionSatisfies(coreAfter, minCoreVersion)) {
     return { order: selected, notice: { minCoreVersion, satisfiedBy: coreAfter } };
   }
   return {
@@ -41,7 +41,7 @@ export function planComponentUpdateOrder<T extends OrderableUpdate>(
   };
 }
 
-function meetsMinimum(current: string, minimum: string): boolean {
+export function versionSatisfies(current: string, minimum: string): boolean {
   if (!SEMVER.test(minimum.trim())) {
     return current.trim() === minimum.trim();
   }

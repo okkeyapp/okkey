@@ -2,7 +2,7 @@ import type { WebMessageValues } from "@okkey/i18n";
 import { Alert, AlertDescription, AlertTitle, Button, Popup } from "@okkey/ui";
 import { useState } from "react";
 
-import { applySystemUpdate, fetchSystemUpdateJob } from "./api";
+import { applySystemUpdate, fetchSystemUpdateJob, fetchSystemUpdateStatus } from "./api";
 import {
   classifyOfflineFile,
   OFFLINE_FILE_ACCEPT,
@@ -11,6 +11,7 @@ import {
   type OfflinePackageChoice,
 } from "./offline-files";
 import { planComponentUpdateOrder } from "./update-order";
+import { waitForRunningCore, type CoreRestartPoll } from "./wait-for-core";
 import type {
   SystemUpdateAvailable,
   SystemUpdateComponent,
@@ -42,6 +43,7 @@ const ERROR_KEYS = new Set([
   "UPDATE_AGENT_UNAVAILABLE",
   "ENTERPRISE_APPLY_UNAVAILABLE",
   "CORE_UPDATE_REQUIRED",
+  "CORE_RESTART_TIMEOUT",
   "APPLY_FAILED",
   "PACKAGE_INVALID",
 ]);
@@ -54,6 +56,7 @@ export default function SystemUpdateModal({
   onClose,
   onIgnore,
   onApplied,
+  coreRestart,
 }: {
   t: Translate;
   accessToken: string;
@@ -62,12 +65,15 @@ export default function SystemUpdateModal({
   onClose: () => void;
   onIgnore: () => void;
   onApplied: () => void;
+  /** Tests shorten the restart poll. Production uses the defaults. */
+  coreRestart?: CoreRestartPoll;
 }) {
   const [choices, setChoices] = useState<OfflineChoice[]>([]);
   const [fileError, setFileError] = useState("");
   const [phase, setPhase] = useState<Phase>("idle");
   const [job, setJob] = useState<SystemUpdateJob | null>(null);
   const [errorCode, setErrorCode] = useState("");
+  const [restartTarget, setRestartTarget] = useState("");
 
   const busy = phase === "downloading" || phase === "running";
   const progress =
@@ -126,6 +132,27 @@ export default function SystemUpdateModal({
     return true;
   }
 
+  async function coreIsRunning(targetVersion: string): Promise<boolean> {
+    setRestartTarget(targetVersion);
+    setPhase("running");
+    const result = await waitForRunningCore(
+      targetVersion,
+      async () => {
+        const next = await fetchSystemUpdateStatus(accessToken);
+        return next.currentVersion;
+      },
+      coreRestart,
+    );
+    if (result === "ready") {
+      setRestartTarget("");
+      return true;
+    }
+    setPhase("failed");
+    setErrorCode("CORE_RESTART_TIMEOUT");
+    onApplied();
+    return false;
+  }
+
   async function onUpdate(only?: SystemUpdateComponent) {
     if (!status.canApply || busy) {
       return;
@@ -149,7 +176,14 @@ export default function SystemUpdateModal({
           return;
         }
         setPhase("running");
+        const coreFile = plan.order.find((choice) => choice.component === "okkey");
         for (const choice of plan.order) {
+          if (choice.component === "enterprise" && coreFile) {
+            const ready = await coreIsRunning(coreFile.toVersion);
+            if (!ready) {
+              return;
+            }
+          }
           const started = await applySystemUpdate(accessToken, { source: "file", document: choice.document });
           const ok = await runJob(started);
           if (!ok) {
@@ -177,7 +211,14 @@ export default function SystemUpdateModal({
         return;
       }
       setPhase("downloading");
+      const coreUpdate = plan.order.find((update) => update.component === "okkey");
       for (const update of plan.order) {
+        if (update.component === "enterprise" && coreUpdate) {
+          const ready = await coreIsRunning(coreUpdate.toVersion);
+          if (!ready) {
+            return;
+          }
+        }
         const started = await applySystemUpdate(accessToken, {
           source: "feed",
           component: update.component,
@@ -196,7 +237,9 @@ export default function SystemUpdateModal({
   }
 
   const errorText = errorCode
-    ? t(ERROR_KEYS.has(errorCode) ? `web.systemUpdate.error.${errorCode}` : "web.systemUpdate.error.generic")
+    ? t(ERROR_KEYS.has(errorCode) ? `web.systemUpdate.error.${errorCode}` : "web.systemUpdate.error.generic", {
+        version: restartTarget,
+      })
     : "";
 
   return (
@@ -366,9 +409,13 @@ export default function SystemUpdateModal({
               <div className="h-full bg-accent" style={{ width: `${progress}%` }} />
             </div>
             <p className="text-sm text-foreground">
-              {phase === "downloading"
-                ? t("web.systemUpdate.progressDownloading")
-                : phase === "succeeded"
+              {phase === "failed"
+                ? t("web.systemUpdate.progressFailed")
+                : restartTarget
+                  ? t("web.systemUpdate.progressRestarting", { version: restartTarget })
+                  : phase === "downloading"
+                    ? t("web.systemUpdate.progressDownloading")
+                    : phase === "succeeded"
                   ? t("web.systemUpdate.progressSucceeded", {
                       version: job?.toVersion || updates[0]?.toVersion || "",
                     })

@@ -10,10 +10,12 @@ import { HttpApp } from "../src/http.ts";
 import { feedRequestUrl, fetchUpdateFeed } from "../src/system-updates/feed.ts";
 import {
   generateUpdateKeyPair,
+  parseUpdateFeed,
   signOfflinePackage,
   verifyOfflinePackage,
   type OfflinePackagePayload,
 } from "../src/system-updates/package-format.ts";
+import { createHttpUpdateAgentClient } from "../src/system-updates/agent-client.ts";
 import {
   createSystemUpdateService,
   visibleUpdates,
@@ -405,6 +407,173 @@ test("an invalid enterprise feed does not drop the core update", async () => {
   assert.equal(status.feedError, null);
   assert.equal(status.updates[0]?.toVersion, "1.2.0");
   assert.equal(status.components.find((row) => row.component === "enterprise")?.checkError, "FEED_INVALID");
+});
+
+test("enterprise feed pull credentials go to the update agent and not to the browser", async () => {
+  const keys = generateUpdateKeyPair();
+  const signed = signOfflinePackage(
+    payload({
+      component: "enterprise",
+      version: "3.0.0",
+      fromVersion: "1.0.0",
+      summary: "Enterprise module",
+      images: { enterprise: "ghcr.io/okkeyapp/enterprise:3.0.0" },
+    }),
+    keys.privateKeyPem,
+  );
+  const raw = JSON.stringify(signed);
+  const password = "pull-secret-value";
+  const username = "pull-user";
+  const server = "registry.example";
+  const feed = {
+    schema: "okkey.update-feed.v1",
+    registryCredentials: {
+      server: "https://Fallback.Example/v2/",
+      username: "fallback-user",
+      password: "fallback-secret",
+    },
+    packages: [
+      {
+        ...feedPackage("enterprise", "3.0.0", "http://updates.internal/enterprise-3.0.0.okpkg", raw, {
+          minCoreVersion: "1.1.0",
+        }),
+        registryCredentials: { server, username, password },
+      },
+    ],
+  };
+  const started: Array<{ document: unknown; options?: { registryCredentials?: { password?: string } } }> = [];
+  const agent: UpdateAgentClient = {
+    async start(document, options) {
+      started.push({ document, options });
+      return {
+        id: "11111111-1111-4111-8111-111111111111",
+        status: "verifying",
+        progress: 0,
+        component: "enterprise",
+        fromVersion: "1.0.0",
+        toVersion: "3.0.0",
+      };
+    },
+    async get() {
+      return null;
+    },
+  };
+  const service = createSystemUpdateService({
+    deploymentMode: "self_hosted",
+    currentVersion: "1.0.0",
+    enterpriseInstalled: true,
+    enterpriseVersion: "1.0.0",
+    coreFeedUrl: "http://updates.internal/feed.json",
+    enterpriseFeedUrl: "http://updates.internal/enterprise.json",
+    isolated: false,
+    fetchImpl: async (url: string) => {
+      if (url.endsWith("/enterprise.json")) {
+        return new Response(JSON.stringify(feed), { status: 200 });
+      }
+      if (url.endsWith("/enterprise-3.0.0.okpkg")) {
+        return new Response(raw, { status: 200 });
+      }
+      return new Response(JSON.stringify({ schema: "okkey.update-feed.v1", packages: [] }), { status: 200 });
+    },
+    agent,
+    isAdmin: async () => true,
+  });
+  const status = await service.statusFor("owner");
+  const statusJson = JSON.stringify(status);
+  assert.equal(statusJson.includes(password), false);
+  assert.equal(statusJson.includes(username), false);
+  assert.equal(statusJson.includes("fallback-secret"), false);
+  await service.apply("owner", { source: "feed", component: "enterprise" });
+  assert.equal(started.length, 1);
+  assert.equal(JSON.stringify(started[0]?.document).includes(password), false);
+  assert.deepEqual(started[0]?.options?.registryCredentials, { server, username, password });
+
+  const coreStarted: unknown[] = [];
+  const coreRaw = JSON.stringify(signOfflinePackage(payload(), keys.privateKeyPem));
+  const core = createSystemUpdateService({
+    deploymentMode: "self_hosted",
+    currentVersion: "1.0.0",
+    enterpriseInstalled: false,
+    enterpriseVersion: "",
+    coreFeedUrl: "http://updates.internal/feed.json",
+    isolated: false,
+    fetchImpl: async (url: string) => {
+      if (url.endsWith("/okkey.okpkg")) {
+        return new Response(coreRaw, { status: 200 });
+      }
+      return new Response(
+        JSON.stringify({
+          schema: "okkey.update-feed.v1",
+          registryCredentials: { server, username, password },
+          packages: [feedPackage("okkey", "1.1.0", "http://updates.internal/okkey.okpkg", coreRaw)],
+        }),
+        { status: 200 },
+      );
+    },
+    agent: {
+      async start(document, options) {
+        coreStarted.push(options ?? null);
+        return {
+          id: "22222222-2222-4222-8222-222222222222",
+          status: "verifying",
+          progress: 0,
+          component: document.payload.component,
+          fromVersion: "1.0.0",
+          toVersion: "1.1.0",
+        };
+      },
+      async get() {
+        return null;
+      },
+    },
+    isAdmin: async () => true,
+  });
+  await core.apply("owner", { source: "feed", component: "okkey" });
+  assert.deepEqual(coreStarted, [null]);
+
+  const posted: string[] = [];
+  const client = createHttpUpdateAgentClient({
+    baseUrl: "http://agent.internal",
+    token: "agent-token",
+    fetchImpl: async (_url, init) => {
+      posted.push(String(init?.body ?? ""));
+      return new Response(
+        JSON.stringify({
+          error: "APPLY_FAILED",
+          message: `registry rejected ${password} for ${username}`,
+        }),
+        { status: 502 },
+      );
+    },
+  });
+  await assert.rejects(
+    () => client.start(signed, { registryCredentials: { server, username, password } }),
+    (error: unknown) => {
+      assert.ok(error instanceof SystemUpdateError);
+      assert.equal(error.message.includes(password), false);
+      assert.equal(error.message.includes(username), false);
+      assert.match(error.message, /\[redacted\]/);
+      return true;
+    },
+  );
+  assert.equal(posted[0]?.includes(password), true);
+  assert.equal(posted.some((body) => body.includes("console")), false);
+
+  assert.throws(
+    () =>
+      parseUpdateFeed({
+        schema: "okkey.update-feed.v1",
+        packages: [],
+        registryCredentials: { server, username, password: `${password}\n` },
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof SystemUpdateError);
+      assert.equal(error.code, "FEED_INVALID");
+      assert.equal(error.message.includes(password), false);
+      assert.equal(error.message, "Registry credentials are incomplete");
+      return true;
+    },
+  );
 });
 
 function feedPackage(
