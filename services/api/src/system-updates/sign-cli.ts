@@ -4,7 +4,7 @@
  *   node --experimental-strip-types services/api/src/system-updates/sign-cli.ts \
  *     1.1.0 1.0.0-beta.2 /tmp/okkey-update
  *
- * Serve `/tmp/okkey-update` over HTTP and set OKKEY_UPDATE_FEED_URL to the feed file.
+ * Serve `/tmp/okkey-update` over HTTP and set OKKEY_UPDATE_CORE_FEED_URL to the feed file.
  * Set OKKEY_UPDATE_TRUSTED_PUBLIC_KEY to the printed public key.
  */
 import { createHash } from "node:crypto";

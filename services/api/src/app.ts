@@ -480,7 +480,7 @@ export function createApiApp(
       releaseTag: config.releaseTag,
       enterpriseInstalled: config.enterpriseModulesEnabled,
       enterpriseVersion: config.enterpriseVersion,
-      feedUrl: config.updateFeedUrl,
+      coreFeedUrl: config.updateCoreFeedUrl,
       isolated: config.updateIsolated,
       agent:
         config.updateAgentUrl.trim() && config.updateAgentToken.trim()

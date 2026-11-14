@@ -134,8 +134,10 @@ services:
       OKKEY_DEPLOYMENT_MODE: self_hosted
       OKKEY_VERSION: ${OKKEY_IMAGE_TAG:-1.0.0-beta.2}
       OKKEY_ENTERPRISE_VERSION: ${OKKEY_ENTERPRISE_VERSION:-}
-      # Empty feed URL does not call out. Set OKKEY_UPDATE_ISOLATED=true to force that even if a URL is set.
-      OKKEY_UPDATE_FEED_URL: ${OKKEY_UPDATE_FEED_URL:-}
+      # Empty core feed URL uses the GitHub Releases default inside the API.
+      # OKKEY_UPDATE_FEED_URL is the previous name and still overrides when the core name is empty.
+      # OKKEY_UPDATE_ISOLATED=true skips every update check, including that default.
+      OKKEY_UPDATE_CORE_FEED_URL: ${OKKEY_UPDATE_CORE_FEED_URL:-${OKKEY_UPDATE_FEED_URL:-}}
       OKKEY_UPDATE_ISOLATED: ${OKKEY_UPDATE_ISOLATED:-false}
       OKKEY_UPDATE_AGENT_URL: http://update-agent:8090
       OKKEY_UPDATE_AGENT_TOKEN: ${OKKEY_UPDATE_AGENT_TOKEN:-}
