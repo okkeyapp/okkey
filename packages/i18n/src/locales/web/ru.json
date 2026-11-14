@@ -1886,6 +1886,8 @@
   "web.systemUpdate.offlinePackage": "{component} {version}",
   "web.systemUpdate.offlineArchive": "Общий архив {name}",
   "web.systemUpdate.offlineArchivePending": "Общий архив принят. Он будет применён, когда эта установка сможет его прочитать.",
+  "web.systemUpdate.partialApplied": "{component} {version} применён.",
+  "web.systemUpdate.partialRolledBack": "{component} {version} откачен.",
   "web.systemUpdate.ignore": "Пропустить",
   "web.systemUpdate.update": "Обновить",
   "web.systemUpdate.fileLabel": "Офлайн-пакет",

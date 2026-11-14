@@ -26,6 +26,7 @@ import {
   type OfflineChoice,
   type OfflinePackageChoice,
 } from "./offline-files";
+import { offlineBundleDocumentFromBytes } from "./read-offline-upload";
 import { planComponentUpdateOrder } from "./update-order";
 import { waitForRunningCore, type CoreRestartPoll } from "./wait-for-core";
 import type {
@@ -68,6 +69,7 @@ const ERROR_KEYS = new Set([
   "CORE_RESTART_TIMEOUT",
   "APPLY_FAILED",
   "PACKAGE_INVALID",
+  "BUNDLE_PARTIAL",
 ]);
 
 export default function SystemUpdateModal({
@@ -95,6 +97,8 @@ export default function SystemUpdateModal({
   const [phase, setPhase] = useState<Phase>("idle");
   const [job, setJob] = useState<SystemUpdateJob | null>(null);
   const [errorCode, setErrorCode] = useState("");
+  const [errorMessage, setErrorMessage] = useState("");
+  const [partialComponents, setPartialComponents] = useState<NonNullable<SystemUpdateJob["components"]>>([]);
   const [restartTarget, setRestartTarget] = useState("");
 
   const busy = phase === "downloading" || phase === "running";
@@ -151,7 +155,10 @@ export default function SystemUpdateModal({
     const finished = await track(started.id, started.component);
     if (finished.status === "failed") {
       setPhase("failed");
-      setErrorCode(finished.errorCode || "APPLY_FAILED");
+      const code = finished.errorCode || "APPLY_FAILED";
+      setErrorCode(code);
+      setErrorMessage(finished.errorMessage?.trim() ?? "");
+      setPartialComponents(code === "BUNDLE_PARTIAL" ? (finished.components ?? []) : []);
       onApplied();
       return false;
     }
@@ -184,6 +191,8 @@ export default function SystemUpdateModal({
       return;
     }
     setErrorCode("");
+    setErrorMessage("");
+    setPartialComponents([]);
     setJob(null);
     try {
       if (usingFiles) {
@@ -292,7 +301,7 @@ export default function SystemUpdateModal({
   async function onOfflineFile(file: File): Promise<KeyFieldFileValue> {
     fileIdRef.current += 1;
     const id = `offline-${fileIdRef.current}`;
-    const choice = classifyOfflineFile(file.name, await readFileText(file));
+    const choice = await choiceForOfflineFile(file);
     setChoices((current) => [...current, { id, file, choice }]);
     return {
       attachmentId: id,
@@ -307,7 +316,8 @@ export default function SystemUpdateModal({
   }
 
   const errorText = errorCode
-    ? t(ERROR_KEYS.has(errorCode) ? `web.systemUpdate.error.${errorCode}` : "web.systemUpdate.error.generic", {
+    ? errorMessage ||
+      t(ERROR_KEYS.has(errorCode) ? `web.systemUpdate.error.${errorCode}` : "web.systemUpdate.error.generic", {
         version: restartTarget,
       })
     : "";
@@ -505,7 +515,9 @@ export default function SystemUpdateModal({
             </div>
             <p className="text-sm text-foreground">
               {phase === "failed"
-                ? t("web.systemUpdate.progressFailed")
+                ? errorCode === "BUNDLE_PARTIAL"
+                  ? t("web.systemUpdate.progressBundlePartial")
+                  : t("web.systemUpdate.progressFailed")
                 : restartTarget
                   ? t("web.systemUpdate.progressRestarting", { version: restartTarget })
                   : phase === "downloading"
@@ -526,7 +538,26 @@ export default function SystemUpdateModal({
         {errorText ? (
           <Alert variant="error">
             <AlertTitle>{t("web.systemUpdate.progressFailed")}</AlertTitle>
-            <AlertDescription>{errorText}</AlertDescription>
+            <AlertDescription>
+              <span>{errorText}</span>
+              {partialComponents.length > 0 ? (
+                <ul className="mt-2 flex flex-col gap-1" data-testid="system-update-partial-components">
+                  {partialComponents.map((item) => (
+                    <li key={item.component}>
+                      {item.applied
+                        ? t("web.systemUpdate.partialApplied", {
+                            component: componentName(t, item.component),
+                            version: item.version,
+                          })
+                        : t("web.systemUpdate.partialRolledBack", {
+                            component: componentName(t, item.component),
+                            version: item.version,
+                          })}
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </AlertDescription>
           </Alert>
         ) : null}
 
@@ -612,6 +643,20 @@ function safeHttpUrl(value: string | null | undefined): string | null {
   }
 }
 
+async function choiceForOfflineFile(file: File): Promise<OfflineChoice> {
+  const text = await readFileText(file);
+  const choice = classifyOfflineFile(file.name, text);
+  if (choice.kind !== "archive" || choice.document) {
+    return choice;
+  }
+  const bytes = new Uint8Array(await readFileBytes(file));
+  return {
+    kind: "archive",
+    fileName: file.name,
+    document: offlineBundleDocumentFromBytes(bytes),
+  };
+}
+
 function readFileText(file: File): Promise<string> {
   if (typeof file.text === "function") {
     return file.text();
@@ -621,6 +666,18 @@ function readFileText(file: File): Promise<string> {
     reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "");
     reader.onerror = () => reject(reader.error ?? new Error("file read failed"));
     reader.readAsText(file);
+  });
+}
+
+function readFileBytes(file: File): Promise<ArrayBuffer> {
+  if (typeof file.arrayBuffer === "function") {
+    return file.arrayBuffer();
+  }
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result instanceof ArrayBuffer ? reader.result : new ArrayBuffer(0));
+    reader.onerror = () => reject(reader.error ?? new Error("file read failed"));
+    reader.readAsArrayBuffer(file);
   });
 }
 

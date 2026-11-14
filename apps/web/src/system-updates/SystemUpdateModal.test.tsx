@@ -467,4 +467,116 @@ describe("system update popup", () => {
     expect(screen.getByTestId("system-update-offline-list")).toHaveTextContent("Enterprise 3.4.0");
     expect(screen.getAllByRole("button", { name: "Remove file" })).toHaveLength(1);
   });
+
+  it("uploads a raw zip archive the same way as an okbundle", async () => {
+    const bytes = new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0x14]);
+    renderModal(status({ updates: [], currentVersion: "1.0.0", offlineArchiveSupported: true }));
+    const input = document.getElementById("system-update-file") as HTMLInputElement;
+    Object.defineProperty(input, "files", {
+      configurable: true,
+      value: [new File([bytes], "release.zip", { type: "application/zip" })],
+    });
+    fireEvent.change(input);
+    expect(await screen.findByTestId("system-update-offline-list")).toHaveTextContent("Combined archive release.zip");
+    expect(screen.queryByTestId("system-update-archive-pending")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("system-update-apply-all"));
+    await waitFor(() => {
+      expect(applied).toHaveLength(1);
+    });
+    expect(applied[0]).toMatchObject({
+      source: "file",
+      document: {
+        format: "okkey-offline-bundle",
+        formatVersion: 1,
+        archiveBase64: btoa("PK\u0003\u0004\u0014"),
+      },
+    });
+  });
+
+  it("shows the partial bundle message and which component was rolled back", async () => {
+    const message = "Okkey 1.2.0 was applied. Enterprise 2.0.0 was not applied. Enterprise was rolled back.";
+    const failed = {
+      id: "11111111-1111-4111-8111-111111111111",
+      status: "failed",
+      progress: 40,
+      component: "okkey",
+      fromVersion: "1.0.0",
+      toVersion: "1.2.0",
+      errorCode: "BUNDLE_PARTIAL",
+      errorMessage: message,
+      components: [
+        { component: "okkey", version: "1.2.0", applied: true },
+        { component: "enterprise", version: "2.0.0", applied: false },
+      ],
+    };
+    fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
+      const target = String(url);
+      if (target.endsWith("/system/updates/apply")) {
+        applied.push(JSON.parse(String(init?.body)));
+        return json({ job: failed }, 202);
+      }
+      if (target.includes("/system/updates/jobs/")) {
+        return json({ job: failed });
+      }
+      throw new Error(`unexpected ${target}`);
+    });
+    const archive = { format: "okkey-offline-bundle", formatVersion: 1, archiveBase64: "AAAA" };
+    renderModal(status({ updates: [], currentVersion: "1.0.0", offlineArchiveSupported: true }));
+    const input = document.getElementById("system-update-file") as HTMLInputElement;
+    Object.defineProperty(input, "files", {
+      configurable: true,
+      value: [new File([JSON.stringify(archive)], "both.okbundle", { type: "application/json" })],
+    });
+    fireEvent.change(input);
+    expect(await screen.findByTestId("system-update-offline-list")).toHaveTextContent("Combined archive both.okbundle");
+    fireEvent.click(screen.getByTestId("system-update-apply-all"));
+    expect(await screen.findByText(message)).toBeInTheDocument();
+    const report = screen.getByTestId("system-update-partial-components");
+    expect(report).toHaveTextContent("Okkey 1.2.0 was applied.");
+    expect(report).toHaveTextContent("Enterprise 2.0.0 was rolled back.");
+    expect(screen.getByText("Okkey was applied. Enterprise was not applied.")).toBeInTheDocument();
+    expect(screen.queryByText("Update applied. Okkey is restarting on 1.2.0.")).not.toBeInTheDocument();
+  });
+
+  it("shows a clear error when the archive is rejected and does not report success", async () => {
+    const failed = {
+      id: "11111111-1111-4111-8111-111111111111",
+      status: "failed",
+      progress: 10,
+      component: "okkey",
+      fromVersion: "",
+      toVersion: "",
+      errorCode: "SIGNATURE_INVALID",
+      errorMessage: "The archive signature does not match. Nothing was applied.",
+      components: [
+        { component: "okkey", version: "1.2.0", applied: false },
+        { component: "enterprise", version: "2.0.0", applied: false },
+      ],
+    };
+    fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
+      const target = String(url);
+      if (target.endsWith("/system/updates/apply")) {
+        applied.push(JSON.parse(String(init?.body)));
+        return json({ job: failed }, 202);
+      }
+      if (target.includes("/system/updates/jobs/")) {
+        return json({ job: failed });
+      }
+      throw new Error(`unexpected ${target}`);
+    });
+    renderModal(status({ updates: [], currentVersion: "1.0.0", offlineArchiveSupported: true }));
+    const input = document.getElementById("system-update-file") as HTMLInputElement;
+    Object.defineProperty(input, "files", {
+      configurable: true,
+      value: [new File([new Uint8Array([0x50, 0x4b, 0x00])], "broken.zip", { type: "application/zip" })],
+    });
+    fireEvent.change(input);
+    expect(await screen.findByTestId("system-update-offline-list")).toHaveTextContent("Combined archive broken.zip");
+    fireEvent.click(screen.getByTestId("system-update-apply-all"));
+    expect(await screen.findByText("The archive signature does not match. Nothing was applied.")).toBeInTheDocument();
+    expect(screen.getAllByText("Update failed. This instance is still on the previous version.").length).toBeGreaterThan(0);
+    expect(screen.queryByTestId("system-update-partial-components")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Update applied/)).not.toBeInTheDocument();
+    expect(applied).toHaveLength(1);
+  });
 });
