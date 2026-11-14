@@ -13,12 +13,21 @@ export async function readOfflineUpload(file: File): Promise<unknown> {
       throw new Error("PACKAGE_INVALID");
     }
     const bytes = new Uint8Array(await file.arrayBuffer());
-    return {
-      format: "okkey-offline-bundle",
-      formatVersion: 1,
-      archiveBase64: bytesToBase64(bytes),
-    };
+    return offlineBundleDocumentFromBytes(bytes);
   }
+}
+
+/** Same document the apply call expects for a raw .okbundle or .zip archive. */
+export function offlineBundleDocumentFromBytes(bytes: Uint8Array): {
+  format: "okkey-offline-bundle";
+  formatVersion: 1;
+  archiveBase64: string;
+} {
+  return {
+    format: "okkey-offline-bundle",
+    formatVersion: 1,
+    archiveBase64: bytesToBase64(bytes),
+  };
 }
 
 function bytesToBase64(bytes: Uint8Array): string {

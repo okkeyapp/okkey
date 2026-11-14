@@ -1886,6 +1886,8 @@
   "web.systemUpdate.offlinePackage": "{component} {version}",
   "web.systemUpdate.offlineArchive": "Combined archive {name}",
   "web.systemUpdate.offlineArchivePending": "This combined archive is accepted. It will be applied when this installation can read it.",
+  "web.systemUpdate.partialApplied": "{component} {version} was applied.",
+  "web.systemUpdate.partialRolledBack": "{component} {version} was rolled back.",
   "web.systemUpdate.ignore": "Ignore",
   "web.systemUpdate.update": "Update",
   "web.systemUpdate.fileLabel": "Offline package",
