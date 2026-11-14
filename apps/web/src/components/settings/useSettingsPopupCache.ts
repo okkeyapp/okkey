@@ -30,19 +30,19 @@ export function useSettingsPopupCacheEntry<K extends SettingsPopupCacheKey>(
   error: string | null;
   needsSkeleton: boolean;
   setData: (data: SettingsPopupCacheState[K]["data"]) => void;
-  refresh: (opts?: { quiet?: boolean }) => Promise<SettingsPopupCacheState[K]["data"]>;
+  refresh: (opts?: { quiet?: boolean; force?: boolean }) => Promise<SettingsPopupCacheState[K]["data"]>;
 } {
   const slice = useSettingsPopupSlice(key);
 
   const refresh = useCallback(
-    (opts?: { quiet?: boolean }) =>
+    (opts?: { quiet?: boolean; force?: boolean }) =>
       refreshSettingsPopupCacheSlice(key, async () => {
         const next = await ensureFetch();
         if (next == null) {
           throw new Error("settings cache fetch returned empty");
         }
         return next as NonNullable<SettingsPopupCacheState[K]["data"]>;
-      }, { quiet: opts?.quiet, mapError }),
+      }, { quiet: opts?.quiet, force: opts?.force, mapError }),
     [ensureFetch, key, mapError],
   );
 

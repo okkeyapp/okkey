@@ -305,6 +305,12 @@ describe("SettingsDevicesContent", () => {
         "wrapped-share",
       );
     });
+    await waitFor(() => {
+      expect(coreMocks.listDevices).toHaveBeenCalledTimes(2);
+    });
+    expect(screen.queryByText("web.settingsPopup.devices.pending.title")).toBeNull();
+    expect(screen.getByText("Desktop Windows 11")).toBeTruthy();
+    expect(screen.getByText("Web Chrome")).toBeTruthy();
   });
 
   it("dismisses pending device via rejectDevice", async () => {
@@ -332,6 +338,11 @@ describe("SettingsDevicesContent", () => {
         "dismissed by user",
       );
     });
+    await waitFor(() => {
+      expect(coreMocks.listDevices).toHaveBeenCalledTimes(2);
+    });
+    expect(screen.queryByText("web.settingsPopup.devices.pending.title")).toBeNull();
+    expect(screen.queryByText("Desktop Windows 11")).toBeNull();
   });
 
   it("retry reloads the device list after an error", async () => {

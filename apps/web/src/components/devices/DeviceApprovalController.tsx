@@ -29,6 +29,7 @@ import {
   resolveDeviceFormIcon,
 } from "../settings/DeviceTypeIcon";
 import { useLocale } from "../../locale/LocaleContext";
+import { refreshSettingsDevicesCache } from "../settings/settingsPopupCache";
 import { emitDevicesChanged, DEVICES_CHANGED_EVENT } from "./devicesEvents";
 import {
   deviceDecisionToastKey,
@@ -157,10 +158,12 @@ export default function DeviceApprovalController() {
         toast.success(t(deviceDecisionToastKey("reject")));
       }
       dismissDevice(current);
+      await refreshSettingsDevicesCache(() => core.listDevices(fingerprint));
       emitDevicesChanged();
     } catch (err) {
       if (isBenignApprovalRace(err)) {
         dismissDevice(current);
+        await refreshSettingsDevicesCache(() => core.listDevices(fingerprint));
         emitDevicesChanged();
         toast.success(t(deviceDecisionToastKey(decision)));
       } else {
