@@ -209,6 +209,44 @@ describe("system update popup", () => {
     expect(applied[0]).toMatchObject({ source: "feed", component: "okkey" });
   });
 
+  it("shows CORE_UPDATE_REQUIRED with the same wording as the update agent", async () => {
+    fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
+      const target = String(url);
+      if (target.endsWith("/system/updates/apply")) {
+        const body = JSON.parse(String(init?.body)) as { component?: string };
+        applied.push(body);
+        return json(
+          {
+            job: {
+              ...succeededJob(body.component ?? "enterprise"),
+              status: "failed",
+              errorCode: "CORE_UPDATE_REQUIRED",
+            },
+          },
+          202,
+        );
+      }
+      if (target.includes("/system/updates/jobs/")) {
+        return json({
+          job: {
+            ...succeededJob("enterprise"),
+            status: "failed",
+            errorCode: "CORE_UPDATE_REQUIRED",
+          },
+        });
+      }
+      throw new Error(`unexpected ${target}`);
+    });
+    const enterprise = update("enterprise", "3.0.0", { minCoreVersion: "1.0.0" });
+    renderModal(status({ updates: [enterprise], currentVersion: "1.0.0" }));
+    fireEvent.click(screen.getByTestId("system-update-apply-enterprise"));
+    expect(
+      await screen.findByText(
+        "Update core first. This enterprise package needs a newer core, so nothing was changed.",
+      ),
+    ).toBeInTheDocument();
+  });
+
   it("lets one component update on its own when the core is already new enough", async () => {
     const core = update("okkey", "2.1.0");
     const enterprise = update("enterprise", "3.0.0", { minCoreVersion: "2.0.0" });
