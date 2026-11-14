@@ -75,6 +75,12 @@ import type {
   AccountRecoveryKeyWrapResponseDto,
   AccountRecoverySettingsUpdateRequestDto,
   AccountRecoveryStatusResponseDto,
+  PasskeyApprovalOptionsResponseDto,
+  PasskeyApprovalVerifyRequestDto,
+  PasskeyApprovalVerifyResponseDto,
+  PasskeyShareWrapOptionsResponseDto,
+  PasskeyShareWrapVerifyRequestDto,
+  PasskeyShareWrapVerifyResponseDto,
   WebAuthnAuthenticatorAttachment,
   WebAuthnCeremonyOptionsResponseDto,
   WebAuthnRegisterOptionsRequestDto,
@@ -403,6 +409,40 @@ export class CoreApiClient {
     const q = new URLSearchParams({ attachment });
     return this.api.delete<AccountLoginMethodsResponseDto>(
       `/account/webauthn/credentials?${q.toString()}`,
+    );
+  }
+
+  passkeyShareWrapOptions(credentialId: string): Promise<PasskeyShareWrapOptionsResponseDto> {
+    return this.api.post<PasskeyShareWrapOptionsResponseDto>(
+      `/account/webauthn/credentials/${encodeURIComponent(credentialId)}/share-wrap/options`,
+      {},
+    );
+  }
+
+  passkeyShareWrapVerify(
+    credentialId: string,
+    body: PasskeyShareWrapVerifyRequestDto,
+  ): Promise<PasskeyShareWrapVerifyResponseDto> {
+    return this.api.post<PasskeyShareWrapVerifyResponseDto>(
+      `/account/webauthn/credentials/${encodeURIComponent(credentialId)}/share-wrap/verify`,
+      body,
+    );
+  }
+
+  passkeyApprovalOptions(deviceId: string): Promise<PasskeyApprovalOptionsResponseDto> {
+    return this.api.post<PasskeyApprovalOptionsResponseDto>(
+      `/devices/${encodeURIComponent(deviceId)}/passkey-approval/options`,
+      {},
+    );
+  }
+
+  passkeyApprovalVerify(
+    deviceId: string,
+    body: PasskeyApprovalVerifyRequestDto,
+  ): Promise<PasskeyApprovalVerifyResponseDto> {
+    return this.api.post<PasskeyApprovalVerifyResponseDto>(
+      `/devices/${encodeURIComponent(deviceId)}/passkey-approval/verify`,
+      body,
     );
   }
 

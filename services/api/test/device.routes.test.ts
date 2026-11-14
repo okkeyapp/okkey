@@ -1255,6 +1255,7 @@ test("POST /devices/register keeps recovery_pending true, false, and omitted beh
   assert.equal(provedClaim.statusCode, 200);
   assert.equal(provedInput?.claimAfterRecovery, true);
   assert.equal(provedInput?.recoveryPending, false);
+  assert.equal(provedInput?.provedDeviceId, "proved-device");
 });
 
 test("POST /devices/register rejects non-boolean reclaim_sole_trusted and claim_after_recovery", async () => {
