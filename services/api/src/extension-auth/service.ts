@@ -23,9 +23,17 @@ export type ExtensionAuthRedis = {
   del(key: string): Promise<number>;
 };
 
+export type ExtensionAccountIdentity = {
+  email: string;
+  firstName: string | null;
+  lastName: string | null;
+};
+
 export interface ExtensionAuthServiceDeps {
   redis: ExtensionAuthRedis;
   sessionService: Pick<SessionService, "createSession">;
+  /** Account display name and email only. Omitted fields stay closed to an unbound device. */
+  loadAccountIdentity?: (userId: string) => Promise<ExtensionAccountIdentity | null>;
   now?: () => Date;
   generateCode?: () => string;
 }
@@ -104,12 +112,14 @@ function mintAuthCode(): string {
 export class ExtensionAuthService {
   private readonly redis: ExtensionAuthRedis;
   private readonly sessionService: Pick<SessionService, "createSession">;
+  private readonly loadAccountIdentity: ExtensionAuthServiceDeps["loadAccountIdentity"];
   private readonly now: () => Date;
   private readonly generateCode: () => string;
 
   constructor(deps: ExtensionAuthServiceDeps) {
     this.redis = deps.redis;
     this.sessionService = deps.sessionService;
+    this.loadAccountIdentity = deps.loadAccountIdentity;
     this.now = deps.now ?? (() => new Date());
     this.generateCode = deps.generateCode ?? mintAuthCode;
   }
@@ -186,6 +196,9 @@ export class ExtensionAuthService {
     expiresAt: string;
     userId: string;
     tokenType: "Bearer";
+    email: string;
+    firstName: string | null;
+    lastName: string | null;
   }> {
     const clientId = input.clientId.trim();
     if (clientId !== EXTENSION_AUTH_CLIENT_ID) {
@@ -268,11 +281,17 @@ export class ExtensionAuthService {
       stored.userId,
       ttlSeconds === undefined ? {} : { ttlSeconds },
     );
+    const identity = this.loadAccountIdentity
+      ? await this.loadAccountIdentity(stored.userId)
+      : null;
     return {
       accessToken: session.accessToken,
       expiresAt: session.expiresAt,
       userId: stored.userId,
       tokenType: "Bearer",
+      email: identity?.email?.trim() ?? "",
+      firstName: identity?.firstName?.trim() || null,
+      lastName: identity?.lastName?.trim() || null,
     };
   }
 }

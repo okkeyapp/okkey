@@ -53,6 +53,10 @@ export type ExtensionSession = {
   access_token: string;
   user_id: string;
   expires_at: string;
+  /** From the extension token exchange. Profile is closed until the device is approved. */
+  email?: string;
+  firstName?: string;
+  lastName?: string;
 };
 
 export type ExtensionPkcePending = {

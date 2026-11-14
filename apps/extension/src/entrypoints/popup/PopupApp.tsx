@@ -49,7 +49,11 @@ import {
 
 import { Toaster } from "../../components/toaster";
 import { AUTOFILL_MSG } from "../../lib/autofillMessages";
-import { accountIdentityForBar, accountIdentityFromProfile } from "../../lib/accountIdentity";
+import {
+  accountIdentityForBar,
+  accountIdentityFromProfile,
+  accountIdentityFromSession,
+} from "../../lib/accountIdentity";
 import { createCoreClient, isUnauthorizedApiError } from "../../lib/api";
 import { applyExtensionStoredTheme } from "../../lib/applyExtensionTheme";
 import {
@@ -472,6 +476,11 @@ export function PopupApp() {
           if (!isUnauthorizedApiError(err)) {
             return;
           }
+          const fromSession = accountIdentityFromSession(await readSession());
+          if (fromSession) {
+            setIdentity(fromSession);
+            return;
+          }
           const stored = await readAccountIdentity();
           if (stored) {
             setIdentity(stored);
@@ -534,10 +543,14 @@ export function PopupApp() {
       } else if (!ENABLE_SAAS_SIGNIN) {
         applyServerPreference("self-hosted", "");
       }
-      const storedIdentity = await readAccountIdentity();
+      const fromSession = accountIdentityFromSession(existingSession);
+      const storedIdentity = fromSession ?? (await readAccountIdentity());
       if (cancelled) return;
       if (storedIdentity) {
         setIdentity(storedIdentity);
+        if (fromSession) {
+          await writeAccountIdentity(fromSession);
+        }
       }
       if (existingProfile && existingSession) {
         setSession(existingSession);
