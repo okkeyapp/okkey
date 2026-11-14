@@ -1216,7 +1216,9 @@ paths:
       summary: Ask the update agent to verify and apply one offline package
       description: |
         Starts only when a workspace owner calls this route.
-        The agent verifies the package signature before changing containers.
+        The agent verifies an okkey package with the core trusted key and an enterprise package with the enterprise trusted key.
+        An enterprise package includes minCoreVersion. When the running core is older, the job fails with CORE_UPDATE_REQUIRED and nothing is changed.
+        Short-lived registry pull credentials from the feed are forwarded only for an enterprise apply and are not stored.
         The web container does not receive the Docker socket.
       security: [{ bearerAuth: [] }]
       responses:

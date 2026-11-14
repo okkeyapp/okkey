@@ -100,3 +100,11 @@ export function isNewerVersion(candidate: string, current: string): boolean {
   }
   return compareVersions(candidate, current) > 0;
 }
+
+/** True when the running core is the same version as `minimum` or newer. Non-semver values do not satisfy. */
+export function coreSatisfiesMinimum(current: string, minimum: string): boolean {
+  if (!parseVersion(current) || !parseVersion(minimum)) {
+    return false;
+  }
+  return compareVersions(current, minimum) >= 0;
+}

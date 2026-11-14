@@ -3,6 +3,8 @@ import { SystemUpdateError } from "./errors.ts";
 import { downloadSignedPackage, fetchUpdateFeed, type FeedFetch } from "./feed.ts";
 import { createUpdateFeedCache } from "./feed-cache.ts";
 import {
+  readRegistryCredentials,
+  type RegistryPullCredentials,
   type SignedOfflinePackage,
   type UpdateComponent,
   type UpdateFeedPackage,
@@ -49,7 +51,10 @@ export type UpdateJob = {
 };
 
 export type UpdateAgentClient = {
-  start(document: SignedOfflinePackage): Promise<UpdateJob>;
+  start(
+    document: SignedOfflinePackage,
+    options?: { registryCredentials?: RegistryPullCredentials },
+  ): Promise<UpdateJob>;
   get(jobId: string): Promise<UpdateJob | null>;
 };
 
@@ -161,8 +166,11 @@ export function createSystemUpdateService(options: SystemUpdateServiceOptions) {
       if (!(await isAdmin(userId))) {
         throw new SystemUpdateError(403, "NOT_ADMIN", "Only a workspace owner can apply updates");
       }
-      const document = await resolveApplyDocument(input, options, fetchImpl);
-      return options.agent.start(document);
+      const resolved = await resolveApplyDocument(input, options, fetchImpl);
+      return options.agent.start(
+        resolved.document,
+        resolved.registryCredentials ? { registryCredentials: resolved.registryCredentials } : undefined,
+      );
     },
 
     async job(jobId: string): Promise<UpdateJob | null> {
@@ -229,12 +237,15 @@ async function resolveApplyDocument(
   input: { source: "feed" | "file"; component?: UpdateComponent; document?: unknown },
   options: SystemUpdateServiceOptions,
   fetchImpl: FeedFetch,
-): Promise<SignedOfflinePackage> {
+): Promise<{ document: SignedOfflinePackage; registryCredentials?: RegistryPullCredentials }> {
   if (input.source === "file") {
-    if (!input.document || typeof input.document !== "object") {
+    if (!input.document || typeof input.document !== "object" || Array.isArray(input.document)) {
       throw new SystemUpdateError(400, "PACKAGE_INVALID", "A package file is required");
     }
-    return input.document as SignedOfflinePackage;
+    const record = { ...(input.document as Record<string, unknown>) };
+    const registryCredentials = readRegistryCredentials(record.registryCredentials, "PACKAGE_INVALID");
+    delete record.registryCredentials;
+    return { document: record as SignedOfflinePackage, registryCredentials };
   }
   if (options.isolated || options.feedUrl.trim() === "") {
     throw new SystemUpdateError(
@@ -253,5 +264,8 @@ async function resolveApplyDocument(
   if (!feed || !match) {
     throw new SystemUpdateError(404, "FEED_UNAVAILABLE", "The feed has no package for that component");
   }
-  return downloadSignedPackage(match.packageUrl, match.packageSha256, fetchImpl);
+  const document = await downloadSignedPackage(match.packageUrl, match.packageSha256, fetchImpl);
+  const registryCredentials =
+    input.component === "enterprise" ? (match.registryCredentials ?? feed.registryCredentials) : undefined;
+  return { document, registryCredentials };
 }

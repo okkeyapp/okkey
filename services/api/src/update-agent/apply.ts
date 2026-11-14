@@ -1,7 +1,11 @@
 import { readFile, writeFile } from "node:fs/promises";
 
 import { SystemUpdateError } from "../system-updates/errors.ts";
-import { CORE_IMAGE_SERVICES, type OfflinePackagePayload } from "../system-updates/package-format.ts";
+import {
+  CORE_IMAGE_SERVICES,
+  type OfflinePackagePayload,
+  type RegistryPullCredentials,
+} from "../system-updates/package-format.ts";
 
 export type ServiceContainer = {
   id: string;
@@ -11,13 +15,16 @@ export type ServiceContainer = {
 };
 
 export type UpdateApplyEngine = {
-  pullImage(image: string): Promise<void>;
+  pullImage(image: string, credentials?: RegistryPullCredentials): Promise<void>;
   imageExists(image: string): Promise<boolean>;
   findServiceContainer(project: string, service: string): Promise<ServiceContainer | null>;
+  /** Running core version from the api container, when the engine can see it. */
+  readRunningCoreVersion?(project: string): Promise<string | null>;
   replaceContainer(
     container: ServiceContainer,
     image: string,
     envUpdates: Record<string, string>,
+    options?: { requireHealthy?: boolean },
   ): Promise<{
     /** Restore the previous container. */
     rollback: () => Promise<void>;

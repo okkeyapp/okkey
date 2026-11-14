@@ -1,12 +1,15 @@
 import http from "node:http";
 
 import { SystemUpdateError } from "../system-updates/errors.ts";
+import type { RegistryPullCredentials } from "../system-updates/package-format.ts";
 import type { ServiceContainer, UpdateApplyEngine } from "./apply.ts";
+import { encodeRegistryAuth, imageRegistryHost } from "./registry-auth.ts";
 
 export type DockerTransport = (
   method: string,
   path: string,
   body?: string,
+  headers?: Record<string, string>,
 ) => Promise<{ status: number; body: string }>;
 
 type Inspect = {
@@ -27,17 +30,36 @@ type Inspect = {
   NetworkSettings?: {
     Networks?: Record<string, { Aliases?: string[] | null }>;
   };
+  State?: {
+    Running?: boolean;
+    Status?: string;
+    Health?: { Status?: string };
+  };
 };
 
-export function createDockerApplyEngine(transport: DockerTransport): Omit<
-  UpdateApplyEngine,
-  "readEnvFile" | "writeEnvFile"
-> {
+const DEFAULT_HEALTH_TIMEOUT_MS = 60_000;
+const DEFAULT_HEALTH_POLL_MS = 1_000;
+
+export function createDockerApplyEngine(
+  transport: DockerTransport,
+  options?: { healthTimeoutMs?: number; healthPollMs?: number },
+): Omit<UpdateApplyEngine, "readEnvFile" | "writeEnvFile"> {
+  const healthTimeoutMs = options?.healthTimeoutMs ?? DEFAULT_HEALTH_TIMEOUT_MS;
+  const healthPollMs = options?.healthPollMs ?? DEFAULT_HEALTH_POLL_MS;
   return {
-    async pullImage(image: string) {
+    async pullImage(image: string, credentials?: RegistryPullCredentials) {
       const { fromImage, tag } = splitImage(image);
       const query = new URLSearchParams({ fromImage, tag });
-      const response = await transport("POST", `/v1.43/images/create?${query.toString()}`);
+      const headers =
+        credentials && imageRegistryHost(image) === credentials.server
+          ? { "X-Registry-Auth": encodeRegistryAuth(credentials) }
+          : undefined;
+      let response: { status: number; body: string };
+      try {
+        response = await transport("POST", `/v1.43/images/create?${query.toString()}`, undefined, headers);
+      } catch {
+        throw new SystemUpdateError(502, "APPLY_FAILED", `Image pull failed for ${image}`);
+      }
       if (response.status >= 300 || /"error"\s*:/.test(response.body)) {
         throw new SystemUpdateError(502, "APPLY_FAILED", `Image pull failed for ${image}`);
       }
@@ -74,7 +96,25 @@ export function createDockerApplyEngine(transport: DockerTransport): Omit<
       const name = (first.Names?.[0] ?? "").replace(/^\//, "");
       return { id: first.Id, name, service, image: first.Image };
     },
-    async replaceContainer(container, image, envUpdates) {
+    async readRunningCoreVersion(project) {
+      const container = await this.findServiceContainer(project, "api");
+      if (!container) {
+        return null;
+      }
+      const inspectResponse = await transport("GET", `/v1.43/containers/${container.id}/json`);
+      if (inspectResponse.status !== 200) {
+        return null;
+      }
+      try {
+        const inspect = JSON.parse(inspectResponse.body) as Inspect;
+        const entry = (inspect.Config?.Env ?? []).find((item) => item.startsWith("OKKEY_VERSION="));
+        const value = entry?.slice("OKKEY_VERSION=".length).trim() ?? "";
+        return value || null;
+      } catch {
+        return null;
+      }
+    },
+    async replaceContainer(container, image, envUpdates, replaceOptions) {
       const inspectResponse = await transport("GET", `/v1.43/containers/${container.id}/json`);
       if (inspectResponse.status !== 200) {
         throw new SystemUpdateError(502, "APPLY_FAILED", `Docker could not inspect ${container.service}`);
@@ -99,6 +139,9 @@ export function createDockerApplyEngine(transport: DockerTransport): Omit<
           throw new SystemUpdateError(502, "APPLY_FAILED", `Docker did not return a new ${container.service} container`);
         }
         await dockerOk(transport, "POST", `/v1.43/containers/${createdId}/start`);
+        if (replaceOptions?.requireHealthy) {
+          await waitUntilHealthy(transport, createdId, container.service, healthTimeoutMs, healthPollMs);
+        }
       } catch (error) {
         if (createdId) {
           await transport("DELETE", `/v1.43/containers/${createdId}?force=1`);
@@ -129,19 +172,23 @@ export function createDockerApplyEngine(transport: DockerTransport): Omit<
 }
 
 export function unixSocketTransport(socketPath: string): DockerTransport {
-  return (method, path, body) =>
+  return (method, path, body, headers) =>
     new Promise((resolve, reject) => {
+      const requestHeaders = {
+        ...(headers ?? {}),
+        ...(body
+          ? {
+              "Content-Type": "application/json",
+              "Content-Length": Buffer.byteLength(body),
+            }
+          : {}),
+      };
       const request = http.request(
         {
           socketPath,
           path,
           method,
-          headers: body
-            ? {
-                "Content-Type": "application/json",
-                "Content-Length": Buffer.byteLength(body),
-              }
-            : undefined,
+          headers: Object.keys(requestHeaders).length > 0 ? requestHeaders : undefined,
         },
         (response) => {
           const chunks: Buffer[] = [];
@@ -210,6 +257,41 @@ async function dockerOk(transport: DockerTransport, method: string, path: string
   const response = await transport(method, path);
   if (response.status >= 300) {
     throw new SystemUpdateError(502, "APPLY_FAILED", `Docker ${method} ${path} failed`);
+  }
+}
+
+async function waitUntilHealthy(
+  transport: DockerTransport,
+  id: string,
+  service: string,
+  timeoutMs: number,
+  pollMs: number,
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  const failed = () =>
+    new SystemUpdateError(502, "APPLY_FAILED", `Enterprise service ${service} did not become healthy`);
+  for (;;) {
+    const response = await transport("GET", `/v1.43/containers/${id}/json`);
+    if (response.status !== 200) {
+      throw failed();
+    }
+    let state: NonNullable<Inspect["State"]>;
+    try {
+      state = (JSON.parse(response.body) as Inspect).State ?? {};
+    } catch {
+      throw failed();
+    }
+    const health = state.Health?.Status;
+    if (health === "healthy" || (!health && state.Running === true)) {
+      return;
+    }
+    if (health === "unhealthy" || state.Status === "exited" || state.Status === "dead") {
+      throw failed();
+    }
+    if (Date.now() >= deadline) {
+      throw failed();
+    }
+    await new Promise((resolve) => setTimeout(resolve, pollMs));
   }
 }
 

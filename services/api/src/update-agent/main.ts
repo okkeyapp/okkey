@@ -4,6 +4,8 @@ import { startUpdateAgentServer } from "./server.ts";
 const port = Number(process.env.OKKEY_UPDATE_AGENT_PORT ?? "8090");
 const token = process.env.OKKEY_UPDATE_AGENT_TOKEN ?? "";
 const publicKeyPem = process.env.OKKEY_UPDATE_TRUSTED_PUBLIC_KEY ?? "";
+const enterprisePublicKeyPem = process.env.OKKEY_UPDATE_ENTERPRISE_TRUSTED_PUBLIC_KEY ?? "";
+const coreVersion = process.env.OKKEY_VERSION ?? "";
 const isolated = ["1", "true", "yes"].includes(
   (process.env.OKKEY_UPDATE_ISOLATED ?? "").trim().toLowerCase(),
 );
@@ -15,6 +17,8 @@ const server = startUpdateAgentServer({
   port,
   token,
   publicKeyPem,
+  enterprisePublicKeyPem,
+  coreVersion,
   isolated,
   project,
   envFilePath: `${installDir}/.env`,
