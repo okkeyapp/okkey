@@ -73,6 +73,19 @@ describe("useListWindow", () => {
     expect(result.current.hasMore).toBe(true);
   });
 
+  it("grows a short first page when rows are added", () => {
+    const { result, rerender } = renderHook(
+      ({ total }: { total: number }) => useListWindow({ total, pageSize: 30, resetKey: "devices" }),
+      { initialProps: { total: 1 } },
+    );
+
+    expect(result.current.visibleCount).toBe(1);
+
+    rerender({ total: 2 });
+    expect(result.current.visibleCount).toBe(2);
+    expect(result.current.hasMore).toBe(false);
+  });
+
   it("does not exceed total on loadMore", () => {
     const { result } = renderHook(() =>
       useListWindow({ total: 10, pageSize: 30, resetKey: "x" }),
