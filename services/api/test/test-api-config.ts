@@ -27,6 +27,8 @@ export function createTestApiConfig(overrides: Partial<ApiConfig> = {}): ApiConf
     deployEnv: "dev",
     deploymentMode: "self_hosted",
     systemVersion: "1.0.0-beta.2",
+    gitSha: "",
+    releaseTag: "",
     enterpriseVersion: "",
     updateFeedUrl: "",
     updateIsolated: false,

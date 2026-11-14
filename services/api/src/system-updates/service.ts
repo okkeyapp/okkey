@@ -1,6 +1,7 @@
 import type { QueryExecutor } from "../storage/postgres.ts";
 import { SystemUpdateError } from "./errors.ts";
 import { downloadSignedPackage, fetchUpdateFeed, type FeedFetch } from "./feed.ts";
+import { createUpdateFeedCache } from "./feed-cache.ts";
 import {
   type SignedOfflinePackage,
   type UpdateComponent,
@@ -21,6 +22,8 @@ export type AvailableUpdate = {
 export type SystemUpdateStatus = {
   deploymentMode: "self_hosted" | "saas";
   currentVersion: string;
+  commitSha: string | null;
+  releaseTag: string | null;
   enterpriseInstalled: boolean;
   enterpriseVersion: string | null;
   feedConfigured: boolean;
@@ -28,6 +31,7 @@ export type SystemUpdateStatus = {
   canApply: boolean;
   updates: AvailableUpdate[];
   dismissed: Partial<Record<UpdateComponent, string>>;
+  seen: Partial<Record<UpdateComponent, string>>;
   feedError: string | null;
 };
 
@@ -52,10 +56,17 @@ export type UpdateAgentClient = {
 export type SystemUpdateServiceOptions = {
   deploymentMode: "self_hosted" | "saas";
   currentVersion: string;
+  /** Full git commit (`OKKEY_GIT_SHA`). Empty on a tagged release. */
+  commitSha?: string;
+  /** Release tag (`OKKEY_RELEASE_TAG`), for example `v1.0.0-beta.3`. */
+  releaseTag?: string;
   enterpriseInstalled: boolean;
   enterpriseVersion: string;
   feedUrl: string;
   isolated: boolean;
+  /** Clock for the once-a-day feed cache. */
+  now?: () => number;
+  feedCacheTtlMs?: number;
   fetchImpl?: FeedFetch;
   agent: UpdateAgentClient;
   dismissals?: DismissalStore;
@@ -65,6 +76,7 @@ export type SystemUpdateServiceOptions = {
 
 export function createSystemUpdateService(options: SystemUpdateServiceOptions) {
   const fetchImpl = options.fetchImpl ?? fetch;
+  const feedCache = createUpdateFeedCache({ now: options.now, ttlMs: options.feedCacheTtlMs });
   const dismissals =
     options.dismissals ??
     (options.db ? postgresDismissalStore(options.db) : memoryDismissalStore());
@@ -90,37 +102,49 @@ export function createSystemUpdateService(options: SystemUpdateServiceOptions) {
     async statusFor(userId: string): Promise<SystemUpdateStatus> {
       const canApply = await isAdmin(userId);
       const dismissed = await dismissals.read();
+      const seen = await dismissals.readSeen();
       const base: SystemUpdateStatus = {
         deploymentMode: options.deploymentMode,
         currentVersion: options.currentVersion || "unknown",
+        commitSha: emptyToNull(options.commitSha),
+        releaseTag: emptyToNull(options.releaseTag),
         enterpriseInstalled: options.enterpriseInstalled,
         enterpriseVersion: options.enterpriseInstalled
           ? options.enterpriseVersion || "unknown"
           : null,
-        feedConfigured: options.feedUrl.trim() !== "",
+        feedConfigured: configuredFeedUrls(options).some((url) => url.trim() !== ""),
         isolated: options.isolated,
         canApply,
         updates: [],
         dismissed,
+        seen,
         feedError: null,
       };
       if (options.deploymentMode === "saas") {
         return base;
       }
-      try {
-        const feed = await fetchUpdateFeed(options.feedUrl, options.isolated, fetchImpl);
-        if (!feed) {
-          return base;
+      const packages: UpdateFeedPackage[] = [];
+      for (const feedUrl of configuredFeedUrls(options)) {
+        try {
+          const feed = await feedCache.load(feedUrl, options.isolated, fetchImpl);
+          if (feed) {
+            packages.push(...feed.packages);
+          }
+        } catch (error) {
+          base.feedError = error instanceof SystemUpdateError ? error.code : "FEED_FETCH_FAILED";
         }
-        base.updates = selectUpdates(feed.packages, {
+      }
+      if (packages.length > 0) {
+        base.updates = selectUpdates(packages, {
           okkey: base.currentVersion,
           enterprise: options.enterpriseInstalled ? options.enterpriseVersion || "unknown" : null,
         });
-        return base;
-      } catch (error) {
-        base.feedError = error instanceof SystemUpdateError ? error.code : "FEED_FETCH_FAILED";
-        return base;
       }
+      return base;
+    },
+
+    async markSeen(_userId: string, component: UpdateComponent, version: string): Promise<void> {
+      await dismissals.markSeen(component, version);
     },
 
     async dismiss(userId: string, component: UpdateComponent, version: string): Promise<void> {
@@ -148,6 +172,16 @@ export function createSystemUpdateService(options: SystemUpdateServiceOptions) {
 }
 
 export type SystemUpdateService = ReturnType<typeof createSystemUpdateService>;
+
+/** Feed URLs checked by status. One core feed today; each URL is cached on its own. */
+function configuredFeedUrls(options: SystemUpdateServiceOptions): string[] {
+  return [options.feedUrl];
+}
+
+function emptyToNull(value: string | undefined): string | null {
+  const trimmed = (value ?? "").trim();
+  return trimmed ? trimmed : null;
+}
 
 export function selectUpdates(
   packages: readonly UpdateFeedPackage[],
