@@ -275,29 +275,38 @@ describe("SettingsDevicesContent", () => {
   it("trusts a pending device with a wrapped share", async () => {
     authState.userId = "user-1";
     shareMocks.readVaultBundle.mockReturnValue({ device_share_b64: "bG9jYWw=" });
-    coreMocks.listDevices
-      .mockResolvedValueOnce({
-        devices: [trustedDevice()],
-        pending: [
-          pendingDevice({
-            share_wrap_ed25519_public_key: "ZWQ=",
-            share_wrap_pq_public_key: "cHE=",
-          }),
-        ],
-        blocked: [],
-      })
-      .mockResolvedValueOnce({
+    let approved = false;
+    coreMocks.approveDevice.mockImplementation(async () => {
+      approved = true;
+      return { device_id: "d-pending", status: "trusted" };
+    });
+    coreMocks.listDevices.mockImplementation(async () => {
+      if (!approved) {
+        return {
+          devices: [trustedDevice()],
+          pending: [
+            pendingDevice({
+              share_wrap_ed25519_public_key: "ZWQ=",
+              share_wrap_pq_public_key: "cHE=",
+            }),
+          ],
+          blocked: [],
+        };
+      }
+      return {
         devices: [
-          trustedDevice(),
           trustedDevice({
             device_id: "d-pending",
-            device_name: "Desktop Windows 11",
+            device_name: "Approved extension",
+            device_fingerprint: "b".repeat(64),
             is_current: false,
           }),
+          trustedDevice(),
         ],
         pending: [],
         blocked: [],
-      });
+      };
+    });
 
     render(<SettingsDevicesContent t={t} />);
     await screen.findByText("Desktop Windows 11");
@@ -313,10 +322,10 @@ describe("SettingsDevicesContent", () => {
       );
     });
     await waitFor(() => {
-      expect(coreMocks.listDevices).toHaveBeenCalledTimes(2);
+      expect(screen.getByText("Approved extension")).toBeTruthy();
     });
     expect(screen.queryByText("web.settingsPopup.devices.pending.title")).toBeNull();
-    expect(screen.getByText("Desktop Windows 11")).toBeTruthy();
+    expect(screen.queryByText("Desktop Windows 11")).toBeNull();
     expect(screen.getByText("Web Chrome")).toBeTruthy();
   });
 
