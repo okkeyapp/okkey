@@ -37,6 +37,8 @@
 # BuildKit yarn/cargo cache mounts + GHA buildx cache.
 # Cosign: keyless GitHub OIDC only (no COSIGN_KEY path).
 # GHCR Core packages are public for anonymous pull; pr-* deletion uses GITHUB_TOKEN only.
+# Version tags also publish a signed core offline package and feed.json
+# as GitHub Release assets (job publish-core-update-feed).
 name: Publish container images
 
 on:
@@ -805,6 +807,144 @@ jobs:
           REF="${IMAGE}@${DIGEST}"
           cosign sign "${REF}"
           echo "Signed ${REF}"
+
+  # Signed core update feed for the version tag. Runs only after image tags exist.
+  # Beta tags (v1.0.0-beta.N) are published as normal releases, not GitHub
+  # pre-releases: releases/latest skips pre-releases, and the API rejects
+  # make_latest on a pre-release. The core feed URL is
+  # https://github.com/okkeyapp/okkey/releases/latest/download/feed.json
+  # so a beta must be able to become that latest release.
+  # OKKEY_CORE_RELEASE_SIGNING_KEY is the ed25519 PKCS#8 PEM private key.
+  publish-core-update-feed:
+    name: publish-core-update-feed
+    needs: [prep, merge]
+    if: github.event_name == 'push' && github.ref_type == 'tag' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      # Fail before checkout, image lookups, or any Release API call.
+      # An empty or whitespace secret must not produce feed.json or a package.
+      - name: Require core release signing key
+        env:
+          OKKEY_CORE_RELEASE_SIGNING_KEY: ${{ secrets.OKKEY_CORE_RELEASE_SIGNING_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${OKKEY_CORE_RELEASE_SIGNING_KEY//[[:space:]]/}" ]]; then
+            echo "::error::Secret OKKEY_CORE_RELEASE_SIGNING_KEY is not set. Refusing to build or publish an unsigned core update package or feed.json."
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "25"
+
+      - name: Build and sign the core offline package
+        env:
+          OKKEY_CORE_RELEASE_SIGNING_KEY: ${{ secrets.OKKEY_CORE_RELEASE_SIGNING_KEY }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          IMAGE_VERSION: ${{ needs.prep.outputs.image_version }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${OKKEY_CORE_RELEASE_SIGNING_KEY//[[:space:]]/}" ]]; then
+            echo "::error::Secret OKKEY_CORE_RELEASE_SIGNING_KEY is not set. Refusing to build or publish an unsigned core update package or feed.json."
+            exit 1
+          fi
+          OUT="${RUNNER_TEMP}/core-update"
+          mkdir -p "${OUT}"
+          SERVER="${GITHUB_SERVER_URL:-https://github.com}"
+          PACKAGE_URL="${SERVER}/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/okkey-${IMAGE_VERSION}.okpkg"
+          ERR_FILE="${RUNNER_TEMP}/gh-latest.err"
+          CURRENT_LATEST=""
+          if CURRENT_LATEST="$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq .tag_name 2>"${ERR_FILE}")"; then
+            :
+          elif grep -Eq 'HTTP 404|Not Found' "${ERR_FILE}"; then
+            CURRENT_LATEST=""
+          else
+            cat "${ERR_FILE}" >&2
+            echo "failed to read the current latest release" >&2
+            exit 1
+          fi
+          node --experimental-strip-types services/api/src/system-updates/build-core-release-package.ts \
+            --version "${IMAGE_VERSION}" \
+            --package-url "${PACKAGE_URL}" \
+            --repository "${GITHUB_REPOSITORY}" \
+            --current-latest "${CURRENT_LATEST}" \
+            --out "${OUT}"
+          echo "core_update_dir=${OUT}" >> "$GITHUB_ENV"
+
+      - name: Upload feed.json and the core package
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          IMAGE_VERSION: ${{ needs.prep.outputs.image_version }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT="${core_update_dir}"
+          latest="$(grep '^latest=' "${OUT}/release-flags" | cut -d= -f2-)"
+          prerelease="$(grep '^prerelease=' "${OUT}/release-flags" | cut -d= -f2-)"
+          if [[ "${latest}" != "true" && "${latest}" != "false" ]]; then
+            echo "release-flags latest must be true or false" >&2
+            exit 1
+          fi
+          if [[ "${prerelease}" != "false" ]]; then
+            echo "core releases are not GitHub pre-releases" >&2
+            exit 1
+          fi
+          FEED="${OUT}/feed.json"
+          PKG="${OUT}/okkey-${IMAGE_VERSION}.okpkg"
+          if [[ ! -f "${FEED}" || ! -f "${PKG}" ]]; then
+            echo "core update assets are missing" >&2
+            exit 1
+          fi
+          # Do not upload unless the package carries a signature. The feed is
+          # published in the same step, so a missing signature publishes neither.
+          python3 - "${PKG}" "${FEED}" <<'PY'
+          import json, sys
+          package_path, feed_path = sys.argv[1], sys.argv[2]
+          package = json.load(open(package_path))
+          signature = package.get("signature")
+          payload = package.get("payload")
+          if not isinstance(signature, str) or not signature.strip() or not isinstance(payload, dict):
+              print("Refusing to publish an unsigned core package.", file=sys.stderr)
+              sys.exit(1)
+          if payload.get("format") != "okkey-offline-package" or payload.get("component") != "okkey":
+              print("Refusing to publish a package that is not a signed core offline package.", file=sys.stderr)
+              sys.exit(1)
+          feed = json.load(open(feed_path))
+          packages = feed.get("packages")
+          if feed.get("schema") != "okkey.update-feed.v1" or not isinstance(packages, list) or len(packages) == 0:
+              print("Refusing to publish a core feed without a signed package entry.", file=sys.stderr)
+              sys.exit(1)
+          PY
+          if gh release view "${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            gh release upload "${RELEASE_TAG}" "${FEED}" "${PKG}" --clobber --repo "${GITHUB_REPOSITORY}"
+            # Clear pre-release before make_latest. GitHub rejects latest on a pre-release.
+            RELEASE_ID="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}" --jq .id)"
+            gh api --method PATCH "repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}" -F prerelease=false
+            gh api --method PATCH "repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}" -f "make_latest=${latest}"
+          else
+            gh release create "${RELEASE_TAG}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --verify-tag \
+              --target "${GITHUB_SHA}" \
+              --title "Okkey ${IMAGE_VERSION}" \
+              --notes-file "${OUT}/release-notes.md" \
+              --latest="${latest}" \
+              "${FEED}" "${PKG}"
+          fi
 
   # Reminder only — do not delete on close. TTL GC runs on schedule (14d after closed_at).
   note-pr-closed:

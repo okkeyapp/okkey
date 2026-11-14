@@ -1188,7 +1188,11 @@ paths:
       summary: Self-host update check
       description: |
         Hidden in SaaS (404). Does not consult license or plan tier.
-        An empty feed URL or isolated mode does not call an external host.
+        The core feed defaults to the GitHub Releases asset
+        https://github.com/okkeyapp/okkey/releases/latest/download/feed.json.
+        OKKEY_UPDATE_CORE_FEED_URL overrides that default (OKKEY_UPDATE_FEED_URL
+        still overrides it when the core name is empty).
+        OKKEY_UPDATE_ISOLATED skips every update check, including the default.
         Checking does not download or apply a package.
       security: [{ bearerAuth: [] }]
       responses:

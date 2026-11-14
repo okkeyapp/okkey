@@ -30,7 +30,7 @@ export function createTestApiConfig(overrides: Partial<ApiConfig> = {}): ApiConf
     gitSha: "",
     releaseTag: "",
     enterpriseVersion: "",
-    updateFeedUrl: "",
+    updateCoreFeedUrl: "",
     updateIsolated: false,
     updateAgentUrl: "",
     updateAgentToken: "",

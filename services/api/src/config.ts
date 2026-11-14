@@ -21,6 +21,7 @@ import {
   type EmailHttpApiInlineMode,
 } from "./email/http-api-inline-mode.ts";
 import { parseFaviconProvider, type FaviconProvider } from "./favicon/fetch-remote.ts";
+import { resolveCoreUpdateFeedUrl } from "./system-updates/core-feed.ts";
 
 type NodeEnv = "development" | "test" | "production";
 type EmailProvider = "logger" | "smtp" | "http-api" | "ses";
@@ -44,10 +45,13 @@ export interface ApiConfig {
   /** Installed enterprise module version, when the sibling reports one. */
   enterpriseVersion: string;
   /**
-   * Optional update feed URL. Empty means no outbound check.
-   * Never defaulted to a vendor or license host.
+   * Core (okkey) update feed URL.
+   * `OKKEY_UPDATE_CORE_FEED_URL` overrides the GitHub Releases default.
+   * `OKKEY_UPDATE_FEED_URL` is the previous name and still overrides when the
+   * core name is empty. An enterprise feed is a separate setting.
+   * This is not a license server.
    */
-  updateFeedUrl: string;
+  updateCoreFeedUrl: string;
   /** When true, update checks and feed downloads do not call the network. */
   updateIsolated: boolean;
   /** Base URL of the dedicated update agent. Empty disables apply. */
@@ -447,7 +451,10 @@ export function loadConfig(): ApiConfig {
     gitSha: (process.env.OKKEY_GIT_SHA ?? "").trim(),
     releaseTag: (process.env.OKKEY_RELEASE_TAG ?? "").trim(),
     enterpriseVersion: (process.env.OKKEY_ENTERPRISE_VERSION ?? "").trim(),
-    updateFeedUrl: (process.env.OKKEY_UPDATE_FEED_URL ?? "").trim(),
+    updateCoreFeedUrl: resolveCoreUpdateFeedUrl(
+      process.env.OKKEY_UPDATE_CORE_FEED_URL,
+      process.env.OKKEY_UPDATE_FEED_URL,
+    ),
     updateIsolated: parseBoolean(process.env.OKKEY_UPDATE_ISOLATED, false),
     updateAgentUrl: (process.env.OKKEY_UPDATE_AGENT_URL ?? "").trim(),
     updateAgentToken: (process.env.OKKEY_UPDATE_AGENT_TOKEN ?? "").trim(),

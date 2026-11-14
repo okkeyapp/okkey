@@ -67,7 +67,8 @@ export type SystemUpdateServiceOptions = {
   releaseTag?: string;
   enterpriseInstalled: boolean;
   enterpriseVersion: string;
-  feedUrl: string;
+  /** Core (okkey) feed. An enterprise feed would be a separate field. */
+  coreFeedUrl: string;
   isolated: boolean;
   /** Clock for the once-a-day feed cache. */
   now?: () => number;
@@ -183,7 +184,7 @@ export type SystemUpdateService = ReturnType<typeof createSystemUpdateService>;
 
 /** Feed URLs checked by status. One core feed today; each URL is cached on its own. */
 function configuredFeedUrls(options: SystemUpdateServiceOptions): string[] {
-  return [options.feedUrl];
+  return [options.coreFeedUrl];
 }
 
 function emptyToNull(value: string | undefined): string | null {
@@ -247,7 +248,7 @@ async function resolveApplyDocument(
     delete record.registryCredentials;
     return { document: record as SignedOfflinePackage, registryCredentials };
   }
-  if (options.isolated || options.feedUrl.trim() === "") {
+  if (options.isolated || options.coreFeedUrl.trim() === "") {
     throw new SystemUpdateError(
       400,
       "FEED_UNAVAILABLE",
@@ -257,7 +258,7 @@ async function resolveApplyDocument(
   if (input.component !== "okkey" && input.component !== "enterprise") {
     throw new SystemUpdateError(400, "PACKAGE_INVALID", "A package component is required");
   }
-  const feed = await fetchUpdateFeed(options.feedUrl, options.isolated, fetchImpl);
+  const feed = await fetchUpdateFeed(options.coreFeedUrl, options.isolated, fetchImpl);
   const match = feed?.packages
     .filter((entry) => entry.component === input.component)
     .sort((left, right) => (isNewerVersion(left.version, right.version) ? -1 : 1))[0];
