@@ -5,6 +5,7 @@ import {
   ACCOUNT_RESTORE_PATH,
   AUTH_EMAIL_PATH,
   AUTH_EXTENSION_START_PATH,
+  AUTH_MASTER_PASSWORD_PATH,
   AUTH_OTP_PATH,
   AUTH_REGISTRATION_LEGACY_PATH,
   AUTH_TWO_FACTOR_PATH,
@@ -43,6 +44,9 @@ export function isAllowedPathWithoutBearerSession(pathname: string, ctx: GuestEn
     return true;
   }
   if (pathname === AUTH_OTP_PATH && ctx.inOtpFlow) {
+    return true;
+  }
+  if (pathname === AUTH_MASTER_PASSWORD_PATH && ctx.inOtpFlow) {
     return true;
   }
   if ((pathname === ACCOUNT_NEW_PATH || pathname === AUTH_REGISTRATION_LEGACY_PATH) && ctx.hasRegistrationAuthState) {

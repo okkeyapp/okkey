@@ -10,6 +10,8 @@ export const ROOT_PATH = "/";
 
 export const AUTH_EMAIL_PATH = "/auth/email";
 export const AUTH_OTP_PATH = "/auth/otp";
+/** Self-host sign-in when the server reports outbound email is not deliverable. */
+export const AUTH_MASTER_PASSWORD_PATH = "/auth/master-password";
 export const AUTH_TWO_FACTOR_PATH = "/auth/two-factor";
 export const AUTH_WEBAUTHN_PATH = "/auth/webauthn";
 

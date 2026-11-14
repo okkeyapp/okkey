@@ -12,6 +12,7 @@ import { hasExtensionAuthPending } from "../auth/extensionAuthPendingStorage";
 import AccountRestorePage from "../pages/account/AccountRestorePage";
 import DevicePendingPage from "../pages/account/DevicePendingPage";
 import AuthEmailPage from "../pages/auth/AuthEmailPage";
+import AuthMasterPasswordPage from "../pages/auth/AuthMasterPasswordPage";
 import AuthOtpPage from "../pages/auth/AuthOtpPage";
 import AuthRegistrationPage from "../pages/auth/AuthRegistrationPage";
 import AuthTwoFactorPage from "../pages/auth/AuthTwoFactorPage";
@@ -51,6 +52,7 @@ import {
   ACCOUNT_RESTORE_PATH,
   AUTH_EMAIL_PATH,
   AUTH_EXTENSION_START_PATH,
+  AUTH_MASTER_PASSWORD_PATH,
   AUTH_OTP_PATH,
   AUTH_REGISTRATION_LEGACY_PATH,
   AUTH_TWO_FACTOR_PATH,
@@ -158,6 +160,14 @@ export default function AppRoutes() {
         element={
           <GuestAuthOnly>
             <AuthOtpPage />
+          </GuestAuthOnly>
+        }
+      />
+      <Route
+        path={AUTH_MASTER_PASSWORD_PATH}
+        element={
+          <GuestAuthOnly>
+            <AuthMasterPasswordPage />
           </GuestAuthOnly>
         }
       />

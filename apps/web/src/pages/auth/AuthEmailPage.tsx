@@ -13,12 +13,14 @@ import {
 import { ACCOUNT_LOGIN_METHODS_UI_ENABLED } from "../../auth/accountLoginMethodsFeature";
 import {
   ACCOUNT_NEW_PATH,
+  AUTH_MASTER_PASSWORD_PATH,
   AUTH_OTP_PATH,
   AUTH_WEBAUTHN_PATH,
   PRIVACY_POLICY_PATH,
 } from "../../routes/paths";
 import { useLocale } from "../../locale/LocaleContext";
 import { emailStartErrorI18nKey } from "./emailStartErrors";
+import { shouldPromptMasterPasswordLogin } from "./masterPasswordLogin";
 
 export default function AuthEmailPage() {
   const { t, locale } = useLocale();
@@ -55,6 +57,10 @@ export default function AuthEmailPage() {
       return;
     }
     setEmailChallenge(trimmed, start.challengeId, start.resendAvailableAt);
+    if (shouldPromptMasterPasswordLogin(start)) {
+      navigate(AUTH_MASTER_PASSWORD_PATH, { replace: true });
+      return;
+    }
     navigate(AUTH_OTP_PATH, { replace: true });
   }
 

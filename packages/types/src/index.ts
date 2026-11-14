@@ -909,6 +909,19 @@ export interface EmailAuthStartResponse {
   bootstrapRequired?: boolean;
   authStateId?: string;
   nextStep?: "registration";
+  /**
+   * False when this server accepts a master-password login proof instead of an
+   * emailed code (self-hosted and outbound mail is not deliverable). True on
+   * SaaS and whenever mail can be delivered. No other mail configuration is exposed.
+   */
+  emailDeliverable?: boolean;
+}
+
+/** `POST /auth/login/master-password` request. The master password is not sent. */
+export interface MasterPasswordLoginRequestDto {
+  email: string;
+  /** Standard base64 of the 32-byte login key. */
+  loginKey: string;
 }
 
 /** `POST /auth/email/confirm` success body. */
@@ -1923,6 +1936,11 @@ export interface RegisterCompleteRequestDto {
   /** Optional; stored server-side to restore UI after clearing browser storage. */
   first_name?: string;
   last_name?: string;
+  /**
+   * Standard base64 of the 32-byte login key derived from the new master password.
+   * Not the password and not password share C. Omitted by older clients.
+   */
+  login_key?: string;
 }
 
 /** `POST /auth/register/complete` success body (snake_case on wire). */
@@ -1977,6 +1995,22 @@ export interface AccountMasterPasswordChangeRequestDto {
    * only and never receives the password.
    */
   master_password_policy_version: number;
+  /**
+   * Standard base64 of the 32-byte login key for the new master password.
+   * When omitted, the server clears any stored login verifier.
+   */
+  login_key?: string;
+}
+
+/** `GET /account/login-verifier` (Bearer). */
+export interface LoginVerifierStatusDto {
+  enrolled: boolean;
+}
+
+/** `POST /account/login-verifier` (Bearer). */
+export interface LoginVerifierEnrollRequestDto {
+  /** Standard base64 of the 32-byte login key. Not the master password. */
+  login_key: string;
 }
 
 /** `POST /account/master-password/change` success body. */

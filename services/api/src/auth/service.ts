@@ -1,7 +1,8 @@
 import { createHash, randomBytes, randomInt } from "node:crypto";
 import { generateEntityId } from "../entity-id.ts";
 import type { ApiConfig } from "../config.ts";
-import type { EmailTemplateService } from "../email/service.ts";
+import { loginVerifierMatches } from "../crypto/login-verifier.ts";
+import { isOutboundEmailDeliverable, type EmailTemplateService } from "../email/service.ts";
 import type { UserRecord, UsersRepository } from "../storage/repositories.ts";
 
 /** 128-bit CSPRNG hex id for intermediate auth states (not a snowflake entity id). */
@@ -60,7 +61,13 @@ export interface AuthServiceDeps {
     incr(key: string): Promise<number>;
     expire(key: string, seconds: number): Promise<boolean>;
   };
-  users: Pick<UsersRepository, "findByEmail" | "isTwoFactorEnabled" | "hasAnyUsers">;
+  users: Pick<UsersRepository, "findByEmail" | "isTwoFactorEnabled" | "hasAnyUsers"> & {
+    findLoginVerifierByEmail?(email: string): Promise<{
+      userId: string;
+      verifier: Uint8Array | null;
+      salt: Uint8Array | null;
+    } | null>;
+  };
   emailTemplates: Pick<EmailTemplateService, "sendAuthEmailCode">;
   config: ApiConfig;
   now?: () => Date;
@@ -91,6 +98,12 @@ export interface EmailStartResult {
   bootstrapRequired?: boolean;
   authStateId?: string;
   nextStep?: "registration";
+  /**
+   * False only when this instance accepts a master-password login proof
+   * (self-hosted and outbound mail is not deliverable). Otherwise true,
+   * including SaaS, so clients keep the emailed-code step.
+   */
+  emailDeliverable: boolean;
 }
 
 export interface EmailResendInput {
@@ -110,6 +123,21 @@ export interface EmailConfirmResult {
   authStateId: string;
   userExists: boolean;
   nextStep: "registration" | "device_check" | "two_factor";
+}
+
+export interface MasterPasswordLoginInput {
+  email: string;
+  /** 32-byte login key. Not the master password and not password share C. */
+  loginKey: Uint8Array;
+  requestIp: string;
+}
+
+/**
+ * Self-host without deliverable outbound mail may accept a login-key proof.
+ * SaaS and any instance that can send mail keep the emailed code.
+ */
+export function isMasterPasswordLoginEnabled(config: ApiConfig): boolean {
+  return config.deploymentMode === "self_hosted" && !isOutboundEmailDeliverable(config);
 }
 
 function normalizeEmail(email: string): string {
@@ -153,10 +181,7 @@ export function authStateRedisKey(id: string): string {
 
 export class AuthService {
   private readonly redis: AuthServiceDeps["redis"];
-  private readonly users: Pick<
-    UsersRepository,
-    "findByEmail" | "isTwoFactorEnabled" | "hasAnyUsers"
-  >;
+  private readonly users: AuthServiceDeps["users"];
   private readonly emailTemplates: Pick<EmailTemplateService, "sendAuthEmailCode">;
   private readonly config: ApiConfig;
   private readonly now: () => Date;
@@ -196,6 +221,7 @@ export class AuthService {
         bootstrapRequired: true,
         authStateId,
         nextStep: "registration",
+        emailDeliverable: this.emailDeliverable(),
       };
     }
 
@@ -212,6 +238,7 @@ export class AuthService {
             challengeId: existing.id,
             expiresAt: existing.expiresAt,
             resendAvailableAt: existing.resendAvailableAt,
+            emailDeliverable: this.emailDeliverable(),
           };
         }
         await this.redis.del(challengeKey(existing.id));
@@ -268,6 +295,7 @@ export class AuthService {
       challengeId,
       expiresAt: challenge.expiresAt,
       resendAvailableAt: challenge.resendAvailableAt,
+      emailDeliverable: this.emailDeliverable(),
     };
   }
 
@@ -335,7 +363,66 @@ export class AuthService {
       challengeId: updated.id,
       expiresAt: updated.expiresAt,
       resendAvailableAt: updated.resendAvailableAt,
+      emailDeliverable: this.emailDeliverable(),
     };
+  }
+
+  /**
+   * First factor when outbound email cannot deliver a code.
+   * Returns the same auth state as email confirm (device check or TOTP).
+   * Does not create a session and does not trust a device.
+   */
+  async loginWithMasterPasswordProof(
+    input: MasterPasswordLoginInput,
+  ): Promise<EmailConfirmResult> {
+    const email = normalizeEmail(input.email);
+    if (!isValidEmail(email)) {
+      throw new AuthError("AUTH_EMAIL_INVALID", 400, "invalid email");
+    }
+
+    await this.consumeRateLimit(
+      `auth:rate:login-key:email:${email}`,
+      this.config.authRateLimitLoginKeyPerEmail,
+      this.config.authRateLimitWindowSeconds,
+    );
+    await this.consumeRateLimit(
+      `auth:rate:login-key:ip:${input.requestIp}`,
+      this.config.authRateLimitLoginKeyPerIp,
+      this.config.authRateLimitWindowSeconds,
+    );
+
+    if (!isMasterPasswordLoginEnabled(this.config)) {
+      throw new AuthError("AUTH_EMAIL_CODE_REQUIRED", 403, "email code required");
+    }
+
+    const lookup = this.users.findLoginVerifierByEmail
+      ? await this.users.findLoginVerifierByEmail(email)
+      : null;
+    const enrolled = Boolean(lookup?.verifier && lookup.salt);
+    const matches = loginVerifierMatches(
+      input.loginKey,
+      enrolled ? lookup!.salt : null,
+      enrolled ? lookup!.verifier : null,
+    );
+    if (!lookup || !enrolled || !matches) {
+      throw new AuthError("AUTH_LOGIN_FAILED", 401, "sign-in failed");
+    }
+
+    const pendingTwoFactor = await this.users.isTwoFactorEnabled(lookup.userId);
+    const created = await this.createAuthStateForExistingUser({
+      email,
+      userId: lookup.userId,
+      pendingTwoFactor,
+    });
+    return {
+      authStateId: created.authStateId,
+      userExists: true,
+      nextStep: created.nextStep,
+    };
+  }
+
+  private emailDeliverable(): boolean {
+    return !isMasterPasswordLoginEnabled(this.config);
   }
 
   async confirmEmailCode(input: EmailConfirmInput): Promise<EmailConfirmResult> {

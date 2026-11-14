@@ -53,6 +53,8 @@ import { downloadRecoveryKeyPdf } from "../../components/settings/recoveryKeyPdf
 import { RecoveryInfoTriangleIcon } from "../../components/settings/RecoveryInfoTriangleIcon";
 import { useAuthVault } from "../../auth/AuthVaultContext";
 import { base64ToBytes, bytesToBase64 } from "../../auth/base64";
+import { loginKeyBase64 } from "../../auth/loginKeyWire";
+import { readLocalProfile } from "../../auth/localProfileStorage";
 import { parseBrowserEnvironment } from "../../auth/browserEnvironment";
 import { registerCurrentBrowserDevice } from "../../auth/deviceTrust";
 import { getOrCreateDeviceFingerprint } from "../../auth/deviceFingerprint";
@@ -285,11 +287,13 @@ export default function AccountRestorePage() {
         approvalCompleted = outcome === "completed";
       }
 
+      const loginKey = userId ? await loginKeyBase64(readLocalProfile(userId)?.email ?? "", newPwd) : null;
       await core.changeMasterPassword({
         server_key_share: bytesToBase64(rebalanced.serverKeyShare),
         password_kdf_salt: bytesToBase64(rebalanced.passwordKdfSalt),
         password_kdf_params_version: rebalanced.passwordKdfParamsVersion,
         master_password_policy_version: MASTER_PASSWORD_POLICY_VERSION,
+        ...(loginKey ? { login_key: loginKey } : {}),
       });
       passwordChanged = true;
 
