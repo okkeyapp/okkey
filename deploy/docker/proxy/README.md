@@ -151,3 +151,5 @@ STRICT_HOST=app.example.com COMPAT_HOST=compat-app.example.com ./proxy/rollback-
 ```
 
 Evidence: `docs/security/6.19-tls-transport-qday-evidence.md` §1 / §4.
+
+**Caddy alternative (note only).** Strict policy is a site `tls` block (`protocols tls1.3`, `curves x25519mlkem768`). Roll that policy back to Caddy's default hybrid by **deleting the `tls` block**. An empty `tls { }` is rejected (`parsing caddyfile tokens for 'tls': wrong argument count`); `caddy validate` fails closed and the running server stays on the previous config. Do not empty the block. Live drill: evidence §4.1.
