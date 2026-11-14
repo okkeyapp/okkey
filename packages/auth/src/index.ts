@@ -13,6 +13,7 @@ import type {
   ExtensionAuthCodeIssueRequestDto,
   ExtensionAuthCodeIssueResponseDto,
   ExtensionAuthTokenRequestDto,
+  ExtensionAuthTokenResponseDto,
   RegisterCompleteRequestDto,
   RegisterCompleteResponseDto,
   TotpEnrollConfirmRequestDto,
@@ -104,8 +105,8 @@ export class AuthClient {
   /** Exchange extension auth_code + PKCE verifier for a Bearer access token. */
   async exchangeExtensionAuthToken(
     body: ExtensionAuthTokenRequestDto,
-  ): Promise<AccessTokenResponseDto> {
-    return this.api.post<AccessTokenResponseDto>("/auth/extension/token", body);
+  ): Promise<ExtensionAuthTokenResponseDto> {
+    return this.api.post<ExtensionAuthTokenResponseDto>("/auth/extension/token", body);
   }
 
   async verifyTwoFactor(authStateId: string, code: string): Promise<AccessTokenResponseDto> {

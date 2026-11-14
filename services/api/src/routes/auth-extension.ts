@@ -133,6 +133,9 @@ export function createExtensionAuthTokenRoute(
         expires_at: result.expiresAt,
         user_id: result.userId,
         token_type: result.tokenType,
+        email: result.email,
+        first_name: result.firstName,
+        last_name: result.lastName,
       });
     } catch (error) {
       handleExtensionAuthError(ctx.requestId, ctx.res, error);

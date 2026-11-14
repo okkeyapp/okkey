@@ -1,6 +1,6 @@
 import { ApiClient, createCoreApiClient, type CoreApiClient } from "@okkey/api";
 import { AuthClient } from "@okkey/auth";
-import type { AccessTokenResponseDto } from "@okkey/types";
+import type { ExtensionAuthTokenResponseDto } from "@okkey/types";
 
 import { EXTENSION_AUTH_CLIENT_ID } from "./pkce";
 import type { ExtensionSession } from "./storage";
@@ -35,7 +35,7 @@ export async function exchangeExtensionAuthCode(input: {
   codeVerifier: string;
 }): Promise<ExtensionSession> {
   const auth = createAuthClient(input.apiBaseUrl);
-  const dto: AccessTokenResponseDto = await auth.exchangeExtensionAuthToken({
+  const dto: ExtensionAuthTokenResponseDto = await auth.exchangeExtensionAuthToken({
     client_id: EXTENSION_AUTH_CLIENT_ID,
     redirect_uri: input.redirectUri,
     code: input.code,
@@ -45,6 +45,9 @@ export async function exchangeExtensionAuthCode(input: {
     access_token: dto.access_token,
     user_id: dto.user_id,
     expires_at: dto.expires_at,
+    email: dto.email?.trim() ?? "",
+    firstName: dto.first_name?.trim() ?? "",
+    lastName: dto.last_name?.trim() ?? "",
   };
 }
 

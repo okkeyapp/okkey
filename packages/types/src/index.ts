@@ -961,6 +961,17 @@ export interface ExtensionAuthTokenRequestDto {
   code_verifier: string;
 }
 
+/**
+ * Bearer session plus the account's own display name and email.
+ * An unbound extension session cannot call `GET /account/profile` yet.
+ * No other profile fields are included.
+ */
+export interface ExtensionAuthTokenResponseDto extends AccessTokenResponseDto {
+  email: string;
+  first_name: string | null;
+  last_name: string | null;
+}
+
 /** `GET /auth/two-factor/status` success body. */
 export interface TwoFactorStatusResponseDto {
   enabled: boolean;

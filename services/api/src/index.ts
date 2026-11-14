@@ -116,6 +116,17 @@ async function main(): Promise<void> {
   const extensionAuthService = new ExtensionAuthService({
     redis: storage.redis,
     sessionService,
+    loadAccountIdentity: async (userId) => {
+      const profile = await storage.repositories.users.loadAccountProfile(userId);
+      if (!profile) {
+        return null;
+      }
+      return {
+        email: profile.email,
+        firstName: profile.firstName,
+        lastName: profile.lastName,
+      };
+    },
   });
   const twoFactorService = new TwoFactorService({
     redis: storage.redis,
