@@ -11,6 +11,7 @@ import { visiblePasswordMonitoringPath } from "../monitoring-features/nav";
 import { hasExtensionAuthPending } from "../auth/extensionAuthPendingStorage";
 import AccountRestorePage from "../pages/account/AccountRestorePage";
 import DevicePendingPage from "../pages/account/DevicePendingPage";
+import PasskeyApprovalHandoffPage from "../pages/account/PasskeyApprovalHandoffPage";
 import AuthEmailPage from "../pages/auth/AuthEmailPage";
 import AuthMasterPasswordPage from "../pages/auth/AuthMasterPasswordPage";
 import AuthOtpPage from "../pages/auth/AuthOtpPage";
@@ -47,6 +48,7 @@ import WorkspaceRoutesLayout from "../workspace/WorkspaceRoutesLayout";
 import PublicCapsulePage from "../pages/capsules/PublicCapsulePage";
 import {
   ACCOUNT_DEVICE_PENDING_PATH,
+  ACCOUNT_PASSKEY_APPROVAL_PATH,
   ACCOUNT_LOCK_PATH,
   ACCOUNT_NEW_PATH,
   ACCOUNT_RESTORE_PATH,
@@ -184,6 +186,7 @@ export default function AppRoutes() {
       <Route path={ACCOUNT_LOCK_PATH} element={<UnlockPasswordPage />} />
       <Route path={UNLOCK_PASSWORD_LEGACY_PATH} element={<LegacyNavigate to={ACCOUNT_LOCK_PATH} />} />
       <Route path={ACCOUNT_DEVICE_PENDING_PATH} element={<DevicePendingPage />} />
+      <Route path={ACCOUNT_PASSKEY_APPROVAL_PATH} element={<PasskeyApprovalHandoffPage />} />
       <Route path={ACCOUNT_RESTORE_PATH} element={<AccountRestorePage />} />
       <Route path={INVITE_PATH_PATTERN} element={<InviteLandingPage />} />
       <Route path={PRIVACY_POLICY_PATH} element={<legalModule.PrivacyPolicyPage />} />

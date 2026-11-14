@@ -30,10 +30,120 @@ import {
   wireExtensionVaultLifecycle,
 } from "../lib/extensionVaultLifecycle";
 import { EXTENSION_DATA_WIPED_MSG } from "../lib/storage";
+import { createCoreClient } from "../lib/api";
+import {
+  PASSKEY_HANDOFF_JOB_KEY,
+  PASSKEY_HANDOFF_START,
+  PASSKEY_HANDOFF_STORAGE_KEY,
+  PASSKEY_HANDOFF_TIMEOUT_MS,
+  isPasskeyHandoffStartMessage,
+  pollPasskeyHandoffUntilDone,
+  type PasskeyHandoffJob,
+  type PasskeyHandoffPollStatus,
+  type PasskeyHandoffStored,
+} from "../lib/passkeyHandoffPoll";
 
 /** Probe device trust while unlocked so web Revoke clears session without opening the popup. */
 const DEVICE_TRUST_ALARM = "okkey.deviceTrustProbe";
 const DEVICE_TRUST_PERIOD_MINUTES = 1;
+
+class PasskeyHandoffSuperseded extends Error {}
+
+let passkeyHandoffGeneration = 0;
+
+async function writePasskeyHandoffUi(value: PasskeyHandoffStored): Promise<void> {
+  await browser.storage.session.set({ [PASSKEY_HANDOFF_STORAGE_KEY]: value });
+}
+
+function handoffReadStatus(error: unknown): PasskeyHandoffPollStatus | null {
+  if (!error || typeof error !== "object" || !("status" in error)) {
+    return null;
+  }
+  const status = Number((error as { status?: unknown }).status);
+  if (status === 404 || status === 410) {
+    return "expired";
+  }
+  return "pending";
+}
+
+async function runPasskeyHandoffPoll(job: PasskeyHandoffJob): Promise<void> {
+  const generation = ++passkeyHandoffGeneration;
+  const core = createCoreClient(job.apiBaseUrl, job.accessToken);
+  const remaining = PASSKEY_HANDOFF_TIMEOUT_MS - (Date.now() - job.startedAt);
+  try {
+    const result = await pollPasskeyHandoffUntilDone({
+      timeoutMs: Math.max(0, remaining),
+      read: async () => {
+        if (generation !== passkeyHandoffGeneration) {
+          throw new PasskeyHandoffSuperseded();
+        }
+        try {
+          const dto = await core.getPasskeyHandoff(job.deviceId, job.requestId);
+          if (dto.status === "confirmed" || dto.status === "rejected" || dto.status === "expired") {
+            return dto.status;
+          }
+          return "pending";
+        } catch (error) {
+          return handoffReadStatus(error) ?? "pending";
+        }
+      },
+    });
+    if (generation !== passkeyHandoffGeneration) {
+      return;
+    }
+    await writePasskeyHandoffUi({
+      requestId: job.requestId,
+      deviceId: job.deviceId,
+      status: result,
+    });
+    await browser.storage.session.remove(PASSKEY_HANDOFF_JOB_KEY);
+  } catch (error) {
+    if (error instanceof PasskeyHandoffSuperseded || generation !== passkeyHandoffGeneration) {
+      return;
+    }
+  }
+}
+
+async function resumePasskeyHandoffPoll(): Promise<void> {
+  const stored = await browser.storage.session.get(PASSKEY_HANDOFF_JOB_KEY);
+  const job = stored[PASSKEY_HANDOFF_JOB_KEY] as PasskeyHandoffJob | undefined;
+  if (!job || typeof job.requestId !== "string" || typeof job.startedAt !== "number") {
+    return;
+  }
+  if (Date.now() - job.startedAt >= PASSKEY_HANDOFF_TIMEOUT_MS) {
+    await writePasskeyHandoffUi({
+      requestId: job.requestId,
+      deviceId: job.deviceId,
+      status: "timeout",
+    });
+    await browser.storage.session.remove(PASSKEY_HANDOFF_JOB_KEY);
+    return;
+  }
+  await runPasskeyHandoffPoll(job);
+}
+
+function startPasskeyHandoff(message: unknown): Promise<{ ok: true }> | undefined {
+  if (!isPasskeyHandoffStartMessage(message) || message.type !== PASSKEY_HANDOFF_START) {
+    return undefined;
+  }
+  const job: PasskeyHandoffJob = {
+    apiBaseUrl: message.apiBaseUrl,
+    accessToken: message.accessToken,
+    deviceId: message.deviceId,
+    requestId: message.requestId,
+    startedAt: Date.now(),
+  };
+  return (async () => {
+    await browser.storage.session.set({ [PASSKEY_HANDOFF_JOB_KEY]: job });
+    await writePasskeyHandoffUi({
+      requestId: job.requestId,
+      deviceId: job.deviceId,
+      status: "waiting",
+    });
+    void runPasskeyHandoffPoll(job);
+    return { ok: true as const };
+  })();
+}
 
 export default defineBackground(() => {
   console.info(`[okkey] background ready (channel=${EXTENSION_DEVICE_CHANNEL})`);
@@ -48,6 +158,7 @@ export default defineBackground(() => {
   });
   // Immediate probe on SW wake (MV3) when unlock session may still be present.
   void runBackgroundDeviceTrustProbe();
+  void resumePasskeyHandoffPoll();
 
   browser.runtime.onMessage.addListener((message, sender) => {
     // Handled by wireExtensionVaultLifecycle or the offscreen document — do not swallow.
@@ -63,6 +174,10 @@ export default defineBackground(() => {
       return clearAllPendingSaveOffers().then(() => ({ ok: true }));
     }
     if (!isAutofillRuntimeMessage(message)) {
+      const handoff = startPasskeyHandoff(message);
+      if (handoff) {
+        return handoff;
+      }
       if (message && typeof message === "object" && "type" in message) {
         return Promise.resolve({ ok: true });
       }

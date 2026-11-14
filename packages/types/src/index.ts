@@ -1270,6 +1270,23 @@ export interface PasskeyApprovalVerifyResponseDto {
   status: "trusted";
 }
 
+/** How long an extension passkey handoff stays usable. The extension poll uses the same window. */
+export const PASSKEY_HANDOFF_TTL_MS = 180_000;
+
+/** 32 random bytes, base64url, no padding. */
+export function isPasskeyHandoffRequestId(value: string): boolean {
+  return /^[A-Za-z0-9_-]{43}$/.test(value);
+}
+
+export type PasskeyHandoffStatus = "pending" | "confirmed" | "rejected" | "expired";
+
+/** Create and status responses for an extension passkey handoff. */
+export interface PasskeyHandoffResponseDto {
+  request_id: string;
+  status: PasskeyHandoffStatus;
+  expires_at: string;
+}
+
 /** One event as returned by sync HTTP API (opaque base64 payload). */
 export interface SyncEventWireDto {
   id: EntityId;

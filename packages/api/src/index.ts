@@ -80,6 +80,7 @@ import type {
   PasskeyApprovalOptionsResponseDto,
   PasskeyApprovalVerifyRequestDto,
   PasskeyApprovalVerifyResponseDto,
+  PasskeyHandoffResponseDto,
   PasskeyShareWrapOptionsResponseDto,
   PasskeyShareWrapVerifyRequestDto,
   PasskeyShareWrapVerifyResponseDto,
@@ -451,6 +452,21 @@ export class CoreApiClient {
     return this.api.post<PasskeyApprovalVerifyResponseDto>(
       `/devices/${encodeURIComponent(deviceId)}/passkey-approval/verify`,
       body,
+    );
+  }
+
+  /** Pending-device session: open a short-lived handoff the web tab can finish. */
+  createPasskeyHandoff(deviceId: string): Promise<PasskeyHandoffResponseDto> {
+    return this.api.post<PasskeyHandoffResponseDto>(
+      `/devices/${encodeURIComponent(deviceId)}/passkey-approval/handoff`,
+      {},
+    );
+  }
+
+  /** Pending-device session: poll until the web tab confirms, rejects, or the handoff expires. */
+  getPasskeyHandoff(deviceId: string, handoffId: string): Promise<PasskeyHandoffResponseDto> {
+    return this.api.get<PasskeyHandoffResponseDto>(
+      `/devices/${encodeURIComponent(deviceId)}/passkey-approval/handoff/${encodeURIComponent(handoffId)}`,
     );
   }
 
@@ -1297,6 +1313,38 @@ export class CoreApiClient {
       );
     }
   }
+}
+
+/** Public WebAuthn handoff. The request id is the secret; no extension bearer is sent. */
+export function postPasskeyHandoffOptions(
+  api: ApiClient,
+  handoffId: string,
+): Promise<PasskeyApprovalOptionsResponseDto> {
+  return api.post<PasskeyApprovalOptionsResponseDto>(
+    `/auth/passkey-device-approval/${encodeURIComponent(handoffId)}/options`,
+    {},
+  );
+}
+
+export function postPasskeyHandoffVerify(
+  api: ApiClient,
+  handoffId: string,
+  body: PasskeyApprovalVerifyRequestDto,
+): Promise<PasskeyApprovalVerifyResponseDto> {
+  return api.post<PasskeyApprovalVerifyResponseDto>(
+    `/auth/passkey-device-approval/${encodeURIComponent(handoffId)}/verify`,
+    body,
+  );
+}
+
+export function postPasskeyHandoffReject(
+  api: ApiClient,
+  handoffId: string,
+): Promise<PasskeyHandoffResponseDto> {
+  return api.post<PasskeyHandoffResponseDto>(
+    `/auth/passkey-device-approval/${encodeURIComponent(handoffId)}/reject`,
+    {},
+  );
 }
 
 export function createCoreApiClient(

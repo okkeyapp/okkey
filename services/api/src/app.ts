@@ -215,6 +215,11 @@ import type { PasskeyDeviceApprovalService } from "./webauthn/passkey-device-app
 import {
   createPasskeyApprovalOptionsRoute,
   createPasskeyApprovalVerifyRoute,
+  createPasskeyHandoffCreateRoute,
+  createPasskeyHandoffPublicOptionsRoute,
+  createPasskeyHandoffPublicRejectRoute,
+  createPasskeyHandoffPublicVerifyRoute,
+  createPasskeyHandoffStatusRoute,
   createPasskeyShareWrapDeleteRoute,
   createPasskeyShareWrapOptionsRoute,
   createPasskeyShareWrapVerifyRoute,
@@ -654,6 +659,21 @@ export function createApiApp(
   if (deps.passkeyDeviceApprovalService) {
     app.route(
       "POST",
+      "/auth/passkey-device-approval/:handoffId/options",
+      createPasskeyHandoffPublicOptionsRoute(deps.passkeyDeviceApprovalService, config.trustedProxyHops),
+    );
+    app.route(
+      "POST",
+      "/auth/passkey-device-approval/:handoffId/verify",
+      createPasskeyHandoffPublicVerifyRoute(deps.passkeyDeviceApprovalService, config.trustedProxyHops),
+    );
+    app.route(
+      "POST",
+      "/auth/passkey-device-approval/:handoffId/reject",
+      createPasskeyHandoffPublicRejectRoute(deps.passkeyDeviceApprovalService, config.trustedProxyHops),
+    );
+    app.route(
+      "POST",
       "/account/webauthn/credentials/:credentialId/share-wrap/options",
       createPasskeyShareWrapOptionsRoute(
         deps.passkeyDeviceApprovalService,
@@ -696,6 +716,23 @@ export function createApiApp(
           deps.passkeyDeviceApprovalService,
           resolveSessionAllowUnboundDevice,
           config.trustedProxyHops,
+        ),
+      );
+      app.route(
+        "POST",
+        "/devices/:deviceId/passkey-approval/handoff",
+        createPasskeyHandoffCreateRoute(
+          deps.passkeyDeviceApprovalService,
+          resolveSessionAllowUnboundDevice,
+          config.trustedProxyHops,
+        ),
+      );
+      app.route(
+        "GET",
+        "/devices/:deviceId/passkey-approval/handoff/:handoffId",
+        createPasskeyHandoffStatusRoute(
+          deps.passkeyDeviceApprovalService,
+          resolveSessionAllowUnboundDevice,
         ),
       );
     }
