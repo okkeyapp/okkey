@@ -145,7 +145,12 @@ export class UsersRepository {
       >(
         `
           UPDATE users
-          SET email = $2::text, updated_at = now()
+          SET
+            email = $2::text,
+            login_verifier = NULL,
+            login_verifier_salt = NULL,
+            login_verifier_params_version = NULL,
+            updated_at = now()
           WHERE id = $1::bigint
           RETURNING id, email, public_key, public_pq_key, public_mldsa_key, locale, created_at, updated_at
         `,
@@ -289,8 +294,21 @@ export class UsersRepository {
       serverKeyShare: Uint8Array;
       passwordKdfSalt: Uint8Array;
       passwordKdfParamsVersion: number;
+      /**
+       * New login-key verifier. `null` clears a stale verifier so the previous
+       * password cannot keep authenticating. Omit to leave the verifier as-is.
+       */
+      loginVerifier?: {
+        verifier: Uint8Array;
+        salt: Uint8Array;
+        paramsVersion: number;
+      } | null;
     },
   ): Promise<string | null> {
+    const replaceVerifier = input.loginVerifier !== undefined;
+    const verifier = input.loginVerifier?.verifier ?? null;
+    const verifierSalt = input.loginVerifier?.salt ?? null;
+    const verifierVersion = input.loginVerifier?.paramsVersion ?? null;
     const rows = await this.db.query<{ master_password_changed_at: Date }>(
       `
         UPDATE users
@@ -298,6 +316,12 @@ export class UsersRepository {
           server_key_share = $2::bytea,
           password_kdf_salt = $3::bytea,
           password_kdf_params_version = $4::smallint,
+          login_verifier = CASE WHEN $5::boolean THEN $6::bytea ELSE login_verifier END,
+          login_verifier_salt = CASE WHEN $5::boolean THEN $7::bytea ELSE login_verifier_salt END,
+          login_verifier_params_version = CASE
+            WHEN $5::boolean THEN $8::smallint
+            ELSE login_verifier_params_version
+          END,
           master_password_changed_at = now(),
           updated_at = now()
         WHERE id = $1::bigint
@@ -308,6 +332,10 @@ export class UsersRepository {
         Buffer.from(input.serverKeyShare),
         Buffer.from(input.passwordKdfSalt),
         input.passwordKdfParamsVersion,
+        replaceVerifier,
+        verifier ? Buffer.from(verifier) : null,
+        verifierSalt ? Buffer.from(verifierSalt) : null,
+        verifierVersion,
       ],
     );
     const row = rows[0];
@@ -354,6 +382,70 @@ export class UsersRepository {
       [userId],
     );
     return Boolean(rows[0]?.enabled);
+  }
+
+  /**
+   * Login verifier for master-password sign-in. Null verifier means the account
+   * exists but has not enrolled yet (email OTP remains the path until enroll).
+   * Returns null when no user matches (callers must not distinguish that case).
+   */
+  async findLoginVerifierByEmail(email: string): Promise<{
+    userId: string;
+    verifier: Uint8Array | null;
+    salt: Uint8Array | null;
+    paramsVersion: number | null;
+  } | null> {
+    const rows = await this.db.query<{
+      id: string;
+      login_verifier: Buffer | null;
+      login_verifier_salt: Buffer | null;
+      login_verifier_params_version: number | null;
+    }>(
+      `
+        SELECT id, login_verifier, login_verifier_salt, login_verifier_params_version
+        FROM users
+        WHERE lower(email) = lower($1)
+      `,
+      [email],
+    );
+    const row = rows[0];
+    if (!row) {
+      return null;
+    }
+    return {
+      userId: row.id,
+      verifier: row.login_verifier ? Uint8Array.from(row.login_verifier) : null,
+      salt: row.login_verifier_salt ? Uint8Array.from(row.login_verifier_salt) : null,
+      paramsVersion: row.login_verifier_params_version,
+    };
+  }
+
+  async setLoginVerifier(
+    userId: string,
+    input: { verifier: Uint8Array; salt: Uint8Array; paramsVersion: number },
+  ): Promise<boolean> {
+    const rows = await this.db.query<{ id: string }>(
+      `
+        UPDATE users
+        SET
+          login_verifier = $2::bytea,
+          login_verifier_salt = $3::bytea,
+          login_verifier_params_version = $4::smallint,
+          updated_at = now()
+        WHERE id = $1::bigint
+        RETURNING id
+      `,
+      [userId, Buffer.from(input.verifier), Buffer.from(input.salt), input.paramsVersion],
+    );
+    return Boolean(rows[0]);
+  }
+
+  async isLoginVerifierEnrolled(userId: string): Promise<boolean> {
+    const rows = await this.db.query<{ enrolled: boolean }>(
+      "SELECT (login_verifier IS NOT NULL) AS enrolled FROM users WHERE id = $1::bigint",
+      [userId],
+    );
+    return Boolean(rows[0]?.enrolled);
   }
 
   /** Split-key + identity blob for re-hydrating a client after local storage was cleared (Bearer required). */

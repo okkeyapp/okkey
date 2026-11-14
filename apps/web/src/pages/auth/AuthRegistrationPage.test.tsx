@@ -84,6 +84,7 @@ vi.mock("@okkey/crypto", () => ({
     meta: {},
   })),
   wipeBytes: vi.fn(),
+  deriveLoginKey: vi.fn(async () => new Uint8Array(32)),
 }));
 
 vi.mock("../../api/client", () => ({

@@ -15,6 +15,11 @@ import {
   createAuthEmailResendRoute,
   createAuthEmailStartRoute,
 } from "./routes/auth-email.ts";
+import { createAuthMasterPasswordLoginRoute } from "./routes/auth-master-password.ts";
+import {
+  createLoginVerifierEnrollRoute,
+  createLoginVerifierStatusRoute,
+} from "./routes/account-login-verifier.ts";
 import {
   createResolveAuthenticatedSession,
   createResolveAuthenticatedUserId,
@@ -507,6 +512,11 @@ export function createApiApp(
       "/auth/email/confirm",
       createAuthEmailConfirmRoute(deps.authService, config.trustedProxyHops),
     );
+    app.route(
+      "POST",
+      "/auth/login/master-password",
+      createAuthMasterPasswordLoginRoute(deps.authService, config.trustedProxyHops),
+    );
   }
   if (deps.registrationService) {
     app.route(
@@ -675,6 +685,16 @@ export function createApiApp(
       "POST",
       "/account/master-password/change",
       createAccountMasterPasswordChangeRoute(deps.usersRepository, resolveUserIdForRestore),
+    );
+    app.route(
+      "GET",
+      "/account/login-verifier",
+      createLoginVerifierStatusRoute(deps.usersRepository, resolveUserId),
+    );
+    app.route(
+      "POST",
+      "/account/login-verifier",
+      createLoginVerifierEnrollRoute(deps.usersRepository, resolveUserId),
     );
     app.route(
       "POST",

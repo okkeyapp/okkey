@@ -25,6 +25,13 @@ describe("isAllowedPathWithoutBearerSession", () => {
     expect(isAllowedPathWithoutBearerSession("/auth/webauthn", guest)).toBe(true);
   });
 
+  it("allows the master-password step only during the email flow", () => {
+    expect(isAllowedPathWithoutBearerSession("/auth/master-password", guest)).toBe(false);
+    expect(
+      isAllowedPathWithoutBearerSession("/auth/master-password", { ...guest, inOtpFlow: true }),
+    ).toBe(true);
+  });
+
   it("allows extension auth start without a Bearer session", () => {
     expect(isAllowedPathWithoutBearerSession("/auth/extension/start", guest)).toBe(true);
   });

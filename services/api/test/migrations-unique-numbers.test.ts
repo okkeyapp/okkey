@@ -34,6 +34,7 @@ const ROTATION_QUEUE = "0049_workspace_key_rotation_queue.sql";
 const SHARE_NULLABLE = "0050_device_share_nullable.sql";
 const SERVER_MAIL = "0051_server_mail_settings.sql";
 const CLEAR_INACTIVE_SHARES = "0052_clear_inactive_device_shares.sql";
+const LOGIN_VERIFIER = "0053_login_verifier.sql";
 const FAMILY_TIER = "0047_retire_family_plan_tier.sql";
 
 test("duplicateMigrationNumbers reports shared prefixes only", () => {
@@ -79,6 +80,7 @@ test("migration numbers are unique and legacy filenames are aliases only", () =>
     SHARE_NULLABLE,
     SERVER_MAIL,
     CLEAR_INACTIVE_SHARES,
+    LOGIN_VERIFIER,
   ];
   const tail = files.slice(files.indexOf(ordered[0]));
   assert.deepEqual(tail, ordered);
@@ -103,6 +105,8 @@ test("clean database applies every migration once through the runner", async (t)
     assert.equal(await tableExists(query, "workspace_key_rotation_queue"), true);
     assert.equal(await tableExists(query, "system_update_dismissals"), true);
     assert.equal(await columnExists(query, "users", "public_mldsa_key"), true);
+    assert.equal(await columnExists(query, "users", "login_verifier"), true);
+    assert.equal(await columnExists(query, "users", "login_verifier_salt"), true);
     assert.equal(await columnExists(query, "devices", "one_time_x25519_public"), true);
 
     const again = await applySqlMigrations(db, { migrationsDir, logger: createLoggerStub() });
@@ -129,6 +133,7 @@ test("upgrade from v1.0.0-beta.2 applies migrations after 0043 once", async (t) 
     SHARE_NULLABLE,
     SERVER_MAIL,
     CLEAR_INACTIVE_SHARES,
+    LOGIN_VERIFIER,
   ]);
 
   await withSchema(async ({ db, query }) => {

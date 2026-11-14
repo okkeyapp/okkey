@@ -19,6 +19,7 @@ import {
   startCryptoOperationTimer,
 } from "../observability/crypto-rollout.ts";
 import type { SessionService } from "../session/service.ts";
+import { createLoginVerifier, LOGIN_KEY_LEN } from "../crypto/login-verifier.ts";
 import { SESSION_SCOPE_REGISTRATION_RECOVERY } from "../session/scopes.ts";
 import type { PostgresDatabase } from "../storage/postgres.ts";
 import type { UsersRepository } from "../storage/repositories.ts";
@@ -80,6 +81,8 @@ export interface RegisterCompleteInput {
   personalVaultName?: string;
   firstName?: string | null;
   lastName?: string | null;
+  /** 32-byte client login key. Hashed before storage. Never the master password. */
+  loginKey?: Uint8Array | null;
 }
 
 /** Public ids always returned; bootstrap token only on first successful completion. */
@@ -275,6 +278,7 @@ export class RegistrationService {
     }
 
     this.validateCryptoPayload(input);
+    const loginVerifier = this.loginVerifierFromKey(input.loginKey);
 
     const nowIso = this.now().toISOString();
 
@@ -307,6 +311,9 @@ export class RegistrationService {
           firstName: input.firstName ?? null,
           lastName: input.lastName ?? null,
           planTier: this.config.defaultWorkspacePlanTier,
+          loginVerifier: loginVerifier?.verifier ?? null,
+          loginVerifierSalt: loginVerifier?.salt ?? null,
+          loginVerifierParamsVersion: loginVerifier?.paramsVersion ?? null,
         });
       });
 
@@ -374,6 +381,20 @@ export class RegistrationService {
     } finally {
       stopTimer();
     }
+  }
+
+  private loginVerifierFromKey(loginKey: Uint8Array | null | undefined) {
+    if (!loginKey) {
+      return null;
+    }
+    if (loginKey.length !== LOGIN_KEY_LEN) {
+      throw new RegistrationError(
+        "CRYPTO_PAYLOAD_INVALID",
+        400,
+        "login_key must be 32 bytes",
+      );
+    }
+    return createLoginVerifier(loginKey);
   }
 
   private validateCryptoPayload(input: RegisterCompleteInput): void {

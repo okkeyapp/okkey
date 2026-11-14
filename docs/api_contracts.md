@@ -89,6 +89,7 @@ Starts login: creates a short-lived challenge, sends code to email (provider-dep
 | `bootstrapRequired` | boolean | Optional. `true` when zero users — skip OTP UI. |
 | `authStateId` | string | Optional. Present with `bootstrapRequired`; use for `POST /auth/register/complete`. |
 | `nextStep` | string | Optional. `"registration"` when `bootstrapRequired`. |
+| `emailDeliverable` | boolean | `false` only when this instance accepts `POST /auth/login/master-password` (self-hosted and outbound mail is not deliverable). `true` on SaaS and whenever mail can be delivered. |
 
 **Errors:**
 
@@ -142,6 +143,43 @@ Enroll a credential. Options body: `{ attachment: "platform"|"cross-platform" }`
 ### `DELETE /account/webauthn/credentials?attachment=platform|cross-platform` (Bearer)
 
 Removes all credentials of that attachment (settings switch off). If primary becomes invalid, server falls back to `email`.
+
+### `POST /auth/login/master-password`
+
+First factor when `emailDeliverable` is `false`. The client sends a **login key**, not the master password.
+
+The login key is Argon2id over a domain-separated password input and an email-derived salt. It is not password share **C** and cannot be combined with shares **A** and **B** to recover VaultKey. The server stores Argon2id(login key, per-user salt) and compares in constant time.
+
+Accounts with no verifier still use the emailed-code path (the code is only in worker logs when mail is not deliverable). A successful code login can enroll the verifier from the client once the master password is available at unlock. Registration and master-password change enroll or replace it.
+
+**Auth:** none.
+
+**Request body:**
+
+| Field | Type | Required | Notes |
+|--------|------|----------|--------|
+| `email` | string | Yes | Normalized to lower case server-side. |
+| `loginKey` | string | Yes | Standard base64, 32 bytes. Not the master password. |
+
+**Response `200`:** Same as `POST /auth/email/confirm` for an existing user (`authStateId`, `userExists: true`, `nextStep`: `device_check` or `two_factor`). No access token. Device approval and TOTP are unchanged.
+
+**Errors:**
+
+| `error` | HTTP | When |
+|---------|------|------|
+| `AUTH_BAD_REQUEST` | 400 | Invalid JSON or missing `email`. |
+| `AUTH_EMAIL_INVALID` | 400 | Email fails validation. |
+| `AUTH_LOGIN_FAILED` | 401 | Unknown account, wrong key, no verifier, or malformed key. Same message for each. |
+| `AUTH_EMAIL_CODE_REQUIRED` | 403 | SaaS, or outbound mail is deliverable. Use the email code. |
+| `AUTH_RATE_LIMITED` | 429 | Per-account or per-IP budget exceeded. |
+
+### `POST /account/login-verifier` (Bearer)
+
+Body `{ "login_key": "<base64 32 bytes>" }`. Stores a new verifier. Response `{ "enrolled": true }`.
+
+### `GET /account/login-verifier` (Bearer)
+
+Response `{ "enrolled": boolean }`.
 
 ### `POST /auth/email/resend`
 

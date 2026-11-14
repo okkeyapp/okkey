@@ -56,6 +56,8 @@ import type {
   AccountProfileUpdateRequestDto,
   AccountMasterPasswordChangeRequestDto,
   AccountMasterPasswordChangeResponseDto,
+  LoginVerifierEnrollRequestDto,
+  LoginVerifierStatusDto,
   MldsaIdentityKeyUploadRequestDto,
   MldsaIdentityKeyUploadResponseDto,
   VaultUnlockAttestationDto,
@@ -410,6 +412,14 @@ export class CoreApiClient {
     body: AccountMasterPasswordChangeRequestDto,
   ): Promise<AccountMasterPasswordChangeResponseDto> {
     return this.api.post<AccountMasterPasswordChangeResponseDto>("/account/master-password/change", body);
+  }
+
+  getLoginVerifierStatus(): Promise<LoginVerifierStatusDto> {
+    return this.api.get<LoginVerifierStatusDto>("/account/login-verifier");
+  }
+
+  enrollLoginVerifier(body: LoginVerifierEnrollRequestDto): Promise<LoginVerifierStatusDto> {
+    return this.api.post<LoginVerifierStatusDto>("/account/login-verifier", body);
   }
 
   /** Publish the account ML-DSA-65 verifying key, authenticated by the Ed25519 identity key. */

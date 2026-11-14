@@ -72,6 +72,10 @@ export interface ApiConfig {
   invitePreviewRateLimitPerIp: number;
   authRateLimitConfirmPerIp: number;
   authRateLimitResendPerIp: number;
+  /** POST /auth/login/master-password per-account budget within `authRateLimitWindowSeconds`. */
+  authRateLimitLoginKeyPerEmail: number;
+  /** Same window, keyed by client IP. */
+  authRateLimitLoginKeyPerIp: number;
   /** POST /auth/register/complete per-IP budget within `authRateLimitWindowSeconds`. */
   authRateLimitRegisterCompletePerIp: number;
   /** Same window; keyed by email from the auth state (normalized). */
@@ -478,6 +482,14 @@ export function loadConfig(): ApiConfig {
     authRateLimitResendPerIp: parsePositiveInt(
       process.env.AUTH_RATE_LIMIT_RESEND_PER_IP,
       10,
+    ),
+    authRateLimitLoginKeyPerEmail: parsePositiveInt(
+      process.env.AUTH_RATE_LIMIT_LOGIN_KEY_PER_EMAIL,
+      5,
+    ),
+    authRateLimitLoginKeyPerIp: parsePositiveInt(
+      process.env.AUTH_RATE_LIMIT_LOGIN_KEY_PER_IP,
+      20,
     ),
     authRateLimitRegisterCompletePerIp: parsePositiveInt(
       process.env.AUTH_RATE_LIMIT_REGISTER_COMPLETE_PER_IP,

@@ -44,6 +44,9 @@ encrypted_private_key
 server_key_share
 password_kdf_salt (nullable for pre-4.9 rows)
 password_kdf_params_version (nullable for pre-4.9 rows)
+login_verifier (nullable; Argon2id of the client login key, not share C)
+login_verifier_salt (nullable; per-user salt, not password_kdf_salt)
+login_verifier_params_version (nullable)
 created_at
 updated_at
 ```

@@ -51,6 +51,8 @@ export function createTestApiConfig(overrides: Partial<ApiConfig> = {}): ApiConf
     invitePreviewRateLimitPerIp: 60,
     authRateLimitConfirmPerIp: 30,
     authRateLimitResendPerIp: 10,
+    authRateLimitLoginKeyPerEmail: 5,
+    authRateLimitLoginKeyPerIp: 20,
     authRateLimitRegisterCompletePerIp: TEST_AUTH_RATE_LIMIT_REGISTER_COMPLETE_PER_IP,
     authRateLimitRegisterCompletePerEmail: TEST_AUTH_RATE_LIMIT_REGISTER_COMPLETE_PER_EMAIL,
     registrationAuthStateTtlSeconds: 3600,

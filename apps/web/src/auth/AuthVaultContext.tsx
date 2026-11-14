@@ -46,6 +46,7 @@ import { clearSettingsPopupCache } from "../components/settings/settingsPopupCac
 import { migratePersonalFoldersAfterPasswordChange } from "../folders/migratePersonalFoldersAfterPasswordChange";
 import { accountLockWithRedirectQuery } from "../routes/paths";
 import { base64ToBytes, bytesToBase64 } from "./base64";
+import { enrollLoginVerifierIfMissing, loginKeyBase64 } from "./loginKeyWire";
 import { openBundleDeviceShare } from "./openDeviceShare";
 import { getOrCreateDeviceFingerprint } from "./deviceFingerprint";
 import { clearDeviceSigningKey } from "./deviceSigningKey";
@@ -921,6 +922,18 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       await upgradeMlDsaIdentity(vaultKey);
       const token = accessToken;
       if (token) {
+        const enrollPassword = pwd.slice();
+        void enrollLoginVerifierIfMissing({
+          accessToken: token,
+          userId,
+          masterPasswordUtf8: enrollPassword,
+        })
+          .catch(() => {
+            /* best-effort: a missing verifier still allows the emailed-code path */
+          })
+          .finally(() => {
+            wipeBytes(enrollPassword);
+          });
         void buildVaultUnlockAttestation({
           userId,
           vaultKey,
@@ -1130,11 +1143,14 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
         }
 
         const nextServerShareB64 = bytesToBase64(rebalanced.serverKeyShare);
+        const email = readLocalProfile(userId)?.email ?? "";
+        const loginKey = await loginKeyBase64(email, newPwd);
         const response = await client.changeMasterPassword({
           server_key_share: nextServerShareB64,
           password_kdf_salt: bytesToBase64(rebalanced.passwordKdfSalt),
           password_kdf_params_version: rebalanced.passwordKdfParamsVersion,
           master_password_policy_version: MASTER_PASSWORD_POLICY_VERSION,
+          ...(loginKey ? { login_key: loginKey } : {}),
         });
 
         // Commit A in memory before rewriting disk so an in-flight bootstrap fetch

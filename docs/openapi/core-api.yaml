@@ -65,6 +65,23 @@ components:
         resendAvailableAt:
           type: string
           format: date-time
+        emailDeliverable:
+          type: boolean
+          description: >
+            False only when this instance accepts a master-password login proof
+            (self-hosted and outbound mail is not deliverable). True on SaaS and
+            whenever mail can be delivered.
+
+    MasterPasswordLoginRequest:
+      type: object
+      required: [email, loginKey]
+      properties:
+        email:
+          type: string
+          format: email
+        loginKey:
+          type: string
+          description: Standard base64 of the 32-byte login key. Not the master password.
 
     EmailResendRequest:
       type: object
@@ -250,6 +267,9 @@ components:
         password_kdf_params_version:
           type: integer
           enum: [1, 2]
+        login_key:
+          type: string
+          description: Optional standard base64 of the 32-byte login key. Not the master password.
         device_public_key:
           type: string
         device_share:
@@ -1738,6 +1758,46 @@ paths:
               schema:
                 $ref: "#/components/schemas/EmailConfirmResponse"
         "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+
+  /auth/login/master-password:
+    post:
+      tags: [Auth]
+      summary: Sign in with a login key when outbound email is not deliverable
+      description: >
+        Self-hosted instances that cannot deliver mail accept a 32-byte login key
+        derived on the client. The master password is never sent. When mail is
+        deliverable, or on SaaS, the response is 403 and the emailed code is required.
+        Success matches email confirm for an existing user and does not skip device
+        check or TOTP.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MasterPasswordLoginRequest"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailConfirmResponse"
+        "401":
+          description: Generic failure (unknown account, wrong key, or no verifier yet)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "403":
+          description: Email code is required on this instance
           content:
             application/json:
               schema:

@@ -42,6 +42,8 @@ Server never has:
 - vault keys
 - plaintext secrets
 
+When self-host sign-in cannot send a code, the server stores only a slow hash of a **login key**. That key is derived on the client in a KDF branch that is not password share C. The hash is not a vault share. A copy of the database does not decrypt the vault and does not remove the Argon2id cost of guessing the master password.
+
 ---
 
 ## End-to-End Encryption

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type FormEvent, type SVGProps } f
 import { useNavigate } from "react-router-dom";
 import {
   buildRegistrationCryptoArtifacts,
+  deriveLoginKey,
   generateRecoverySecret,
   initCrypto,
   registrationArtifactsToWire,
@@ -182,6 +183,19 @@ export default function AuthRegistrationPage() {
       // Non-extractable Ed25519 key in IndexedDB — keep seed across reload/re-login.
       const devicePublicKeyB64 = await ensureDeviceSigningPublicKey();
 
+      let loginKeyB64: string | undefined;
+      if (email.trim()) {
+        const loginKey = await deriveLoginKey({
+          masterPasswordUtf8: pwd,
+          email,
+        });
+        try {
+          loginKeyB64 = bytesToBase64(loginKey);
+        } finally {
+          wipeBytes(loginKey);
+        }
+      }
+
       const personalWorkspaceName = t("auth.registration.personalWorkspaceName");
       const personalVaultName = t("web.workspaceSettings.vaults.personal.title");
       const browserEnv = parseBrowserEnvironment(navigator.userAgent ?? "");
@@ -204,6 +218,7 @@ export default function AuthRegistrationPage() {
         personal_vault_name: personalVaultName,
         first_name: trimmedFirst,
         last_name: trimmedLast,
+        ...(loginKeyB64 ? { login_key: loginKeyB64 } : {}),
         platform: browserEnv.platform,
         os_name: browserEnv.osName,
         os_version: browserEnv.osVersion,
