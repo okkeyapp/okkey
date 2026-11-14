@@ -188,7 +188,12 @@ export default function AuthWebAuthnPage() {
         navigate(ACCOUNT_NEW_PATH, { replace: true });
         return;
       }
-      setEmailChallenge(pending.email, start.challengeId, start.resendAvailableAt);
+      setEmailChallenge(
+        pending.email,
+        start.challengeId,
+        start.resendAvailableAt,
+        start.emailDeliverable,
+      );
       writePendingLoginDiscover({ ...pending, primary: "email" });
       writeLastLoginMethodHint({ email: pending.email, primary: "email" });
       navigate(AUTH_OTP_PATH, { replace: true });

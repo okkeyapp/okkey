@@ -1546,6 +1546,8 @@
   "auth.otp.errorInvalid": "Неверный код. Попробуйте снова.",
   "auth.otp.attemptsLeft": "Осталось попыток: {n}",
   "auth.otp.resendCountdownAria": "Повторная отправка через {seconds} с",
+  "auth.otp.mailNotConfiguredHint": "Почта на этом сервере не настроена. Код подтверждения записан в логах worker. Выполните:",
+  "auth.otp.mailNotConfiguredCommand": "docker compose logs worker",
   "auth.masterPassword.title": "Добро пожаловать в Okkey",
   "auth.masterPassword.description": "Введите мастер-пароль. Он остаётся на этом устройстве.",
   "auth.masterPassword.label": "Мастер-пароль",

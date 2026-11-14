@@ -35,6 +35,15 @@ export interface EmailInlineAttachment {
   contentBase64: string;
 }
 
+/**
+ * One-time auth code carried next to the rendered message so the worker can log
+ * it when outbound mail is not deliverable. Stripped before any external send.
+ */
+export interface EmailAuthCodeLog {
+  code: string;
+  expiresAt: string;
+}
+
 export interface EmailMessage {
   to: string;
   from: string;
@@ -43,6 +52,11 @@ export interface EmailMessage {
   html: string;
   /** Optional; transports also inject the Okkey mark when HTML uses its CID. */
   inlineAttachments?: EmailInlineAttachment[];
+  /**
+   * Set only for sign-in / email-confirmation codes. Not part of the message
+   * that leaves the process.
+   */
+  authCodeLog?: EmailAuthCodeLog;
 }
 
 export interface EmailSender {
@@ -134,8 +148,9 @@ export function applyEmailAppUrlLocale<T extends Record<string, unknown>>(
 
 export type LoggerEmailSenderOptions = {
   /**
-   * When true, log the plain-text body (e.g. OTP) alongside metadata.
+   * When true, log the plain-text body alongside metadata.
    * See {@link shouldLogPlainTextForLoggerProvider} for when this is enabled for `EMAIL_PROVIDER=logger`.
+   * Self-host auth codes with undeliverable mail are a separate log line; this flag does not control that line.
    */
   includePlainTextBody?: boolean;
 };
@@ -494,6 +509,77 @@ export function isOutboundEmailDeliverable(config: ApiConfig): boolean {
   }
 }
 
+/** Marker for the single worker log line that carries an undeliverable auth code. */
+export const UNDELIVERABLE_AUTH_CODE_LOG_MESSAGE = "[okkey] auth code (mail not configured)";
+
+/**
+ * Self-host with no deliverable outbound mail logs one-time auth codes.
+ * SaaS and any configured provider keep those codes out of the logs.
+ */
+export function shouldLogUndeliverableAuthCode(config: ApiConfig): boolean {
+  return config.deploymentMode === "self_hosted" && !isOutboundEmailDeliverable(config);
+}
+
+/** `ada@example.com` → `a***@example.com`. */
+export function maskEmailForAuthCodeLog(email: string): string {
+  const normalized = email.trim().toLowerCase();
+  const at = normalized.indexOf("@");
+  if (at <= 0) {
+    return "***";
+  }
+  const local = normalized.slice(0, at);
+  const domain = normalized.slice(at + 1);
+  const first = local.charAt(0) || "*";
+  return `${first}***@${domain}`;
+}
+
+function stripAuthCodeLog(message: EmailMessage): EmailMessage {
+  if (!message.authCodeLog) {
+    return message;
+  }
+  const { authCodeLog: _authCodeLog, ...rest } = message;
+  return rest;
+}
+
+function logUndeliverableAuthCode(logger: Logger, message: EmailMessage): void {
+  const details = message.authCodeLog;
+  if (!details || !/^\d{6}$/.test(details.code)) {
+    return;
+  }
+  const expiresAt = details.expiresAt.trim();
+  if (!expiresAt || Number.isNaN(Date.parse(expiresAt))) {
+    return;
+  }
+  logger.info(UNDELIVERABLE_AUTH_CODE_LOG_MESSAGE, {
+    email: maskEmailForAuthCodeLog(message.to),
+    code: details.code,
+    expiresAt,
+  });
+}
+
+/**
+ * Worker transport wrapper. Logs a sign-in or email-confirmation code when mail
+ * cannot be delivered, then drops that field so providers only see the message.
+ */
+class UndeliverableAuthCodeLogSender implements EmailSender {
+  private readonly inner: EmailSender;
+  private readonly logger: Logger;
+  private readonly enabled: boolean;
+
+  constructor(inner: EmailSender, logger: Logger, enabled: boolean) {
+    this.inner = inner;
+    this.logger = logger;
+    this.enabled = enabled;
+  }
+
+  async send(message: EmailMessage): Promise<void> {
+    if (this.enabled) {
+      logUndeliverableAuthCode(this.logger, message);
+    }
+    await this.inner.send(stripAuthCodeLog(message));
+  }
+}
+
 /** Create the provider that actually delivers mail (SMTP / SES / logger / http-api). */
 export async function createTransportEmailSender(
   config: ApiConfig,
@@ -502,7 +588,12 @@ export async function createTransportEmailSender(
 ): Promise<EmailSender> {
   assertEmailTransportConfig(config);
   const sender = await createStaticTransportEmailSender(config, logger);
-  return mailRuntime ? new RuntimeEmailSender(sender, mailRuntime) : sender;
+  const runtime = mailRuntime ? new RuntimeEmailSender(sender, mailRuntime) : sender;
+  return new UndeliverableAuthCodeLogSender(
+    runtime,
+    logger,
+    shouldLogUndeliverableAuthCode(config),
+  );
 }
 
 async function createStaticTransportEmailSender(
@@ -639,7 +730,11 @@ export class EmailTemplateService {
     );
   }
 
-  private async dispatchRendered(to: string, rendered: { subject: string; text: string; html: string }): Promise<void> {
+  private async dispatchRendered(
+    to: string,
+    rendered: { subject: string; text: string; html: string },
+    authCodeLog?: EmailAuthCodeLog,
+  ): Promise<void> {
     try {
       await this.sender.send({
         to,
@@ -647,6 +742,7 @@ export class EmailTemplateService {
         subject: rendered.subject,
         text: rendered.text,
         html: rendered.html,
+        ...(authCodeLog ? { authCodeLog } : {}),
       });
     } catch (cause) {
       if (cause instanceof EmailTemplateError) {
@@ -684,7 +780,13 @@ export class EmailTemplateService {
   }): Promise<void> {
     const locale = this.resolveLocale(input.localeHints);
     const rendered = await renderEmailTemplate("auth_email_code", locale, input.variables);
-    await this.dispatchRendered(input.to, rendered);
+    const expiresAt = new Date(
+      Date.now() + Math.max(0, input.variables.ttlSeconds) * 1000,
+    ).toISOString();
+    await this.dispatchRendered(input.to, rendered, {
+      code: input.variables.code,
+      expiresAt,
+    });
   }
 
   async sendDeviceApprovalRequest(input: {

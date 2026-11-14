@@ -44,16 +44,17 @@ export function extractLeadingEmailVerificationCode(subject: string): string | u
  * Only the code taken from a leading subject token is replaced (exact substring).
  */
 export function redactEmailMessageForDeadLetter<
-  T extends { subject: string; text: string; html: string },
->(message: T): T {
+  T extends { subject: string; text: string; html: string; authCodeLog?: unknown },
+>(message: T): Omit<T, "authCodeLog"> {
   const code = extractLeadingEmailVerificationCode(message.subject);
   const subject = sanitizeEmailSubjectForLogs(message.subject);
+  const { authCodeLog: _authCodeLog, ...rest } = message;
   if (!code) {
-    return { ...message, subject };
+    return { ...rest, subject };
   }
   const redact = (value: string): string => value.split(code).join("******");
   return {
-    ...message,
+    ...rest,
     subject,
     text: redact(message.text),
     html: redact(message.html),

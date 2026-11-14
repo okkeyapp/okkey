@@ -201,6 +201,8 @@ services:
       EMAIL_API_TIMEOUT_MS: ${EMAIL_API_TIMEOUT_MS:-10000}
       EMAIL_HTTP_API_INLINE: ${EMAIL_HTTP_API_INLINE:-cid}
       EMAIL_LOGO_URL: ${EMAIL_LOGO_URL:-}
+      # Match the api service. Unset mode defaults to self_hosted.
+      OKKEY_DEPLOYMENT_MODE: self_hosted
       GEOIP_ENABLED: ${GEOIP_ENABLED:-false}
 
   web:
