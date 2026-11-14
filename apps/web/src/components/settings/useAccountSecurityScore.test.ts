@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   canEnableTrustedDevicesRecovery,
@@ -16,6 +16,8 @@ import {
 } from "./useAccountSecurityScore";
 import { writeVaultDevicePrefs } from "../../auth/vaultDevicePrefs";
 import { renderHook } from "@testing-library/react";
+
+import { RECOMMENDATION_MESSAGE } from "./AccountSecurityScoreBlock";
 
 const authVaultState = vi.hoisted(() => ({
   userId: "user-1" as string | null,
@@ -109,13 +111,38 @@ describe("canEnableTrustedDevicesRecovery", () => {
   });
 });
 
+function memoryStorage() {
+  const store = new Map<string, string>();
+  return {
+    getItem: (key: string) => store.get(key) ?? null,
+    setItem: (key: string, value: string) => {
+      store.set(key, value);
+    },
+    removeItem: (key: string) => {
+      store.delete(key);
+    },
+    clear: () => {
+      store.clear();
+    },
+    key: (index: number) => [...store.keys()][index] ?? null,
+    get length() {
+      return store.size;
+    },
+  };
+}
+
 describe("useAccountSecurityScore devices + vault plumbing", () => {
   beforeEach(() => {
+    vi.stubGlobal("localStorage", memoryStorage());
     clearSettingsPopupCache();
     authVaultState.userId = "user-1";
     authVaultState.vaultIdleLockMs = 900_000;
     authVaultState.masterPasswordChangedAt = "2026-03-01T00:00:00.000Z";
     seedSecureVaultPrefs();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   it("waits for devices slice before scoring when recovery+2FA are ready", () => {
@@ -151,7 +178,49 @@ describe("useAccountSecurityScore devices + vault plumbing", () => {
     expect(result.current.result).not.toBeNull();
     expect(result.current.result?.factorPoints.trustedDevicesRecovery).toBe(15);
     expect(result.current.result?.factorPoints.vaultIdleLock).toBe(5);
+    expect(result.current.result?.factorPoints.vaultLockOnSleep).toBe(5);
+    expect(
+      result.current.result?.recommendations.some((r) => r.id === "enableVaultLockOnSleep"),
+    ).toBe(false);
     expect(result.current.result?.includedFactors).not.toContain("trustedDevicesPresent");
+  });
+
+  it("shows enableVaultLockOnSleep for a fresh device where sleep lock defaults off", () => {
+    localStorage.removeItem("okkey.vault.devicePrefs.v1.u.user-1");
+    localStorage.removeItem("okkey.vault.devicePrefs.lockOnSleepMigration.v1.u.user-1");
+    localStorage.removeItem("okkey.vault.bundle.u.user-1");
+    localStorage.removeItem("okkey.vault.bundle");
+
+    setSettingsPopupCacheData("twoFactor", {
+      enabled: true,
+      backupCodesRemaining: 8,
+      backupCodesGeneratedAt: "2026-09-01T00:00:00.000Z",
+      backupCodesExportedAt: "2026-09-01T00:00:00.000Z",
+    });
+    setSettingsPopupCacheData("recovery", {
+      entitlements: { recoveryKey: true, trustedDevices: false, trustedContacts: false },
+      settings: { keyEnabled: true, devicesEnabled: false, contactsEnabled: false },
+      key: { enrolled: true, createdAt: null, rotatedAt: null, exportedAt: "2026-09-10T00:00:00.000Z" },
+      contacts: [],
+      confirmedContactCount: 0,
+      minConfirmedContacts: 3,
+      pendingInvites: [],
+      servingAsContact: [],
+    });
+    setSettingsPopupCacheData("devices", {
+      devices: [],
+      pending: [],
+      blocked: [],
+    });
+
+    const { result } = renderHook(() => useAccountSecurityScore());
+    expect(RECOMMENDATION_MESSAGE.enableVaultLockOnSleep).toBe(
+      "web.settingsPopup.securityScore.rec.enableVaultLockOnSleep",
+    );
+    expect(result.current.result?.factorPoints.vaultLockOnSleep).toBe(0);
+    expect(
+      result.current.result?.recommendations.some((r) => r.id === "enableVaultLockOnSleep"),
+    ).toBe(true);
   });
 
   it("scores vault gaps and keeps at most 4 recommendations", () => {
