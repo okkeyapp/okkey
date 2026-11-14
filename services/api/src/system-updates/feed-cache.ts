@@ -26,6 +26,7 @@ export function createUpdateFeedCache(options?: { now?: () => number; ttlMs?: nu
       feedUrl: string,
       isolated: boolean,
       fetchImpl: FeedFetch,
+      headers?: Record<string, string>,
     ): Promise<UpdateFeedDocument | null> {
       const url = feedUrl.trim();
       if (isolated || url === "") {
@@ -40,7 +41,7 @@ export function createUpdateFeedCache(options?: { now?: () => number; ttlMs?: nu
         return cached.document;
       }
       try {
-        const document = await fetchUpdateFeed(url, false, fetchImpl);
+        const document = await fetchUpdateFeed(url, false, fetchImpl, headers);
         entries.set(url, { checkedAt: timestamp, document, error: null });
         return document;
       } catch (error) {
@@ -48,7 +49,9 @@ export function createUpdateFeedCache(options?: { now?: () => number; ttlMs?: nu
           error instanceof SystemUpdateError
             ? error
             : new SystemUpdateError(502, "FEED_FETCH_FAILED", "Update source could not be reached");
-        entries.set(url, { checkedAt: timestamp, document: null, error: wrapped });
+        if (wrapped.code !== "LICENSE_EXPIRED") {
+          entries.set(url, { checkedAt: timestamp, document: null, error: wrapped });
+        }
         throw wrapped;
       }
     },

@@ -225,6 +225,35 @@ describe("system update version button", () => {
     expect(button).not.toHaveAttribute("title");
   });
 
+  it("shows an expired enterprise license on the sidebar instead of a generic feed error", async () => {
+    Object.assign(status, {
+      enterpriseLicenseLapsed: true,
+      updates: [],
+      components: [
+        {
+          component: "enterprise",
+          installedVersion: "1.0.0",
+          update: null,
+          checkError: "LICENSE_EXPIRED",
+          feedConfigured: true,
+          minCoreVersion: null,
+          releaseNotesUrl: null,
+        },
+      ],
+    });
+    renderButton();
+    const button = await screen.findByTestId("system-update-version");
+    expect(button).toHaveAttribute("data-update", "current");
+    expect(screen.getByTestId("system-update-sidebar-license-expired")).toHaveTextContent(
+      "web.systemUpdate.error.LICENSE_EXPIRED",
+    );
+    expect(screen.queryByText("web.systemUpdate.checkFailed")).not.toBeInTheDocument();
+    fireEvent.click(button);
+    expect(screen.getByTestId("system-update-check-error-enterprise")).toHaveTextContent(
+      "web.systemUpdate.error.LICENSE_EXPIRED",
+    );
+  });
+
   it("stays hidden in SaaS mode", () => {
     vi.stubEnv("VITE_DEPLOYMENT_MODE", "saas");
     renderButton();

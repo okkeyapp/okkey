@@ -87,6 +87,9 @@ export default function SystemUpdateSidebarButton() {
 
   const updates = visibleUpdates(status.updates, status.dismissed, localDismissed);
   const updateAvailable = shouldShowVersionDot(status.updates, status.seen ?? {}, localSeen);
+  const licenseExpired =
+    status.enterpriseLicenseLapsed === true ||
+    status.components?.some((row) => row.checkError === "LICENSE_EXPIRED") === true;
   const formatted = formatSidebarVersionLabel({
     version: status.currentVersion,
     commitSha: status.commitSha,
@@ -139,6 +142,7 @@ export default function SystemUpdateSidebarButton() {
         commitSha={formatted.tooltip}
         updateAvailable={updateAvailable}
         updateAvailableLabel={t("web.systemUpdate.notice")}
+        licenseExpiredLabel={licenseExpired ? t("web.systemUpdate.error.LICENSE_EXPIRED") : null}
         collapsed={!showExpanded}
         onClick={openPopup}
       />
@@ -166,6 +170,7 @@ export function SystemUpdateVersionMenu({
   commitSha,
   updateAvailable,
   updateAvailableLabel,
+  licenseExpiredLabel = null,
   collapsed,
   onClick,
 }: {
@@ -173,6 +178,7 @@ export function SystemUpdateVersionMenu({
   commitSha: string | null;
   updateAvailable: boolean;
   updateAvailableLabel: string;
+  licenseExpiredLabel?: string | null;
   collapsed: boolean;
   onClick: () => void;
 }) {
@@ -197,6 +203,14 @@ export function SystemUpdateVersionMenu({
           ) : (
             <span className="min-w-0 truncate">{label}</span>
           )}
+          {licenseExpiredLabel ? (
+            <span
+              className={cn("min-w-0 truncate text-muted-foreground", collapsed && "sr-only")}
+              data-testid="system-update-sidebar-license-expired"
+            >
+              {licenseExpiredLabel}
+            </span>
+          ) : null}
           {updateAvailable ? <span className="sr-only">{updateAvailableLabel}</span> : null}
         </SidebarMenuButton>
       </SidebarMenuItem>

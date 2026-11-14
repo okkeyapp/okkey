@@ -460,6 +460,39 @@ describe("system update popup", () => {
     expect(applied[0]).toMatchObject({ source: "file", document: archive });
   });
 
+  it("says the enterprise license expired instead of a generic feed error", () => {
+    const value = status({ updates: [], enterpriseLicenseLapsed: true });
+    value.components = [
+      {
+        component: "okkey",
+        installedVersion: "1.0.0",
+        update: null,
+        checkError: null,
+        feedConfigured: true,
+        minCoreVersion: null,
+        releaseNotesUrl: null,
+      },
+      {
+        component: "enterprise",
+        installedVersion: "1.0.0",
+        update: null,
+        checkError: "LICENSE_EXPIRED",
+        feedConfigured: true,
+        minCoreVersion: null,
+        releaseNotesUrl: null,
+      },
+    ];
+    renderModal(value);
+    expect(screen.getByTestId("system-update-check-error-enterprise")).toHaveTextContent(
+      "The enterprise license has expired.",
+    );
+    expect(formatWebMessage("ru", "web.systemUpdate.error.LICENSE_EXPIRED")).toBe(
+      "Срок лицензии Enterprise истёк.",
+    );
+    expect(screen.queryByText("Enterprise could not be checked.")).toBeNull();
+    expect(screen.getByRole("heading", { name: "Online update" })).toBeInTheDocument();
+  });
+
   it("auto-applies valid offline packages after upload", async () => {
     renderModal(status({ updates: [], currentVersion: "1.0.0" }));
     expect(screen.getByRole("heading", { name: "Online update" })).toBeInTheDocument();
