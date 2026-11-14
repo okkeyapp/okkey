@@ -49,6 +49,7 @@ import {
 
 import { Toaster } from "../../components/toaster";
 import { AUTOFILL_MSG } from "../../lib/autofillMessages";
+import { accountIdentityForBar, accountIdentityFromProfile } from "../../lib/accountIdentity";
 import { createCoreClient, isUnauthorizedApiError } from "../../lib/api";
 import { applyExtensionStoredTheme } from "../../lib/applyExtensionTheme";
 import {
@@ -100,17 +101,20 @@ import {
 import {
   clearExtensionSessionArea,
   normalizeWebBaseUrl,
+  readAccountIdentity,
   readDeviceId,
   readLastServer,
   readProfile,
   readSession,
   resolveApiBaseFromWebBase,
   wipeAllExtensionData,
+  writeAccountIdentity,
   writeLastServer,
   writePkcePending,
   writeProfile,
   WEB_BASE_URL_REQUIRED_ERROR,
   WEB_BASE_URL_SCHEME_ERROR,
+  type ExtensionAccountIdentity,
   type ExtensionHostMode,
   type ExtensionProfile,
   type ExtensionSession,
@@ -154,12 +158,6 @@ type Screen =
   | "vault"
   | "error";
 
-type AccountIdentity = {
-  email: string;
-  firstName: string;
-  lastName: string;
-};
-
 function formatAbsoluteDate(iso: string, locale: WebLocale): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) {
@@ -199,7 +197,7 @@ export function PopupApp() {
   profileRef.current = profile;
   sessionRef.current = session;
   const [trust, setTrust] = useState<DeviceTrustSnapshot | null>(null);
-  const [identity, setIdentity] = useState<AccountIdentity | null>(null);
+  const [identity, setIdentity] = useState<ExtensionAccountIdentity | null>(null);
   const [hostMode, setHostMode] = useState<ExtensionHostMode>(
     ENABLE_SAAS_SIGNIN ? "saas" : "self-hosted",
   );
@@ -283,11 +281,11 @@ export function PopupApp() {
     try {
       const core = createCoreClient(apiBaseUrl, accessToken);
       const account = await core.getAccountProfile();
-      setIdentity({
-        email: account.email ?? "",
-        firstName: account.first_name ?? "",
-        lastName: account.last_name ?? "",
-      });
+      const next = accountIdentityFromProfile(account);
+      if (next) {
+        setIdentity(next);
+        await writeAccountIdentity(next);
+      }
       if (userId) {
         const idleMs = await resolveExtensionIdleLockMs({
           userId,
@@ -302,7 +300,8 @@ export function PopupApp() {
       if (isUnauthorizedApiError(err)) {
         throw err;
       }
-      setIdentity(null);
+      const stored = await readAccountIdentity();
+      setIdentity(stored);
       return null;
     }
   }, []);
@@ -466,22 +465,31 @@ export function PopupApp() {
         const shareB64 = userId
           ? (await readExtensionVaultBundle(userId))?.device_share_b64
           : undefined;
+        // Read name and email while the session is still unbound. After the
+        // device row is pending, GET /account/profile is closed; the card uses
+        // the copy saved here (and restored after a popup restart).
+        await loadIdentity(apiBaseUrl, accessToken, userId).catch(async (err: unknown) => {
+          if (!isUnauthorizedApiError(err)) {
+            return;
+          }
+          const stored = await readAccountIdentity();
+          if (stored) {
+            setIdentity(stored);
+          }
+        });
         const snapshot = await resolveExtensionDeviceTrust(core, {
           deviceShareB64: shareB64,
           userId,
         });
         await applyTrustSnapshot(snapshot, userId);
-        void loadIdentity(apiBaseUrl, accessToken, userId).catch(async (err: unknown) => {
-          if (!isUnauthorizedApiError(err)) {
-            return;
-          }
-          // Profile stays closed until the device is trusted. Device list already
-          // succeeded, so keep waiting for approval instead of signing out.
-          if (snapshot.status === "pending" || snapshot.status === "checking") {
-            return;
-          }
-          await wipeLocalAndReset();
-        });
+        if (snapshot.status !== "pending" && snapshot.status !== "checking") {
+          void loadIdentity(apiBaseUrl, accessToken, userId).catch(async (err: unknown) => {
+            if (!isUnauthorizedApiError(err)) {
+              return;
+            }
+            await wipeLocalAndReset();
+          });
+        }
       } catch (err: unknown) {
         if (isUnauthorizedApiError(err)) {
           await wipeLocalAndReset();
@@ -525,6 +533,11 @@ export function PopupApp() {
         );
       } else if (!ENABLE_SAAS_SIGNIN) {
         applyServerPreference("self-hosted", "");
+      }
+      const storedIdentity = await readAccountIdentity();
+      if (cancelled) return;
+      if (storedIdentity) {
+        setIdentity(storedIdentity);
       }
       if (existingProfile && existingSession) {
         setSession(existingSession);
@@ -843,11 +856,11 @@ export function PopupApp() {
           serverIdleLockSeconds: account.vault_idle_lock_seconds,
         });
         setVaultIdleLockMs(idleMs);
-        setIdentity({
-          email: account.email ?? "",
-          firstName: account.first_name ?? "",
-          lastName: account.last_name ?? "",
-        });
+        const nextIdentity = accountIdentityFromProfile(account);
+        if (nextIdentity) {
+          setIdentity(nextIdentity);
+          await writeAccountIdentity(nextIdentity);
+        }
       } catch {
         /* keep previous idle / identity */
       }
@@ -1069,12 +1082,13 @@ export function PopupApp() {
     }
     return createCoreClient(profile.apiBaseUrl, session.access_token);
   }, [profile, session]);
+  const shownIdentity = accountIdentityForBar(identity);
   const identityBar =
     identity || session ? (
       <AccountUserBar
-        email={identity?.email ?? ""}
-        firstName={identity?.firstName ?? ""}
-        lastName={identity?.lastName ?? ""}
+        email={shownIdentity.email}
+        firstName={shownIdentity.firstName}
+        lastName={shownIdentity.lastName}
         signOutLabel={t("unlock.signOut")}
         onSignOut={() => void onLogout()}
       />

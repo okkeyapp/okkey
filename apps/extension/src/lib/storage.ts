@@ -8,6 +8,12 @@ export const EXTENSION_DATA_WIPED_MSG = "okkey.extension.dataWiped" as const;
 export const STORAGE_KEYS = {
   profile: "okkey.extension.profile",
   session: "okkey.extension.session",
+  /**
+   * Display name and email for the signed-in account.
+   * Written before the device is approved so the pending screen can show them
+   * after the popup or service worker restarts. Not a vault secret.
+   */
+  accountIdentity: "okkey.extension.accountIdentity",
   pkce: "okkey.extension.pkce",
   devicePublicKey: "okkey.extension.devicePublicKey",
   devicePrivateKey: "okkey.extension.devicePrivateKey",
@@ -96,6 +102,40 @@ export async function readSession(): Promise<ExtensionSession | null> {
 
 export async function writeSession(session: ExtensionSession): Promise<void> {
   await storageArea().set({ [STORAGE_KEYS.session]: session });
+}
+
+export type ExtensionAccountIdentity = {
+  email: string;
+  firstName: string;
+  lastName: string;
+};
+
+export async function readAccountIdentity(): Promise<ExtensionAccountIdentity | null> {
+  const result = await storageArea().get(STORAGE_KEYS.accountIdentity);
+  const raw = result[STORAGE_KEYS.accountIdentity] as Partial<ExtensionAccountIdentity> | undefined;
+  const email = typeof raw?.email === "string" ? raw.email.trim() : "";
+  if (!email) {
+    return null;
+  }
+  return {
+    email,
+    firstName: typeof raw?.firstName === "string" ? raw.firstName.trim() : "",
+    lastName: typeof raw?.lastName === "string" ? raw.lastName.trim() : "",
+  };
+}
+
+export async function writeAccountIdentity(identity: ExtensionAccountIdentity): Promise<void> {
+  const email = identity.email.trim();
+  if (!email) {
+    return;
+  }
+  await storageArea().set({
+    [STORAGE_KEYS.accountIdentity]: {
+      email,
+      firstName: identity.firstName.trim(),
+      lastName: identity.lastName.trim(),
+    },
+  });
 }
 
 export async function clearSession(): Promise<void> {
