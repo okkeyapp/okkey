@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import {
+  armHttpAuthWallClock,
   challengeIdFromHttpAuthAlarm,
   createHttpAuthConsentTracker,
   httpAuthPendingSession,
@@ -295,6 +296,84 @@ describe("http auth consent timeout", () => {
     assert.equal(restarted.logs.join("\n").includes(PASSWORD), false);
     assert.deepEqual(restarted.closed, [9]);
     assert.equal(await restarted.tracker.forceTimeout("c1"), "missing");
+  });
+
+  it("expires on wake when the wall clock jumps past the deadline and timers have not fired", () => {
+    let now = 1_700_000_000_000;
+    const listeners: Array<() => void> = [];
+    const timers: Array<{ at: number; cleared: boolean; callback: () => void }> = [];
+    let expired = 0;
+    const stop = armHttpAuthWallClock(now + 90_000, {
+      now: () => now,
+      setTimer(callback, delayMs) {
+        const handle = { at: now + delayMs, cleared: false, callback };
+        timers.push(handle);
+        return handle;
+      },
+      clearTimer(handle) {
+        (handle as { cleared: boolean }).cleared = true;
+      },
+      subscribe(listener) {
+        listeners.push(listener);
+        return () => {
+          const index = listeners.indexOf(listener);
+          if (index >= 0) {
+            listeners.splice(index, 1);
+          }
+        };
+      },
+      onExpire() {
+        expired += 1;
+      },
+    });
+    assert.equal(listeners.length, 1);
+    assert.equal(timers.filter((timer) => !timer.cleared).length, 1);
+    now += 122_300;
+    const pending = timers.filter((timer) => !timer.cleared);
+    assert.equal(pending.length, 1);
+    assert.equal(pending[0]!.at < now, true);
+    for (const listener of [...listeners]) {
+      listener();
+    }
+    assert.equal(expired, 1);
+    assert.equal(timers.every((timer) => timer.cleared), true);
+    for (const listener of [...listeners]) {
+      listener();
+    }
+    assert.equal(expired, 1);
+    stop();
+    assert.equal(listeners.length, 0);
+  });
+
+  it("re-arms the remaining wall-clock delay when time jumps but the deadline is still ahead", () => {
+    let now = 1_700_000_000_000;
+    const listeners: Array<() => void> = [];
+    const timers: Array<{ delayMs: number; cleared: boolean }> = [];
+    let expired = 0;
+    armHttpAuthWallClock(now + 90_000, {
+      now: () => now,
+      setTimer(_callback, delayMs) {
+        const handle = { delayMs, cleared: false };
+        timers.push(handle);
+        return handle;
+      },
+      clearTimer(handle) {
+        (handle as { cleared: boolean }).cleared = true;
+      },
+      subscribe(listener) {
+        listeners.push(listener);
+        return () => undefined;
+      },
+      onExpire() {
+        expired += 1;
+      },
+    });
+    now += 40_000;
+    listeners[0]!();
+    const live = timers.filter((timer) => !timer.cleared);
+    assert.equal(expired, 0);
+    assert.equal(live.length, 1);
+    assert.equal(live[0]!.delayMs, 50_000);
   });
 
   it("reads only this feature's alarm names", () => {
