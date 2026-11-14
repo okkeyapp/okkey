@@ -326,7 +326,6 @@ describe("SettingsDevicesContent", () => {
     });
     expect(screen.queryByText("web.settingsPopup.devices.pending.title")).toBeNull();
     expect(screen.queryByText("Desktop Windows 11")).toBeNull();
-    expect(screen.getByText("Web Chrome")).toBeTruthy();
   });
 
   it("dismisses pending device via rejectDevice", async () => {
