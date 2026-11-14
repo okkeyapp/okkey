@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { defineConfig } from "wxt";
+import { extensionManifestPermissions } from "./src/lib/extensionManifestPermissions.ts";
 import {
   DEV_BUILD_ENV,
   PRODUCT_VERSION_ENV,
@@ -167,21 +168,11 @@ export default defineConfig({
         ),
       ),
     }).manifestVersion;
-    const chromiumOnlyPermissions = ["offscreen"] as const;
-    const sharedPermissions = [
-      "storage",
-      "tabs",
-      "idle",
-      "alarms",
-      "clipboardRead",
-      "clipboardWrite",
-    ] as const;
     // Firefox has no offscreen documents — clipboard clear uses navigator.clipboard in the
-    // background (see extensionVaultLifecycle). Declaring `offscreen` trips web-ext lint.
-    const permissions =
-      browser === "firefox"
-        ? [...sharedPermissions]
-        : [...sharedPermissions, ...chromiumOnlyPermissions];
+    // background (see extensionVaultLifecycle). HTTP auth permissions also differ:
+    // Chromium uses webRequestAuthProvider; Firefox uses webRequestBlocking.
+    // See store/PERMISSIONS.md and extensionManifestPermissions.
+    const permissions = extensionManifestPermissions(browser);
     return {
       // Store consoles expose EN+RU listing locales from package `_locales/`.
       // In-app UI still uses `@okkey/i18n` + chrome.storage (not browser.i18n).

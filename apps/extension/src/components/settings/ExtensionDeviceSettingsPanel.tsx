@@ -50,6 +50,7 @@ import {
   type BiometricUnlockErrorCode,
 } from "../../lib/extensionBiometricUnlock";
 import { writeExtensionPinUnlockWrap } from "../../lib/extensionDeviceUnlockStore";
+import { readHttpBasicAuthEnabled, writeHttpBasicAuthEnabled } from "../../lib/httpAuthSetting";
 import {
   patchExtensionDevicePrefs,
   readExtensionDevicePrefs,
@@ -204,6 +205,7 @@ export function ExtensionDeviceSettingsPanel(props: ExtensionDeviceSettingsPanel
   const [bioError, setBioError] = useState<string | null>(null);
   const [bioBusy, setBioBusy] = useState(false);
   const [bioCapability, setBioCapability] = useState<BiometricCapability | null>(null);
+  const [httpBasicAuthEnabled, setHttpBasicAuthEnabled] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -232,6 +234,18 @@ export function ExtensionDeviceSettingsPanel(props: ExtensionDeviceSettingsPanel
   useEffect(() => {
     setIdleSeconds(Math.round(idleLockMs / 1000));
   }, [idleLockMs]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void readHttpBasicAuthEnabled().then((enabled) => {
+      if (!cancelled) {
+        setHttpBasicAuthEnabled(enabled);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -545,6 +559,22 @@ export function ExtensionDeviceSettingsPanel(props: ExtensionDeviceSettingsPanel
                   size="lg"
                   checked={prefs.lockOnPopupClose}
                   onCheckedChange={(checked) => void updatePrefs({ lockOnPopupClose: checked })}
+                />
+              </SettingsRow>
+              <SettingsRow
+                label={t("extension.httpAuth.setting.label")}
+                description={t("extension.httpAuth.setting.description")}
+                controlClassName="w-[100px]"
+                stackOnMobile={false}
+              >
+                <Switch
+                  size="lg"
+                  checked={httpBasicAuthEnabled}
+                  onCheckedChange={(checked) => {
+                    setHttpBasicAuthEnabled(checked);
+                    void writeHttpBasicAuthEnabled(checked);
+                  }}
+                  aria-label={t("extension.httpAuth.setting.label")}
                 />
               </SettingsRow>
               <SettingsRow
