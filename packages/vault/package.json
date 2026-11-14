@@ -35,6 +35,21 @@
       "types": "./dist/split-key-share-wrap-store.d.ts",
       "import": "./dist/split-key-share-wrap-store.js",
       "default": "./src/split-key-share-wrap-store.ts"
+    },
+    "./vault-device-prefs": {
+      "types": "./dist/vault-device-prefs.d.ts",
+      "import": "./dist/vault-device-prefs.js",
+      "default": "./src/vault-device-prefs.ts"
+    },
+    "./vault-unlock-session": {
+      "types": "./dist/vault-unlock-session.d.ts",
+      "import": "./dist/vault-unlock-session.js",
+      "default": "./src/vault-unlock-session.ts"
+    },
+    "./vault-idle-lock-ms": {
+      "types": "./dist/vault-idle-lock-ms.d.ts",
+      "import": "./dist/vault-idle-lock-ms.js",
+      "default": "./src/vault-idle-lock-ms.ts"
     }
   },
   "files": ["dist", "src"],

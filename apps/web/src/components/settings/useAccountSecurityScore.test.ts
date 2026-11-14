@@ -17,6 +17,8 @@ import {
 import { writeVaultDevicePrefs } from "../../auth/vaultDevicePrefs";
 import { renderHook } from "@testing-library/react";
 
+import { RECOMMENDATION_MESSAGE } from "./AccountSecurityScoreBlock";
+
 const authVaultState = vi.hoisted(() => ({
   userId: "user-1" as string | null,
   vaultIdleLockMs: 900_000,
@@ -151,7 +153,49 @@ describe("useAccountSecurityScore devices + vault plumbing", () => {
     expect(result.current.result).not.toBeNull();
     expect(result.current.result?.factorPoints.trustedDevicesRecovery).toBe(15);
     expect(result.current.result?.factorPoints.vaultIdleLock).toBe(5);
+    expect(result.current.result?.factorPoints.vaultLockOnSleep).toBe(5);
+    expect(
+      result.current.result?.recommendations.some((r) => r.id === "enableVaultLockOnSleep"),
+    ).toBe(false);
     expect(result.current.result?.includedFactors).not.toContain("trustedDevicesPresent");
+  });
+
+  it("shows enableVaultLockOnSleep for a fresh device where sleep lock defaults off", () => {
+    localStorage.removeItem("okkey.vault.devicePrefs.v1.u.user-1");
+    localStorage.removeItem("okkey.vault.devicePrefs.lockOnSleepMigration.v1.u.user-1");
+    localStorage.removeItem("okkey.vault.bundle.u.user-1");
+    localStorage.removeItem("okkey.vault.bundle");
+
+    setSettingsPopupCacheData("twoFactor", {
+      enabled: true,
+      backupCodesRemaining: 8,
+      backupCodesGeneratedAt: "2026-09-01T00:00:00.000Z",
+      backupCodesExportedAt: "2026-09-01T00:00:00.000Z",
+    });
+    setSettingsPopupCacheData("recovery", {
+      entitlements: { recoveryKey: true, trustedDevices: false, trustedContacts: false },
+      settings: { keyEnabled: true, devicesEnabled: false, contactsEnabled: false },
+      key: { enrolled: true, createdAt: null, rotatedAt: null, exportedAt: "2026-09-10T00:00:00.000Z" },
+      contacts: [],
+      confirmedContactCount: 0,
+      minConfirmedContacts: 3,
+      pendingInvites: [],
+      servingAsContact: [],
+    });
+    setSettingsPopupCacheData("devices", {
+      devices: [],
+      pending: [],
+      blocked: [],
+    });
+
+    const { result } = renderHook(() => useAccountSecurityScore());
+    expect(RECOMMENDATION_MESSAGE.enableVaultLockOnSleep).toBe(
+      "web.settingsPopup.securityScore.rec.enableVaultLockOnSleep",
+    );
+    expect(result.current.result?.factorPoints.vaultLockOnSleep).toBe(0);
+    expect(
+      result.current.result?.recommendations.some((r) => r.id === "enableVaultLockOnSleep"),
+    ).toBe(true);
   });
 
   it("scores vault gaps and keeps at most 4 recommendations", () => {

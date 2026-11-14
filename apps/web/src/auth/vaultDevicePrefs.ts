@@ -9,12 +9,17 @@ import {
   DEFAULT_VAULT_DEVICE_PREFS,
   IDLE_LOCK_OPTIONS_SECONDS,
   SECTION_REAUTH_ZONE_IDS,
-  parseVaultDevicePrefs,
+  lockOnSleepMigrationMarkerValue,
+  needsFreshLockOnSleepDefaultMark,
+  resolveVaultDevicePrefsRead,
   serializeVaultDevicePrefs,
   vaultDevicePrefsKey,
+  vaultLockOnSleepMigrationKey,
   type SectionReauthZoneId,
   type VaultDevicePrefs,
 } from "@okkey/vault";
+
+import { VAULT_BUNDLE_STORAGE_KEY, vaultBundleScopedStorageKey } from "./storageKeys";
 
 export type { SectionReauthZoneId, VaultDevicePrefs };
 export {
@@ -31,14 +36,72 @@ export const SECTION_REAUTH_PATH_ZONE_IDS: readonly SectionReauthZoneId[] = [
   "workspaceSettings",
 ] as const;
 
+/**
+ * Prior local vault for this user. The scoped bundle is written on unlock and
+ * survives logout. The legacy unscoped key is the same record from before
+ * per-user storage. Session and profile keys are not used: login writes those
+ * before the first prefs read, including on a brand-new device.
+ */
+function hasPriorLocalVault(userId: string): boolean {
+  if (typeof localStorage === "undefined") {
+    return false;
+  }
+  if (localStorage.getItem(vaultBundleScopedStorageKey(userId))) {
+    return true;
+  }
+  return Boolean(localStorage.getItem(VAULT_BUNDLE_STORAGE_KEY));
+}
+
+function applyLockOnSleepReadPlan(userId: string): VaultDevicePrefs {
+  const plan = resolveVaultDevicePrefsRead({
+    savedPrefsRaw: localStorage.getItem(vaultDevicePrefsKey(userId)),
+    migrationMarkerRaw: localStorage.getItem(vaultLockOnSleepMigrationKey(userId)),
+    hasPriorUserState: hasPriorLocalVault(userId),
+  });
+  if (plan.persistPrefs) {
+    localStorage.setItem(vaultDevicePrefsKey(userId), serializeVaultDevicePrefs(plan.prefs));
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("okkey:vault-device-prefs", { detail: { userId } }));
+    }
+  }
+  if (plan.persistMigrationMarker) {
+    localStorage.setItem(vaultLockOnSleepMigrationKey(userId), lockOnSleepMigrationMarkerValue());
+  }
+  return plan.prefs;
+}
+
 export function readVaultDevicePrefs(userId: string | null): VaultDevicePrefs {
   if (!userId || typeof localStorage === "undefined") {
     return { ...DEFAULT_VAULT_DEVICE_PREFS };
   }
   try {
-    return parseVaultDevicePrefs(localStorage.getItem(vaultDevicePrefsKey(userId)));
+    return applyLockOnSleepReadPlan(userId);
   } catch {
     return { ...DEFAULT_VAULT_DEVICE_PREFS };
+  }
+}
+
+/**
+ * Call before the first local vault bundle is stored for a user who had none,
+ * so that bundle is not treated as a pre-upgrade vault. Does not change prefs.
+ */
+export function markLockOnDeviceSleepDefaultForNewInstall(userId: string): void {
+  if (!userId || typeof localStorage === "undefined") {
+    return;
+  }
+  try {
+    const markerKey = vaultLockOnSleepMigrationKey(userId);
+    if (
+      !needsFreshLockOnSleepDefaultMark(
+        localStorage.getItem(vaultDevicePrefsKey(userId)),
+        localStorage.getItem(markerKey),
+      )
+    ) {
+      return;
+    }
+    localStorage.setItem(markerKey, lockOnSleepMigrationMarkerValue());
+  } catch {
+    /* quota / private mode */
   }
 }
 
