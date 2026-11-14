@@ -12,6 +12,20 @@ export type SystemUpdateAvailable = {
   summary: string;
   releasedAt: string;
   source: "feed";
+  minCoreVersion?: string | null;
+  releaseNotesUrl?: string | null;
+};
+
+export type SystemUpdateCheckError = "FEED_FETCH_FAILED" | "FEED_INVALID";
+
+export type SystemUpdateComponentStatus = {
+  component: SystemUpdateComponent;
+  installedVersion: string;
+  update: SystemUpdateAvailable | null;
+  checkError: SystemUpdateCheckError | null;
+  feedConfigured: boolean;
+  minCoreVersion: string | null;
+  releaseNotesUrl: string | null;
 };
 
 export type SystemUpdateStatus = {
@@ -27,10 +41,14 @@ export type SystemUpdateStatus = {
   isolated: boolean;
   canApply: boolean;
   updates: SystemUpdateAvailable[];
+  /** Present when the API reports one row per component. */
+  components?: readonly SystemUpdateComponentStatus[];
   dismissed: Partial<Record<SystemUpdateComponent, string>>;
   /** Last feed version opened in the system-update popup, per component. */
   seen: Partial<Record<SystemUpdateComponent, string>>;
   feedError: string | null;
+  /** Combined archives are applied only after the API can read them. */
+  offlineArchiveSupported?: boolean;
 };
 
 export type SystemUpdateJob = {

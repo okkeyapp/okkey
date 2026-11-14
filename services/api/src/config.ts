@@ -52,6 +52,12 @@ export interface ApiConfig {
    * This is not a license server.
    */
   updateCoreFeedUrl: string;
+  /**
+   * Optional enterprise feed URL (`OKKEY_UPDATE_ENTERPRISE_FEED_URL`).
+   * Empty means there is no separate enterprise check.
+   * Contacted only when enterprise modules are installed.
+   */
+  updateEnterpriseFeedUrl: string;
   /** When true, update checks and feed downloads do not call the network. */
   updateIsolated: boolean;
   /** Base URL of the dedicated update agent. Empty disables apply. */
@@ -455,6 +461,7 @@ export function loadConfig(): ApiConfig {
       process.env.OKKEY_UPDATE_CORE_FEED_URL,
       process.env.OKKEY_UPDATE_FEED_URL,
     ),
+    updateEnterpriseFeedUrl: (process.env.OKKEY_UPDATE_ENTERPRISE_FEED_URL ?? "").trim(),
     updateIsolated: parseBoolean(process.env.OKKEY_UPDATE_ISOLATED, false),
     updateAgentUrl: (process.env.OKKEY_UPDATE_AGENT_URL ?? "").trim(),
     updateAgentToken: (process.env.OKKEY_UPDATE_AGENT_TOKEN ?? "").trim(),

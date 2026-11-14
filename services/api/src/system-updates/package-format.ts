@@ -61,6 +61,9 @@ export type UpdateFeedPackage = {
   packageUrl: string;
   packageSha256: string;
   registryCredentials?: RegistryPullCredentials;
+  /** Set on an enterprise package that must not run before this core version. */
+  minCoreVersion: string | null;
+  releaseNotesUrl: string | null;
 };
 
 export type UpdateFeedDocument = {
@@ -351,6 +354,8 @@ export function parseUpdateFeed(value: unknown): UpdateFeedDocument {
       packageUrl: requiredHttpUrl(item.packageUrl),
       packageSha256: requiredSha256(item.packageSha256),
       ...(registryCredentials ? { registryCredentials } : {}),
+      minCoreVersion: optionalVersion(item.minCoreVersion),
+      releaseNotesUrl: optionalHttpUrl(item.releaseNotesUrl),
     });
   }
   const registryCredentials = readRegistryCredentials(record.registryCredentials, "FEED_INVALID");
@@ -375,6 +380,27 @@ export function assertHttpUrl(value: string): URL {
     throw new SystemUpdateError(400, "FEED_INVALID", "Update URL must not include credentials");
   }
   return url;
+}
+
+function optionalHttpUrl(value: unknown): string | null {
+  if (value === undefined || value === null || value === "") {
+    return null;
+  }
+  return requiredHttpUrl(value);
+}
+
+function optionalVersion(value: unknown): string | null {
+  if (value === undefined || value === null || value === "") {
+    return null;
+  }
+  if (typeof value !== "string") {
+    throw new SystemUpdateError(400, "FEED_INVALID", "minCoreVersion is invalid");
+  }
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.length > 80) {
+    throw new SystemUpdateError(400, "FEED_INVALID", "minCoreVersion is invalid");
+  }
+  return trimmed;
 }
 
 function requiredHttpUrl(value: unknown): string {
