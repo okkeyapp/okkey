@@ -4,6 +4,8 @@ import {
   clearSettingsPopupCache,
   getSettingsPopupCacheState,
   prefetchSettingsPopupCache,
+  refreshSettingsDevicesCache,
+  refreshSettingsPopupCacheSlice,
   setSettingsPopupCacheData,
   settingsPopupSliceNeedsSkeleton,
 } from "./settingsPopupCache";
@@ -101,5 +103,47 @@ describe("settingsPopupCache", () => {
     expect(getSettingsPopupCacheState().devices.status).toBe("ready");
     expect(getSettingsPopupCacheState().login.status).toBe("ready");
     expect(getSettingsPopupCacheState().profile.status).toBe("ready");
+  });
+
+  it("force refresh replaces an in-flight stale device list", async () => {
+    let releaseStale: (value: { devices: []; pending: []; blocked: [] }) => void = () => undefined;
+    const stale = new Promise<{ devices: []; pending: []; blocked: [] }>((resolve) => {
+      releaseStale = resolve;
+    });
+    const first = refreshSettingsPopupCacheSlice("devices", () => stale);
+    const fresh = refreshSettingsDevicesCache(async () => ({
+      devices: [
+        {
+          device_id: "d-new",
+          device_name: "Extension",
+          device_fingerprint: "b".repeat(64),
+          status: "trusted",
+          platform: "desktop",
+          os_name: "Windows",
+          os_version: "11",
+          app_version: "1.0.0",
+          client_type: "extension",
+          ip_address: "",
+          country: null,
+          city: null,
+          created_at: "2026-01-01T00:00:00.000Z",
+          last_seen_at: null,
+          approved_at: "2026-01-01T00:00:00.000Z",
+          is_current: false,
+          approval_expires_at: null,
+        },
+      ],
+      pending: [],
+      blocked: [],
+    }));
+
+    await fresh;
+    releaseStale({ devices: [], pending: [], blocked: [] });
+    await first;
+
+    expect(getSettingsPopupCacheState().devices.data?.devices.map((item) => item.device_id)).toEqual([
+      "d-new",
+    ]);
+    expect(getSettingsPopupCacheState().devices.data?.pending).toEqual([]);
   });
 });
