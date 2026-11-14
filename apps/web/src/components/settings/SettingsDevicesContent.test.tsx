@@ -275,22 +275,38 @@ describe("SettingsDevicesContent", () => {
   it("trusts a pending device with a wrapped share", async () => {
     authState.userId = "user-1";
     shareMocks.readVaultBundle.mockReturnValue({ device_share_b64: "bG9jYWw=" });
-    coreMocks.listDevices
-      .mockResolvedValueOnce({
-        devices: [trustedDevice()],
-        pending: [
-          pendingDevice({
-            share_wrap_ed25519_public_key: "ZWQ=",
-            share_wrap_pq_public_key: "cHE=",
+    let approved = false;
+    coreMocks.approveDevice.mockImplementation(async () => {
+      approved = true;
+      return { device_id: "d-pending", status: "trusted" };
+    });
+    coreMocks.listDevices.mockImplementation(async () => {
+      if (!approved) {
+        return {
+          devices: [trustedDevice()],
+          pending: [
+            pendingDevice({
+              share_wrap_ed25519_public_key: "ZWQ=",
+              share_wrap_pq_public_key: "cHE=",
+            }),
+          ],
+          blocked: [],
+        };
+      }
+      return {
+        devices: [
+          trustedDevice({
+            device_id: "d-pending",
+            device_name: "Approved extension",
+            device_fingerprint: "b".repeat(64),
+            is_current: false,
           }),
+          trustedDevice(),
         ],
-        blocked: [],
-      })
-      .mockResolvedValueOnce({
-        devices: [trustedDevice(), trustedDevice({ device_id: "d-pending", is_current: false })],
         pending: [],
         blocked: [],
-      });
+      };
+    });
 
     render(<SettingsDevicesContent t={t} />);
     await screen.findByText("Desktop Windows 11");
@@ -305,6 +321,12 @@ describe("SettingsDevicesContent", () => {
         "wrapped-share",
       );
     });
+    await waitFor(() => {
+      expect(screen.getByText("Approved extension")).toBeTruthy();
+    });
+    expect(screen.queryByText("web.settingsPopup.devices.pending.title")).toBeNull();
+    expect(screen.queryByText("Desktop Windows 11")).toBeNull();
+    expect(screen.getByText("Web Chrome")).toBeTruthy();
   });
 
   it("dismisses pending device via rejectDevice", async () => {
@@ -332,6 +354,11 @@ describe("SettingsDevicesContent", () => {
         "dismissed by user",
       );
     });
+    await waitFor(() => {
+      expect(coreMocks.listDevices).toHaveBeenCalledTimes(2);
+    });
+    expect(screen.queryByText("web.settingsPopup.devices.pending.title")).toBeNull();
+    expect(screen.queryByText("Desktop Windows 11")).toBeNull();
   });
 
   it("retry reloads the device list after an error", async () => {
