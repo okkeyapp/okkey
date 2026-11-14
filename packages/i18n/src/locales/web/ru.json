@@ -1882,6 +1882,7 @@
   "web.systemUpdate.error.FEED_FETCH_FAILED": "Не удалось прочитать ленту обновлений. Ничего не применено.",
   "web.systemUpdate.error.UPDATE_AGENT_UNAVAILABLE": "Агент обновлений недоступен. Ничего не применено.",
   "web.systemUpdate.error.ENTERPRISE_APPLY_UNAVAILABLE": "Подпись пакета Enterprise проверена, но эта установка не может применить модуль Enterprise. Okkey не изменён.",
+  "web.systemUpdate.error.CORE_UPDATE_REQUIRED": "Сначала обновите ядро. Этому пакету Enterprise нужна более новая версия ядра, поэтому ничего не изменено.",
   "web.systemUpdate.error.APPLY_FAILED": "Не удалось применить обновление. Экземпляр остался на прежней версии.",
   "web.systemUpdate.error.PACKAGE_INVALID": "Файл не является офлайн-пакетом Okkey.",
   "web.systemUpdate.error.generic": "Обновление не применено. Экземпляр остался на прежней версии."

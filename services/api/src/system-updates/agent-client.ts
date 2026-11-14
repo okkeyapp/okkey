@@ -1,5 +1,5 @@
 import { SystemUpdateError } from "./errors.ts";
-import type { SignedOfflinePackage } from "./package-format.ts";
+import type { RegistryPullCredentials, SignedOfflinePackage } from "./package-format.ts";
 import type { UpdateAgentClient, UpdateJob } from "./service.ts";
 
 export function createHttpUpdateAgentClient(options: {
@@ -12,8 +12,14 @@ export function createHttpUpdateAgentClient(options: {
   const token = options.token.trim();
 
   return {
-    async start(document: SignedOfflinePackage): Promise<UpdateJob> {
-      return request(baseUrl, token, fetchImpl, "POST", "/v1/jobs", document);
+    async start(
+      document: SignedOfflinePackage,
+      options?: { registryCredentials?: RegistryPullCredentials },
+    ): Promise<UpdateJob> {
+      const body = options?.registryCredentials
+        ? { ...document, registryCredentials: options.registryCredentials }
+        : document;
+      return request(baseUrl, token, fetchImpl, "POST", "/v1/jobs", body);
     },
     async get(jobId: string): Promise<UpdateJob | null> {
       try {

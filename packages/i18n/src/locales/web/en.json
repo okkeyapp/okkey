@@ -1882,6 +1882,7 @@
   "web.systemUpdate.error.FEED_FETCH_FAILED": "The update feed could not be read. Nothing was applied.",
   "web.systemUpdate.error.UPDATE_AGENT_UNAVAILABLE": "The update agent is not available. Nothing was applied.",
   "web.systemUpdate.error.ENTERPRISE_APPLY_UNAVAILABLE": "The enterprise package signature was checked, but this installation cannot apply the enterprise module. Okkey was not changed.",
+  "web.systemUpdate.error.CORE_UPDATE_REQUIRED": "Update core first. This enterprise package needs a newer core, so nothing was changed.",
   "web.systemUpdate.error.APPLY_FAILED": "Apply failed. This instance is still on the previous version.",
   "web.systemUpdate.error.PACKAGE_INVALID": "The file is not an Okkey offline package.",
   "web.systemUpdate.error.generic": "Update failed. This instance is still on the previous version."

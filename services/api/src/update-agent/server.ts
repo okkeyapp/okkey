@@ -2,13 +2,26 @@ import { randomUUID, timingSafeEqual, createHash } from "node:crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 
 import { isSystemUpdateError, SystemUpdateError } from "../system-updates/errors.ts";
-import { verifyOfflinePackage, type OfflinePackagePayload } from "../system-updates/package-format.ts";
+import {
+  claimedPackageComponent,
+  takeRegistryCredentials,
+  verifyOfflinePackage,
+  type OfflinePackagePayload,
+  type RegistryPullCredentials,
+} from "../system-updates/package-format.ts";
 import type { UpdateJob } from "../system-updates/service.ts";
 import { applyVerifiedCorePackage, nodeEnvFileEngine, type UpdateApplyEngine } from "./apply.ts";
+import { applyVerifiedEnterprisePackage } from "./enterprise-apply.ts";
+import { credentialSecrets, scrubSecrets } from "./registry-auth.ts";
 
 export type UpdateAgentOptions = {
   token: string;
+  /** Trusted public key for core (`okkey`) packages. */
   publicKeyPem: string;
+  /** Trusted public key for enterprise packages. Core packages are never checked with this key. */
+  enterprisePublicKeyPem?: string;
+  /** Fallback core version when the api container and env file do not name one. */
+  coreVersion?: string;
   isolated: boolean;
   project: string;
   envFilePath: string;
@@ -51,56 +64,85 @@ export function createUpdateAgent(options: UpdateAgentOptions) {
   async function execute(job: StoredJob, document: unknown): Promise<void> {
     job.status = "verifying";
     job.progress = 15;
+    let registryCredentials: RegistryPullCredentials | undefined;
+    try {
+      registryCredentials = takeRegistryCredentials(document);
+    } catch (error) {
+      fail(job, error, "PACKAGE_INVALID");
+      return;
+    }
+    const secrets = credentialSecrets(registryCredentials);
+    const claimed = claimedPackageComponent(document);
     let payload: OfflinePackagePayload;
     try {
-      payload = verify(document, options.publicKeyPem).payload;
+      const publicKey =
+        claimed === "enterprise" ? (options.enterprisePublicKeyPem ?? "") : options.publicKeyPem;
+      payload = verify(document, publicKey).payload;
     } catch (error) {
-      fail(job, error, "VERIFICATION_INTERRUPTED");
+      if (claimed === "enterprise" && isSystemUpdateError(error) && error.code === "TRUST_KEY_MISSING") {
+        fail(
+          job,
+          new SystemUpdateError(
+            400,
+            "TRUST_KEY_MISSING",
+            "No trusted enterprise public key is configured, so the package was not applied",
+          ),
+          secrets,
+        );
+        return;
+      }
+      fail(job, error, "VERIFICATION_INTERRUPTED", secrets);
       return;
     }
     job.component = payload.component;
     job.fromVersion = payload.fromVersion;
     job.toVersion = payload.version;
-    if (payload.component === "enterprise") {
-      fail(
-        job,
-        new SystemUpdateError(
-          409,
-          "ENTERPRISE_APPLY_UNAVAILABLE",
-          "The enterprise package signature was checked, but this installation cannot apply the enterprise module. Okkey was not changed",
-        ),
-      );
-      return;
+    if (payload.component !== "enterprise") {
+      registryCredentials = undefined;
     }
     job.status = "applying";
     job.progress = 60;
     try {
-      await applyVerifiedCorePackage({
-        payload,
-        engine,
-        project: options.project,
-        envFilePath: options.envFilePath,
-        isolated: options.isolated,
-      });
+      if (payload.component === "enterprise") {
+        await applyVerifiedEnterprisePackage({
+          payload,
+          engine,
+          project: options.project,
+          envFilePath: options.envFilePath,
+          isolated: options.isolated,
+          coreVersionHint: options.coreVersion ?? "",
+          registryCredentials,
+        });
+      } else {
+        await applyVerifiedCorePackage({
+          payload,
+          engine,
+          project: options.project,
+          envFilePath: options.envFilePath,
+          isolated: options.isolated,
+        });
+      }
       job.status = "succeeded";
       job.progress = 100;
     } catch (error) {
-      fail(job, error, "APPLY_FAILED");
+      fail(job, error, "APPLY_FAILED", secrets);
     }
   }
 
-  function fail(job: StoredJob, error: unknown, fallback: string): void {
+  function fail(job: StoredJob, error: unknown, fallback: string, secrets: readonly string[] = []): void {
     job.status = "failed";
     if (isSystemUpdateError(error)) {
       job.errorCode = error.code;
-      job.errorMessage = error.message;
+      job.errorMessage = scrubSecrets(error.message, secrets);
       return;
     }
     job.errorCode = fallback;
-    job.errorMessage =
+    job.errorMessage = scrubSecrets(
       error instanceof Error
         ? error.message
-        : "Verification or apply failed. The previous version was kept";
+        : "Verification or apply failed. The previous version was kept",
+      secrets,
+    );
   }
 
   async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
