@@ -303,7 +303,7 @@ test("the offline upload API forwards the bundle and reports archive support", a
     currentVersion: "1.0.0",
     enterpriseInstalled: true,
     enterpriseVersion: "1.0.0",
-    feedUrl: "",
+    coreFeedUrl: "",
     isolated: true,
     agent: {
       async start(document) {
