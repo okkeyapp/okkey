@@ -1,6 +1,7 @@
 import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
 
 import {
+  clearTabVaultUnlock,
   expectUnlockRejectsMasterPassword,
   gotoItemsUnlocked,
   registerBootstrapAndUnlock,
@@ -124,6 +125,7 @@ test("3) second browser → device confirm → item decrypts", async () => {
 test("4) recovery key → new master password → old rejected, new unlocks", async () => {
   test.skip(!email || !recoveryKey, "registration did not run");
 
+  await clearTabVaultUnlock(page);
   await page.goto("/account/lock");
   await expect(page.getByRole("heading", { name: /vault is locked/i })).toBeVisible({
     timeout: 30_000,
@@ -163,6 +165,7 @@ test("4) recovery key → new master password → old rejected, new unlocks", as
 
   // After recovery the app may land unlocked on /items or on lock. Force lock and
   // prove rotation: old master password is rejected; new password unlocks and decrypts.
+  await clearTabVaultUnlock(page);
   await page.goto("/account/lock");
   await expect(page.getByRole("heading", { name: /vault is locked/i })).toBeVisible({
     timeout: 60_000,

@@ -144,6 +144,16 @@ export async function completeEmailOtpOnPage(page: Page, email: string): Promise
 }
 
 /**
+ * Drop the tab unlock record so the next full navigation starts locked.
+ * Hiding the page no longer locks the vault for a new account (sleep lock defaults off).
+ */
+export async function clearTabVaultUnlock(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    sessionStorage.removeItem("okkey.vault.unlock.tab");
+  });
+}
+
+/**
  * Full navigation to /items reloads the SPA — vault session is locked again.
  * Wait for either lock or items shell (avoid racing isVisible on a still-loading page).
  */

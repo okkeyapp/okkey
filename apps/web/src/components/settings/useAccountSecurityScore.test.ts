@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   canEnableTrustedDevicesRecovery,
@@ -111,13 +111,38 @@ describe("canEnableTrustedDevicesRecovery", () => {
   });
 });
 
+function memoryStorage() {
+  const store = new Map<string, string>();
+  return {
+    getItem: (key: string) => store.get(key) ?? null,
+    setItem: (key: string, value: string) => {
+      store.set(key, value);
+    },
+    removeItem: (key: string) => {
+      store.delete(key);
+    },
+    clear: () => {
+      store.clear();
+    },
+    key: (index: number) => [...store.keys()][index] ?? null,
+    get length() {
+      return store.size;
+    },
+  };
+}
+
 describe("useAccountSecurityScore devices + vault plumbing", () => {
   beforeEach(() => {
+    vi.stubGlobal("localStorage", memoryStorage());
     clearSettingsPopupCache();
     authVaultState.userId = "user-1";
     authVaultState.vaultIdleLockMs = 900_000;
     authVaultState.masterPasswordChangedAt = "2026-03-01T00:00:00.000Z";
     seedSecureVaultPrefs();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   it("waits for devices slice before scoring when recovery+2FA are ready", () => {
