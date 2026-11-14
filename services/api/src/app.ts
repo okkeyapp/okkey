@@ -476,6 +476,8 @@ export function createApiApp(
     createSystemUpdateService({
       deploymentMode: config.deploymentMode,
       currentVersion: config.systemVersion,
+      commitSha: config.gitSha,
+      releaseTag: config.releaseTag,
       enterpriseInstalled: config.enterpriseModulesEnabled,
       enterpriseVersion: config.enterpriseVersion,
       feedUrl: config.updateFeedUrl,

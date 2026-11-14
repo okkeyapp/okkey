@@ -37,6 +37,10 @@ export interface ApiConfig {
   deploymentMode: DeploymentMode;
   /** Running core image tag (`OKKEY_VERSION`, else `OKKEY_IMAGE_TAG`). */
   systemVersion: string;
+  /** Full git commit for a dev build (`OKKEY_GIT_SHA`). Empty when unknown. */
+  gitSha: string;
+  /** Release tag when the image was built from a tag (`OKKEY_RELEASE_TAG`). */
+  releaseTag: string;
   /** Installed enterprise module version, when the sibling reports one. */
   enterpriseVersion: string;
   /**
@@ -440,6 +444,8 @@ export function loadConfig(): ApiConfig {
     deploymentMode,
     systemVersion:
       (process.env.OKKEY_VERSION ?? process.env.OKKEY_IMAGE_TAG ?? "").trim() || "unknown",
+    gitSha: (process.env.OKKEY_GIT_SHA ?? "").trim(),
+    releaseTag: (process.env.OKKEY_RELEASE_TAG ?? "").trim(),
     enterpriseVersion: (process.env.OKKEY_ENTERPRISE_VERSION ?? "").trim(),
     updateFeedUrl: (process.env.OKKEY_UPDATE_FEED_URL ?? "").trim(),
     updateIsolated: parseBoolean(process.env.OKKEY_UPDATE_ISOLATED, false),

@@ -209,6 +209,122 @@ test("dismiss hides the current version and returns for a newer one", async () =
   );
 });
 
+test("update feed is checked once a day and isolated mode does not call out", async () => {
+  let now = 1_700_000_000_000;
+  let calls = 0;
+  const fetchImpl = async () => {
+    calls += 1;
+    return new Response(
+      JSON.stringify({ schema: "okkey.update-feed.v1", packages: [] }),
+      { status: 200 },
+    );
+  };
+  const agent = {
+    async start(): Promise<UpdateJob> {
+      throw new Error("no");
+    },
+    async get(): Promise<UpdateJob | null> {
+      return null;
+    },
+  };
+  const service = createSystemUpdateService({
+    deploymentMode: "self_hosted",
+    currentVersion: "1.0.0-beta.3",
+    enterpriseInstalled: false,
+    enterpriseVersion: "",
+    feedUrl: "http://updates.internal/feed.json",
+    isolated: false,
+    fetchImpl,
+    now: () => now,
+    agent,
+    isAdmin: async () => true,
+  });
+  await service.statusFor("owner");
+  await service.statusFor("owner");
+  assert.equal(calls, 1);
+  now += 24 * 60 * 60 * 1000 - 1;
+  await service.statusFor("owner");
+  assert.equal(calls, 1);
+  now += 1;
+  await service.statusFor("owner");
+  assert.equal(calls, 2);
+
+  let isolatedCalls = 0;
+  const isolated = createSystemUpdateService({
+    deploymentMode: "self_hosted",
+    currentVersion: "1.0.0-beta.3",
+    commitSha: "6e6ee86fac86b6fb1a6cc05da1f71d7e99d70560",
+    enterpriseInstalled: false,
+    enterpriseVersion: "",
+    feedUrl: "http://updates.internal/feed.json",
+    isolated: true,
+    fetchImpl: async () => {
+      isolatedCalls += 1;
+      throw new Error("should not fetch");
+    },
+    agent,
+    isAdmin: async () => false,
+  });
+  const status = await isolated.statusFor("member");
+  assert.equal(isolatedCalls, 0);
+  assert.equal(status.isolated, true);
+  assert.equal(status.updates.length, 0);
+  assert.equal(status.commitSha, "6e6ee86fac86b6fb1a6cc05da1f71d7e99d70560");
+  assert.equal(status.feedError, null);
+});
+
+test("opening a version records seen and an older version does not replace it", async () => {
+  const service = createSystemUpdateService({
+    deploymentMode: "self_hosted",
+    currentVersion: "1.0.0-beta.3",
+    releaseTag: "v1.0.0-beta.3",
+    enterpriseInstalled: false,
+    enterpriseVersion: "",
+    feedUrl: "",
+    isolated: true,
+    agent: {
+      async start(): Promise<UpdateJob> {
+        throw new Error("no");
+      },
+      async get(): Promise<UpdateJob | null> {
+        return null;
+      },
+    },
+    isAdmin: async () => false,
+  });
+  await service.markSeen("member", "okkey", "1.1.0");
+  await service.markSeen("member", "enterprise", "2.0.0");
+  const seen = await service.statusFor("member");
+  assert.equal(seen.seen.okkey, "1.1.0");
+  assert.equal(seen.seen.enterprise, "2.0.0");
+  assert.equal(seen.releaseTag, "v1.0.0-beta.3");
+  assert.equal(seen.dismissed.okkey, undefined);
+
+  await service.markSeen("member", "okkey", "1.0.0");
+  const same = await service.statusFor("member");
+  assert.equal(same.seen.okkey, "1.1.0");
+
+  await service.markSeen("member", "okkey", "1.2.0");
+  const newer = await service.statusFor("member");
+  assert.equal(newer.seen.okkey, "1.2.0");
+
+  const app = appWithRoutes("self_hosted", service);
+  const denied = await dispatch(app, {
+    method: "POST",
+    url: "/system/updates/seen",
+    body: { component: "okkey", version: "9.0.0" },
+  });
+  assert.equal(denied.status, 401);
+  const recorded = await dispatch(app, {
+    method: "POST",
+    url: "/system/updates/seen",
+    headers: { "x-user-id": "member" },
+    body: { component: "okkey", version: "1.3.0" },
+  });
+  assert.equal(recorded.status, 200);
+  assert.equal((await service.statusFor("member")).seen.okkey, "1.3.0");
+});
+
 test("saas update routes are hidden and do not check the feed", async () => {
   let statusCalls = 0;
   const app = appWithRoutes("saas", {

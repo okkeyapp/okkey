@@ -31,6 +31,29 @@ export function registerSystemUpdateRoutes(
     }
   });
 
+  route("POST", "/system/updates/seen", async (ctx) => {
+    if (hideInSaas(config, ctx)) {
+      return;
+    }
+    const userId = await resolveUserId(ctx.req);
+    if (!userId) {
+      json(ctx.res, 401, errorBody("AUTH_REQUIRED", "auth required", ctx.requestId));
+      return;
+    }
+    try {
+      const body = await readJsonBody<{ component?: unknown; version?: unknown }>(ctx.req);
+      const component = parseComponent(body.component);
+      const version = typeof body.version === "string" ? body.version.trim() : "";
+      if (!version || version.length > 80) {
+        throw new HttpRequestError(400, "PACKAGE_INVALID", "version is required");
+      }
+      await service.markSeen(userId, component, version);
+      json(ctx.res, 200, { ok: true });
+    } catch (error) {
+      writeUpdateError(ctx, error);
+    }
+  });
+
   route("POST", "/system/updates/dismiss", async (ctx) => {
     if (hideInSaas(config, ctx)) {
       return;

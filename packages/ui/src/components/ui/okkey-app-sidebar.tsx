@@ -1102,7 +1102,7 @@ export type OkkeyAppSidebarProps = {
   accountMenu?: OkkeyAppSidebarAccountMenu;
   /** When set, footer Documentation / Help use these strings (e.g. i18n); otherwise English gallery labels. */
   footerPlainLinkLabels?: { documentation: string; help: string };
-  /** Host-rendered block above the footer links (self-host version and update notice). */
+  /** Host-rendered block above Documentation / Help. Self-host passes the version button. */
   beforeFooter?: React.ReactNode;
   /**
    * UI locale for the Documentation and Help footer links.
@@ -1668,26 +1668,28 @@ function OkkeyAppSidebarInner({
         </ScrollArea>
 
         <div className="mt-auto shrink-0 p-2">
-          {beforeFooter ? <div className="mb-2">{beforeFooter}</div> : null}
-          {showFooterPlain ? (
-            !showExpanded ? (
-              <SidebarMenu>
-                {footerPlainItems.map((link) => (
-                  <SidebarMenuItem key={link.id}>
-                    <SidebarCollapsedTooltip label={link.label}>
-                      <OkkeySidebarPlainLink
-                        item={link}
-                        collapsed
-                        className="h-9 min-h-9 justify-center px-0"
-                      />
-                    </SidebarCollapsedTooltip>
-                  </SidebarMenuItem>
-                ))}
-              </SidebarMenu>
-            ) : (
-              <OkkeySidebarPlainLinksMenu items={footerPlainItems} />
-            )
-          ) : null}
+          <div className="flex flex-col gap-1">
+            {beforeFooter}
+            {showFooterPlain ? (
+              !showExpanded ? (
+                <SidebarMenu>
+                  {footerPlainItems.map((link) => (
+                    <SidebarMenuItem key={link.id}>
+                      <SidebarCollapsedTooltip label={link.label}>
+                        <OkkeySidebarPlainLink
+                          item={link}
+                          collapsed
+                          className="h-9 min-h-9 justify-center px-0"
+                        />
+                      </SidebarCollapsedTooltip>
+                    </SidebarMenuItem>
+                  ))}
+                </SidebarMenu>
+              ) : (
+                <OkkeySidebarPlainLinksMenu items={footerPlainItems} />
+              )
+            ) : null}
+          </div>
         </div>
       </SidebarContent>
 

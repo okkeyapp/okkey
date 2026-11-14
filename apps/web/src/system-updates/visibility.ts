@@ -17,6 +17,10 @@ export type SystemUpdateAvailable = {
 export type SystemUpdateStatus = {
   deploymentMode: "self_hosted" | "saas";
   currentVersion: string;
+  /** Full git commit for a dev build. Null on a tagged release. */
+  commitSha: string | null;
+  /** Git tag such as `v1.0.0-beta.3` when this build was cut from a tag. */
+  releaseTag: string | null;
   enterpriseInstalled: boolean;
   enterpriseVersion: string | null;
   feedConfigured: boolean;
@@ -24,6 +28,8 @@ export type SystemUpdateStatus = {
   canApply: boolean;
   updates: SystemUpdateAvailable[];
   dismissed: Partial<Record<SystemUpdateComponent, string>>;
+  /** Last feed version opened in the system-update popup, per component. */
+  seen: Partial<Record<SystemUpdateComponent, string>>;
   feedError: string | null;
 };
 
@@ -47,6 +53,7 @@ type ParsedVersion = {
 
 const SEMVER = /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$/;
 const STORAGE_KEY = "okkey.systemUpdate.dismissed";
+const SEEN_STORAGE_KEY = "okkey.systemUpdate.seen";
 
 function parseVersion(value: string): ParsedVersion | null {
   const match = SEMVER.exec(value.trim());
@@ -122,6 +129,19 @@ export function visibleUpdates(
   );
 }
 
+/** Yellow dot: a feed version newer than the last one opened in the popup. */
+export function shouldShowVersionDot(
+  updates: readonly { component: SystemUpdateComponent; toVersion: string }[],
+  seen: Partial<Record<SystemUpdateComponent, string>>,
+  localSeen: Partial<Record<SystemUpdateComponent, string>> = {},
+): boolean {
+  return updates.some(
+    (update) =>
+      shouldShowUpdate(update.toVersion, seen[update.component]) &&
+      shouldShowUpdate(update.toVersion, localSeen[update.component]),
+  );
+}
+
 function browserStorage(): Storage | null {
   if (typeof window === "undefined") {
     return null;
@@ -134,12 +154,43 @@ function browserStorage(): Storage | null {
 }
 
 export function readLocalDismissals(): Partial<Record<SystemUpdateComponent, string>> {
+  return readComponentMap(STORAGE_KEY);
+}
+
+export function writeLocalDismissal(component: SystemUpdateComponent, version: string): void {
+  const storage = browserStorage();
+  if (!storage) {
+    return;
+  }
+  const next = { ...readLocalDismissals(), [component]: version };
+  storage.setItem(STORAGE_KEY, JSON.stringify(next));
+}
+
+export function readLocalSeen(): Partial<Record<SystemUpdateComponent, string>> {
+  return readComponentMap(SEEN_STORAGE_KEY);
+}
+
+/** Remember a seen feed version. An older value does not replace a newer one. */
+export function writeLocalSeen(component: SystemUpdateComponent, version: string): void {
+  const storage = browserStorage();
+  if (!storage) {
+    return;
+  }
+  const current = readLocalSeen();
+  const previous = current[component];
+  if (previous && compareVersions(version, previous) <= 0) {
+    return;
+  }
+  storage.setItem(SEEN_STORAGE_KEY, JSON.stringify({ ...current, [component]: version }));
+}
+
+function readComponentMap(key: string): Partial<Record<SystemUpdateComponent, string>> {
   const storage = browserStorage();
   if (!storage) {
     return {};
   }
   try {
-    const raw = storage.getItem(STORAGE_KEY);
+    const raw = storage.getItem(key);
     if (!raw) {
       return {};
     }
@@ -158,13 +209,4 @@ export function readLocalDismissals(): Partial<Record<SystemUpdateComponent, str
   } catch {
     return {};
   }
-}
-
-export function writeLocalDismissal(component: SystemUpdateComponent, version: string): void {
-  const storage = browserStorage();
-  if (!storage) {
-    return;
-  }
-  const next = { ...readLocalDismissals(), [component]: version };
-  storage.setItem(STORAGE_KEY, JSON.stringify(next));
 }
