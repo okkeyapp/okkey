@@ -31,6 +31,7 @@ export function createTestApiConfig(overrides: Partial<ApiConfig> = {}): ApiConf
     releaseTag: "",
     enterpriseVersion: "",
     updateCoreFeedUrl: "",
+    updateEnterpriseFeedUrl: "",
     updateIsolated: false,
     updateAgentUrl: "",
     updateAgentToken: "",

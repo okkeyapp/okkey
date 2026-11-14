@@ -138,6 +138,7 @@ services:
       # OKKEY_UPDATE_FEED_URL is the previous name and still overrides when the core name is empty.
       # OKKEY_UPDATE_ISOLATED=true skips every update check, including that default.
       OKKEY_UPDATE_CORE_FEED_URL: ${OKKEY_UPDATE_CORE_FEED_URL:-${OKKEY_UPDATE_FEED_URL:-}}
+      OKKEY_UPDATE_ENTERPRISE_FEED_URL: ${OKKEY_UPDATE_ENTERPRISE_FEED_URL:-}
       OKKEY_UPDATE_ISOLATED: ${OKKEY_UPDATE_ISOLATED:-false}
       OKKEY_UPDATE_AGENT_URL: http://update-agent:8090
       OKKEY_UPDATE_AGENT_TOKEN: ${OKKEY_UPDATE_AGENT_TOKEN:-}

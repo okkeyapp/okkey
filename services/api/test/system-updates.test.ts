@@ -10,10 +10,12 @@ import { HttpApp } from "../src/http.ts";
 import { feedRequestUrl, fetchUpdateFeed } from "../src/system-updates/feed.ts";
 import {
   generateUpdateKeyPair,
+  parseUpdateFeed,
   signOfflinePackage,
   verifyOfflinePackage,
   type OfflinePackagePayload,
 } from "../src/system-updates/package-format.ts";
+import { createHttpUpdateAgentClient } from "../src/system-updates/agent-client.ts";
 import {
   createSystemUpdateService,
   visibleUpdates,
@@ -201,6 +203,398 @@ test("feed check lists okkey and installed enterprise without applying or readin
   assert.equal(applied, 0);
 });
 
+test("one feed can fail while the other component still reports an update", async () => {
+  const keys = generateUpdateKeyPair();
+  const corePackage = signOfflinePackage(payload(), keys.privateKeyPem);
+  const coreRaw = JSON.stringify(corePackage);
+  const enterprisePackage = signOfflinePackage(
+    payload({
+      component: "enterprise",
+      version: "3.0.0",
+      fromVersion: "1.0.0",
+      summary: "Enterprise module",
+      images: { enterprise: "ghcr.io/okkeyapp/enterprise:3.0.0" },
+    }),
+    keys.privateKeyPem,
+  );
+  const enterpriseRaw = JSON.stringify(enterprisePackage);
+  const coreFeed = {
+    schema: "okkey.update-feed.v1",
+    packages: [
+      feedPackage("okkey", "1.1.0", "http://updates.internal/okkey-1.1.0.okpkg", coreRaw, {
+        releaseNotesUrl: "http://updates.internal/notes/okkey-1.1.0",
+      }),
+      feedPackage("enterprise", "9.0.0", "http://updates.internal/ignored.okpkg", enterpriseRaw),
+    ],
+  };
+  const enterpriseFeed = {
+    schema: "okkey.update-feed.v1",
+    packages: [
+      feedPackage("enterprise", "3.0.0", "http://updates.internal/enterprise-3.0.0.okpkg", enterpriseRaw, {
+        minCoreVersion: "1.1.0",
+        releaseNotesUrl: "http://updates.internal/notes/enterprise-3.0.0",
+      }),
+    ],
+  };
+  const seen: string[] = [];
+  const fetchImpl = async (url: string) => {
+    seen.push(url);
+    if (url.endsWith("/enterprise.json")) {
+      return new Response("down", { status: 503 });
+    }
+    if (url.endsWith("/enterprise-3.0.0.okpkg")) {
+      return new Response(enterpriseRaw, { status: 200 });
+    }
+    if (url.endsWith("/feed.json")) {
+      return new Response(JSON.stringify(coreFeed), { status: 200 });
+    }
+    return new Response("missing", { status: 404 });
+  };
+  const started: unknown[] = [];
+  const agent: UpdateAgentClient = {
+    async start(document) {
+      started.push(document);
+      return {
+        id: "11111111-1111-4111-8111-111111111111",
+        status: "verifying",
+        progress: 0,
+        component: "enterprise",
+        fromVersion: "1.0.0",
+        toVersion: "3.0.0",
+      };
+    },
+    async get() {
+      return null;
+    },
+  };
+  const failedEnterprise = createSystemUpdateService({
+    deploymentMode: "self_hosted",
+    currentVersion: "1.0.0",
+    enterpriseInstalled: true,
+    enterpriseVersion: "1.0.0",
+    coreFeedUrl: "http://updates.internal/feed.json",
+    enterpriseFeedUrl: "http://updates.internal/enterprise.json",
+    isolated: false,
+    fetchImpl,
+    agent,
+    isAdmin: async () => true,
+  });
+  const partial = await failedEnterprise.statusFor("owner");
+  assert.equal(partial.feedError, null);
+  assert.equal(partial.offlineArchiveSupported, false);
+  assert.deepEqual(
+    partial.updates.map((update) => update.component),
+    ["okkey"],
+  );
+  assert.equal(partial.components.find((row) => row.component === "okkey")?.checkError, null);
+  assert.equal(partial.components.find((row) => row.component === "okkey")?.releaseNotesUrl, "http://updates.internal/notes/okkey-1.1.0");
+  assert.equal(partial.components.find((row) => row.component === "enterprise")?.checkError, "FEED_FETCH_FAILED");
+  assert.equal(partial.components.find((row) => row.component === "enterprise")?.update, null);
+  assert.equal(partial.updates.some((update) => update.toVersion === "9.0.0"), false);
+
+  seen.length = 0;
+  const healthy = createSystemUpdateService({
+    deploymentMode: "self_hosted",
+    currentVersion: "1.0.0",
+    enterpriseInstalled: true,
+    enterpriseVersion: "1.0.0",
+    coreFeedUrl: "http://updates.internal/missing-core.json",
+    enterpriseFeedUrl: "http://updates.internal/enterprise-feed.json",
+    isolated: false,
+    fetchImpl: async (url: string) => {
+      seen.push(url);
+      if (url.endsWith("/enterprise-feed.json")) {
+        return new Response(JSON.stringify(enterpriseFeed), { status: 200 });
+      }
+      if (url.endsWith("/enterprise-3.0.0.okpkg")) {
+        return new Response(enterpriseRaw, { status: 200 });
+      }
+      return new Response("down", { status: 503 });
+    },
+    agent,
+    isAdmin: async () => true,
+  });
+  const enterpriseOnly = await healthy.statusFor("owner");
+  assert.equal(enterpriseOnly.feedError, null);
+  assert.equal(enterpriseOnly.components.find((row) => row.component === "okkey")?.checkError, "FEED_FETCH_FAILED");
+  assert.equal(enterpriseOnly.components.find((row) => row.component === "enterprise")?.checkError, null);
+  assert.equal(enterpriseOnly.components.find((row) => row.component === "enterprise")?.minCoreVersion, "1.1.0");
+  assert.equal(
+    enterpriseOnly.components.find((row) => row.component === "enterprise")?.releaseNotesUrl,
+    "http://updates.internal/notes/enterprise-3.0.0",
+  );
+  assert.deepEqual(
+    enterpriseOnly.updates.map((update) => update.toVersion),
+    ["3.0.0"],
+  );
+
+  seen.length = 0;
+  await healthy.apply("owner", { source: "feed", component: "enterprise" });
+  assert.deepEqual(seen, [
+    "http://updates.internal/enterprise-feed.json",
+    "http://updates.internal/enterprise-3.0.0.okpkg",
+  ]);
+  assert.equal(started.length, 1);
+
+  let enterpriseCalls = 0;
+  const hidden = createSystemUpdateService({
+    deploymentMode: "self_hosted",
+    currentVersion: "1.0.0",
+    enterpriseInstalled: false,
+    enterpriseVersion: "",
+    coreFeedUrl: "http://updates.internal/feed.json",
+    enterpriseFeedUrl: "http://updates.internal/enterprise.json",
+    isolated: false,
+    fetchImpl: async (url: string) => {
+      if (url.includes("enterprise")) {
+        enterpriseCalls += 1;
+      }
+      return new Response(JSON.stringify({ schema: "okkey.update-feed.v1", packages: [] }), { status: 200 });
+    },
+    agent,
+    isAdmin: async () => true,
+  });
+  const member = await hidden.statusFor("member");
+  assert.equal(enterpriseCalls, 0);
+  assert.deepEqual(
+    member.components.map((row) => row.component),
+    ["okkey"],
+  );
+});
+
+test("an invalid enterprise feed does not drop the core update", async () => {
+  const service = createSystemUpdateService({
+    deploymentMode: "self_hosted",
+    currentVersion: "1.0.0",
+    enterpriseInstalled: true,
+    enterpriseVersion: "1.0.0",
+    coreFeedUrl: "http://updates.internal/feed.json",
+    enterpriseFeedUrl: "http://updates.internal/enterprise.json",
+    isolated: false,
+    fetchImpl: async (url: string) => {
+      if (url.endsWith("/enterprise.json")) {
+        return new Response(JSON.stringify({ schema: "other", packages: [] }), { status: 200 });
+      }
+      return new Response(
+        JSON.stringify({
+          schema: "okkey.update-feed.v1",
+          packages: [
+            {
+              component: "okkey",
+              version: "1.2.0",
+              fromVersion: "1.0.0",
+              summary: "Core",
+              releasedAt: "2026-11-01T00:00:00.000Z",
+              packageUrl: "http://updates.internal/okkey-1.2.0.okpkg",
+              packageSha256: "ab".repeat(32),
+            },
+          ],
+        }),
+        { status: 200 },
+      );
+    },
+    agent: {
+      async start() {
+        throw new Error("no");
+      },
+      async get() {
+        return null;
+      },
+    },
+    isAdmin: async () => true,
+  });
+  const status = await service.statusFor("owner");
+  assert.equal(status.feedError, null);
+  assert.equal(status.updates[0]?.toVersion, "1.2.0");
+  assert.equal(status.components.find((row) => row.component === "enterprise")?.checkError, "FEED_INVALID");
+});
+
+test("enterprise feed pull credentials go to the update agent and not to the browser", async () => {
+  const keys = generateUpdateKeyPair();
+  const signed = signOfflinePackage(
+    payload({
+      component: "enterprise",
+      version: "3.0.0",
+      fromVersion: "1.0.0",
+      summary: "Enterprise module",
+      images: { enterprise: "ghcr.io/okkeyapp/enterprise:3.0.0" },
+    }),
+    keys.privateKeyPem,
+  );
+  const raw = JSON.stringify(signed);
+  const password = "pull-secret-value";
+  const username = "pull-user";
+  const server = "registry.example";
+  const feed = {
+    schema: "okkey.update-feed.v1",
+    registryCredentials: {
+      server: "https://Fallback.Example/v2/",
+      username: "fallback-user",
+      password: "fallback-secret",
+    },
+    packages: [
+      {
+        ...feedPackage("enterprise", "3.0.0", "http://updates.internal/enterprise-3.0.0.okpkg", raw, {
+          minCoreVersion: "1.1.0",
+        }),
+        registryCredentials: { server, username, password },
+      },
+    ],
+  };
+  const started: Array<{ document: unknown; options?: { registryCredentials?: { password?: string } } }> = [];
+  const agent: UpdateAgentClient = {
+    async start(document, options) {
+      started.push({ document, options });
+      return {
+        id: "11111111-1111-4111-8111-111111111111",
+        status: "verifying",
+        progress: 0,
+        component: "enterprise",
+        fromVersion: "1.0.0",
+        toVersion: "3.0.0",
+      };
+    },
+    async get() {
+      return null;
+    },
+  };
+  const service = createSystemUpdateService({
+    deploymentMode: "self_hosted",
+    currentVersion: "1.0.0",
+    enterpriseInstalled: true,
+    enterpriseVersion: "1.0.0",
+    coreFeedUrl: "http://updates.internal/feed.json",
+    enterpriseFeedUrl: "http://updates.internal/enterprise.json",
+    isolated: false,
+    fetchImpl: async (url: string) => {
+      if (url.endsWith("/enterprise.json")) {
+        return new Response(JSON.stringify(feed), { status: 200 });
+      }
+      if (url.endsWith("/enterprise-3.0.0.okpkg")) {
+        return new Response(raw, { status: 200 });
+      }
+      return new Response(JSON.stringify({ schema: "okkey.update-feed.v1", packages: [] }), { status: 200 });
+    },
+    agent,
+    isAdmin: async () => true,
+  });
+  const status = await service.statusFor("owner");
+  const statusJson = JSON.stringify(status);
+  assert.equal(statusJson.includes(password), false);
+  assert.equal(statusJson.includes(username), false);
+  assert.equal(statusJson.includes("fallback-secret"), false);
+  await service.apply("owner", { source: "feed", component: "enterprise" });
+  assert.equal(started.length, 1);
+  assert.equal(JSON.stringify(started[0]?.document).includes(password), false);
+  assert.deepEqual(started[0]?.options?.registryCredentials, { server, username, password });
+
+  const coreStarted: unknown[] = [];
+  const coreRaw = JSON.stringify(signOfflinePackage(payload(), keys.privateKeyPem));
+  const core = createSystemUpdateService({
+    deploymentMode: "self_hosted",
+    currentVersion: "1.0.0",
+    enterpriseInstalled: false,
+    enterpriseVersion: "",
+    coreFeedUrl: "http://updates.internal/feed.json",
+    isolated: false,
+    fetchImpl: async (url: string) => {
+      if (url.endsWith("/okkey.okpkg")) {
+        return new Response(coreRaw, { status: 200 });
+      }
+      return new Response(
+        JSON.stringify({
+          schema: "okkey.update-feed.v1",
+          registryCredentials: { server, username, password },
+          packages: [feedPackage("okkey", "1.1.0", "http://updates.internal/okkey.okpkg", coreRaw)],
+        }),
+        { status: 200 },
+      );
+    },
+    agent: {
+      async start(document, options) {
+        coreStarted.push(options ?? null);
+        return {
+          id: "22222222-2222-4222-8222-222222222222",
+          status: "verifying",
+          progress: 0,
+          component: document.payload.component,
+          fromVersion: "1.0.0",
+          toVersion: "1.1.0",
+        };
+      },
+      async get() {
+        return null;
+      },
+    },
+    isAdmin: async () => true,
+  });
+  await core.apply("owner", { source: "feed", component: "okkey" });
+  assert.deepEqual(coreStarted, [null]);
+
+  const posted: string[] = [];
+  const client = createHttpUpdateAgentClient({
+    baseUrl: "http://agent.internal",
+    token: "agent-token",
+    fetchImpl: async (_url, init) => {
+      posted.push(String(init?.body ?? ""));
+      return new Response(
+        JSON.stringify({
+          error: "APPLY_FAILED",
+          message: `registry rejected ${password} for ${username}`,
+        }),
+        { status: 502 },
+      );
+    },
+  });
+  await assert.rejects(
+    () => client.start(signed, { registryCredentials: { server, username, password } }),
+    (error: unknown) => {
+      assert.ok(error instanceof SystemUpdateError);
+      assert.equal(error.message.includes(password), false);
+      assert.equal(error.message.includes(username), false);
+      assert.match(error.message, /\[redacted\]/);
+      return true;
+    },
+  );
+  assert.equal(posted[0]?.includes(password), true);
+  assert.equal(posted.some((body) => body.includes("console")), false);
+
+  assert.throws(
+    () =>
+      parseUpdateFeed({
+        schema: "okkey.update-feed.v1",
+        packages: [],
+        registryCredentials: { server, username, password: `${password}\n` },
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof SystemUpdateError);
+      assert.equal(error.code, "FEED_INVALID");
+      assert.equal(error.message.includes(password), false);
+      assert.equal(error.message, "Registry credentials are incomplete");
+      return true;
+    },
+  );
+});
+
+function feedPackage(
+  component: "okkey" | "enterprise",
+  version: string,
+  packageUrl: string,
+  raw: string,
+  extra: { minCoreVersion?: string; releaseNotesUrl?: string } = {},
+) {
+  return {
+    component,
+    version,
+    fromVersion: "1.0.0",
+    summary: component,
+    releasedAt: "2026-11-01T00:00:00.000Z",
+    packageUrl,
+    packageSha256: createHash("sha256").update(raw).digest("hex"),
+    ...extra,
+  };
+}
+
 test("dismiss hides the current version and returns for a newer one", async () => {
   const service = createSystemUpdateService({
     deploymentMode: "self_hosted",
@@ -222,6 +616,8 @@ test("dismiss hides the current version and returns for a newer one", async () =
     summary: "Security fixes",
     releasedAt: "2026-11-01T00:00:00.000Z",
     source: "feed" as const,
+    minCoreVersion: null,
+    releaseNotesUrl: null,
   };
   assert.equal(visibleUpdates([current], status.dismissed).length, 0);
   assert.equal(
