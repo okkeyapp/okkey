@@ -336,14 +336,20 @@ export class RuntimeEmailSender implements EmailSender {
     snapshot: MailDeliverySnapshot,
     message: EmailMessage,
   ) => Promise<void>;
+  private readonly undeliverableLog?: {
+    logger: Logger;
+    config: ApiConfig;
+  };
 
   constructor(
     base: EmailSender,
     runtime: MailDeliveryRuntime,
     sendViaSmtp?: (snapshot: MailDeliverySnapshot, message: EmailMessage) => Promise<void>,
+    undeliverableLog?: { logger: Logger; config: ApiConfig },
   ) {
     this.base = base;
     this.runtime = runtime;
+    this.undeliverableLog = undeliverableLog;
     this.sendViaSmtp =
       sendViaSmtp ??
       (async (snapshot, message) => {
@@ -356,11 +362,20 @@ export class RuntimeEmailSender implements EmailSender {
     const snapshot = await this.runtime.effective();
     const from = snapshot.emailFrom.trim() || message.from;
     const next = from === message.from ? message : { ...message, from };
+    const log = this.undeliverableLog;
+    if (
+      log &&
+      log.config.deploymentMode === "self_hosted" &&
+      !isEffectiveOutboundEmailDeliverable(log.config, snapshot)
+    ) {
+      logUndeliverableAuthCode(log.logger, next);
+    }
+    const outbound = stripAuthCodeLog(next);
     if (snapshot.useSmtpTransport) {
-      await this.sendViaSmtp(snapshot, next);
+      await this.sendViaSmtp(snapshot, outbound);
       return;
     }
-    await this.base.send(next);
+    await this.base.send(outbound);
   }
 }
 
@@ -509,6 +524,20 @@ export function isOutboundEmailDeliverable(config: ApiConfig): boolean {
   }
 }
 
+/**
+ * Process provider or saved Server mail SMTP.
+ * A stored SMTP host delivers mail even when `EMAIL_PROVIDER=logger`.
+ */
+export function isEffectiveOutboundEmailDeliverable(
+  config: ApiConfig,
+  snapshot: MailDeliverySnapshot,
+): boolean {
+  if (snapshot.useSmtpTransport) {
+    return snapshot.smtpHost.trim().length > 0;
+  }
+  return isOutboundEmailDeliverable(config);
+}
+
 /** Marker for the single worker log line that carries an undeliverable auth code. */
 export const UNDELIVERABLE_AUTH_CODE_LOG_MESSAGE = "[okkey] auth code (mail not configured)";
 
@@ -585,12 +614,15 @@ export async function createTransportEmailSender(
   config: ApiConfig,
   logger: Logger,
   mailRuntime?: MailDeliveryRuntime,
+  sendViaSmtp?: (snapshot: MailDeliverySnapshot, message: EmailMessage) => Promise<void>,
 ): Promise<EmailSender> {
   assertEmailTransportConfig(config);
   const sender = await createStaticTransportEmailSender(config, logger);
-  const runtime = mailRuntime ? new RuntimeEmailSender(sender, mailRuntime) : sender;
+  if (mailRuntime) {
+    return new RuntimeEmailSender(sender, mailRuntime, sendViaSmtp, { logger, config });
+  }
   return new UndeliverableAuthCodeLogSender(
-    runtime,
+    sender,
     logger,
     shouldLogUndeliverableAuthCode(config),
   );

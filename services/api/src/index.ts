@@ -14,6 +14,7 @@ import { json } from "./http.ts";
 import {
   createOutboundEmailSender,
   EmailTemplateService,
+  isEffectiveOutboundEmailDeliverable,
   isOutboundEmailDeliverable,
 } from "./email/service.ts";
 import { MailSettingsService } from "./mail-settings/service.ts";
@@ -101,6 +102,8 @@ async function main(): Promise<void> {
     users: storage.repositories.users,
     emailTemplates,
     config,
+    resolveOutboundEmailDeliverable: async () =>
+      isEffectiveOutboundEmailDeliverable(config, await mailSettings.effective()),
   });
   const emailChangeService = new EmailChangeService({
     redis: storage.redis,
@@ -188,13 +191,8 @@ async function main(): Promise<void> {
     redis: storage.redis,
     salesEmail: config.salesEmail,
     salesEmailDeliverable: isOutboundEmailDeliverable(config),
-    resolveSalesEmailDeliverable: async () => {
-      const snapshot = await mailSettings.effective();
-      if (snapshot.useSmtpTransport) {
-        return snapshot.smtpHost.trim().length > 0;
-      }
-      return isOutboundEmailDeliverable(config);
-    },
+    resolveSalesEmailDeliverable: async () =>
+      isEffectiveOutboundEmailDeliverable(config, await mailSettings.effective()),
     deploymentMode: config.deploymentMode,
     publicAppBaseUrl: config.publicAppBaseUrl,
     resolvePublicAppBaseUrl: () => mailSettings.publicAppBaseUrl(),

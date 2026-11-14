@@ -76,6 +76,11 @@ export interface AuthServiceDeps {
   generateId?: () => string;
   /** Intermediate auth_state_id (defaults to 128-bit CSPRNG hex). */
   generateAuthStateId?: () => string;
+  /**
+   * Re-read at request time. Saved Server mail SMTP counts as deliverable
+   * even when `EMAIL_PROVIDER=logger`.
+   */
+  resolveOutboundEmailDeliverable?: () => Promise<boolean>;
 }
 
 export interface EmailStartInput {
@@ -102,6 +107,7 @@ export interface EmailStartResult {
    * False only when this instance accepts a master-password login proof
    * (self-hosted and outbound mail is not deliverable). Otherwise true,
    * including SaaS, so clients keep the emailed-code step.
+   * Saved Server mail SMTP counts even when the process provider is `logger`.
    */
   emailDeliverable: boolean;
 }
@@ -188,6 +194,7 @@ export class AuthService {
   private readonly generateCode: () => string;
   private readonly generateId: () => string;
   private readonly generateAuthStateIdFn: () => string;
+  private readonly resolveOutboundEmailDeliverable?: () => Promise<boolean>;
 
   constructor(deps: AuthServiceDeps) {
     this.redis = deps.redis;
@@ -198,6 +205,7 @@ export class AuthService {
     this.generateCode = deps.generateCode ?? createCode;
     this.generateId = deps.generateId ?? generateEntityId;
     this.generateAuthStateIdFn = deps.generateAuthStateId ?? generateAuthStateId;
+    this.resolveOutboundEmailDeliverable = deps.resolveOutboundEmailDeliverable;
   }
 
   async startEmailLogin(input: EmailStartInput): Promise<EmailStartResult> {
@@ -221,7 +229,7 @@ export class AuthService {
         bootstrapRequired: true,
         authStateId,
         nextStep: "registration",
-        emailDeliverable: this.emailDeliverable(),
+        emailDeliverable: await this.emailDeliverable(),
       };
     }
 
@@ -238,7 +246,7 @@ export class AuthService {
             challengeId: existing.id,
             expiresAt: existing.expiresAt,
             resendAvailableAt: existing.resendAvailableAt,
-            emailDeliverable: this.emailDeliverable(),
+            emailDeliverable: await this.emailDeliverable(),
           };
         }
         await this.redis.del(challengeKey(existing.id));
@@ -295,7 +303,7 @@ export class AuthService {
       challengeId,
       expiresAt: challenge.expiresAt,
       resendAvailableAt: challenge.resendAvailableAt,
-      emailDeliverable: this.emailDeliverable(),
+      emailDeliverable: await this.emailDeliverable(),
     };
   }
 
@@ -363,7 +371,7 @@ export class AuthService {
       challengeId: updated.id,
       expiresAt: updated.expiresAt,
       resendAvailableAt: updated.resendAvailableAt,
-      emailDeliverable: this.emailDeliverable(),
+      emailDeliverable: await this.emailDeliverable(),
     };
   }
 
@@ -391,7 +399,7 @@ export class AuthService {
       this.config.authRateLimitWindowSeconds,
     );
 
-    if (!isMasterPasswordLoginEnabled(this.config)) {
+    if (!(await this.masterPasswordLoginEnabled())) {
       throw new AuthError("AUTH_EMAIL_CODE_REQUIRED", 403, "email code required");
     }
 
@@ -421,8 +429,19 @@ export class AuthService {
     };
   }
 
-  private emailDeliverable(): boolean {
-    return !isMasterPasswordLoginEnabled(this.config);
+  private async outboundEmailDeliverable(): Promise<boolean> {
+    if (this.resolveOutboundEmailDeliverable) {
+      return this.resolveOutboundEmailDeliverable();
+    }
+    return isOutboundEmailDeliverable(this.config);
+  }
+
+  private async masterPasswordLoginEnabled(): Promise<boolean> {
+    return this.config.deploymentMode === "self_hosted" && !(await this.outboundEmailDeliverable());
+  }
+
+  private async emailDeliverable(): Promise<boolean> {
+    return !(await this.masterPasswordLoginEnabled());
   }
 
   async confirmEmailCode(input: EmailConfirmInput): Promise<EmailConfirmResult> {

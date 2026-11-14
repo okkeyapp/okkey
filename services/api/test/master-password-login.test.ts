@@ -79,7 +79,10 @@ function loggerStub() {
   };
 }
 
-async function setup(overrides?: Partial<ApiConfig>) {
+async function setup(
+  overrides?: Partial<ApiConfig>,
+  resolveOutboundEmailDeliverable?: () => Promise<boolean>,
+) {
   const loginKey = await deriveLoginKey({ masterPasswordUtf8: password, email });
   const material = createLoginVerifier(loginKey);
   assert.notDeepEqual(Buffer.from(material.verifier), Buffer.from(loginKey));
@@ -113,6 +116,7 @@ async function setup(overrides?: Partial<ApiConfig>) {
     emailTemplates: { sendAuthEmailCode: async () => {} },
     config,
     generateAuthStateId: () => "auth-state-login",
+    resolveOutboundEmailDeliverable,
   });
   return { authService, loginKey, config, redis, setTwoFactor: (value: boolean) => { twoFactor = value; } };
 }
@@ -279,8 +283,27 @@ test("POST /auth/login/master-password accepts only the login key", async () => 
   assert.notEqual(seen[0].loginKey, Buffer.from(password).toString("base64"));
 });
 
+test("saved SMTP reports emailDeliverable true when EMAIL_PROVIDER is logger", async () => {
+  const harness = await setup({ emailProvider: "logger" }, async () => true);
+  const started = await harness.authService.startEmailLogin({
+    email: "second@example.com",
+    requestIp: "203.0.113.70",
+  });
+  assert.equal(started.emailDeliverable, true);
+  await assert.rejects(
+    () =>
+      harness.authService.loginWithMasterPasswordProof({
+        email,
+        loginKey: harness.loginKey,
+        requestIp: "203.0.113.71",
+      }),
+    (error: { code?: string; statusCode?: number }) =>
+      error.code === "AUTH_EMAIL_CODE_REQUIRED" && error.statusCode === 403,
+  );
+});
+
 test("self-host without deliverable mail reports emailDeliverable false", async () => {
-  const { authService } = await setup();
+  const { authService } = await setup({ emailProvider: "logger" }, async () => false);
   const started = await authService.startEmailLogin({
     email: "second@example.com",
     requestIp: "203.0.113.60",

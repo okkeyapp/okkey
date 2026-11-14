@@ -7,6 +7,7 @@ import {
   createTransportEmailSender,
   EmailTemplateService,
   HttpApiEmailSender,
+  isEffectiveOutboundEmailDeliverable,
   isOutboundEmailDeliverable,
   LoggerEmailSender,
   shouldLogUndeliverableAuthCode,
@@ -14,6 +15,7 @@ import {
   type EmailMessage,
 } from "../src/email/service.ts";
 import type { ApiConfig } from "../src/config.ts";
+import type { MailDeliverySnapshot } from "../src/mail-settings/types.ts";
 import type { Logger } from "../src/logger.ts";
 import {
   MemoryEmailQueueRedis,
@@ -567,6 +569,84 @@ test("prod self-host logger does not log codes from other email types", async ()
     const dumped = JSON.stringify(entries);
     assert.equal(dumped.includes("111111"), false);
     assert.equal(dumped.includes("SECRET_BODY_PHRASE"), false);
+  });
+});
+
+function mailSnapshot(overrides: Partial<MailDeliverySnapshot> = {}): MailDeliverySnapshot {
+  return {
+    smtpHost: "",
+    smtpPort: 587,
+    smtpTlsMode: "starttls",
+    smtpUsername: "",
+    smtpPassword: "",
+    emailFrom: "no-reply@okkey.local",
+    publicAppBaseUrl: "https://app.example.com",
+    passwordSet: false,
+    passwordUnreadable: false,
+    useSmtpTransport: false,
+    ...overrides,
+  };
+}
+
+test("saved SMTP delivers and does not log the auth code when EMAIL_PROVIDER is logger", async () => {
+  await withoutPlaintextFlag(async () => {
+    const config = prodConfig();
+    const saved = mailSnapshot({
+      smtpHost: "smtp.example.com",
+      smtpUsername: "mailer",
+      smtpPassword: "secret",
+      passwordSet: true,
+      useSmtpTransport: true,
+    });
+    assert.equal(isOutboundEmailDeliverable(config), false);
+    assert.equal(isEffectiveOutboundEmailDeliverable(config, saved), true);
+
+    const { entries, logger } = captureLogger();
+    const smtpCalls: string[] = [];
+    const sender = await createTransportEmailSender(
+      config,
+      logger,
+      { effective: async () => saved },
+      async (_snapshot, message) => {
+        smtpCalls.push(message.subject);
+      },
+    );
+    const code = "654321";
+    await templates(sender).sendAuthEmailCode({
+      to: "ada@example.com",
+      localeHints: { explicitLocale: "en" },
+      variables: { code, ttlSeconds: 300, purpose: "sign_in" },
+    });
+    assert.equal(smtpCalls.length, 1);
+    assert.equal(
+      entries.some((entry) => entry.message === UNDELIVERABLE_AUTH_CODE_LOG_MESSAGE),
+      false,
+    );
+    assert.equal(JSON.stringify(entries).includes(code), false);
+
+    const empty = mailSnapshot();
+    assert.equal(isEffectiveOutboundEmailDeliverable(config, empty), false);
+    const logged = captureLogger();
+    const loggerSender = await createTransportEmailSender(config, logged.logger, {
+      effective: async () => empty,
+    });
+    await templates(loggerSender).sendAuthEmailCode({
+      to: "ada@example.com",
+      localeHints: { explicitLocale: "en" },
+      variables: { code, ttlSeconds: 300, purpose: "email_change" },
+    });
+    const markers = logged.entries.filter(
+      (entry) => entry.message === UNDELIVERABLE_AUTH_CODE_LOG_MESSAGE,
+    );
+    assert.equal(markers.length, 1);
+    assert.equal(markers[0]?.extra.code, code);
+
+    const envSmtp = prodConfig({ emailProvider: "smtp", smtpHost: "smtp.example.com" });
+    assert.equal(
+      isEffectiveOutboundEmailDeliverable(envSmtp, mailSnapshot({ useSmtpTransport: false })),
+      true,
+    );
+    assert.equal(shouldLogUndeliverableAuthCode(envSmtp), false);
   });
 });
 
