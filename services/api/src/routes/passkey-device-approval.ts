@@ -152,6 +152,35 @@ export function createPasskeyShareWrapVerifyRoute(
   };
 }
 
+export function createPasskeyShareWrapDeleteRoute(
+  service: PasskeyDeviceApprovalService,
+  resolveUserId: (req: IncomingMessage) => Promise<string | null>,
+  trustedProxyHops = 0,
+): RouteHandler {
+  return async (ctx) => {
+    const credentialRowId = ctx.params.credentialId?.trim() ?? "";
+    if (!credentialRowId) {
+      json(ctx.res, 400, errorPayload("DEVICE_BAD_REQUEST", "credentialId is required", ctx.requestId));
+      return;
+    }
+    try {
+      const userId = await resolveUserId(ctx.req);
+      if (!userId) {
+        json(ctx.res, 401, errorPayload("AUTH_REQUIRED", "auth required", ctx.requestId));
+        return;
+      }
+      await service.clearShareWrap({
+        userId,
+        credentialRowId,
+        requestIp: requestClientIp(ctx.req, trustedProxyHops) || "unknown",
+      });
+      json(ctx.res, 200, { credential_id: credentialRowId, has_share_wrap: false });
+    } catch (error) {
+      handleError(ctx.requestId, ctx.res, error);
+    }
+  };
+}
+
 export function createPasskeyApprovalOptionsRoute(
   service: PasskeyDeviceApprovalService,
   resolveSession: (req: IncomingMessage) => Promise<ResolvedAccessToken | null>,

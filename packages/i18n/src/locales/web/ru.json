@@ -161,6 +161,7 @@
   "web.settingsLogin.passkeyWrap.rate_limited": "Слишком много попыток. Подождите несколько минут и попробуйте снова.",
   "web.settingsLogin.passkeyWrap.replay": "Это подтверждение ключом доступа уже использовано. Попробуйте снова.",
   "web.settingsLogin.passkeyWrap.failed": "Не удалось сохранить подтверждение устройств для ключа доступа. Попробуйте снова.",
+  "web.settingsLogin.passkeyWrap.revoke": "Убрать право подтверждать устройства у этого ключа доступа",
   "web.settingsPopup.twoFactor.label": "2ФА аутентификация",
   "web.settingsPopup.twoFactor.title": "Двухфакторная аутентификация",
   "web.settingsPopup.twoFactor.loading": "Загрузка…",

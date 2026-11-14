@@ -161,6 +161,7 @@
   "web.settingsLogin.passkeyWrap.rate_limited": "Too many attempts. Wait a few minutes and try again.",
   "web.settingsLogin.passkeyWrap.replay": "That passkey confirmation was already used. Try again.",
   "web.settingsLogin.passkeyWrap.failed": "Could not save passkey device approval. Try again.",
+  "web.settingsLogin.passkeyWrap.revoke": "Remove device approval from this passkey",
   "web.settingsPopup.twoFactor.label": "2FA authentication",
   "web.settingsPopup.twoFactor.title": "Two-factor authentication",
   "web.settingsPopup.twoFactor.loading": "Loading…",

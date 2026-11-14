@@ -88,6 +88,19 @@ class MemoryCredentials {
     row.shareWrapVersion = 1;
     return true;
   }
+
+  async clearShareWrap(userId: string, credentialRowId: string) {
+    const row = this.records.find(
+      (item) => item.userId === userId && item.id === credentialRowId && item.shareWrap,
+    );
+    if (!row) {
+      return false;
+    }
+    row.shareWrap = null;
+    row.shareWrapSalt = null;
+    row.shareWrapVersion = null;
+    return true;
+  }
 }
 
 class MemoryDevices {
@@ -401,5 +414,59 @@ test("approval options are rate limited per user before a wrap is required", asy
     (error: unknown) =>
       error instanceof PasskeyDeviceApprovalError &&
       error.code === "PASSKEY_APPROVAL_RATE_LIMITED",
+  );
+});
+
+test("revoked passkey wrap cannot approve a device", async () => {
+  const { service, credentials, devices, authn } = createHarness();
+  const wrapOptions = await service.shareWrapOptions({
+    userId: "user-1",
+    credentialRowId: "cred-row-1",
+    requestIp: "203.0.113.7",
+  });
+  await service.shareWrapVerify({
+    userId: "user-1",
+    credentialRowId: "cred-row-1",
+    challengeId: wrapOptions.challengeId,
+    response: authn.assertion({ challenge: wrapOptions.options.challenge, counter: 1 }),
+    shareWrapB64: Buffer.from(wrapBytes).toString("base64"),
+    requestIp: "203.0.113.7",
+  });
+  const approval = await service.approvalOptions({
+    userId: "user-1",
+    deviceId: "42",
+    requestIp: "203.0.113.7",
+  });
+  await service.clearShareWrap({
+    userId: "user-1",
+    credentialRowId: "cred-row-1",
+    requestIp: "203.0.113.7",
+  });
+  assert.equal(credentials.records[0]?.shareWrap, null);
+  await assert.rejects(
+    () =>
+      service.approvalVerify({
+        userId: "user-1",
+        deviceId: "42",
+        challengeId: approval.challengeId,
+        response: authn.assertion({ challenge: approval.options.challenge, counter: 2 }),
+        deviceShareB64: SHARE_B64,
+        requestIp: "203.0.113.7",
+      }),
+    (error: unknown) =>
+      error instanceof PasskeyDeviceApprovalError &&
+      error.code === "PASSKEY_APPROVAL_VERIFICATION_FAILED",
+  );
+  assert.equal(devices.writes.length, 0);
+  await assert.rejects(
+    () =>
+      service.approvalOptions({
+        userId: "user-1",
+        deviceId: "42",
+        requestIp: "203.0.113.8",
+      }),
+    (error: unknown) =>
+      error instanceof PasskeyDeviceApprovalError &&
+      error.code === "PASSKEY_SHARE_WRAP_MISSING",
   );
 });

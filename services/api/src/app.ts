@@ -215,6 +215,7 @@ import type { PasskeyDeviceApprovalService } from "./webauthn/passkey-device-app
 import {
   createPasskeyApprovalOptionsRoute,
   createPasskeyApprovalVerifyRoute,
+  createPasskeyShareWrapDeleteRoute,
   createPasskeyShareWrapOptionsRoute,
   createPasskeyShareWrapVerifyRoute,
 } from "./routes/passkey-device-approval.ts";
@@ -664,6 +665,15 @@ export function createApiApp(
       "POST",
       "/account/webauthn/credentials/:credentialId/share-wrap/verify",
       createPasskeyShareWrapVerifyRoute(
+        deps.passkeyDeviceApprovalService,
+        resolveUserId,
+        config.trustedProxyHops,
+      ),
+    );
+    app.route(
+      "DELETE",
+      "/account/webauthn/credentials/:credentialId/share-wrap",
+      createPasskeyShareWrapDeleteRoute(
         deps.passkeyDeviceApprovalService,
         resolveUserId,
         config.trustedProxyHops,

@@ -77,7 +77,7 @@ export interface PasskeyDeviceApprovalDeps {
   redis: Redis;
   credentials: Pick<
     WebAuthnCredentialsRepository,
-    "findByIdForUser" | "findByCredentialId" | "listByUserId" | "updateSignCount" | "saveShareWrap"
+    "findByIdForUser" | "findByCredentialId" | "listByUserId" | "updateSignCount" | "saveShareWrap" | "clearShareWrap"
   >;
   devices: Pick<DevicesRepository, "approvePendingWithClientShare">;
   config: Pick<
@@ -293,6 +293,26 @@ export class PasskeyDeviceApprovalService {
     await this.credentials.updateSignCount(credential.id, verified.newCounter);
     await this.redis.del(failKey);
     this.audit("wrap_saved", { ...input, credentialRowId: credential.id });
+  }
+
+  async clearShareWrap(input: {
+    userId: string;
+    credentialRowId: string;
+    requestIp: string;
+  }): Promise<void> {
+    const credential = await this.credentials.findByIdForUser(input.userId, input.credentialRowId);
+    if (!credential || credential.userId !== input.userId) {
+      throw new PasskeyDeviceApprovalError("WEBAUTHN_CREDENTIAL_NOT_FOUND", 404, "credential not found");
+    }
+    const cleared = await this.credentials.clearShareWrap(input.userId, input.credentialRowId);
+    if (!cleared) {
+      throw new PasskeyDeviceApprovalError(
+        "PASSKEY_SHARE_WRAP_MISSING",
+        404,
+        "no passkey has a share wrap",
+      );
+    }
+    this.audit("wrap_cleared", { ...input, credentialRowId: credential.id });
   }
 
   async approvalOptions(input: {

@@ -431,6 +431,12 @@ export class CoreApiClient {
     );
   }
 
+  deletePasskeyShareWrap(credentialId: string): Promise<{ credential_id: string; has_share_wrap: false }> {
+    return this.api.delete<{ credential_id: string; has_share_wrap: false }>(
+      `/account/webauthn/credentials/${encodeURIComponent(credentialId)}/share-wrap`,
+    );
+  }
+
   passkeyApprovalOptions(deviceId: string): Promise<PasskeyApprovalOptionsResponseDto> {
     return this.api.post<PasskeyApprovalOptionsResponseDto>(
       `/devices/${encodeURIComponent(deviceId)}/passkey-approval/options`,
