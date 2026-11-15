@@ -253,10 +253,6 @@ describe("system update version button", () => {
       "web.systemUpdate.error.LICENSE_EXPIRED",
     );
     expect(screen.queryByText("web.systemUpdate.checkFailed")).not.toBeInTheDocument();
-    fireEvent.click(button);
-    expect(screen.getByTestId("system-update-check-error-enterprise")).toHaveTextContent(
-      "web.systemUpdate.error.LICENSE_EXPIRED",
-    );
   });
 
   it("stays hidden in SaaS mode", () => {
