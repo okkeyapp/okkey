@@ -296,6 +296,82 @@ test("enterprise failure after core succeeded keeps core and rolls enterprise ba
   assert.equal(env.includes("OKKEY_ENTERPRISE_VERSION=2.0.0"), false);
 });
 
+test("an uploaded zip is unpacked, verified, and applied by the update agent", async () => {
+  const coreKeys = generateUpdateKeyPair();
+  const enterpriseKeys = generateUpdateKeyPair();
+  const built = buildOfflineBundle(
+    signedBytes(corePayload(), coreKeys.privateKeyPem),
+    signedBytes(enterprisePayload(), enterpriseKeys.privateKeyPem),
+  );
+  const envFile = tempEnv("OKKEY_IMAGE_TAG=1.0.0\nOKKEY_ENTERPRISE_IMAGE_TAG=1.0.0\n");
+  const calls: string[] = [];
+  const finished = await applyUploadedZip(
+    built.zip,
+    coreKeys.publicKeyPem,
+    enterpriseKeys.publicKeyPem,
+    envFile,
+    calls,
+  );
+  assert.equal(finished.status, "succeeded");
+  assert.deepEqual(finished.components, [
+    { component: "okkey", version: "1.2.0", applied: true },
+    { component: "enterprise", version: "2.0.0", applied: true },
+  ]);
+  const coreReplace = calls.indexOf("replace:api");
+  const enterpriseReplace = calls.indexOf("replace:enterprise-api");
+  assert.ok(coreReplace >= 0 && enterpriseReplace > coreReplace);
+  const env = readFileSync(envFile, "utf8");
+  assert.match(env, /OKKEY_IMAGE_TAG=1\.2\.0/);
+  assert.match(env, /OKKEY_ENTERPRISE_VERSION=2\.0\.0/);
+});
+
+test("a tampered uploaded zip is rejected and nothing is applied", async () => {
+  const coreKeys = generateUpdateKeyPair();
+  const enterpriseKeys = generateUpdateKeyPair();
+  const core = signedBytes(corePayload(), coreKeys.privateKeyPem);
+  const enterprise = signedBytes(enterprisePayload(), enterpriseKeys.privateKeyPem);
+  const flipped = Buffer.from(core);
+  flipped[30] ^= 0x1;
+  const zip = writeZip([
+    { name: BUNDLE_MANIFEST_PATH, data: manifestBytes(core, enterprise) },
+    { name: BUNDLE_CORE_PATH, data: flipped },
+    { name: BUNDLE_ENTERPRISE_PATH, data: enterprise },
+  ]);
+  const envFile = tempEnv("OKKEY_IMAGE_TAG=1.0.0\nOKKEY_ENTERPRISE_IMAGE_TAG=1.0.0\n");
+  const calls: string[] = [];
+  const finished = await applyUploadedZip(
+    zip,
+    coreKeys.publicKeyPem,
+    enterpriseKeys.publicKeyPem,
+    envFile,
+    calls,
+  );
+  assert.equal(finished.status, "failed");
+  assert.equal(finished.errorCode, "PACKAGE_INVALID");
+  assert.match(finished.errorMessage ?? "", /manifest hash/);
+  assert.deepEqual(calls, []);
+  assert.equal(readFileSync(envFile, "utf8"), "OKKEY_IMAGE_TAG=1.0.0\nOKKEY_ENTERPRISE_IMAGE_TAG=1.0.0\n");
+});
+
+test("a broken uploaded archive is rejected and nothing is applied", async () => {
+  const coreKeys = generateUpdateKeyPair();
+  const enterpriseKeys = generateUpdateKeyPair();
+  const envFile = tempEnv("OKKEY_IMAGE_TAG=1.0.0\n");
+  const calls: string[] = [];
+  const finished = await applyUploadedZip(
+    Buffer.from("PK this is not a zip archive"),
+    coreKeys.publicKeyPem,
+    enterpriseKeys.publicKeyPem,
+    envFile,
+    calls,
+  );
+  assert.equal(finished.status, "failed");
+  assert.equal(finished.errorCode, "PACKAGE_INVALID");
+  assert.match(finished.errorMessage ?? "", /not a zip archive/);
+  assert.deepEqual(calls, []);
+  assert.equal(readFileSync(envFile, "utf8"), "OKKEY_IMAGE_TAG=1.0.0\n");
+});
+
 test("the offline upload API forwards the bundle and reports archive support", async () => {
   const forwarded: unknown[] = [];
   const service = createSystemUpdateService({
@@ -376,6 +452,44 @@ function tempEnv(contents: string): string {
   const envFile = path.join(dir, ".env");
   writeFileSync(envFile, contents);
   return envFile;
+}
+
+/** The dialog posts the zip bytes as an okkey-offline-bundle document. The service hands that to the agent. */
+async function applyUploadedZip(
+  zip: Buffer,
+  corePublicKeyPem: string,
+  enterprisePublicKeyPem: string,
+  envFile: string,
+  calls: string[],
+): Promise<UpdateJob> {
+  const agent = createUpdateAgent({
+    token: "secret",
+    publicKeyPem: corePublicKeyPem,
+    enterprisePublicKeyPem,
+    isolated: false,
+    project: "okkey",
+    envFilePath: envFile,
+    engine: recordingEngine(calls),
+  });
+  const service = createSystemUpdateService({
+    deploymentMode: "self_hosted",
+    currentVersion: "1.0.0",
+    enterpriseInstalled: true,
+    enterpriseVersion: "1.0.0",
+    coreFeedUrl: "",
+    isolated: true,
+    agent: {
+      async start(document) {
+        const finished = await postJob(agent, document);
+        return finished.job;
+      },
+      async get() {
+        return null;
+      },
+    },
+    isAdmin: async () => true,
+  });
+  return service.apply("owner", { source: "file", document: wrap(zip) });
 }
 
 async function runBundle(

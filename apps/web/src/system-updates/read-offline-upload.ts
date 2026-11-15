@@ -4,7 +4,8 @@ export const OFFLINE_UPLOAD_ACCEPT =
   "application/json,.okpkg,.json,.okbundle,.zip,application/zip";
 
 export async function readOfflineUpload(file: File): Promise<unknown> {
-  const text = await file.text();
+  const bytes = await readFileBytes(file);
+  const text = new TextDecoder().decode(bytes);
   try {
     return JSON.parse(text) as unknown;
   } catch {
@@ -12,13 +13,31 @@ export async function readOfflineUpload(file: File): Promise<unknown> {
     if (!name.endsWith(".okbundle") && !name.endsWith(".zip")) {
       throw new Error("PACKAGE_INVALID");
     }
-    const bytes = new Uint8Array(await file.arrayBuffer());
     return {
       format: "okkey-offline-bundle",
       formatVersion: 1,
       archiveBase64: bytesToBase64(bytes),
     };
   }
+}
+
+/** jsdom's File often has no `.text()` or `.arrayBuffer()`. FileReader covers that. */
+function readFileBytes(file: File): Promise<Uint8Array> {
+  if (typeof file.arrayBuffer === "function") {
+    return file.arrayBuffer().then((buffer) => new Uint8Array(buffer));
+  }
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (reader.result instanceof ArrayBuffer) {
+        resolve(new Uint8Array(reader.result));
+        return;
+      }
+      reject(new Error("PACKAGE_INVALID"));
+    };
+    reader.onerror = () => reject(reader.error ?? new Error("PACKAGE_INVALID"));
+    reader.readAsArrayBuffer(file);
+  });
 }
 
 function bytesToBase64(bytes: Uint8Array): string {

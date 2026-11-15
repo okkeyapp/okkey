@@ -3,6 +3,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 
 import { isSystemUpdateError, SystemUpdateError } from "../system-updates/errors.ts";
 import {
+  BUNDLE_MAX_DOCUMENT_BYTES,
   isOfflineBundleDocument,
   verifyOfflineBundle,
   type VerifiedOfflineBundle,
@@ -53,7 +54,7 @@ export function createUpdateAgent(options: UpdateAgentOptions) {
     for await (const chunk of req) {
       const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
       size += buffer.length;
-      if (size > 1_000_000) {
+      if (size > BUNDLE_MAX_DOCUMENT_BYTES) {
         throw new SystemUpdateError(400, "PACKAGE_INVALID", "Package exceeds the size limit");
       }
       chunks.push(buffer);

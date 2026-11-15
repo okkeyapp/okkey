@@ -1,6 +1,6 @@
 import type { SystemUpdateComponent } from "./visibility";
 
-/** Combined package archives. Reading them belongs to a later API. */
+/** Combined package archives. A binary archive is wrapped and unpacked by the update agent. */
 export const OFFLINE_ARCHIVE_EXTENSIONS = [".okbundle", ".zip"] as const;
 
 /** Signed package plus the combined archive extensions the picker accepts. */
@@ -40,7 +40,7 @@ export function isCombinedArchiveName(fileName: string): boolean {
   return OFFLINE_ARCHIVE_EXTENSIONS.some((extension) => lower.endsWith(extension));
 }
 
-/** Read component and version from a signed package. Archives are accepted and not unpacked. */
+/** Read component and version from a signed package. Archive bytes are wrapped elsewhere. */
 export function classifyOfflineFile(fileName: string, text: string): OfflineChoice {
   if (isCombinedArchiveName(fileName)) {
     return { kind: "archive", fileName, document: parseJson(text) };
