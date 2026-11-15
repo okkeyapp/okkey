@@ -363,10 +363,7 @@ export default function AdditionalMembersSection({
         ) : readOnly ? (
           emptyFallback
         ) : (
-          <Alert
-            variant="info"
-            className="[&>svg]:top-1/2 [&>svg]:-translate-y-1/2 [&>svg+div]:translate-y-0"
-          >
+          <Alert variant="info">
             <AlertInfoIcon className="size-4" />
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
               <div className="min-w-0">

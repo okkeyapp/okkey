@@ -800,8 +800,8 @@ export class CoreApiClient {
   sendServerMailTestEmail(
     workspaceId: string,
     body: ServerMailTestEmailRequestDto,
-  ): Promise<{ ok: true }> {
-    return this.api.post<{ ok: true }>(
+  ): Promise<ServerMailSettingsResponseDto> {
+    return this.api.post<ServerMailSettingsResponseDto>(
       `/workspaces/${encodeURIComponent(workspaceId)}/server-mail-settings/test-email`,
       body,
     );

@@ -279,12 +279,38 @@ test("POST /auth/login/master-password accepts only the login key", async () => 
   assert.notEqual(seen[0].loginKey, Buffer.from(password).toString("base64"));
 });
 
-test("self-host without deliverable mail reports emailDeliverable false", async () => {
-  const { authService } = await setup();
+test("self-host without deliverable mail reports emailDeliverable false and does not email a code", async () => {
+  let sent = 0;
+  const loginKey = await deriveLoginKey({ masterPasswordUtf8: password, email });
+  const material = createLoginVerifier(loginKey);
+  const redis = new InMemoryRedis();
+  const authService = new AuthService({
+    redis,
+    users: {
+      findByEmail: async () => null,
+      isTwoFactorEnabled: async () => false,
+      hasAnyUsers: async () => true,
+      findLoginVerifierByEmail: async () => ({
+        userId: "user-1",
+        verifier: material.verifier,
+        salt: material.salt,
+      }),
+    },
+    emailTemplates: {
+      sendAuthEmailCode: async () => {
+        sent += 1;
+      },
+    },
+    config: createTestApiConfig({
+      authRateLimitLoginKeyPerEmail: 3,
+      authRateLimitLoginKeyPerIp: 20,
+    }),
+  });
   const started = await authService.startEmailLogin({
     email: "second@example.com",
     requestIp: "203.0.113.60",
   });
   assert.equal(started.emailDeliverable, false);
   assert.ok(started.challengeId);
+  assert.equal(sent, 0);
 });

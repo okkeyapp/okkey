@@ -80,6 +80,8 @@ function setupAuthService(params?: {
   hasAnyUsers?: boolean;
   twoFactorEnabledForExisting?: boolean;
   generatedCode?: string;
+  /** Defaults to true so OTP-path unit tests keep sending. */
+  emailDeliverable?: boolean;
 }) {
   const redis = new InMemoryRedis();
   redis.setNow(Date.UTC(2026, 0, 1, 12, 0, 0));
@@ -128,6 +130,8 @@ function setupAuthService(params?: {
       },
     },
     config,
+    // Default tests exercise the OTP path; undeliverable cases override this.
+    resolveEmailDeliverable: async () => params?.emailDeliverable ?? true,
     now: () => redis.now(),
     generateCode: () => generatedCode,
     generateId: () => `id-${nextId++}`,
@@ -246,6 +250,22 @@ test("startEmailLogin uses sign_in purpose for existing users", async () => {
 
   assert.equal(sentEmails.length, 1);
   assert.equal(sentEmails[0].purpose, "sign_in");
+});
+
+test("startEmailLogin does not send when outbound mail is inactive", async () => {
+  const { service, sentEmails } = setupAuthService({
+    emailDeliverable: false,
+    generatedCode: "999000",
+  });
+
+  const result = await service.startEmailLogin({
+    email: "nodeliver@example.com",
+    requestIp: "127.0.0.1",
+  });
+
+  assert.equal(result.emailDeliverable, false);
+  assert.ok(result.challengeId);
+  assert.equal(sentEmails.length, 0);
 });
 
 test("startEmailLogin reuses active challenge for same email without sending again", async () => {

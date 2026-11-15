@@ -1384,14 +1384,16 @@ export type SmtpTlsMode = "none" | "starttls" | "tls";
 /** `GET /workspaces/:workspaceId/server-mail-settings`. The SMTP password is never included. */
 export interface ServerMailSettingsResponseDto {
   smtp_host: string;
-  smtp_port: number;
-  smtp_tls_mode: SmtpTlsMode;
+  /** Null when cleared in the database. */
+  smtp_port: number | null;
+  /** Null when cleared in the database. */
+  smtp_tls_mode: SmtpTlsMode | null;
   smtp_username: string;
   email_from: string;
   public_app_url: string;
   /**
-   * True when a saved password, or the environment password if none is saved, can be used.
-   * False when a stored password exists but cannot be decrypted.
+   * True when a decryptable SMTP password is stored in the database.
+   * False when none is stored, or a stored password cannot be decrypted.
    */
   password_set: boolean;
   /**
@@ -1399,9 +1401,15 @@ export interface ServerMailSettingsResponseDto {
    * False when no password is stored or decryption succeeds.
    */
   password_unreadable: boolean;
+  /** True when SMTP passed a test send and is used for outbound mail / OTP. */
+  smtp_active: boolean;
+  smtp_verified_at: string | null;
 }
 
-/** `PATCH /workspaces/:workspaceId/server-mail-settings`. Empty strings clear that override. */
+/**
+ * `PATCH /workspaces/:workspaceId/server-mail-settings` — save form and mark SMTP inactive.
+ * Empty strings clear that field in the database.
+ */
 export interface ServerMailSettingsUpdateRequestDto {
   smtp_host?: string;
   smtp_port?: number | null;
@@ -1411,12 +1419,18 @@ export interface ServerMailSettingsUpdateRequestDto {
   public_app_url?: string;
   /** Empty or omitted keeps the stored password. */
   password?: string;
-  /** Drop the stored password so the environment value is used again. */
+  /** Drop the stored password. */
   clear_password?: boolean;
 }
 
-/** `POST /workspaces/:workspaceId/server-mail-settings/test-email` body. */
+/**
+ * `POST /workspaces/:workspaceId/server-mail-settings/test-email` —
+ * on success persists the body and marks SMTP active.
+ */
 export type ServerMailTestEmailRequestDto = ServerMailSettingsUpdateRequestDto;
+
+/** Successful test-email response includes the saved settings. */
+export type ServerMailTestEmailResponseDto = ServerMailSettingsResponseDto;
 
 /** `GET /workspaces/:workspaceId/settings` success body. */
 export interface WorkspaceSettingsResponseDto {

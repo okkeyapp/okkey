@@ -70,6 +70,11 @@ export interface AuthServiceDeps {
   };
   emailTemplates: Pick<EmailTemplateService, "sendAuthEmailCode">;
   config: ApiConfig;
+  /**
+   * When set (self-host Mail settings), OTP is offered only while SMTP is verified.
+   * Defaults to env-based {@link isOutboundEmailDeliverable}.
+   */
+  resolveEmailDeliverable?: () => Promise<boolean>;
   now?: () => Date;
   generateCode?: () => string;
   /** Challenge / other snowflake ids. */
@@ -184,6 +189,7 @@ export class AuthService {
   private readonly users: AuthServiceDeps["users"];
   private readonly emailTemplates: Pick<EmailTemplateService, "sendAuthEmailCode">;
   private readonly config: ApiConfig;
+  private readonly resolveEmailDeliverable?: () => Promise<boolean>;
   private readonly now: () => Date;
   private readonly generateCode: () => string;
   private readonly generateId: () => string;
@@ -194,6 +200,7 @@ export class AuthService {
     this.users = deps.users;
     this.emailTemplates = deps.emailTemplates;
     this.config = deps.config;
+    this.resolveEmailDeliverable = deps.resolveEmailDeliverable;
     this.now = deps.now ?? (() => new Date());
     this.generateCode = deps.generateCode ?? createCode;
     this.generateId = deps.generateId ?? generateEntityId;
@@ -221,7 +228,7 @@ export class AuthService {
         bootstrapRequired: true,
         authStateId,
         nextStep: "registration",
-        emailDeliverable: this.emailDeliverable(),
+        emailDeliverable: await this.emailDeliverable(),
       };
     }
 
@@ -238,7 +245,7 @@ export class AuthService {
             challengeId: existing.id,
             expiresAt: existing.expiresAt,
             resendAvailableAt: existing.resendAvailableAt,
-            emailDeliverable: this.emailDeliverable(),
+            emailDeliverable: await this.emailDeliverable(),
           };
         }
         await this.redis.del(challengeKey(existing.id));
@@ -276,26 +283,29 @@ export class AuthService {
       this.config.authCodeTtlSeconds,
     );
 
-    const account = await this.users.findByEmail(email);
-    await this.emailTemplates.sendAuthEmailCode({
-      to: email,
-      localeHints: {
-        userLocale: account?.locale ?? null,
-        explicitLocale: input.locale,
-        acceptLanguage: input.acceptLanguage,
-      },
-      variables: {
-        code,
-        ttlSeconds: this.config.authCodeTtlSeconds,
-        purpose: account ? "sign_in" : "registration",
-      },
-    });
+    const deliverable = await this.emailDeliverable();
+    if (deliverable) {
+      const account = await this.users.findByEmail(email);
+      await this.emailTemplates.sendAuthEmailCode({
+        to: email,
+        localeHints: {
+          userLocale: account?.locale ?? null,
+          explicitLocale: input.locale,
+          acceptLanguage: input.acceptLanguage,
+        },
+        variables: {
+          code,
+          ttlSeconds: this.config.authCodeTtlSeconds,
+          purpose: account ? "sign_in" : "registration",
+        },
+      });
+    }
 
     return {
       challengeId,
       expiresAt: challenge.expiresAt,
       resendAvailableAt: challenge.resendAvailableAt,
-      emailDeliverable: this.emailDeliverable(),
+      emailDeliverable: deliverable,
     };
   }
 
@@ -344,26 +354,29 @@ export class AuthService {
       this.config.authCodeTtlSeconds,
     );
 
-    const account = await this.users.findByEmail(updated.email);
-    await this.emailTemplates.sendAuthEmailCode({
-      to: updated.email,
-      localeHints: {
-        userLocale: account?.locale ?? null,
-        explicitLocale: input.locale,
-        acceptLanguage: input.acceptLanguage,
-      },
-      variables: {
-        code,
-        ttlSeconds: this.config.authCodeTtlSeconds,
-        purpose: account ? "sign_in" : "registration",
-      },
-    });
+    const deliverable = await this.emailDeliverable();
+    if (deliverable) {
+      const account = await this.users.findByEmail(updated.email);
+      await this.emailTemplates.sendAuthEmailCode({
+        to: updated.email,
+        localeHints: {
+          userLocale: account?.locale ?? null,
+          explicitLocale: input.locale,
+          acceptLanguage: input.acceptLanguage,
+        },
+        variables: {
+          code,
+          ttlSeconds: this.config.authCodeTtlSeconds,
+          purpose: account ? "sign_in" : "registration",
+        },
+      });
+    }
 
     return {
       challengeId: updated.id,
       expiresAt: updated.expiresAt,
       resendAvailableAt: updated.resendAvailableAt,
-      emailDeliverable: this.emailDeliverable(),
+      emailDeliverable: deliverable,
     };
   }
 
@@ -391,7 +404,7 @@ export class AuthService {
       this.config.authRateLimitWindowSeconds,
     );
 
-    if (!isMasterPasswordLoginEnabled(this.config)) {
+    if (await this.emailDeliverable()) {
       throw new AuthError("AUTH_EMAIL_CODE_REQUIRED", 403, "email code required");
     }
 
@@ -421,8 +434,14 @@ export class AuthService {
     };
   }
 
-  private emailDeliverable(): boolean {
-    return !isMasterPasswordLoginEnabled(this.config);
+  private async emailDeliverable(): Promise<boolean> {
+    if (this.config.deploymentMode !== "self_hosted") {
+      return true;
+    }
+    if (this.resolveEmailDeliverable) {
+      return this.resolveEmailDeliverable();
+    }
+    return isOutboundEmailDeliverable(this.config);
   }
 
   async confirmEmailCode(input: EmailConfirmInput): Promise<EmailConfirmResult> {

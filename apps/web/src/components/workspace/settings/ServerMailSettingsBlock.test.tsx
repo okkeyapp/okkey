@@ -37,70 +37,101 @@ function mailResponse(overrides: Record<string, unknown> = {}) {
     public_app_url: "https://vault.example",
     password_set: true,
     password_unreadable: false,
+    smtp_active: true,
+    smtp_verified_at: "2026-01-01T00:00:00.000Z",
     ...overrides,
   };
 }
 
 describe("ServerMailSettingsBlock", () => {
   beforeEach(() => {
+    coreMock.getServerMailSettings.mockReset();
+    coreMock.updateServerMailSettings.mockReset();
+    coreMock.sendServerMailTestEmail.mockReset();
     coreMock.getServerMailSettings.mockResolvedValue(mailResponse());
-    coreMock.updateServerMailSettings.mockResolvedValue(mailResponse());
-    coreMock.sendServerMailTestEmail.mockResolvedValue({ ok: true });
+    coreMock.updateServerMailSettings.mockResolvedValue(
+      mailResponse({ smtp_active: false, smtp_verified_at: null }),
+    );
+    coreMock.sendServerMailTestEmail.mockResolvedValue(mailResponse());
   });
 
-  it("shows row layout with change-password when a password is saved", async () => {
+  it("shows change-password + clear controls when a password is saved", async () => {
     render(<ServerMailSettingsBlock workspaceId={workspaceId} t={t} canPut />);
     expect(await screen.findByTestId("server-mail-settings")).toBeInTheDocument();
-    expect(screen.getByText("web.workspaceSettings.sections.mail")).toBeInTheDocument();
-    expect(screen.getByLabelText("web.workspaceSettings.serverMail.smtpHost")).toHaveValue(
-      "smtp.example.com",
-    );
-    expect(screen.getByLabelText("web.workspaceSettings.serverMail.smtpPort")).toHaveValue("587");
-    expect(screen.getByLabelText("web.workspaceSettings.serverMail.username")).toHaveValue("mailer");
     expect(screen.getByTestId("server-mail-change-password")).toBeInTheDocument();
-    expect(screen.queryByLabelText("web.workspaceSettings.serverMail.password")).not.toBeInTheDocument();
-    expect(screen.getByTestId("server-mail-test")).toBeInTheDocument();
-    await waitFor(() => {
-      expect(coreMock.getServerMailSettings).toHaveBeenCalledWith(workspaceId);
-    });
+    expect(screen.getByTestId("server-mail-clear-password")).toBeInTheDocument();
+    expect(screen.queryByTestId("server-mail-password")).not.toBeInTheDocument();
+    expect(screen.getByTestId("server-mail-status")).toHaveTextContent(
+      "web.workspaceSettings.serverMail.statusActive",
+    );
   });
 
-  it("opens an empty password field when changing password", async () => {
+  it("keeps the test button enabled and does not autosave on blur", async () => {
+    render(<ServerMailSettingsBlock workspaceId={workspaceId} t={t} canPut />);
+    const host = await screen.findByLabelText("web.workspaceSettings.serverMail.smtpHost");
+    const testButton = screen.getByTestId("server-mail-test");
+    expect(testButton).not.toBeDisabled();
+    fireEvent.change(host, { target: { value: "smtp.okkey.local" } });
+    fireEvent.blur(host);
+    expect(coreMock.updateServerMailSettings).not.toHaveBeenCalled();
+    expect(testButton).not.toBeDisabled();
+  });
+
+  it("collapses the password field back to buttons on blur", async () => {
     render(<ServerMailSettingsBlock workspaceId={workspaceId} t={t} canPut />);
     fireEvent.click(await screen.findByTestId("server-mail-change-password"));
-    const input = screen.getByLabelText("web.workspaceSettings.serverMail.password");
-    expect(input).toHaveValue("");
-    expect(input).toHaveFocus();
+    const password = screen.getByTestId("server-mail-password");
+    fireEvent.change(password, { target: { value: "new-secret" } });
+    fireEvent.blur(password);
+    expect(screen.queryByTestId("server-mail-password")).not.toBeInTheDocument();
+    expect(screen.getByTestId("server-mail-change-password")).toBeInTheDocument();
   });
 
-  it("shows a notice when the saved SMTP password cannot be read", async () => {
-    coreMock.getServerMailSettings.mockResolvedValue(
-      mailResponse({
-        password_set: false,
-        password_unreadable: true,
-      }),
-    );
-    render(<ServerMailSettingsBlock workspaceId={workspaceId} t={t} canPut />);
-    expect(await screen.findByTestId("server-mail-password-unreadable")).toHaveTextContent(
-      "web.workspaceSettings.serverMail.passwordUnreadable",
-    );
-    expect(screen.getByLabelText("web.workspaceSettings.serverMail.password")).toBeInTheDocument();
-  });
-
-  it("autosaves a field on blur with the shared save toast", async () => {
+  it("keeps edited values after a successful test save", async () => {
     const { toast } = await import("sonner");
-    coreMock.updateServerMailSettings.mockResolvedValue(
-      mailResponse({ smtp_host: "smtp.okkey.local" }),
+    coreMock.sendServerMailTestEmail.mockImplementation(async (_id, body) =>
+      mailResponse({
+        smtp_host: body.smtp_host,
+        smtp_active: true,
+        smtp_verified_at: "2026-02-01T00:00:00.000Z",
+      }),
     );
     render(<ServerMailSettingsBlock workspaceId={workspaceId} t={t} canPut />);
     const host = await screen.findByLabelText("web.workspaceSettings.serverMail.smtpHost");
     fireEvent.change(host, { target: { value: "smtp.okkey.local" } });
-    fireEvent.blur(host);
+    fireEvent.click(screen.getByTestId("server-mail-test"));
     await waitFor(() => {
-      expect(coreMock.updateServerMailSettings).toHaveBeenCalledWith(workspaceId, {
-        smtp_host: "smtp.okkey.local",
-      });
+      expect(coreMock.sendServerMailTestEmail).toHaveBeenCalled();
     });
-    expect(toast.promise).toHaveBeenCalled();
+    expect(toast.success).toHaveBeenCalledWith("web.workspaceSettings.serverMail.testSuccess");
+    expect(host).toHaveValue("smtp.okkey.local");
+  });
+
+  it("shows failed callout and save-anyway after a failed test", async () => {
+    coreMock.sendServerMailTestEmail.mockRejectedValue(new Error("connect ECONNREFUSED"));
+    coreMock.updateServerMailSettings.mockImplementation(async (_id, body) =>
+      mailResponse({
+        smtp_host: body.smtp_host,
+        smtp_active: false,
+        smtp_verified_at: null,
+      }),
+    );
+    render(<ServerMailSettingsBlock workspaceId={workspaceId} t={t} canPut />);
+    const host = await screen.findByLabelText("web.workspaceSettings.serverMail.smtpHost");
+    fireEvent.change(host, { target: { value: "bad.example" } });
+    fireEvent.click(screen.getByTestId("server-mail-test"));
+    expect(await screen.findByTestId("server-mail-test-failed")).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("server-mail-save-anyway"));
+    await waitFor(() => {
+      expect(coreMock.updateServerMailSettings).toHaveBeenCalled();
+    });
+    expect(host).toHaveValue("bad.example");
+  });
+
+  it("marks password cleared when trash is pressed", async () => {
+    render(<ServerMailSettingsBlock workspaceId={workspaceId} t={t} canPut />);
+    fireEvent.click(await screen.findByTestId("server-mail-clear-password"));
+    expect(screen.getByTestId("server-mail-password")).toHaveValue("");
+    expect(screen.getByTestId("server-mail-test")).not.toBeDisabled();
   });
 });

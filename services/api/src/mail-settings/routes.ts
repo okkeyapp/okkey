@@ -86,8 +86,8 @@ export function registerServerMailSettingsRoutes(
     }
     try {
       const body = await readJsonBody<MailSettingsBody>(ctx.req);
-      await service.sendTestEmail(workspaceId, userId, patchFromBody(body));
-      json(ctx.res, 200, { ok: true });
+      const settings = await service.sendTestEmail(workspaceId, userId, patchFromBody(body));
+      json(ctx.res, 200, serializeSettings(settings));
     } catch (error) {
       writeError(ctx, error);
     }
@@ -104,6 +104,8 @@ export function serializeSettings(settings: ServerMailSettingsPublic) {
     public_app_url: settings.publicAppUrl,
     password_set: settings.passwordSet,
     password_unreadable: settings.passwordUnreadable,
+    smtp_active: settings.smtpActive,
+    smtp_verified_at: settings.smtpVerifiedAt,
   };
 }
 

@@ -35,6 +35,7 @@ class MemoryMailStore implements ServerMailSettingsStore {
     this.updatedBy = updatedBy;
     this.row = {
       ...row,
+      updatedBy,
       smtpPasswordCiphertext: row.smtpPasswordCiphertext
         ? Buffer.from(row.smtpPasswordCiphertext)
         : null,
@@ -90,6 +91,8 @@ function unreadableRow(): ServerMailSettingsRow {
     smtpPasswordCiphertext: sealWithSessionSecret("rotated-away-session-secret-32chars", "db-secret"),
     emailFrom: "db@example.com",
     publicAppUrl: "https://vault.customer.example",
+    smtpVerifiedAt: null,
+    updatedBy: "tester",
   };
 }
 
@@ -150,8 +153,8 @@ test("smtp password key is distinct from the 2FA key", () => {
   assert.equal(Buffer.compare(deriveSmtpPasswordKey(secret), smtp), 0);
 });
 
-test("owner reads env fallback when the database row is empty and the password is not returned", async () => {
-  const { service } = createService();
+test("owner GET seeds once from environment then keeps database values", async () => {
+  const { service, store } = createService();
   const settings = await service.getForOwner(WORKSPACE_ID, OWNER_ID);
   assert.equal(settings.smtpHost, "smtp.env.example");
   assert.equal(settings.smtpPort, 2525);
@@ -160,12 +163,22 @@ test("owner reads env fallback when the database row is empty and the password i
   assert.equal(settings.emailFrom, "env@example.com");
   assert.equal(settings.publicAppUrl, "https://env.example");
   assert.equal(settings.passwordSet, true);
+  assert.equal(settings.smtpActive, false);
   assert.equal(settings.passwordUnreadable, false);
   assert.equal("smtpPassword" in settings, false);
   assert.equal(JSON.stringify(settings).includes("env-secret"), false);
+  assert.equal(store.updatedBy, "system:env-seed");
+
+  await service.updateForOwner(WORKSPACE_ID, OWNER_ID, { smtpHost: "" });
+  const cleared = await service.getForOwner(WORKSPACE_ID, OWNER_ID);
+  assert.equal(cleared.smtpHost, "");
+  assert.equal(cleared.smtpActive, false);
+  const effective = await service.effective();
+  assert.equal(effective.smtpHost, "");
+  assert.equal(effective.useSmtpTransport, false);
 });
 
-test("owner updates settings, empty password keeps the stored ciphertext, and clear falls back to env", async () => {
+test("owner updates settings, empty password keeps the stored ciphertext, and clear empties password", async () => {
   const { service, store } = createService();
   const updated = await service.updateForOwner(WORKSPACE_ID, OWNER_ID, {
     smtpHost: "smtp.db.example",
@@ -201,11 +214,12 @@ test("owner updates settings, empty password keeps the stored ciphertext, and cl
 
   const cleared = await service.updateForOwner(WORKSPACE_ID, OWNER_ID, { clearPassword: true });
   assert.equal(store.row?.smtpPasswordCiphertext, null);
-  assert.equal(cleared.passwordSet, true);
+  assert.equal(cleared.passwordSet, false);
+  assert.equal(cleared.smtpActive, false);
   const effective = await service.effective();
-  assert.equal(effective.smtpPassword, "env-secret");
+  assert.equal(effective.smtpPassword, "");
   assert.equal(effective.publicAppBaseUrl, "https://vault.customer.example");
-  assert.equal(effective.useSmtpTransport, true);
+  assert.equal(effective.useSmtpTransport, false);
 });
 
 test("admin can read and update server mail settings; members cannot", async () => {
@@ -216,6 +230,7 @@ test("admin can read and update server mail settings; members cannot", async () 
     smtpHost: "smtp.admin.example",
   });
   assert.equal(adminUpdate.smtpHost, "smtp.admin.example");
+  assert.equal(adminUpdate.smtpActive, false);
 
   await assert.rejects(
     () => service.getForOwner(WORKSPACE_ID, MEMBER_ID),
@@ -298,6 +313,7 @@ test("routes: owner and admin can read/update, members get 403, saas is 404, pas
   const readBody = JSON.parse(read.body) as Record<string, unknown>;
   assert.equal(readBody.smtp_host, "smtp.env.example");
   assert.equal(readBody.password_set, true);
+  assert.equal(readBody.smtp_active, false);
   assert.equal(readBody.password_unreadable, false);
   assert.equal(Object.hasOwn(readBody, "password"), false);
   assert.equal(read.body.includes("env-secret"), false);
@@ -362,9 +378,9 @@ test("routes: owner and admin can read/update, members get 403, saas is 404, pas
   assert.equal(saasRes.statusCode, 404);
 });
 
-test("test email uses the form values and is sent to the owner", async () => {
+test("test email uses the form values, saves, and activates SMTP", async () => {
   const { service, sent } = createService();
-  await service.sendTestEmail(WORKSPACE_ID, OWNER_ID, {
+  const saved = await service.sendTestEmail(WORKSPACE_ID, OWNER_ID, {
     smtpHost: "smtp.form.example",
     smtpPort: 587,
     smtpTlsMode: "starttls",
@@ -378,6 +394,10 @@ test("test email uses the form values and is sent to the owner", async () => {
   assert.equal(sent[0]?.from, "form@example.com");
   assert.match(sent[0]?.text ?? "", /https:\/\/form\.example/);
   assert.equal(JSON.stringify(sent[0]).includes("form-secret"), false);
+  assert.equal(saved.smtpActive, true);
+  assert.equal(saved.smtpHost, "smtp.form.example");
+  assert.ok(saved.smtpVerifiedAt);
+  assert.equal(await service.isOutboundActive(), true);
 });
 
 test("test email reports the transport cause", async () => {
@@ -486,9 +506,8 @@ test("runtime sender uses the database SMTP host and sender without restart", as
   assert.deepEqual(calls, [{ host: "smtp.live.example", from: "live@example.com" }]);
 });
 
-test("unreadable stored password falls back to environment SMTP and sets the flag", async () => {
+test("unreadable stored password is inactive until a new password is tested", async () => {
   const warnings: string[] = [];
-  const errors: string[] = [];
   const store = new MemoryMailStore();
   store.row = unreadableRow();
   const sentSnapshots: MailDeliverySnapshot[] = [];
@@ -498,23 +517,21 @@ test("unreadable stored password falls back to environment SMTP and sets the fla
       warn(message, extra) {
         warnings.push(JSON.stringify({ message, extra }));
       },
-      error(message, extra) {
-        errors.push(JSON.stringify({ message, extra }));
-      },
+      error() {},
     },
     sentSnapshots,
   });
 
+  let baseUsed = false;
   const sender = new RuntimeEmailSender(
     {
       async send() {
-        throw new Error("base provider should not send");
+        baseUsed = true;
       },
     },
     service,
-    async (snapshot, message) => {
+    async (snapshot) => {
       sentSnapshots.push(snapshot);
-      assert.equal(message.from, "db@example.com");
     },
   );
   await sender.send({
@@ -524,42 +541,37 @@ test("unreadable stored password falls back to environment SMTP and sets the fla
     text: "123456",
     html: "<p>123456</p>",
   });
-
-  assert.equal(sentSnapshots[0]?.smtpHost, "smtp.env.example");
-  assert.equal(sentSnapshots[0]?.smtpPort, 2525);
-  assert.equal(sentSnapshots[0]?.smtpTlsMode, "starttls");
-  assert.equal(sentSnapshots[0]?.smtpUsername, "env-user");
-  assert.equal(sentSnapshots[0]?.smtpPassword, "env-secret");
-  assert.equal(sentSnapshots[0]?.emailFrom, "db@example.com");
-  assert.equal(sentSnapshots[0]?.publicAppBaseUrl, "https://vault.customer.example");
-  assert.equal(sentSnapshots[0]?.passwordUnreadable, true);
-  assert.equal(sentSnapshots[0]?.useSmtpTransport, true);
+  assert.equal(baseUsed, true);
+  assert.equal(sentSnapshots.length, 0);
+  assert.equal(await service.isOutboundActive(), false);
 
   const settings = await service.getForOwner(WORKSPACE_ID, OWNER_ID);
   assert.equal(settings.passwordUnreadable, true);
   assert.equal(settings.passwordSet, false);
   assert.equal(settings.smtpHost, "smtp.db.example");
-  assert.equal(settings.smtpUsername, "db-user");
-  assert.equal(settings.emailFrom, "db@example.com");
-  assert.equal(JSON.stringify(settings).includes("env-secret"), false);
-  assert.equal(JSON.stringify(settings).includes("db-secret"), false);
+  assert.equal(settings.smtpActive, false);
 
-  await service.sendTestEmail(WORKSPACE_ID, OWNER_ID, {
+  await assert.rejects(
+    () =>
+      service.sendTestEmail(WORKSPACE_ID, OWNER_ID, {
+        smtpHost: "smtp.db.example",
+        smtpPort: 587,
+        smtpUsername: "db-user",
+        emailFrom: "db@example.com",
+      }),
+    (error: unknown) => (error as { code?: string }).code === "SMTP_PASSWORD_UNAVAILABLE",
+  );
+
+  const activated = await service.sendTestEmail(WORKSPACE_ID, OWNER_ID, {
     smtpHost: "smtp.db.example",
     smtpPort: 587,
     smtpUsername: "db-user",
+    emailFrom: "db@example.com",
+    password: "typed-secret",
   });
-  assert.equal(sentSnapshots[1]?.smtpHost, "smtp.env.example");
-  assert.equal(sentSnapshots[1]?.smtpPassword, "env-secret");
-  assert.equal(sentSnapshots[1]?.smtpUsername, "env-user");
-
-  assert.equal(errors.length, 0);
+  assert.equal(activated.smtpActive, true);
+  assert.equal(sentSnapshots[0]?.smtpPassword, "typed-secret");
   assert.ok(warnings.length >= 1);
-  const dumped = warnings.join("\n");
-  assert.match(dumped, /using environment smtp configuration/);
-  assert.equal(dumped.includes("env-secret"), false);
-  assert.equal(dumped.includes("db-secret"), false);
-  assert.equal(dumped.includes(mailConfig().sessionSecret), false);
 });
 
 test("unreadable stored password without an environment password is a 4xx on test email", async () => {
@@ -586,17 +598,6 @@ test("unreadable stored password without an environment password is a 4xx on tes
     },
   );
 
-  await service.sendTestEmail(WORKSPACE_ID, OWNER_ID, {
-    smtpHost: "smtp.db.example",
-    smtpPort: 587,
-    smtpTlsMode: "starttls",
-    emailFrom: "db@example.com",
-    password: "typed-secret",
-  });
-  assert.equal(sentSnapshots[0]?.smtpHost, "smtp.db.example");
-  assert.equal(sentSnapshots[0]?.smtpPassword, "typed-secret");
-  assert.equal(JSON.stringify(sent).includes("typed-secret"), false);
-
   const handlers = new Map<string, (ctx: {
     requestId: string;
     req: IncomingMessage;
@@ -607,7 +608,7 @@ test("unreadable stored password without an environment password is a 4xx on tes
     (method, path, handler) => {
       handlers.set(`${method} ${path}`, handler as never);
     },
-    mailConfig(),
+    mailConfig({ smtpPassword: "" }),
     service,
     async () => OWNER_ID,
   );
@@ -635,6 +636,17 @@ test("unreadable stored password without an environment password is a 4xx on tes
   });
   assert.equal(readRes.statusCode, 200);
   assert.equal((JSON.parse(readRes.body) as { password_unreadable?: boolean }).password_unreadable, true);
+
+  await service.sendTestEmail(WORKSPACE_ID, OWNER_ID, {
+    smtpHost: "smtp.db.example",
+    smtpPort: 587,
+    smtpTlsMode: "starttls",
+    emailFrom: "db@example.com",
+    password: "typed-secret",
+  });
+  assert.equal(sentSnapshots[0]?.smtpHost, "smtp.db.example");
+  assert.equal(sentSnapshots[0]?.smtpPassword, "typed-secret");
+  assert.equal(JSON.stringify(sent).includes("typed-secret"), false);
 });
 
 test("saving a new password clears the unreadable state", async () => {

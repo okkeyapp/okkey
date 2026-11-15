@@ -618,10 +618,21 @@ export async function createTransportEmailSender(
   mailRuntime?: MailDeliveryRuntime,
 ): Promise<EmailSender> {
   assertEmailTransportConfig(config);
-  const sender = await createStaticTransportEmailSender(config, logger);
-  const runtime = mailRuntime ? new RuntimeEmailSender(sender, mailRuntime) : sender;
+  // With interactive mail settings, outbound SMTP is gated by a successful test.
+  // Do not fall back to process-env SMTP/SES when DB SMTP is inactive — only log.
+  const transport = mailRuntime
+    ? new RuntimeEmailSender(
+        new LoggerEmailSender(logger, {
+          includePlainTextBody: shouldLogPlainTextForLoggerProvider({
+            ...config,
+            emailProvider: "logger",
+          }),
+        }),
+        mailRuntime,
+      )
+    : await createStaticTransportEmailSender(config, logger);
   return new UndeliverableAuthCodeLogSender(
-    runtime,
+    transport,
     logger,
     shouldLogUndeliverableAuthCode(config),
   );
