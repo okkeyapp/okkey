@@ -18,6 +18,9 @@ vi.mock("sonner", () => ({
     success: vi.fn(),
     error: vi.fn(),
     message: vi.fn(),
+    promise: vi.fn((action: () => Promise<unknown>) => ({
+      unwrap: () => Promise.resolve(action()),
+    })),
   },
 }));
 
@@ -82,5 +85,22 @@ describe("ServerMailSettingsBlock", () => {
       "web.workspaceSettings.serverMail.passwordUnreadable",
     );
     expect(screen.getByLabelText("web.workspaceSettings.serverMail.password")).toBeInTheDocument();
+  });
+
+  it("autosaves a field on blur with the shared save toast", async () => {
+    const { toast } = await import("sonner");
+    coreMock.updateServerMailSettings.mockResolvedValue(
+      mailResponse({ smtp_host: "smtp.okkey.local" }),
+    );
+    render(<ServerMailSettingsBlock workspaceId={workspaceId} t={t} canPut />);
+    const host = await screen.findByLabelText("web.workspaceSettings.serverMail.smtpHost");
+    fireEvent.change(host, { target: { value: "smtp.okkey.local" } });
+    fireEvent.blur(host);
+    await waitFor(() => {
+      expect(coreMock.updateServerMailSettings).toHaveBeenCalledWith(workspaceId, {
+        smtp_host: "smtp.okkey.local",
+      });
+    });
+    expect(toast.promise).toHaveBeenCalled();
   });
 });

@@ -241,6 +241,15 @@ function redactSecret(message: string, secret: string): string {
   return message.split(secret).join("[redacted]");
 }
 
+/** Connection wait for interactive SMTP test sends (Mail settings → Send test email). */
+export const SMTP_TEST_CONNECTION_TIMEOUT_MS = 30_000;
+
+export type SmtpTransportTimeouts = {
+  connectionTimeout?: number;
+  greetingTimeout?: number;
+  socketTimeout?: number;
+};
+
 export class SmtpEmailSender implements EmailSender {
   private readonly transport: SmtpTransport;
   private readonly password: string;
@@ -267,7 +276,10 @@ export class SmtpEmailSender implements EmailSender {
     });
   }
 
-  static async fromSnapshot(snapshot: MailDeliverySnapshot): Promise<SmtpEmailSender> {
+  static async fromSnapshot(
+    snapshot: MailDeliverySnapshot,
+    timeouts?: SmtpTransportTimeouts,
+  ): Promise<SmtpEmailSender> {
     const nodemailerModule = (await import("nodemailer")) as {
       createTransport(options: {
         host: string;
@@ -275,6 +287,9 @@ export class SmtpEmailSender implements EmailSender {
         secure: boolean;
         ignoreTLS?: boolean;
         auth?: { user: string; pass: string };
+        connectionTimeout?: number;
+        greetingTimeout?: number;
+        socketTimeout?: number;
       }): SmtpTransport;
     };
     const socket = smtpSocketOptions(snapshot.smtpTlsMode);
@@ -284,6 +299,13 @@ export class SmtpEmailSender implements EmailSender {
       secure: socket.secure,
       ...(socket.ignoreTLS ? { ignoreTLS: true } : {}),
       auth: smtpAuth(snapshot.smtpUsername, snapshot.smtpPassword),
+      ...(timeouts?.connectionTimeout !== undefined
+        ? { connectionTimeout: timeouts.connectionTimeout }
+        : {}),
+      ...(timeouts?.greetingTimeout !== undefined
+        ? { greetingTimeout: timeouts.greetingTimeout }
+        : {}),
+      ...(timeouts?.socketTimeout !== undefined ? { socketTimeout: timeouts.socketTimeout } : {}),
     });
     return new SmtpEmailSender(transport, snapshot.smtpPassword, true);
   }
@@ -318,8 +340,17 @@ export class SmtpEmailSender implements EmailSender {
       );
     } finally {
       if (this.closeAfterSend) {
-        this.transport.close?.();
+        this.close();
       }
+    }
+  }
+
+  /** Drop the underlying SMTP socket (e.g. after a hard test-send timeout). */
+  close(): void {
+    try {
+      this.transport.close?.();
+    } catch {
+      /* ignore close races */
     }
   }
 }

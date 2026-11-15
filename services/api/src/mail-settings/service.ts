@@ -2,7 +2,10 @@ import type { ApiConfig } from "../config.ts";
 import { deriveSmtpPasswordKey, openSecret, sealSecret } from "../crypto/server-aes.ts";
 import { wipeSecretBytes } from "../crypto/secret-lifecycle.ts";
 import type { EmailMessage } from "../email/service.ts";
-import { SmtpEmailSender } from "../email/service.ts";
+import {
+  SMTP_TEST_CONNECTION_TIMEOUT_MS,
+  SmtpEmailSender,
+} from "../email/service.ts";
 import type { Logger } from "../logger.ts";
 import type {
   MailDeliverySnapshot,
@@ -44,6 +47,38 @@ export class MailSettingsError extends Error {
   }
 }
 
+function smtpTestTimeoutMessage(timeoutMs: number): string {
+  return `SMTP connection timed out after ${Math.max(1, Math.ceil(timeoutMs / 1000))}s`;
+}
+
+async function raceWithTimeout<T>(
+  action: Promise<T>,
+  timeoutMs: number,
+  onTimeout: () => void,
+  message: string,
+): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      action,
+      new Promise<T>((_, reject) => {
+        timer = setTimeout(() => {
+          try {
+            onTimeout();
+          } catch {
+            /* ignore */
+          }
+          reject(new Error(message));
+        }, timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) {
+      clearTimeout(timer);
+    }
+  }
+}
+
 export type MailSettingsAccessAction = "get" | "put";
 
 export type MailSettingsServiceDeps = {
@@ -79,6 +114,8 @@ export type MailSettingsServiceDeps = {
   logger?: Pick<Logger, "info" | "warn" | "error">;
   /** Test hook. Defaults to a one-off SMTP transport. */
   sendSmtp?: (snapshot: MailDeliverySnapshot, message: EmailMessage) => Promise<void>;
+  /** Override hard timeout for interactive test sends (default 30s). */
+  smtpTestTimeoutMs?: number;
 };
 
 function validationError(code: string): MailSettingsError {
@@ -150,6 +187,7 @@ export class MailSettingsService {
   private readonly assertPermission?: MailSettingsServiceDeps["assertPermission"];
   private readonly logger?: MailSettingsServiceDeps["logger"];
   private readonly sendSmtp?: MailSettingsServiceDeps["sendSmtp"];
+  private readonly smtpTestTimeoutMs: number;
   private unreadableWarned = false;
 
   constructor(deps: MailSettingsServiceDeps) {
@@ -160,6 +198,12 @@ export class MailSettingsService {
     this.assertPermission = deps.assertPermission;
     this.logger = deps.logger;
     this.sendSmtp = deps.sendSmtp;
+    this.smtpTestTimeoutMs =
+      typeof deps.smtpTestTimeoutMs === "number" &&
+      Number.isFinite(deps.smtpTestTimeoutMs) &&
+      deps.smtpTestTimeoutMs > 0
+        ? deps.smtpTestTimeoutMs
+        : SMTP_TEST_CONNECTION_TIMEOUT_MS;
   }
 
   async publicAppBaseUrl(): Promise<string> {
@@ -350,11 +394,31 @@ export class MailSettingsService {
     };
 
     try {
+      const timeoutMs = this.smtpTestTimeoutMs;
+      const timeoutMessage = smtpTestTimeoutMessage(timeoutMs);
       if (this.sendSmtp) {
-        await this.sendSmtp(snapshot, message);
+        const sendPromise = this.sendSmtp(snapshot, message);
+        try {
+          await raceWithTimeout(sendPromise, timeoutMs, () => undefined, timeoutMessage);
+        } catch (error) {
+          // Prevent unhandled rejection if SMTP finishes after the hard timeout.
+          void sendPromise.catch(() => undefined);
+          throw error;
+        }
       } else {
-        const sender = await SmtpEmailSender.fromSnapshot(snapshot);
-        await sender.send(message);
+        const sender = await SmtpEmailSender.fromSnapshot(snapshot, {
+          connectionTimeout: timeoutMs,
+          greetingTimeout: timeoutMs,
+          socketTimeout: timeoutMs,
+        });
+        const sendPromise = sender.send(message);
+        try {
+          await raceWithTimeout(sendPromise, timeoutMs, () => sender.close(), timeoutMessage);
+        } catch (error) {
+          sender.close();
+          void sendPromise.catch(() => undefined);
+          throw error;
+        }
       }
     } catch (error) {
       const cause =

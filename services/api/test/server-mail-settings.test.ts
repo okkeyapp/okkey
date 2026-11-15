@@ -414,6 +414,40 @@ test("test email reports the transport cause", async () => {
   );
 });
 
+test("test email hard-times out a hung SMTP send", async () => {
+  const store = new MemoryMailStore();
+  const hang = new Promise<void>(() => {
+    /* never resolves */
+  });
+  const service = new MailSettingsService({
+    store,
+    config: mailConfig(),
+    users: {
+      findById: async () => ({ email: "owner@example.com" }),
+    },
+    workspaces: {
+      findById: async () => ({ ownerId: OWNER_ID }),
+      hasAccess: async () => true,
+    },
+    smtpTestTimeoutMs: 50,
+    sendSmtp: async () => hang,
+  });
+  await assert.rejects(
+    () =>
+      service.sendTestEmail(WORKSPACE_ID, OWNER_ID, {
+        smtpHost: "smtp.form.example",
+        smtpPort: 587,
+        smtpTlsMode: "starttls",
+        emailFrom: "form@example.com",
+      }),
+    (error: unknown) => {
+      assert.equal((error as { statusCode?: number }).statusCode, 502);
+      assert.match((error as { message?: string }).message ?? "", /timed out after 1s/);
+      return true;
+    },
+  );
+});
+
 test("runtime sender uses the database SMTP host and sender without restart", async () => {
   const calls: Array<{ host: string; from: string }> = [];
   const sender = new RuntimeEmailSender(

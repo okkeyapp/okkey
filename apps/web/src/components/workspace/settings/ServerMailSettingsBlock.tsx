@@ -10,7 +10,7 @@ import {
   SelectValue,
   SettingsFieldRow,
 } from "@okkey/ui";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { useAuthenticatedCoreClient } from "../../../auth/AuthVaultContext";
@@ -29,6 +29,11 @@ const SAVE_TOAST = {
   success: "web.toast.save.success",
   error: "web.toast.save.error",
 } as const;
+
+/** Matches `SMTP_TEST_CONNECTION_TIMEOUT_MS` on the API (Mail settings test send). */
+const TEST_EMAIL_TIMEOUT_SECONDS = 30;
+/** Client-side safety unlock if the API request never returns. */
+const TEST_EMAIL_CLIENT_TIMEOUT_MS = TEST_EMAIL_TIMEOUT_SECONDS * 1000 + 1_500;
 
 type MailFormState = {
   host: string;
@@ -80,6 +85,7 @@ export default function ServerMailSettingsBlock({
   const passwordInputRef = useRef<HTMLInputElement>(null);
   const [loading, setLoading] = useState(true);
   const [testing, setTesting] = useState(false);
+  const [testSecondsLeft, setTestSecondsLeft] = useState(TEST_EMAIL_TIMEOUT_SECONDS);
   const [saving, setSaving] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [host, setHost] = useState("");
@@ -93,6 +99,16 @@ export default function ServerMailSettingsBlock({
   const [passwordUnreadable, setPasswordUnreadable] = useState(false);
   const [editingPassword, setEditingPassword] = useState(false);
   const savedRef = useRef<MailFormState | null>(null);
+  const saveInFlightRef = useRef(false);
+
+  const saveToastMessages = useMemo(
+    () => ({
+      loading: t(SAVE_TOAST.loading),
+      success: t(SAVE_TOAST.success),
+      error: t(SAVE_TOAST.error),
+    }),
+    [t],
+  );
 
   const applySettings = useCallback((settings: ServerMailSettingsResponseDto) => {
     const next = formFromSettings(settings);
@@ -145,6 +161,20 @@ export default function ServerMailSettingsBlock({
     }
   }, [editingPassword]);
 
+  useEffect(() => {
+    if (!testing) {
+      setTestSecondsLeft(TEST_EMAIL_TIMEOUT_SECONDS);
+      return;
+    }
+    setTestSecondsLeft(TEST_EMAIL_TIMEOUT_SECONDS);
+    const intervalId = window.setInterval(() => {
+      setTestSecondsLeft((prev) => (prev <= 0 ? 0 : prev - 1));
+    }, 1000);
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [testing]);
+
   function parsePortValue(value: string): number | null {
     const parsed = Number(value);
     return Number.isInteger(parsed) && parsed >= 1 && parsed <= 65535 ? parsed : null;
@@ -152,25 +182,23 @@ export default function ServerMailSettingsBlock({
 
   async function patchSettings(
     patch: Record<string, unknown>,
-    options?: { silent?: boolean },
   ): Promise<ServerMailSettingsResponseDto | null> {
-    if (!core || !canPut || saving) {
+    if (!core || !canPut || saveInFlightRef.current) {
       return null;
     }
+    saveInFlightRef.current = true;
     setSaving(true);
     try {
-      const run = () => core.updateServerMailSettings(workspaceId, patch);
-      const updated = options?.silent
-        ? await run()
-        : await runSaveWithToast(t, SAVE_TOAST, run);
+      const updated = await runSaveWithToast(saveToastMessages, () =>
+        core.updateServerMailSettings(workspaceId, patch),
+      );
       applySettings(updated);
       return updated;
-    } catch (error: unknown) {
-      if (options?.silent) {
-        toast.error(messageFromError(error, t("web.workspaceSettings.serverMail.saveError")));
-      }
+    } catch {
+      /* toast.promise surfaces the error */
       return null;
     } finally {
+      saveInFlightRef.current = false;
       setSaving(false);
     }
   }
@@ -222,25 +250,47 @@ export default function ServerMailSettingsBlock({
       return;
     }
     setTesting(true);
+    let timedOut = false;
+    let clientTimer: number | undefined;
+    const request = core.sendServerMailTestEmail(workspaceId, {
+      smtp_host: host.trim(),
+      smtp_port: parsedPort,
+      smtp_tls_mode: tlsMode,
+      smtp_username: username.trim(),
+      email_from: emailFrom.trim(),
+      public_app_url: publicAppUrl.trim(),
+      ...(password.trim() ? { password: password.trim() } : {}),
+    });
     try {
-      await core.sendServerMailTestEmail(workspaceId, {
-        smtp_host: host.trim(),
-        smtp_port: parsedPort,
-        smtp_tls_mode: tlsMode,
-        smtp_username: username.trim(),
-        email_from: emailFrom.trim(),
-        public_app_url: publicAppUrl.trim(),
-        ...(password.trim() ? { password: password.trim() } : {}),
-      });
+      await Promise.race([
+        request,
+        new Promise<never>((_, reject) => {
+          clientTimer = window.setTimeout(() => {
+            timedOut = true;
+            reject(new Error(t("web.workspaceSettings.serverMail.testTimeout")));
+          }, TEST_EMAIL_CLIENT_TIMEOUT_MS);
+        }),
+      ]);
       toast.success(t("web.workspaceSettings.serverMail.testSuccess"));
     } catch (error: unknown) {
-      toast.error(messageFromError(error, t("web.workspaceSettings.serverMail.testError")));
+      toast.error(
+        timedOut
+          ? t("web.workspaceSettings.serverMail.testTimeout")
+          : messageFromError(error, t("web.workspaceSettings.serverMail.testError")),
+      );
+      if (timedOut) {
+        void request.catch(() => undefined);
+      }
     } finally {
+      if (clientTimer !== undefined) {
+        window.clearTimeout(clientTimer);
+      }
       setTesting(false);
     }
   }
 
   const busy = saving || testing;
+  const fieldsDisabled = !canPut || busy;
   const showPasswordField = editingPassword || passwordUnreadable || !passwordSet;
 
   return (
@@ -279,7 +329,7 @@ export default function ServerMailSettingsBlock({
                 className="w-full shrink-0 sm:w-[250px]"
                 value={host}
                 autoComplete="off"
-                disabled={!canPut || busy}
+                disabled={fieldsDisabled}
                 onChange={(event) => setHost(event.target.value)}
                 onBlur={() => void saveFieldIfChanged("host", host.trim(), "smtp_host", host.trim())}
               />
@@ -300,7 +350,7 @@ export default function ServerMailSettingsBlock({
                 className="w-full shrink-0 sm:w-[150px]"
                 inputMode="numeric"
                 value={port}
-                disabled={!canPut || busy}
+                disabled={fieldsDisabled}
                 onChange={(event) => setPort(event.target.value.replace(/[^\d]/g, ""))}
                 onBlur={() =>
                   void saveFieldIfChanged("port", port, "smtp_port", parsePortValue(port))
@@ -320,7 +370,7 @@ export default function ServerMailSettingsBlock({
             control={
               <Select
                 value={tlsMode}
-                disabled={!canPut || busy}
+                disabled={fieldsDisabled}
                 onValueChange={(value) => {
                   const next = value as SmtpTlsMode;
                   setTlsMode(next);
@@ -355,7 +405,7 @@ export default function ServerMailSettingsBlock({
                 className="w-full shrink-0 sm:w-[250px]"
                 value={username}
                 autoComplete="off"
-                disabled={!canPut || busy}
+                disabled={fieldsDisabled}
                 onChange={(event) => setUsername(event.target.value)}
                 onBlur={() =>
                   void saveFieldIfChanged("username", username.trim(), "smtp_username", username.trim())
@@ -381,7 +431,7 @@ export default function ServerMailSettingsBlock({
                   className="w-full shrink-0 sm:w-[250px]"
                   value={password}
                   autoComplete="new-password"
-                  disabled={!canPut || busy}
+                  disabled={fieldsDisabled}
                   onChange={(event) => setPassword(event.target.value)}
                   onBlur={() => void handlePasswordBlur()}
                 />
@@ -390,7 +440,7 @@ export default function ServerMailSettingsBlock({
                   type="button"
                   variant="outline"
                   className="h-9 px-3"
-                  disabled={!canPut || busy}
+                  disabled={fieldsDisabled}
                   data-testid="server-mail-change-password"
                   onClick={() => {
                     setPassword("");
@@ -418,7 +468,7 @@ export default function ServerMailSettingsBlock({
                 className="w-full shrink-0 sm:w-[250px]"
                 value={emailFrom}
                 autoComplete="off"
-                disabled={!canPut || busy}
+                disabled={fieldsDisabled}
                 onChange={(event) => setEmailFrom(event.target.value)}
                 onBlur={() =>
                   void saveFieldIfChanged("emailFrom", emailFrom.trim(), "email_from", emailFrom.trim())
@@ -442,7 +492,7 @@ export default function ServerMailSettingsBlock({
                 className="w-full shrink-0 sm:w-[250px]"
                 value={publicAppUrl}
                 autoComplete="off"
-                disabled={!canPut || busy}
+                disabled={fieldsDisabled}
                 onChange={(event) => setPublicAppUrl(event.target.value)}
                 onBlur={() =>
                   void saveFieldIfChanged(
@@ -468,12 +518,14 @@ export default function ServerMailSettingsBlock({
               <Button
                 type="button"
                 className="h-9 px-3"
-                disabled={busy}
+                disabled={fieldsDisabled}
                 data-testid="server-mail-test"
                 onClick={() => void handleTestEmail()}
               >
                 {testing
-                  ? t("web.workspaceSettings.serverMail.testing")
+                  ? t("web.workspaceSettings.serverMail.testingCountdown", {
+                      seconds: testSecondsLeft,
+                    })
                   : t("web.workspaceSettings.serverMail.test")}
               </Button>
             </div>
