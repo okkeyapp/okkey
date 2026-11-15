@@ -319,9 +319,9 @@ export type WorkspacePermissionPostLevel = 0 | 1;
 
 export type WorkspacePermissionResourceId =
   | "settings"
+  | "settings_mail"
   | "settings_items"
   | "settings_capsules"
-  | "settings_mail"
   | "roles"
   | "profiles"
   | "members"
@@ -377,9 +377,9 @@ export function permissionAllowsObject(
 
 export const WORKSPACE_PERMISSION_RESOURCE_IDS: readonly WorkspacePermissionResourceId[] = [
   "settings",
+  "settings_mail",
   "settings_items",
   "settings_capsules",
-  "settings_mail",
   "roles",
   "profiles",
   "members",

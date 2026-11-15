@@ -2,9 +2,9 @@ import type { QueryExecutor } from "../storage/postgres.ts";
 
 export const WORKSPACE_PERMISSION_RESOURCES = [
   "settings",
+  "settings_mail",
   "settings_items",
   "settings_capsules",
-  "settings_mail",
   "roles",
   "profiles",
   "members",

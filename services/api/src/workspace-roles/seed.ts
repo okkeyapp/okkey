@@ -3,9 +3,9 @@ import type { QueryExecutor } from "../storage/postgres.ts";
 
 const PERMISSION_RESOURCES = [
   "settings",
+  "settings_mail",
   "settings_items",
   "settings_capsules",
-  "settings_mail",
   "roles",
   "profiles",
   "members",
