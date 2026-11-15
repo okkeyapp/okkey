@@ -13,6 +13,7 @@ function emptyMatrix(): WorkspacePermissionsMatrixDto {
     settings: { get: 0, post: 0, put: 0, delete: 0 },
     settings_items: { get: 0, post: 0, put: 0, delete: 0 },
     settings_capsules: { get: 0, post: 0, put: 0, delete: 0 },
+    settings_mail: { get: 0, post: 0, put: 0, delete: 0 },
     roles: { get: 0, post: 0, put: 0, delete: 0 },
     profiles: { get: 0, post: 0, put: 0, delete: 0 },
     members: { get: 0, post: 0, put: 0, delete: 0 },
@@ -26,6 +27,7 @@ describe("settingsPermissions", () => {
     expect(settingsSectionPermissionResource("general")).toBe("settings");
     expect(settingsSectionPermissionResource("items")).toBe("settings_items");
     expect(settingsSectionPermissionResource("capsules")).toBe("settings_capsules");
+    expect(settingsSectionPermissionResource("mail")).toBe("settings_mail");
     expect(settingsSectionPermissionResource("plan")).toBe("billing");
     expect(settingsSectionPermissionResource("billing")).toBe("billing");
   });
@@ -73,6 +75,7 @@ describe("settingsPermissions", () => {
     } as WorkspacePermissionsMatrixDto;
     expect(canGetSettingsSection(matrix, "items")).toBe(true);
     expect(canGetSettingsSection(matrix, "capsules")).toBe(true);
+    expect(canGetSettingsSection(matrix, "mail")).toBe(true);
   });
 
   it("returns no sections for empty matrix", () => {

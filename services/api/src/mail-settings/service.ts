@@ -44,6 +44,8 @@ export class MailSettingsError extends Error {
   }
 }
 
+export type MailSettingsAccessAction = "get" | "put";
+
 export type MailSettingsServiceDeps = {
   store: ServerMailSettingsStore;
   config: Pick<
@@ -65,6 +67,15 @@ export type MailSettingsServiceDeps = {
     findById(id: string): Promise<{ ownerId: string } | null>;
     hasAccess(workspaceId: string, userId: string): Promise<boolean>;
   };
+  /**
+   * When set, gates GET/PUT (and test email) for the Mail settings page.
+   * Production uses workspace `settings_mail` permissions (owner/admin seeded on).
+   */
+  assertPermission?: (
+    workspaceId: string,
+    userId: string,
+    action: MailSettingsAccessAction,
+  ) => Promise<void>;
   logger?: Pick<Logger, "info" | "warn" | "error">;
   /** Test hook. Defaults to a one-off SMTP transport. */
   sendSmtp?: (snapshot: MailDeliverySnapshot, message: EmailMessage) => Promise<void>;
@@ -136,6 +147,7 @@ export class MailSettingsService {
   private readonly config: MailSettingsServiceDeps["config"];
   private readonly users: MailSettingsServiceDeps["users"];
   private readonly workspaces: MailSettingsServiceDeps["workspaces"];
+  private readonly assertPermission?: MailSettingsServiceDeps["assertPermission"];
   private readonly logger?: MailSettingsServiceDeps["logger"];
   private readonly sendSmtp?: MailSettingsServiceDeps["sendSmtp"];
   private unreadableWarned = false;
@@ -145,6 +157,7 @@ export class MailSettingsService {
     this.config = deps.config;
     this.users = deps.users;
     this.workspaces = deps.workspaces;
+    this.assertPermission = deps.assertPermission;
     this.logger = deps.logger;
     this.sendSmtp = deps.sendSmtp;
   }
@@ -159,7 +172,7 @@ export class MailSettingsService {
   }
 
   async getForOwner(workspaceId: string, userId: string): Promise<ServerMailSettingsPublic> {
-    await this.requireOwner(workspaceId, userId);
+    await this.requireAccess(workspaceId, userId, "get");
     return this.publicSettings();
   }
 
@@ -168,7 +181,7 @@ export class MailSettingsService {
     userId: string,
     patch: ServerMailSettingsPatch,
   ): Promise<ServerMailSettingsPublic> {
-    await this.requireOwner(workspaceId, userId);
+    await this.requireAccess(workspaceId, userId, "put");
     if (patch.password && patch.password.length > 0 && patch.clearPassword) {
       throw new MailSettingsError(
         "PASSWORD_CONFLICT",
@@ -238,7 +251,7 @@ export class MailSettingsService {
     userId: string,
     patch: ServerMailSettingsPatch,
   ): Promise<void> {
-    await this.requireOwner(workspaceId, userId);
+    await this.requireAccess(workspaceId, userId, "put");
     const user = await this.users.findById(userId);
     const to = user?.email?.trim() ?? "";
     if (!to) {
@@ -359,14 +372,37 @@ export class MailSettingsService {
     }
   }
 
-  private async requireOwner(workspaceId: string, userId: string): Promise<void> {
+  private async requireAccess(
+    workspaceId: string,
+    userId: string,
+    action: MailSettingsAccessAction,
+  ): Promise<void> {
     const workspace = await this.workspaces.findById(workspaceId);
     if (!workspace) {
       throw new MailSettingsError("WORKSPACE_NOT_FOUND", 404, "workspace not found");
     }
     const hasAccess = await this.workspaces.hasAccess(workspaceId, userId);
-    if (!hasAccess || workspace.ownerId !== userId) {
-      throw new MailSettingsError("ACCESS_DENIED", 403, "only the workspace owner can change server mail settings");
+    if (!hasAccess) {
+      throw new MailSettingsError("ACCESS_DENIED", 403, "access denied");
+    }
+    if (this.assertPermission) {
+      try {
+        await this.assertPermission(workspaceId, userId, action);
+      } catch (error) {
+        if (error instanceof MailSettingsError) {
+          throw error;
+        }
+        throw new MailSettingsError("ACCESS_DENIED", 403, "access denied");
+      }
+      return;
+    }
+    // Fallback when permission wiring is absent (legacy tests): workspace owner only.
+    if (workspace.ownerId !== userId) {
+      throw new MailSettingsError(
+        "ACCESS_DENIED",
+        403,
+        "only the workspace owner can change server mail settings",
+      );
     }
   }
 

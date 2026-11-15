@@ -8,17 +8,38 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
+  SettingsFieldRow,
 } from "@okkey/ui";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 
 import { useAuthenticatedCoreClient } from "../../../auth/AuthVaultContext";
+import { runSaveWithToast } from "../../../lib/saveWithToast";
 
 type ServerMailSettingsBlockProps = {
   workspaceId: string;
   t: (messageKey: string, values?: WebMessageValues) => string;
+  canPut?: boolean;
 };
 
 const TLS_MODES: SmtpTlsMode[] = ["none", "starttls", "tls"];
+
+const SAVE_TOAST = {
+  loading: "web.toast.save.loading",
+  success: "web.toast.save.success",
+  error: "web.toast.save.error",
+} as const;
+
+type MailFormState = {
+  host: string;
+  port: string;
+  tlsMode: SmtpTlsMode;
+  username: string;
+  emailFrom: string;
+  publicAppUrl: string;
+  passwordSet: boolean;
+  passwordUnreadable: boolean;
+};
 
 function messageFromError(error: unknown, fallback: string): string {
   if (error && typeof error === "object" && "body" in error) {
@@ -33,7 +54,7 @@ function messageFromError(error: unknown, fallback: string): string {
   return fallback;
 }
 
-function formFromSettings(settings: ServerMailSettingsResponseDto) {
+function formFromSettings(settings: ServerMailSettingsResponseDto): MailFormState {
   return {
     host: settings.smtp_host,
     port: String(settings.smtp_port),
@@ -46,14 +67,21 @@ function formFromSettings(settings: ServerMailSettingsResponseDto) {
   };
 }
 
-export default function ServerMailSettingsBlock({ workspaceId, t }: ServerMailSettingsBlockProps) {
+function FieldDivider() {
+  return <div className="my-4 border-t border-border" aria-hidden />;
+}
+
+export default function ServerMailSettingsBlock({
+  workspaceId,
+  t,
+  canPut = true,
+}: ServerMailSettingsBlockProps) {
   const core = useAuthenticatedCoreClient();
+  const passwordInputRef = useRef<HTMLInputElement>(null);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
-  const [clearing, setClearing] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [status, setStatus] = useState<{ tone: "success" | "error"; text: string } | null>(null);
   const [host, setHost] = useState("");
   const [port, setPort] = useState("");
   const [tlsMode, setTlsMode] = useState<SmtpTlsMode>("starttls");
@@ -63,6 +91,8 @@ export default function ServerMailSettingsBlock({ workspaceId, t }: ServerMailSe
   const [publicAppUrl, setPublicAppUrl] = useState("");
   const [passwordSet, setPasswordSet] = useState(false);
   const [passwordUnreadable, setPasswordUnreadable] = useState(false);
+  const [editingPassword, setEditingPassword] = useState(false);
+  const savedRef = useRef<MailFormState | null>(null);
 
   const applySettings = useCallback((settings: ServerMailSettingsResponseDto) => {
     const next = formFromSettings(settings);
@@ -75,6 +105,8 @@ export default function ServerMailSettingsBlock({ workspaceId, t }: ServerMailSe
     setPasswordSet(next.passwordSet);
     setPasswordUnreadable(next.passwordUnreadable);
     setPassword("");
+    setEditingPassword(next.passwordUnreadable || !next.passwordSet);
+    savedRef.current = next;
   }, []);
 
   useEffect(() => {
@@ -107,99 +139,115 @@ export default function ServerMailSettingsBlock({ workspaceId, t }: ServerMailSe
     };
   }, [applySettings, core, t, workspaceId]);
 
-  function currentBody(includePassword: boolean) {
-    const parsedPort = Number(port);
-    return {
-      smtp_host: host.trim(),
-      smtp_port: Number.isInteger(parsedPort) ? parsedPort : Number.NaN,
-      smtp_tls_mode: tlsMode,
-      smtp_username: username.trim(),
-      email_from: emailFrom.trim(),
-      public_app_url: publicAppUrl.trim(),
-      ...(includePassword && password ? { password } : {}),
-    };
+  useEffect(() => {
+    if (editingPassword && passwordInputRef.current) {
+      passwordInputRef.current.focus();
+    }
+  }, [editingPassword]);
+
+  function parsePortValue(value: string): number | null {
+    const parsed = Number(value);
+    return Number.isInteger(parsed) && parsed >= 1 && parsed <= 65535 ? parsed : null;
   }
 
-  async function handleSave() {
-    if (!core || saving) {
-      return;
-    }
-    const body = currentBody(true);
-    if (!Number.isInteger(body.smtp_port)) {
-      setStatus({ tone: "error", text: t("web.workspaceSettings.serverMail.invalidPort") });
-      return;
+  async function patchSettings(
+    patch: Record<string, unknown>,
+    options?: { silent?: boolean },
+  ): Promise<ServerMailSettingsResponseDto | null> {
+    if (!core || !canPut || saving) {
+      return null;
     }
     setSaving(true);
-    setStatus(null);
     try {
-      const updated = await core.updateServerMailSettings(workspaceId, body);
+      const run = () => core.updateServerMailSettings(workspaceId, patch);
+      const updated = options?.silent
+        ? await run()
+        : await runSaveWithToast(t, SAVE_TOAST, run);
       applySettings(updated);
-      setStatus({ tone: "success", text: t("web.workspaceSettings.serverMail.saveSuccess") });
+      return updated;
     } catch (error: unknown) {
-      setStatus({
-        tone: "error",
-        text: messageFromError(error, t("web.workspaceSettings.serverMail.saveError")),
-      });
+      if (options?.silent) {
+        toast.error(messageFromError(error, t("web.workspaceSettings.serverMail.saveError")));
+      }
+      return null;
     } finally {
       setSaving(false);
     }
   }
 
-  async function handleClearPassword() {
-    if (!core || clearing) {
+  async function saveFieldIfChanged(
+    key: keyof MailFormState,
+    value: string | SmtpTlsMode,
+    patchKey: string,
+    patchValue: unknown,
+  ) {
+    const saved = savedRef.current;
+    if (!saved || saved[key] === value) {
       return;
     }
-    setClearing(true);
-    setStatus(null);
-    try {
-      const updated = await core.updateServerMailSettings(workspaceId, { clear_password: true });
-      applySettings(updated);
-      setStatus({ tone: "success", text: t("web.workspaceSettings.serverMail.clearPasswordSuccess") });
-    } catch (error: unknown) {
-      setStatus({
-        tone: "error",
-        text: messageFromError(error, t("web.workspaceSettings.serverMail.saveError")),
-      });
-    } finally {
-      setClearing(false);
+    if (patchKey === "smtp_port" && patchValue === null) {
+      toast.error(t("web.workspaceSettings.serverMail.invalidPort"));
+      setPort(saved.port);
+      return;
+    }
+    await patchSettings({ [patchKey]: patchValue });
+  }
+
+  async function handlePasswordBlur() {
+    if (!canPut) {
+      return;
+    }
+    const trimmed = password.trim();
+    if (!trimmed) {
+      // Keep the stored password; collapse back to the change button when one exists.
+      setPassword("");
+      if (passwordSet && !passwordUnreadable) {
+        setEditingPassword(false);
+      }
+      return;
+    }
+    const updated = await patchSettings({ password: trimmed });
+    if (updated) {
+      setEditingPassword(false);
     }
   }
 
   async function handleTestEmail() {
-    if (!core || testing) {
+    if (!core || testing || !canPut) {
       return;
     }
-    const body = currentBody(true);
-    if (!Number.isInteger(body.smtp_port)) {
-      setStatus({ tone: "error", text: t("web.workspaceSettings.serverMail.invalidPort") });
+    const parsedPort = parsePortValue(port);
+    if (parsedPort === null) {
+      toast.error(t("web.workspaceSettings.serverMail.invalidPort"));
       return;
     }
     setTesting(true);
-    setStatus(null);
     try {
-      await core.sendServerMailTestEmail(workspaceId, body);
-      setStatus({ tone: "success", text: t("web.workspaceSettings.serverMail.testSuccess") });
-    } catch (error: unknown) {
-      setStatus({
-        tone: "error",
-        text: messageFromError(error, t("web.workspaceSettings.serverMail.testError")),
+      await core.sendServerMailTestEmail(workspaceId, {
+        smtp_host: host.trim(),
+        smtp_port: parsedPort,
+        smtp_tls_mode: tlsMode,
+        smtp_username: username.trim(),
+        email_from: emailFrom.trim(),
+        public_app_url: publicAppUrl.trim(),
+        ...(password.trim() ? { password: password.trim() } : {}),
       });
+      toast.success(t("web.workspaceSettings.serverMail.testSuccess"));
+    } catch (error: unknown) {
+      toast.error(messageFromError(error, t("web.workspaceSettings.serverMail.testError")));
     } finally {
       setTesting(false);
     }
   }
 
-  const busy = saving || testing || clearing;
+  const busy = saving || testing;
+  const showPasswordField = editingPassword || passwordUnreadable || !passwordSet;
 
   return (
-    <section
-      className="flex flex-col gap-4 border-t border-border pt-6"
-      data-testid="server-mail-settings"
-      aria-labelledby="server-mail-settings-title"
-    >
-      <div className="flex flex-col gap-1">
+    <section className="flex flex-col gap-6" data-testid="server-mail-settings" aria-labelledby="server-mail-settings-title">
+      <div className="flex flex-col gap-4">
         <h2 id="server-mail-settings-title" className="text-lg font-semibold text-foreground">
-          {t("web.workspaceSettings.serverMail.title")}
+          {t("web.workspaceSettings.sections.mail")}
         </h2>
         <p className="text-sm leading-5 text-muted-foreground">
           {t("web.workspaceSettings.serverMail.caption")}
@@ -213,54 +261,73 @@ export default function ServerMailSettingsBlock({ workspaceId, t }: ServerMailSe
           {loadError}
         </p>
       ) : (
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col">
           {passwordUnreadable ? (
             <div
-              className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive"
+              className="mb-4 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive"
               role="status"
               data-testid="server-mail-password-unreadable"
             >
               {t("web.workspaceSettings.serverMail.passwordUnreadable")}
             </div>
           ) : null}
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="flex flex-col gap-2">
-              <label htmlFor="server-mail-host" className="text-sm font-medium text-foreground">
-                {t("web.workspaceSettings.serverMail.smtpHost")}
-              </label>
+
+          <SettingsFieldRow
+            control={
               <Input
                 id="server-mail-host"
+                className="w-full shrink-0 sm:w-[250px]"
                 value={host}
                 autoComplete="off"
-                disabled={busy}
+                disabled={!canPut || busy}
                 onChange={(event) => setHost(event.target.value)}
+                onBlur={() => void saveFieldIfChanged("host", host.trim(), "smtp_host", host.trim())}
               />
-            </div>
-            <div className="flex flex-col gap-2">
-              <label htmlFor="server-mail-port" className="text-sm font-medium text-foreground">
-                {t("web.workspaceSettings.serverMail.smtpPort")}
-              </label>
+            }
+          >
+            <label htmlFor="server-mail-host" className="text-sm font-medium text-foreground">
+              {t("web.workspaceSettings.serverMail.smtpHost")}
+            </label>
+            <p className="text-sm text-muted-foreground">{t("web.workspaceSettings.serverMail.smtpHostDescription")}</p>
+          </SettingsFieldRow>
+
+          <FieldDivider />
+
+          <SettingsFieldRow
+            control={
               <Input
                 id="server-mail-port"
+                className="w-full shrink-0 sm:w-[150px]"
                 inputMode="numeric"
                 value={port}
-                disabled={busy}
+                disabled={!canPut || busy}
                 onChange={(event) => setPort(event.target.value.replace(/[^\d]/g, ""))}
+                onBlur={() =>
+                  void saveFieldIfChanged("port", port, "smtp_port", parsePortValue(port))
+                }
               />
-            </div>
-          </div>
+            }
+          >
+            <label htmlFor="server-mail-port" className="text-sm font-medium text-foreground">
+              {t("web.workspaceSettings.serverMail.smtpPort")}
+            </label>
+            <p className="text-sm text-muted-foreground">{t("web.workspaceSettings.serverMail.smtpPortDescription")}</p>
+          </SettingsFieldRow>
 
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="flex flex-col gap-2">
-              <label htmlFor="server-mail-tls" className="text-sm font-medium text-foreground">
-                {t("web.workspaceSettings.serverMail.tlsMode")}
-              </label>
+          <FieldDivider />
+
+          <SettingsFieldRow
+            control={
               <Select
                 value={tlsMode}
-                disabled={busy}
-                onValueChange={(value) => setTlsMode(value as SmtpTlsMode)}
+                disabled={!canPut || busy}
+                onValueChange={(value) => {
+                  const next = value as SmtpTlsMode;
+                  setTlsMode(next);
+                  void saveFieldIfChanged("tlsMode", next, "smtp_tls_mode", next);
+                }}
               >
-                <SelectTrigger id="server-mail-tls" className="h-9 w-full">
+                <SelectTrigger id="server-mail-tls" className="h-9 w-full shrink-0 sm:w-[150px]">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -271,113 +338,145 @@ export default function ServerMailSettingsBlock({ workspaceId, t }: ServerMailSe
                   ))}
                 </SelectContent>
               </Select>
-            </div>
-            <div className="flex flex-col gap-2">
-              <label htmlFor="server-mail-username" className="text-sm font-medium text-foreground">
-                {t("web.workspaceSettings.serverMail.username")}
-              </label>
+            }
+          >
+            <label htmlFor="server-mail-tls" className="text-sm font-medium text-foreground">
+              {t("web.workspaceSettings.serverMail.tlsMode")}
+            </label>
+            <p className="text-sm text-muted-foreground">{t("web.workspaceSettings.serverMail.tlsModeDescription")}</p>
+          </SettingsFieldRow>
+
+          <FieldDivider />
+
+          <SettingsFieldRow
+            control={
               <Input
                 id="server-mail-username"
+                className="w-full shrink-0 sm:w-[250px]"
                 value={username}
                 autoComplete="off"
-                disabled={busy}
+                disabled={!canPut || busy}
                 onChange={(event) => setUsername(event.target.value)}
+                onBlur={() =>
+                  void saveFieldIfChanged("username", username.trim(), "smtp_username", username.trim())
+                }
               />
-            </div>
-          </div>
-
-          <div className="flex flex-col gap-2">
-            <label htmlFor="server-mail-password" className="text-sm font-medium text-foreground">
-              {t("web.workspaceSettings.serverMail.password")}
+            }
+          >
+            <label htmlFor="server-mail-username" className="text-sm font-medium text-foreground">
+              {t("web.workspaceSettings.serverMail.username")}
             </label>
-            <Input
-              id="server-mail-password"
-              type="password"
-              value={password}
-              autoComplete="new-password"
-              disabled={busy}
-              placeholder={
-                passwordSet
-                  ? t("web.workspaceSettings.serverMail.passwordPlaceholder")
-                  : undefined
-              }
-              onChange={(event) => setPassword(event.target.value)}
-            />
-            {passwordSet ? (
-              <div className="flex flex-wrap items-center gap-3">
-                <p className="text-sm text-muted-foreground">
-                  {t("web.workspaceSettings.serverMail.passwordSet")}
-                </p>
+            <p className="text-sm text-muted-foreground">{t("web.workspaceSettings.serverMail.usernameDescription")}</p>
+          </SettingsFieldRow>
+
+          <FieldDivider />
+
+          <SettingsFieldRow
+            control={
+              showPasswordField ? (
+                <Input
+                  ref={passwordInputRef}
+                  id="server-mail-password"
+                  type="password"
+                  className="w-full shrink-0 sm:w-[250px]"
+                  value={password}
+                  autoComplete="new-password"
+                  disabled={!canPut || busy}
+                  onChange={(event) => setPassword(event.target.value)}
+                  onBlur={() => void handlePasswordBlur()}
+                />
+              ) : (
                 <Button
                   type="button"
                   variant="outline"
                   className="h-9 px-3"
-                  disabled={busy}
-                  onClick={() => void handleClearPassword()}
+                  disabled={!canPut || busy}
+                  data-testid="server-mail-change-password"
+                  onClick={() => {
+                    setPassword("");
+                    setEditingPassword(true);
+                  }}
                 >
-                  {clearing
-                    ? t("web.workspaceSettings.serverMail.clearing")
-                    : t("web.workspaceSettings.serverMail.clearPassword")}
+                  {t("web.workspaceSettings.serverMail.changePassword")}
                 </Button>
-              </div>
-            ) : null}
-          </div>
+              )
+            }
+          >
+            <label htmlFor="server-mail-password" className="text-sm font-medium text-foreground">
+              {t("web.workspaceSettings.serverMail.password")}
+            </label>
+            <p className="text-sm text-muted-foreground">{t("web.workspaceSettings.serverMail.passwordDescription")}</p>
+          </SettingsFieldRow>
 
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="flex flex-col gap-2">
-              <label htmlFor="server-mail-from" className="text-sm font-medium text-foreground">
-                {t("web.workspaceSettings.serverMail.emailFrom")}
-              </label>
+          <FieldDivider />
+
+          <SettingsFieldRow
+            control={
               <Input
                 id="server-mail-from"
                 type="email"
+                className="w-full shrink-0 sm:w-[250px]"
                 value={emailFrom}
                 autoComplete="off"
-                disabled={busy}
+                disabled={!canPut || busy}
                 onChange={(event) => setEmailFrom(event.target.value)}
+                onBlur={() =>
+                  void saveFieldIfChanged("emailFrom", emailFrom.trim(), "email_from", emailFrom.trim())
+                }
               />
-            </div>
-            <div className="flex flex-col gap-2">
-              <label htmlFor="server-mail-public-url" className="text-sm font-medium text-foreground">
-                {t("web.workspaceSettings.serverMail.publicAppUrl")}
-              </label>
+            }
+          >
+            <label htmlFor="server-mail-from" className="text-sm font-medium text-foreground">
+              {t("web.workspaceSettings.serverMail.emailFrom")}
+            </label>
+            <p className="text-sm text-muted-foreground">{t("web.workspaceSettings.serverMail.emailFromDescription")}</p>
+          </SettingsFieldRow>
+
+          <FieldDivider />
+
+          <SettingsFieldRow
+            control={
               <Input
                 id="server-mail-public-url"
                 type="url"
+                className="w-full shrink-0 sm:w-[250px]"
                 value={publicAppUrl}
                 autoComplete="off"
-                disabled={busy}
+                disabled={!canPut || busy}
                 onChange={(event) => setPublicAppUrl(event.target.value)}
+                onBlur={() =>
+                  void saveFieldIfChanged(
+                    "publicAppUrl",
+                    publicAppUrl.trim(),
+                    "public_app_url",
+                    publicAppUrl.trim(),
+                  )
+                }
               />
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-3">
-            <Button type="button" className="h-9 px-3" disabled={busy} onClick={() => void handleSave()}>
-              {saving
-                ? t("web.workspaceSettings.serverMail.saving")
-                : t("web.workspaceSettings.serverMail.save")}
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              className="h-9 px-3"
-              disabled={busy}
-              onClick={() => void handleTestEmail()}
-            >
-              {testing
-                ? t("web.workspaceSettings.serverMail.testing")
-                : t("web.workspaceSettings.serverMail.test")}
-            </Button>
-          </div>
-
-          {status ? (
-            <p
-              className={status.tone === "error" ? "text-sm text-destructive" : "text-sm text-foreground"}
-              role={status.tone === "error" ? "alert" : "status"}
-            >
-              {status.text}
+            }
+          >
+            <label htmlFor="server-mail-public-url" className="text-sm font-medium text-foreground">
+              {t("web.workspaceSettings.serverMail.publicAppUrl")}
+            </label>
+            <p className="text-sm text-muted-foreground">
+              {t("web.workspaceSettings.serverMail.publicAppUrlDescription")}
             </p>
+          </SettingsFieldRow>
+
+          {canPut ? (
+            <div className="mt-8 flex flex-col items-start gap-3">
+              <Button
+                type="button"
+                className="h-9 px-3"
+                disabled={busy}
+                data-testid="server-mail-test"
+                onClick={() => void handleTestEmail()}
+              >
+                {testing
+                  ? t("web.workspaceSettings.serverMail.testing")
+                  : t("web.workspaceSettings.serverMail.test")}
+              </Button>
+            </div>
           ) : null}
         </div>
       )}

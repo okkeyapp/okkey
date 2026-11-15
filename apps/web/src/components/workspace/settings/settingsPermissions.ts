@@ -18,6 +18,8 @@ export function settingsSectionPermissionResource(
   switch (section) {
     case "general":
       return "settings";
+    case "mail":
+      return "settings_mail";
     case "items":
       return "settings_items";
     case "capsules":

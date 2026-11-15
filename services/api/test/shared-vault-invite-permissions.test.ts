@@ -29,6 +29,7 @@ function matrix(overrides: Record<string, { get: number; post: number; put: numb
     settings: cell,
     settings_items: cell,
     settings_capsules: cell,
+    settings_mail: cell,
     roles: cell,
     profiles: cell,
     members: cell,

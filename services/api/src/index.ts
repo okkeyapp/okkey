@@ -81,6 +81,9 @@ async function main(): Promise<void> {
     config,
     users: storage.repositories.users,
     workspaces: storage.repositories.workspaces,
+    assertPermission: async (workspaceId, userId, action) => {
+      await assertWorkspacePermission(storage.postgres, workspaceId, userId, "settings_mail", action);
+    },
     logger,
   });
   const emailSender = await createOutboundEmailSender(config, logger, storage.redis, mailSettings);

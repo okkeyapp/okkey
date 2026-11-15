@@ -4,6 +4,7 @@ export const WORKSPACE_PERMISSION_RESOURCES = [
   "settings",
   "settings_items",
   "settings_capsules",
+  "settings_mail",
   "roles",
   "profiles",
   "members",
@@ -56,6 +57,7 @@ export function fullPermissionsMatrix(): WorkspacePermissionsMatrix {
     settings: { ...FULL_CELL },
     settings_items: { ...FULL_CELL, post: 0, delete: 0 },
     settings_capsules: { ...FULL_CELL, post: 0, delete: 0 },
+    settings_mail: { ...FULL_CELL, post: 0, delete: 0 },
     roles: { ...FULL_CELL },
     profiles: { ...FULL_CELL },
     members: { ...FULL_CELL },
@@ -69,6 +71,7 @@ export function emptyPermissionsMatrix(): WorkspacePermissionsMatrix {
     settings: { ...EMPTY_CELL },
     settings_items: { ...EMPTY_CELL },
     settings_capsules: { ...EMPTY_CELL },
+    settings_mail: { ...EMPTY_CELL },
     roles: { ...EMPTY_CELL },
     profiles: { ...EMPTY_CELL },
     members: { ...EMPTY_CELL },
@@ -116,6 +119,9 @@ export function parsePermissionsMatrix(raw: unknown): WorkspacePermissionsMatrix
   }
   if (!("settings_capsules" in record)) {
     base.settings_capsules = checkboxCellFromSettings(base.settings);
+  }
+  if (!("settings_mail" in record)) {
+    base.settings_mail = checkboxCellFromSettings(base.settings);
   }
   return base;
 }

@@ -81,7 +81,7 @@ function capsulePoliciesEqual(a: WorkspaceCapsulePolicies, b: WorkspaceCapsulePo
     JSON.stringify(workspaceCapsulePoliciesToDto(b))
   );
 }
-type WorkspaceSettingsGeneralPanel = "general" | "items" | "capsules";
+type WorkspaceSettingsGeneralPanel = "general" | "mail" | "items" | "capsules";
 
 type WorkspaceSettingsGeneralSectionProps = {
   workspaceId: string;
@@ -485,7 +485,7 @@ export default function WorkspaceSettingsGeneralSection({
     }
   }
 
-  if (initialLoading) {
+  if (initialLoading && panel !== "mail") {
     if (panel === "items") {
       return <WorkspaceSettingsItemsSkeleton label={t("web.workspaceSettings.general.loading")} />;
     }
@@ -573,10 +573,11 @@ export default function WorkspaceSettingsGeneralSection({
             />
           </div>
 
-          {isOwner && webDeploymentMode() === "self_hosted" ? (
-            <ServerMailSettingsBlock workspaceId={workspaceId} t={t} />
-          ) : null}
         </div>
+        ) : null}
+
+        {panel === "mail" ? (
+          <ServerMailSettingsBlock workspaceId={workspaceId} t={t} canPut={canEdit} />
         ) : null}
 
         {panel === "items" ? (

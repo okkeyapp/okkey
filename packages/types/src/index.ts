@@ -321,6 +321,7 @@ export type WorkspacePermissionResourceId =
   | "settings"
   | "settings_items"
   | "settings_capsules"
+  | "settings_mail"
   | "roles"
   | "profiles"
   | "members"
@@ -378,6 +379,7 @@ export const WORKSPACE_PERMISSION_RESOURCE_IDS: readonly WorkspacePermissionReso
   "settings",
   "settings_items",
   "settings_capsules",
+  "settings_mail",
   "roles",
   "profiles",
   "members",
@@ -405,7 +407,7 @@ function inheritSettingsNestedCell(
 
 /**
  * Fills missing permission resources. Legacy matrices without
- * `settings_items` / `settings_capsules` inherit those cells from `settings`.
+ * `settings_items` / `settings_capsules` / `settings_mail` inherit those cells from `settings`.
  */
 export function normalizeWorkspacePermissionsMatrix(
   input: Partial<WorkspacePermissionsMatrixDto> | WorkspacePermissionsMatrixDto | null | undefined,
@@ -414,6 +416,7 @@ export function normalizeWorkspacePermissionsMatrix(
     settings: { ...EMPTY_PERMISSION_CELL },
     settings_items: { ...EMPTY_PERMISSION_CELL },
     settings_capsules: { ...EMPTY_PERMISSION_CELL },
+    settings_mail: { ...EMPTY_PERMISSION_CELL },
     roles: { ...EMPTY_PERMISSION_CELL },
     profiles: { ...EMPTY_PERMISSION_CELL },
     members: { ...EMPTY_PERMISSION_CELL },
@@ -443,6 +446,9 @@ export function normalizeWorkspacePermissionsMatrix(
   }
   if (!input.settings_capsules) {
     normalized.settings_capsules = inheritSettingsNestedCell(normalized.settings);
+  }
+  if (!input.settings_mail) {
+    normalized.settings_mail = inheritSettingsNestedCell(normalized.settings);
   }
 
   return normalized;

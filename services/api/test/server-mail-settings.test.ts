@@ -6,7 +6,7 @@ import { deriveAes256KeyFromSessionSecret, deriveSmtpPasswordKey, openSecret, se
 import { wipeSecretBytes } from "../src/crypto/secret-lifecycle.ts";
 import { RuntimeEmailSender, type EmailMessage } from "../src/email/service.ts";
 import { registerServerMailSettingsRoutes } from "../src/mail-settings/routes.ts";
-import { MailSettingsService } from "../src/mail-settings/service.ts";
+import { MailSettingsError, MailSettingsService } from "../src/mail-settings/service.ts";
 import type { MailDeliverySnapshot, ServerMailSettingsRow, ServerMailSettingsStore } from "../src/mail-settings/types.ts";
 import { createTestApiConfig } from "./test-api-config.ts";
 
@@ -110,12 +110,27 @@ function createService(
     store,
     config: options?.config ?? mailConfig(),
     users: {
-      findById: async (id) => (id === OWNER_ID ? { email: "owner@example.com" } : null),
+      findById: async (id) => {
+        if (id === OWNER_ID) {
+          return { email: "owner@example.com" };
+        }
+        if (id === ADMIN_ID) {
+          return { email: "admin@example.com" };
+        }
+        return null;
+      },
     },
     workspaces: {
       findById: async (id) => (id === WORKSPACE_ID ? { ownerId: OWNER_ID } : null),
       hasAccess: async (id, userId) =>
         id === WORKSPACE_ID && (userId === OWNER_ID || userId === ADMIN_ID || userId === MEMBER_ID),
+    },
+    // Seeded owner/admin have settings_mail GET/PUT; members do not.
+    assertPermission: async (_workspaceId, userId) => {
+      if (userId === OWNER_ID || userId === ADMIN_ID) {
+        return;
+      }
+      throw new MailSettingsError("ACCESS_DENIED", 403, "access denied");
     },
     logger: options?.logger,
     sendSmtp: async (snapshot, message) => {
@@ -193,24 +208,29 @@ test("owner updates settings, empty password keeps the stored ciphertext, and cl
   assert.equal(effective.useSmtpTransport, true);
 });
 
-test("admin and member cannot read or update server mail settings", async () => {
+test("admin can read and update server mail settings; members cannot", async () => {
   const { service } = createService();
-  for (const userId of [ADMIN_ID, MEMBER_ID]) {
-    await assert.rejects(
-      () => service.getForOwner(WORKSPACE_ID, userId),
-      (error: unknown) => {
-        assert.equal((error as { statusCode?: number }).statusCode, 403);
-        return true;
-      },
-    );
-    await assert.rejects(
-      () => service.updateForOwner(WORKSPACE_ID, userId, { smtpHost: "evil.example" }),
-      (error: unknown) => {
-        assert.equal((error as { statusCode?: number }).statusCode, 403);
-        return true;
-      },
-    );
-  }
+  const adminRead = await service.getForOwner(WORKSPACE_ID, ADMIN_ID);
+  assert.equal(adminRead.smtpHost, "smtp.env.example");
+  const adminUpdate = await service.updateForOwner(WORKSPACE_ID, ADMIN_ID, {
+    smtpHost: "smtp.admin.example",
+  });
+  assert.equal(adminUpdate.smtpHost, "smtp.admin.example");
+
+  await assert.rejects(
+    () => service.getForOwner(WORKSPACE_ID, MEMBER_ID),
+    (error: unknown) => {
+      assert.equal((error as { statusCode?: number }).statusCode, 403);
+      return true;
+    },
+  );
+  await assert.rejects(
+    () => service.updateForOwner(WORKSPACE_ID, MEMBER_ID, { smtpHost: "evil.example" }),
+    (error: unknown) => {
+      assert.equal((error as { statusCode?: number }).statusCode, 403);
+      return true;
+    },
+  );
 });
 
 test("public app URL and port are validated", async () => {
@@ -235,7 +255,7 @@ test("public app URL and port are validated", async () => {
   assert.equal(saved.publicAppUrl, "https://ok.example/app");
 });
 
-test("routes: owner can read and update, non-owners get 403, saas is 404, password stays out of JSON", async () => {
+test("routes: owner and admin can read/update, members get 403, saas is 404, password stays out of JSON", async () => {
   const { service, store } = createService();
   const handlers = new Map<string, (ctx: {
     requestId: string;
@@ -283,7 +303,7 @@ test("routes: owner can read and update, non-owners get 403, saas is 404, passwo
   assert.equal(read.body.includes("env-secret"), false);
 
   const admin = await call("GET", "/workspaces/:workspaceId/server-mail-settings", ADMIN_ID);
-  assert.equal(admin.statusCode, 403);
+  assert.equal(admin.statusCode, 200);
   const member = await call("PATCH", "/workspaces/:workspaceId/server-mail-settings", MEMBER_ID, {
     smtp_host: "nope.example",
   });

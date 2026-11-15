@@ -626,8 +626,11 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
     }
   }, [accessToken, userId]);
 
+  // `/account/profile` requires a trusted device. Fetching right after OTP often
+  // 401s while the device is still pending; retry once trust flips to trusted so
+  // first/last name are not stuck as email-only from the login bridge.
   useEffect(() => {
-    if (!accessToken || !userId) {
+    if (!accessToken || !userId || deviceTrustStatus !== "trusted") {
       return;
     }
     let cancelled = false;
@@ -676,7 +679,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [accessToken, userId, setLocale]);
+  }, [accessToken, userId, deviceTrustStatus, setLocale]);
 
   // Prefer already-migrated local idle prefs as soon as userId is known (before profile fetch).
   useEffect(() => {

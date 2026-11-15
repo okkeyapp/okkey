@@ -38,6 +38,7 @@ const billingPermissions: WorkspacePermissionsMatrixDto = {
   settings: { get: 0, post: 0, put: 0, delete: 0 },
   settings_items: { get: 0, post: 0, put: 0, delete: 0 },
   settings_capsules: { get: 0, post: 0, put: 0, delete: 0 },
+  settings_mail: { get: 0, post: 0, put: 0, delete: 0 },
   roles: { get: 0, post: 0, put: 0, delete: 0 },
   profiles: { get: 0, post: 0, put: 0, delete: 0 },
   members: { get: 0, post: 0, put: 0, delete: 0 },

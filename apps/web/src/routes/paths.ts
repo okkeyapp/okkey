@@ -359,6 +359,7 @@ export const SETTINGS_SECTION_QUERY_PARAM = "section";
 
 export type WorkspaceSettingsSectionId =
   | "general"
+  | "mail"
   | "items"
   | "capsules"
   | "roles"
@@ -372,6 +373,7 @@ export const DEFAULT_WORKSPACE_SETTINGS_SECTION: WorkspaceSettingsSectionId = "g
 
 const SETTINGS_SECTION_SLUGS: Record<WorkspaceSettingsSectionId, string> = {
   general: "main",
+  mail: "mail",
   items: "items",
   capsules: "capsules",
   roles: "roles",
