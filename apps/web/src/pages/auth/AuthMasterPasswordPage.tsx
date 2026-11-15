@@ -38,6 +38,7 @@ export default function AuthMasterPasswordPage() {
     authClient,
     pendingEmail,
     emailChallengeId,
+    clearEmailLoginFlow,
     setTwoFactorAuthStateId,
     applyAccessTokenResponse,
   } = useAuthVault();
@@ -125,7 +126,7 @@ export default function AuthMasterPasswordPage() {
           <Button type="button" variant="default" className="w-full" onClick={() => void finishSession(true)}>
             {t("auth.masterPassword.totpOfferEnable")}
           </Button>
-          <Button type="button" variant="secondary" className="w-full" onClick={() => void finishSession(false)}>
+          <Button type="button" variant="outline" className="w-full" onClick={() => void finishSession(false)}>
             {t("auth.masterPassword.totpOfferSkip")}
           </Button>
         </div>
@@ -136,7 +137,7 @@ export default function AuthMasterPasswordPage() {
   return (
     <AppShellLayout
       title={t("auth.masterPassword.title")}
-      description={t("auth.masterPassword.description")}
+      description={t("auth.masterPassword.descriptionWithEmail")}
       logo={<OkkeyLogoMark className="h-[60px] w-[61px]" />}
     >
       <form onSubmit={handleSubmit} className="flex w-full flex-col gap-6" noValidate>
@@ -146,11 +147,21 @@ export default function AuthMasterPasswordPage() {
             <AlertDescription>{error}</AlertDescription>
           </Alert>
         ) : null}
-        <p className="okkey-small text-copy-secondary">{email}</p>
         <div className="flex w-full flex-col gap-3">
-          <label htmlFor="auth-master-password" className="okkey-small font-medium text-copy-primary">
-            {t("auth.masterPassword.label")}
-          </label>
+          <div className="flex w-full items-center gap-2">
+            <label
+              htmlFor="auth-master-password"
+              className="min-w-0 flex-1 okkey-small font-medium text-copy-primary"
+            >
+              {t("auth.masterPassword.label")}
+            </label>
+            <Link
+              to={AUTH_OTP_PATH}
+              className="okkey-small shrink-0 text-copy-secondary underline decoration-solid underline-offset-2 hover:text-copy-primary"
+            >
+              {t("auth.masterPassword.useEmailCode")}
+            </Link>
+          </div>
           <Input
             id="auth-master-password"
             name="master-password"
@@ -168,13 +179,17 @@ export default function AuthMasterPasswordPage() {
         >
           {t("auth.masterPassword.submit")}
         </Button>
-        <p className="text-center text-xs leading-4 text-copy-secondary">
-          <Link
-            to={AUTH_OTP_PATH}
-            className="text-copy-secondary underline decoration-solid underline-offset-2 hover:text-copy-primary"
+        <p className="text-center">
+          <button
+            type="button"
+            className="okkey-small text-copy-secondary underline decoration-solid underline-offset-2 hover:text-copy-primary"
+            onClick={() => {
+              clearEmailLoginFlow();
+              navigate(AUTH_EMAIL_PATH, { replace: true });
+            }}
           >
-            {t("auth.masterPassword.useEmailCode")}
-          </Link>
+            {t("auth.otp.differentEmail")}
+          </button>
         </p>
       </form>
     </AppShellLayout>
