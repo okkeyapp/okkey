@@ -100,12 +100,14 @@ import {
 import {
   clearExtensionSessionArea,
   normalizeWebBaseUrl,
+  readAccountIdentity,
   readDeviceId,
   readLastServer,
   readProfile,
   readSession,
   resolveApiBaseFromWebBase,
   wipeAllExtensionData,
+  writeAccountIdentity,
   writeLastServer,
   writePkcePending,
   writeProfile,
@@ -283,11 +285,13 @@ export function PopupApp() {
     try {
       const core = createCoreClient(apiBaseUrl, accessToken);
       const account = await core.getAccountProfile();
-      setIdentity({
-        email: account.email ?? "",
-        firstName: account.first_name ?? "",
-        lastName: account.last_name ?? "",
-      });
+      const nextIdentity = {
+        email: (account.email ?? "").trim(),
+        firstName: (account.first_name ?? "").trim(),
+        lastName: (account.last_name ?? "").trim(),
+      };
+      setIdentity(nextIdentity);
+      await writeAccountIdentity(nextIdentity);
       if (userId) {
         const idleMs = await resolveExtensionIdleLockMs({
           userId,
@@ -302,7 +306,7 @@ export function PopupApp() {
       if (isUnauthorizedApiError(err)) {
         throw err;
       }
-      setIdentity(null);
+      setIdentity(await readAccountIdentity());
       return null;
     }
   }, []);
@@ -525,6 +529,11 @@ export function PopupApp() {
         );
       } else if (!ENABLE_SAAS_SIGNIN) {
         applyServerPreference("self-hosted", "");
+      }
+      const cachedIdentity = await readAccountIdentity();
+      if (cancelled) return;
+      if (cachedIdentity) {
+        setIdentity(cachedIdentity);
       }
       if (existingProfile && existingSession) {
         setSession(existingSession);
@@ -843,11 +852,13 @@ export function PopupApp() {
           serverIdleLockSeconds: account.vault_idle_lock_seconds,
         });
         setVaultIdleLockMs(idleMs);
-        setIdentity({
-          email: account.email ?? "",
-          firstName: account.first_name ?? "",
-          lastName: account.last_name ?? "",
-        });
+        const nextIdentity = {
+          email: (account.email ?? "").trim(),
+          firstName: (account.first_name ?? "").trim(),
+          lastName: (account.last_name ?? "").trim(),
+        };
+        setIdentity(nextIdentity);
+        await writeAccountIdentity(nextIdentity);
       } catch {
         /* keep previous idle / identity */
       }
