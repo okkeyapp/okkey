@@ -38,6 +38,11 @@ export type ServerMailSettingsRow = {
   /** Null until a successful test email marks SMTP active. */
   smtpVerifiedAt: string | null;
   /**
+   * Null only for rows carried over from before the upgrade probe.
+   * Seed, form save, test send, and the probe itself set this so the check runs once.
+   */
+  smtpLegacyProbedAt: string | null;
+  /**
    * Null on the empty singleton insert — triggers a one-time seed from environment.
    * After seed or any write, always set (never re-seed from env).
    */
@@ -79,4 +84,18 @@ export type ServerMailSettingsPatch = {
 export interface ServerMailSettingsStore {
   read(): Promise<ServerMailSettingsRow | null>;
   write(row: ServerMailSettingsRow, updatedBy: string): Promise<void>;
+  /**
+   * Atomically stamp a saved, never-verified, never-probed SMTP row.
+   * Returns the claimed row, or null when another process already claimed it.
+   */
+  claimLegacySmtpProbe(probedAt: string): Promise<ServerMailSettingsRow | null>;
+  /**
+   * Set `smtp_verified_at` only if this probe still owns the same host.
+   * A newer form save changes the probe stamp or host and is left inactive.
+   */
+  markLegacySmtpVerified(input: {
+    verifiedAt: string;
+    probedAt: string;
+    smtpHost: string;
+  }): Promise<boolean>;
 }

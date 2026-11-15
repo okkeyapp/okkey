@@ -211,6 +211,8 @@ type NodemailerSendMailOptions = {
 
 type SmtpTransport = {
   sendMail(options: NodemailerSendMailOptions): Promise<unknown>;
+  /** Connect and authenticate. Does not send a message. */
+  verify?: () => Promise<unknown>;
   close?: () => void;
 };
 
@@ -338,6 +340,31 @@ export class SmtpEmailSender implements EmailSender {
         "smtp send failed",
         { cause: redactSecret(raw, this.password).slice(0, 500) },
       );
+    } finally {
+      if (this.closeAfterSend) {
+        this.close();
+      }
+    }
+  }
+
+  /**
+   * Open the SMTP connection and authenticate when credentials are set.
+   * Does not send a message.
+   */
+  async verifyConnection(): Promise<void> {
+    const verify = this.transport.verify;
+    if (!verify) {
+      throw new EmailTemplateError("EMAIL_TRANSPORT_ERROR", "smtp verify failed", {
+        cause: "verify unavailable",
+      });
+    }
+    try {
+      await verify.call(this.transport);
+    } catch (cause) {
+      const raw = cause instanceof Error ? cause.message : String(cause);
+      throw new EmailTemplateError("EMAIL_TRANSPORT_ERROR", "smtp verify failed", {
+        cause: redactSecret(raw, this.password).slice(0, 500),
+      });
     } finally {
       if (this.closeAfterSend) {
         this.close();

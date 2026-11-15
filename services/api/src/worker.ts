@@ -123,6 +123,7 @@ async function main(): Promise<void> {
     workspaces: storage.repositories.workspaces,
     logger,
   });
+  await mailSettings.probeLegacySmtpOnce();
   const emailTransport = await createTransportEmailSender(config, logger, mailSettings);
 
   const jobs = startBackgroundJobs({

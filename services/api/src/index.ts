@@ -86,6 +86,7 @@ async function main(): Promise<void> {
     },
     logger,
   });
+  await mailSettings.probeLegacySmtpOnce();
   const emailSender = await createOutboundEmailSender(config, logger, storage.redis, mailSettings);
   const emailTemplates = new EmailTemplateService(emailSender, {
     from: config.emailFrom,
