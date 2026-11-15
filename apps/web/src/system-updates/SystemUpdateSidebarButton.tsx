@@ -1,23 +1,19 @@
-import {
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-  cn,
-  useOkkeyAppShellLayout,
-  useSidebar,
-} from "@okkey/ui";
-import { useCallback, useEffect, useState } from "react";
+import { SidebarMenu, SidebarMenuButton, SidebarMenuItem, cn, useOkkeyAppShellLayout, useSidebar } from "@okkey/ui";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
 import { useAuthVault } from "../auth/AuthVaultContext";
 import { useLocale } from "../locale/LocaleContext";
+import {
+  POPUP_QUERY_PARAM,
+  SYSTEM_UPDATE_POPUP_ID,
+  parsePopupQueryValue,
+  popupQuerySearch,
+} from "../routes/popupQuery";
 import { webDeploymentMode } from "../workspace/planEntitlements";
 import { dismissSystemUpdate, fetchSystemUpdateStatus, markSystemUpdateSeen } from "./api";
 import SystemUpdateModal from "./SystemUpdateModal";
-import { SystemUpdateIcon } from "./SystemUpdateIcon";
+import { SystemUpdateCurrentIcon, SystemUpdateIcon } from "./SystemUpdateIcon";
 import { formatSidebarVersionLabel } from "./version-label";
 import {
   readLocalDismissals,
@@ -35,10 +31,15 @@ export default function SystemUpdateSidebarButton() {
   const { expanded } = useSidebar();
   const shell = useOkkeyAppShellLayout();
   const showExpanded = shell.isMobile || expanded;
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [status, setStatus] = useState<SystemUpdateStatus | null>(null);
   const [localDismissed, setLocalDismissed] = useState(readLocalDismissals);
   const [localSeen, setLocalSeen] = useState(readLocalSeen);
-  const [open, setOpen] = useState(false);
+
+  const activePopup = parsePopupQueryValue(searchParams.get(POPUP_QUERY_PARAM));
+  const open = activePopup?.popupId === SYSTEM_UPDATE_POPUP_ID;
 
   const reload = useCallback(async () => {
     if (!accessToken || webDeploymentMode() === "saas") {
@@ -59,6 +60,27 @@ export default function SystemUpdateSidebarButton() {
     void reload();
   }, [accessToken, reload]);
 
+  const openedSessionRef = useRef(false);
+
+  useEffect(() => {
+    if (!open) {
+      openedSessionRef.current = false;
+      return;
+    }
+    if (!accessToken || !status || openedSessionRef.current) {
+      return;
+    }
+    openedSessionRef.current = true;
+    for (const update of status.updates) {
+      writeLocalSeen(update.component, update.toVersion);
+      void markSystemUpdateSeen(accessToken, update.component, update.toVersion).catch(() => {
+        // The browser copy still hides the update state after refresh.
+      });
+    }
+    setLocalSeen(readLocalSeen());
+    void reload();
+  }, [open, accessToken, status, reload]);
+
   if (webDeploymentMode() === "saas" || !accessToken || !status || status.deploymentMode === "saas") {
     return null;
   }
@@ -70,13 +92,6 @@ export default function SystemUpdateSidebarButton() {
     commitSha: status.commitSha,
     releaseTag: status.releaseTag,
   });
-  const hoverText = formatted.tooltip
-    ? showExpanded
-      ? formatted.tooltip
-      : `${formatted.label} · ${formatted.tooltip}`
-    : showExpanded
-      ? null
-      : formatted.label;
 
   async function ignore() {
     const next = { ...localDismissed };
@@ -92,32 +107,35 @@ export default function SystemUpdateSidebarButton() {
       }
     }
     setLocalDismissed(next);
-    setOpen(false);
-  }
-
-  function rememberSeen() {
-    for (const update of status?.updates ?? []) {
-      writeLocalSeen(update.component, update.toVersion);
-      if (accessToken) {
-        void markSystemUpdateSeen(accessToken, update.component, update.toVersion).catch(() => {
-          // The browser copy still hides the dot after refresh.
-        });
-      }
-    }
-    setLocalSeen(readLocalSeen());
+    closePopup();
   }
 
   function openPopup() {
-    setOpen(true);
-    rememberSeen();
-    void reload();
+    navigate(
+      {
+        pathname: location.pathname,
+        search: popupQuerySearch(location.search, SYSTEM_UPDATE_POPUP_ID),
+        hash: location.hash,
+      },
+      { replace: false },
+    );
+  }
+
+  function closePopup() {
+    navigate(
+      {
+        pathname: location.pathname,
+        search: popupQuerySearch(location.search, null),
+        hash: location.hash,
+      },
+      { replace: false },
+    );
   }
 
   return (
     <>
       <SystemUpdateVersionMenu
         label={formatted.label}
-        hoverText={hoverText}
         commitSha={formatted.tooltip}
         updateAvailable={updateAvailable}
         updateAvailableLabel={t("web.systemUpdate.notice")}
@@ -130,7 +148,7 @@ export default function SystemUpdateSidebarButton() {
           accessToken={accessToken}
           status={status}
           updates={updates}
-          onClose={() => setOpen(false)}
+          onClose={closePopup}
           onIgnore={() => {
             void ignore();
           }}
@@ -145,7 +163,6 @@ export default function SystemUpdateSidebarButton() {
 
 export function SystemUpdateVersionMenu({
   label,
-  hoverText,
   commitSha,
   updateAvailable,
   updateAvailableLabel,
@@ -153,61 +170,36 @@ export function SystemUpdateVersionMenu({
   onClick,
 }: {
   label: string;
-  hoverText: string | null;
   commitSha: string | null;
   updateAvailable: boolean;
   updateAvailableLabel: string;
   collapsed: boolean;
   onClick: () => void;
 }) {
-  const button = (
-    <SidebarMenuButton
-      type="button"
-      data-testid="system-update-version"
-      data-update={updateAvailable ? "available" : "current"}
-      data-commit-sha={commitSha ?? ""}
-      title={hoverText ?? undefined}
-      className={cn(collapsed && "relative h-9 min-h-9 justify-center px-0")}
-      onClick={onClick}
-    >
-      <SystemUpdateIcon />
-      {collapsed ? (
-        <span className="sr-only">{label}</span>
-      ) : (
-        <span className="min-w-0 truncate">{label}</span>
-      )}
-      {updateAvailable ? (
-        <span
-          data-testid="system-update-dot"
-          className={cn(
-            "size-2 shrink-0 rounded-full bg-yellow-400",
-            collapsed ? "absolute end-1 top-1" : "ms-auto",
-          )}
-        >
-          <span className="sr-only">{updateAvailableLabel}</span>
-        </span>
-      ) : null}
-    </SidebarMenuButton>
-  );
-
   return (
-    <TooltipProvider delayDuration={0} skipDelayDuration={0}>
-      <SidebarMenu>
-        <SidebarMenuItem>
-          {hoverText ? (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span className="inline-flex w-full min-w-0">{button}</span>
-              </TooltipTrigger>
-              <TooltipContent side="right" align="center">
-                {hoverText}
-              </TooltipContent>
-            </Tooltip>
+    <SidebarMenu>
+      <SidebarMenuItem>
+        <SidebarMenuButton
+          type="button"
+          data-testid="system-update-version"
+          data-update={updateAvailable ? "available" : "current"}
+          data-commit-sha={commitSha ?? ""}
+          className={cn(collapsed && "relative h-9 min-h-9 justify-center px-0")}
+          onClick={onClick}
+        >
+          {updateAvailable ? (
+            <SystemUpdateIcon className="text-orange-500" data-testid="system-update-available-icon" />
           ) : (
-            button
+            <SystemUpdateCurrentIcon data-testid="system-update-current-icon" />
           )}
-        </SidebarMenuItem>
-      </SidebarMenu>
-    </TooltipProvider>
+          {collapsed ? (
+            <span className="sr-only">{label}</span>
+          ) : (
+            <span className="min-w-0 truncate">{label}</span>
+          )}
+          {updateAvailable ? <span className="sr-only">{updateAvailableLabel}</span> : null}
+        </SidebarMenuButton>
+      </SidebarMenuItem>
+    </SidebarMenu>
   );
 }

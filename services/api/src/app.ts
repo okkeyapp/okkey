@@ -480,6 +480,7 @@ export function createApiApp(
       releaseTag: config.releaseTag,
       enterpriseInstalled: config.enterpriseModulesEnabled,
       enterpriseVersion: config.enterpriseVersion,
+      enterpriseCommitSha: config.enterpriseGitSha,
       coreFeedUrl: config.updateCoreFeedUrl,
       enterpriseFeedUrl: config.updateEnterpriseFeedUrl,
       isolated: config.updateIsolated,

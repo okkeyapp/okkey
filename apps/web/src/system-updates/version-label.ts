@@ -2,17 +2,17 @@ const SHA = /^[0-9a-f]{7,64}$/i;
 const SEMVER = /^v?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$/;
 
 export type SidebarVersionLabel = {
-  /** Visible sidebar text, for example `v1.0.0-beta.3` or `v0.0.0-dev 6e6ee86`. */
+  /** Visible sidebar text, for example `v1.0.0-beta.3` — never a short SHA. */
   label: string;
-  /** Full commit SHA when the label includes a short SHA. */
+  /** Full commit SHA for the hover tooltip on a dev build. */
   tooltip: string | null;
 };
 
 /**
- * A tagged build shows `v<semver>` and no commit.
- * A dev build without a release tag shows that version plus a 7-character SHA.
- * The tooltip is the full SHA.
- * A version string that is only a commit SHA uses the dev-channel version `0.0.0-dev`.
+ * Sidebar button text is the version only (no short SHA).
+ * A tagged build and a plain version string both show `v<semver>`.
+ * A version that is only a commit SHA uses the dev-channel version `0.0.0-dev`.
+ * The tooltip is the full SHA when known.
  */
 export function formatSidebarVersionLabel(input: {
   version: string;
@@ -25,11 +25,8 @@ export function formatSidebarVersionLabel(input: {
   }
 
   const parsed = splitVersionAndSha(input.version, input.commitSha);
-  if (!parsed.sha) {
-    return { label: displayVersion(parsed.version), tooltip: null };
-  }
   return {
-    label: `${displayVersion(parsed.version)} ${parsed.sha.slice(0, 7)}`,
+    label: displayVersion(parsed.version),
     tooltip: parsed.sha,
   };
 }

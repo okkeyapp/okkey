@@ -1,7 +1,7 @@
 import { Alert, AlertDescription } from "@okkey/ui";
 
 import { useLocale } from "../../locale/LocaleContext";
-import { shouldShowMailNotConfiguredHint } from "./mailNotConfiguredHint";
+import { shouldShowMailNotConfiguredHint } from "./shouldShowMailNotConfiguredHint";
 
 export function MailNotConfiguredHint({
   emailDeliverable,

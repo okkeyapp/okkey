@@ -1,8 +1,10 @@
 import { SidebarProvider } from "@okkey/ui";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import SystemUpdateSidebarButton from "./SystemUpdateSidebarButton";
+import { SYSTEM_UPDATE_POPUP_ID } from "../routes/popupQuery";
 
 const fetchMock = vi.fn();
 const FULL_SHA = "6e6ee86fac86b6fb1a6cc05da1f71d7e99d70560";
@@ -82,12 +84,26 @@ function installMemoryStorage(): void {
   Object.defineProperty(window, "localStorage", { configurable: true, value: storage });
 }
 
-function renderButton() {
-  return render(
-    <SidebarProvider>
-      <SystemUpdateSidebarButton />
-    </SidebarProvider>,
+function LocationSearchProbe({ onSearch }: { onSearch: (search: string) => void }) {
+  const location = useLocation();
+  onSearch(location.search);
+  return null;
+}
+
+function renderButton(initialEntry = "/items") {
+  const search = { current: "" };
+  const view = render(
+    <MemoryRouter initialEntries={[initialEntry]}>
+      <LocationSearchProbe onSearch={(value) => {
+        search.current = value;
+      }}
+      />
+      <SidebarProvider>
+        <SystemUpdateSidebarButton />
+      </SidebarProvider>
+    </MemoryRouter>,
   );
+  return { ...view, search };
 }
 
 describe("system update version button", () => {
@@ -145,22 +161,25 @@ describe("system update version button", () => {
 
   it("renders a tagged version like the sidebar menu and opens the system update popup", async () => {
     const interval = vi.spyOn(window, "setInterval");
-    renderButton();
+    const { search } = renderButton();
 
     const button = await screen.findByTestId("system-update-version");
     expect(button).toHaveTextContent("v1.0.0-beta.3");
     expect(button).not.toHaveTextContent(FULL_SHA);
-    expect(button.querySelector("svg path")).toHaveAttribute("stroke", "currentColor");
+    expect(button).not.toHaveAttribute("title");
+    expect(screen.getByTestId("system-update-available-icon")).toHaveClass("text-orange-500");
+    expect(screen.queryByTestId("system-update-current-icon")).not.toBeInTheDocument();
     expect(button.className).toContain("rounded-lg");
-    expect(screen.getByTestId("system-update-dot")).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(interval.mock.calls.some((call) => call[1] === 60_000)).toBe(false);
 
     fireEvent.click(button);
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     expect(screen.getByText("Security fixes")).toBeInTheDocument();
+    expect(search.current).toBe(`?popup=${SYSTEM_UPDATE_POPUP_ID}`);
     await waitFor(() => {
-      expect(screen.queryByTestId("system-update-dot")).not.toBeInTheDocument();
+      expect(screen.getByTestId("system-update-current-icon")).toBeInTheDocument();
+      expect(screen.queryByTestId("system-update-available-icon")).not.toBeInTheDocument();
     });
     expect(window.localStorage.getItem("okkey.systemUpdate.seen")).toContain("1.1.0");
     expect(window.localStorage.getItem("okkey.systemUpdate.seen")).toContain("2.0.0");
@@ -170,32 +189,40 @@ describe("system update version button", () => {
     interval.mockRestore();
   });
 
-  it("keeps the dot hidden for the same version and shows it again for a newer one", async () => {
+  it("opens from ?popup=systemUpdate deep link", async () => {
+    renderButton(`/items?popup=${SYSTEM_UPDATE_POPUP_ID}`);
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+  });
+
+  it("keeps the update icon hidden for the same version and shows it again for a newer one", async () => {
     const first = renderButton();
     fireEvent.click(await screen.findByTestId("system-update-version"));
     await waitFor(() => {
-      expect(screen.queryByTestId("system-update-dot")).not.toBeInTheDocument();
+      expect(screen.getByTestId("system-update-current-icon")).toBeInTheDocument();
+      expect(screen.queryByTestId("system-update-available-icon")).not.toBeInTheDocument();
     });
     first.unmount();
 
     const second = renderButton();
     expect(await screen.findByTestId("system-update-version")).toHaveAttribute("data-update", "current");
-    expect(screen.queryByTestId("system-update-dot")).not.toBeInTheDocument();
+    expect(screen.getByTestId("system-update-current-icon")).toBeInTheDocument();
+    expect(screen.queryByTestId("system-update-available-icon")).not.toBeInTheDocument();
     second.unmount();
 
     status.updates[0].toVersion = "1.2.0";
     renderButton();
-    expect(await screen.findByTestId("system-update-dot")).toBeInTheDocument();
+    expect(await screen.findByTestId("system-update-available-icon")).toHaveClass("text-orange-500");
   });
 
-  it("shows a short SHA on a dev build and the full SHA as a tooltip", async () => {
+  it("keeps the short SHA out of the sidebar button on a dev build", async () => {
     status.releaseTag = null;
     status.commitSha = FULL_SHA;
     renderButton();
     const button = await screen.findByTestId("system-update-version");
-    expect(button).toHaveTextContent("v1.0.0-beta.3 6e6ee86");
+    expect(button).toHaveTextContent("v1.0.0-beta.3");
+    expect(button).not.toHaveTextContent("6e6ee86");
     expect(button).toHaveAttribute("data-commit-sha", FULL_SHA);
-    expect(button).toHaveAttribute("title", FULL_SHA);
+    expect(button).not.toHaveAttribute("title");
   });
 
   it("stays hidden in SaaS mode", () => {

@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -44,6 +45,8 @@ export interface ApiConfig {
   releaseTag: string;
   /** Installed enterprise module version, when the sibling reports one. */
   enterpriseVersion: string;
+  /** Full git commit for the enterprise sibling (`OKKEY_ENTERPRISE_GIT_SHA`). */
+  enterpriseGitSha: string;
   /**
    * Core (okkey) update feed URL.
    * `OKKEY_UPDATE_CORE_FEED_URL` overrides the GitHub Releases default.
@@ -347,6 +350,30 @@ function resolveEnterpriseModulesPath(explicitPath: string | undefined): string 
   return path.resolve(servicesApiDir, "../../../../okkey-enterprise");
 }
 
+/**
+ * Prefer an explicit env SHA. In local development, fall back to `git rev-parse HEAD`
+ * in the given repo so the system-update UI can show a short commit without a pin.
+ */
+function resolveGitSha(fromEnv: string | undefined, nodeEnv: NodeEnv, repoRoot: string): string {
+  const trimmed = (fromEnv ?? "").trim();
+  if (trimmed) {
+    return trimmed;
+  }
+  if (nodeEnv !== "development") {
+    return "";
+  }
+  try {
+    return execFileSync("git", ["rev-parse", "HEAD"], {
+      cwd: repoRoot,
+      encoding: "utf8",
+      timeout: 2_000,
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+  } catch {
+    return "";
+  }
+}
+
 /** Fail-closed: sibling (or explicit) path must expose the API plugin entry. */
 export function isEnterpriseBackendLoadable(enterpriseModulesPath: string): boolean {
   return existsSync(path.join(enterpriseModulesPath, "backend/api-plugin/index.ts"));
@@ -454,9 +481,15 @@ export function loadConfig(): ApiConfig {
     deploymentMode,
     systemVersion:
       (process.env.OKKEY_VERSION ?? process.env.OKKEY_IMAGE_TAG ?? "").trim() || "unknown",
-    gitSha: (process.env.OKKEY_GIT_SHA ?? "").trim(),
+    gitSha: resolveGitSha(process.env.OKKEY_GIT_SHA, nodeEnv, path.resolve(serviceRoot, "..")),
     releaseTag: (process.env.OKKEY_RELEASE_TAG ?? "").trim(),
     enterpriseVersion: (process.env.OKKEY_ENTERPRISE_VERSION ?? "").trim(),
+    enterpriseGitSha: resolveGitSha(
+      process.env.OKKEY_ENTERPRISE_GIT_SHA,
+      nodeEnv,
+      // Sibling checkout next to Core: repositories/okkey-enterprise
+      path.resolve(serviceRoot, "../../../okkey-enterprise"),
+    ),
     updateCoreFeedUrl: resolveCoreUpdateFeedUrl(
       process.env.OKKEY_UPDATE_CORE_FEED_URL,
       process.env.OKKEY_UPDATE_FEED_URL,

@@ -39,6 +39,7 @@ function status(overrides: Partial<SystemUpdateStatus> = {}): SystemUpdateStatus
     releaseTag: "v1.0.0",
     enterpriseInstalled: true,
     enterpriseVersion: "1.0.0",
+    enterpriseCommitSha: null,
     feedConfigured: true,
     isolated: false,
     canApply: true,
@@ -140,6 +141,54 @@ describe("system update popup", () => {
     expect(screen.getByTestId("system-update-notes-enterprise")).toHaveAttribute(
       "href",
       "http://updates.example/enterprise",
+    );
+    expect(screen.getByRole("heading", { name: "Offline package" })).toBeInTheDocument();
+  });
+
+  it("shows a muted notice when online updates are disabled by settings", () => {
+    renderModal(status({ isolated: true, updates: [] }));
+    expect(screen.getByTestId("system-update-online-disabled")).toHaveTextContent(
+      "Online updates are disabled in settings. Use an offline package below.",
+    );
+    expect(screen.queryByTestId("system-update-row-okkey")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("system-update-apply-all")).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Offline package" })).toBeInTheDocument();
+  });
+
+  it("appends short commit SHAs to Okkey and Enterprise current versions", () => {
+    renderModal(
+      status({
+        updates: [],
+        currentVersion: "1.0.0-betta.3",
+        commitSha: "6e6ee86abcdef0123456789abcdef0123456789",
+        enterpriseCommitSha: "abcdef0123456789abcdef0123456789abcdef01",
+        components: [
+          {
+            component: "okkey",
+            installedVersion: "1.0.0-betta.3",
+            update: null,
+            checkError: null,
+            feedConfigured: true,
+            minCoreVersion: null,
+            releaseNotesUrl: null,
+          },
+          {
+            component: "enterprise",
+            installedVersion: "1.0.0-betta.3",
+            update: null,
+            checkError: null,
+            feedConfigured: true,
+            minCoreVersion: null,
+            releaseNotesUrl: null,
+          },
+        ],
+      }),
+    );
+    expect(screen.getByTestId("system-update-row-okkey")).toHaveTextContent(
+      "Current version 1.0.0-betta.3 (6e6ee86)",
+    );
+    expect(screen.getByTestId("system-update-row-enterprise")).toHaveTextContent(
+      "Current version 1.0.0-betta.3 (abcdef0)",
     );
   });
 
@@ -370,15 +419,10 @@ describe("system update popup", () => {
     expect(applied[0]).toMatchObject({ source: "feed", component: "enterprise" });
   });
 
-  it("shows component and version for each offline file before Update", async () => {
+  it("lists a pending combined archive without auto-applying", async () => {
     renderModal(status({ updates: [], currentVersion: "1.0.0" }));
     const input = document.getElementById("system-update-file") as HTMLInputElement;
     const files = [
-      new File(
-        [JSON.stringify({ payload: { component: "enterprise", version: "3.1.0", minCoreVersion: "1.2.0" }, signature: "sig" })],
-        "enterprise.okpkg",
-        { type: "application/json" },
-      ),
       new File(
         [JSON.stringify({ payload: { component: "okkey", version: "1.2.0" }, signature: "sig" })],
         "okkey.okpkg",
@@ -391,26 +435,14 @@ describe("system update popup", () => {
 
     const list = await screen.findByTestId("system-update-offline-list");
     await waitFor(() => {
-      expect(list).toHaveTextContent("Enterprise 3.1.0");
       expect(list).toHaveTextContent("Okkey 1.2.0");
       expect(list).toHaveTextContent("Combined archive both.okbundle");
     });
     expect(screen.getByTestId("system-update-archive-pending")).toBeInTheDocument();
     expect(applied).toHaveLength(0);
-
-    fireEvent.click(screen.getByTestId("system-update-apply-all"));
-    await waitFor(() => {
-      expect(applied).toHaveLength(2);
-    });
-    expect(
-      applied.map((body) => (body as { document: { payload: { component: string; version: string } } }).document.payload),
-    ).toEqual([
-      { component: "okkey", version: "1.2.0" },
-      { component: "enterprise", version: "3.1.0", minCoreVersion: "1.2.0" },
-    ]);
   });
 
-  it("sends a JSON combined archive when the API can read it", async () => {
+  it("auto-applies a JSON combined archive after a successful check", async () => {
     const archive = {
       format: "okkey-offline-bundle",
       packages: [{ payload: { component: "okkey", version: "1.2.0" }, signature: "sig" }],
@@ -422,19 +454,20 @@ describe("system update popup", () => {
     fireEvent.change(input);
     expect(await screen.findByTestId("system-update-offline-list")).toHaveTextContent("Combined archive both.okbundle");
     expect(screen.queryByTestId("system-update-archive-pending")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByTestId("system-update-apply-all"));
     await waitFor(() => {
       expect(applied).toHaveLength(1);
     });
     expect(applied[0]).toMatchObject({ source: "file", document: archive });
   });
 
-  it("uses the import file field, keeps several packages, and clears one", async () => {
+  it("auto-applies valid offline packages after upload", async () => {
     renderModal(status({ updates: [], currentVersion: "1.0.0" }));
-    const zone = screen.getByRole("button", { name: /Upload file/i });
-    expect(zone.className).toContain("hover:border-accent");
-    expect(zone.className).toContain("focus-visible:border-accent");
-    expect(screen.getByText(/okpkg, json, okbundle, zip/)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Online update" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Offline package" })).toBeInTheDocument();
+    expect(screen.getByTestId("system-update-section-divider")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Upload offline package/i })).toBeInTheDocument();
+    expect(screen.queryByTestId("system-update-apply-all")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Ignore" })).not.toBeInTheDocument();
 
     const input = document.getElementById("system-update-file") as HTMLInputElement;
     expect(input.multiple).toBe(true);
@@ -458,13 +491,61 @@ describe("system update popup", () => {
       expect(list).toHaveTextContent("Okkey 1.4.0");
       expect(list).toHaveTextContent("Enterprise 3.4.0");
     });
-    expect(screen.getAllByRole("button", { name: "Remove file" })).toHaveLength(2);
-
-    fireEvent.click(screen.getAllByRole("button", { name: "Remove file" })[0]!);
     await waitFor(() => {
-      expect(screen.getByTestId("system-update-offline-list")).not.toHaveTextContent("Okkey 1.4.0");
+      expect(applied).toHaveLength(2);
     });
-    expect(screen.getByTestId("system-update-offline-list")).toHaveTextContent("Enterprise 3.4.0");
-    expect(screen.getAllByRole("button", { name: "Remove file" })).toHaveLength(1);
+    expect(
+      applied.map((body) => (body as { document: { payload: { component: string; version: string } } }).document.payload),
+    ).toEqual([
+      { component: "okkey", version: "1.4.0" },
+      { component: "enterprise", version: "3.4.0" },
+    ]);
+  });
+
+  it("shows an offline error for a custom JSON that is not a signed package", async () => {
+    renderModal(status({ updates: [], currentVersion: "1.0.0" }));
+    const input = document.getElementById("system-update-file") as HTMLInputElement;
+    const file = new File([JSON.stringify({ hello: "world" })], "custom.json", {
+      type: "application/json",
+    });
+    // Mimic a live FileList that empties when the input value is cleared.
+    const liveFiles = {
+      0: file,
+      length: 1,
+      item: (index: number) => (index === 0 ? file : null),
+      *[Symbol.iterator]() {
+        if (this.length > 0) {
+          yield file;
+        }
+      },
+    };
+    Object.defineProperty(input, "files", {
+      configurable: true,
+      get() {
+        return liveFiles;
+      },
+    });
+    const clearValue = () => {
+      liveFiles.length = 0;
+      delete (liveFiles as { 0?: File })[0];
+    };
+    Object.defineProperty(input, "value", {
+      configurable: true,
+      get() {
+        return liveFiles.length > 0 ? "C:\\fakepath\\custom.json" : "";
+      },
+      set(next: string) {
+        if (next === "") {
+          clearValue();
+        }
+      },
+    });
+    fireEvent.change(input);
+
+    expect(await screen.findByTestId("system-update-offline-list")).toHaveTextContent("custom.json");
+    expect(await screen.findByTestId("system-update-offline-error")).toHaveTextContent(
+      "The file is not an Okkey offline package",
+    );
+    expect(applied).toHaveLength(0);
   });
 });

@@ -1,7 +1,7 @@
 import { cn } from "@okkey/ui";
 import type { SVGProps } from "react";
 
-/** Download-from-cloud mark for the self-host version button. */
+/** Download-from-cloud mark when a system update is available. */
 export function SystemUpdateIcon({ className, ...props }: SVGProps<SVGSVGElement>) {
   return (
     <svg
@@ -30,6 +30,29 @@ export function SystemUpdateIcon({ className, ...props }: SVGProps<SVGSVGElement
         d="M6 12.6667L8 14.6667L10 12.6667"
         stroke="currentColor"
         strokeWidth="1"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+/** Check-in-circle mark when the install is up to date. */
+export function SystemUpdateCurrentIcon({ className, ...props }: SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 16 16"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden
+      className={cn("size-4 shrink-0", className)}
+      {...props}
+    >
+      <path
+        d="M6.00016 8.00016L7.3335 9.3335L10.0002 6.66683M14.6668 8.00016C14.6668 11.6821 11.6821 14.6668 8.00016 14.6668C4.31826 14.6668 1.3335 11.6821 1.3335 8.00016C1.3335 4.31826 4.31826 1.3335 8.00016 1.3335C11.6821 1.3335 14.6668 4.31826 14.6668 8.00016Z"
+        stroke="currentColor"
         strokeLinecap="round"
         strokeLinejoin="round"
       />

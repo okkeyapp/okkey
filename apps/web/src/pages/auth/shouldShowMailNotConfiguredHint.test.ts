@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { shouldShowMailNotConfiguredHint } from "./mailNotConfiguredHint";
+import { shouldShowMailNotConfiguredHint } from "./shouldShowMailNotConfiguredHint";
 
 describe("shouldShowMailNotConfiguredHint", () => {
   it("shows the hint only when mail is not deliverable", () => {

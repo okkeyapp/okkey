@@ -23,14 +23,14 @@ describe("sidebar version label", () => {
     });
   });
 
-  it("shows a dev build as the version plus a 7-character SHA", () => {
+  it("keeps a short SHA out of the sidebar label on a dev build", () => {
     expect(
       formatSidebarVersionLabel({
         version: "1.0.0-beta.3",
         commitSha: FULL_SHA,
       }),
     ).toEqual({
-      label: "v1.0.0-beta.3 6e6ee86",
+      label: "v1.0.0-beta.3",
       tooltip: FULL_SHA,
     });
     expect(
@@ -39,11 +39,11 @@ describe("sidebar version label", () => {
         commitSha: FULL_SHA.toUpperCase(),
       }),
     ).toEqual({
-      label: "v0.0.0-dev 6e6ee86",
+      label: "v0.0.0-dev",
       tooltip: FULL_SHA,
     });
     expect(formatSidebarVersionLabel({ version: FULL_SHA })).toEqual({
-      label: "v0.0.0-dev 6e6ee86",
+      label: "v0.0.0-dev",
       tooltip: FULL_SHA,
     });
     expect(
@@ -51,7 +51,7 @@ describe("sidebar version label", () => {
         version: `1.0.0-beta.3-${FULL_SHA}`,
       }),
     ).toEqual({
-      label: "v1.0.0-beta.3 6e6ee86",
+      label: "v1.0.0-beta.3",
       tooltip: FULL_SHA,
     });
   });

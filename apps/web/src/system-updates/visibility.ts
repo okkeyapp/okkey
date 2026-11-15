@@ -37,6 +37,8 @@ export type SystemUpdateStatus = {
   releaseTag: string | null;
   enterpriseInstalled: boolean;
   enterpriseVersion: string | null;
+  /** Full git commit for the installed enterprise sibling. Null when unknown. */
+  enterpriseCommitSha?: string | null;
   feedConfigured: boolean;
   isolated: boolean;
   canApply: boolean;

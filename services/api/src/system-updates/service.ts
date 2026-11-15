@@ -44,6 +44,8 @@ export type SystemUpdateStatus = {
   releaseTag: string | null;
   enterpriseInstalled: boolean;
   enterpriseVersion: string | null;
+  /** Full git commit for the installed enterprise sibling. Null when unknown. */
+  enterpriseCommitSha: string | null;
   feedConfigured: boolean;
   isolated: boolean;
   canApply: boolean;
@@ -102,6 +104,8 @@ export type SystemUpdateServiceOptions = {
   releaseTag?: string;
   enterpriseInstalled: boolean;
   enterpriseVersion: string;
+  /** Full git commit for enterprise (`OKKEY_ENTERPRISE_GIT_SHA`). */
+  enterpriseCommitSha?: string;
   /** Core (okkey) feed. Resolved from config, including the GitHub Releases default. */
   coreFeedUrl: string;
   /** Separate enterprise feed. Empty keeps enterprise packages on the core feed. */
@@ -167,6 +171,7 @@ export function createSystemUpdateService(options: SystemUpdateServiceOptions) {
         releaseTag: emptyToNull(options.releaseTag),
         enterpriseInstalled: options.enterpriseInstalled,
         enterpriseVersion: installed.enterprise,
+        enterpriseCommitSha: emptyToNull(options.enterpriseCommitSha),
         feedConfigured: configuredFeedUrls(options).some((url) => url.trim() !== ""),
         isolated: options.isolated,
         canApply,
