@@ -368,13 +368,20 @@ export class RuntimeEmailSender implements EmailSender {
     message: EmailMessage,
   ) => Promise<void>;
 
+  private readonly logger?: Logger;
+  /** Self-host: log the one-time code when database SMTP is not active. */
+  private readonly logInactiveAuthCode: boolean;
+
   constructor(
     base: EmailSender,
     runtime: MailDeliveryRuntime,
     sendViaSmtp?: (snapshot: MailDeliverySnapshot, message: EmailMessage) => Promise<void>,
+    options?: { logger?: Logger; logInactiveAuthCode?: boolean },
   ) {
     this.base = base;
     this.runtime = runtime;
+    this.logger = options?.logger;
+    this.logInactiveAuthCode = options?.logInactiveAuthCode === true;
     this.sendViaSmtp =
       sendViaSmtp ??
       (async (snapshot, message) => {
@@ -387,11 +394,16 @@ export class RuntimeEmailSender implements EmailSender {
     const snapshot = await this.runtime.effective();
     const from = snapshot.emailFrom.trim() || message.from;
     const next = from === message.from ? message : { ...message, from };
+    // SMTP only after a successful test send. Until then, self-host logs the
+    // code on this worker and does not open an SMTP connection.
     if (snapshot.useSmtpTransport) {
-      await this.sendViaSmtp(snapshot, next);
+      await this.sendViaSmtp(snapshot, stripAuthCodeLog(next));
       return;
     }
-    await this.base.send(next);
+    if (this.logInactiveAuthCode && this.logger) {
+      logUndeliverableAuthCode(this.logger, next);
+    }
+    await this.base.send(stripAuthCodeLog(next));
   }
 }
 
@@ -620,17 +632,25 @@ export async function createTransportEmailSender(
   assertEmailTransportConfig(config);
   // With interactive mail settings, outbound SMTP is gated by a successful test.
   // Do not fall back to process-env SMTP/SES when DB SMTP is inactive — only log.
-  const transport = mailRuntime
-    ? new RuntimeEmailSender(
-        new LoggerEmailSender(logger, {
-          includePlainTextBody: shouldLogPlainTextForLoggerProvider({
-            ...config,
-            emailProvider: "logger",
-          }),
+  if (mailRuntime) {
+    // Log inside the runtime sender so the code is still present. The static
+    // wrapper strips it first and would also log after SMTP is verified.
+    return new RuntimeEmailSender(
+      new LoggerEmailSender(logger, {
+        includePlainTextBody: shouldLogPlainTextForLoggerProvider({
+          ...config,
+          emailProvider: "logger",
         }),
-        mailRuntime,
-      )
-    : await createStaticTransportEmailSender(config, logger);
+      }),
+      mailRuntime,
+      undefined,
+      {
+        logger,
+        logInactiveAuthCode: config.deploymentMode === "self_hosted",
+      },
+    );
+  }
+  const transport = await createStaticTransportEmailSender(config, logger);
   return new UndeliverableAuthCodeLogSender(
     transport,
     logger,
