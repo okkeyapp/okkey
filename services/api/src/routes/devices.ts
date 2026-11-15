@@ -279,6 +279,33 @@ function toWireDevice(item: DeviceListItem) {
   };
 }
 
+/**
+ * Display-only trusted rows for a pending/blocked session: enough for the
+ * "confirm from device" UI, without fingerprints, network, or share keys.
+ */
+function toApproverWireDevice(item: DeviceListItem) {
+  return {
+    device_id: item.deviceId,
+    device_name: item.deviceName,
+    device_fingerprint: "",
+    status: item.status,
+    platform: item.platform,
+    os_name: item.osName,
+    os_version: item.osVersion,
+    app_version: item.appVersion,
+    client_type: item.clientType,
+    ip_address: "",
+    country: null,
+    city: null,
+    created_at: item.createdAt,
+    last_seen_at: item.lastSeenAt,
+    approved_at: item.approvedAt,
+    is_current: false,
+    approval_expires_at: item.approvalExpiresAt,
+    blocked_until: item.blockedUntil ?? null,
+  };
+}
+
 export function createRegisterDeviceRoute(
   deviceService: DeviceService,
   resolveUserId: (req: IncomingMessage) => Promise<string | null>,
@@ -810,8 +837,15 @@ export function createListDevicesRoute(
         }
         return rows;
       };
+      // A pending session may list redacted trusted approvers for the wait UI,
+      // but still only sees its own pending/blocked row (no other fingerprints).
+      const pendingApproverView =
+        ownDeviceOnly &&
+        result.pending.some((row) => sameDeviceId(row.deviceId, sessionDeviceId));
       json(ctx.res, 200, {
-        devices: visible(result.devices).map(toWireDevice),
+        devices: pendingApproverView
+          ? result.devices.map(toApproverWireDevice)
+          : visible(result.devices).map(toWireDevice),
         pending: visible(result.pending).map(toWireDevice),
         blocked: visible(result.blocked ?? []).map(toWireDevice),
       });

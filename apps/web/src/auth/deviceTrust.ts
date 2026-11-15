@@ -367,8 +367,8 @@ export async function resolveDeviceTrust(
           };
         }
       }
-      // Empty `devices` is not "no approvers": a session that is not trusted
-      // only receives its own row, so the waiting device must stay pending.
+      // Pending sessions receive redacted trusted rows for the wait UI; an empty
+      // list means there are genuinely no trusted approvers yet.
       return {
         status: "pending",
         deviceId: pendingMatch.device_id,

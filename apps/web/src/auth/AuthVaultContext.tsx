@@ -626,11 +626,10 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
     }
   }, [accessToken, userId]);
 
-  // `/account/profile` requires a trusted device. Fetching right after OTP often
-  // 401s while the device is still pending; retry once trust flips to trusted so
-  // first/last name are not stuck as email-only from the login bridge.
+  // GET /account/profile is allowed for pending sessions (names/email for the
+  // device-pending bar). PATCH and vault still require a trusted device.
   useEffect(() => {
-    if (!accessToken || !userId || deviceTrustStatus !== "trusted") {
+    if (!accessToken || !userId) {
       return;
     }
     let cancelled = false;

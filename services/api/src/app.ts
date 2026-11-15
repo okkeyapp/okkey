@@ -699,10 +699,12 @@ export function createApiApp(
     );
   }
   if (deps.sessionService !== undefined && deps.usersRepository) {
+    // Display name/email on device-pending: allow a full (possibly untrusted) session.
+    // Profile writes still require a trusted device.
     app.route(
       "GET",
       "/account/profile",
-      createAccountProfileRoute(deps.usersRepository, resolveUserId),
+      createAccountProfileRoute(deps.usersRepository, resolveUserIdAllowUnboundDevice),
     );
     app.route(
       "PATCH",

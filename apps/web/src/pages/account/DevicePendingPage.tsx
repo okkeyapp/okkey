@@ -161,7 +161,6 @@ export default function DevicePendingPage() {
       title={title}
       description={description}
       logo={<OkkeyLogoMark className="h-[60px] w-[61px]" />}
-      contentClassName="max-w-lg"
     >
       <div className="flex w-full flex-col gap-6">
         <AccountUserBar />

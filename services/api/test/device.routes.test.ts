@@ -911,7 +911,11 @@ test("GET /devices for a non-trusted bound session returns only that device", as
   }
 
   const pending = await listAs("d-pending");
-  assert.deepEqual(pending.devices, []);
+  assert.deepEqual(
+    pending.devices.map((device) => device.device_id),
+    ["d-trusted"],
+  );
+  assert.equal(pending.devices[0]?.device_fingerprint, "");
   assert.deepEqual(
     pending.pending.map((device) => device.device_id),
     ["d-pending"],
