@@ -272,12 +272,23 @@ test("pending session proves with a device-bound challenge and does not receive 
     "/account/recovery/key/wrap",
     "/account/recovery/identity-encrypted-key",
     "/workspaces",
-    "/account/profile",
     "/vaults/1000000000000000002/key",
   ]) {
     const blocked = await call(app, "GET", url);
     assert.equal(blocked.statusCode, 401, url);
+    assert.equal(blocked.raw.includes(WRAP.payload), false, url);
+    assert.equal(blocked.raw.includes(IDENTITY.payload), false, url);
   }
+
+  const profileEarly = await call(app, "GET", "/account/profile");
+  assert.equal(profileEarly.statusCode, 200);
+  assert.equal(profileEarly.json.email, "a@b.c");
+  assert.equal(profileEarly.raw.includes(WRAP.payload), false);
+  assert.equal(profileEarly.raw.includes(IDENTITY.payload), false);
+  assert.equal(
+    (await call(app, "PATCH", "/account/profile", { first_name: "Nope" })).statusCode,
+    401,
+  );
 
   const claimEarly = await call(app, "POST", "/devices/register", {
     device_public_key: Buffer.alloc(32, 3).toString("base64"),
@@ -357,8 +368,18 @@ test("pending session proves with a device-bound challenge and does not receive 
     ).statusCode,
     200,
   );
-  assert.equal((await call(app, "GET", "/account/profile")).statusCode, 401);
-  assert.equal((await call(app, "GET", "/vaults/1000000000000000002/key")).statusCode, 401);
+  const profileAfterProof = await call(app, "GET", "/account/profile");
+  assert.equal(profileAfterProof.statusCode, 200);
+  assert.equal(profileAfterProof.json.email, "a@b.c");
+  assert.equal(profileAfterProof.raw.includes(WRAP.payload), false);
+  assert.equal(profileAfterProof.raw.includes(IDENTITY.payload), false);
+  assert.equal(
+    (await call(app, "PATCH", "/account/profile", { first_name: "Nope" })).statusCode,
+    401,
+  );
+  const vaultKey = await call(app, "GET", "/vaults/1000000000000000002/key");
+  assert.equal(vaultKey.statusCode, 401);
+  assert.equal(vaultKey.raw.includes(WRAP.payload), false);
 
   const claim = await call(app, "POST", "/devices/register", {
     device_public_key: Buffer.alloc(32, 3).toString("base64"),

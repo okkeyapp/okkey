@@ -306,11 +306,20 @@ test("plugin recovery helpers prove only the caller session and open restore rou
       accountRecoveryService,
       usersRepository: {
         updateMasterPasswordShares: async () => "2026-06-01T00:10:00.000Z",
-        loadAccountProfile: async () => {
-          throw new Error("trusted resolver must not reach the profile");
+        loadAccountProfile: async () => ({
+          email: "a@b.c",
+          firstName: "A",
+          lastName: "B",
+          locale: "en",
+          billingRegion: null,
+          vaultIdleLockSeconds: 900,
+          masterPasswordChangedAt: "2026-01-01T00:00:00.000Z",
+        }),
+        updateAccountProfile: async () => {
+          throw new Error("profile patch must stay behind a trusted device");
         },
         findById: async () => {
-          throw new Error("trusted resolver must not reach the profile");
+          throw new Error("recovery routes must not load the user record");
         },
       } as never,
     },
@@ -384,6 +393,15 @@ test("plugin recovery helpers prove only the caller session and open restore rou
   assert.equal(rows[0]?.recoveryProvedAt, null);
   assert.equal(rows[0]?.recoveryChallenge, "nonce-a");
 
+  const profileBeforeProof = await call("GET", "/account/profile", tokenA);
+  assert.equal(profileBeforeProof.statusCode, 200);
+  assert.equal(profileBeforeProof.json.email, "a@b.c");
+  assert.equal(
+    (await call("PATCH", "/account/profile", tokenA, { first_name: "Nope" })).statusCode,
+    401,
+  );
+  assert.equal((await call("GET", "/account/profile", tokenR)).statusCode, 401);
+
   const blockedPassword = await call("POST", "/account/master-password/change", tokenA, passwordBody);
   assert.equal(blockedPassword.statusCode, 401);
   assert.equal(blockedPassword.json.error, "AUTH_REQUIRED");
@@ -421,7 +439,13 @@ test("plugin recovery helpers prove only the caller session and open restore rou
   assert.equal(otherClaim.statusCode, 403);
   assert.equal(otherClaim.json.error, "RECOVERY_PROOF_REQUIRED");
   assert.equal(claims, 1);
-  assert.equal((await call("GET", "/account/profile", tokenA)).statusCode, 401);
+  const profileAfterProof = await call("GET", "/account/profile", tokenA);
+  assert.equal(profileAfterProof.statusCode, 200);
+  assert.equal(profileAfterProof.json.email, "a@b.c");
+  assert.equal(
+    (await call("PATCH", "/account/profile", tokenA, { first_name: "Nope" })).statusCode,
+    401,
+  );
 
   const unbound = await pluginCtx.markSessionRecoveryProved(bearer(tokenD), {
     method: "trusted_contacts",

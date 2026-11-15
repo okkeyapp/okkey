@@ -58,6 +58,7 @@ test("integration: register → email login (Bearer) → vault + sync → second
     users: storage.repositories.users,
     emailTemplates,
     config,
+    resolveEmailDeliverable: async () => true,
     generateCode: () => "123456",
   });
 
@@ -108,6 +109,7 @@ test("integration: register → email login (Bearer) → vault + sync → second
     email,
     requestIp: "127.0.0.1",
   });
+  assert.equal(loginStart.emailDeliverable, true);
   assert.ok(sent.length >= 1);
   assert.ok(sent[0].subject.length > 0);
 
