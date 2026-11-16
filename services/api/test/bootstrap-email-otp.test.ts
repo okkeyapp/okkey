@@ -84,7 +84,7 @@ test("email OTP is skipped only while the self-hosted directory is empty", async
   assert.ok(second.challengeId);
   assert.deepEqual(sent, ["second@example.com"]);
 
-  const undeliverableSent: string[] = [];
+  const undeliverableSent: Array<{ to: string; code: string }> = [];
   const undeliverable = new AuthService({
     redis: new InMemoryRedis(),
     users: {
@@ -94,7 +94,7 @@ test("email OTP is skipped only while the self-hosted directory is empty", async
     },
     emailTemplates: {
       sendAuthEmailCode: async (input) => {
-        undeliverableSent.push(input.to);
+        undeliverableSent.push({ to: input.to, code: input.variables.code });
       },
     },
     config: createTestApiConfig(),
@@ -110,7 +110,8 @@ test("email OTP is skipped only while the self-hosted directory is empty", async
   assert.equal(skipped.bootstrapRequired, undefined);
   assert.equal(skipped.emailDeliverable, false);
   assert.ok(skipped.challengeId);
-  assert.deepEqual(undeliverableSent, []);
+  // Inactive mail hands the code to the worker log path. emailDeliverable stays false, so SMTP is not used.
+  assert.deepEqual(undeliverableSent, [{ to: "second@example.com", code: "111111" }]);
 });
 
 test("saas empty catalog always sends email OTP", async () => {
