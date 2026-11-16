@@ -284,22 +284,12 @@ export class AuthService {
     );
 
     const deliverable = await this.emailDeliverable();
-    if (deliverable) {
-      const account = await this.users.findByEmail(email);
-      await this.emailTemplates.sendAuthEmailCode({
-        to: email,
-        localeHints: {
-          userLocale: account?.locale ?? null,
-          explicitLocale: input.locale,
-          acceptLanguage: input.acceptLanguage,
-        },
-        variables: {
-          code,
-          ttlSeconds: this.config.authCodeTtlSeconds,
-          purpose: account ? "sign_in" : "registration",
-        },
-      });
-    }
+    await this.dispatchAuthEmailCode({
+      email,
+      code,
+      locale: input.locale,
+      acceptLanguage: input.acceptLanguage,
+    });
 
     return {
       challengeId,
@@ -355,22 +345,12 @@ export class AuthService {
     );
 
     const deliverable = await this.emailDeliverable();
-    if (deliverable) {
-      const account = await this.users.findByEmail(updated.email);
-      await this.emailTemplates.sendAuthEmailCode({
-        to: updated.email,
-        localeHints: {
-          userLocale: account?.locale ?? null,
-          explicitLocale: input.locale,
-          acceptLanguage: input.acceptLanguage,
-        },
-        variables: {
-          code,
-          ttlSeconds: this.config.authCodeTtlSeconds,
-          purpose: account ? "sign_in" : "registration",
-        },
-      });
-    }
+    await this.dispatchAuthEmailCode({
+      email: updated.email,
+      code,
+      locale: input.locale,
+      acceptLanguage: input.acceptLanguage,
+    });
 
     return {
       challengeId: updated.id,
@@ -378,6 +358,33 @@ export class AuthService {
       resendAvailableAt: updated.resendAvailableAt,
       emailDeliverable: deliverable,
     };
+  }
+
+  /**
+   * Hand the code to the mail pipeline.
+   * When outbound SMTP is inactive the worker logs it and does not send.
+   * SaaS always reports mail as deliverable, so this stays a normal send.
+   */
+  private async dispatchAuthEmailCode(input: {
+    email: string;
+    code: string;
+    locale?: string;
+    acceptLanguage?: string;
+  }): Promise<void> {
+    const account = await this.users.findByEmail(input.email);
+    await this.emailTemplates.sendAuthEmailCode({
+      to: input.email,
+      localeHints: {
+        userLocale: account?.locale ?? null,
+        explicitLocale: input.locale,
+        acceptLanguage: input.acceptLanguage,
+      },
+      variables: {
+        code: input.code,
+        ttlSeconds: this.config.authCodeTtlSeconds,
+        purpose: account ? "sign_in" : "registration",
+      },
+    });
   }
 
   /**

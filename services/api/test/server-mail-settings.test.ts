@@ -6,7 +6,11 @@ import { deriveAes256KeyFromSessionSecret, deriveSmtpPasswordKey, openSecret, se
 import { wipeSecretBytes } from "../src/crypto/secret-lifecycle.ts";
 import { RuntimeEmailSender, type EmailMessage } from "../src/email/service.ts";
 import { registerServerMailSettingsRoutes } from "../src/mail-settings/routes.ts";
-import { MailSettingsError, MailSettingsService } from "../src/mail-settings/service.ts";
+import {
+  MailSettingsError,
+  MailSettingsService,
+  SMTP_LEGACY_PROBE_TIMEOUT_MS,
+} from "../src/mail-settings/service.ts";
 import type { MailDeliverySnapshot, ServerMailSettingsRow, ServerMailSettingsStore } from "../src/mail-settings/types.ts";
 import { createTestApiConfig } from "./test-api-config.ts";
 
@@ -40,6 +44,33 @@ class MemoryMailStore implements ServerMailSettingsStore {
         ? Buffer.from(row.smtpPasswordCiphertext)
         : null,
     };
+  }
+
+  async claimLegacySmtpProbe(probedAt: string): Promise<ServerMailSettingsRow | null> {
+    const row = this.row;
+    if (!row?.smtpHost?.trim() || row.smtpLegacyProbedAt || row.smtpVerifiedAt) {
+      return null;
+    }
+    this.row = { ...row, smtpLegacyProbedAt: probedAt };
+    return this.read();
+  }
+
+  async markLegacySmtpVerified(input: {
+    verifiedAt: string;
+    probedAt: string;
+    smtpHost: string;
+  }): Promise<boolean> {
+    const row = this.row;
+    if (
+      !row ||
+      row.smtpVerifiedAt ||
+      row.smtpLegacyProbedAt !== input.probedAt ||
+      row.smtpHost !== input.smtpHost
+    ) {
+      return false;
+    }
+    this.row = { ...row, smtpVerifiedAt: input.verifiedAt };
+    return true;
   }
 }
 
@@ -92,6 +123,7 @@ function unreadableRow(): ServerMailSettingsRow {
     emailFrom: "db@example.com",
     publicAppUrl: "https://vault.customer.example",
     smtpVerifiedAt: null,
+    smtpLegacyProbedAt: null,
     updatedBy: "tester",
   };
 }
@@ -106,6 +138,8 @@ function createService(
       error: (message: string, extra?: Record<string, unknown>) => void;
     };
     sentSnapshots?: MailDeliverySnapshot[];
+    verifySmtp?: (snapshot: MailDeliverySnapshot) => Promise<void>;
+    legacyProbeTimeoutMs?: number;
   },
 ) {
   const sent: EmailMessage[] = [];
@@ -140,6 +174,8 @@ function createService(
       options?.sentSnapshots?.push(snapshot);
       sent.push(message);
     },
+    verifySmtp: options?.verifySmtp,
+    legacyProbeTimeoutMs: options?.legacyProbeTimeoutMs,
   });
   return { service, store, sent };
 }
@@ -675,4 +711,146 @@ test("saving a new password clears the unreadable state", async () => {
 
   const again = await service.getForOwner(WORKSPACE_ID, OWNER_ID);
   assert.equal(again.passwordUnreadable, false);
+});
+
+function legacySavedRow(): ServerMailSettingsRow {
+  return {
+    smtpHost: "smtp.legacy.example",
+    smtpPort: 587,
+    smtpTlsMode: "starttls",
+    smtpUsername: "legacy-user",
+    smtpPasswordCiphertext: sealWithSessionSecret(mailConfig().sessionSecret, "legacy-secret"),
+    emailFrom: "legacy@example.com",
+    publicAppUrl: "https://legacy.example",
+    smtpVerifiedAt: null,
+    smtpLegacyProbedAt: null,
+    updatedBy: "owner-before-upgrade",
+  };
+}
+
+test("first start verifies saved pre-upgrade SMTP without sending mail", async () => {
+  assert.equal(SMTP_LEGACY_PROBE_TIMEOUT_MS, 10_000);
+  const store = new MemoryMailStore();
+  store.row = legacySavedRow();
+  const logs: string[] = [];
+  let verified = 0;
+  const { service, sent } = createService(store, {
+    logger: {
+      info(message) {
+        logs.push(message);
+      },
+      warn(message) {
+        logs.push(message);
+      },
+      error(message) {
+        logs.push(message);
+      },
+    },
+    verifySmtp: async (snapshot) => {
+      verified += 1;
+      assert.equal(snapshot.smtpHost, "smtp.legacy.example");
+      assert.equal(snapshot.smtpPassword, "legacy-secret");
+    },
+  });
+
+  await service.probeLegacySmtpOnce();
+  assert.equal(verified, 1);
+  assert.equal(sent.length, 0);
+  assert.equal(await service.isOutboundActive(), true);
+  assert.equal(logs.includes("legacy smtp settings verified"), true);
+  assert.equal(JSON.stringify(logs).includes("legacy-secret"), false);
+
+  await service.probeLegacySmtpOnce();
+  assert.equal(verified, 1);
+});
+
+test("failed upgrade SMTP check leaves mail inactive and does not retry", async () => {
+  const store = new MemoryMailStore();
+  store.row = legacySavedRow();
+  const logs: string[] = [];
+  let verified = 0;
+  const { service } = createService(store, {
+    logger: {
+      info(message) {
+        logs.push(message);
+      },
+      warn(message, extra) {
+        logs.push(JSON.stringify({ message, extra }));
+      },
+      error(message, extra) {
+        logs.push(JSON.stringify({ message, extra }));
+      },
+    },
+    verifySmtp: async () => {
+      verified += 1;
+      throw new Error("auth failed for legacy-secret");
+    },
+  });
+
+  await service.probeLegacySmtpOnce();
+  assert.equal(verified, 1);
+  assert.equal(await service.isOutboundActive(), false);
+  assert.equal(logs.some((line) => line.includes("legacy smtp check failed")), true);
+  assert.equal(JSON.stringify(logs).includes("legacy-secret"), false);
+
+  await service.probeLegacySmtpOnce();
+  assert.equal(verified, 1);
+});
+
+test("upgrade SMTP check stops at the timeout and leaves mail inactive", async () => {
+  const store = new MemoryMailStore();
+  store.row = legacySavedRow();
+  const { service } = createService(store, {
+    legacyProbeTimeoutMs: 30,
+    verifySmtp: async () => new Promise(() => undefined),
+  });
+  const started = Date.now();
+  await service.probeLegacySmtpOnce();
+  assert.ok(Date.now() - started < 1_000);
+  assert.equal(await service.isOutboundActive(), false);
+  await service.probeLegacySmtpOnce();
+});
+
+test("env seed and a saved form are not activated by the upgrade check", async () => {
+  let verified = 0;
+  const seeded = createService(undefined, {
+    verifySmtp: async () => {
+      verified += 1;
+    },
+  });
+  await seeded.service.probeLegacySmtpOnce();
+  assert.equal(verified, 0);
+  assert.equal(await seeded.service.isOutboundActive(), false);
+  assert.ok(seeded.store.row?.smtpLegacyProbedAt);
+
+  const store = new MemoryMailStore();
+  store.row = legacySavedRow();
+  const saved = createService(store, {
+    verifySmtp: async () => {
+      verified += 1;
+    },
+  });
+  const updated = await saved.service.updateForOwner(WORKSPACE_ID, OWNER_ID, {
+    smtpHost: "smtp.typed.example",
+  });
+  assert.equal(updated.smtpActive, false);
+  await saved.service.probeLegacySmtpOnce();
+  assert.equal(verified, 0);
+  assert.equal(await saved.service.isOutboundActive(), false);
+});
+
+test("saas does not probe saved SMTP on startup", async () => {
+  const store = new MemoryMailStore();
+  store.row = legacySavedRow();
+  let verified = 0;
+  const { service } = createService(store, {
+    config: mailConfig({ deploymentMode: "saas" }),
+    verifySmtp: async () => {
+      verified += 1;
+    },
+  });
+  await service.probeLegacySmtpOnce();
+  assert.equal(verified, 0);
+  assert.equal(store.row?.smtpVerifiedAt, null);
+  assert.equal(store.row?.smtpLegacyProbedAt, null);
 });

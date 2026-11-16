@@ -676,3 +676,121 @@ test("queued prod self-host mail logs the auth code on the worker transport only
     assert.equal(JSON.stringify(markers[0]).includes("ada@example.com"), false);
   });
 });
+
+test("worker logs the auth code only while database SMTP is inactive", async () => {
+  await withoutPlaintextFlag(async () => {
+    const { RuntimeEmailSender } = await import("../src/email/service.ts");
+    const snapshot = (useSmtpTransport: boolean) => ({
+      smtpHost: "smtp.example.com",
+      smtpPort: 587,
+      smtpTlsMode: "starttls" as const,
+      smtpUsername: "user",
+      smtpPassword: "secret",
+      emailFrom: "from@example.com",
+      publicAppBaseUrl: "https://app.example.com",
+      passwordSet: true,
+      passwordUnreadable: false,
+      useSmtpTransport,
+    });
+    let active = false;
+    const smtpCalls: string[] = [];
+    const worker = captureLogger();
+    const transport = new RuntimeEmailSender(
+      new LoggerEmailSender(worker.logger),
+      {
+        async effective() {
+          return snapshot(active);
+        },
+      },
+      async (_snapshot, message) => {
+        smtpCalls.push(message.text);
+      },
+      { logger: worker.logger, logInactiveAuthCode: true },
+    );
+
+    const inactiveCode = "135790";
+    await templates(transport).sendAuthEmailCode({
+      to: "Ada@Example.com",
+      localeHints: { explicitLocale: "en" },
+      variables: { code: inactiveCode, ttlSeconds: 300, purpose: "sign_in" },
+    });
+    const inactive = worker.entries.filter(
+      (entry) => entry.message === UNDELIVERABLE_AUTH_CODE_LOG_MESSAGE,
+    );
+    assert.equal(inactive.length, 1);
+    assert.equal(inactive[0]?.extra.code, inactiveCode);
+    assert.equal(inactive[0]?.extra.email, "a***@example.com");
+    assert.equal(smtpCalls.length, 0);
+    assert.equal(JSON.stringify(worker.entries).includes("Never share this code"), false);
+
+    active = true;
+    worker.entries.length = 0;
+    const activeCode = "246801";
+    await templates(transport).sendAuthEmailCode({
+      to: "ada@example.com",
+      localeHints: { explicitLocale: "en" },
+      variables: { code: activeCode, ttlSeconds: 300, purpose: "sign_in" },
+    });
+    assert.equal(smtpCalls.length, 1);
+    assert.match(smtpCalls[0] ?? "", new RegExp(activeCode));
+    assert.equal(
+      worker.entries.some((entry) => entry.message === UNDELIVERABLE_AUTH_CODE_LOG_MESSAGE),
+      false,
+    );
+    assert.equal(JSON.stringify(worker.entries).includes(activeCode), false);
+  });
+});
+
+test("self-host worker transport logs inactive database mail; SaaS does not", async () => {
+  await withoutPlaintextFlag(async () => {
+    const inactive = {
+      smtpHost: "smtp.example.com",
+      smtpPort: 587,
+      smtpTlsMode: "starttls" as const,
+      smtpUsername: "",
+      smtpPassword: "",
+      emailFrom: "from@example.com",
+      publicAppBaseUrl: "https://app.example.com",
+      passwordSet: false,
+      passwordUnreadable: false,
+      useSmtpTransport: false,
+    };
+    const selfHost = captureLogger();
+    const selfSender = await createTransportEmailSender(
+      prodConfig({ emailProvider: "smtp", smtpHost: "smtp.env.example" }),
+      selfHost.logger,
+      { effective: async () => inactive },
+    );
+    await templates(selfSender).sendAuthEmailCode({
+      to: "ada@example.com",
+      localeHints: { explicitLocale: "en" },
+      variables: { code: "135790", ttlSeconds: 300, purpose: "registration" },
+    });
+    const markers = selfHost.entries.filter(
+      (entry) => entry.message === UNDELIVERABLE_AUTH_CODE_LOG_MESSAGE,
+    );
+    assert.equal(markers.length, 1);
+    assert.equal(markers[0]?.extra.code, "135790");
+
+    const saas = captureLogger();
+    const saasSender = await createTransportEmailSender(
+      prodConfig({
+        deploymentMode: "saas",
+        emailProvider: "smtp",
+        smtpHost: "smtp.env.example",
+      }),
+      saas.logger,
+      { effective: async () => inactive },
+    );
+    await templates(saasSender).sendAuthEmailCode({
+      to: "ada@example.com",
+      localeHints: { explicitLocale: "en" },
+      variables: { code: "135790", ttlSeconds: 300, purpose: "sign_in" },
+    });
+    assert.equal(
+      saas.entries.some((entry) => entry.message === UNDELIVERABLE_AUTH_CODE_LOG_MESSAGE),
+      false,
+    );
+    assert.equal(JSON.stringify(saas.entries).includes("135790"), false);
+  });
+});

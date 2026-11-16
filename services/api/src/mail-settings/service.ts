@@ -27,6 +27,9 @@ import {
 
 const ENV_SEED_UPDATED_BY = "system:env-seed";
 
+/** Bound for the one-time upgrade check so startup does not wait on a dead host. */
+export const SMTP_LEGACY_PROBE_TIMEOUT_MS = 10_000;
+
 const EMPTY_ROW: ServerMailSettingsRow = {
   smtpHost: null,
   smtpPort: null,
@@ -36,6 +39,7 @@ const EMPTY_ROW: ServerMailSettingsRow = {
   emailFrom: null,
   publicAppUrl: null,
   smtpVerifiedAt: null,
+  smtpLegacyProbedAt: null,
   updatedBy: null,
 };
 
@@ -49,6 +53,10 @@ export class MailSettingsError extends Error {
     this.code = code;
     this.statusCode = statusCode;
   }
+}
+
+function positiveTimeout(value: number | undefined, fallback: number): number {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : fallback;
 }
 
 function smtpTestTimeoutMessage(timeoutMs: number): string {
@@ -98,6 +106,7 @@ export type MailSettingsServiceDeps = {
     | "emailFrom"
     | "publicAppBaseUrl"
     | "emailProvider"
+    | "deploymentMode"
   >;
   users: {
     findById(id: string): Promise<{ email: string } | null>;
@@ -113,7 +122,11 @@ export type MailSettingsServiceDeps = {
   ) => Promise<void>;
   logger?: Pick<Logger, "info" | "warn" | "error">;
   sendSmtp?: (snapshot: MailDeliverySnapshot, message: EmailMessage) => Promise<void>;
+  /** Connect and authenticate. Must not send a message. */
+  verifySmtp?: (snapshot: MailDeliverySnapshot) => Promise<void>;
   smtpTestTimeoutMs?: number;
+  /** Bound for the one-time upgrade SMTP check. Defaults to 10s. */
+  legacyProbeTimeoutMs?: number;
 };
 
 function validationError(code: string): MailSettingsError {
@@ -182,7 +195,9 @@ export class MailSettingsService {
   private readonly assertPermission?: MailSettingsServiceDeps["assertPermission"];
   private readonly logger?: MailSettingsServiceDeps["logger"];
   private readonly sendSmtp?: MailSettingsServiceDeps["sendSmtp"];
+  private readonly verifySmtp?: MailSettingsServiceDeps["verifySmtp"];
   private readonly smtpTestTimeoutMs: number;
+  private readonly legacyProbeTimeoutMs: number;
   private unreadableWarned = false;
   private seedPromise: Promise<ServerMailSettingsRow> | null = null;
 
@@ -194,12 +209,52 @@ export class MailSettingsService {
     this.assertPermission = deps.assertPermission;
     this.logger = deps.logger;
     this.sendSmtp = deps.sendSmtp;
-    this.smtpTestTimeoutMs =
-      typeof deps.smtpTestTimeoutMs === "number" &&
-      Number.isFinite(deps.smtpTestTimeoutMs) &&
-      deps.smtpTestTimeoutMs > 0
-        ? deps.smtpTestTimeoutMs
-        : SMTP_TEST_CONNECTION_TIMEOUT_MS;
+    this.verifySmtp = deps.verifySmtp;
+    this.legacyProbeTimeoutMs = positiveTimeout(
+      deps.legacyProbeTimeoutMs,
+      SMTP_LEGACY_PROBE_TIMEOUT_MS,
+    );
+    this.smtpTestTimeoutMs = positiveTimeout(
+      deps.smtpTestTimeoutMs,
+      SMTP_TEST_CONNECTION_TIMEOUT_MS,
+    );
+  }
+
+  /**
+   * Settings saved before SMTP had to be verified have no `smtp_verified_at`.
+   * On startup, connect and authenticate once. A passing check activates mail.
+   * A failing check leaves mail inactive. Form saves and env seed are not probed.
+   */
+  async probeLegacySmtpOnce(): Promise<void> {
+    if (this.config.deploymentMode !== "self_hosted") {
+      return;
+    }
+    await this.ensureSeeded();
+    const probedAt = new Date().toISOString();
+    const claimed = await this.store.claimLegacySmtpProbe(probedAt);
+    if (!claimed?.smtpHost) {
+      return;
+    }
+    const resolved = this.resolvePassword(claimed);
+    if (resolved.unreadable) {
+      this.logger?.warn("legacy smtp check skipped");
+      return;
+    }
+    const snapshot = this.snapshotFromRow(claimed, resolved, { forceTransport: true });
+    try {
+      await this.verifyLegacyConnection(snapshot);
+    } catch {
+      this.logger?.warn("legacy smtp check failed");
+      return;
+    }
+    const activated = await this.store.markLegacySmtpVerified({
+      verifiedAt: new Date().toISOString(),
+      probedAt,
+      smtpHost: claimed.smtpHost,
+    });
+    if (activated) {
+      this.logger?.info("legacy smtp settings verified");
+    }
   }
 
   async publicAppBaseUrl(): Promise<string> {
@@ -234,6 +289,7 @@ export class MailSettingsService {
     const current = await this.ensureSeeded();
     const next = this.applyPatch(current, patch);
     next.smtpVerifiedAt = null;
+    next.smtpLegacyProbedAt = new Date().toISOString();
     next.updatedBy = userId;
     await this.store.write(next, userId);
     this.logger?.info("server mail settings saved inactive", {
@@ -308,10 +364,39 @@ export class MailSettingsService {
     }
 
     next.smtpVerifiedAt = new Date().toISOString();
+    next.smtpLegacyProbedAt = next.smtpLegacyProbedAt ?? next.smtpVerifiedAt;
     next.updatedBy = userId;
     await this.store.write(next, userId);
     this.logger?.info("server mail settings verified", { workspaceId, userId });
     return toPublicMailSettingsFromRow(next, this.resolvePassword(next));
+  }
+
+  private async verifyLegacyConnection(snapshot: MailDeliverySnapshot): Promise<void> {
+    const timeoutMs = this.legacyProbeTimeoutMs;
+    const timeoutMessage = smtpTestTimeoutMessage(timeoutMs);
+    if (this.verifySmtp) {
+      const pending = this.verifySmtp(snapshot);
+      try {
+        await raceWithTimeout(pending, timeoutMs, () => undefined, timeoutMessage);
+      } catch (error) {
+        void pending.catch(() => undefined);
+        throw error;
+      }
+      return;
+    }
+    const sender = await SmtpEmailSender.fromSnapshot(snapshot, {
+      connectionTimeout: timeoutMs,
+      greetingTimeout: timeoutMs,
+      socketTimeout: timeoutMs,
+    });
+    const pending = sender.verifyConnection();
+    try {
+      await raceWithTimeout(pending, timeoutMs, () => sender.close(), timeoutMessage);
+    } catch (error) {
+      sender.close();
+      void pending.catch(() => undefined);
+      throw error;
+    }
   }
 
   private async dispatchSmtp(snapshot: MailDeliverySnapshot, message: EmailMessage): Promise<void> {
@@ -450,6 +535,7 @@ export class MailSettingsService {
       emailFrom: this.config.emailFrom.trim() || null,
       publicAppUrl: this.config.publicAppBaseUrl.trim().replace(/\/$/, "") || null,
       smtpVerifiedAt: null,
+      smtpLegacyProbedAt: new Date().toISOString(),
       updatedBy: ENV_SEED_UPDATED_BY,
     };
     await this.store.write(seeded, ENV_SEED_UPDATED_BY);

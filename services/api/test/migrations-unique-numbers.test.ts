@@ -38,6 +38,7 @@ const PASSKEY_SHARE_WRAP = "0053_passkey_share_wrap.sql";
 const LOGIN_VERIFIER = "0054_login_verifier.sql";
 const SEEN_VERSION = "0055_system_update_seen_version.sql";
 const MAIL_VERIFIED = "0056_server_mail_verified.sql";
+const MAIL_LEGACY_PROBE = "0057_server_mail_legacy_probe.sql";
 const FAMILY_TIER = "0047_retire_family_plan_tier.sql";
 
 test("duplicateMigrationNumbers reports shared prefixes only", () => {
@@ -87,6 +88,7 @@ test("migration numbers are unique and legacy filenames are aliases only", () =>
     LOGIN_VERIFIER,
     SEEN_VERSION,
     MAIL_VERIFIED,
+    MAIL_LEGACY_PROBE,
   ];
   const tail = files.slice(files.indexOf(ordered[0]));
   assert.deepEqual(tail, ordered);
@@ -145,6 +147,7 @@ test("upgrade from v1.0.0-beta.2 applies migrations after 0043 once", async (t) 
     LOGIN_VERIFIER,
     SEEN_VERSION,
     MAIL_VERIFIED,
+    MAIL_LEGACY_PROBE,
   ]);
 
   await withSchema(async ({ db, query }) => {

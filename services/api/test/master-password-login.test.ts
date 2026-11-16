@@ -312,5 +312,6 @@ test("self-host without deliverable mail reports emailDeliverable false and does
   });
   assert.equal(started.emailDeliverable, false);
   assert.ok(started.challengeId);
-  assert.equal(sent, 0);
+  // Inactive mail still hands the code to the worker log path.
+  assert.equal(sent, 1);
 });
