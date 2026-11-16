@@ -406,6 +406,7 @@ export default function AdditionalMembersSection({
           locale={locale}
           canPut={canPut}
           canDelete={canDelete}
+          canInvite={canPost}
           readOnly={readOnly}
           t={t}
           onClose={closePopup}

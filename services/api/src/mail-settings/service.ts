@@ -127,6 +127,8 @@ export type MailSettingsServiceDeps = {
   smtpTestTimeoutMs?: number;
   /** Bound for the one-time upgrade SMTP check. Defaults to 10s. */
   legacyProbeTimeoutMs?: number;
+  /** Fired after a successful SMTP test marks outbound mail active (e.g. flush pending invites). */
+  onSmtpActivated?: () => Promise<void>;
 };
 
 function validationError(code: string): MailSettingsError {
@@ -198,6 +200,7 @@ export class MailSettingsService {
   private readonly verifySmtp?: MailSettingsServiceDeps["verifySmtp"];
   private readonly smtpTestTimeoutMs: number;
   private readonly legacyProbeTimeoutMs: number;
+  private readonly onSmtpActivated?: () => Promise<void>;
   private unreadableWarned = false;
   private seedPromise: Promise<ServerMailSettingsRow> | null = null;
 
@@ -210,6 +213,7 @@ export class MailSettingsService {
     this.logger = deps.logger;
     this.sendSmtp = deps.sendSmtp;
     this.verifySmtp = deps.verifySmtp;
+    this.onSmtpActivated = deps.onSmtpActivated;
     this.legacyProbeTimeoutMs = positiveTimeout(
       deps.legacyProbeTimeoutMs,
       SMTP_LEGACY_PROBE_TIMEOUT_MS,
@@ -368,6 +372,17 @@ export class MailSettingsService {
     next.updatedBy = userId;
     await this.store.write(next, userId);
     this.logger?.info("server mail settings verified", { workspaceId, userId });
+    if (this.onSmtpActivated) {
+      try {
+        await this.onSmtpActivated();
+      } catch (error) {
+        this.logger?.warn("onSmtpActivated hook failed", {
+          workspaceId,
+          userId,
+          cause: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
     return toPublicMailSettingsFromRow(next, this.resolvePassword(next));
   }
 

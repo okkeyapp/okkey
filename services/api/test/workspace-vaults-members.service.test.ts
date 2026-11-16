@@ -657,7 +657,7 @@ test("WorkspaceMembersService.createInvitations sends /invite/:token with Accept
     [{ email: "a@example.com", roleId: "1000000000000000001" }],
     { acceptLanguage: "ru" },
   );
-  assert.equal(created.length, 1);
+  assert.equal(created.created.length, 1);
   assert.match(sentUrl, /^http:\/\/localhost:5173\/invite\/[A-Za-z0-9_-]+$/);
   assert.equal(acceptLanguage, "ru");
   // Unknown recipient → no profile locale; inviter Accept-Language remains the fallback.
@@ -697,7 +697,7 @@ test("WorkspaceMembersService.createInvitations prefers recipient users.locale o
     [{ email: "ru-user@example.com", roleId: "1000000000000000001" }],
     { acceptLanguage: "en" },
   );
-  assert.equal(created.length, 1);
+  assert.equal(created.created.length, 1);
   assert.equal(userLocale, "ru");
   assert.equal(acceptLanguage, "en");
 });

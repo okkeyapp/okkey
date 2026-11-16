@@ -76,6 +76,8 @@ async function main(): Promise<void> {
     approvalTtlMs: config.deviceApprovalTtlSeconds * 1000,
     logger,
   });
+  // Lazily bound after WorkspaceMembersService is constructed (pending-invite flush on SMTP activate).
+  let deliverPendingInvites: (() => Promise<void>) | null = null;
   const mailSettings = new MailSettingsService({
     store: new PostgresServerMailSettingsStore(storage.postgres),
     config,
@@ -85,6 +87,11 @@ async function main(): Promise<void> {
       await assertWorkspacePermission(storage.postgres, workspaceId, userId, "settings_mail", action);
     },
     logger,
+    onSmtpActivated: async () => {
+      if (deliverPendingInvites) {
+        await deliverPendingInvites();
+      }
+    },
   });
   await mailSettings.probeLegacySmtpOnce();
   const emailSender = await createOutboundEmailSender(config, logger, storage.redis, mailSettings);
@@ -282,9 +289,15 @@ async function main(): Promise<void> {
     emailTemplates,
     publicAppBaseUrl: config.publicAppBaseUrl,
     resolvePublicAppBaseUrl: () => mailSettings.publicAppBaseUrl(),
+    resolveOutboundMailActive: () => mailSettings.isOutboundActive(),
+    logger,
     config,
     workspaceKeys: workspaceKeyService,
   });
+  deliverPendingInvites = async () => {
+    const result = await workspaceMembersService.deliverPendingInvitationEmails();
+    logger.info("pending invitation emails delivered after SMTP activate", result);
+  };
   const vaultUnlockBootstrapService = new VaultUnlockBootstrapService({
     users: storage.repositories.users,
     devices: storage.repositories.devices,

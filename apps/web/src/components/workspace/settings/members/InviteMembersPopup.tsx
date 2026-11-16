@@ -2,6 +2,8 @@ import type { CoreApiClient } from "@okkey/api";
 import type { WorkspaceRoleSummary } from "@okkey/types";
 import type { WebMessageValues } from "@okkey/i18n";
 import {
+  Alert,
+  AlertDescription,
   Button,
   Input,
   Popup,
@@ -12,8 +14,10 @@ import {
   SelectValue,
 } from "@okkey/ui";
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 
 import { runSaveWithToast } from "@/lib/saveWithToast";
+import { settingsPath } from "@/routes/paths";
 import { localizedRoleLabel } from "@/components/workspace/settings/localizedWorkspaceLabels";
 
 type InviteRow = {
@@ -95,13 +99,35 @@ export default function InviteMembersPopup({
 
   const [rows, setRows] = useState<InviteRow[]>([{ id: newRowId(), email: "", roleId: "" }]);
   const [saving, setSaving] = useState(false);
+  const [mailActive, setMailActive] = useState<boolean | null>(null);
 
   useEffect(() => {
     setRows([{ id: newRowId(), email: "", roleId: defaultRoleId }]);
   }, [defaultRoleId, popupId]);
 
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const settings = await core.getServerMailSettings(workspaceId);
+        if (!cancelled) {
+          setMailActive(settings.smtp_active === true);
+        }
+      } catch {
+        // SaaS hides mail settings (404); treat outbound mail as available.
+        if (!cancelled) {
+          setMailActive(true);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [core, workspaceId, popupId]);
+
   const validCount = rows.filter((row) => row.email.trim().includes("@") && row.roleId).length;
   const canSubmit = validCount > 0 && !saving && invitableRoles.length > 0;
+  const showMailInactiveBanner = mailActive === false;
 
   async function handleSubmit() {
     if (!canSubmit) {
@@ -112,16 +138,20 @@ export default function InviteMembersPopup({
       await runSaveWithToast(
         {
           loading: t("web.workspaceSettings.members.invite.sending"),
-          success: t("web.workspaceSettings.members.invite.sent"),
+          success: (result) =>
+            result.deliveryStatus === "pending"
+              ? t("web.workspaceSettings.members.invite.savedPendingDelivery")
+              : t("web.workspaceSettings.members.invite.sent"),
           error: t("web.toast.save.error"),
         },
         async () => {
           const invitations = rows
             .filter((row) => row.email.trim().includes("@") && row.roleId)
             .map((row) => ({ email: row.email.trim(), roleId: row.roleId }));
-          await core.createWorkspaceInvitations(workspaceId, { invitations });
+          const result = await core.createWorkspaceInvitations(workspaceId, { invitations });
           await onSent();
           onClose();
+          return result;
         },
       );
     } catch {
@@ -166,6 +196,23 @@ export default function InviteMembersPopup({
       footer={footer}
     >
       <div className="flex flex-col gap-3 pb-2">
+        {showMailInactiveBanner ? (
+          <Alert variant="info" data-testid="invite-mail-inactive-banner">
+            <AlertDescription>
+              <p>{t("web.workspaceSettings.members.invite.mailInactiveBanner")}</p>
+              <p>
+                <Link
+                  to={settingsPath("mail")}
+                  className="text-primary underline decoration-solid underline-offset-2 hover:no-underline"
+                  onClick={onClose}
+                >
+                  {t("web.workspaceSettings.members.invite.mailInactiveBannerLink")}
+                </Link>
+              </p>
+            </AlertDescription>
+          </Alert>
+        ) : null}
+
         {rows.map((row, index) => (
           <div key={row.id} className="flex items-center gap-2">
             <span className="w-6 shrink-0 text-sm text-muted-foreground">{index + 1}.</span>

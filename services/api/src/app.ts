@@ -144,8 +144,10 @@ import {
   createMemberVaultAccessGetRoute,
   createMemberVaultAccessPutRoute,
   createPendingVaultWrapsGetRoute,
+  createWorkspaceInvitationCopyLinkRoute,
   createWorkspaceInvitationDeleteRoute,
   createWorkspaceInvitationPatchRoute,
+  createWorkspaceInvitationResendRoute,
   createWorkspaceInvitationsCreateRoute,
   createWorkspaceKeyDeferredRotationRoute,
   createWorkspaceKeyPendingRecipientsRoute,
@@ -845,6 +847,16 @@ export function createApiApp(
         "POST",
         "/workspaces/:workspaceId/invitations",
         createWorkspaceInvitationsCreateRoute(members, resolveUserId),
+      );
+      app.route(
+        "POST",
+        "/workspaces/:workspaceId/invitations/:invitationId/resend",
+        createWorkspaceInvitationResendRoute(members, resolveUserId),
+      );
+      app.route(
+        "POST",
+        "/workspaces/:workspaceId/invitations/:invitationId/copy-link",
+        createWorkspaceInvitationCopyLinkRoute(members, resolveUserId),
       );
       app.route(
         "DELETE",

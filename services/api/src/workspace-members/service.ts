@@ -48,6 +48,10 @@ export type MemberActorRef = {
   lastName: string | null;
 };
 
+export type WorkspaceMemberStatus = "active" | "pending" | "pending_delivery";
+
+export type InvitationDeliveryStatus = "pending" | "sent";
+
 export type WorkspaceMemberRecord = {
   userId: string | null;
   email: string;
@@ -58,7 +62,7 @@ export type WorkspaceMemberRecord = {
   roleId: string | null;
   roleBuiltinKey: string | null;
   roleName: string | null;
-  status: "active" | "pending";
+  status: WorkspaceMemberStatus;
   invitationId: string | null;
   invitedAt: string | null;
   invitedBy: MemberActorRef | null;
@@ -132,6 +136,13 @@ export interface WorkspaceMembersServiceDeps {
   publicAppBaseUrl?: string;
   /** Effective public origin at send time (database, otherwise env). */
   resolvePublicAppBaseUrl?: PublicAppUrlResolver;
+  /**
+   * When false, new invites are stored with delivery_status=pending and no email is sent.
+   * Defaults to true when omitted (unit tests / callers without mail settings).
+   */
+  resolveOutboundMailActive?: () => Promise<boolean>;
+  /** Optional structured logger for invite resend / copy-link actions. */
+  logger?: { info(message: string, fields?: Record<string, unknown>): void };
   config?: PlanEntitlementRuntimeConfig;
   workspaceKeys?: {
     rotateOnRemoval(
@@ -193,6 +204,8 @@ export class WorkspaceMembersService {
   private readonly emailTemplates?: Pick<EmailTemplateService, "sendWorkspaceInvite">;
   private readonly publicAppBaseUrl: string;
   private readonly resolvePublicAppBaseUrl?: PublicAppUrlResolver;
+  private readonly resolveOutboundMailActive?: () => Promise<boolean>;
+  private readonly logger?: WorkspaceMembersServiceDeps["logger"];
   private readonly config?: PlanEntitlementRuntimeConfig;
   private readonly workspaceKeys: WorkspaceMembersServiceDeps["workspaceKeys"];
 
@@ -203,8 +216,17 @@ export class WorkspaceMembersService {
     this.emailTemplates = deps.emailTemplates;
     this.publicAppBaseUrl = (deps.publicAppBaseUrl ?? "").replace(/\/$/, "");
     this.resolvePublicAppBaseUrl = deps.resolvePublicAppBaseUrl;
+    this.resolveOutboundMailActive = deps.resolveOutboundMailActive;
+    this.logger = deps.logger;
     this.config = deps.config;
     this.workspaceKeys = deps.workspaceKeys;
+  }
+
+  private async isOutboundMailActive(): Promise<boolean> {
+    if (!this.resolveOutboundMailActive) {
+      return true;
+    }
+    return this.resolveOutboundMailActive();
   }
 
   async listMembers(
@@ -277,7 +299,10 @@ export class WorkspaceMembersService {
     actorId: string,
     invitations: Array<{ email: string; roleId: string }>,
     localeHints: { acceptLanguage?: string | null } = {},
-  ): Promise<Array<{ invitationId: string; email: string; roleId: string }>> {
+  ): Promise<{
+    created: Array<{ invitationId: string; email: string; roleId: string }>;
+    deliveryStatus: InvitationDeliveryStatus;
+  }> {
     // Align with Core HttpApp entity-id path checks (okkey#197): never hit Postgres with
     // a non-snowflake workspace id (would surface as HTTP 500 from bigint cast).
     if (!isEntityId(workspaceId)) {
@@ -320,6 +345,8 @@ export class WorkspaceMembersService {
       );
     }
 
+    const mailActive = await this.isOutboundMailActive();
+    const deliveryStatus: InvitationDeliveryStatus = mailActive ? "sent" : "pending";
     const created: Array<{ invitationId: string; email: string; roleId: string }> = [];
 
     for (const item of invitations) {
@@ -388,54 +415,403 @@ export class WorkspaceMembersService {
       await this.db.query(
         `
           INSERT INTO workspace_invitations (
-            id, workspace_id, email, role_id, invited_by_user_id, token_hash, status, expires_at
-          ) VALUES ($1, $2, $3, $4, $5, $6, 'pending', $7::timestamptz)
+            id, workspace_id, email, role_id, invited_by_user_id, token_hash, status,
+            expires_at, delivery_status
+          ) VALUES ($1, $2, $3, $4, $5, $6, 'pending', $7::timestamptz, $8)
         `,
-        [invitationId, workspaceId, email, item.roleId, actorId, tokenHash, expiresAt],
+        [
+          invitationId,
+          workspaceId,
+          email,
+          item.roleId,
+          actorId,
+          tokenHash,
+          expiresAt,
+          deliveryStatus,
+        ],
       );
 
-      const inviteUrl = `${publicAppBaseUrl}/invite/${rawToken}`;
-      // Recipient profile locale wins; inviter Accept-Language is only a fallback
-      // for unknown recipients / null profile locale (see resolveEmailLocaleForRecipient).
-      const recipientLocale = await this.loadUserLocaleByEmail(email);
-      try {
-        await this.emailTemplates.sendWorkspaceInvite({
-          to: email,
-          localeHints: {
-            userLocale: recipientLocale,
-            acceptLanguage: localeHints.acceptLanguage,
-          },
-          variables: {
-            inviterDisplayName: displayName(inviter),
-            inviterEmail: inviter.email,
-            workspaceName: workspace.name,
-            roleBuiltinKey:
-              role.builtinKey === "owner" ||
-              role.builtinKey === "admin" ||
-              role.builtinKey === "user"
-                ? role.builtinKey
-                : null,
-            roleName: role.name,
-            expiresAtIso: expiresAt,
-            inviteUrl,
-          },
-        });
-      } catch (error) {
-        await this.db.query(`DELETE FROM workspace_invitations WHERE id = $1`, [invitationId]);
-        if (error instanceof WorkspaceMembersServiceError) {
-          throw error;
+      if (mailActive) {
+        const inviteUrl = `${publicAppBaseUrl}/invite/${rawToken}`;
+        // Recipient profile locale wins; inviter Accept-Language is only a fallback
+        // for unknown recipients / null profile locale (see resolveEmailLocaleForRecipient).
+        const recipientLocale = await this.loadUserLocaleByEmail(email);
+        try {
+          await this.emailTemplates.sendWorkspaceInvite({
+            to: email,
+            localeHints: {
+              userLocale: recipientLocale,
+              acceptLanguage: localeHints.acceptLanguage,
+            },
+            variables: {
+              inviterDisplayName: displayName(inviter),
+              inviterEmail: inviter.email,
+              workspaceName: workspace.name,
+              roleBuiltinKey:
+                role.builtinKey === "owner" ||
+                role.builtinKey === "admin" ||
+                role.builtinKey === "user"
+                  ? role.builtinKey
+                  : null,
+              roleName: role.name,
+              expiresAtIso: expiresAt,
+              inviteUrl,
+            },
+          });
+        } catch (error) {
+          await this.db.query(`DELETE FROM workspace_invitations WHERE id = $1`, [invitationId]);
+          if (error instanceof WorkspaceMembersServiceError) {
+            throw error;
+          }
+          throw new WorkspaceMembersServiceError(
+            "EMAIL_SEND_FAILED",
+            503,
+            "failed to send invitation email",
+          );
         }
-        throw new WorkspaceMembersServiceError(
-          "EMAIL_SEND_FAILED",
-          503,
-          "failed to send invitation email",
-        );
       }
 
       created.push({ invitationId, email, roleId: item.roleId });
     }
 
-    return created;
+    return { created, deliveryStatus };
+  }
+
+  /**
+   * After SMTP becomes active, enqueue email for every non-expired invite still awaiting delivery.
+   * Idempotent: rows already marked `sent` are skipped; each invite is emailed at most once here.
+   * Rotates the invite token before send because only the hash is stored.
+   */
+  async deliverPendingInvitationEmails(): Promise<{ delivered: number }> {
+    if (!this.emailTemplates) {
+      return { delivered: 0 };
+    }
+    const publicAppBaseUrl = await resolveLinkBaseUrl(
+      this.publicAppBaseUrl,
+      this.resolvePublicAppBaseUrl,
+    );
+    if (!publicAppBaseUrl) {
+      this.logger?.info("skip pending invite delivery: public app URL missing");
+      return { delivered: 0 };
+    }
+
+    const rows = await this.db.query<{
+      id: string;
+      workspace_id: string;
+      email: string;
+      role_id: string;
+      expires_at: string | Date;
+      invited_by_user_id: string;
+      workspace_name: string;
+      role_builtin_key: string | null;
+      role_name: string;
+      inviter_email: string;
+      inviter_first_name: string | null;
+      inviter_last_name: string | null;
+    }>(
+      `
+        SELECT
+          wi.id,
+          wi.workspace_id,
+          wi.email,
+          wi.role_id,
+          wi.expires_at,
+          wi.invited_by_user_id,
+          w.name AS workspace_name,
+          r.builtin_key AS role_builtin_key,
+          r.name AS role_name,
+          u.email AS inviter_email,
+          u.first_name AS inviter_first_name,
+          u.last_name AS inviter_last_name
+        FROM workspace_invitations wi
+        JOIN workspaces w ON w.id = wi.workspace_id
+        JOIN roles r ON r.id = wi.role_id
+        JOIN users u ON u.id = wi.invited_by_user_id
+        WHERE wi.status = 'pending'
+          AND wi.delivery_status = 'pending'
+          AND wi.expires_at > now()
+        ORDER BY wi.created_at ASC
+      `,
+    );
+
+    let delivered = 0;
+    for (const row of rows) {
+      const rawToken = randomBytes(32).toString("base64url");
+      const tokenHash = hashInviteToken(rawToken);
+      // Claim + rotate atomically so concurrent activate hooks send each invite once.
+      const claimed = await this.db.query<{ id: string }>(
+        `
+          UPDATE workspace_invitations
+          SET token_hash = $2, delivery_status = 'sent'
+          WHERE id = $1
+            AND status = 'pending'
+            AND delivery_status = 'pending'
+            AND expires_at > now()
+          RETURNING id
+        `,
+        [row.id, tokenHash],
+      );
+      if (!claimed[0]) {
+        continue;
+      }
+
+      const expiresAt = toIso(row.expires_at) ?? new Date(Date.now() + INVITE_TTL_MS).toISOString();
+      const inviter = {
+        userId: row.invited_by_user_id,
+        email: row.inviter_email,
+        firstName: row.inviter_first_name,
+        lastName: row.inviter_last_name,
+      };
+      const recipientLocale = await this.loadUserLocaleByEmail(row.email);
+      try {
+        await this.emailTemplates.sendWorkspaceInvite({
+          to: row.email,
+          localeHints: { userLocale: recipientLocale, acceptLanguage: null },
+          variables: {
+            inviterDisplayName: displayName(inviter),
+            inviterEmail: inviter.email,
+            workspaceName: row.workspace_name,
+            roleBuiltinKey:
+              row.role_builtin_key === "owner" ||
+              row.role_builtin_key === "admin" ||
+              row.role_builtin_key === "user"
+                ? row.role_builtin_key
+                : null,
+            roleName: row.role_name,
+            expiresAtIso: expiresAt,
+            inviteUrl: `${publicAppBaseUrl}/invite/${rawToken}`,
+          },
+        });
+        delivered += 1;
+      } catch {
+        // Re-queue so a later successful activation / resend can retry. Token already rotated.
+        await this.db.query(
+          `
+            UPDATE workspace_invitations
+            SET delivery_status = 'pending'
+            WHERE id = $1 AND status = 'pending' AND delivery_status = 'sent'
+          `,
+          [row.id],
+        );
+        this.logger?.info("pending invite delivery send failed", {
+          invitationId: row.id,
+          workspaceId: row.workspace_id,
+        });
+      }
+    }
+
+    return { delivered };
+  }
+
+  async resendInvitation(
+    workspaceId: string,
+    actorId: string,
+    invitationId: string,
+    localeHints: { acceptLanguage?: string | null } = {},
+  ): Promise<{ deliveryStatus: InvitationDeliveryStatus }> {
+    const workspace = await this.requireAccessibleWorkspace(workspaceId, actorId);
+    if (!isEntityId(invitationId)) {
+      throw new WorkspaceMembersServiceError("BAD_REQUEST", 400, "invalid invitationId");
+    }
+    await this.assertMembers(workspaceId, actorId, "post");
+
+    if (!this.emailTemplates) {
+      throw new WorkspaceMembersServiceError(
+        "EMAIL_NOT_CONFIGURED",
+        503,
+        "PUBLIC_APP_URL and email transport are required to send invitations",
+      );
+    }
+    const publicAppBaseUrl = await resolveLinkBaseUrl(
+      this.publicAppBaseUrl,
+      this.resolvePublicAppBaseUrl,
+    );
+    if (!publicAppBaseUrl) {
+      throw new WorkspaceMembersServiceError(
+        "EMAIL_NOT_CONFIGURED",
+        503,
+        "PUBLIC_APP_URL and email transport are required to send invitations",
+      );
+    }
+
+    const mailActive = await this.isOutboundMailActive();
+    if (!mailActive) {
+      throw new WorkspaceMembersServiceError(
+        "EMAIL_NOT_CONFIGURED",
+        503,
+        "outbound mail is inactive; configure mail before resending",
+      );
+    }
+
+    const rows = await this.db.query<{
+      id: string;
+      email: string;
+      status: string;
+      expires_at: string | Date;
+      role_id: string;
+      role_builtin_key: string | null;
+      role_name: string;
+    }>(
+      `
+        SELECT
+          wi.id,
+          wi.email,
+          wi.status,
+          wi.expires_at,
+          wi.role_id,
+          r.builtin_key AS role_builtin_key,
+          r.name AS role_name
+        FROM workspace_invitations wi
+        JOIN roles r ON r.id = wi.role_id
+        WHERE wi.id = $1 AND wi.workspace_id = $2
+        LIMIT 1
+      `,
+      [invitationId, workspaceId],
+    );
+    const row = rows[0];
+    if (!row) {
+      throw new WorkspaceMembersServiceError("NOT_FOUND", 404, "invitation not found");
+    }
+    if (row.status !== "pending") {
+      throw new WorkspaceMembersServiceError("BAD_REQUEST", 400, "invitation is not pending");
+    }
+    const expiresAt = toIso(row.expires_at) ?? new Date(0).toISOString();
+    if (Date.parse(expiresAt) <= Date.now()) {
+      throw new WorkspaceMembersServiceError("INVITE_EXPIRED", 410, "invitation expired");
+    }
+
+    const inviter = await this.loadUserBrief(actorId);
+    if (!inviter) {
+      throw new WorkspaceMembersServiceError("ACCESS_DENIED", 403, "access denied");
+    }
+
+    const rawToken = randomBytes(32).toString("base64url");
+    const tokenHash = hashInviteToken(rawToken);
+    await this.db.query(
+      `
+        UPDATE workspace_invitations
+        SET token_hash = $3, delivery_status = 'sent'
+        WHERE id = $1 AND workspace_id = $2 AND status = 'pending'
+      `,
+      [invitationId, workspaceId, tokenHash],
+    );
+
+    const recipientLocale = await this.loadUserLocaleByEmail(row.email);
+    try {
+      await this.emailTemplates.sendWorkspaceInvite({
+        to: row.email,
+        localeHints: {
+          userLocale: recipientLocale,
+          acceptLanguage: localeHints.acceptLanguage,
+        },
+        variables: {
+          inviterDisplayName: displayName(inviter),
+          inviterEmail: inviter.email,
+          workspaceName: workspace.name,
+          roleBuiltinKey:
+            row.role_builtin_key === "owner" ||
+            row.role_builtin_key === "admin" ||
+            row.role_builtin_key === "user"
+              ? row.role_builtin_key
+              : null,
+          roleName: row.role_name,
+          expiresAtIso: expiresAt,
+          inviteUrl: `${publicAppBaseUrl}/invite/${rawToken}`,
+        },
+      });
+    } catch (error) {
+      if (error instanceof WorkspaceMembersServiceError) {
+        throw error;
+      }
+      throw new WorkspaceMembersServiceError(
+        "EMAIL_SEND_FAILED",
+        503,
+        "failed to send invitation email",
+      );
+    }
+
+    this.logger?.info("workspace invitation resent", {
+      workspaceId,
+      invitationId,
+      actorId,
+    });
+    return { deliveryStatus: "sent" };
+  }
+
+  /**
+   * Rotate the invite token and return a fresh single-use accept URL once.
+   * Raw token is never stored; only its hash is persisted.
+   */
+  async copyInvitationLink(
+    workspaceId: string,
+    actorId: string,
+    invitationId: string,
+  ): Promise<{ inviteUrl: string; expiresAt: string }> {
+    await this.requireAccessibleWorkspace(workspaceId, actorId);
+    if (!isEntityId(invitationId)) {
+      throw new WorkspaceMembersServiceError("BAD_REQUEST", 400, "invalid invitationId");
+    }
+    // Same gate as creating invites — not merely "can see members".
+    await this.assertMembers(workspaceId, actorId, "post");
+
+    const publicAppBaseUrl = await resolveLinkBaseUrl(
+      this.publicAppBaseUrl,
+      this.resolvePublicAppBaseUrl,
+    );
+    if (!publicAppBaseUrl) {
+      throw new WorkspaceMembersServiceError(
+        "EMAIL_NOT_CONFIGURED",
+        503,
+        "PUBLIC_APP_URL is required to build invitation links",
+      );
+    }
+
+    const rows = await this.db.query<{
+      id: string;
+      status: string;
+      expires_at: string | Date;
+    }>(
+      `
+        SELECT id, status, expires_at
+        FROM workspace_invitations
+        WHERE id = $1 AND workspace_id = $2
+        LIMIT 1
+      `,
+      [invitationId, workspaceId],
+    );
+    const row = rows[0];
+    if (!row) {
+      throw new WorkspaceMembersServiceError("NOT_FOUND", 404, "invitation not found");
+    }
+    if (row.status !== "pending") {
+      throw new WorkspaceMembersServiceError("BAD_REQUEST", 400, "invitation is not pending");
+    }
+    const expiresAt = toIso(row.expires_at) ?? new Date(0).toISOString();
+    if (Date.parse(expiresAt) <= Date.now()) {
+      throw new WorkspaceMembersServiceError("INVITE_EXPIRED", 410, "invitation expired");
+    }
+
+    const rawToken = randomBytes(32).toString("base64url");
+    const tokenHash = hashInviteToken(rawToken);
+    await this.db.query(
+      `
+        UPDATE workspace_invitations
+        SET token_hash = $3
+        WHERE id = $1 AND workspace_id = $2 AND status = 'pending' AND expires_at > now()
+      `,
+      [invitationId, workspaceId, tokenHash],
+    );
+
+    this.logger?.info("workspace invitation link copied", {
+      workspaceId,
+      invitationId,
+      actorId,
+    });
+
+    return {
+      inviteUrl: `${publicAppBaseUrl}/invite/${rawToken}`,
+      expiresAt,
+    };
   }
 
   async revokeInvitation(
@@ -1812,6 +2188,7 @@ export class WorkspaceMembersService {
       role_id: string;
       role_builtin_key: string | null;
       role_name: string | null;
+      delivery_status: string;
       invited_at: string | Date;
       invited_by_user_id: string;
       invited_by_email: string;
@@ -1830,6 +2207,7 @@ export class WorkspaceMembersService {
           wi.role_id,
           r.builtin_key AS role_builtin_key,
           r.name AS role_name,
+          wi.delivery_status,
           wi.created_at AS invited_at,
           wi.invited_by_user_id,
           u.email AS invited_by_email,
@@ -1862,7 +2240,7 @@ export class WorkspaceMembersService {
       roleId: row.role_id,
       roleBuiltinKey: row.role_builtin_key,
       roleName: row.role_name,
-      status: "pending" as const,
+      status: (row.delivery_status === "pending" ? "pending_delivery" : "pending") as WorkspaceMemberStatus,
       invitationId: row.invitation_id,
       invitedAt: toIso(row.invited_at),
       invitedBy: {
