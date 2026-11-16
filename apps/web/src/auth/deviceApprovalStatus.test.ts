@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   clearDeviceApprovalStatus,
@@ -8,9 +8,29 @@ import {
 } from "./deviceApprovalStatus";
 
 describe("device approval status credential", () => {
+  const localWrites = new Map<string, string>();
+
+  beforeEach(() => {
+    localWrites.clear();
+    vi.stubGlobal("localStorage", {
+      getItem: (key: string) => localWrites.get(key) ?? null,
+      setItem: (key: string, value: string) => {
+        localWrites.set(key, value);
+      },
+      removeItem: (key: string) => {
+        localWrites.delete(key);
+      },
+      clear: () => {
+        localWrites.clear();
+      },
+      key: () => null,
+      length: 0,
+    });
+  });
+
   afterEach(() => {
     clearDeviceApprovalStatus();
-    localStorage.clear();
+    vi.unstubAllGlobals();
   });
 
   it("keeps the token in sessionStorage and not localStorage", () => {
@@ -21,7 +41,7 @@ describe("device approval status credential", () => {
     });
 
     expect(sessionStorage.getItem("okkey.deviceApprovalStatus")).toContain("status-token");
-    expect(localStorage.getItem("okkey.deviceApprovalStatus")).toBeNull();
+    expect(localWrites.size).toBe(0);
     expect(readDeviceApprovalStatus()?.token).toBe("status-token");
   });
 

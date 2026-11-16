@@ -67,7 +67,11 @@ function mapDevice(row: DeviceRow): ApprovalStatusDevice {
 }
 
 export class PostgresDeviceApprovalStatusStore implements DeviceApprovalStatusStore {
-  constructor(private readonly db: QueryExecutor) {}
+  private readonly db: QueryExecutor;
+
+  constructor(db: QueryExecutor) {
+    this.db = db;
+  }
 
   async replaceToken(input: {
     tokenHash: string;
