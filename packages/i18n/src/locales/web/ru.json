@@ -294,7 +294,6 @@
   "web.settingsPopup.devices.pending.blockMenu": "Параметры блокировки",
   "web.settingsPopup.devices.pending.block1h": "Заблокировать на 1 час",
   "web.settingsPopup.devices.pending.block1d": "Заблокировать на 1 день",
-  "web.settingsPopup.devices.pending.block1w": "Заблокировать на 1 неделю",
   "web.settingsPopup.devices.pending.blockForever": "Заблокировать навсегда",
   "web.settingsPopup.devices.pending.ip": "IP: {ip}",
   "web.settingsPopup.devices.pending.country": "Страна: {country}",

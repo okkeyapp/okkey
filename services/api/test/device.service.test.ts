@@ -105,7 +105,10 @@ function createService(overrides?: {
   listByUser?: () => Promise<Array<ReturnType<typeof createDeviceRecord>>>;
   renameDevice?: () => Promise<ReturnType<typeof createDeviceRecord> | null>;
   revokeOwned?: () => Promise<ReturnType<typeof createDeviceRecord> | null>;
-  blockPending?: () => Promise<ReturnType<typeof createDeviceRecord> | null>;
+  blockPending?: (input: {
+    blockedUntil: string | null;
+    reason?: string;
+  }) => Promise<ReturnType<typeof createDeviceRecord> | null>;
   unblockDevice?: () => Promise<ReturnType<typeof createDeviceRecord> | null>;
   clearExpiredBlocks?: () => Promise<void>;
   geoIp?: { lookup: (ip: string) => Promise<{ country: string | null; city: string | null }> };
@@ -1002,4 +1005,39 @@ test("blockDevice blocks pending for 1h and unblockDevice can trust", async () =
 
   const trusted = await service.unblockDevice("u1", "d-pending", true);
   assert.equal(trusted.status, "trusted");
+});
+
+test("blockDevice applies 1d and unblock still works for a stored 1w block", async () => {
+  let captured: { blockedUntil: string | null; reason: string } | null = null;
+  const service = createService({
+    blockPending: async (input) => {
+      captured = {
+        blockedUntil: input.blockedUntil,
+        reason: input.reason ?? "",
+      };
+      return createDeviceRecord({
+        id: "d-pending",
+        status: "blocked",
+        blockedUntil: input.blockedUntil,
+        rejectionReason: input.reason,
+      });
+    },
+    unblockDevice: async () =>
+      createDeviceRecord({
+        id: "d-legacy",
+        status: "revoked",
+        rejectionReason: "blocked:1w",
+        blockedUntil: "2026-01-08T00:00:00.000Z",
+      }),
+    now: () => new Date("2026-01-01T00:00:00.000Z"),
+  });
+
+  const blocked = await service.blockDevice("u1", "d-approver", "d-pending", "1d");
+  assert.equal(blocked.blockedUntil, "2026-01-02T00:00:00.000Z");
+  assert.equal(captured?.blockedUntil, "2026-01-02T00:00:00.000Z");
+  assert.equal(captured?.reason, "blocked:1d");
+
+  const revoked = await service.unblockDevice("u1", "d-legacy", false);
+  assert.equal(revoked.status, "revoked");
+  assert.equal(revoked.deviceId, "d-legacy");
 });
