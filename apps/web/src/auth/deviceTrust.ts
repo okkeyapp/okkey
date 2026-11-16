@@ -27,6 +27,7 @@ import {
   prepareOneTimeShareDelivery,
 } from "./deviceShareDelivery";
 import { readVaultBundle, writeVaultBundle } from "./localVaultBundle";
+import { rememberApprovalFromRegister } from "./deviceApprovalStatus";
 import { deviceShareB64ForRegister } from "./deviceShareWire";
 
 export type DeviceTrustStatus =
@@ -726,5 +727,6 @@ export async function registerCurrentBrowserDevice(
   if (registered.status === "trusted") {
     discardOneTimeShareDelivery(deviceFingerprint);
   }
+  rememberApprovalFromRegister(registered);
   return registered;
 }

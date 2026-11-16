@@ -5,6 +5,7 @@ import {
   shouldSuggestLongerMasterPassword,
   writeShortMasterPasswordHintDismissed,
   type AccessTokenResponseDto,
+  type DeviceApprovalStatusResponseDto,
   type DeviceListItemDto,
 } from "@okkey/types";
 import { ApiRequestError, isClientUpgradeRequiredError } from "@okkey/api";
@@ -50,6 +51,14 @@ import { enrollLoginVerifierIfMissing, loginKeyBase64 } from "./loginKeyWire";
 import { openBundleDeviceShare } from "./openDeviceShare";
 import { getOrCreateDeviceFingerprint } from "./deviceFingerprint";
 import { clearDeviceSigningKey } from "./deviceSigningKey";
+import {
+  clearDeviceApprovalStatus,
+  fetchDeviceApprovalStatus,
+  readDeviceApprovalStatus,
+  rememberDeviceApprovalStatus,
+  retryDeviceApprovalRequest,
+  trustFromApprovalStatus,
+} from "./deviceApprovalStatus";
 import {
   clearBoundDeviceSession,
   pollDeviceTrust,
@@ -198,6 +207,11 @@ export type AuthVaultContextValue = {
   markDeviceBlockedForever: () => void;
   /** After rejection: register again and wait for a new approval. */
   retryDeviceRegistration: () => Promise<void>;
+  /**
+   * The vault session is gone, but this browser still holds the approval-status
+   * credential and can show rejected or blocked without signing in again.
+   */
+  deviceApprovalWatch: boolean;
 };
 
 /**
@@ -416,6 +430,10 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
 
   const [vaultUnlockBootstrapLoading, setVaultUnlockBootstrapLoading] = useState(false);
   const [deviceTrustStatus, setDeviceTrustStatus] = useState<DeviceTrustStatus | "idle">("idle");
+  const [deviceApprovalWatch, setDeviceApprovalWatch] = useState(
+    () => readDeviceApprovalStatus() !== null,
+  );
+  const followApprovalStatusRef = useRef<() => Promise<boolean>>(async () => false);
   const [deviceBlockedUntil, setDeviceBlockedUntil] = useState<string | null>(null);
   const [currentDeviceId, setCurrentDeviceId] = useState<string | null>(null);
   const [deviceApprovers, setDeviceApprovers] = useState<DeviceListItemDto[]>([]);
@@ -476,6 +494,9 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!accessToken || !userId) {
+      if (readDeviceApprovalStatus()) {
+        return;
+      }
       setDeviceTrustStatus("idle");
       setDeviceBlockedUntil(null);
       setCurrentDeviceId(null);
@@ -485,6 +506,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       setDeviceShareReapproval(false);
       pendingDeviceIdRef.current = null;
       foreverBlockedRef.current = false;
+      setDeviceApprovalWatch(false);
       setVaultUnlockBootstrapLoading(false);
       return;
     }
@@ -528,9 +550,20 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
         if (cancelled) {
           return;
         }
-        // Session ended by remote revoke/reject/block — go to sign-in, not the
-        // pending "Request approval again" screen (retry would also 401).
+        // A dead vault session can still follow this device via the approval-status
+        // credential. Without that credential, go back to sign-in.
         if (error instanceof ApiRequestError && error.status === 401) {
+          if (readDeviceApprovalStatus()) {
+            clearBoundDeviceSession();
+            clearStoredSession();
+            setAccessToken(null);
+            setDeviceApprovalWatch(true);
+            const kept = await followApprovalStatusRef.current();
+            if (!kept) {
+              logoutRef.current();
+            }
+            return;
+          }
           clearBoundDeviceSession();
           logoutRef.current();
           return;
@@ -745,6 +778,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
     clearRememberedServerKeyShares();
     clearVaultUnlockSession();
     clearStoredSession();
+    clearDeviceApprovalStatus();
     clearSessionLocalProfile();
     clearVaultBundleSessionMirror();
     clearPendingVaultBundle();
@@ -765,6 +799,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
     setVaultIdleLockMsState(DEFAULT_VAULT_IDLE_LOCK_MS);
     setSuggestLongerMasterPassword(false);
     setDeviceTrustStatus("idle");
+    setDeviceApprovalWatch(false);
     setDeviceBlockedUntil(null);
     setCurrentDeviceId(null);
     currentDeviceIdRef.current = null;
@@ -1230,8 +1265,51 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
     setVaultIdleLockMsState(ms);
   }, []);
 
+  const applyApprovalSnapshot = useCallback((body: DeviceApprovalStatusResponseDto) => {
+    const snapshot = trustFromApprovalStatus(body);
+    if (snapshot.status === "trusted") {
+      clearDeviceApprovalStatus();
+      setDeviceApprovalWatch(false);
+    }
+    setDeviceTrustStatus(snapshot.status);
+    setDeviceBlockedUntil(snapshot.status === "blocked" ? snapshot.blockedUntil : null);
+    setCurrentDeviceId(snapshot.deviceId);
+    currentDeviceIdRef.current = snapshot.deviceId;
+    pendingDeviceIdRef.current = snapshot.status === "trusted" ? null : snapshot.deviceId;
+    if (snapshot.status === "blocked" || snapshot.status === "rejected") {
+      clearBoundDeviceSession();
+    }
+  }, []);
+
+  const followApprovalStatus = useCallback(async (): Promise<boolean> => {
+    const credential = readDeviceApprovalStatus();
+    if (!credential) {
+      setDeviceApprovalWatch(false);
+      return false;
+    }
+    setDeviceApprovalWatch(true);
+    try {
+      applyApprovalSnapshot(await fetchDeviceApprovalStatus(credential));
+      return readDeviceApprovalStatus() !== null;
+    } catch (error: unknown) {
+      if (error instanceof ApiRequestError && error.status === 401) {
+        clearDeviceApprovalStatus();
+        setDeviceApprovalWatch(false);
+        return false;
+      }
+      return true;
+    }
+  }, [applyApprovalSnapshot]);
+  followApprovalStatusRef.current = followApprovalStatus;
+
   const refreshDeviceTrust = useCallback(async () => {
     if (!accessToken || !userId) {
+      if (readDeviceApprovalStatus()) {
+        const kept = await followApprovalStatus();
+        if (!kept) {
+          logout();
+        }
+      }
       return;
     }
     try {
@@ -1275,13 +1353,24 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       }
     } catch (error: unknown) {
       if (error instanceof ApiRequestError && error.status === 401) {
+        if (readDeviceApprovalStatus()) {
+          clearBoundDeviceSession();
+          clearStoredSession();
+          setAccessToken(null);
+          setDeviceApprovalWatch(true);
+          const kept = await followApprovalStatus();
+          if (!kept) {
+            logout();
+          }
+          return;
+        }
         clearBoundDeviceSession();
         logout();
         return;
       }
       // Best-effort; keep last known trust status on transient network errors.
     }
-  }, [accessToken, lockVault, logout, userId]);
+  }, [accessToken, followApprovalStatus, lockVault, logout, userId]);
 
   const markDeviceBlockedForever = useCallback(() => {
     foreverBlockedRef.current = true;
@@ -1303,7 +1392,63 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
     return () => window.clearInterval(timer);
   }, [accessToken, refreshDeviceTrust, userId]);
 
+  useEffect(() => {
+    if (accessToken || !deviceApprovalWatch) {
+      return;
+    }
+    let cancelled = false;
+    const tick = () => {
+      if (cancelled) {
+        return;
+      }
+      void followApprovalStatus().then((kept) => {
+        if (!cancelled && !kept) {
+          logout();
+        }
+      });
+    };
+    tick();
+    const timer = window.setInterval(tick, 5_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [accessToken, deviceApprovalWatch, followApprovalStatus, logout]);
+
   const retryDeviceRegistration = useCallback(async () => {
+    const approvalCredential = !accessToken || !userId ? readDeviceApprovalStatus() : null;
+    if (approvalCredential) {
+      setDeviceTrustStatus("checking");
+      setDeviceBlockedUntil(null);
+      try {
+        const next = await retryDeviceApprovalRequest(approvalCredential);
+        rememberDeviceApprovalStatus({
+          token: next.approval_status_token,
+          deviceId: next.device_id,
+          expiresAt: next.approval_status_expires_at,
+        });
+        setDeviceApprovalWatch(true);
+        setDeviceTrustStatus("pending");
+        setCurrentDeviceId(next.device_id);
+        currentDeviceIdRef.current = next.device_id;
+        pendingDeviceIdRef.current = next.device_id;
+        setDeviceNeedsRecovery(false);
+        setDeviceShareReapproval(false);
+      } catch (error: unknown) {
+        if (error instanceof ApiRequestError && error.status === 401) {
+          clearDeviceApprovalStatus();
+          setDeviceApprovalWatch(false);
+          logout();
+          return;
+        }
+        if (error instanceof ApiRequestError && error.body.error === "DEVICE_BLOCKED") {
+          setDeviceTrustStatus("blocked");
+          return;
+        }
+        setDeviceTrustStatus("rejected");
+      }
+      return;
+    }
     if (!accessToken || !userId) {
       return;
     }
@@ -1343,13 +1488,24 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       }
     } catch (error: unknown) {
       if (error instanceof ApiRequestError && error.status === 401) {
+        if (readDeviceApprovalStatus()) {
+          clearBoundDeviceSession();
+          clearStoredSession();
+          setAccessToken(null);
+          setDeviceApprovalWatch(true);
+          const kept = await followApprovalStatus();
+          if (!kept) {
+            logout();
+          }
+          return;
+        }
         clearBoundDeviceSession();
         logout();
         return;
       }
       setDeviceTrustStatus("error");
     }
-  }, [accessToken, logout, userId]);
+  }, [accessToken, followApprovalStatus, logout, userId]);
 
   const dismissLongerMasterPasswordHint = useCallback(() => {
     const id = userIdRef.current;
@@ -1408,6 +1564,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       refreshDeviceTrust,
       markDeviceBlockedForever,
       retryDeviceRegistration,
+      deviceApprovalWatch,
     }),
     [
       accessToken,
@@ -1453,6 +1610,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       refreshDeviceTrust,
       markDeviceBlockedForever,
       retryDeviceRegistration,
+      deviceApprovalWatch,
     ],
   );
 

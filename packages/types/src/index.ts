@@ -1814,6 +1814,28 @@ export interface DeviceRegisterResponseDto {
   status: "trusted" | "pending_approval" | "blocked";
   /** Present when status is `blocked`; null means permanently blocked. */
   blocked_until?: string | null;
+  /**
+   * One-time credential for this pending request. Not a session.
+   * Present only when status is `pending_approval`.
+   */
+  approval_status_token?: string;
+  approval_status_expires_at?: string;
+}
+
+/** `GET /devices/:deviceId/approval-status` — pending, approved, rejected, or blocked. */
+export interface DeviceApprovalStatusResponseDto {
+  device_id: EntityId;
+  status: "pending" | "approved" | "rejected" | "blocked";
+  blocked_until?: string | null;
+  expires_at: string;
+}
+
+/** `POST /devices/:deviceId/approval-retry` after a rejection. Rotates the credential. */
+export interface DeviceApprovalRetryResponseDto {
+  device_id: EntityId;
+  status: "pending_approval";
+  approval_status_token: string;
+  approval_status_expires_at: string;
 }
 
 /** `POST /devices/:deviceId/reject` success body. */

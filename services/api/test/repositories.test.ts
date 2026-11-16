@@ -386,11 +386,12 @@ test("DevicesRepository.resolveApproval does not approve without a device share"
   );
 });
 
-test("DevicesRepository.resolveApproval reject keeps the pending device session", async () => {
+test("DevicesRepository.resolveApproval reject ends device sessions", async () => {
   const db = new FakeDb();
   db.enqueueResult([]);
   db.enqueueResult([makeDeviceRow({ status: "pending" })]);
   db.enqueueResult([makeDeviceRow({ status: "revoked" })]);
+  db.enqueueResult([]);
   const repo = new DevicesRepository(db);
   const result = await repo.resolveApproval({
     deviceId: "d1",
@@ -405,17 +406,16 @@ test("DevicesRepository.resolveApproval reject keeps the pending device session"
   assert.equal(result.kind, "rejected");
   const rejectSql = db.queries.find((query) => /rejection_reason = \$3/.test(query.sql));
   assert.match(rejectSql?.sql ?? "", /device_share = NULL/);
-  assert.equal(
-    db.queries.some((query) => /DELETE FROM sessions/.test(query.sql)),
-    false,
-  );
+  assert.match(db.queries.at(-1)?.sql ?? "", /DELETE FROM sessions/);
+  assert.deepEqual(db.queries.at(-1)?.params, [["d1"]]);
 });
 
-test("DevicesRepository.blockPending keeps the pending device session", async () => {
+test("DevicesRepository.blockPending ends device sessions", async () => {
   const db = new FakeDb();
   db.enqueueResult([]);
   db.enqueueResult([{ id: "d1" }]);
   db.enqueueResult([makeDeviceRow({ status: "blocked", blocked_until: null })]);
+  db.enqueueResult([]);
   const repo = new DevicesRepository(db);
   const blocked = await repo.blockPending({
     userId: "u1",
@@ -426,10 +426,7 @@ test("DevicesRepository.blockPending keeps the pending device session", async ()
     reason: "blocked:forever",
   });
   assert.equal(blocked?.status, "blocked");
-  assert.equal(
-    db.queries.some((query) => /DELETE FROM sessions/.test(query.sql)),
-    false,
-  );
+  assert.ok(db.queries.some((query) => /DELETE FROM sessions/.test(query.sql)));
 });
 
 test("DevicesRepository.claimTrustedAfterRecovery ends sessions of revoked devices", async () => {

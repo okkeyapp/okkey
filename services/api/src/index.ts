@@ -9,7 +9,9 @@ import { createServer } from "node:http";
 import { createApiApp } from "./app.ts";
 import { isEnterpriseBackendLoadable, loadConfig } from "./config.ts";
 import { RedisDeviceBindChallengeStore } from "./device/bind-challenge-store.ts";
+import { DeviceApprovalStatusService } from "./device/approval-status.ts";
 import { DeviceService } from "./device/service.ts";
+import { PostgresDeviceApprovalStatusStore } from "./storage/device-approval-status-repository.ts";
 import { json } from "./http.ts";
 import {
   createOutboundEmailSender,
@@ -330,6 +332,10 @@ async function main(): Promise<void> {
     config,
     log: logger,
   });
+  const deviceApprovalStatus = new DeviceApprovalStatusService({
+    store: new PostgresDeviceApprovalStatusStore(storage.postgres),
+    requestTtlSeconds: config.deviceApprovalTtlSeconds,
+  });
   const deviceService = new DeviceService({
     devices: storage.repositories.devices,
     config,
@@ -339,7 +345,11 @@ async function main(): Promise<void> {
     geoIp,
     log: logger,
     bindChallenges: new RedisDeviceBindChallengeStore(storage.redis),
+    approvalStatus: deviceApprovalStatus,
   });
+  deviceApprovalStatus.onRetry((device, requestIp) =>
+    deviceService.notifyReopenedApproval(device, requestIp),
+  );
   const accountRecoveryService = new AccountRecoveryService({
     recovery: storage.repositories.accountRecovery,
     workspaces: storage.repositories.workspaces,
@@ -428,6 +438,7 @@ async function main(): Promise<void> {
     syncService,
     workspacePersonalSyncService,
     deviceService,
+    deviceApprovalStatus,
     accountRecoveryService,
     sessionService,
     extensionAuthService,

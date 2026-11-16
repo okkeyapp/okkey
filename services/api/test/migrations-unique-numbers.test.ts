@@ -40,6 +40,7 @@ const SEEN_VERSION = "0055_system_update_seen_version.sql";
 const MAIL_VERIFIED = "0056_server_mail_verified.sql";
 const MAIL_LEGACY_PROBE = "0057_server_mail_legacy_probe.sql";
 const INVITE_DELIVERY = "0058_workspace_invitation_delivery_status.sql";
+const APPROVAL_STATUS = "0059_device_approval_status_tokens.sql";
 const FAMILY_TIER = "0047_retire_family_plan_tier.sql";
 
 test("duplicateMigrationNumbers reports shared prefixes only", () => {
@@ -91,6 +92,7 @@ test("migration numbers are unique and legacy filenames are aliases only", () =>
     MAIL_VERIFIED,
     MAIL_LEGACY_PROBE,
     INVITE_DELIVERY,
+    APPROVAL_STATUS,
   ];
   const tail = files.slice(files.indexOf(ordered[0]));
   assert.deepEqual(tail, ordered);
@@ -152,6 +154,7 @@ test("upgrade from v1.0.0-beta.2 applies migrations after 0043 once", async (t) 
     MAIL_VERIFIED,
     MAIL_LEGACY_PROBE,
     INVITE_DELIVERY,
+    APPROVAL_STATUS,
   ]);
 
   await withSchema(async ({ db, query }) => {

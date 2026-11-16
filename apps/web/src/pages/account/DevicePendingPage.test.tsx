@@ -8,6 +8,7 @@ import DevicePendingPage from "./DevicePendingPage";
 
 const auth = vi.hoisted(() => ({
   accessToken: "tok" as string | null,
+  deviceApprovalWatch: false,
   deviceTrustStatus: "pending" as
     | "idle"
     | "checking"
@@ -81,6 +82,7 @@ describe("DevicePendingPage copy", () => {
   beforeEach(() => {
     ensureLocalStorage();
     auth.accessToken = "tok";
+    auth.deviceApprovalWatch = false;
     auth.deviceTrustStatus = "pending";
     auth.deviceBlockedUntil = null;
     auth.deviceApprovers = [];
@@ -146,6 +148,27 @@ describe("DevicePendingPage copy", () => {
     expect(screen.getByRole("link", { name: /restore with recovery key/i })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "This device was denied" })).not.toBeInTheDocument();
     expect(screen.queryByText(/a trusted device rejected this sign-in/i)).not.toBeInTheDocument();
+  });
+
+  it("shows the denied page from the approval-status credential without a session", () => {
+    auth.accessToken = null;
+    auth.deviceApprovalWatch = true;
+    auth.deviceTrustStatus = "rejected";
+    renderPage();
+
+    expect(screen.getByRole("heading", { name: "This device was denied" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /request approval again/i })).toBeInTheDocument();
+  });
+
+  it("shows the blocked page from the approval-status credential without a session", () => {
+    auth.accessToken = null;
+    auth.deviceApprovalWatch = true;
+    auth.deviceTrustStatus = "blocked";
+    auth.deviceBlockedUntil = null;
+    renderPage();
+
+    expect(screen.getByRole("heading", { name: "This device is blocked" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /request approval again/i })).not.toBeInTheDocument();
   });
 
   it("shows the passkey button and a clear error when PRF is missing", async () => {

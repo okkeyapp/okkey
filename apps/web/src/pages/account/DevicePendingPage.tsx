@@ -45,6 +45,7 @@ export default function DevicePendingPage() {
   const [searchParams] = useSearchParams();
   const {
     accessToken,
+    deviceApprovalWatch,
     deviceTrustStatus,
     deviceBlockedUntil,
     deviceApprovers,
@@ -114,15 +115,18 @@ export default function DevicePendingPage() {
     return () => window.clearInterval(timer);
   }, [accessToken, deviceTrustStatus, refreshDeviceTrust]);
 
-  if (!accessToken) {
-    return <Navigate to={AUTH_EMAIL_PATH} replace />;
-  }
-
   if (deviceTrustStatus === "trusted") {
+    if (!accessToken) {
+      return <Navigate to={AUTH_EMAIL_PATH} replace />;
+    }
     const target = redirect
       ? accountLockWithRedirectQuery(encodeURIComponent(redirect))
       : ACCOUNT_LOCK_PATH;
     return <Navigate to={target} replace />;
+  }
+
+  if (!accessToken && !deviceApprovalWatch) {
+    return <Navigate to={AUTH_EMAIL_PATH} replace />;
   }
 
   const blocked = deviceTrustStatus === "blocked";
