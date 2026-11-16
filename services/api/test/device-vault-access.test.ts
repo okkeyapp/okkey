@@ -154,7 +154,6 @@ test("vault routes reject pending, revoked, and blocked devices and keep device 
     },
     { method: "GET", url: "/account/recovery/key/wrap" },
     { method: "GET", url: "/account/recovery/identity-encrypted-key" },
-    { method: "GET", url: "/account/profile" },
     { method: "GET", url: "/account/vault-unlock/status" },
     {
       method: "GET",
@@ -172,6 +171,14 @@ test("vault routes reject pending, revoked, and blocked devices and keep device 
     const res = new MockResponse();
     await app.handler()(req, res as unknown as ServerResponse);
     return { statusCode: res.statusCode, body: res.body };
+  }
+
+  async function assertProfileReadableButNotWritable(label: string) {
+    const profile = await call("GET", "/account/profile");
+    assert.equal(profile.statusCode, 200, `${label} GET /account/profile`);
+    assert.equal(JSON.parse(profile.body).email, "a@b.c", `${label} profile email`);
+    const patch = await call("PATCH", "/account/profile", { first_name: "Nope" });
+    assert.equal(patch.statusCode, 401, `${label} PATCH /account/profile`);
   }
 
   async function assertRecoveryMethodsOpen(label: string) {
@@ -200,6 +207,7 @@ test("vault routes reject pending, revoked, and blocked devices and keep device 
     }
     const devices = (await call("GET", "/devices")).statusCode;
     assert.equal(devices, 200, `${status} GET /devices`);
+    await assertProfileReadableButNotWritable(status);
     await assertRecoveryMethodsOpen(status);
   }
 
@@ -210,6 +218,7 @@ test("vault routes reject pending, revoked, and blocked devices and keep device 
     assert.equal(code, 401, `unbound ${path.method} ${path.url} -> ${code}`);
   }
   assert.equal((await call("GET", "/devices")).statusCode, 200);
+  await assertProfileReadableButNotWritable("unbound");
   await assertRecoveryMethodsOpen("unbound");
 
   deviceStatus = "trusted";
@@ -218,6 +227,9 @@ test("vault routes reject pending, revoked, and blocked devices and keep device 
     const code = (await call(path.method, path.url, path.body)).statusCode;
     assert.notEqual(code, 401, `trusted ${path.method} ${path.url}`);
   }
+  const trustedProfile = await call("GET", "/account/profile");
+  assert.equal(trustedProfile.statusCode, 200);
+  assert.equal(JSON.parse(trustedProfile.body).email, "a@b.c");
   const trustedMethods = await call("GET", "/account/recovery");
   assert.equal(trustedMethods.statusCode, 200);
   assert.equal(trustedMethods.body.includes("hidden@example.com"), true);

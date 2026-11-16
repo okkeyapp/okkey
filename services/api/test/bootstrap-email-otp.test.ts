@@ -59,6 +59,7 @@ test("email OTP is skipped only while the self-hosted directory is empty", async
       },
     },
     config: createTestApiConfig(),
+    resolveEmailDeliverable: async () => true,
     now: () => new Date("2026-01-01T00:00:00.000Z"),
     generateCode: () => "111111",
     generateId: () => `id-${nextId++}`,
@@ -69,6 +70,7 @@ test("email OTP is skipped only while the self-hosted directory is empty", async
     requestIp: "203.0.113.8",
   });
   assert.equal(first.bootstrapRequired, true);
+  assert.equal(first.emailDeliverable, true);
   assert.equal(sent.length, 0);
 
   userCount = 1;
@@ -78,8 +80,37 @@ test("email OTP is skipped only while the self-hosted directory is empty", async
   });
   assert.equal(second.bootstrapRequired, undefined);
   assert.equal(second.nextStep, undefined);
+  assert.equal(second.emailDeliverable, true);
   assert.ok(second.challengeId);
   assert.deepEqual(sent, ["second@example.com"]);
+
+  const undeliverableSent: string[] = [];
+  const undeliverable = new AuthService({
+    redis: new InMemoryRedis(),
+    users: {
+      findByEmail: async () => null,
+      isTwoFactorEnabled: async () => false,
+      hasAnyUsers: async () => true,
+    },
+    emailTemplates: {
+      sendAuthEmailCode: async (input) => {
+        undeliverableSent.push(input.to);
+      },
+    },
+    config: createTestApiConfig(),
+    resolveEmailDeliverable: async () => false,
+    now: () => new Date("2026-01-01T00:00:00.000Z"),
+    generateCode: () => "111111",
+    generateId: () => "id-undeliverable",
+  });
+  const skipped = await undeliverable.startEmailLogin({
+    email: "second@example.com",
+    requestIp: "203.0.113.9",
+  });
+  assert.equal(skipped.bootstrapRequired, undefined);
+  assert.equal(skipped.emailDeliverable, false);
+  assert.ok(skipped.challengeId);
+  assert.deepEqual(undeliverableSent, []);
 });
 
 test("saas empty catalog always sends email OTP", async () => {

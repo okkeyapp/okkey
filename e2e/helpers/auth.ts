@@ -1,5 +1,6 @@
 import { expect, type Page } from "@playwright/test";
 
+import { markE2eSmtpDeliverable } from "./db";
 import { E2E_MASTER_PASSWORD } from "./env";
 import { waitForMailpitOtp } from "./mailpit";
 
@@ -61,6 +62,7 @@ export async function registerBootstrapAndUnlock(
 
 /** Email login + OTP from Mailpit (real SMTP path). Auto-submits on 6 digits. */
 export async function signInWithEmailOtp(page: Page, email: string): Promise<void> {
+  await markE2eSmtpDeliverable();
   const sinceMs = Date.now();
   await page.goto("/auth/email");
   await page.locator("#auth-email").fill(email);
