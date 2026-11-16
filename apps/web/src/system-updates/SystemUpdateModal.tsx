@@ -11,12 +11,14 @@ import { useRef, useState, type SVGProps } from "react";
 import { applySystemUpdate, fetchSystemUpdateJob, fetchSystemUpdateStatus } from "./api";
 import {
   classifyOfflineFile,
+  isCombinedArchiveName,
   OFFLINE_FILE_ACCEPT,
   OFFLINE_PACKAGE_MAX_SIZE_MB,
   type OfflineArchiveChoice,
   type OfflineChoice,
   type OfflinePackageChoice,
 } from "./offline-files";
+import { readOfflineUpload } from "./read-offline-upload";
 import { planComponentUpdateOrder } from "./update-order";
 import { waitForRunningCore, type CoreRestartPoll } from "./wait-for-core";
 import type {
@@ -299,7 +301,7 @@ export default function SystemUpdateModal({
         }
         fileIdRef.current += 1;
         const id = `offline-${fileIdRef.current}`;
-        const choice = classifyOfflineFile(file.name, await readFileText(file));
+        const choice = await choiceForOfflineFile(file);
         next.push({ id, file, choice });
       }
     } catch {
@@ -689,6 +691,19 @@ function UploadIcon(props: SVGProps<SVGSVGElement>) {
       />
     </svg>
   );
+}
+
+/** JSON archives stay as parsed documents. A binary zip is wrapped for the update agent. */
+async function choiceForOfflineFile(file: File): Promise<OfflineChoice> {
+  if (!isCombinedArchiveName(file.name)) {
+    return classifyOfflineFile(file.name, await readFileText(file));
+  }
+  const document = await readOfflineUpload(file);
+  return {
+    kind: "archive",
+    fileName: file.name,
+    document: document && typeof document === "object" ? document : null,
+  };
 }
 
 function readFileText(file: File): Promise<string> {

@@ -442,6 +442,31 @@ describe("system update popup", () => {
     expect(applied).toHaveLength(0);
   });
 
+  it("auto-applies an uploaded zip once archive support is on", async () => {
+    renderModal(status({ updates: [], currentVersion: "1.0.0", offlineArchiveSupported: true }));
+    const input = document.getElementById("system-update-file") as HTMLInputElement;
+    const bytes = new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0x00]);
+    const file = new File([bytes], "release.zip", { type: "application/zip" });
+    Object.defineProperty(input, "files", { configurable: true, value: [file] });
+    fireEvent.change(input);
+
+    expect(await screen.findByTestId("system-update-offline-list")).toHaveTextContent(
+      "Combined archive release.zip",
+    );
+    expect(screen.queryByTestId("system-update-archive-pending")).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(applied).toHaveLength(1);
+    });
+    expect(applied[0]).toMatchObject({
+      source: "file",
+      document: {
+        format: "okkey-offline-bundle",
+        formatVersion: 1,
+        archiveBase64: btoa("PK\u0003\u0004\u0000"),
+      },
+    });
+  });
+
   it("auto-applies a JSON combined archive after a successful check", async () => {
     const archive = {
       format: "okkey-offline-bundle",

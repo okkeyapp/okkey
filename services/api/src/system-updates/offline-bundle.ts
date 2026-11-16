@@ -19,8 +19,13 @@ export const BUNDLE_ENTERPRISE_PATH = "packages/enterprise.okpkg";
 
 const APPLY_ORDER = ["okkey", "enterprise"] as const;
 
-/** Compressed zip, and the JSON body that carries it, stay under this size. */
+/** Compressed zip stays under this size. */
 export const BUNDLE_MAX_ARCHIVE_BYTES = 1_000_000;
+/**
+ * JSON body that carries a max-size archive as base64.
+ * Base64 expands by 4/3, plus a small envelope around `archiveBase64`.
+ */
+export const BUNDLE_MAX_DOCUMENT_BYTES = 4 * Math.ceil(BUNDLE_MAX_ARCHIVE_BYTES / 3) + 2048;
 export const BUNDLE_MAX_ENTRIES = 8;
 export const BUNDLE_MAX_UNCOMPRESSED_ENTRY = 1_000_000;
 export const BUNDLE_MAX_UNCOMPRESSED_TOTAL = 2_000_000;
