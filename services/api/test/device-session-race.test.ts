@@ -75,30 +75,34 @@ function createRaceDb(state: RaceState): QueryExecutor & {
   return db;
 }
 
-test("parallel register-bind and block leave no session on a blocked device", async () => {
-  for (let round = 0; round < 10; round += 1) {
-    const state: RaceState = { status: "pending", bound: false };
-    const db = createRaceDb(state);
-    await Promise.all(
-      Array.from({ length: 10 }, () =>
-        Promise.all([
-          new SessionsRepository(db).bindDevice({
-            tokenHash: `hash-${round}`,
-            userId: "u1",
-            deviceId: "d1",
-          }),
-          new DevicesRepository(db).blockPending({
-            userId: "u1",
-            deviceId: "d1",
-            approverDeviceId: "approver",
-            now: "2026-01-01T00:00:00.000Z",
-            blockedUntil: null,
-            reason: "blocked:forever",
-          }),
-        ]),
-      ),
-    );
-    assert.equal(state.status, "blocked");
-    assert.equal(state.bound, false, `round ${round} left a live session`);
-  }
+test("block keeps a session bound while the device was pending and refuses a later bind", async () => {
+  const state: RaceState = { status: "pending", bound: false };
+  const db = createRaceDb(state);
+  const sessions = new SessionsRepository(db);
+  const boundWhilePending = await sessions.bindDevice({
+    tokenHash: "hash-pending",
+    userId: "u1",
+    deviceId: "d1",
+  });
+  assert.equal(boundWhilePending, true);
+  assert.equal(state.bound, true);
+
+  const blocked = await new DevicesRepository(db).blockPending({
+    userId: "u1",
+    deviceId: "d1",
+    approverDeviceId: "approver",
+    now: "2026-01-01T00:00:00.000Z",
+    blockedUntil: null,
+    reason: "blocked:forever",
+  });
+  assert.equal(blocked?.status, "blocked");
+  assert.equal(state.status, "blocked");
+  assert.equal(state.bound, true);
+
+  const boundAfterBlock = await sessions.bindDevice({
+    tokenHash: "hash-after",
+    userId: "u1",
+    deviceId: "d1",
+  });
+  assert.equal(boundAfterBlock, false);
 });

@@ -1202,7 +1202,6 @@ function assertOwnDevice(
 export function createRejectDeviceRoute(
   deviceService: DeviceService,
   resolveUserId: (req: IncomingMessage) => Promise<string | null>,
-  sessionService?: Pick<SessionDeviceBinding, "revokeSessionsForDevice">,
 ): RouteHandler {
   return async (ctx) => {
     const deviceId = ctx.params.deviceId;
@@ -1236,12 +1235,6 @@ export function createRejectDeviceRoute(
         deviceId,
         body.reason,
       );
-      if (sessionService) {
-        await sessionService.revokeSessionsForDevice(
-          userId,
-          canonicalDeviceId(deviceId) ?? result.deviceId,
-        );
-      }
       json(ctx.res, 200, {
         device_id: result.deviceId,
         status: result.status,
@@ -1257,7 +1250,6 @@ const BLOCK_DURATIONS = new Set(["1h", "1d", "forever"]);
 export function createBlockDeviceRoute(
   deviceService: DeviceService,
   resolveUserId: (req: IncomingMessage) => Promise<string | null>,
-  sessionService?: Pick<SessionDeviceBinding, "revokeSessionsForDevice">,
 ): RouteHandler {
   return async (ctx) => {
     const deviceId = ctx.params.deviceId;
@@ -1306,12 +1298,6 @@ export function createBlockDeviceRoute(
         duration as "1h" | "1d" | "forever",
         body.reason,
       );
-      if (sessionService) {
-        await sessionService.revokeSessionsForDevice(
-          userId,
-          canonicalDeviceId(deviceId) ?? result.deviceId,
-        );
-      }
       json(ctx.res, 200, {
         device_id: result.deviceId,
         status: result.status,

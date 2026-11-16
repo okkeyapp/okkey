@@ -1282,12 +1282,12 @@ export function createApiApp(
     app.route(
       "POST",
       "/devices/:deviceId/reject",
-      createRejectDeviceRoute(deps.deviceService, resolveUserId, deps.sessionService),
+      createRejectDeviceRoute(deps.deviceService, resolveUserId),
     );
     app.route(
       "POST",
       "/devices/:deviceId/block",
-      createBlockDeviceRoute(deps.deviceService, resolveUserId, deps.sessionService),
+      createBlockDeviceRoute(deps.deviceService, resolveUserId),
     );
     app.route(
       "POST",

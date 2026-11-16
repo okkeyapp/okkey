@@ -348,6 +348,7 @@
   "web.settingsPopup.devices.rename.save": "Save",
   "web.settingsPopup.devices.rename.cancel": "Cancel",
   "web.settingsPopup.devices.toast.trusted": "Device trusted",
+  "web.settingsPopup.devices.toast.rejected": "This device was denied",
   "web.settingsPopup.devices.toast.revoked": "Device revoked",
   "web.settingsPopup.devices.toast.renamed": "Device renamed",
   "web.settingsPopup.devices.error.generic": "Couldn’t load devices. Try again.",

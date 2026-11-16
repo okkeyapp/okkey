@@ -348,6 +348,7 @@
   "web.settingsPopup.devices.rename.save": "Сохранить",
   "web.settingsPopup.devices.rename.cancel": "Отмена",
   "web.settingsPopup.devices.toast.trusted": "Устройство подтверждено",
+  "web.settingsPopup.devices.toast.rejected": "Вход отклонён",
   "web.settingsPopup.devices.toast.revoked": "Устройство отозвано",
   "web.settingsPopup.devices.toast.renamed": "Устройство переименовано",
   "web.settingsPopup.devices.error.generic": "Не удалось загрузить устройства. Попробуйте ещё раз.",

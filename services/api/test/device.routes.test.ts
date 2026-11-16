@@ -1079,7 +1079,7 @@ test("POST /devices/:id/revoke rejects an unbound full session", async () => {
   assert.equal(revoked, false);
 });
 
-test("POST /devices/:id/reject ends sessions bound to the pending device", async () => {
+test("POST /devices/:id/reject does not end the pending device session", async () => {
   const ended: string[] = [];
   const res = await dispatch({
     method: "POST",
@@ -1096,7 +1096,7 @@ test("POST /devices/:id/reject ends sessions bound to the pending device", async
     }),
   });
   assert.equal(res.statusCode, 200);
-  assert.deepEqual(ended, [DEVICE_B]);
+  assert.deepEqual(ended, []);
 });
 
 const NON_BOOLEAN_FLAG_VALUES: unknown[] = ["false", 1, {}, [], "", null];
@@ -1353,7 +1353,7 @@ test("POST /devices/register keeps reclaim and claim boolean behaviour", async (
   assert.equal(claimOmitted.input?.claimAfterRecovery, false);
 });
 
-test("POST /devices/:id/block ends sessions bound to the pending device", async () => {
+test("POST /devices/:id/block does not end the pending device session", async () => {
   const ended: string[] = [];
   const res = await dispatch({
     method: "POST",
@@ -1374,7 +1374,7 @@ test("POST /devices/:id/block ends sessions bound to the pending device", async 
     }),
   });
   assert.equal(res.statusCode, 200);
-  assert.deepEqual(ended, [DEVICE_B]);
+  assert.deepEqual(ended, []);
 });
 
 test("POST /devices/:id/block rejects the removed 1w duration", async () => {

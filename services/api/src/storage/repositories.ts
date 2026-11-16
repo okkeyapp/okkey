@@ -2736,7 +2736,8 @@ export class DevicesRepository {
         `,
         [input.deviceId, input.now, input.rejectReason ?? "rejected by user"],
       );
-      await deleteSessionsForDevices(tx, [input.deviceId]);
+      // Leave the pending device's session in place. It is no longer trusted, so
+      // vault routes stay closed, and the device can show the denial and ask again.
       return { kind: "rejected", device: mapDevice(rejectedRows[0]) };
     }));
   }
@@ -3386,7 +3387,8 @@ export class DevicesRepository {
     if (!rows[0]) {
       return null;
     }
-    await deleteSessionsForDevices(tx, [input.deviceId]);
+    // Keep the session so the blocked device can read its own block without signing in again.
+    // Vault routes still require a trusted device. A later bind fails because status is not pending.
     return mapDevice(rows[0]);
     }));
   }
