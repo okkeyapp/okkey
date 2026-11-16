@@ -236,7 +236,24 @@ export function wireHttpBasicAuth(): void {
   const tracker = activeConsentTracker();
   // A Firefox event page starts from scratch after suspend. The stored
   // deadline closes a consent window whose setTimeout did not survive.
-  void tracker.restoreLostTimers().catch(() => undefined);
+  const onWake = (): void => {
+    void tracker.restoreLostTimers().catch(() => undefined);
+  };
+  onWake();
+  try {
+    browser.windows.onFocusChanged.addListener(() => {
+      onWake();
+    });
+  } catch {
+    // The consent window checks the same deadline if this listener is missing.
+  }
+  try {
+    browser.idle?.onStateChanged.addListener(() => {
+      onWake();
+    });
+  } catch {
+    // Idle is optional. The consent window still compares the wall-clock deadline.
+  }
   browser.alarms.onAlarm.addListener((alarm) => {
     const challengeId = challengeIdFromHttpAuthAlarm(alarm.name);
     if (!challengeId) {

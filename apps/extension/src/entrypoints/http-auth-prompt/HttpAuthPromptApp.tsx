@@ -13,6 +13,7 @@ import {
   readHttpAuthDeadlineMs,
   type HttpAuthPromptView,
 } from "../../lib/httpAuthMessages";
+import { armHttpAuthWallClock } from "../../lib/httpAuthConsentTimeout";
 import { loadExtensionLocale, readStoredExtensionLocale } from "../../lib/locale";
 
 type Phase = "loading" | "choose" | "http-warning" | "gone";
@@ -24,6 +25,32 @@ type ConsentPort = {
 };
 
 const retainedConsentPorts = new Set<ConsentPort>();
+
+/** Focus, visibility, page resume, and the next frame after the event loop runs. */
+function subscribeHttpAuthWallClock(listener: () => void): () => void {
+  const onVisible = (): void => {
+    if (document.visibilityState === "visible") {
+      listener();
+    }
+  };
+  window.addEventListener("focus", listener);
+  window.addEventListener("pageshow", listener);
+  document.addEventListener("visibilitychange", onVisible);
+  document.addEventListener("resume", listener);
+  let frame = 0;
+  const onFrame = (): void => {
+    listener();
+    frame = window.requestAnimationFrame(onFrame);
+  };
+  frame = window.requestAnimationFrame(onFrame);
+  return () => {
+    window.removeEventListener("focus", listener);
+    window.removeEventListener("pageshow", listener);
+    document.removeEventListener("visibilitychange", onVisible);
+    document.removeEventListener("resume", listener);
+    window.cancelAnimationFrame(frame);
+  };
+}
 
 export function HttpAuthPromptApp() {
   const [locale, setLocale] = useState(readStoredExtensionLocale);
@@ -66,7 +93,7 @@ export function HttpAuthPromptApp() {
       return;
     }
     let cancelled = false;
-    let timeoutId = 0;
+    let stopWallClock = (): void => undefined;
     void browser.runtime
       .sendMessage({ type: HTTP_AUTH_READY, challengeId })
       .then((response: unknown) => {
@@ -82,9 +109,15 @@ export function HttpAuthPromptApp() {
         setSelectedId(prompt.items.length === 1 ? (prompt.items[0]?.itemId ?? null) : null);
         setPhase("choose");
         const deadlineMs = readHttpAuthDeadlineMs(response) ?? Date.now() + HTTP_AUTH_CONSENT_TIMEOUT_MS;
-        timeoutId = window.setTimeout(() => {
-          void sendTimeout(challengeId);
-        }, Math.max(0, deadlineMs - Date.now()));
+        stopWallClock = armHttpAuthWallClock(deadlineMs, {
+          now: () => Date.now(),
+          setTimer: (callback, delayMs) => window.setTimeout(callback, delayMs),
+          clearTimer: (handle) => window.clearTimeout(handle as number),
+          subscribe: subscribeHttpAuthWallClock,
+          onExpire: () => {
+            void sendTimeout(challengeId);
+          },
+        });
       })
       .catch(() => {
         if (!cancelled) {
@@ -93,7 +126,7 @@ export function HttpAuthPromptApp() {
       });
     return () => {
       cancelled = true;
-      window.clearTimeout(timeoutId);
+      stopWallClock();
     };
   }, []);
 
