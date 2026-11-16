@@ -1,8 +1,8 @@
 import { toast } from "sonner";
 
-export type SaveToastMessages = {
+export type SaveToastMessages<T = unknown> = {
   loading: string;
-  success: string;
+  success: string | ((value: T) => string);
   error: string;
   /** Shown when a same-item concurrent edit conflict is detected. */
   conflict?: string;
@@ -49,7 +49,10 @@ export function formatSaveError(error: unknown, fallback: string, conflictFallba
   return fallback;
 }
 
-export async function runSaveWithToast<T>(messages: SaveToastMessages, action: () => Promise<T>): Promise<T> {
+export async function runSaveWithToast<T>(
+  messages: SaveToastMessages<T>,
+  action: () => Promise<T>,
+): Promise<T> {
   return toast
     .promise(action(), {
       loading: messages.loading,

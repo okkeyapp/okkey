@@ -224,7 +224,7 @@ test("FREE accepts built-in user and admin roles and rejects a custom role", asy
   const created = await svc.createInvitations("1000000000000000100", actorId, [
     { email: "new@example.com", roleId },
   ]);
-  assert.equal(created.length, 1);
+  assert.equal(created.created.length, 1);
   await assert.rejects(
     () =>
       svc.createInvitations("1000000000000000100", actorId, [

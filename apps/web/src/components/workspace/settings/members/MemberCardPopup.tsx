@@ -67,6 +67,8 @@ type MemberCardPopupProps = {
   locale: string;
   canPut: boolean;
   canDelete: boolean;
+  /** Same gate as creating invites (`members.post`); enables resend / copy-link. */
+  canInvite?: boolean;
   /** Plan denies configuration: role / vault-access stay view-only; delete/revoke still allowed. */
   readOnly?: boolean;
   t: (messageKey: string, values?: WebMessageValues) => string;
@@ -179,6 +181,7 @@ export default function MemberCardPopup({
   locale,
   canPut,
   canDelete,
+  canInvite = false,
   readOnly = false,
   t,
   onClose,
@@ -186,10 +189,11 @@ export default function MemberCardPopup({
   onOpenMember,
 }: MemberCardPopupProps) {
   const { requestZoneUnlock } = useSectionReauth();
-  const isPending = member.status === "pending";
+  const isPending = member.status === "pending" || member.status === "pending_delivery";
   const isOwner = member.roleBuiltinKey === "owner";
   const displayName = memberDisplayName(member);
   const canConfigure = !readOnly && canPut;
+  const canManageInviteLink = !readOnly && canInvite && isPending && Boolean(member.invitationId);
 
   const assignableRoles = useMemo(
     () => roles.filter((role) => role.builtinId !== "owner"),
@@ -206,6 +210,7 @@ export default function MemberCardPopup({
   const [loadingAccess, setLoadingAccess] = useState(true);
   const [saving, setSaving] = useState(false);
   const [removing, setRemoving] = useState(false);
+  const [inviteActionBusy, setInviteActionBusy] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [exitConfirmOpen, setExitConfirmOpen] = useState(false);
 
@@ -519,6 +524,54 @@ export default function MemberCardPopup({
     }
   }
 
+  async function handleResendInvite() {
+    if (!canManageInviteLink || !member.invitationId || inviteActionBusy) {
+      return;
+    }
+    setInviteActionBusy(true);
+    try {
+      await runSaveWithToast(
+        {
+          loading: t("web.workspaceSettings.members.invite.resending"),
+          success: t("web.workspaceSettings.members.invite.resent"),
+          error: t("web.toast.save.error"),
+        },
+        async () => {
+          await core.resendWorkspaceInvitation(workspaceId, member.invitationId!);
+          await onSaved();
+        },
+      );
+    } catch {
+      /* toast */
+    } finally {
+      setInviteActionBusy(false);
+    }
+  }
+
+  async function handleCopyInviteLink() {
+    if (!canManageInviteLink || !member.invitationId || inviteActionBusy) {
+      return;
+    }
+    setInviteActionBusy(true);
+    try {
+      await runSaveWithToast(
+        {
+          loading: t("web.workspaceSettings.members.invite.copyingLink"),
+          success: t("web.workspaceSettings.members.invite.linkCopied"),
+          error: t("web.toast.save.error"),
+        },
+        async () => {
+          const result = await core.copyWorkspaceInvitationLink(workspaceId, member.invitationId!);
+          await navigator.clipboard.writeText(result.inviteUrl);
+        },
+      );
+    } catch {
+      /* toast */
+    } finally {
+      setInviteActionBusy(false);
+    }
+  }
+
   async function handleRemove() {
     if (!canDelete || isOwner) {
       return;
@@ -595,7 +648,11 @@ export default function MemberCardPopup({
       </h2>
       {isPending ? (
         <span className="shrink-0 rounded-md bg-foreground px-2 py-0.5 text-sm font-normal leading-5 text-background">
-          {t("web.workspaceSettings.members.pendingBadge")}
+          {t(
+            member.status === "pending_delivery"
+              ? "web.workspaceSettings.members.pendingDeliveryBadge"
+              : "web.workspaceSettings.members.pendingBadge",
+          )}
         </span>
       ) : null}
     </div>
@@ -647,7 +704,7 @@ export default function MemberCardPopup({
         closeLabel={t("web.settingsPopup.close")}
         onClose={onClose}
         onCloseRequest={requestClose}
-        closeDisabled={saving || removing}
+        closeDisabled={saving || removing || inviteActionBusy}
         footer={footer}
       >
         <div className="flex flex-col gap-6 pb-2">
@@ -663,6 +720,27 @@ export default function MemberCardPopup({
               <p className="truncate text-sm text-muted-foreground">{member.email}</p>
             </div>
           </div>
+
+          {canManageInviteLink ? (
+            <div className="flex flex-wrap gap-2" data-testid="invite-pending-actions">
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={inviteActionBusy || saving || removing}
+                onClick={() => void handleResendInvite()}
+              >
+                {t("web.workspaceSettings.members.invite.resend")}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={inviteActionBusy || saving || removing}
+                onClick={() => void handleCopyInviteLink()}
+              >
+                {t("web.workspaceSettings.members.invite.copyLink")}
+              </Button>
+            </div>
+          ) : null}
 
           <div className="flex flex-col">
             <InfoRow label={t("web.workspaceSettings.members.card.roleLabel")}>

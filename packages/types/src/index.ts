@@ -257,7 +257,10 @@ export interface WorkspaceMemberActorRefDto {
   lastName: string | null;
 }
 
-export type WorkspaceMemberStatus = "active" | "pending";
+export type WorkspaceMemberStatus = "active" | "pending" | "pending_delivery";
+
+/** Whether the invitation email has been handed to outbound mail. */
+export type WorkspaceInvitationDeliveryStatus = "pending" | "sent";
 
 /** `GET /workspaces/:workspaceId/members` member or pending-invite row. */
 export interface WorkspaceMemberDto {
@@ -512,6 +515,24 @@ export interface WorkspaceInvitationsCreateResponseDto {
     email: string;
     roleId: EntityId;
   }>;
+  /** `pending` when outbound mail is inactive; emails will send after mail is activated. */
+  deliveryStatus: WorkspaceInvitationDeliveryStatus;
+}
+
+/** `POST /workspaces/:workspaceId/invitations/:invitationId/resend` success body. */
+export interface WorkspaceInvitationResendResponseDto {
+  workspaceId: EntityId;
+  invitationId: EntityId;
+  deliveryStatus: WorkspaceInvitationDeliveryStatus;
+}
+
+/** `POST /workspaces/:workspaceId/invitations/:invitationId/copy-link` success body. */
+export interface WorkspaceInvitationCopyLinkResponseDto {
+  workspaceId: EntityId;
+  invitationId: EntityId;
+  /** Fresh single-use accept URL; returned once (token is stored hashed only). */
+  inviteUrl: string;
+  expiresAt: string;
 }
 
 /** `PATCH /workspaces/:workspaceId/members/:userId` body. */

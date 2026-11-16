@@ -156,12 +156,88 @@ export function createWorkspaceInvitationsCreateRoute(
           roleId: String(row.roleId ?? ""),
         };
       });
-      const created = await membersService.createInvitations(workspaceId, userId, invitations, {
+      const result = await membersService.createInvitations(workspaceId, userId, invitations, {
         acceptLanguage: typeof ctx.req.headers["accept-language"] === "string"
           ? ctx.req.headers["accept-language"]
           : undefined,
       });
-      json(ctx.res, 200, { workspaceId, created });
+      json(ctx.res, 200, {
+        workspaceId,
+        created: result.created,
+        deliveryStatus: result.deliveryStatus,
+      });
+    } catch (error) {
+      handleMembersError(ctx.requestId, ctx.res, error);
+    }
+  };
+}
+
+export function createWorkspaceInvitationResendRoute(
+  membersService: WorkspaceMembersService,
+  resolveUserId: ResolveUserId,
+): RouteHandler {
+  return async (ctx) => {
+    const workspaceId = ctx.params.workspaceId;
+    const invitationId = ctx.params.invitationId;
+    if (!workspaceId || !invitationId) {
+      json(
+        ctx.res,
+        400,
+        errorPayload("BAD_REQUEST", "workspaceId and invitationId are required", ctx.requestId),
+      );
+      return;
+    }
+    try {
+      const userId = await resolveUserId(ctx.req);
+      if (!userId) {
+        json(ctx.res, 401, errorPayload("AUTH_REQUIRED", "auth required", ctx.requestId));
+        return;
+      }
+      const result = await membersService.resendInvitation(workspaceId, userId, invitationId, {
+        acceptLanguage:
+          typeof ctx.req.headers["accept-language"] === "string"
+            ? ctx.req.headers["accept-language"]
+            : undefined,
+      });
+      json(ctx.res, 200, {
+        workspaceId,
+        invitationId,
+        deliveryStatus: result.deliveryStatus,
+      });
+    } catch (error) {
+      handleMembersError(ctx.requestId, ctx.res, error);
+    }
+  };
+}
+
+export function createWorkspaceInvitationCopyLinkRoute(
+  membersService: WorkspaceMembersService,
+  resolveUserId: ResolveUserId,
+): RouteHandler {
+  return async (ctx) => {
+    const workspaceId = ctx.params.workspaceId;
+    const invitationId = ctx.params.invitationId;
+    if (!workspaceId || !invitationId) {
+      json(
+        ctx.res,
+        400,
+        errorPayload("BAD_REQUEST", "workspaceId and invitationId are required", ctx.requestId),
+      );
+      return;
+    }
+    try {
+      const userId = await resolveUserId(ctx.req);
+      if (!userId) {
+        json(ctx.res, 401, errorPayload("AUTH_REQUIRED", "auth required", ctx.requestId));
+        return;
+      }
+      const result = await membersService.copyInvitationLink(workspaceId, userId, invitationId);
+      json(ctx.res, 200, {
+        workspaceId,
+        invitationId,
+        inviteUrl: result.inviteUrl,
+        expiresAt: result.expiresAt,
+      });
     } catch (error) {
       handleMembersError(ctx.requestId, ctx.res, error);
     }

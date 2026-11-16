@@ -120,9 +120,13 @@ export default function MembersListCard({
                   {showName ? (
                     <p className="truncate text-sm font-bold leading-5 text-foreground">{name}</p>
                   ) : null}
-                  {member.status === "pending" ? (
+                  {member.status === "pending" || member.status === "pending_delivery" ? (
                     <span className="inline-flex h-5 shrink-0 items-center rounded-md bg-foreground px-2 text-xs font-normal leading-none text-background">
-                      {t("web.workspaceSettings.members.pendingBadge")}
+                      {t(
+                        member.status === "pending_delivery"
+                          ? "web.workspaceSettings.members.pendingDeliveryBadge"
+                          : "web.workspaceSettings.members.pendingBadge",
+                      )}
                     </span>
                   ) : null}
                 </div>

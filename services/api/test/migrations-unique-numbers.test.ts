@@ -39,6 +39,7 @@ const LOGIN_VERIFIER = "0054_login_verifier.sql";
 const SEEN_VERSION = "0055_system_update_seen_version.sql";
 const MAIL_VERIFIED = "0056_server_mail_verified.sql";
 const MAIL_LEGACY_PROBE = "0057_server_mail_legacy_probe.sql";
+const INVITE_DELIVERY = "0058_workspace_invitation_delivery_status.sql";
 const FAMILY_TIER = "0047_retire_family_plan_tier.sql";
 
 test("duplicateMigrationNumbers reports shared prefixes only", () => {
@@ -89,6 +90,7 @@ test("migration numbers are unique and legacy filenames are aliases only", () =>
     SEEN_VERSION,
     MAIL_VERIFIED,
     MAIL_LEGACY_PROBE,
+    INVITE_DELIVERY,
   ];
   const tail = files.slice(files.indexOf(ordered[0]));
   assert.deepEqual(tail, ordered);
@@ -114,6 +116,7 @@ test("clean database applies every migration once through the runner", async (t)
     assert.equal(await tableExists(query, "system_update_dismissals"), true);
     assert.equal(await columnExists(query, "system_update_dismissals", "seen_version"), true);
     assert.equal(await columnExists(query, "server_mail_settings", "smtp_verified_at"), true);
+    assert.equal(await columnExists(query, "workspace_invitations", "delivery_status"), true);
     assert.equal(await columnExists(query, "users", "public_mldsa_key"), true);
     assert.equal(await columnExists(query, "users", "login_verifier"), true);
     assert.equal(await columnExists(query, "users", "login_verifier_salt"), true);
@@ -148,6 +151,7 @@ test("upgrade from v1.0.0-beta.2 applies migrations after 0043 once", async (t) 
     SEEN_VERSION,
     MAIL_VERIFIED,
     MAIL_LEGACY_PROBE,
+    INVITE_DELIVERY,
   ]);
 
   await withSchema(async ({ db, query }) => {
@@ -173,6 +177,7 @@ test("upgrade from v1.0.0-beta.2 applies migrations after 0043 once", async (t) 
     assert.equal(await tableExists(query, "workspace_logos"), true);
     assert.equal(await columnExists(query, "workspaces", "client_settings_ciphertext"), true);
     assert.equal(await columnExists(query, "server_mail_settings", "smtp_verified_at"), true);
+    assert.equal(await columnExists(query, "workspace_invitations", "delivery_status"), true);
 
     const again = await applySqlMigrations(db, { migrationsDir, logger: createLoggerStub() });
     assert.deepEqual(again.applied, []);

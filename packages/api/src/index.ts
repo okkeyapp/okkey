@@ -113,6 +113,8 @@ import type {
   MeVaultProfilesResponseDto,
   WorkspaceInvitationsCreateRequestDto,
   WorkspaceInvitationsCreateResponseDto,
+  WorkspaceInvitationCopyLinkResponseDto,
+  WorkspaceInvitationResendResponseDto,
   WorkspaceInvitationUpdateRequestDto,
   WorkspaceMemberUpdateRequestDto,
   MemberVaultAccessResponseDto,
@@ -560,6 +562,26 @@ export class CoreApiClient {
     return this.api.post<WorkspaceInvitationsCreateResponseDto>(
       `/workspaces/${encodeURIComponent(workspaceId)}/invitations`,
       body,
+    );
+  }
+
+  resendWorkspaceInvitation(
+    workspaceId: string,
+    invitationId: string,
+  ): Promise<WorkspaceInvitationResendResponseDto> {
+    return this.api.post<WorkspaceInvitationResendResponseDto>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/invitations/${encodeURIComponent(invitationId)}/resend`,
+      {},
+    );
+  }
+
+  copyWorkspaceInvitationLink(
+    workspaceId: string,
+    invitationId: string,
+  ): Promise<WorkspaceInvitationCopyLinkResponseDto> {
+    return this.api.post<WorkspaceInvitationCopyLinkResponseDto>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/invitations/${encodeURIComponent(invitationId)}/copy-link`,
+      {},
     );
   }
 
