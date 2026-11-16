@@ -159,7 +159,7 @@ export interface ResolveDeviceApprovalResult {
   status: "trusted" | "revoked" | "pending_approval";
 }
 
-export type DeviceBlockDuration = "1h" | "1d" | "1w" | "forever";
+export type DeviceBlockDuration = "1h" | "1d" | "forever";
 
 export interface BlockDeviceResult {
   deviceId: string;
@@ -1405,16 +1405,22 @@ export class DeviceService {
 }
 
 function resolveBlockedUntil(now: Date, duration: DeviceBlockDuration): string | null {
-  if (duration === "forever") {
-    return null;
+  switch (duration) {
+    case "forever":
+      return null;
+    case "1h":
+      return new Date(now.getTime() + 60 * 60 * 1000).toISOString();
+    case "1d":
+      return new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString();
+    default: {
+      const unexpected: never = duration;
+      throw new DeviceServiceError(
+        "DEVICE_BAD_REQUEST",
+        400,
+        `unsupported block duration: ${String(unexpected)}`,
+      );
+    }
   }
-  const ms =
-    duration === "1h"
-      ? 60 * 60 * 1000
-      : duration === "1d"
-        ? 24 * 60 * 60 * 1000
-        : 7 * 24 * 60 * 60 * 1000;
-  return new Date(now.getTime() + ms).toISOString();
 }
 
 function cleanString(value: string, fallback: string): string {

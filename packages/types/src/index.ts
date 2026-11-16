@@ -1802,7 +1802,7 @@ export interface DeviceRejectResponseDto {
 }
 
 /** Timed / permanent block durations for pending device dismissal. */
-export type DeviceBlockDuration = "1h" | "1d" | "1w" | "forever";
+export type DeviceBlockDuration = "1h" | "1d" | "forever";
 
 /** `POST /devices/:deviceId/block` request body. */
 export interface DeviceBlockRequestDto {

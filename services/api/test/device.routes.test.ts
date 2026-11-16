@@ -1376,3 +1376,15 @@ test("POST /devices/:id/block ends sessions bound to the pending device", async 
   assert.equal(res.statusCode, 200);
   assert.deepEqual(ended, [DEVICE_B]);
 });
+
+test("POST /devices/:id/block rejects the removed 1w duration", async () => {
+  const res = await dispatch({
+    method: "POST",
+    url: `/devices/${DEVICE_B}/block`,
+    headers: { "x-user-id": "u1", "x-device-id": DEVICE_A },
+    body: { duration: "1w" },
+  });
+  assert.equal(res.statusCode, 400);
+  const payload = JSON.parse(res.body) as { message?: string };
+  assert.match(payload.message ?? "", /1h, 1d, forever/);
+});

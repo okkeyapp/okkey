@@ -1252,7 +1252,7 @@ export function createRejectDeviceRoute(
   };
 }
 
-const BLOCK_DURATIONS = new Set(["1h", "1d", "1w", "forever"]);
+const BLOCK_DURATIONS = new Set(["1h", "1d", "forever"]);
 
 export function createBlockDeviceRoute(
   deviceService: DeviceService,
@@ -1285,7 +1285,7 @@ export function createBlockDeviceRoute(
         400,
         errorPayload(
           "DEVICE_BAD_REQUEST",
-          "duration must be one of 1h, 1d, 1w, forever",
+          "duration must be one of 1h, 1d, forever",
           ctx.requestId,
         ),
       );
@@ -1303,7 +1303,7 @@ export function createBlockDeviceRoute(
         userId,
         approverDeviceId,
         deviceId,
-        duration as "1h" | "1d" | "1w" | "forever",
+        duration as "1h" | "1d" | "forever",
         body.reason,
       );
       if (sessionService) {

@@ -294,7 +294,6 @@
   "web.settingsPopup.devices.pending.blockMenu": "Block options",
   "web.settingsPopup.devices.pending.block1h": "Block for 1 hour",
   "web.settingsPopup.devices.pending.block1d": "Block for 1 day",
-  "web.settingsPopup.devices.pending.block1w": "Block for 1 week",
   "web.settingsPopup.devices.pending.blockForever": "Block forever",
   "web.settingsPopup.devices.pending.ip": "IP: {ip}",
   "web.settingsPopup.devices.pending.country": "Country: {country}",
