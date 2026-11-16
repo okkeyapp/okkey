@@ -89,6 +89,11 @@ export type ApiEnterprisePluginContext = {
     workspace: WorkspacePlanEntitlementSource,
     feature: PlanFeature,
   ): PlanFeatureWriteDecision;
+  /**
+   * Record the enterprise feed's license decision.
+   * Expired sets the lapse flag (plan writes return 402). A later accepted feed clears it.
+   */
+  setEnterpriseLicenseLapsed(lapsed: boolean): void;
 };
 
 export interface ApiEnterprisePlugin {

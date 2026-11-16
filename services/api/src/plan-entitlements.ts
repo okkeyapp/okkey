@@ -17,8 +17,8 @@ export type PlanEntitlementRuntimeConfig = Pick<
   "deploymentMode" | "enterpriseModulesEnabled"
 > & {
   /**
-   * Self-hosted license lapse. Production config leaves this unset (no license
-   * check is wired). Tests and a future check set it; `plan_tier` is not a lapse.
+   * Self-hosted license lapse. The enterprise feed sets this when the license
+   * is expired and clears it when a later check is accepted. `plan_tier` is not a lapse.
    */
   enterpriseLicenseLapsed?: boolean;
 };

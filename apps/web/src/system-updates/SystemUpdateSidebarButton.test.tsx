@@ -48,8 +48,10 @@ const status = {
     },
   ],
   dismissed: {},
-  seen: {},
+  seen: {} as Record<string, string>,
   feedError: null,
+  enterpriseLicenseLapsed: false,
+  components: undefined as unknown[] | undefined,
 };
 
 function json(body: unknown, statusCode = 200): Response {
@@ -115,6 +117,8 @@ describe("system update version button", () => {
     status.releaseTag = "v1.0.0-beta.3";
     status.updates[0].toVersion = "1.1.0";
     status.seen = {};
+    status.enterpriseLicenseLapsed = false;
+    status.components = undefined;
     vi.stubEnv("VITE_DEPLOYMENT_MODE", "self_hosted");
     vi.stubGlobal("fetch", fetchMock);
     fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
@@ -223,6 +227,32 @@ describe("system update version button", () => {
     expect(button).not.toHaveTextContent("6e6ee86");
     expect(button).toHaveAttribute("data-commit-sha", FULL_SHA);
     expect(button).not.toHaveAttribute("title");
+  });
+
+  it("shows an expired enterprise license on the sidebar instead of a generic feed error", async () => {
+    status.enterpriseLicenseLapsed = true;
+    status.seen = {
+      okkey: status.updates[0].toVersion,
+      enterprise: status.updates[1].toVersion,
+    };
+    status.components = [
+        {
+          component: "enterprise",
+          installedVersion: "1.0.0",
+          update: null,
+          checkError: "LICENSE_EXPIRED",
+          feedConfigured: true,
+          minCoreVersion: null,
+          releaseNotesUrl: null,
+        },
+    ];
+    renderButton();
+    const button = await screen.findByTestId("system-update-version");
+    expect(button).toHaveAttribute("data-update", "current");
+    expect(screen.getByTestId("system-update-sidebar-license-expired")).toHaveTextContent(
+      "web.systemUpdate.error.LICENSE_EXPIRED",
+    );
+    expect(screen.queryByText("web.systemUpdate.checkFailed")).not.toBeInTheDocument();
   });
 
   it("stays hidden in SaaS mode", () => {
