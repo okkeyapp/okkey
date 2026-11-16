@@ -581,4 +581,116 @@ describe("system update popup", () => {
     );
     expect(applied).toHaveLength(0);
   });
+
+  it("uses the settled job scope for the success text", async () => {
+    const enterpriseOnly = status({
+      updates: [update("enterprise", "3.0.0")],
+      currentVersion: "2.0.0",
+    });
+    const job = {
+      ...succeededJob("enterprise"),
+      toVersion: "3.0.0",
+      result: { scope: "enterprise" as const, enterpriseVersion: "3.0.0" },
+    };
+    fetchMock.mockImplementation(async (url: string) => {
+      const target = String(url);
+      if (target.endsWith("/system/updates/apply")) {
+        return json({ job }, 202);
+      }
+      if (target.includes("/system/updates/jobs/")) {
+        return json({ job });
+      }
+      return json(enterpriseOnly);
+    });
+    renderModal(enterpriseOnly);
+    fireEvent.click(screen.getByTestId("system-update-apply-enterprise"));
+    expect(await screen.findByText("Update applied. Enterprise 3.0.0 installed.")).toBeTruthy();
+  });
+
+  it("shows a bundle success from the job result", async () => {
+    const job = {
+      ...succeededJob("okkey"),
+      toVersion: "1.2.0",
+      result: { scope: "bundle" as const, coreVersion: "1.2.0", enterpriseVersion: "2.0.0" },
+      components: [
+        { component: "okkey" as const, version: "1.2.0", applied: true },
+        { component: "enterprise" as const, version: "2.0.0", applied: true },
+      ],
+    };
+    fetchMock.mockImplementation(async (url: string) => {
+      const target = String(url);
+      if (target.endsWith("/system/updates/apply")) {
+        return json({ job }, 202);
+      }
+      if (target.includes("/system/updates/jobs/")) {
+        return json({ job });
+      }
+      return json(status());
+    });
+    renderModal(status({ updates: [update("okkey", "1.2.0")], currentVersion: "1.0.0" }));
+    fireEvent.click(screen.getByTestId("system-update-apply-okkey"));
+    expect(await screen.findByText("Okkey 1.2.0 and Enterprise 2.0.0 were applied.")).toBeTruthy();
+  });
+
+  it("warns on a partial bundle and retries enterprise", async () => {
+    const job = {
+      id: "11111111-1111-4111-8111-111111111111",
+      status: "failed",
+      progress: 100,
+      component: "okkey",
+      fromVersion: "1.0.0",
+      toVersion: "1.2.0",
+      errorCode: "BUNDLE_PARTIAL",
+      result: { scope: "partial", coreVersion: "1.2.0", enterpriseVersion: "2.0.0" },
+      components: [
+        { component: "okkey", version: "1.2.0", applied: true },
+        { component: "enterprise", version: "2.0.0", applied: false },
+      ],
+    };
+    fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
+      const target = String(url);
+      if (target.endsWith("/system/updates/apply")) {
+        const body = JSON.parse(String(init?.body)) as { component?: string };
+        applied.push(body);
+        if (body.component === "enterprise") {
+          const done = {
+            ...succeededJob("enterprise"),
+            toVersion: "3.0.0",
+            result: { scope: "enterprise", enterpriseVersion: "3.0.0" },
+          };
+          return json({ job: done }, 202);
+        }
+        return json({ job }, 202);
+      }
+      if (target.includes("/system/updates/jobs/")) {
+        const last = applied[applied.length - 1] as { component?: string } | undefined;
+        if (last?.component === "enterprise") {
+          return json({
+            job: {
+              ...succeededJob("enterprise"),
+              toVersion: "3.0.0",
+              result: { scope: "enterprise", enterpriseVersion: "3.0.0" },
+            },
+          });
+        }
+        return json({ job });
+      }
+      return json(status({ currentVersion: "1.2.0" }));
+    });
+    renderModal(
+      status({
+        updates: [update("okkey", "1.2.0"), update("enterprise", "3.0.0")],
+      }),
+    );
+    fireEvent.click(screen.getByTestId("system-update-apply-okkey"));
+    const warning = await screen.findByTestId("system-update-partial");
+    expect(warning).toHaveTextContent(
+      "Okkey 1.2.0 was applied. Enterprise stayed on the previous version. Retry the Enterprise update.",
+    );
+    expect(warning).toHaveTextContent("Okkey was applied. Enterprise was not applied and was rolled back.");
+    expect(screen.queryByText("Update failed. This instance is still on the previous version.")).toBeNull();
+    fireEvent.click(screen.getByTestId("system-update-retry-enterprise"));
+    expect(await screen.findByText("Update applied. Enterprise 3.0.0 installed.")).toBeTruthy();
+    expect(applied.map((body) => (body as { component?: string }).component)).toEqual(["okkey", "enterprise"]);
+  });
 });

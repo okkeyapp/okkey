@@ -307,6 +307,7 @@ export function startUpdateAgentServer(options: UpdateAgentOptions & { port: num
 }
 
 function publicJob(job: StoredJob): UpdateJob {
+  const result = applyResult(job);
   return {
     id: job.id,
     status: job.status,
@@ -316,7 +317,37 @@ function publicJob(job: StoredJob): UpdateJob {
     toVersion: job.toVersion,
     ...(job.errorCode ? { errorCode: job.errorCode, errorMessage: job.errorMessage } : {}),
     ...(job.components ? { components: job.components } : {}),
+    ...(result ? { result } : {}),
   };
+}
+
+function applyResult(job: StoredJob): UpdateJob["result"] {
+  if (job.errorCode === "BUNDLE_PARTIAL") {
+    return {
+      scope: "partial",
+      coreVersion: versionOf(job, "okkey") || job.toVersion,
+      enterpriseVersion: versionOf(job, "enterprise"),
+    };
+  }
+  if (job.status !== "succeeded") {
+    return undefined;
+  }
+  const parts = job.components ?? [];
+  if (parts.length > 1 && parts.every((item) => item.applied)) {
+    return {
+      scope: "bundle",
+      coreVersion: versionOf(job, "okkey"),
+      enterpriseVersion: versionOf(job, "enterprise"),
+    };
+  }
+  if (job.component === "enterprise") {
+    return { scope: "enterprise", enterpriseVersion: job.toVersion };
+  }
+  return { scope: "core", coreVersion: job.toVersion };
+}
+
+function versionOf(job: StoredJob, component: "okkey" | "enterprise"): string {
+  return job.components?.find((item) => item.component === component)?.version ?? "";
 }
 
 function authorized(req: IncomingMessage, token: string): boolean {
