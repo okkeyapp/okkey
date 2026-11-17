@@ -29,8 +29,13 @@ import {
   resolveDeviceFormIcon,
 } from "../settings/DeviceTypeIcon";
 import { useLocale } from "../../locale/LocaleContext";
+import {
+  refreshSettingsDevicesCache,
+  setSettingsPopupCacheData,
+} from "../settings/settingsPopupCache";
 import { emitDevicesChanged, DEVICES_CHANGED_EVENT } from "./devicesEvents";
 import {
+  approvalResponseGrantsTrust,
   deviceDecisionToastKey,
   pendingApprovalKey,
   visiblePendingDevices,
@@ -92,6 +97,11 @@ export default function DeviceApprovalController() {
       try {
         const result = await core.listDevices(fingerprint);
         if (active) {
+          setSettingsPopupCacheData("devices", {
+            devices: result.devices,
+            pending: result.pending,
+            blocked: result.blocked ?? [],
+          });
           setPending(visiblePendingDevices(result.pending, dismissedRequestKeysRef.current));
         }
       } catch {
@@ -150,17 +160,28 @@ export default function DeviceApprovalController() {
             pending: current,
           });
         }
-        await core.approveDevice(targetDeviceId, approverId, envelope ?? undefined, deviceShareB64);
+        const approved = await core.approveDevice(
+          targetDeviceId,
+          approverId,
+          envelope ?? undefined,
+          deviceShareB64,
+        );
+        if (!approvalResponseGrantsTrust(approved.status)) {
+          await refreshSettingsDevicesCache(() => core.listDevices(fingerprint));
+          return;
+        }
         toast.success(t(deviceDecisionToastKey("approve")));
       } else {
         await core.rejectDevice(targetDeviceId, approverId, "dismissed by user");
         toast.success(t(deviceDecisionToastKey("reject")));
       }
       dismissDevice(current);
+      await refreshSettingsDevicesCache(() => core.listDevices(fingerprint));
       emitDevicesChanged();
     } catch (err) {
       if (isBenignApprovalRace(err)) {
         dismissDevice(current);
+        await refreshSettingsDevicesCache(() => core.listDevices(fingerprint));
         emitDevicesChanged();
         toast.success(t(deviceDecisionToastKey(decision)));
       } else {

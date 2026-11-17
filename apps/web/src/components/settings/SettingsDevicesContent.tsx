@@ -38,6 +38,7 @@ import {
 } from "../items/itemCategoryIcons";
 import { calendarDaysBetween } from "../../lib/calendarDaysBetween";
 import { useLocale } from "../../locale/LocaleContext";
+import { approvalResponseGrantsTrust } from "../devices/deviceApprovalPopup";
 import { DEVICES_CHANGED_EVENT, emitDevicesChanged } from "../devices/devicesEvents";
 import {
   DeviceTypeIcon,
@@ -183,15 +184,15 @@ export default function SettingsDevicesContent({ t }: SettingsDevicesContentProp
   const [renameValue, setRenameValue] = useState("");
 
   const load = useCallback(
-    async (opts?: { quiet?: boolean }) => {
-      await refresh({ quiet: opts?.quiet });
+    async (opts?: { quiet?: boolean; force?: boolean }) => {
+      await refresh({ quiet: opts?.quiet, force: opts?.force });
     },
     [refresh],
   );
 
   useEffect(() => {
     const onChanged = () => {
-      void load({ quiet: true });
+      void load({ quiet: true, force: true });
     };
     window.addEventListener(DEVICES_CHANGED_EVENT, onChanged);
     return () => window.removeEventListener(DEVICES_CHANGED_EVENT, onChanged);
@@ -269,14 +270,13 @@ export default function SettingsDevicesContent({ t }: SettingsDevicesContentProp
         });
         toast.success(t("web.settingsPopup.devices.toast.revoked"));
         emitDevicesChanged();
-        await load({ quiet: true });
       } catch (err) {
         toast.error(devicesErrorMessage(err, t));
       } finally {
         setBusyId(null);
       }
     },
-    [busyId, core, currentDeviceId, load, patchDevicesCache, pending, t],
+    [busyId, core, currentDeviceId, patchDevicesCache, pending, t],
   );
 
   const blockPending = useCallback(
@@ -320,14 +320,6 @@ export default function SettingsDevicesContent({ t }: SettingsDevicesContentProp
       return;
     }
     setBusyId(device.device_id);
-    // Optimistic: move into trusted list immediately.
-    patchDevicesCache({
-      pending: pending.filter((item) => item.device_id !== device.device_id),
-      devices: [
-        { ...device, status: "trusted", is_current: false, approval_expires_at: null },
-        ...devices.filter((item) => item.device_id !== device.device_id),
-      ],
-    });
     try {
       const bundle = userId ? readVaultBundle(userId) : null;
       const envelope = userId
@@ -349,10 +341,25 @@ export default function SettingsDevicesContent({ t }: SettingsDevicesContentProp
           pending: device,
         });
       }
-      await core.approveDevice(device.device_id, currentDeviceId, envelope ?? undefined, deviceShareB64);
+      const approved = await core.approveDevice(
+        device.device_id,
+        currentDeviceId,
+        envelope ?? undefined,
+        deviceShareB64,
+      );
+      if (!approvalResponseGrantsTrust(approved.status)) {
+        await load({ quiet: true, force: true });
+        return;
+      }
+      patchDevicesCache({
+        pending: pending.filter((item) => item.device_id !== device.device_id),
+        devices: [
+          { ...device, status: "trusted", is_current: false, approval_expires_at: null },
+          ...devices.filter((item) => item.device_id !== device.device_id),
+        ],
+      });
       toast.success(t("web.settingsPopup.devices.toast.trusted"));
       emitDevicesChanged();
-      await load({ quiet: true });
     } catch (err) {
       if (
         err instanceof ApiRequestError &&
@@ -362,7 +369,7 @@ export default function SettingsDevicesContent({ t }: SettingsDevicesContentProp
       } else {
         toast.error(devicesErrorMessage(err, t));
       }
-      await load({ quiet: true });
+      await load({ quiet: true, force: true });
     } finally {
       setBusyId(null);
     }
