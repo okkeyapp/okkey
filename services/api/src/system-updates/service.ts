@@ -76,6 +76,13 @@ export type UpdateComponentResult = {
 
 export type UpdateJobPhase = "verifying" | "downloading" | "applying" | "succeeded" | "failed";
 
+/** What the finished job actually changed. Absent until the job settles. */
+export type UpdateApplyResult = {
+  scope: "core" | "enterprise" | "bundle" | "partial";
+  coreVersion?: string;
+  enterpriseVersion?: string;
+};
+
 export type UpdateJob = {
   id: string;
   status: UpdateJobPhase;
@@ -87,6 +94,8 @@ export type UpdateJob = {
   errorMessage?: string;
   /** Set for an offline bundle. Core is first. */
   components?: UpdateComponentResult[];
+  /** Final scope and versions. Set when the job succeeds or ends as a partial bundle. */
+  result?: UpdateApplyResult;
 };
 
 export type UpdateAgentClient = {

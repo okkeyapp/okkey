@@ -69,6 +69,12 @@ export type SystemUpdateJob = {
     version: string;
     applied: boolean;
   }>;
+  /** Present on a settled job: what was applied, with versions. */
+  result?: {
+    scope: "core" | "enterprise" | "bundle" | "partial";
+    coreVersion?: string;
+    enterpriseVersion?: string;
+  };
 };
 
 type ParsedVersion = {

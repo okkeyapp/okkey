@@ -967,6 +967,7 @@ test("update agent verifies a signature before apply and does not use the core k
   const ok = await postJob(agent, signed);
   await agent.settle();
   assert.equal(ok.job.status, "succeeded");
+  assert.deepEqual(ok.job.result, { scope: "core", coreVersion: "1.1.0" });
   assert.equal(calls.includes("pull"), false);
   assert.equal(calls.filter((call) => call.startsWith("replace")).length, 3);
   assert.match(readFileSync(envFile, "utf8"), /OKKEY_IMAGE_TAG=1\.1\.0/);
@@ -1120,6 +1121,7 @@ test("update agent applies an enterprise package and keeps registry credentials 
     assert.equal(finished.job.status, "succeeded");
     assert.equal(finished.job.component, "enterprise");
     assert.equal(finished.job.toVersion, "2.0.0");
+    assert.deepEqual(finished.job.result, { scope: "enterprise", enterpriseVersion: "2.0.0" });
     assert.deepEqual(
       pulled.map((item) => item.image),
       [

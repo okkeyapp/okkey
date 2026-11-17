@@ -60,6 +60,7 @@ const ERROR_KEYS = new Set([
   "CORE_UPDATE_REQUIRED",
   "CORE_RESTART_TIMEOUT",
   "APPLY_FAILED",
+  "BUNDLE_PARTIAL",
   "PACKAGE_INVALID",
 ]);
 
@@ -347,15 +348,15 @@ export default function SystemUpdateModal({
         </div>
         <p className="text-sm text-foreground">
           {phase === "failed"
-            ? t("web.systemUpdate.progressFailed")
+            ? errorCode === "BUNDLE_PARTIAL"
+              ? t("web.systemUpdate.progressBundlePartial", { core: partialCoreVersion(job) })
+              : t("web.systemUpdate.progressFailed")
             : restartTarget
               ? t("web.systemUpdate.progressRestarting", { version: restartTarget })
               : phase === "downloading"
                 ? t("web.systemUpdate.progressDownloading")
                 : phase === "succeeded"
-                  ? t("web.systemUpdate.progressSucceeded", {
-                      version: job?.toVersion || updates[0]?.toVersion || "",
-                    })
+                  ? successText(t, job, updates)
                   : job?.status === "applying"
                     ? t("web.systemUpdate.progressApplying")
                     : t("web.systemUpdate.progressVerifying")}
@@ -369,6 +370,43 @@ export default function SystemUpdateModal({
         version: restartTarget,
       })
     : "";
+
+  function renderFailure() {
+    const partial = errorCode === "BUNDLE_PARTIAL";
+    const message = applySource === "feed" ? errorText : offlineError || errorText;
+    if (!message) {
+      return null;
+    }
+    if (partial && errorText) {
+      return (
+        <Alert variant="warning" data-testid="system-update-partial">
+          <AlertTitle>{t("web.systemUpdate.progressBundlePartial", { core: partialCoreVersion(job) })}</AlertTitle>
+          <AlertDescription>
+            <p>{errorText}</p>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="mt-3"
+              data-testid="system-update-retry-enterprise"
+              disabled={busy}
+              onClick={() => {
+                void onFeedUpdate("enterprise");
+              }}
+            >
+              {t("web.systemUpdate.retryEnterprise")}
+            </Button>
+          </AlertDescription>
+        </Alert>
+      );
+    }
+    return (
+      <Alert variant="error" data-testid={applySource === "feed" ? undefined : "system-update-offline-error"}>
+        <AlertTitle>{t("web.systemUpdate.progressFailed")}</AlertTitle>
+        <AlertDescription>{message}</AlertDescription>
+      </Alert>
+    );
+  }
 
   return (
     <Popup
@@ -493,12 +531,7 @@ export default function SystemUpdateModal({
 
           {applySource !== "file" ? renderProgress() : null}
 
-          {errorText && applySource !== "file" ? (
-            <Alert variant="error">
-              <AlertTitle>{t("web.systemUpdate.progressFailed")}</AlertTitle>
-              <AlertDescription>{errorText}</AlertDescription>
-            </Alert>
-          ) : null}
+          {applySource === "feed" ? renderFailure() : null}
 
           {!status.canApply ? (
             <p className="text-sm text-muted-foreground">{t("web.systemUpdate.ownersOnly")}</p>
@@ -594,12 +627,7 @@ export default function SystemUpdateModal({
             </p>
           ) : null}
           {applySource === "file" ? renderProgress() : null}
-          {offlineError || (errorText && applySource === "file") ? (
-            <Alert variant="error" data-testid="system-update-offline-error">
-              <AlertTitle>{t("web.systemUpdate.progressFailed")}</AlertTitle>
-              <AlertDescription>{offlineError || errorText}</AlertDescription>
-            </Alert>
-          ) : null}
+          {applySource === "file" || offlineError ? renderFailure() : null}
         </div>
       </div>
     </Popup>
@@ -639,6 +667,34 @@ function rowFromStatus(
     releaseNotesUrl: update?.releaseNotesUrl ?? row.releaseNotesUrl,
     minCoreVersion: update?.minCoreVersion ?? row.minCoreVersion,
   };
+}
+
+function partialCoreVersion(job: SystemUpdateJob | null): string {
+  return job?.result?.coreVersion || job?.components?.find((item) => item.component === "okkey")?.version || job?.toVersion || "";
+}
+
+function successText(
+  t: Translate,
+  job: SystemUpdateJob | null,
+  updates: readonly SystemUpdateAvailable[],
+): string {
+  const parts = job?.components ?? [];
+  const bundle = job?.result?.scope === "bundle" || (parts.length > 1 && parts.every((item) => item.applied));
+  if (bundle) {
+    return t("web.systemUpdate.progressBundleSucceeded", {
+      core: job?.result?.coreVersion || parts.find((item) => item.component === "okkey")?.version || "",
+      enterprise:
+        job?.result?.enterpriseVersion || parts.find((item) => item.component === "enterprise")?.version || "",
+    });
+  }
+  if (job?.result?.scope === "enterprise" || job?.component === "enterprise") {
+    return t("web.systemUpdate.progressEnterpriseSucceeded", {
+      version: job.result?.enterpriseVersion || job.toVersion || "",
+    });
+  }
+  return t("web.systemUpdate.progressSucceeded", {
+    version: job?.result?.coreVersion || job?.toVersion || updates[0]?.toVersion || "",
+  });
 }
 
 function componentName(t: Translate, component: SystemUpdateComponent): string {

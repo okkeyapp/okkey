@@ -107,6 +107,11 @@ test("a valid archive applies core before enterprise", async () => {
   });
   const finished = await postJob(agent, document);
   assert.equal(finished.job.status, "succeeded");
+  assert.deepEqual(finished.job.result, {
+    scope: "bundle",
+    coreVersion: "1.2.0",
+    enterpriseVersion: "2.0.0",
+  });
   assert.deepEqual(finished.job.components, [
     { component: "okkey", version: "1.2.0", applied: true },
     { component: "enterprise", version: "2.0.0", applied: true },
@@ -280,6 +285,11 @@ test("enterprise failure after core succeeded keeps core and rolls enterprise ba
   const finished = await postJob(agent, document);
   assert.equal(finished.job.status, "failed");
   assert.equal(finished.job.errorCode, "BUNDLE_PARTIAL");
+  assert.deepEqual(finished.job.result, {
+    scope: "partial",
+    coreVersion: "1.2.0",
+    enterpriseVersion: "2.0.0",
+  });
   assert.match(finished.job.errorMessage ?? "", /Okkey 1\.2\.0 was applied/);
   assert.match(finished.job.errorMessage ?? "", /Enterprise 2\.0\.0 was not applied/);
   assert.match(finished.job.errorMessage ?? "", /rolled back/);
