@@ -329,6 +329,39 @@ describe("SettingsDevicesContent", () => {
     expect(screen.getByText("Web Chrome")).toBeTruthy();
   });
 
+  it("keeps a pending request when approve still returns pending_approval", async () => {
+    authState.userId = "user-1";
+    shareMocks.readVaultBundle.mockReturnValue({ device_share_b64: "bG9jYWw=" });
+    coreMocks.approveDevice.mockResolvedValue({
+      device_id: "d-pending",
+      status: "pending_approval",
+    });
+    coreMocks.listDevices.mockResolvedValue({
+      devices: [trustedDevice()],
+      pending: [
+        pendingDevice({
+          share_wrap_ed25519_public_key: "ZWQ=",
+          share_wrap_pq_public_key: "cHE=",
+        }),
+      ],
+      blocked: [],
+    });
+
+    render(<SettingsDevicesContent t={t} />);
+    await screen.findByText("Desktop Windows 11");
+    fireEvent.click(screen.getByText("web.settingsPopup.devices.pending.trust"));
+
+    await waitFor(() => {
+      expect(coreMocks.approveDevice).toHaveBeenCalled();
+    });
+    await waitFor(() => {
+      expect(coreMocks.listDevices.mock.calls.length).toBeGreaterThan(1);
+    });
+    expect(screen.getByText("web.settingsPopup.devices.pending.title")).toBeTruthy();
+    expect(screen.getByText("Desktop Windows 11")).toBeTruthy();
+    expect(toast.success).not.toHaveBeenCalled();
+  });
+
   it("dismisses pending device via rejectDevice", async () => {
     coreMocks.listDevices
       .mockResolvedValueOnce({

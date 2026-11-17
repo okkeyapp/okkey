@@ -38,6 +38,7 @@ import {
 } from "../items/itemCategoryIcons";
 import { calendarDaysBetween } from "../../lib/calendarDaysBetween";
 import { useLocale } from "../../locale/LocaleContext";
+import { approvalResponseGrantsTrust } from "../devices/deviceApprovalPopup";
 import { DEVICES_CHANGED_EVENT, emitDevicesChanged } from "../devices/devicesEvents";
 import {
   DeviceTypeIcon,
@@ -319,14 +320,6 @@ export default function SettingsDevicesContent({ t }: SettingsDevicesContentProp
       return;
     }
     setBusyId(device.device_id);
-    // Optimistic: move into trusted list immediately.
-    patchDevicesCache({
-      pending: pending.filter((item) => item.device_id !== device.device_id),
-      devices: [
-        { ...device, status: "trusted", is_current: false, approval_expires_at: null },
-        ...devices.filter((item) => item.device_id !== device.device_id),
-      ],
-    });
     try {
       const bundle = userId ? readVaultBundle(userId) : null;
       const envelope = userId
@@ -348,7 +341,23 @@ export default function SettingsDevicesContent({ t }: SettingsDevicesContentProp
           pending: device,
         });
       }
-      await core.approveDevice(device.device_id, currentDeviceId, envelope ?? undefined, deviceShareB64);
+      const approved = await core.approveDevice(
+        device.device_id,
+        currentDeviceId,
+        envelope ?? undefined,
+        deviceShareB64,
+      );
+      if (!approvalResponseGrantsTrust(approved.status)) {
+        await load({ quiet: true, force: true });
+        return;
+      }
+      patchDevicesCache({
+        pending: pending.filter((item) => item.device_id !== device.device_id),
+        devices: [
+          { ...device, status: "trusted", is_current: false, approval_expires_at: null },
+          ...devices.filter((item) => item.device_id !== device.device_id),
+        ],
+      });
       toast.success(t("web.settingsPopup.devices.toast.trusted"));
       emitDevicesChanged();
     } catch (err) {
