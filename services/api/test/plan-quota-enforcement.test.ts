@@ -216,7 +216,7 @@ for (const planTier of ["FREE", "PREMIUM", "TEAM"] as const satisfies readonly N
     const cap = seatCap(planTier);
     const harness = membersService({ planTier, additionalMembers: 0, livePending: 0 });
     const created = await harness.service.createInvitations(workspaceId, actorId, inviteBatch(cap));
-    assert.equal(created.length, cap);
+    assert.equal(created.created.length, cap);
     assert.equal(harness.invitationInserts(), cap);
     assert.equal(harness.seatSql.length, 2);
     assert.match(harness.seatSql[0] ?? "", /user_id\s*<>/);
@@ -248,13 +248,13 @@ for (const planTier of ["FREE", "PREMIUM", "TEAM"] as const satisfies readonly N
 
     const roomForOne = membersService({ planTier, additionalMembers: 0, livePending: cap - 1 });
     const created = await roomForOne.service.createInvitations(workspaceId, actorId, inviteBatch(1));
-    assert.equal(created.length, 1);
+    assert.equal(created.created.length, 1);
 
     // livePending 0: revoked and expired rows exist in the fixture only when the SQL
     // forgets status = 'pending' or expires_at. Those must not block a free seat.
     const staleOnly = membersService({ planTier, additionalMembers: 0, livePending: 0 });
     const staleCreated = await staleOnly.service.createInvitations(workspaceId, actorId, inviteBatch(1));
-    assert.equal(staleCreated.length, 1);
+    assert.equal(staleCreated.created.length, 1);
   });
 
   test(`${planTier} does not count the owner toward maxAdditionalMembers`, async () => {
@@ -263,7 +263,7 @@ for (const planTier of ["FREE", "PREMIUM", "TEAM"] as const satisfies readonly N
     // would already equal the cap and reject this invite.
     const harness = membersService({ planTier, additionalMembers: cap - 1, livePending: 0 });
     const created = await harness.service.createInvitations(workspaceId, actorId, inviteBatch(1));
-    assert.equal(created.length, 1);
+    assert.equal(created.created.length, 1);
     assert.equal(harness.invitationInserts(), 1);
   });
 
@@ -292,7 +292,7 @@ test("invite create and accept use the same seat count", async () => {
 test("SaaS ENTERPRISE does not apply a numeric member cap", async () => {
   const harness = membersService({ planTier: "ENTERPRISE", additionalMembers: 10_000, livePending: 10_000 });
   const created = await harness.service.createInvitations(workspaceId, actorId, inviteBatch(1));
-  assert.equal(created.length, 1);
+  assert.equal(created.created.length, 1);
   assert.equal(harness.seatSql.length, 0);
 });
 

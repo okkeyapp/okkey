@@ -911,7 +911,11 @@ test("GET /devices for a non-trusted bound session returns only that device", as
   }
 
   const pending = await listAs("d-pending");
-  assert.deepEqual(pending.devices, []);
+  assert.deepEqual(
+    pending.devices.map((device) => device.device_id),
+    ["d-trusted"],
+  );
+  assert.equal(pending.devices[0]?.device_fingerprint, "");
   assert.deepEqual(
     pending.pending.map((device) => device.device_id),
     ["d-pending"],
@@ -1371,4 +1375,16 @@ test("POST /devices/:id/block ends sessions bound to the pending device", async 
   });
   assert.equal(res.statusCode, 200);
   assert.deepEqual(ended, [DEVICE_B]);
+});
+
+test("POST /devices/:id/block rejects the removed 1w duration", async () => {
+  const res = await dispatch({
+    method: "POST",
+    url: `/devices/${DEVICE_B}/block`,
+    headers: { "x-user-id": "u1", "x-device-id": DEVICE_A },
+    body: { duration: "1w" },
+  });
+  assert.equal(res.statusCode, 400);
+  const payload = JSON.parse(res.body) as { message?: string };
+  assert.match(payload.message ?? "", /1h, 1d, forever/);
 });

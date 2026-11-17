@@ -19,6 +19,7 @@ import {
   VAULT_BUNDLE_STORAGE_KEY,
   vaultBundleScopedStorageKey,
 } from "./storageKeys";
+import { markLockOnDeviceSleepDefaultForNewInstall } from "./vaultDevicePrefs";
 
 export type { StoredVaultBundle };
 export { mapVaultUnlockBootstrapToStored };
@@ -122,7 +123,13 @@ export function writeVaultBundle(bundle: StoredVaultBundle, userId: string | nul
   }
   try {
     if (userId) {
-      localStorage.setItem(vaultBundleScopedStorageKey(userId), json);
+      const scopedKey = vaultBundleScopedStorageKey(userId);
+      const creatingFirstBundle =
+        !localStorage.getItem(scopedKey) && !localStorage.getItem(VAULT_BUNDLE_STORAGE_KEY);
+      if (creatingFirstBundle) {
+        markLockOnDeviceSleepDefaultForNewInstall(userId);
+      }
+      localStorage.setItem(scopedKey, json);
     } else {
       localStorage.setItem(VAULT_BUNDLE_PENDING_KEY, json);
     }
@@ -143,6 +150,9 @@ export function finalizePendingVaultBundle(userId: string): void {
   const scopedKey = vaultBundleScopedStorageKey(userId);
   const parsed = parseBundle(pendingRaw);
   try {
+    if (!localStorage.getItem(scopedKey)) {
+      markLockOnDeviceSleepDefaultForNewInstall(userId);
+    }
     localStorage.setItem(scopedKey, parsed ? persistableJson(parsed) : pendingRaw);
     localStorage.removeItem(VAULT_BUNDLE_PENDING_KEY);
     localStorage.removeItem(VAULT_BUNDLE_STORAGE_KEY);

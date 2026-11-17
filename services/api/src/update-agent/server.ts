@@ -2,13 +2,34 @@ import { randomUUID, timingSafeEqual, createHash } from "node:crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 
 import { isSystemUpdateError, SystemUpdateError } from "../system-updates/errors.ts";
-import { verifyOfflinePackage, type OfflinePackagePayload } from "../system-updates/package-format.ts";
-import type { UpdateJob } from "../system-updates/service.ts";
+import {
+  BUNDLE_MAX_DOCUMENT_BYTES,
+  isOfflineBundleDocument,
+  verifyOfflineBundle,
+  type VerifiedOfflineBundle,
+} from "../system-updates/offline-bundle.ts";
+import {
+  claimedPackageComponent,
+  normalizePublicKey,
+  takeRegistryCredentials,
+  verifyOfflinePackage,
+  type OfflinePackagePayload,
+  type RegistryPullCredentials,
+} from "../system-updates/package-format.ts";
+import type { UpdateComponentResult, UpdateJob } from "../system-updates/service.ts";
 import { applyVerifiedCorePackage, nodeEnvFileEngine, type UpdateApplyEngine } from "./apply.ts";
+import { applyVerifiedOfflineBundle } from "./bundle-apply.ts";
+import { applyVerifiedEnterprisePackage } from "./enterprise-apply.ts";
+import { credentialSecrets, scrubSecrets } from "./registry-auth.ts";
 
 export type UpdateAgentOptions = {
   token: string;
+  /** Trusted public key for core (`okkey`) packages. */
   publicKeyPem: string;
+  /** Trusted public key for enterprise packages. Core packages are never checked with this key. */
+  enterprisePublicKeyPem?: string;
+  /** Fallback core version when the api container and env file do not name one. */
+  coreVersion?: string;
   isolated: boolean;
   project: string;
   envFilePath: string;
@@ -33,7 +54,7 @@ export function createUpdateAgent(options: UpdateAgentOptions) {
     for await (const chunk of req) {
       const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
       size += buffer.length;
-      if (size > 1_000_000) {
+      if (size > BUNDLE_MAX_DOCUMENT_BYTES) {
         throw new SystemUpdateError(400, "PACKAGE_INVALID", "Package exceeds the size limit");
       }
       chunks.push(buffer);
@@ -51,56 +72,166 @@ export function createUpdateAgent(options: UpdateAgentOptions) {
   async function execute(job: StoredJob, document: unknown): Promise<void> {
     job.status = "verifying";
     job.progress = 15;
+    let registryCredentials: RegistryPullCredentials | undefined;
+    try {
+      registryCredentials = takeRegistryCredentials(document);
+    } catch (error) {
+      fail(job, error, "PACKAGE_INVALID");
+      return;
+    }
+    const secrets = credentialSecrets(registryCredentials);
+    if (isOfflineBundleDocument(document)) {
+      await executeBundle(job, document);
+      return;
+    }
+    const claimed = claimedPackageComponent(document);
     let payload: OfflinePackagePayload;
     try {
-      payload = verify(document, options.publicKeyPem).payload;
+      const publicKey =
+        claimed === "enterprise" ? (options.enterprisePublicKeyPem ?? "") : options.publicKeyPem;
+      payload = verify(document, publicKey).payload;
     } catch (error) {
-      fail(job, error, "VERIFICATION_INTERRUPTED");
+      if (claimed === "enterprise" && isSystemUpdateError(error) && error.code === "TRUST_KEY_MISSING") {
+        fail(
+          job,
+          new SystemUpdateError(
+            400,
+            "TRUST_KEY_MISSING",
+            "No trusted enterprise public key is configured, so the package was not applied",
+          ),
+          secrets,
+        );
+        return;
+      }
+      fail(job, error, "VERIFICATION_INTERRUPTED", secrets);
       return;
     }
     job.component = payload.component;
     job.fromVersion = payload.fromVersion;
     job.toVersion = payload.version;
-    if (payload.component === "enterprise") {
-      fail(
-        job,
-        new SystemUpdateError(
-          409,
-          "ENTERPRISE_APPLY_UNAVAILABLE",
-          "The enterprise package signature was checked, but this installation cannot apply the enterprise module. Okkey was not changed",
-        ),
-      );
-      return;
+    if (payload.component !== "enterprise") {
+      registryCredentials = undefined;
     }
     job.status = "applying";
     job.progress = 60;
     try {
-      await applyVerifiedCorePackage({
-        payload,
+      if (payload.component === "enterprise") {
+        await applyVerifiedEnterprisePackage({
+          payload,
+          engine,
+          project: options.project,
+          envFilePath: options.envFilePath,
+          isolated: options.isolated,
+          coreVersionHint: options.coreVersion ?? "",
+          registryCredentials,
+        });
+      } else {
+        await applyVerifiedCorePackage({
+          payload,
+          engine,
+          project: options.project,
+          envFilePath: options.envFilePath,
+          isolated: options.isolated,
+        });
+      }
+      job.status = "succeeded";
+      job.progress = 100;
+    } catch (error) {
+      fail(job, error, "APPLY_FAILED", secrets);
+    }
+  }
+
+  async function executeBundle(job: StoredJob, document: unknown): Promise<void> {
+    if (!normalizePublicKey(options.publicKeyPem)) {
+      fail(
+        job,
+        new SystemUpdateError(
+          400,
+          "TRUST_KEY_MISSING",
+          "No trusted core public key is configured, so the bundle was not applied",
+        ),
+      );
+      return;
+    }
+    if (!normalizePublicKey(options.enterprisePublicKeyPem ?? "")) {
+      fail(
+        job,
+        new SystemUpdateError(
+          400,
+          "TRUST_KEY_MISSING",
+          "No trusted enterprise public key is configured, so the bundle was not applied",
+        ),
+      );
+      return;
+    }
+    let bundle: VerifiedOfflineBundle;
+    try {
+      bundle = verifyOfflineBundle(document, {
+        corePublicKeyPem: options.publicKeyPem,
+        enterprisePublicKeyPem: options.enterprisePublicKeyPem ?? "",
+      });
+    } catch (error) {
+      fail(job, error, "VERIFICATION_INTERRUPTED");
+      return;
+    }
+    const report: UpdateComponentResult[] = [
+      { component: "okkey", version: bundle.core.version, applied: false },
+      { component: "enterprise", version: bundle.enterprise.version, applied: false },
+    ];
+    job.component = "okkey";
+    job.fromVersion = bundle.core.fromVersion;
+    job.toVersion = bundle.core.version;
+    job.components = report;
+    job.status = "applying";
+    job.progress = 40;
+    try {
+      await applyVerifiedOfflineBundle({
+        bundle,
         engine,
         project: options.project,
         envFilePath: options.envFilePath,
         isolated: options.isolated,
+        coreVersionHint: options.coreVersion ?? "",
       });
+      report[0] = { component: "okkey", version: bundle.core.version, applied: true };
+      report[1] = { component: "enterprise", version: bundle.enterprise.version, applied: true };
+      job.components = report;
       job.status = "succeeded";
       job.progress = 100;
     } catch (error) {
-      fail(job, error, "APPLY_FAILED");
+      if (isSystemUpdateError(error) && error.code === "BUNDLE_PARTIAL") {
+        report[0] = { component: "okkey", version: bundle.core.version, applied: true };
+        job.components = report;
+        fail(job, error, "APPLY_FAILED");
+        return;
+      }
+      const reason = error instanceof Error ? error.message : "Core apply failed";
+      const clear = reason.includes("Nothing was applied") || reason.includes("Nothing was changed");
+      fail(
+        job,
+        new SystemUpdateError(
+          isSystemUpdateError(error) ? error.statusCode : 500,
+          isSystemUpdateError(error) ? error.code : "APPLY_FAILED",
+          clear ? reason : `Nothing was applied. ${reason}`,
+        ),
+      );
     }
   }
 
-  function fail(job: StoredJob, error: unknown, fallback: string): void {
+  function fail(job: StoredJob, error: unknown, fallback: string, secrets: readonly string[] = []): void {
     job.status = "failed";
     if (isSystemUpdateError(error)) {
       job.errorCode = error.code;
-      job.errorMessage = error.message;
+      job.errorMessage = scrubSecrets(error.message, secrets);
       return;
     }
     job.errorCode = fallback;
-    job.errorMessage =
+    job.errorMessage = scrubSecrets(
       error instanceof Error
         ? error.message
-        : "Verification or apply failed. The previous version was kept";
+        : "Verification or apply failed. The previous version was kept",
+      secrets,
+    );
   }
 
   async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -177,6 +308,7 @@ export function startUpdateAgentServer(options: UpdateAgentOptions & { port: num
 }
 
 function publicJob(job: StoredJob): UpdateJob {
+  const result = applyResult(job);
   return {
     id: job.id,
     status: job.status,
@@ -185,7 +317,38 @@ function publicJob(job: StoredJob): UpdateJob {
     fromVersion: job.fromVersion,
     toVersion: job.toVersion,
     ...(job.errorCode ? { errorCode: job.errorCode, errorMessage: job.errorMessage } : {}),
+    ...(job.components ? { components: job.components } : {}),
+    ...(result ? { result } : {}),
   };
+}
+
+function applyResult(job: StoredJob): UpdateJob["result"] {
+  if (job.errorCode === "BUNDLE_PARTIAL") {
+    return {
+      scope: "partial",
+      coreVersion: versionOf(job, "okkey") || job.toVersion,
+      enterpriseVersion: versionOf(job, "enterprise"),
+    };
+  }
+  if (job.status !== "succeeded") {
+    return undefined;
+  }
+  const parts = job.components ?? [];
+  if (parts.length > 1 && parts.every((item) => item.applied)) {
+    return {
+      scope: "bundle",
+      coreVersion: versionOf(job, "okkey"),
+      enterpriseVersion: versionOf(job, "enterprise"),
+    };
+  }
+  if (job.component === "enterprise") {
+    return { scope: "enterprise", enterpriseVersion: job.toVersion };
+  }
+  return { scope: "core", coreVersion: job.toVersion };
+}
+
+function versionOf(job: StoredJob, component: "okkey" | "enterprise"): string {
+  return job.components?.find((item) => item.component === component)?.version ?? "";
 }
 
 function authorized(req: IncomingMessage, token: string): boolean {

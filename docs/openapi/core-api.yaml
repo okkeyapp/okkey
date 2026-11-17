@@ -65,6 +65,23 @@ components:
         resendAvailableAt:
           type: string
           format: date-time
+        emailDeliverable:
+          type: boolean
+          description: >
+            False only when this instance accepts a master-password login proof
+            (self-hosted and outbound mail is not deliverable). True on SaaS and
+            whenever mail can be delivered.
+
+    MasterPasswordLoginRequest:
+      type: object
+      required: [email, loginKey]
+      properties:
+        email:
+          type: string
+          format: email
+        loginKey:
+          type: string
+          description: Standard base64 of the 32-byte login key. Not the master password.
 
     EmailResendRequest:
       type: object
@@ -250,6 +267,9 @@ components:
         password_kdf_params_version:
           type: integer
           enum: [1, 2]
+        login_key:
+          type: string
+          description: Optional standard base64 of the 32-byte login key. Not the master password.
         device_public_key:
           type: string
         device_share:
@@ -1168,7 +1188,11 @@ paths:
       summary: Self-host update check
       description: |
         Hidden in SaaS (404). Does not consult license or plan tier.
-        An empty feed URL or isolated mode does not call an external host.
+        The core feed defaults to the GitHub Releases asset
+        https://github.com/okkeyapp/okkey/releases/latest/download/feed.json.
+        OKKEY_UPDATE_CORE_FEED_URL overrides that default (OKKEY_UPDATE_FEED_URL
+        still overrides it when the core name is empty).
+        OKKEY_UPDATE_ISOLATED skips every update check, including the default.
         Checking does not download or apply a package.
       security: [{ bearerAuth: [] }]
       responses:
@@ -1193,10 +1217,16 @@ paths:
   /system/updates/apply:
     post:
       tags: [System]
-      summary: Ask the update agent to verify and apply one offline package
+      summary: Ask the update agent to verify and apply one offline package or bundle
       description: |
         Starts only when a workspace owner calls this route.
-        The agent verifies the package signature before changing containers.
+        The agent verifies an okkey package with the core trusted key and an enterprise package with the enterprise trusted key.
+        An enterprise package includes minCoreVersion. When the running core is older, the job fails with CORE_UPDATE_REQUIRED and nothing is changed.
+        A file may instead be an okkey-offline-bundle document (`format`, `formatVersion`, `archiveBase64`).
+        The archive is a zip. Core is verified with the core key and enterprise with the enterprise key.
+        The manifest hashes and the apply order (core, then enterprise) are checked before anything changes.
+        If enterprise apply fails after core succeeded, enterprise is rolled back, core stays, and the job is BUNDLE_PARTIAL.
+        Short-lived registry pull credentials from the feed are forwarded only for an enterprise apply and are not stored.
         The web container does not receive the Docker socket.
       security: [{ bearerAuth: [] }]
       responses:
@@ -1738,6 +1768,46 @@ paths:
               schema:
                 $ref: "#/components/schemas/EmailConfirmResponse"
         "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+
+  /auth/login/master-password:
+    post:
+      tags: [Auth]
+      summary: Sign in with a login key when outbound email is not deliverable
+      description: >
+        Self-hosted instances that cannot deliver mail accept a 32-byte login key
+        derived on the client. The master password is never sent. When mail is
+        deliverable, or on SaaS, the response is 403 and the emailed code is required.
+        Success matches email confirm for an existing user and does not skip device
+        check or TOTP.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MasterPasswordLoginRequest"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailConfirmResponse"
+        "401":
+          description: Generic failure (unknown account, wrong key, or no verifier yet)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "403":
+          description: Email code is required on this instance
           content:
             application/json:
               schema:

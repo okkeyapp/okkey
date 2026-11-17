@@ -10,17 +10,19 @@ import { HttpApp } from "../src/http.ts";
 import { feedRequestUrl, fetchUpdateFeed } from "../src/system-updates/feed.ts";
 import {
   generateUpdateKeyPair,
+  parseUpdateFeed,
   signOfflinePackage,
   verifyOfflinePackage,
   type OfflinePackagePayload,
 } from "../src/system-updates/package-format.ts";
+import { createHttpUpdateAgentClient } from "../src/system-updates/agent-client.ts";
 import {
   createSystemUpdateService,
   visibleUpdates,
   type UpdateAgentClient,
   type UpdateJob,
 } from "../src/system-updates/service.ts";
-import { compareVersions, shouldShowUpdate } from "../src/system-updates/versions.ts";
+import { compareVersions, coreSatisfiesMinimum, shouldShowUpdate } from "../src/system-updates/versions.ts";
 import { applyVerifiedCorePackage, setEnvValue, type UpdateApplyEngine } from "../src/update-agent/apply.ts";
 import { createDockerApplyEngine, type DockerTransport } from "../src/update-agent/docker-engine.ts";
 import { createUpdateAgent } from "../src/update-agent/server.ts";
@@ -44,6 +46,22 @@ const payload = (overrides: Partial<OfflinePackagePayload> = {}): OfflinePackage
   },
   ...overrides,
 });
+
+const enterprisePayload = (overrides: Partial<OfflinePackagePayload> = {}): OfflinePackagePayload =>
+  payload({
+    component: "enterprise",
+    version: "2.0.0",
+    fromVersion: "1.0.0",
+    summary: "Enterprise module",
+    imageTag: "2.0.0",
+    minCoreVersion: "1.2.0",
+    images: {
+      "enterprise-api": "ghcr.io/example/enterprise-api:2.0.0",
+      "enterprise-web": "ghcr.io/example/enterprise-web:2.0.0",
+      "enterprise-worker": "ghcr.io/example/enterprise-worker:2.0.0",
+    },
+    ...overrides,
+  });
 
 function appWithRoutes(
   deploymentMode: "self_hosted" | "saas",
@@ -70,6 +88,11 @@ test("version compare treats a newer feed release as newer than a dismissed prer
   assert.equal(shouldShowUpdate("1.1.0", null), true);
   assert.equal(shouldShowUpdate("dev", "dev"), false);
   assert.equal(shouldShowUpdate("dev-2", "dev"), true);
+  assert.equal(coreSatisfiesMinimum("1.2.0", "1.2.0"), true);
+  assert.equal(coreSatisfiesMinimum("1.3.0", "1.2.0"), true);
+  assert.equal(coreSatisfiesMinimum("1.2.0-beta.1", "1.2.0"), false);
+  assert.equal(coreSatisfiesMinimum("1.0.0", "1.2.0"), false);
+  assert.equal(coreSatisfiesMinimum("dev", "1.2.0"), false);
 });
 
 test("empty feed URL and isolated mode do not call out", async () => {
@@ -138,7 +161,7 @@ test("feed check lists okkey and installed enterprise without applying or readin
     currentVersion: "1.0.0-beta.2",
     enterpriseInstalled: true,
     enterpriseVersion: "1.0.0",
-    feedUrl: "http://updates.internal/feed.json",
+    coreFeedUrl: "http://updates.internal/feed.json",
     isolated: false,
     fetchImpl,
     agent,
@@ -160,7 +183,7 @@ test("feed check lists okkey and installed enterprise without applying or readin
     currentVersion: "1.0.0-beta.2",
     enterpriseInstalled: false,
     enterpriseVersion: "",
-    feedUrl: "http://updates.internal/feed.json",
+    coreFeedUrl: "http://updates.internal/feed.json",
     isolated: false,
     fetchImpl,
     agent,
@@ -180,13 +203,493 @@ test("feed check lists okkey and installed enterprise without applying or readin
   assert.equal(applied, 0);
 });
 
+test("one feed can fail while the other component still reports an update", async () => {
+  const keys = generateUpdateKeyPair();
+  const corePackage = signOfflinePackage(payload(), keys.privateKeyPem);
+  const coreRaw = JSON.stringify(corePackage);
+  const enterprisePackage = signOfflinePackage(
+    payload({
+      component: "enterprise",
+      version: "3.0.0",
+      fromVersion: "1.0.0",
+      summary: "Enterprise module",
+      images: { enterprise: "ghcr.io/okkeyapp/enterprise:3.0.0" },
+    }),
+    keys.privateKeyPem,
+  );
+  const enterpriseRaw = JSON.stringify(enterprisePackage);
+  const coreFeed = {
+    schema: "okkey.update-feed.v1",
+    packages: [
+      feedPackage("okkey", "1.1.0", "http://updates.internal/okkey-1.1.0.okpkg", coreRaw, {
+        releaseNotesUrl: "http://updates.internal/notes/okkey-1.1.0",
+      }),
+      feedPackage("enterprise", "9.0.0", "http://updates.internal/ignored.okpkg", enterpriseRaw),
+    ],
+  };
+  const enterpriseFeed = {
+    schema: "okkey.update-feed.v1",
+    packages: [
+      feedPackage("enterprise", "3.0.0", "http://updates.internal/enterprise-3.0.0.okpkg", enterpriseRaw, {
+        minCoreVersion: "1.1.0",
+        releaseNotesUrl: "http://updates.internal/notes/enterprise-3.0.0",
+      }),
+    ],
+  };
+  const seen: string[] = [];
+  const fetchImpl = async (url: string) => {
+    seen.push(url);
+    if (url.endsWith("/enterprise.json")) {
+      return new Response("down", { status: 503 });
+    }
+    if (url.endsWith("/enterprise-3.0.0.okpkg")) {
+      return new Response(enterpriseRaw, { status: 200 });
+    }
+    if (url.endsWith("/feed.json")) {
+      return new Response(JSON.stringify(coreFeed), { status: 200 });
+    }
+    return new Response("missing", { status: 404 });
+  };
+  const started: unknown[] = [];
+  const agent: UpdateAgentClient = {
+    async start(document) {
+      started.push(document);
+      return {
+        id: "11111111-1111-4111-8111-111111111111",
+        status: "verifying",
+        progress: 0,
+        component: "enterprise",
+        fromVersion: "1.0.0",
+        toVersion: "3.0.0",
+      };
+    },
+    async get() {
+      return null;
+    },
+  };
+  const failedEnterprise = createSystemUpdateService({
+    deploymentMode: "self_hosted",
+    currentVersion: "1.0.0",
+    enterpriseInstalled: true,
+    enterpriseVersion: "1.0.0",
+    coreFeedUrl: "http://updates.internal/feed.json",
+    enterpriseFeedUrl: "http://updates.internal/enterprise.json",
+    isolated: false,
+    fetchImpl,
+    agent,
+    isAdmin: async () => true,
+  });
+  const partial = await failedEnterprise.statusFor("owner");
+  assert.equal(partial.feedError, null);
+  assert.equal(partial.offlineArchiveSupported, true);
+  assert.deepEqual(
+    partial.updates.map((update) => update.component),
+    ["okkey"],
+  );
+  assert.equal(partial.components.find((row) => row.component === "okkey")?.checkError, null);
+  assert.equal(partial.components.find((row) => row.component === "okkey")?.releaseNotesUrl, "http://updates.internal/notes/okkey-1.1.0");
+  assert.equal(partial.components.find((row) => row.component === "enterprise")?.checkError, "FEED_FETCH_FAILED");
+  assert.equal(partial.components.find((row) => row.component === "enterprise")?.update, null);
+  assert.equal(partial.updates.some((update) => update.toVersion === "9.0.0"), false);
+
+  seen.length = 0;
+  const healthy = createSystemUpdateService({
+    deploymentMode: "self_hosted",
+    currentVersion: "1.0.0",
+    enterpriseInstalled: true,
+    enterpriseVersion: "1.0.0",
+    coreFeedUrl: "http://updates.internal/missing-core.json",
+    enterpriseFeedUrl: "http://updates.internal/enterprise-feed.json",
+    isolated: false,
+    fetchImpl: async (url: string) => {
+      seen.push(url);
+      if (url.endsWith("/enterprise-feed.json")) {
+        return new Response(JSON.stringify(enterpriseFeed), { status: 200 });
+      }
+      if (url.endsWith("/enterprise-3.0.0.okpkg")) {
+        return new Response(enterpriseRaw, { status: 200 });
+      }
+      return new Response("down", { status: 503 });
+    },
+    agent,
+    isAdmin: async () => true,
+  });
+  const enterpriseOnly = await healthy.statusFor("owner");
+  assert.equal(enterpriseOnly.feedError, null);
+  assert.equal(enterpriseOnly.components.find((row) => row.component === "okkey")?.checkError, "FEED_FETCH_FAILED");
+  assert.equal(enterpriseOnly.components.find((row) => row.component === "enterprise")?.checkError, null);
+  assert.equal(enterpriseOnly.components.find((row) => row.component === "enterprise")?.minCoreVersion, "1.1.0");
+  assert.equal(
+    enterpriseOnly.components.find((row) => row.component === "enterprise")?.releaseNotesUrl,
+    "http://updates.internal/notes/enterprise-3.0.0",
+  );
+  assert.deepEqual(
+    enterpriseOnly.updates.map((update) => update.toVersion),
+    ["3.0.0"],
+  );
+
+  seen.length = 0;
+  await healthy.apply("owner", { source: "feed", component: "enterprise" });
+  assert.deepEqual(seen, [
+    "http://updates.internal/enterprise-feed.json",
+    "http://updates.internal/enterprise-3.0.0.okpkg",
+  ]);
+  assert.equal(started.length, 1);
+
+  let enterpriseCalls = 0;
+  const hidden = createSystemUpdateService({
+    deploymentMode: "self_hosted",
+    currentVersion: "1.0.0",
+    enterpriseInstalled: false,
+    enterpriseVersion: "",
+    coreFeedUrl: "http://updates.internal/feed.json",
+    enterpriseFeedUrl: "http://updates.internal/enterprise.json",
+    isolated: false,
+    fetchImpl: async (url: string) => {
+      if (url.includes("enterprise")) {
+        enterpriseCalls += 1;
+      }
+      return new Response(JSON.stringify({ schema: "okkey.update-feed.v1", packages: [] }), { status: 200 });
+    },
+    agent,
+    isAdmin: async () => true,
+  });
+  const member = await hidden.statusFor("member");
+  assert.equal(enterpriseCalls, 0);
+  assert.deepEqual(
+    member.components.map((row) => row.component),
+    ["okkey"],
+  );
+});
+
+test("an expired enterprise license refuses the feed, sets the lapse flag, and a renewal clears both", async () => {
+  const licenseKey = "do-not-log-this-license-key";
+  let expired = true;
+  const headersSeen: Array<string | null> = [];
+  const coreFeed = {
+    schema: "okkey.update-feed.v1",
+    packages: [
+      {
+        component: "okkey",
+        version: "1.1.0",
+        fromVersion: "1.0.0",
+        summary: "Core",
+        releasedAt: "2026-11-01T00:00:00.000Z",
+        packageUrl: "http://updates.internal/okkey-1.1.0.okpkg",
+        packageSha256: "ab".repeat(32),
+      },
+    ],
+  };
+  const enterpriseFeed = {
+    schema: "okkey.update-feed.v1",
+    packages: [
+      {
+        component: "enterprise",
+        version: "1.2.0",
+        fromVersion: "1.0.0",
+        summary: "Enterprise",
+        releasedAt: "2026-11-01T00:00:00.000Z",
+        packageUrl: "http://updates.internal/enterprise-1.2.0.okpkg",
+        packageSha256: "cd".repeat(32),
+        minCoreVersion: "1.0.0",
+      },
+    ],
+  };
+  let lapsed = false;
+  const service = createSystemUpdateService({
+    deploymentMode: "self_hosted",
+    currentVersion: "1.0.0",
+    enterpriseInstalled: true,
+    enterpriseVersion: "1.0.0",
+    coreFeedUrl: "http://updates.internal/feed.json",
+    enterpriseFeedUrl: "http://updates.internal/enterprise.json",
+    enterpriseLicenseKey: licenseKey,
+    enterpriseLicenseLapsed: false,
+    setEnterpriseLicenseLapsed: (value) => {
+      lapsed = value;
+    },
+    isolated: false,
+    feedCacheTtlMs: 0,
+    fetchImpl: async (url, init) => {
+      const headers = new Headers(init?.headers);
+      if (String(url).includes("enterprise")) {
+        headersSeen.push(headers.get("X-Okkey-License-Key"));
+        if (expired) {
+          return new Response(JSON.stringify({ error: "LICENSE_EXPIRED" }), { status: 403 });
+        }
+        return new Response(JSON.stringify(enterpriseFeed), { status: 200 });
+      }
+      return new Response(JSON.stringify(coreFeed), { status: 200 });
+    },
+    agent: {
+      async start() {
+        throw new Error("apply");
+      },
+      async get() {
+        return null;
+      },
+    },
+    isAdmin: async () => true,
+  });
+  const refused = await service.statusFor("owner");
+  assert.equal(lapsed, true);
+  assert.equal(refused.enterpriseLicenseLapsed, true);
+  assert.equal(
+    refused.components.find((row) => row.component === "enterprise")?.checkError,
+    "LICENSE_EXPIRED",
+  );
+  assert.equal(refused.components.find((row) => row.component === "okkey")?.checkError, null);
+  assert.equal(JSON.stringify(refused).includes(licenseKey), false);
+  assert.deepEqual(headersSeen, [licenseKey]);
+
+  expired = false;
+  const renewed = await service.statusFor("owner");
+  assert.equal(lapsed, false);
+  assert.equal(renewed.enterpriseLicenseLapsed, false);
+  assert.equal(renewed.components.find((row) => row.component === "enterprise")?.checkError, null);
+  assert.equal(JSON.stringify(renewed).includes(licenseKey), false);
+});
+
+test("an invalid enterprise feed does not drop the core update", async () => {
+  const service = createSystemUpdateService({
+    deploymentMode: "self_hosted",
+    currentVersion: "1.0.0",
+    enterpriseInstalled: true,
+    enterpriseVersion: "1.0.0",
+    coreFeedUrl: "http://updates.internal/feed.json",
+    enterpriseFeedUrl: "http://updates.internal/enterprise.json",
+    isolated: false,
+    fetchImpl: async (url: string) => {
+      if (url.endsWith("/enterprise.json")) {
+        return new Response(JSON.stringify({ schema: "other", packages: [] }), { status: 200 });
+      }
+      return new Response(
+        JSON.stringify({
+          schema: "okkey.update-feed.v1",
+          packages: [
+            {
+              component: "okkey",
+              version: "1.2.0",
+              fromVersion: "1.0.0",
+              summary: "Core",
+              releasedAt: "2026-11-01T00:00:00.000Z",
+              packageUrl: "http://updates.internal/okkey-1.2.0.okpkg",
+              packageSha256: "ab".repeat(32),
+            },
+          ],
+        }),
+        { status: 200 },
+      );
+    },
+    agent: {
+      async start() {
+        throw new Error("no");
+      },
+      async get() {
+        return null;
+      },
+    },
+    isAdmin: async () => true,
+  });
+  const status = await service.statusFor("owner");
+  assert.equal(status.feedError, null);
+  assert.equal(status.updates[0]?.toVersion, "1.2.0");
+  assert.equal(status.components.find((row) => row.component === "enterprise")?.checkError, "FEED_INVALID");
+});
+
+test("enterprise feed pull credentials go to the update agent and not to the browser", async () => {
+  const keys = generateUpdateKeyPair();
+  const signed = signOfflinePackage(
+    payload({
+      component: "enterprise",
+      version: "3.0.0",
+      fromVersion: "1.0.0",
+      summary: "Enterprise module",
+      images: { enterprise: "ghcr.io/okkeyapp/enterprise:3.0.0" },
+    }),
+    keys.privateKeyPem,
+  );
+  const raw = JSON.stringify(signed);
+  const password = "pull-secret-value";
+  const username = "pull-user";
+  const server = "registry.example";
+  const feed = {
+    schema: "okkey.update-feed.v1",
+    registryCredentials: {
+      server: "https://Fallback.Example/v2/",
+      username: "fallback-user",
+      password: "fallback-secret",
+    },
+    packages: [
+      {
+        ...feedPackage("enterprise", "3.0.0", "http://updates.internal/enterprise-3.0.0.okpkg", raw, {
+          minCoreVersion: "1.1.0",
+        }),
+        registryCredentials: { server, username, password },
+      },
+    ],
+  };
+  const started: Array<{ document: unknown; options?: { registryCredentials?: { password?: string } } }> = [];
+  const agent: UpdateAgentClient = {
+    async start(document, options) {
+      started.push({ document, options });
+      return {
+        id: "11111111-1111-4111-8111-111111111111",
+        status: "verifying",
+        progress: 0,
+        component: "enterprise",
+        fromVersion: "1.0.0",
+        toVersion: "3.0.0",
+      };
+    },
+    async get() {
+      return null;
+    },
+  };
+  const service = createSystemUpdateService({
+    deploymentMode: "self_hosted",
+    currentVersion: "1.0.0",
+    enterpriseInstalled: true,
+    enterpriseVersion: "1.0.0",
+    coreFeedUrl: "http://updates.internal/feed.json",
+    enterpriseFeedUrl: "http://updates.internal/enterprise.json",
+    isolated: false,
+    fetchImpl: async (url: string) => {
+      if (url.endsWith("/enterprise.json")) {
+        return new Response(JSON.stringify(feed), { status: 200 });
+      }
+      if (url.endsWith("/enterprise-3.0.0.okpkg")) {
+        return new Response(raw, { status: 200 });
+      }
+      return new Response(JSON.stringify({ schema: "okkey.update-feed.v1", packages: [] }), { status: 200 });
+    },
+    agent,
+    isAdmin: async () => true,
+  });
+  const status = await service.statusFor("owner");
+  const statusJson = JSON.stringify(status);
+  assert.equal(statusJson.includes(password), false);
+  assert.equal(statusJson.includes(username), false);
+  assert.equal(statusJson.includes("fallback-secret"), false);
+  await service.apply("owner", { source: "feed", component: "enterprise" });
+  assert.equal(started.length, 1);
+  assert.equal(JSON.stringify(started[0]?.document).includes(password), false);
+  assert.deepEqual(started[0]?.options?.registryCredentials, { server, username, password });
+
+  const coreStarted: unknown[] = [];
+  const coreRaw = JSON.stringify(signOfflinePackage(payload(), keys.privateKeyPem));
+  const core = createSystemUpdateService({
+    deploymentMode: "self_hosted",
+    currentVersion: "1.0.0",
+    enterpriseInstalled: false,
+    enterpriseVersion: "",
+    coreFeedUrl: "http://updates.internal/feed.json",
+    isolated: false,
+    fetchImpl: async (url: string) => {
+      if (url.endsWith("/okkey.okpkg")) {
+        return new Response(coreRaw, { status: 200 });
+      }
+      return new Response(
+        JSON.stringify({
+          schema: "okkey.update-feed.v1",
+          registryCredentials: { server, username, password },
+          packages: [feedPackage("okkey", "1.1.0", "http://updates.internal/okkey.okpkg", coreRaw)],
+        }),
+        { status: 200 },
+      );
+    },
+    agent: {
+      async start(document, options) {
+        coreStarted.push(options ?? null);
+        return {
+          id: "22222222-2222-4222-8222-222222222222",
+          status: "verifying",
+          progress: 0,
+          component: document.payload.component,
+          fromVersion: "1.0.0",
+          toVersion: "1.1.0",
+        };
+      },
+      async get() {
+        return null;
+      },
+    },
+    isAdmin: async () => true,
+  });
+  await core.apply("owner", { source: "feed", component: "okkey" });
+  assert.deepEqual(coreStarted, [null]);
+
+  const posted: string[] = [];
+  const client = createHttpUpdateAgentClient({
+    baseUrl: "http://agent.internal",
+    token: "agent-token",
+    fetchImpl: async (_url, init) => {
+      posted.push(String(init?.body ?? ""));
+      return new Response(
+        JSON.stringify({
+          error: "APPLY_FAILED",
+          message: `registry rejected ${password} for ${username}`,
+        }),
+        { status: 502 },
+      );
+    },
+  });
+  await assert.rejects(
+    () => client.start(signed, { registryCredentials: { server, username, password } }),
+    (error: unknown) => {
+      assert.ok(error instanceof SystemUpdateError);
+      assert.equal(error.message.includes(password), false);
+      assert.equal(error.message.includes(username), false);
+      assert.match(error.message, /\[redacted\]/);
+      return true;
+    },
+  );
+  assert.equal(posted[0]?.includes(password), true);
+  assert.equal(posted.some((body) => body.includes("console")), false);
+
+  assert.throws(
+    () =>
+      parseUpdateFeed({
+        schema: "okkey.update-feed.v1",
+        packages: [],
+        registryCredentials: { server, username, password: `${password}\n` },
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof SystemUpdateError);
+      assert.equal(error.code, "FEED_INVALID");
+      assert.equal(error.message.includes(password), false);
+      assert.equal(error.message, "Registry credentials are incomplete");
+      return true;
+    },
+  );
+});
+
+function feedPackage(
+  component: "okkey" | "enterprise",
+  version: string,
+  packageUrl: string,
+  raw: string,
+  extra: { minCoreVersion?: string; releaseNotesUrl?: string } = {},
+) {
+  return {
+    component,
+    version,
+    fromVersion: "1.0.0",
+    summary: component,
+    releasedAt: "2026-11-01T00:00:00.000Z",
+    packageUrl,
+    packageSha256: createHash("sha256").update(raw).digest("hex"),
+    ...extra,
+  };
+}
+
 test("dismiss hides the current version and returns for a newer one", async () => {
   const service = createSystemUpdateService({
     deploymentMode: "self_hosted",
     currentVersion: "1.0.0",
     enterpriseInstalled: false,
     enterpriseVersion: "",
-    feedUrl: "",
+    coreFeedUrl: "",
     isolated: true,
     agent: { async start() { throw new Error("no"); }, async get() { return null; } },
     isAdmin: async () => true,
@@ -201,12 +704,130 @@ test("dismiss hides the current version and returns for a newer one", async () =
     summary: "Security fixes",
     releasedAt: "2026-11-01T00:00:00.000Z",
     source: "feed" as const,
+    minCoreVersion: null,
+    releaseNotesUrl: null,
   };
   assert.equal(visibleUpdates([current], status.dismissed).length, 0);
   assert.equal(
     visibleUpdates([{ ...current, toVersion: "1.2.0" }], status.dismissed).length,
     1,
   );
+});
+
+test("update feed is checked once a day and isolated mode does not call out", async () => {
+  let now = 1_700_000_000_000;
+  let calls = 0;
+  const fetchImpl = async () => {
+    calls += 1;
+    return new Response(
+      JSON.stringify({ schema: "okkey.update-feed.v1", packages: [] }),
+      { status: 200 },
+    );
+  };
+  const agent = {
+    async start(): Promise<UpdateJob> {
+      throw new Error("no");
+    },
+    async get(): Promise<UpdateJob | null> {
+      return null;
+    },
+  };
+  const service = createSystemUpdateService({
+    deploymentMode: "self_hosted",
+    currentVersion: "1.0.0-beta.3",
+    enterpriseInstalled: false,
+    enterpriseVersion: "",
+    coreFeedUrl: "http://updates.internal/feed.json",
+    isolated: false,
+    fetchImpl,
+    now: () => now,
+    agent,
+    isAdmin: async () => true,
+  });
+  await service.statusFor("owner");
+  await service.statusFor("owner");
+  assert.equal(calls, 1);
+  now += 24 * 60 * 60 * 1000 - 1;
+  await service.statusFor("owner");
+  assert.equal(calls, 1);
+  now += 1;
+  await service.statusFor("owner");
+  assert.equal(calls, 2);
+
+  let isolatedCalls = 0;
+  const isolated = createSystemUpdateService({
+    deploymentMode: "self_hosted",
+    currentVersion: "1.0.0-beta.3",
+    commitSha: "6e6ee86fac86b6fb1a6cc05da1f71d7e99d70560",
+    enterpriseInstalled: false,
+    enterpriseVersion: "",
+    coreFeedUrl: "http://updates.internal/feed.json",
+    isolated: true,
+    fetchImpl: async () => {
+      isolatedCalls += 1;
+      throw new Error("should not fetch");
+    },
+    agent,
+    isAdmin: async () => false,
+  });
+  const status = await isolated.statusFor("member");
+  assert.equal(isolatedCalls, 0);
+  assert.equal(status.isolated, true);
+  assert.equal(status.updates.length, 0);
+  assert.equal(status.commitSha, "6e6ee86fac86b6fb1a6cc05da1f71d7e99d70560");
+  assert.equal(status.feedError, null);
+});
+
+test("opening a version records seen and an older version does not replace it", async () => {
+  const service = createSystemUpdateService({
+    deploymentMode: "self_hosted",
+    currentVersion: "1.0.0-beta.3",
+    releaseTag: "v1.0.0-beta.3",
+    enterpriseInstalled: false,
+    enterpriseVersion: "",
+    coreFeedUrl: "",
+    isolated: true,
+    agent: {
+      async start(): Promise<UpdateJob> {
+        throw new Error("no");
+      },
+      async get(): Promise<UpdateJob | null> {
+        return null;
+      },
+    },
+    isAdmin: async () => false,
+  });
+  await service.markSeen("member", "okkey", "1.1.0");
+  await service.markSeen("member", "enterprise", "2.0.0");
+  const seen = await service.statusFor("member");
+  assert.equal(seen.seen.okkey, "1.1.0");
+  assert.equal(seen.seen.enterprise, "2.0.0");
+  assert.equal(seen.releaseTag, "v1.0.0-beta.3");
+  assert.equal(seen.dismissed.okkey, undefined);
+
+  await service.markSeen("member", "okkey", "1.0.0");
+  const same = await service.statusFor("member");
+  assert.equal(same.seen.okkey, "1.1.0");
+
+  await service.markSeen("member", "okkey", "1.2.0");
+  const newer = await service.statusFor("member");
+  assert.equal(newer.seen.okkey, "1.2.0");
+
+  const app = appWithRoutes("self_hosted", service);
+  const denied = await dispatch(app, {
+    method: "POST",
+    url: "/system/updates/seen",
+    body: { component: "okkey", version: "9.0.0" },
+  });
+  assert.equal(denied.status, 401);
+  const recorded = await dispatch(app, {
+    method: "POST",
+    url: "/system/updates/seen",
+    headers: { "x-user-id": "member" },
+    body: { component: "okkey", version: "1.3.0" },
+  });
+  assert.equal(recorded.status, 200);
+  assert.equal((await service.statusFor("member")).seen.okkey, "1.3.0");
 });
 
 test("saas update routes are hidden and do not check the feed", async () => {
@@ -327,7 +948,7 @@ test("update agent refuses a missing, invalid, or interrupted signature without 
   assert.deepEqual(calls, []);
 });
 
-test("update agent verifies a signature before apply and leaves enterprise packages unapplied", async () => {
+test("update agent verifies a signature before apply and does not use the core key for enterprise", async () => {
   const keys = generateUpdateKeyPair();
   const signed = signOfflinePackage(payload(), keys.privateKeyPem);
   verifyOfflinePackage(signed, keys.publicKeyPem);
@@ -346,23 +967,17 @@ test("update agent verifies a signature before apply and leaves enterprise packa
   const ok = await postJob(agent, signed);
   await agent.settle();
   assert.equal(ok.job.status, "succeeded");
+  assert.deepEqual(ok.job.result, { scope: "core", coreVersion: "1.1.0" });
   assert.equal(calls.includes("pull"), false);
   assert.equal(calls.filter((call) => call.startsWith("replace")).length, 3);
   assert.match(readFileSync(envFile, "utf8"), /OKKEY_IMAGE_TAG=1\.1\.0/);
 
   calls.length = 0;
   writeFileSync(envFile, "OKKEY_IMAGE_TAG=1.0.0-beta.2\n");
-  const enterprise = signOfflinePackage(
-    payload({
-      component: "enterprise",
-      version: "2.0.0",
-      images: { enterprise: "example.invalid/enterprise:2.0.0" },
-    }),
-    keys.privateKeyPem,
-  );
+  const enterprise = signOfflinePackage(enterprisePayload(), keys.privateKeyPem);
   const skipped = await postJob(agent, enterprise);
   await agent.settle();
-  assert.equal(skipped.job.errorCode, "ENTERPRISE_APPLY_UNAVAILABLE");
+  assert.equal(skipped.job.errorCode, "TRUST_KEY_MISSING");
   assert.deepEqual(calls, []);
   assert.equal(readFileSync(envFile, "utf8"), "OKKEY_IMAGE_TAG=1.0.0-beta.2\n");
 });
@@ -456,6 +1071,412 @@ test("docker apply talks to the engine socket and rolls back a failed create", a
   assert.ok(calls.some((call) => call.endsWith("/start")));
 });
 
+test("update agent applies an enterprise package and keeps registry credentials out of logs", async () => {
+  const coreKeys = generateUpdateKeyPair();
+  const enterpriseKeys = generateUpdateKeyPair();
+  const password = "pull-token-not-a-pat-9f3c";
+  const username = "okkey-pull-user";
+  const signed = signOfflinePackage(enterprisePayload(), enterpriseKeys.privateKeyPem);
+  const envDir = mkdtempSync(path.join(tmpdir(), "okkey-update-"));
+  const envFile = path.join(envDir, ".env");
+  const originalEnv = "OKKEY_IMAGE_TAG=1.4.0\nOKKEY_ENTERPRISE_IMAGE_TAG=1.0.0\n";
+  writeFileSync(envFile, originalEnv);
+  const calls: string[] = [];
+  const pulled: Array<{ image: string; password?: string }> = [];
+  const logs: string[] = [];
+  const restoreLogs = captureLogs(logs);
+  try {
+    const agent = createUpdateAgent({
+      token: "secret",
+      publicKeyPem: coreKeys.publicKeyPem,
+      enterprisePublicKeyPem: enterpriseKeys.publicKeyPem,
+      isolated: false,
+      project: "okkey",
+      envFilePath: envFile,
+      engine: {
+        ...recordingEngine(calls, { exists: true }),
+        async pullImage(image: string, credentials?: { password?: string }) {
+          calls.push("pull");
+          pulled.push({ image, password: credentials?.password });
+        },
+        async replaceContainer(container: { service: string }, _image: string, _env: Record<string, string>, options?: { requireHealthy?: boolean }) {
+          calls.push(`replace:${container.service}`);
+          assert.equal(options?.requireHealthy, true);
+          return {
+            async rollback() {
+              calls.push(`rollback:${container.service}`);
+            },
+            async commit() {
+              calls.push(`commit:${container.service}`);
+            },
+          };
+        },
+      },
+    });
+    const finished = await postJob(agent, {
+      ...signed,
+      registryCredentials: { server: "ghcr.io", username, password },
+    });
+    await agent.settle();
+    assert.equal(finished.job.status, "succeeded");
+    assert.equal(finished.job.component, "enterprise");
+    assert.equal(finished.job.toVersion, "2.0.0");
+    assert.deepEqual(finished.job.result, { scope: "enterprise", enterpriseVersion: "2.0.0" });
+    assert.deepEqual(
+      pulled.map((item) => item.image),
+      [
+        "ghcr.io/example/enterprise-api:2.0.0",
+        "ghcr.io/example/enterprise-web:2.0.0",
+        "ghcr.io/example/enterprise-worker:2.0.0",
+      ],
+    );
+    assert.deepEqual(pulled.map((item) => item.password), [password, password, password]);
+    assert.equal(calls.filter((call) => call.startsWith("commit:")).length, 3);
+    const env = readFileSync(envFile, "utf8");
+    assert.match(env, /OKKEY_IMAGE_TAG=1\.4\.0/);
+    assert.match(env, /OKKEY_ENTERPRISE_IMAGE_TAG=2\.0\.0/);
+    assert.match(env, /OKKEY_ENTERPRISE_VERSION=2\.0\.0/);
+    assert.match(env, /OKKEY_ENTERPRISE_API_IMAGE=ghcr\.io\/example\/enterprise-api/);
+    assertNoCredentialLeak(logs.join("\n") + env, password);
+  } finally {
+    restoreLogs();
+  }
+});
+
+test("update agent rolls enterprise tags back when a pull fails", async () => {
+  const keys = generateUpdateKeyPair();
+  const signed = signOfflinePackage(enterprisePayload(), keys.privateKeyPem);
+  const password = "pull-token-not-a-pat-9f3c";
+  const envDir = mkdtempSync(path.join(tmpdir(), "okkey-update-"));
+  const envFile = path.join(envDir, ".env");
+  const originalEnv = "OKKEY_IMAGE_TAG=1.4.0\nOKKEY_ENTERPRISE_IMAGE_TAG=1.0.0\n";
+  writeFileSync(envFile, originalEnv);
+  const calls: string[] = [];
+  let tagDuringPull = "";
+  const logs: string[] = [];
+  const restoreLogs = captureLogs(logs);
+  try {
+    const agent = createUpdateAgent({
+      token: "secret",
+      publicKeyPem: generateUpdateKeyPair().publicKeyPem,
+      enterprisePublicKeyPem: keys.publicKeyPem,
+      isolated: false,
+      project: "okkey",
+      envFilePath: envFile,
+      engine: {
+        ...recordingEngine(calls),
+        async pullImage() {
+          tagDuringPull = readFileSync(envFile, "utf8");
+          calls.push("pull");
+          throw new Error(`registry pull failed ${password}`);
+        },
+      },
+    });
+    const finished = await postJob(agent, {
+      ...signed,
+      registryCredentials: { server: "ghcr.io", username: "okkey-pull", password },
+    });
+    await agent.settle();
+    assert.equal(finished.job.errorCode, "APPLY_FAILED");
+    assert.match(finished.job.errorMessage ?? "", /previous version was restored/);
+    assert.match(finished.job.errorMessage ?? "", /\[redacted\]/);
+    assert.match(tagDuringPull, /OKKEY_ENTERPRISE_IMAGE_TAG=2\.0\.0/);
+    assert.equal(readFileSync(envFile, "utf8"), originalEnv);
+    assert.equal(calls.some((call) => call.startsWith("replace")), false);
+    assertNoCredentialLeak(`${logs.join("\n")}\n${finished.job.errorMessage ?? ""}\n${readFileSync(envFile, "utf8")}`, password);
+  } finally {
+    restoreLogs();
+  }
+});
+
+test("update agent rolls enterprise containers and tags back when health fails", async () => {
+  const keys = generateUpdateKeyPair();
+  const signed = signOfflinePackage(enterprisePayload(), keys.privateKeyPem);
+  const envDir = mkdtempSync(path.join(tmpdir(), "okkey-update-"));
+  const envFile = path.join(envDir, ".env");
+  const originalEnv = "OKKEY_IMAGE_TAG=1.4.0\nOKKEY_ENTERPRISE_IMAGE_TAG=1.0.0\n";
+  writeFileSync(envFile, originalEnv);
+  const calls: string[] = [];
+  const agent = createUpdateAgent({
+    token: "secret",
+    publicKeyPem: generateUpdateKeyPair().publicKeyPem,
+    enterprisePublicKeyPem: keys.publicKeyPem,
+    isolated: false,
+    project: "okkey",
+    envFilePath: envFile,
+    engine: {
+      ...recordingEngine(calls),
+      async pullImage() {
+        calls.push("pull");
+      },
+      async replaceContainer(container: { service: string }) {
+        calls.push(`replace:${container.service}`);
+        if (container.service === "enterprise-web") {
+          throw new Error("health failed");
+        }
+        return {
+          async rollback() {
+            calls.push(`rollback:${container.service}`);
+          },
+          async commit() {
+            calls.push(`commit:${container.service}`);
+          },
+        };
+      },
+    },
+  });
+  const finished = await postJob(agent, signed);
+  await agent.settle();
+  assert.equal(finished.job.errorCode, "APPLY_FAILED");
+  assert.match(finished.job.errorMessage ?? "", /previous version was restored/);
+  assert.ok(calls.includes("rollback:enterprise-api"));
+  assert.equal(calls.some((call) => call.startsWith("commit:")), false);
+  assert.equal(readFileSync(envFile, "utf8"), originalEnv);
+});
+
+test("update agent refuses an enterprise package when the running core is too old", async () => {
+  const keys = generateUpdateKeyPair();
+  const signed = signOfflinePackage(enterprisePayload({ minCoreVersion: "1.2.0" }), keys.privateKeyPem);
+  const envDir = mkdtempSync(path.join(tmpdir(), "okkey-update-"));
+  const envFile = path.join(envDir, ".env");
+  const originalEnv = "OKKEY_IMAGE_TAG=1.0.0\nOKKEY_ENTERPRISE_IMAGE_TAG=1.0.0\n";
+  writeFileSync(envFile, originalEnv);
+  const calls: string[] = [];
+  const agent = createUpdateAgent({
+    token: "secret",
+    publicKeyPem: generateUpdateKeyPair().publicKeyPem,
+    enterprisePublicKeyPem: keys.publicKeyPem,
+    isolated: false,
+    project: "okkey",
+    envFilePath: envFile,
+    engine: recordingEngine(calls),
+  });
+  const finished = await postJob(agent, signed);
+  await agent.settle();
+  assert.equal(finished.job.errorCode, "CORE_UPDATE_REQUIRED");
+  assert.match(finished.job.errorMessage ?? "", /Update core first/);
+  assert.match(finished.job.errorMessage ?? "", /Nothing was changed/);
+  assert.deepEqual(calls, []);
+  assert.equal(readFileSync(envFile, "utf8"), originalEnv);
+
+  const running = createUpdateAgent({
+    token: "secret",
+    publicKeyPem: generateUpdateKeyPair().publicKeyPem,
+    enterprisePublicKeyPem: keys.publicKeyPem,
+    isolated: true,
+    project: "okkey",
+    envFilePath: envFile,
+    coreVersion: "9.0.0",
+    engine: {
+      ...recordingEngine([]),
+      async readRunningCoreVersion() {
+        return "1.0.0";
+      },
+    },
+  });
+  writeFileSync(envFile, "OKKEY_IMAGE_TAG=9.0.0\n");
+  const fromContainer = await postJob(running, signed);
+  await running.settle();
+  assert.equal(fromContainer.job.errorCode, "CORE_UPDATE_REQUIRED");
+  assert.equal(readFileSync(envFile, "utf8"), "OKKEY_IMAGE_TAG=9.0.0\n");
+});
+
+test("update agent rejects a package signed with the other component key", async () => {
+  const coreKeys = generateUpdateKeyPair();
+  const enterpriseKeys = generateUpdateKeyPair();
+  const envDir = mkdtempSync(path.join(tmpdir(), "okkey-update-"));
+  const envFile = path.join(envDir, ".env");
+  writeFileSync(envFile, "OKKEY_IMAGE_TAG=1.4.0\n");
+  const calls: string[] = [];
+  const agent = createUpdateAgent({
+    token: "secret",
+    publicKeyPem: coreKeys.publicKeyPem,
+    enterprisePublicKeyPem: enterpriseKeys.publicKeyPem,
+    isolated: false,
+    project: "okkey",
+    envFilePath: envFile,
+    engine: recordingEngine(calls),
+  });
+
+  const enterpriseSignedWithCore = signOfflinePackage(enterprisePayload(), coreKeys.privateKeyPem);
+  const enterpriseRejected = await postJob(agent, enterpriseSignedWithCore);
+  await agent.settle();
+  assert.equal(enterpriseRejected.job.errorCode, "SIGNATURE_INVALID");
+
+  const coreSignedWithEnterprise = signOfflinePackage(payload(), enterpriseKeys.privateKeyPem);
+  const coreRejected = await postJob(agent, coreSignedWithEnterprise);
+  await agent.settle();
+  assert.equal(coreRejected.job.errorCode, "SIGNATURE_INVALID");
+  assert.deepEqual(calls, []);
+  assert.equal(readFileSync(envFile, "utf8"), "OKKEY_IMAGE_TAG=1.4.0\n");
+});
+
+test("feed apply forwards enterprise pull credentials and omits them from status", async () => {
+  const password = "feed-pull-token-not-a-pat";
+  const coreSigned = signOfflinePackage(payload({ version: "1.5.0", imageTag: "1.5.0" }), generateUpdateKeyPair().privateKeyPem);
+  const enterpriseSigned = signOfflinePackage(enterprisePayload(), generateUpdateKeyPair().privateKeyPem);
+  const coreRaw = JSON.stringify(coreSigned);
+  const enterpriseRaw = JSON.stringify(enterpriseSigned);
+  const credentials = { server: "ghcr.io", username: "okkey-pull", password };
+  const feed = {
+    schema: "okkey.update-feed.v1",
+    registryCredentials: credentials,
+    packages: [
+      {
+        component: "okkey",
+        version: "1.5.0",
+        fromVersion: "1.4.0",
+        summary: "Core",
+        releasedAt: "2026-11-01T00:00:00.000Z",
+        packageUrl: "http://updates.internal/okkey-1.5.0.okpkg",
+        packageSha256: createHash("sha256").update(coreRaw).digest("hex"),
+      },
+      {
+        component: "enterprise",
+        version: "2.0.0",
+        fromVersion: "1.0.0",
+        summary: "Enterprise module",
+        releasedAt: "2026-11-01T00:00:00.000Z",
+        packageUrl: "http://updates.internal/enterprise-2.0.0.okpkg",
+        packageSha256: createHash("sha256").update(enterpriseRaw).digest("hex"),
+      },
+    ],
+  };
+  const fetchImpl = async (url: string) => {
+    if (url.endsWith("enterprise-2.0.0.okpkg")) {
+      return new Response(enterpriseRaw, { status: 200 });
+    }
+    if (url.endsWith("okkey-1.5.0.okpkg")) {
+      return new Response(coreRaw, { status: 200 });
+    }
+    return new Response(JSON.stringify(feed), { status: 200 });
+  };
+  const forwarded: unknown[] = [];
+  const service = createSystemUpdateService({
+    deploymentMode: "self_hosted",
+    currentVersion: "1.4.0",
+    enterpriseInstalled: true,
+    enterpriseVersion: "1.0.0",
+    coreFeedUrl: "http://updates.internal/feed.json",
+    isolated: false,
+    fetchImpl,
+    agent: {
+      async start(_document, options) {
+        forwarded.push(options?.registryCredentials ?? null);
+        return {
+          id: "11111111-1111-4111-8111-111111111111",
+          status: "verifying",
+          progress: 5,
+          component: "okkey",
+          fromVersion: "1.4.0",
+          toVersion: "1.5.0",
+        };
+      },
+      async get() {
+        return null;
+      },
+    },
+    isAdmin: async () => true,
+  });
+  const status = await service.statusFor("owner");
+  assertNoCredentialLeak(JSON.stringify(status), password);
+  await service.apply("owner", { source: "feed", component: "okkey" });
+  await service.apply("owner", { source: "feed", component: "enterprise" });
+  assert.deepEqual(forwarded, [null, credentials]);
+});
+
+test("docker pull sends registry credentials only to the matching registry", async () => {
+  const password = "pull-token-not-a-pat-9f3c";
+  const headersSeen: Array<Record<string, string> | undefined> = [];
+  const logs: string[] = [];
+  const restoreLogs = captureLogs(logs);
+  try {
+    const transport: DockerTransport = async (_method, _requestPath, _body, headers) => {
+      headersSeen.push(headers);
+      return { status: 200, body: "" };
+    };
+    const engine = createDockerApplyEngine(transport);
+    const credentials = { server: "ghcr.io", username: "okkey-pull", password };
+    await engine.pullImage("ghcr.io/example/enterprise-api:2.0.0", credentials);
+    await engine.pullImage("quay.io/example/enterprise-api:2.0.0", credentials);
+    const header = headersSeen[0]?.["X-Registry-Auth"] ?? "";
+    assert.ok(header.length > 0);
+    assert.equal(headersSeen[1]?.["X-Registry-Auth"], undefined);
+    const decoded = JSON.parse(Buffer.from(header, "base64").toString("utf8")) as { password?: string };
+    assert.equal(decoded.password, password);
+    assertNoCredentialLeak(logs.join("\n"), password);
+    assert.equal(logs.join("\n").includes(header), false);
+  } finally {
+    restoreLogs();
+  }
+});
+
+test("docker apply rolls back when the new enterprise container does not become healthy", async () => {
+  const calls: string[] = [];
+  let inspects = 0;
+  const transport: DockerTransport = async (method, requestPath) => {
+    calls.push(`${method} ${requestPath}`);
+    if (requestPath.includes("/containers/create")) {
+      return { status: 201, body: JSON.stringify({ Id: "new-id" }) };
+    }
+    if (requestPath.includes("/containers/old/json")) {
+      return {
+        status: 200,
+        body: JSON.stringify({
+          Id: "old",
+          Name: "/okkey-enterprise-api-1",
+          Config: { Env: ["OKKEY_ENTERPRISE_VERSION=1.0.0"], Labels: {} },
+          HostConfig: {},
+          NetworkSettings: { Networks: {} },
+        }),
+      };
+    }
+    if (requestPath.includes("/containers/new-id/json")) {
+      inspects += 1;
+      return {
+        status: 200,
+        body: JSON.stringify({ State: { Running: true, Health: { Status: "unhealthy" } } }),
+      };
+    }
+    return { status: 204, body: "" };
+  };
+  const engine = createDockerApplyEngine(transport);
+  await assert.rejects(
+    () =>
+      engine.replaceContainer(
+        { id: "old", name: "okkey-enterprise-api-1", service: "enterprise-api", image: "old" },
+        "ghcr.io/example/enterprise-api:2.0.0",
+        { OKKEY_ENTERPRISE_VERSION: "2.0.0" },
+        { requireHealthy: true },
+      ),
+    /did not become healthy/,
+  );
+  assert.equal(inspects, 1);
+  assert.ok(calls.some((call) => call.includes("DELETE") && call.includes("new-id")));
+  assert.ok(calls.some((call) => call.includes("/rename?name=okkey-enterprise-api-1") && !call.includes("okkey-prev")));
+  assert.ok(calls.some((call) => call.endsWith("/old/start")));
+});
+
+test("running core version is read from the api container", async () => {
+  const transport: DockerTransport = async (_method, requestPath) => {
+    if (requestPath.includes("/containers/json")) {
+      return {
+        status: 200,
+        body: JSON.stringify([{ Id: "api-id", Names: ["/okkey-api-1"], Image: "api:old" }]),
+      };
+    }
+    if (requestPath.includes("/containers/api-id/json")) {
+      return {
+        status: 200,
+        body: JSON.stringify({ Config: { Env: ["OKKEY_VERSION=1.4.0"] } }),
+      };
+    }
+    return { status: 404, body: "" };
+  };
+  const engine = createDockerApplyEngine(transport);
+  assert.equal(await engine.readRunningCoreVersion?.("okkey"), "1.4.0");
+});
+
 test("setEnvValue replaces the image tag without dropping other keys", () => {
   assert.equal(
     setEnvValue("OKKEY_IMAGE_TAG=1.0.0\nPOSTGRES_PASSWORD=secret\n", "OKKEY_IMAGE_TAG", "1.1.0"),
@@ -478,6 +1499,47 @@ test("compose gives the docker socket to the update agent only", () => {
   assert.equal(agent.includes("/var/run/docker.sock"), true);
   assert.match(agent, /update-agent\/main\.ts/);
 });
+
+function assertNoCredentialLeak(blob: string, secret: string): void {
+  if (blob.includes(secret) || blob.includes(Buffer.from(secret).toString("base64"))) {
+    throw new Error("registry credentials appeared in logs or stored state");
+  }
+}
+
+function captureLogs(logs: string[]): () => void {
+  const methods = ["log", "info", "warn", "error", "debug"] as const;
+  const original = {
+    log: console.log,
+    info: console.info,
+    warn: console.warn,
+    error: console.error,
+    debug: console.debug,
+    stdout: process.stdout.write,
+    stderr: process.stderr.write,
+  };
+  for (const method of methods) {
+    console[method] = (...args: unknown[]) => {
+      logs.push(args.map((arg) => (typeof arg === "string" ? arg : JSON.stringify(arg))).join(" "));
+    };
+  }
+  process.stdout.write = ((chunk: string | Uint8Array, encoding?: BufferEncoding | ((err?: Error) => void), callback?: (err?: Error) => void) => {
+    logs.push(typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf8"));
+    return original.stdout.call(process.stdout, chunk, encoding as BufferEncoding, callback);
+  }) as typeof process.stdout.write;
+  process.stderr.write = ((chunk: string | Uint8Array, encoding?: BufferEncoding | ((err?: Error) => void), callback?: (err?: Error) => void) => {
+    logs.push(typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf8"));
+    return original.stderr.call(process.stderr, chunk, encoding as BufferEncoding, callback);
+  }) as typeof process.stderr.write;
+  return () => {
+    console.log = original.log;
+    console.info = original.info;
+    console.warn = original.warn;
+    console.error = original.error;
+    console.debug = original.debug;
+    process.stdout.write = original.stdout;
+    process.stderr.write = original.stderr;
+  };
+}
 
 function serviceBlock(yaml: string, name: string): string {
   const marker = `\n  ${name}:\n`;

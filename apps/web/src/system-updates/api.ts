@@ -25,6 +25,17 @@ export async function fetchSystemUpdateStatus(accessToken: string): Promise<Syst
   return request<SystemUpdateStatus>(accessToken, "/system/updates");
 }
 
+export async function markSystemUpdateSeen(
+  accessToken: string,
+  component: SystemUpdateComponent,
+  version: string,
+): Promise<void> {
+  await request(accessToken, "/system/updates/seen", {
+    method: "POST",
+    body: JSON.stringify({ component, version }),
+  });
+}
+
 export async function dismissSystemUpdate(
   accessToken: string,
   component: SystemUpdateComponent,

@@ -117,7 +117,7 @@ test("self-hosted modules allow an invite far past FAMILY and TEAM seat caps on 
   const created = await service.createInvitations(workspaceId, actorId, [
     { email: "far-past-cap@example.com", roleId },
   ]);
-  assert.equal(created.length, 1);
+  assert.equal(created.created.length, 1);
   assert.equal(inserts, 1);
 });
 
@@ -232,7 +232,7 @@ test("self-hosted modules and plan_tier FREE allow an invite past the FREE seat 
   const created = await service.createInvitations(workspaceId, actorId, [
     { email: "new@example.com", roleId },
   ]);
-  assert.equal(created.length, 1);
+  assert.equal(created.created.length, 1);
   assert.equal(inserts, 1);
 });
 

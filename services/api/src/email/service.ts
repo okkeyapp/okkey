@@ -35,6 +35,15 @@ export interface EmailInlineAttachment {
   contentBase64: string;
 }
 
+/**
+ * One-time auth code carried next to the rendered message so the worker can log
+ * it when outbound mail is not deliverable. Stripped before any external send.
+ */
+export interface EmailAuthCodeLog {
+  code: string;
+  expiresAt: string;
+}
+
 export interface EmailMessage {
   to: string;
   from: string;
@@ -43,6 +52,11 @@ export interface EmailMessage {
   html: string;
   /** Optional; transports also inject the Okkey mark when HTML uses its CID. */
   inlineAttachments?: EmailInlineAttachment[];
+  /**
+   * Set only for sign-in / email-confirmation codes. Not part of the message
+   * that leaves the process.
+   */
+  authCodeLog?: EmailAuthCodeLog;
 }
 
 export interface EmailSender {
@@ -134,8 +148,9 @@ export function applyEmailAppUrlLocale<T extends Record<string, unknown>>(
 
 export type LoggerEmailSenderOptions = {
   /**
-   * When true, log the plain-text body (e.g. OTP) alongside metadata.
+   * When true, log the plain-text body alongside metadata.
    * See {@link shouldLogPlainTextForLoggerProvider} for when this is enabled for `EMAIL_PROVIDER=logger`.
+   * Self-host auth codes with undeliverable mail are a separate log line; this flag does not control that line.
    */
   includePlainTextBody?: boolean;
 };
@@ -196,6 +211,8 @@ type NodemailerSendMailOptions = {
 
 type SmtpTransport = {
   sendMail(options: NodemailerSendMailOptions): Promise<unknown>;
+  /** Connect and authenticate. Does not send a message. */
+  verify?: () => Promise<unknown>;
   close?: () => void;
 };
 
@@ -226,6 +243,15 @@ function redactSecret(message: string, secret: string): string {
   return message.split(secret).join("[redacted]");
 }
 
+/** Connection wait for interactive SMTP test sends (Mail settings → Send test email). */
+export const SMTP_TEST_CONNECTION_TIMEOUT_MS = 30_000;
+
+export type SmtpTransportTimeouts = {
+  connectionTimeout?: number;
+  greetingTimeout?: number;
+  socketTimeout?: number;
+};
+
 export class SmtpEmailSender implements EmailSender {
   private readonly transport: SmtpTransport;
   private readonly password: string;
@@ -252,7 +278,10 @@ export class SmtpEmailSender implements EmailSender {
     });
   }
 
-  static async fromSnapshot(snapshot: MailDeliverySnapshot): Promise<SmtpEmailSender> {
+  static async fromSnapshot(
+    snapshot: MailDeliverySnapshot,
+    timeouts?: SmtpTransportTimeouts,
+  ): Promise<SmtpEmailSender> {
     const nodemailerModule = (await import("nodemailer")) as {
       createTransport(options: {
         host: string;
@@ -260,6 +289,9 @@ export class SmtpEmailSender implements EmailSender {
         secure: boolean;
         ignoreTLS?: boolean;
         auth?: { user: string; pass: string };
+        connectionTimeout?: number;
+        greetingTimeout?: number;
+        socketTimeout?: number;
       }): SmtpTransport;
     };
     const socket = smtpSocketOptions(snapshot.smtpTlsMode);
@@ -269,6 +301,13 @@ export class SmtpEmailSender implements EmailSender {
       secure: socket.secure,
       ...(socket.ignoreTLS ? { ignoreTLS: true } : {}),
       auth: smtpAuth(snapshot.smtpUsername, snapshot.smtpPassword),
+      ...(timeouts?.connectionTimeout !== undefined
+        ? { connectionTimeout: timeouts.connectionTimeout }
+        : {}),
+      ...(timeouts?.greetingTimeout !== undefined
+        ? { greetingTimeout: timeouts.greetingTimeout }
+        : {}),
+      ...(timeouts?.socketTimeout !== undefined ? { socketTimeout: timeouts.socketTimeout } : {}),
     });
     return new SmtpEmailSender(transport, snapshot.smtpPassword, true);
   }
@@ -303,8 +342,42 @@ export class SmtpEmailSender implements EmailSender {
       );
     } finally {
       if (this.closeAfterSend) {
-        this.transport.close?.();
+        this.close();
       }
+    }
+  }
+
+  /**
+   * Open the SMTP connection and authenticate when credentials are set.
+   * Does not send a message.
+   */
+  async verifyConnection(): Promise<void> {
+    const verify = this.transport.verify;
+    if (!verify) {
+      throw new EmailTemplateError("EMAIL_TRANSPORT_ERROR", "smtp verify failed", {
+        cause: "verify unavailable",
+      });
+    }
+    try {
+      await verify.call(this.transport);
+    } catch (cause) {
+      const raw = cause instanceof Error ? cause.message : String(cause);
+      throw new EmailTemplateError("EMAIL_TRANSPORT_ERROR", "smtp verify failed", {
+        cause: redactSecret(raw, this.password).slice(0, 500),
+      });
+    } finally {
+      if (this.closeAfterSend) {
+        this.close();
+      }
+    }
+  }
+
+  /** Drop the underlying SMTP socket (e.g. after a hard test-send timeout). */
+  close(): void {
+    try {
+      this.transport.close?.();
+    } catch {
+      /* ignore close races */
     }
   }
 }
@@ -322,13 +395,20 @@ export class RuntimeEmailSender implements EmailSender {
     message: EmailMessage,
   ) => Promise<void>;
 
+  private readonly logger?: Logger;
+  /** Self-host: log the one-time code when database SMTP is not active. */
+  private readonly logInactiveAuthCode: boolean;
+
   constructor(
     base: EmailSender,
     runtime: MailDeliveryRuntime,
     sendViaSmtp?: (snapshot: MailDeliverySnapshot, message: EmailMessage) => Promise<void>,
+    options?: { logger?: Logger; logInactiveAuthCode?: boolean },
   ) {
     this.base = base;
     this.runtime = runtime;
+    this.logger = options?.logger;
+    this.logInactiveAuthCode = options?.logInactiveAuthCode === true;
     this.sendViaSmtp =
       sendViaSmtp ??
       (async (snapshot, message) => {
@@ -341,11 +421,16 @@ export class RuntimeEmailSender implements EmailSender {
     const snapshot = await this.runtime.effective();
     const from = snapshot.emailFrom.trim() || message.from;
     const next = from === message.from ? message : { ...message, from };
+    // SMTP only after a successful test send. Until then, self-host logs the
+    // code on this worker and does not open an SMTP connection.
     if (snapshot.useSmtpTransport) {
-      await this.sendViaSmtp(snapshot, next);
+      await this.sendViaSmtp(snapshot, stripAuthCodeLog(next));
       return;
     }
-    await this.base.send(next);
+    if (this.logInactiveAuthCode && this.logger) {
+      logUndeliverableAuthCode(this.logger, next);
+    }
+    await this.base.send(stripAuthCodeLog(next));
   }
 }
 
@@ -494,6 +579,77 @@ export function isOutboundEmailDeliverable(config: ApiConfig): boolean {
   }
 }
 
+/** Marker for the single worker log line that carries an undeliverable auth code. */
+export const UNDELIVERABLE_AUTH_CODE_LOG_MESSAGE = "[okkey] auth code (mail not configured)";
+
+/**
+ * Self-host with no deliverable outbound mail logs one-time auth codes.
+ * SaaS and any configured provider keep those codes out of the logs.
+ */
+export function shouldLogUndeliverableAuthCode(config: ApiConfig): boolean {
+  return config.deploymentMode === "self_hosted" && !isOutboundEmailDeliverable(config);
+}
+
+/** `ada@example.com` → `a***@example.com`. */
+export function maskEmailForAuthCodeLog(email: string): string {
+  const normalized = email.trim().toLowerCase();
+  const at = normalized.indexOf("@");
+  if (at <= 0) {
+    return "***";
+  }
+  const local = normalized.slice(0, at);
+  const domain = normalized.slice(at + 1);
+  const first = local.charAt(0) || "*";
+  return `${first}***@${domain}`;
+}
+
+function stripAuthCodeLog(message: EmailMessage): EmailMessage {
+  if (!message.authCodeLog) {
+    return message;
+  }
+  const { authCodeLog: _authCodeLog, ...rest } = message;
+  return rest;
+}
+
+function logUndeliverableAuthCode(logger: Logger, message: EmailMessage): void {
+  const details = message.authCodeLog;
+  if (!details || !/^\d{6}$/.test(details.code)) {
+    return;
+  }
+  const expiresAt = details.expiresAt.trim();
+  if (!expiresAt || Number.isNaN(Date.parse(expiresAt))) {
+    return;
+  }
+  logger.info(UNDELIVERABLE_AUTH_CODE_LOG_MESSAGE, {
+    email: maskEmailForAuthCodeLog(message.to),
+    code: details.code,
+    expiresAt,
+  });
+}
+
+/**
+ * Worker transport wrapper. Logs a sign-in or email-confirmation code when mail
+ * cannot be delivered, then drops that field so providers only see the message.
+ */
+class UndeliverableAuthCodeLogSender implements EmailSender {
+  private readonly inner: EmailSender;
+  private readonly logger: Logger;
+  private readonly enabled: boolean;
+
+  constructor(inner: EmailSender, logger: Logger, enabled: boolean) {
+    this.inner = inner;
+    this.logger = logger;
+    this.enabled = enabled;
+  }
+
+  async send(message: EmailMessage): Promise<void> {
+    if (this.enabled) {
+      logUndeliverableAuthCode(this.logger, message);
+    }
+    await this.inner.send(stripAuthCodeLog(message));
+  }
+}
+
 /** Create the provider that actually delivers mail (SMTP / SES / logger / http-api). */
 export async function createTransportEmailSender(
   config: ApiConfig,
@@ -501,8 +657,32 @@ export async function createTransportEmailSender(
   mailRuntime?: MailDeliveryRuntime,
 ): Promise<EmailSender> {
   assertEmailTransportConfig(config);
-  const sender = await createStaticTransportEmailSender(config, logger);
-  return mailRuntime ? new RuntimeEmailSender(sender, mailRuntime) : sender;
+  // With interactive mail settings, outbound SMTP is gated by a successful test.
+  // Do not fall back to process-env SMTP/SES when DB SMTP is inactive — only log.
+  if (mailRuntime) {
+    // Log inside the runtime sender so the code is still present. The static
+    // wrapper strips it first and would also log after SMTP is verified.
+    return new RuntimeEmailSender(
+      new LoggerEmailSender(logger, {
+        includePlainTextBody: shouldLogPlainTextForLoggerProvider({
+          ...config,
+          emailProvider: "logger",
+        }),
+      }),
+      mailRuntime,
+      undefined,
+      {
+        logger,
+        logInactiveAuthCode: config.deploymentMode === "self_hosted",
+      },
+    );
+  }
+  const transport = await createStaticTransportEmailSender(config, logger);
+  return new UndeliverableAuthCodeLogSender(
+    transport,
+    logger,
+    shouldLogUndeliverableAuthCode(config),
+  );
 }
 
 async function createStaticTransportEmailSender(
@@ -639,7 +819,11 @@ export class EmailTemplateService {
     );
   }
 
-  private async dispatchRendered(to: string, rendered: { subject: string; text: string; html: string }): Promise<void> {
+  private async dispatchRendered(
+    to: string,
+    rendered: { subject: string; text: string; html: string },
+    authCodeLog?: EmailAuthCodeLog,
+  ): Promise<void> {
     try {
       await this.sender.send({
         to,
@@ -647,6 +831,7 @@ export class EmailTemplateService {
         subject: rendered.subject,
         text: rendered.text,
         html: rendered.html,
+        ...(authCodeLog ? { authCodeLog } : {}),
       });
     } catch (cause) {
       if (cause instanceof EmailTemplateError) {
@@ -684,7 +869,13 @@ export class EmailTemplateService {
   }): Promise<void> {
     const locale = this.resolveLocale(input.localeHints);
     const rendered = await renderEmailTemplate("auth_email_code", locale, input.variables);
-    await this.dispatchRendered(input.to, rendered);
+    const expiresAt = new Date(
+      Date.now() + Math.max(0, input.variables.ttlSeconds) * 1000,
+    ).toISOString();
+    await this.dispatchRendered(input.to, rendered, {
+      code: input.variables.code,
+      expiresAt,
+    });
   }
 
   async sendDeviceApprovalRequest(input: {

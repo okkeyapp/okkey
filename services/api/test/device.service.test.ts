@@ -79,7 +79,9 @@ function createDeviceRecord(overrides?: Record<string, unknown>) {
 }
 
 function createService(overrides?: {
-  registerOrUpdate?: () => Promise<ReturnType<typeof createDeviceRecord>>;
+  registerOrUpdate?: (input: { deviceFingerprint: string }) => Promise<
+    ReturnType<typeof createDeviceRecord> & { sendApprovalEmail?: boolean; created?: boolean }
+  >;
   reclaimSoleTrusted?: () => Promise<ReturnType<typeof createDeviceRecord> | null>;
   claimTrustedAfterRecovery?: (input: {
     deviceFingerprint: string;
@@ -96,16 +98,21 @@ function createService(overrides?: {
     deviceShare: Uint8Array;
     deviceFingerprint: string;
   } | null>;
-  isTrustedDevice?: () => Promise<boolean>;
+  isTrustedDevice?: (userId?: string, deviceId?: string) => Promise<boolean>;
   listDeviceShares?: () => Promise<Uint8Array[]>;
   resolveApproval?: (input: {
     action: "approve" | "reject";
+    deviceId?: string;
     deviceShare?: Uint8Array;
   }) => Promise<DeviceApprovalState>;
   listByUser?: () => Promise<Array<ReturnType<typeof createDeviceRecord>>>;
   renameDevice?: () => Promise<ReturnType<typeof createDeviceRecord> | null>;
   revokeOwned?: () => Promise<ReturnType<typeof createDeviceRecord> | null>;
-  blockPending?: () => Promise<ReturnType<typeof createDeviceRecord> | null>;
+  blockPending?: (input: {
+    deviceId?: string;
+    blockedUntil: string | null;
+    reason?: string;
+  }) => Promise<ReturnType<typeof createDeviceRecord> | null>;
   unblockDevice?: () => Promise<ReturnType<typeof createDeviceRecord> | null>;
   clearExpiredBlocks?: () => Promise<void>;
   geoIp?: { lookup: (ip: string) => Promise<{ country: string | null; city: string | null }> };
@@ -977,6 +984,120 @@ test("renameDevice and revokeDevice map not found", async () => {
   assert.equal(renamed.deviceName, "Renamed");
 });
 
+test("two web install fingerprints stay separate through reject and permanent block", async () => {
+  const coarse = "web_app-chrome-linux-unknown";
+  const second = `${coarse}.0123456789abcdef`;
+  const third = `${coarse}.fedcba9876543210`;
+  const rows = new Map<string, ReturnType<typeof createDeviceRecord>>();
+
+  const remember = (fingerprint: string, status: "trusted" | "pending" | "revoked" | "blocked") => {
+    const existing = rows.get(fingerprint);
+    if (existing && existing.status === status) {
+      return { ...existing, sendApprovalEmail: false, created: false };
+    }
+    const record = createDeviceRecord({
+      id: existing?.id ?? `d-${rows.size + 1}`,
+      deviceFingerprint: fingerprint,
+      status,
+      created: !existing,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      blockedUntil: status === "blocked" ? null : null,
+      rejectionReason: status === "revoked" ? "dismissed by user" : status === "blocked" ? "blocked:forever" : null,
+    });
+    rows.set(fingerprint, record);
+    return { ...record, sendApprovalEmail: status === "pending" && !existing, created: !existing };
+  };
+
+  const service = createService({
+    registerOrUpdate: async (input: { deviceFingerprint: string }) => {
+      const fingerprint = input.deviceFingerprint.trim().toLowerCase();
+      if (fingerprint === coarse) {
+        return remember(fingerprint, "trusted");
+      }
+      const current = rows.get(fingerprint);
+      if (current?.status === "blocked") {
+        return { ...current, sendApprovalEmail: false, created: false };
+      }
+      return remember(fingerprint, "pending");
+    },
+    isTrustedDevice: async (_userId: string, deviceId: string) =>
+      [...rows.values()].some((row) => row.id === deviceId && row.status === "trusted"),
+    resolveApproval: async (input: { deviceId: string; action: "approve" | "reject" }) => {
+      const row = [...rows.values()].find((item) => item.id === input.deviceId);
+      if (!row || row.status !== "pending") {
+        return { kind: "not_found" as const };
+      }
+      if (input.action === "reject") {
+        const revoked = createDeviceRecord({
+          ...row,
+          status: "revoked",
+          rejectionReason: "dismissed by user",
+        });
+        rows.set(row.deviceFingerprint, revoked);
+        return { kind: "rejected" as const, device: revoked };
+      }
+      return { kind: "approved" as const, device: row };
+    },
+    blockPending: async (input: { deviceId: string; blockedUntil: string | null; reason?: string }) => {
+      const row = [...rows.values()].find((item) => item.id === input.deviceId);
+      if (!row || row.status !== "pending") {
+        return null;
+      }
+      const blocked = createDeviceRecord({
+        ...row,
+        status: "blocked",
+        blockedUntil: input.blockedUntil,
+        rejectionReason: input.reason ?? null,
+      });
+      rows.set(row.deviceFingerprint, blocked);
+      return blocked;
+    },
+    now: () => new Date("2026-01-01T00:00:00.000Z"),
+  });
+
+  const trusted = await service.registerDevice(
+    "u1",
+    "127.0.0.1",
+    createInput({ deviceFingerprint: coarse, clientType: "chrome" }),
+  );
+  const pending = await service.registerDevice(
+    "u1",
+    "127.0.0.1",
+    createInput({
+      deviceFingerprint: second,
+      devicePublicKey: Buffer.from("other-public-key").toString("base64"),
+      clientType: "chrome",
+    }),
+  );
+
+  assert.equal(trusted.status, "trusted");
+  assert.equal(pending.status, "pending_approval");
+  assert.notEqual(trusted.deviceId, pending.deviceId);
+  assert.equal(rows.get(coarse)?.status, "trusted");
+  assert.equal(rows.get(second)?.status, "pending");
+
+  const rejected = await service.rejectDevice("u1", trusted.deviceId, pending.deviceId, "dismissed by user");
+  assert.equal(rejected.status, "revoked");
+  assert.equal(rows.get(coarse)?.status, "trusted");
+  assert.equal(rows.get(second)?.status, "revoked");
+
+  const again = await service.registerDevice(
+    "u1",
+    "127.0.0.1",
+    createInput({
+      deviceFingerprint: third,
+      devicePublicKey: Buffer.from("third-public-key").toString("base64"),
+      clientType: "chrome",
+    }),
+  );
+  assert.equal(again.status, "pending_approval");
+  const blocked = await service.blockDevice("u1", trusted.deviceId, again.deviceId, "forever");
+  assert.equal(blocked.status, "blocked");
+  assert.equal(blocked.blockedUntil, null);
+  assert.equal(rows.get(coarse)?.status, "trusted");
+  assert.equal(rows.get(third)?.status, "blocked");
+});
+
 
 test("blockDevice blocks pending for 1h and unblockDevice can trust", async () => {
   const until = "2026-01-01T01:00:00.000Z";
@@ -1002,4 +1123,39 @@ test("blockDevice blocks pending for 1h and unblockDevice can trust", async () =
 
   const trusted = await service.unblockDevice("u1", "d-pending", true);
   assert.equal(trusted.status, "trusted");
+});
+
+test("blockDevice applies 1d and unblock still works for a stored 1w block", async () => {
+  let captured: { blockedUntil: string | null; reason: string } | null = null;
+  const service = createService({
+    blockPending: async (input) => {
+      captured = {
+        blockedUntil: input.blockedUntil,
+        reason: input.reason ?? "",
+      };
+      return createDeviceRecord({
+        id: "d-pending",
+        status: "blocked",
+        blockedUntil: input.blockedUntil,
+        rejectionReason: input.reason,
+      });
+    },
+    unblockDevice: async () =>
+      createDeviceRecord({
+        id: "d-legacy",
+        status: "revoked",
+        rejectionReason: "blocked:1w",
+        blockedUntil: "2026-01-08T00:00:00.000Z",
+      }),
+    now: () => new Date("2026-01-01T00:00:00.000Z"),
+  });
+
+  const blocked = await service.blockDevice("u1", "d-approver", "d-pending", "1d");
+  assert.equal(blocked.blockedUntil, "2026-01-02T00:00:00.000Z");
+  assert.equal(captured?.blockedUntil, "2026-01-02T00:00:00.000Z");
+  assert.equal(captured?.reason, "blocked:1d");
+
+  const revoked = await service.unblockDevice("u1", "d-legacy", false);
+  assert.equal(revoked.status, "revoked");
+  assert.equal(revoked.deviceId, "d-legacy");
 });

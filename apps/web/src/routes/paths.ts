@@ -10,6 +10,8 @@ export const ROOT_PATH = "/";
 
 export const AUTH_EMAIL_PATH = "/auth/email";
 export const AUTH_OTP_PATH = "/auth/otp";
+/** Self-host sign-in when the server reports outbound email is not deliverable. */
+export const AUTH_MASTER_PASSWORD_PATH = "/auth/master-password";
 export const AUTH_TWO_FACTOR_PATH = "/auth/two-factor";
 export const AUTH_WEBAUTHN_PATH = "/auth/webauthn";
 
@@ -23,6 +25,8 @@ export const AUTH_REGISTRATION_LEGACY_PATH = "/auth/registration";
 
 export const ACCOUNT_LOCK_PATH = "/account/lock";
 export const ACCOUNT_DEVICE_PENDING_PATH = "/account/device-pending";
+/** Extension opens this tab so WebAuthn runs on the website origin. */
+export const ACCOUNT_PASSKEY_APPROVAL_PATH = "/account/passkey-approval";
 export const ACCOUNT_NEW_PATH = "/account/new";
 export const ACCOUNT_RESTORE_PATH = "/account/restore";
 
@@ -357,6 +361,7 @@ export const SETTINGS_SECTION_QUERY_PARAM = "section";
 
 export type WorkspaceSettingsSectionId =
   | "general"
+  | "mail"
   | "items"
   | "capsules"
   | "roles"
@@ -370,6 +375,7 @@ export const DEFAULT_WORKSPACE_SETTINGS_SECTION: WorkspaceSettingsSectionId = "g
 
 const SETTINGS_SECTION_SLUGS: Record<WorkspaceSettingsSectionId, string> = {
   general: "main",
+  mail: "mail",
   items: "items",
   capsules: "capsules",
   roles: "roles",

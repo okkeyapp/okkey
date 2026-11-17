@@ -1,5 +1,5 @@
 import { SystemUpdateError } from "./errors.ts";
-import type { SignedOfflinePackage } from "./package-format.ts";
+import type { RegistryPullCredentials } from "./package-format.ts";
 import type { UpdateAgentClient, UpdateJob } from "./service.ts";
 
 export function createHttpUpdateAgentClient(options: {
@@ -12,8 +12,21 @@ export function createHttpUpdateAgentClient(options: {
   const token = options.token.trim();
 
   return {
-    async start(document: SignedOfflinePackage): Promise<UpdateJob> {
-      return request(baseUrl, token, fetchImpl, "POST", "/v1/jobs", document);
+    async start(
+      document: unknown,
+      startOptions?: { registryCredentials?: RegistryPullCredentials },
+    ): Promise<UpdateJob> {
+      const credentials = startOptions?.registryCredentials;
+      const body = credentials ? { ...document, registryCredentials: credentials } : document;
+      try {
+        const job = await request(baseUrl, token, fetchImpl, "POST", "/v1/jobs", body);
+        return redactJob(job, credentials);
+      } catch (error) {
+        if (credentials && error instanceof SystemUpdateError) {
+          throw new SystemUpdateError(error.statusCode, error.code, redactSecrets(error.message, credentials));
+        }
+        throw error;
+      }
     },
     async get(jobId: string): Promise<UpdateJob | null> {
       try {
@@ -103,4 +116,18 @@ async function request(
     throw new SystemUpdateError(502, "APPLY_FAILED", "The update agent returned an invalid job");
   }
   return job;
+}
+
+function redactJob(job: UpdateJob, credentials: RegistryPullCredentials | undefined): UpdateJob {
+  if (!credentials || !job.errorMessage) {
+    return job;
+  }
+  return { ...job, errorMessage: redactSecrets(job.errorMessage, credentials) };
+}
+
+function redactSecrets(message: string, credentials: RegistryPullCredentials): string {
+  return [credentials.password, credentials.username, credentials.server].reduce(
+    (text, secret) => (secret ? text.split(secret).join("[redacted]") : text),
+    message,
+  );
 }

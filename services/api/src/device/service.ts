@@ -32,6 +32,10 @@ import {
   verifyDeviceBindSignature,
   type DeviceBindChallengeStore,
 } from "./bind-proof.ts";
+import type {
+  ApprovalStatusDevice,
+  DeviceApprovalStatusService,
+} from "./approval-status.ts";
 
 export class DeviceServiceError extends Error {
   readonly code: string;
@@ -91,6 +95,8 @@ export interface DeviceServiceDeps {
   geoIp?: Pick<GeoIpLookup, "lookup">;
   log?: Pick<Logger, "warn">;
   now?: () => Date;
+  /** Issues the narrow approval-status credential when a device stays pending. */
+  approvalStatus?: Pick<DeviceApprovalStatusService, "issue">;
   bindChallenges?: DeviceBindChallengeStore;
   verifyDeviceSignature?: (publicKeyB64: string, message: Uint8Array, signatureB64: string) => boolean;
 }
@@ -152,6 +158,9 @@ export interface RegisterDeviceResult {
   blockedUntil?: string | null;
   /** True only when this call inserted the device row. Existing devices need a signed bind. */
   created: boolean;
+  /** Raw credential returned once. Only its hash is stored. Absent when the device is not pending. */
+  approvalStatusToken?: string;
+  approvalStatusExpiresAt?: string;
 }
 
 export interface ResolveDeviceApprovalResult {
@@ -159,7 +168,7 @@ export interface ResolveDeviceApprovalResult {
   status: "trusted" | "revoked" | "pending_approval";
 }
 
-export type DeviceBlockDuration = "1h" | "1d" | "1w" | "forever";
+export type DeviceBlockDuration = "1h" | "1d" | "forever";
 
 export interface BlockDeviceResult {
   deviceId: string;
@@ -221,6 +230,7 @@ export class DeviceService {
   private readonly geoIp?: Pick<GeoIpLookup, "lookup">;
   private readonly log?: Pick<Logger, "warn">;
   private readonly now: () => Date;
+  private readonly approvalStatus?: Pick<DeviceApprovalStatusService, "issue">;
   private readonly bindChallenges: DeviceBindChallengeStore;
   private readonly verifyDeviceSignature: (
     publicKeyB64: string,
@@ -237,6 +247,7 @@ export class DeviceService {
     this.geoIp = deps.geoIp;
     this.log = deps.log;
     this.now = deps.now ?? (() => new Date());
+    this.approvalStatus = deps.approvalStatus;
     this.bindChallenges =
       deps.bindChallenges ?? new MemoryDeviceBindChallengeStore(() => this.now().getTime());
     this.verifyDeviceSignature = deps.verifyDeviceSignature ?? verifyDeviceBindSignature;
@@ -373,6 +384,16 @@ export class DeviceService {
         await this.saveOneTimeKeysIfPresent(userId, result.deviceId, input);
       }
 
+      if (result.status === "pending_approval" && this.approvalStatus) {
+        const issued = await this.approvalStatus.issue({
+          userId,
+          deviceId: result.deviceId,
+          requestCreatedAt: record.createdAt,
+        });
+        result.approvalStatusToken = issued.token;
+        result.approvalStatusExpiresAt = issued.expiresAt;
+      }
+
       if (result.status === "pending_approval" && record.sendApprovalEmail !== false) {
         try {
           await this.notifyDeviceApprovalEmail(userId, requestIp, input);
@@ -485,6 +506,28 @@ export class DeviceService {
       deviceId: record.id,
       status: "revoked",
     };
+  }
+
+  /** Best-effort notice when a rejected device asks for approval again. */
+  async notifyReopenedApproval(device: ApprovalStatusDevice, requestIp: string): Promise<void> {
+    try {
+      await this.notifyDeviceApprovalEmail(device.userId, requestIp, {
+        deviceFingerprint: device.deviceFingerprint,
+        devicePublicKey: "approval-retry",
+        deviceShare: "approval-retry",
+        deviceName: device.deviceName,
+        platform: device.platform,
+        osName: device.osName,
+        osVersion: device.osVersion,
+        appVersion: device.appVersion,
+        clientType: device.clientType,
+        userAgent: device.userAgent,
+      });
+    } catch (error: unknown) {
+      this.log?.warn("[device] approval retry email failed", {
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   private async notifyDeviceApprovalEmail(
@@ -1405,16 +1448,22 @@ export class DeviceService {
 }
 
 function resolveBlockedUntil(now: Date, duration: DeviceBlockDuration): string | null {
-  if (duration === "forever") {
-    return null;
+  switch (duration) {
+    case "forever":
+      return null;
+    case "1h":
+      return new Date(now.getTime() + 60 * 60 * 1000).toISOString();
+    case "1d":
+      return new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString();
+    default: {
+      const unexpected: never = duration;
+      throw new DeviceServiceError(
+        "DEVICE_BAD_REQUEST",
+        400,
+        `unsupported block duration: ${String(unexpected)}`,
+      );
+    }
   }
-  const ms =
-    duration === "1h"
-      ? 60 * 60 * 1000
-      : duration === "1d"
-        ? 24 * 60 * 60 * 1000
-        : 7 * 24 * 60 * 60 * 1000;
-  return new Date(now.getTime() + ms).toISOString();
 }
 
 function cleanString(value: string, fallback: string): string {

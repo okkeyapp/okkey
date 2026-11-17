@@ -39,6 +39,10 @@ export interface RegistrationBundleInput {
   lastName?: string | null;
   /** Plan for the personal workspace created at registration. */
   planTier?: string;
+  /** Slow hash of the client login key. Omitted until the client enrolls. */
+  loginVerifier?: Uint8Array | null;
+  loginVerifierSalt?: Uint8Array | null;
+  loginVerifierParamsVersion?: number | null;
 }
 
 export interface RegistrationBundleResult {
@@ -67,9 +71,12 @@ export async function insertRegistrationBundle(
         password_kdf_params_version,
         first_name,
         last_name,
-        last_vault_unlocked_at
+        last_vault_unlocked_at,
+        login_verifier,
+        login_verifier_salt,
+        login_verifier_params_version
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::timestamptz)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::timestamptz, $13, $14, $15)
       RETURNING id
     `,
     [
@@ -85,6 +92,9 @@ export async function insertRegistrationBundle(
       input.firstName ?? null,
       input.lastName ?? null,
       input.nowIso,
+      input.loginVerifier ? Buffer.from(input.loginVerifier) : null,
+      input.loginVerifierSalt ? Buffer.from(input.loginVerifierSalt) : null,
+      input.loginVerifierParamsVersion ?? null,
     ],
   );
   const insertedUserId = userRows[0]?.id;

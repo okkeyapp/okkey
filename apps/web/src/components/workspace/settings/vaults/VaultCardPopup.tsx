@@ -152,8 +152,12 @@ function memberAccessKey(member: WorkspaceMemberDto): string | null {
   return member.userId ?? member.invitationId;
 }
 
+function isPendingInvite(member: WorkspaceMemberDto): boolean {
+  return member.status === "pending" || member.status === "pending_delivery";
+}
+
 function isLockedMember(member: WorkspaceMemberDto, workspaceOwnerId: string | null): boolean {
-  if (member.status === "pending" || !member.userId) {
+  if (isPendingInvite(member) || !member.userId) {
     return false;
   }
   if (member.userId === workspaceOwnerId) {
@@ -382,7 +386,7 @@ export default function VaultCardPopup({
             const vaultKey = await generateSharedVaultKey();
             const invitationIds = new Set(
               members
-                .filter((member) => member.status === "pending" && member.invitationId)
+                .filter((member) => isPendingInvite(member) && member.invitationId)
                 .map((member) => member.invitationId!),
             );
             const withAccess = Object.entries(draft.accessByUserId)
@@ -437,7 +441,7 @@ export default function VaultCardPopup({
               const next = draft.accessByUserId;
               const invitationIds = new Set(
                 members
-                  .filter((member) => member.status === "pending" && member.invitationId)
+                  .filter((member) => isPendingInvite(member) && member.invitationId)
                   .map((member) => member.invitationId!),
               );
               const grants: VaultAccessUpdateRequestDto["grants"] = [];
@@ -819,14 +823,18 @@ export default function VaultCardPopup({
                               <p className="min-w-0 truncate text-sm font-semibold leading-5 text-foreground">
                                 {showName ? name : member.email}
                               </p>
-                              {member.status === "pending" ? (
+                              {isPendingInvite(member) ? (
                                 <span
                                   className={cn(
                                     "relative isolate shrink-0 px-2 text-xs font-normal leading-5 text-background",
                                     "before:absolute before:inset-0 before:-z-10 before:rounded-md before:bg-foreground",
                                   )}
                                 >
-                                  {t("web.workspaceSettings.members.pendingBadge")}
+                                  {t(
+                                    member.status === "pending_delivery"
+                                      ? "web.workspaceSettings.members.pendingDeliveryBadge"
+                                      : "web.workspaceSettings.members.pendingBadge",
+                                  )}
                                 </span>
                               ) : null}
                             </div>

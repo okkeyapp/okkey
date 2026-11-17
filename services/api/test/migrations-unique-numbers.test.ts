@@ -35,6 +35,12 @@ const SHARE_NULLABLE = "0050_device_share_nullable.sql";
 const SERVER_MAIL = "0051_server_mail_settings.sql";
 const CLEAR_INACTIVE_SHARES = "0052_clear_inactive_device_shares.sql";
 const PASSKEY_SHARE_WRAP = "0053_passkey_share_wrap.sql";
+const LOGIN_VERIFIER = "0054_login_verifier.sql";
+const SEEN_VERSION = "0055_system_update_seen_version.sql";
+const MAIL_VERIFIED = "0056_server_mail_verified.sql";
+const MAIL_LEGACY_PROBE = "0057_server_mail_legacy_probe.sql";
+const INVITE_DELIVERY = "0058_workspace_invitation_delivery_status.sql";
+const APPROVAL_STATUS = "0059_device_approval_status_tokens.sql";
 const FAMILY_TIER = "0047_retire_family_plan_tier.sql";
 
 test("duplicateMigrationNumbers reports shared prefixes only", () => {
@@ -81,6 +87,12 @@ test("migration numbers are unique and legacy filenames are aliases only", () =>
     SERVER_MAIL,
     CLEAR_INACTIVE_SHARES,
     PASSKEY_SHARE_WRAP,
+    LOGIN_VERIFIER,
+    SEEN_VERSION,
+    MAIL_VERIFIED,
+    MAIL_LEGACY_PROBE,
+    INVITE_DELIVERY,
+    APPROVAL_STATUS,
   ];
   const tail = files.slice(files.indexOf(ordered[0]));
   assert.deepEqual(tail, ordered);
@@ -104,7 +116,12 @@ test("clean database applies every migration once through the runner", async (t)
     assert.equal(await tableExists(query, "workspace_key_wraps"), true);
     assert.equal(await tableExists(query, "workspace_key_rotation_queue"), true);
     assert.equal(await tableExists(query, "system_update_dismissals"), true);
+    assert.equal(await columnExists(query, "system_update_dismissals", "seen_version"), true);
+    assert.equal(await columnExists(query, "server_mail_settings", "smtp_verified_at"), true);
+    assert.equal(await columnExists(query, "workspace_invitations", "delivery_status"), true);
     assert.equal(await columnExists(query, "users", "public_mldsa_key"), true);
+    assert.equal(await columnExists(query, "users", "login_verifier"), true);
+    assert.equal(await columnExists(query, "users", "login_verifier_salt"), true);
     assert.equal(await columnExists(query, "devices", "one_time_x25519_public"), true);
 
     const again = await applySqlMigrations(db, { migrationsDir, logger: createLoggerStub() });
@@ -132,6 +149,12 @@ test("upgrade from v1.0.0-beta.2 applies migrations after 0043 once", async (t) 
     SERVER_MAIL,
     CLEAR_INACTIVE_SHARES,
     PASSKEY_SHARE_WRAP,
+    LOGIN_VERIFIER,
+    SEEN_VERSION,
+    MAIL_VERIFIED,
+    MAIL_LEGACY_PROBE,
+    INVITE_DELIVERY,
+    APPROVAL_STATUS,
   ]);
 
   await withSchema(async ({ db, query }) => {
@@ -156,6 +179,8 @@ test("upgrade from v1.0.0-beta.2 applies migrations after 0043 once", async (t) 
     assert.equal(await tableExists(query, "workspace_key_wraps"), true);
     assert.equal(await tableExists(query, "workspace_logos"), true);
     assert.equal(await columnExists(query, "workspaces", "client_settings_ciphertext"), true);
+    assert.equal(await columnExists(query, "server_mail_settings", "smtp_verified_at"), true);
+    assert.equal(await columnExists(query, "workspace_invitations", "delivery_status"), true);
 
     const again = await applySqlMigrations(db, { migrationsDir, logger: createLoggerStub() });
     assert.deepEqual(again.applied, []);

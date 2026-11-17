@@ -208,6 +208,19 @@ export class WebAuthnCredentialsRepository {
     return mapCredential(rows[0]);
   }
 
+  async updateName(userId: string, credentialRowId: string, name: string): Promise<boolean> {
+    const rows = await this.db.query<{ id: string }>(
+      `
+        UPDATE user_webauthn_credentials
+        SET name = $3
+        WHERE id = $1::bigint AND user_id = $2::bigint
+        RETURNING id
+      `,
+      [credentialRowId, userId, name],
+    );
+    return rows.length > 0;
+  }
+
   async updateSignCount(credentialRowId: string, signCount: number): Promise<void> {
     await this.db.query(
       `
@@ -292,6 +305,24 @@ export class WebAuthnCredentialsRepository {
         Buffer.from(input.shareWrap),
         Buffer.from(input.shareWrapSalt),
       ],
+    );
+    return Boolean(rows[0]);
+  }
+
+  /** Drop the PRF wrap so this credential can no longer approve a device. */
+  async clearShareWrap(userId: string, credentialRowId: string): Promise<boolean> {
+    const rows = await this.db.query<{ id: string }>(
+      `
+        UPDATE user_webauthn_credentials
+        SET share_wrap = NULL,
+            share_wrap_salt = NULL,
+            share_wrap_version = NULL
+        WHERE id = $1::bigint
+          AND user_id = $2::bigint
+          AND share_wrap IS NOT NULL
+        RETURNING id
+      `,
+      [credentialRowId, userId],
     );
     return Boolean(rows[0]);
   }

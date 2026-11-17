@@ -43,6 +43,7 @@ export const WORKSPACE_TILE_PRESET_COLORS = [
 
 export type WorkspaceSettingsSectionId =
   | "general"
+  | "mail"
   | "items"
   | "capsules"
   | "roles"
@@ -57,6 +58,7 @@ export const DEFAULT_WORKSPACE_SETTINGS_SECTION: WorkspaceSettingsSectionId = "g
 export function isWorkspaceSettingsSectionId(value: string): value is WorkspaceSettingsSectionId {
   return [
     "general",
+    "mail",
     "items",
     "capsules",
     "roles",

@@ -24,7 +24,18 @@ Okkey is a self-hosted password manager extension. Users set their own Okkey web
 | `alarms` | Run vault idle-lock and clipboard auto-clear timers in the service worker after the popup is closed. |
 | `offscreen` | **Chromium only.** Clear the system clipboard from an offscreen document after the configured timeout (MV3 service workers cannot use the Clipboard API). **Omitted on Firefox** — Firefox has no `offscreen` API; the same clear runs via `navigator.clipboard` in the background script (`extensionVaultLifecycle`). |
 | `clipboardRead` / `clipboardWrite` | Read/clear the clipboard only to remove values the user copied from Okkey vault fields (matched by an internal copy token + exact text). Ordinary copies outside Okkey are not cleared. |
-| Host permission `<all_urls>` | Content scripts must run on arbitrary http(s) origins to **detect login/register forms** and **autofill** credentials the user explicitly saved for those sites. Password managers cannot limit hosts to a fixed allowlist. |
+| `webRequest` | Observe HTTP authentication challenges (`onAuthRequired` only) so the user can choose a vault login for that origin. Both Chromium and Firefox. |
+| `webRequestAuthProvider` | **Chromium only.** Required to answer `onAuthRequired` asynchronously in Manifest V3 (`asyncBlocking`). Not declared on Firefox. |
+| `webRequestBlocking` | **Firefox only.** Lets `onAuthRequired` return credentials asynchronously with a Promise under Firefox MV3. Not declared on Chromium. |
+| Host permission `<all_urls>` | Content scripts must run on arbitrary http(s) origins to **detect login/register forms** and **autofill** credentials the user explicitly saved for those sites. The same host access lets `onAuthRequired` see challenges on those origins. Password managers cannot limit hosts to a fixed allowlist. |
+
+### HTTP basic authentication — reviewer note (EN)
+
+Okkey can answer an HTTP basic authentication challenge with a vault login, and only after the user turns the feature on (it is off by default) and confirms that specific challenge. The confirmation shows the requesting origin and the matching saved login. `http://` challenges add a second confirmation because the password would travel in cleartext. There is no silent fill and no “always for this site” choice. A repeat challenge asks again.
+
+Chromium declares `webRequest` and `webRequestAuthProvider` and responds with `asyncBlocking`. Firefox declares `webRequest` and `webRequestBlocking` and returns a Promise from a `blocking` listener. Firefox has supported `webRequestBlocking` in Manifest V3 for the whole range of our `strict_min_version` (`121.0`). `webRequestAuthProvider` exists from Firefox 126 and `asyncBlocking` from Firefox 128, so the Firefox package does not declare `webRequestAuthProvider` and does not depend on `asyncBlocking`. Chromium does not declare `webRequestBlocking`.
+
+**What we do not do with these permissions:** the extension does not read all requests, does not read request or response bodies, does not observe the Authorization header, and does not answer without confirmation. While the setting is off, Okkey supplies no credentials and the browser shows its own dialog.
 
 ### Host permission / autofill — detailed justification (EN)
 
@@ -86,6 +97,7 @@ Not declared: third-party analytics, ad trackers, or Okkey-operated cloud. All n
 |------|----------|-------------|
 | `MISSING_DATA_COLLECTION_PERMISSIONS` | error (submit blocker) | **Fixed** — see gecko `data_collection_permissions` above. |
 | Unsupported `offscreen` permission | warning/error on Firefox | **Fixed** — `offscreen` is Chromium-only in `wxt.config.ts`. |
+| `webRequestBlocking` on Firefox MV3 | — | **Accepted.** Firefox MV3 still allows `webRequestBlocking` so `onAuthRequired` can return a Promise. The Firefox build declares it; the Chromium build does not (Chrome MV3 would reject it for a regular extension). `webRequestAuthProvider` is omitted on Firefox because this package's floor is Firefox 121 and that permission starts at 126. `web-ext lint` reports 0 errors from these permissions. |
 | `KEY_FIREFOX_UNSUPPORTED_BY_MIN_VERSION` | warning | **Accepted.** `data_collection_permissions` exists from Firefox 140, and `strict_min_version` stays `121.0` (MV3 / API floor, above). Firefox 121–139 ignore the unknown key. On those versions the consent copy is this document plus [PRIVACY.md](./PRIVACY.md), not the built-in Firefox 140 UI. Raising the floor to 140 only to clear the warning would drop supported browsers. |
 | `KEY_FIREFOX_ANDROID_UNSUPPORTED_BY_MIN_VERSION` | warning | **Accepted.** The same key needs Firefox for Android 142. With no `gecko_android` override, `gecko.strict_min_version` is also the Android floor, so the linter warns that 121 predates Android support for the key. The desktop API floor stays 121; we do not add an Android-only minimum just to silence the warning. |
 | `UNSAFE_VAR_ASSIGNMENT` | warning | **Keep with justification** — content-script / generator overlays assign to `innerHTML` / `insertAdjacentHTML` inside an extension **shadow DOM**. Dynamic user strings go through `escapeHtml`; markup templates and SVG icon snippets are extension-controlled constants (not remote HTML). No page-origin HTML is assigned into the overlay. Refactoring every assignment to pure DOM APIs is out of scope for this pack; treat remaining hits as reviewed false positives for XSS. |

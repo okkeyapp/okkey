@@ -82,6 +82,17 @@ export type KeyFieldFileControlProps = {
   className?: string;
   uploadLabel?: string;
   uploadHintLabels?: KeyFieldFileUploadHintLabels;
+  /**
+   * Accept every file from one picker or drop. Each file is passed to `onUploadFile`.
+   * The control does not write a single value, so the drop zone stays and the parent
+   * can keep its own list. Omitted or false keeps the one-file replace behavior.
+   */
+  uploadMultiple?: boolean;
+  /** `accept` on the hidden input. Omitted leaves the picker unfiltered. */
+  accept?: string;
+  /** Id of the hidden file input, for labels and tests. */
+  inputId?: string;
+  disabled?: boolean;
 };
 
 const resolvedPreviewUrlCache = new Map<string, string>();
@@ -145,6 +156,10 @@ export function KeyFieldFileControl({
   className,
   uploadLabel = "Upload file",
   uploadHintLabels = defaultKeyFieldFileUploadHintLabels,
+  uploadMultiple = false,
+  accept,
+  inputId,
+  disabled = false,
 }: KeyFieldFileControlProps) {
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
   const [isDragging, setIsDragging] = React.useState(false);
@@ -247,20 +262,27 @@ export function KeyFieldFileControl({
     onValidationErrorChange?.(hasError);
   }
 
-  async function handleSelectedFile(selectedFile: File | null) {
-    if (!selectedFile || !onUploadFile || !onValueChange || mode !== "edit") {
-      return;
+  async function handleSelectedFile(selectedFile: File | null, writeValue: boolean) {
+    if (!selectedFile || !onUploadFile || mode !== "edit" || disabled) {
+      return false;
+    }
+    if (writeValue && !onValueChange) {
+      return false;
     }
 
     if (!validateKeyFieldFileUpload(selectedFile, uploadConstraints)) {
       setValidationError(true);
-      return;
+      return false;
+    }
+
+    if (!writeValue) {
+      await onUploadFile(selectedFile, setUploadProgress);
+      return true;
     }
 
     setValidationError(false);
     setIsUploading(true);
     setUploadProgress(0);
-
     try {
       const uploaded = await onUploadFile(selectedFile, setUploadProgress);
       const previewUrl = uploaded.url ?? (isKeyFieldFileImageMimeType(uploaded.mimeType)
@@ -270,7 +292,38 @@ export function KeyFieldFileControl({
         cachePreviewUrl(uploaded.attachmentId, previewUrl);
       }
       setUploadProgress(100);
-      onValueChange(serializeKeyFieldFileValue({ ...uploaded, url: previewUrl }));
+      onValueChange?.(serializeKeyFieldFileValue({ ...uploaded, url: previewUrl }));
+      return true;
+    } finally {
+      setIsUploading(false);
+      setUploadProgress(0);
+    }
+  }
+
+  async function handleSelectedFiles(selectedFiles: File[]) {
+    if (selectedFiles.length === 0 || !onUploadFile || mode !== "edit" || disabled) {
+      return;
+    }
+
+    const writeValue = !uploadMultiple;
+    if (writeValue) {
+      await handleSelectedFile(selectedFiles[0] ?? null, true);
+      return;
+    }
+
+    const accepted = selectedFiles.filter((file) => validateKeyFieldFileUpload(file, uploadConstraints));
+    setValidationError(accepted.length !== selectedFiles.length);
+    if (accepted.length === 0) {
+      return;
+    }
+
+    setIsUploading(true);
+    setUploadProgress(0);
+    try {
+      for (const file of accepted) {
+        await handleSelectedFile(file, false);
+      }
+      setUploadProgress(100);
     } finally {
       setIsUploading(false);
       setUploadProgress(0);
@@ -278,19 +331,20 @@ export function KeyFieldFileControl({
   }
 
   function handleInputChange(event: React.ChangeEvent<HTMLInputElement>) {
-    const selectedFile = event.target.files?.[0] ?? null;
-    void handleSelectedFile(selectedFile);
+    const selectedFiles = [...(event.target.files ?? [])];
+    void handleSelectedFiles(uploadMultiple ? selectedFiles : selectedFiles.slice(0, 1));
     event.target.value = "";
   }
 
   function handleDrop(event: React.DragEvent<HTMLButtonElement>) {
     event.preventDefault();
     setIsDragging(false);
-    if (mode !== "edit" || parsedFile) {
+    if (mode !== "edit" || parsedFile || disabled) {
       return;
     }
 
-    void handleSelectedFile(event.dataTransfer.files[0] ?? null);
+    const selectedFiles = [...event.dataTransfer.files];
+    void handleSelectedFiles(uploadMultiple ? selectedFiles : selectedFiles.slice(0, 1));
   }
 
   function handlePreviewClick() {
@@ -347,10 +401,19 @@ export function KeyFieldFileControl({
 
   return (
     <div className={cn("w-full", className)}>
-      <input ref={fileInputRef} type="file" className="hidden" onChange={handleInputChange} />
+      <input
+        ref={fileInputRef}
+        id={inputId}
+        type="file"
+        className="hidden"
+        accept={accept}
+        multiple={uploadMultiple}
+        disabled={disabled || isUploading}
+        onChange={handleInputChange}
+      />
       <button
         type="button"
-        disabled={isUploading}
+        disabled={disabled || isUploading}
         onClick={() => fileInputRef.current?.click()}
         onDragEnter={(event) => {
           event.preventDefault();
@@ -370,6 +433,7 @@ export function KeyFieldFileControl({
         className={cn(
           "flex h-20 w-full flex-col items-center justify-center gap-1 rounded-sm border-2 border-dashed border-input bg-transparent px-4 text-foreground transition-colors",
           "hover:border-accent hover:bg-muted/40",
+          "focus-visible:border-accent focus-visible:bg-muted/40 focus-visible:outline-none",
           isDragging && "border-accent bg-muted/40",
           isUploading && "pointer-events-none",
         )}

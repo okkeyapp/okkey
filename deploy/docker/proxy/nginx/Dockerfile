@@ -4,7 +4,7 @@
 # debian:bookworm-slim
 FROM debian:bookworm-slim@sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc AS build
 
-ARG OPENSSL_VERSION=3.5.0
+ARG OPENSSL_VERSION=3.5.9
 ARG NGINX_VERSION=1.28.0
 
 RUN apt-get update \
@@ -80,6 +80,7 @@ RUN chmod +x /docker-entrypoint.sh \
   && /usr/local/openssl/bin/openssl version \
   && nginx -V
 
-EXPOSE 80 443
+# 8443 = default OKKEY_COMPAT_HTTPS_PORT (classical compat; not used when compat off).
+EXPOSE 80 443 8443
 ENTRYPOINT ["/docker-entrypoint.sh"]
 CMD ["nginx", "-g", "daemon off;"]

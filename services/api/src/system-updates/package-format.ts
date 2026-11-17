@@ -8,8 +8,9 @@ import {
 } from "node:crypto";
 
 import { SystemUpdateError } from "./errors.ts";
+import { parseVersion } from "./versions.ts";
 
-/** The only self-host update package format. Feed URLs and uploaded files both use it. */
+/** Signed self-host update package. Feed URLs and uploaded files both use it. */
 export const OFFLINE_PACKAGE_FORMAT = "okkey-offline-package";
 export const OFFLINE_PACKAGE_FORMAT_VERSION = 1;
 export const UPDATE_FEED_SCHEMA = "okkey.update-feed.v1";
@@ -18,6 +19,19 @@ export const UPDATE_COMPONENTS = ["okkey", "enterprise"] as const;
 export type UpdateComponent = (typeof UPDATE_COMPONENTS)[number];
 
 export const CORE_IMAGE_SERVICES = ["api", "web", "worker"] as const;
+
+/** Compose service names for the enterprise api, web, and worker images. */
+export const ENTERPRISE_IMAGE_SERVICES = ["enterprise-api", "enterprise-web", "enterprise-worker"] as const;
+
+/**
+ * Short-lived read-only registry credentials from an update feed.
+ * They are not part of the signed package and must not be written to disk.
+ */
+export type RegistryPullCredentials = {
+  server: string;
+  username: string;
+  password: string;
+};
 
 export type OfflinePackagePayload = {
   format: typeof OFFLINE_PACKAGE_FORMAT;
@@ -29,6 +43,8 @@ export type OfflinePackagePayload = {
   releasedAt: string;
   imageTag: string;
   images: Record<string, string>;
+  /** Required on enterprise packages. Compared with the running core before any change. */
+  minCoreVersion?: string;
 };
 
 export type SignedOfflinePackage = {
@@ -44,11 +60,17 @@ export type UpdateFeedPackage = {
   releasedAt: string;
   packageUrl: string;
   packageSha256: string;
+  registryCredentials?: RegistryPullCredentials;
+  /** Set on an enterprise package that must not run before this core version. */
+  minCoreVersion: string | null;
+  releaseNotesUrl: string | null;
+  registryCredentials?: RegistryPullCredentials;
 };
 
 export type UpdateFeedDocument = {
   schema: typeof UPDATE_FEED_SCHEMA;
   packages: UpdateFeedPackage[];
+  registryCredentials?: RegistryPullCredentials;
 };
 
 const SUMMARY_MAX = 280;
@@ -205,6 +227,7 @@ export function parsePayload(value: unknown): OfflinePackagePayload {
   const releasedAt = requiredText(record.releasedAt, "releasedAt");
   const imageTag = requiredText(record.imageTag, "imageTag");
   const images = parseImages(record.images);
+  const minCoreVersion = parseMinCoreVersion(record.minCoreVersion);
   if (component === "okkey") {
     for (const service of CORE_IMAGE_SERVICES) {
       if (!images[service]) {
@@ -212,6 +235,24 @@ export function parsePayload(value: unknown): OfflinePackagePayload {
           400,
           "PACKAGE_INVALID",
           `Core package is missing the ${service} image`,
+        );
+      }
+    }
+  }
+  if (component === "enterprise") {
+    if (!minCoreVersion) {
+      throw new SystemUpdateError(
+        400,
+        "PACKAGE_INVALID",
+        "Enterprise package is missing minCoreVersion",
+      );
+    }
+    for (const service of ENTERPRISE_IMAGE_SERVICES) {
+      if (!images[service]) {
+        throw new SystemUpdateError(
+          400,
+          "PACKAGE_INVALID",
+          `Enterprise package is missing the ${service} image`,
         );
       }
     }
@@ -229,7 +270,64 @@ export function parsePayload(value: unknown): OfflinePackagePayload {
     releasedAt,
     imageTag,
     images,
+    ...(minCoreVersion ? { minCoreVersion } : {}),
   };
+}
+
+/** Component named by the package, before the signature is trusted. */
+export function claimedPackageComponent(document: unknown): UpdateComponent | null {
+  const envelope = asRecord(document);
+  const payload = asRecord(envelope?.payload);
+  const component = payload?.component;
+  if (component === "okkey" || component === "enterprise") {
+    return component;
+  }
+  return null;
+}
+
+/**
+ * Read feed or apply-request registry credentials.
+ * Error text never includes the username, password, or server value.
+ */
+export function readRegistryCredentials(
+  value: unknown,
+  code: "FEED_INVALID" | "PACKAGE_INVALID",
+): RegistryPullCredentials | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  const record = asRecord(value);
+  if (!record) {
+    throw new SystemUpdateError(400, code, "Registry credentials must be an object");
+  }
+  const server = normalizeRegistryServer(record.server);
+  const username = typeof record.username === "string" ? record.username.trim() : "";
+  const password = typeof record.password === "string" ? record.password : "";
+  if (
+    !server ||
+    !username ||
+    username.length > 256 ||
+    !password.trim() ||
+    password.length > 4096 ||
+    username.includes("\n") ||
+    username.includes("\r") ||
+    password.includes("\n") ||
+    password.includes("\r")
+  ) {
+    throw new SystemUpdateError(400, code, "Registry credentials are incomplete");
+  }
+  return { server, username, password };
+}
+
+/** Remove registry credentials from an apply request so later steps cannot persist them. */
+export function takeRegistryCredentials(document: unknown): RegistryPullCredentials | undefined {
+  const record = asRecord(document);
+  if (!record || !Object.prototype.hasOwnProperty.call(record, "registryCredentials")) {
+    return undefined;
+  }
+  const raw = record.registryCredentials;
+  delete record.registryCredentials;
+  return readRegistryCredentials(raw, "PACKAGE_INVALID");
 }
 
 export function parseUpdateFeed(value: unknown): UpdateFeedDocument {
@@ -247,6 +345,7 @@ export function parseUpdateFeed(value: unknown): UpdateFeedDocument {
     if (component !== "okkey" && component !== "enterprise") {
       throw new SystemUpdateError(400, "FEED_INVALID", "Update feed component is unknown");
     }
+    const registryCredentials = readRegistryCredentials(item.registryCredentials, "FEED_INVALID");
     packages.push({
       component,
       version: requiredText(item.version, "version"),
@@ -255,9 +354,18 @@ export function parseUpdateFeed(value: unknown): UpdateFeedDocument {
       releasedAt: requiredText(item.releasedAt, "releasedAt"),
       packageUrl: requiredHttpUrl(item.packageUrl),
       packageSha256: requiredSha256(item.packageSha256),
+      ...(registryCredentials ? { registryCredentials } : {}),
+      minCoreVersion: optionalVersion(item.minCoreVersion),
+      releaseNotesUrl: optionalHttpUrl(item.releaseNotesUrl),
+      ...(registryCredentials ? { registryCredentials } : {}),
     });
   }
-  return { schema: UPDATE_FEED_SCHEMA, packages };
+  const registryCredentials = readRegistryCredentials(record.registryCredentials, "FEED_INVALID");
+  return {
+    schema: UPDATE_FEED_SCHEMA,
+    packages,
+    ...(registryCredentials ? { registryCredentials } : {}),
+  };
 }
 
 export function assertHttpUrl(value: string): URL {
@@ -274,6 +382,27 @@ export function assertHttpUrl(value: string): URL {
     throw new SystemUpdateError(400, "FEED_INVALID", "Update URL must not include credentials");
   }
   return url;
+}
+
+function optionalHttpUrl(value: unknown): string | null {
+  if (value === undefined || value === null || value === "") {
+    return null;
+  }
+  return requiredHttpUrl(value);
+}
+
+function optionalVersion(value: unknown): string | null {
+  if (value === undefined || value === null || value === "") {
+    return null;
+  }
+  if (typeof value !== "string") {
+    throw new SystemUpdateError(400, "FEED_INVALID", "minCoreVersion is invalid");
+  }
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.length > 80) {
+    throw new SystemUpdateError(400, "FEED_INVALID", "minCoreVersion is invalid");
+  }
+  return trimmed;
 }
 
 function requiredHttpUrl(value: unknown): string {
@@ -306,6 +435,27 @@ function parseImages(value: unknown): Record<string, string> {
     images[service] = image.trim();
   }
   return images;
+}
+
+function parseMinCoreVersion(value: unknown): string | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (typeof value !== "string" || !parseVersion(value.trim())) {
+    throw new SystemUpdateError(400, "PACKAGE_INVALID", "minCoreVersion must be a semantic version");
+  }
+  return value.trim();
+}
+
+function normalizeRegistryServer(value: unknown): string {
+  if (typeof value !== "string") {
+    return "";
+  }
+  const server = value.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/.*$/, "");
+  if (!/^[a-z0-9]([a-z0-9.-]*[a-z0-9])?(?::[0-9]{1,5})?$/.test(server)) {
+    return "";
+  }
+  return server;
 }
 
 function requiredText(value: unknown, field: string): string {

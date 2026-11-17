@@ -279,6 +279,33 @@ function toWireDevice(item: DeviceListItem) {
   };
 }
 
+/**
+ * Display-only trusted rows for a pending/blocked session: enough for the
+ * "confirm from device" UI, without fingerprints, network, or share keys.
+ */
+function toApproverWireDevice(item: DeviceListItem) {
+  return {
+    device_id: item.deviceId,
+    device_name: item.deviceName,
+    device_fingerprint: "",
+    status: item.status,
+    platform: item.platform,
+    os_name: item.osName,
+    os_version: item.osVersion,
+    app_version: item.appVersion,
+    client_type: item.clientType,
+    ip_address: "",
+    country: null,
+    city: null,
+    created_at: item.createdAt,
+    last_seen_at: item.lastSeenAt,
+    approved_at: item.approvedAt,
+    is_current: false,
+    approval_expires_at: item.approvalExpiresAt,
+    blocked_until: item.blockedUntil ?? null,
+  };
+}
+
 export function createRegisterDeviceRoute(
   deviceService: DeviceService,
   resolveUserId: (req: IncomingMessage) => Promise<string | null>,
@@ -456,6 +483,12 @@ export function createRegisterDeviceRoute(
         status: result.status,
         ...(result.status === "blocked"
           ? { blocked_until: result.blockedUntil ?? null }
+          : {}),
+        ...(result.approvalStatusToken
+          ? {
+              approval_status_token: result.approvalStatusToken,
+              approval_status_expires_at: result.approvalStatusExpiresAt,
+            }
           : {}),
       });
     } catch (error) {
@@ -810,8 +843,15 @@ export function createListDevicesRoute(
         }
         return rows;
       };
+      // A pending session may list redacted trusted approvers for the wait UI,
+      // but still only sees its own pending/blocked row (no other fingerprints).
+      const pendingApproverView =
+        ownDeviceOnly &&
+        result.pending.some((row) => sameDeviceId(row.deviceId, sessionDeviceId));
       json(ctx.res, 200, {
-        devices: visible(result.devices).map(toWireDevice),
+        devices: pendingApproverView
+          ? result.devices.map(toApproverWireDevice)
+          : visible(result.devices).map(toWireDevice),
         pending: visible(result.pending).map(toWireDevice),
         blocked: visible(result.blocked ?? []).map(toWireDevice),
       });
@@ -1218,7 +1258,7 @@ export function createRejectDeviceRoute(
   };
 }
 
-const BLOCK_DURATIONS = new Set(["1h", "1d", "1w", "forever"]);
+const BLOCK_DURATIONS = new Set(["1h", "1d", "forever"]);
 
 export function createBlockDeviceRoute(
   deviceService: DeviceService,
@@ -1251,7 +1291,7 @@ export function createBlockDeviceRoute(
         400,
         errorPayload(
           "DEVICE_BAD_REQUEST",
-          "duration must be one of 1h, 1d, 1w, forever",
+          "duration must be one of 1h, 1d, forever",
           ctx.requestId,
         ),
       );
@@ -1269,7 +1309,7 @@ export function createBlockDeviceRoute(
         userId,
         approverDeviceId,
         deviceId,
-        duration as "1h" | "1d" | "1w" | "forever",
+        duration as "1h" | "1d" | "forever",
         body.reason,
       );
       if (sessionService) {

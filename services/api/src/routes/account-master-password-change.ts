@@ -1,6 +1,7 @@
 import type { IncomingMessage } from "node:http";
 import { isCurrentMasterPasswordPolicyVersion } from "@okkey/types";
 
+import { createLoginVerifier, decodeLoginKey } from "../crypto/login-verifier.ts";
 import { json, readJsonBody, type RouteHandler } from "../http.ts";
 import type { UsersRepository } from "../storage/repositories.ts";
 
@@ -18,6 +19,8 @@ type MasterPasswordChangeBody = {
   password_kdf_params_version?: unknown;
   /** Client attestation of the current new-password policy. Not a password or length. */
   master_password_policy_version?: unknown;
+  /** Base64 32-byte login key for the new master password. Not the password. */
+  login_key?: unknown;
 };
 
 function decodeBase64Exact(value: unknown, expectedLen: number, label: string): Uint8Array | null {
@@ -78,6 +81,24 @@ export function createAccountMasterPasswordChangeRoute(
       return;
     }
 
+    let loginVerifier: {
+      verifier: Uint8Array;
+      salt: Uint8Array;
+      paramsVersion: number;
+    } | null = null;
+    if (body.login_key !== undefined && body.login_key !== "") {
+      const loginKey = decodeLoginKey(body.login_key);
+      if (!loginKey) {
+        json(
+          ctx.res,
+          400,
+          errorPayload("INVALID_MASTER_PASSWORD_CHANGE", "login_key must be 32 bytes", ctx.requestId),
+        );
+        return;
+      }
+      loginVerifier = createLoginVerifier(loginKey);
+    }
+
     if (!isCurrentMasterPasswordPolicyVersion(body.master_password_policy_version)) {
       json(
         ctx.res,
@@ -95,6 +116,8 @@ export function createAccountMasterPasswordChangeRoute(
       serverKeyShare,
       passwordKdfSalt,
       passwordKdfParamsVersion: paramsVersion,
+      // Absent login_key clears a verifier tied to the previous password.
+      loginVerifier,
     });
     if (!changedAt) {
       json(ctx.res, 404, errorPayload("USER_NOT_FOUND", "user not found", ctx.requestId));

@@ -20,6 +20,8 @@ import type {
   DeviceKeyRebindRequestDto,
   DeviceRegisterRequestDto,
   DeviceRegisterResponseDto,
+  DeviceApprovalRetryResponseDto,
+  DeviceApprovalStatusResponseDto,
   DeviceRejectResponseDto,
   DeviceBlockRequestDto,
   DeviceBlockResponseDto,
@@ -56,6 +58,8 @@ import type {
   AccountProfileUpdateRequestDto,
   AccountMasterPasswordChangeRequestDto,
   AccountMasterPasswordChangeResponseDto,
+  LoginVerifierEnrollRequestDto,
+  LoginVerifierStatusDto,
   MldsaIdentityKeyUploadRequestDto,
   MldsaIdentityKeyUploadResponseDto,
   VaultUnlockAttestationDto,
@@ -78,6 +82,8 @@ import type {
   PasskeyApprovalOptionsResponseDto,
   PasskeyApprovalVerifyRequestDto,
   PasskeyApprovalVerifyResponseDto,
+  PasskeyHandoffResponseDto,
+  WebAuthnCredentialRenameRequestDto,
   PasskeyShareWrapOptionsResponseDto,
   PasskeyShareWrapVerifyRequestDto,
   PasskeyShareWrapVerifyResponseDto,
@@ -111,6 +117,8 @@ import type {
   MeVaultProfilesResponseDto,
   WorkspaceInvitationsCreateRequestDto,
   WorkspaceInvitationsCreateResponseDto,
+  WorkspaceInvitationCopyLinkResponseDto,
+  WorkspaceInvitationResendResponseDto,
   WorkspaceInvitationUpdateRequestDto,
   WorkspaceMemberUpdateRequestDto,
   MemberVaultAccessResponseDto,
@@ -303,6 +311,9 @@ function parseCoreApiErrorBody(raw: unknown, res: Response): CoreApiErrorBody {
   };
 }
 
+/** Header for the approval-status credential. It does not authenticate any other route. */
+export const DEVICE_APPROVAL_STATUS_HEADER = "X-Device-Approval-Token";
+
 /** API client with `Authorization: Bearer` for Vault, Sync, and Device routes. */
 export function createBearerApiClient(
   baseUrl: string,
@@ -403,6 +414,16 @@ export class CoreApiClient {
     );
   }
 
+  renameWebauthnCredential(
+    credentialId: string,
+    body: WebAuthnCredentialRenameRequestDto,
+  ): Promise<AccountLoginMethodsResponseDto> {
+    return this.api.patch<AccountLoginMethodsResponseDto>(
+      `/account/webauthn/credentials/${encodeURIComponent(credentialId)}`,
+      body,
+    );
+  }
+
   deleteWebauthnCredentialsByAttachment(
     attachment: WebAuthnAuthenticatorAttachment,
   ): Promise<AccountLoginMethodsResponseDto> {
@@ -429,6 +450,12 @@ export class CoreApiClient {
     );
   }
 
+  deletePasskeyShareWrap(credentialId: string): Promise<{ credential_id: string; has_share_wrap: false }> {
+    return this.api.delete<{ credential_id: string; has_share_wrap: false }>(
+      `/account/webauthn/credentials/${encodeURIComponent(credentialId)}/share-wrap`,
+    );
+  }
+
   passkeyApprovalOptions(deviceId: string): Promise<PasskeyApprovalOptionsResponseDto> {
     return this.api.post<PasskeyApprovalOptionsResponseDto>(
       `/devices/${encodeURIComponent(deviceId)}/passkey-approval/options`,
@@ -446,10 +473,33 @@ export class CoreApiClient {
     );
   }
 
+  /** Pending-device session: open a short-lived handoff the web tab can finish. */
+  createPasskeyHandoff(deviceId: string): Promise<PasskeyHandoffResponseDto> {
+    return this.api.post<PasskeyHandoffResponseDto>(
+      `/devices/${encodeURIComponent(deviceId)}/passkey-approval/handoff`,
+      {},
+    );
+  }
+
+  /** Pending-device session: poll until the web tab confirms, rejects, or the handoff expires. */
+  getPasskeyHandoff(deviceId: string, handoffId: string): Promise<PasskeyHandoffResponseDto> {
+    return this.api.get<PasskeyHandoffResponseDto>(
+      `/devices/${encodeURIComponent(deviceId)}/passkey-approval/handoff/${encodeURIComponent(handoffId)}`,
+    );
+  }
+
   changeMasterPassword(
     body: AccountMasterPasswordChangeRequestDto,
   ): Promise<AccountMasterPasswordChangeResponseDto> {
     return this.api.post<AccountMasterPasswordChangeResponseDto>("/account/master-password/change", body);
+  }
+
+  getLoginVerifierStatus(): Promise<LoginVerifierStatusDto> {
+    return this.api.get<LoginVerifierStatusDto>("/account/login-verifier");
+  }
+
+  enrollLoginVerifier(body: LoginVerifierEnrollRequestDto): Promise<LoginVerifierStatusDto> {
+    return this.api.post<LoginVerifierStatusDto>("/account/login-verifier", body);
   }
 
   /** Publish the account ML-DSA-65 verifying key, authenticated by the Ed25519 identity key. */
@@ -550,6 +600,26 @@ export class CoreApiClient {
     return this.api.post<WorkspaceInvitationsCreateResponseDto>(
       `/workspaces/${encodeURIComponent(workspaceId)}/invitations`,
       body,
+    );
+  }
+
+  resendWorkspaceInvitation(
+    workspaceId: string,
+    invitationId: string,
+  ): Promise<WorkspaceInvitationResendResponseDto> {
+    return this.api.post<WorkspaceInvitationResendResponseDto>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/invitations/${encodeURIComponent(invitationId)}/resend`,
+      {},
+    );
+  }
+
+  copyWorkspaceInvitationLink(
+    workspaceId: string,
+    invitationId: string,
+  ): Promise<WorkspaceInvitationCopyLinkResponseDto> {
+    return this.api.post<WorkspaceInvitationCopyLinkResponseDto>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/invitations/${encodeURIComponent(invitationId)}/copy-link`,
+      {},
     );
   }
 
@@ -790,8 +860,8 @@ export class CoreApiClient {
   sendServerMailTestEmail(
     workspaceId: string,
     body: ServerMailTestEmailRequestDto,
-  ): Promise<{ ok: true }> {
-    return this.api.post<{ ok: true }>(
+  ): Promise<ServerMailSettingsResponseDto> {
+    return this.api.post<ServerMailSettingsResponseDto>(
       `/workspaces/${encodeURIComponent(workspaceId)}/server-mail-settings/test-email`,
       body,
     );
@@ -1074,6 +1144,29 @@ export class CoreApiClient {
     return this.api.post<DeviceRegisterResponseDto>("/devices/register", body);
   }
 
+  /** Read one device's approval request. The credential is not sent as a session bearer. */
+  getDeviceApprovalStatus(
+    deviceId: string,
+    approvalStatusToken: string,
+  ): Promise<DeviceApprovalStatusResponseDto> {
+    return this.api.get<DeviceApprovalStatusResponseDto>(
+      `/devices/${encodeURIComponent(deviceId)}/approval-status`,
+      { headers: { [DEVICE_APPROVAL_STATUS_HEADER]: approvalStatusToken } },
+    );
+  }
+
+  /** After a rejection, ask again and rotate the approval-status credential. */
+  retryDeviceApproval(
+    deviceId: string,
+    approvalStatusToken: string,
+  ): Promise<DeviceApprovalRetryResponseDto> {
+    return this.api.post<DeviceApprovalRetryResponseDto>(
+      `/devices/${encodeURIComponent(deviceId)}/approval-retry`,
+      {},
+      { headers: { [DEVICE_APPROVAL_STATUS_HEADER]: approvalStatusToken } },
+    );
+  }
+
   createDeviceBindChallenge(deviceId: string): Promise<DeviceBindChallengeResponseDto> {
     return this.api.post<DeviceBindChallengeResponseDto>(
       `/devices/${encodeURIComponent(deviceId)}/bind-challenge`,
@@ -1281,6 +1374,38 @@ export class CoreApiClient {
       );
     }
   }
+}
+
+/** Public WebAuthn handoff. The request id is the secret; no extension bearer is sent. */
+export function postPasskeyHandoffOptions(
+  api: ApiClient,
+  handoffId: string,
+): Promise<PasskeyApprovalOptionsResponseDto> {
+  return api.post<PasskeyApprovalOptionsResponseDto>(
+    `/auth/passkey-device-approval/${encodeURIComponent(handoffId)}/options`,
+    {},
+  );
+}
+
+export function postPasskeyHandoffVerify(
+  api: ApiClient,
+  handoffId: string,
+  body: PasskeyApprovalVerifyRequestDto,
+): Promise<PasskeyApprovalVerifyResponseDto> {
+  return api.post<PasskeyApprovalVerifyResponseDto>(
+    `/auth/passkey-device-approval/${encodeURIComponent(handoffId)}/verify`,
+    body,
+  );
+}
+
+export function postPasskeyHandoffReject(
+  api: ApiClient,
+  handoffId: string,
+): Promise<PasskeyHandoffResponseDto> {
+  return api.post<PasskeyHandoffResponseDto>(
+    `/auth/passkey-device-approval/${encodeURIComponent(handoffId)}/reject`,
+    {},
+  );
 }
 
 export function createCoreApiClient(

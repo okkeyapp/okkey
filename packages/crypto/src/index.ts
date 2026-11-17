@@ -256,6 +256,14 @@ export {
 } from "./registration.js";
 
 export {
+  LOGIN_KDF_DOMAIN,
+  LOGIN_KDF_SALT_DOMAIN,
+  deriveLoginKey,
+  loginKdfSaltForEmail,
+  normalizeLoginEmail,
+} from "./login-key.js";
+
+export {
   SPLIT_KEY_SHARE_B_AAD,
   SPLIT_KEY_SHARE_B_WRAP_SCHEME,
   generateSplitKeyShareWrapKey,

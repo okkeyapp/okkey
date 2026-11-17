@@ -1,7 +1,14 @@
 import { randomBytes } from "node:crypto";
+import { splitKeyShareBWrapPublicKeys } from "@okkey/crypto";
+import { PASSKEY_HANDOFF_TTL_MS } from "@okkey/types";
 import { generateEntityId } from "../entity-id.ts";
 import type { ApiConfig } from "../config.ts";
 import type { Logger } from "../logger.ts";
+import {
+  APPROVAL_SHARE_MUST_BE_NEW,
+  APPROVAL_SHARE_WRONG_RECIPIENT,
+  approvalShareRejection,
+} from "../device/approval-share.ts";
 import {
   assertSplitKeyShareB,
   SPLIT_KEY_SHARE_B_MAX_LEN,
@@ -21,6 +28,21 @@ const PASSKEY_SHARE_WRAP_OVERHEAD = 41;
 const PASSKEY_SHARE_WRAP_MAX_LEN = PASSKEY_SHARE_WRAP_OVERHEAD + SPLIT_KEY_SHARE_B_MAX_LEN;
 const PASSKEY_SHARE_WRAP_VERSION = 1;
 const PASSKEY_SHARE_WRAP_SALT_LEN = 32;
+
+const HANDOFF_TTL_SECONDS = PASSKEY_HANDOFF_TTL_MS / 1000;
+
+export type PasskeyHandoffStatus = "pending" | "confirmed" | "rejected" | "expired";
+
+type HandoffRecord = {
+  userId: string;
+  deviceId: string;
+  status: PasskeyHandoffStatus;
+  expiresAt: string;
+};
+
+function handoffKey(id: string): string {
+  return `passkey-approval:handoff:${id}`;
+}
 
 const OPTIONS_PER_IP = 10;
 const OPTIONS_PER_USER = 10;
@@ -77,9 +99,12 @@ export interface PasskeyDeviceApprovalDeps {
   redis: Redis;
   credentials: Pick<
     WebAuthnCredentialsRepository,
-    "findByIdForUser" | "findByCredentialId" | "listByUserId" | "updateSignCount" | "saveShareWrap"
+    "findByIdForUser" | "findByCredentialId" | "listByUserId" | "updateSignCount" | "saveShareWrap" | "clearShareWrap"
   >;
-  devices: Pick<DevicesRepository, "approvePendingWithClientShare">;
+  devices: Pick<
+    DevicesRepository,
+    "approvePendingWithClientShare" | "findOwnedDeviceAuth" | "listDeviceShares"
+  >;
   config: Pick<
     ApiConfig,
     | "webauthnRpId"
@@ -295,6 +320,133 @@ export class PasskeyDeviceApprovalService {
     this.audit("wrap_saved", { ...input, credentialRowId: credential.id });
   }
 
+  async clearShareWrap(input: {
+    userId: string;
+    credentialRowId: string;
+    requestIp: string;
+  }): Promise<void> {
+    const credential = await this.credentials.findByIdForUser(input.userId, input.credentialRowId);
+    if (!credential || credential.userId !== input.userId) {
+      throw new PasskeyDeviceApprovalError("WEBAUTHN_CREDENTIAL_NOT_FOUND", 404, "credential not found");
+    }
+    const cleared = await this.credentials.clearShareWrap(input.userId, input.credentialRowId);
+    if (!cleared) {
+      throw new PasskeyDeviceApprovalError(
+        "PASSKEY_SHARE_WRAP_MISSING",
+        404,
+        "no passkey has a share wrap",
+      );
+    }
+    this.audit("wrap_cleared", { ...input, credentialRowId: credential.id });
+  }
+
+  async createHandoff(input: {
+    userId: string;
+    deviceId: string;
+    requestIp: string;
+  }): Promise<{ requestId: string; status: "pending"; expiresAt: string }> {
+    await this.consumeRateLimit(
+      `passkey-approval:rl:handoff:ip:${input.requestIp}`,
+      OPTIONS_PER_IP,
+      input,
+    );
+    await this.consumeRateLimit(
+      `passkey-approval:rl:handoff:user:${input.userId}`,
+      OPTIONS_PER_USER,
+      input,
+    );
+    const requestId = randomBytes(32).toString("base64url");
+    const expiresAt = new Date(this.now().getTime() + HANDOFF_TTL_SECONDS * 1000).toISOString();
+    const record: HandoffRecord = {
+      userId: input.userId,
+      deviceId: input.deviceId,
+      status: "pending",
+      expiresAt,
+    };
+    await this.redis.setWithTtl(
+      handoffKey(requestId),
+      JSON.stringify(record),
+      HANDOFF_TTL_SECONDS,
+    );
+    this.audit("handoff_created", input);
+    return { requestId, status: "pending", expiresAt };
+  }
+
+  async readHandoff(input: {
+    userId: string;
+    deviceId: string;
+    requestId: string;
+  }): Promise<{ status: PasskeyHandoffStatus; expiresAt: string }> {
+    const record = await this.loadHandoff(input.requestId);
+    if (!record || record.userId !== input.userId || record.deviceId !== input.deviceId) {
+      throw new PasskeyDeviceApprovalError("PASSKEY_HANDOFF_NOT_FOUND", 404, "passkey handoff not found");
+    }
+    return { status: record.status, expiresAt: record.expiresAt };
+  }
+
+  async handoffOptions(input: {
+    requestId: string;
+    requestIp: string;
+  }): Promise<{
+    challengeId: string;
+    options: PublicKeyCredentialRequestOptionsJSON;
+    prfSaltB64: string;
+    credentials: PasskeyShareWrapCredential[];
+    shareWrapEd25519PublicKeyB64: string | null;
+    shareWrapPqPublicKeyB64: string | null;
+  }> {
+    const record = await this.requirePendingHandoff(input.requestId, input.requestIp);
+    return this.approvalOptions({
+      userId: record.userId,
+      deviceId: record.deviceId,
+      requestIp: input.requestIp,
+    });
+  }
+
+  async handoffVerify(input: {
+    requestId: string;
+    challengeId: string;
+    response: AuthenticationResponseJSON;
+    deviceShareB64: string;
+    requestIp: string;
+  }): Promise<{ deviceId: string; status: "trusted" }> {
+    const record = await this.requirePendingHandoff(input.requestId, input.requestIp);
+    const result = await this.approvalVerify({
+      userId: record.userId,
+      deviceId: record.deviceId,
+      challengeId: input.challengeId,
+      response: input.response,
+      deviceShareB64: input.deviceShareB64,
+      requestIp: input.requestIp,
+    });
+    await this.writeHandoff(input.requestId, { ...record, status: "confirmed" });
+    this.audit("handoff_confirmed", {
+      userId: record.userId,
+      deviceId: record.deviceId,
+      requestIp: input.requestIp,
+    });
+    return result;
+  }
+
+  async handoffReject(input: { requestId: string; requestIp: string }): Promise<{
+    status: "rejected";
+    expiresAt: string;
+  }> {
+    await this.consumeRateLimit(
+      `passkey-approval:rl:handoff-reject:ip:${input.requestIp}`,
+      VERIFY_PER_IP,
+      { userId: "handoff", requestIp: input.requestIp },
+    );
+    const record = await this.requirePendingHandoff(input.requestId, input.requestIp);
+    await this.writeHandoff(input.requestId, { ...record, status: "rejected" });
+    this.audit("handoff_rejected", {
+      userId: record.userId,
+      deviceId: record.deviceId,
+      requestIp: input.requestIp,
+    });
+    return { status: "rejected", expiresAt: record.expiresAt };
+  }
+
   async approvalOptions(input: {
     userId: string;
     deviceId: string;
@@ -304,6 +456,8 @@ export class PasskeyDeviceApprovalService {
     options: PublicKeyCredentialRequestOptionsJSON;
     prfSaltB64: string;
     credentials: PasskeyShareWrapCredential[];
+    shareWrapEd25519PublicKeyB64: string | null;
+    shareWrapPqPublicKeyB64: string | null;
   }> {
     const failKey = `passkey-approval:fail:${input.userId}:${input.deviceId}`;
     await this.assertFailureBudget(failKey, input);
@@ -327,6 +481,10 @@ export class PasskeyDeviceApprovalService {
         "no passkey has a share wrap",
       );
     }
+    const pending = await this.devices.findOwnedDeviceAuth(input.userId, input.deviceId);
+    const wrapPublic = pending?.deviceShare
+      ? splitKeyShareBWrapPublicKeys(pending.deviceShare)
+      : null;
     const salt = wrapped[wrapped.length - 1]!.shareWrapSalt!;
     const group = wrapped.filter((record) => sameBytes(record.shareWrapSalt!, salt));
     const options = await this.authenticationOptions(group);
@@ -352,6 +510,12 @@ export class PasskeyDeviceApprovalService {
         shareWrapSaltB64: encodeBase64(record.shareWrapSalt!),
         shareWrapVersion: PASSKEY_SHARE_WRAP_VERSION,
       })),
+      shareWrapEd25519PublicKeyB64: wrapPublic
+        ? encodeBase64(wrapPublic.ed25519PublicKey)
+        : null,
+      shareWrapPqPublicKeyB64: wrapPublic
+        ? encodeBase64(wrapPublic.mlkemEncapsulationKey)
+        : null,
     };
   }
 
@@ -386,6 +550,25 @@ export class PasskeyDeviceApprovalService {
     } catch {
       this.audit("share_rejected", input);
       throw new PasskeyDeviceApprovalError("DEVICE_BAD_REQUEST", 400, "invalid device_share");
+    }
+    const pending = await this.devices.findOwnedDeviceAuth(input.userId, input.deviceId);
+    const storedShares = await this.devices.listDeviceShares(input.userId);
+    const shareProblem = approvalShareRejection(
+      deviceShare,
+      pending?.deviceShare ?? null,
+      storedShares,
+    );
+    if (shareProblem === "reused") {
+      this.audit("share_rejected", input);
+      throw new PasskeyDeviceApprovalError("DEVICE_BAD_REQUEST", 400, APPROVAL_SHARE_MUST_BE_NEW);
+    }
+    if (shareProblem === "recipient") {
+      this.audit("share_rejected", input);
+      throw new PasskeyDeviceApprovalError(
+        "DEVICE_BAD_REQUEST",
+        400,
+        APPROVAL_SHARE_WRONG_RECIPIENT,
+      );
     }
     const challenge = await this.consumeChallenge(input.challengeId, input);
     if (challenge.kind !== "passkey_approval" || challenge.userId !== input.userId) {
@@ -534,6 +717,61 @@ export class PasskeyDeviceApprovalService {
         "challenge expired",
       );
     }
+  }
+
+  private async loadHandoff(requestId: string): Promise<HandoffRecord | null> {
+    const raw = await this.redis.get(handoffKey(requestId));
+    if (!raw) {
+      return null;
+    }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return null;
+    }
+    if (!parsed || typeof parsed !== "object") {
+      return null;
+    }
+    const row = parsed as Partial<HandoffRecord>;
+    if (
+      typeof row.userId !== "string" ||
+      typeof row.deviceId !== "string" ||
+      typeof row.expiresAt !== "string" ||
+      (row.status !== "pending" &&
+        row.status !== "confirmed" &&
+        row.status !== "rejected" &&
+        row.status !== "expired")
+    ) {
+      return null;
+    }
+    if (row.status === "pending" && Date.parse(row.expiresAt) <= this.now().getTime()) {
+      const expired: HandoffRecord = { ...row, status: "expired" };
+      await this.writeHandoff(requestId, expired);
+      return expired;
+    }
+    return row;
+  }
+
+  private async requirePendingHandoff(requestId: string, requestIp: string): Promise<HandoffRecord> {
+    const record = await this.loadHandoff(requestId);
+    if (!record) {
+      throw new PasskeyDeviceApprovalError("PASSKEY_HANDOFF_NOT_FOUND", 404, "passkey handoff not found");
+    }
+    if (record.status === "expired") {
+      this.audit("handoff_expired", { userId: record.userId, deviceId: record.deviceId, requestIp });
+      throw new PasskeyDeviceApprovalError("PASSKEY_HANDOFF_EXPIRED", 410, "passkey handoff expired");
+    }
+    if (record.status !== "pending") {
+      throw new PasskeyDeviceApprovalError("PASSKEY_HANDOFF_USED", 409, "passkey handoff already used");
+    }
+    return record;
+  }
+
+  private async writeHandoff(requestId: string, record: HandoffRecord): Promise<void> {
+    const remainingMs = Date.parse(record.expiresAt) - this.now().getTime();
+    const ttlSeconds = Math.max(1, Math.ceil(remainingMs / 1000));
+    await this.redis.setWithTtl(handoffKey(requestId), JSON.stringify(record), ttlSeconds);
   }
 
   private async consumeRateLimit(

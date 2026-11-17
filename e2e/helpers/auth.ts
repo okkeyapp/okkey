@@ -1,5 +1,6 @@
 import { expect, type Page } from "@playwright/test";
 
+import { markE2eSmtpDeliverable } from "./db";
 import { E2E_MASTER_PASSWORD } from "./env";
 import { waitForMailpitOtp } from "./mailpit";
 
@@ -61,6 +62,7 @@ export async function registerBootstrapAndUnlock(
 
 /** Email login + OTP from Mailpit (real SMTP path). Auto-submits on 6 digits. */
 export async function signInWithEmailOtp(page: Page, email: string): Promise<void> {
+  await markE2eSmtpDeliverable();
   const sinceMs = Date.now();
   await page.goto("/auth/email");
   await page.locator("#auth-email").fill(email);
@@ -141,6 +143,16 @@ export async function completeEmailOtpOnPage(page: Page, email: string): Promise
   for (let i = 0; i < 6; i += 1) {
     await page.getByLabel(new RegExp(`digit ${i + 1} of 6`, "i")).fill(otp[i]!);
   }
+}
+
+/**
+ * Drop the tab unlock record so the next full navigation starts locked.
+ * Hiding the page no longer locks the vault for a new account (sleep lock defaults off).
+ */
+export async function clearTabVaultUnlock(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    sessionStorage.removeItem("okkey.vault.unlock.tab");
+  });
 }
 
 /**

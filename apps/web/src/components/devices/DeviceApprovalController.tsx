@@ -29,7 +29,17 @@ import {
   resolveDeviceFormIcon,
 } from "../settings/DeviceTypeIcon";
 import { useLocale } from "../../locale/LocaleContext";
+import {
+  refreshSettingsDevicesCache,
+  setSettingsPopupCacheData,
+} from "../settings/settingsPopupCache";
 import { emitDevicesChanged, DEVICES_CHANGED_EVENT } from "./devicesEvents";
+import {
+  approvalResponseGrantsTrust,
+  deviceDecisionToastKey,
+  pendingApprovalKey,
+  visiblePendingDevices,
+} from "./deviceApprovalPopup";
 
 const BLOCK_OPTIONS: Array<{ duration: DeviceBlockDuration; labelKey: string }> = [
   { duration: "1h", labelKey: "web.settingsPopup.devices.pending.block1h" },
@@ -75,7 +85,7 @@ export default function DeviceApprovalController() {
   const [pending, setPending] = useState<DeviceListItemDto[]>([]);
   const [resolving, setResolving] = useState(false);
   const fingerprint = useMemo(() => getOrCreateDeviceFingerprint(), []);
-  const dismissedIdsRef = useRef(new Set<string>());
+  const dismissedRequestKeysRef = useRef(new Set<string>());
   const current = pending[0];
 
   useEffect(() => {
@@ -87,9 +97,12 @@ export default function DeviceApprovalController() {
       try {
         const result = await core.listDevices(fingerprint);
         if (active) {
-          setPending(
-            result.pending.filter((item) => !dismissedIdsRef.current.has(item.device_id)),
-          );
+          setSettingsPopupCacheData("devices", {
+            devices: result.devices,
+            pending: result.pending,
+            blocked: result.blocked ?? [],
+          });
+          setPending(visiblePendingDevices(result.pending, dismissedRequestKeysRef.current));
         }
       } catch {
         // Best-effort polling.
@@ -112,9 +125,10 @@ export default function DeviceApprovalController() {
     return null;
   }
 
-  const dismissDevice = (deviceId: string) => {
-    dismissedIdsRef.current.add(deviceId);
-    setPending((items) => items.filter((item) => item.device_id !== deviceId));
+  const dismissDevice = (item: Pick<DeviceListItemDto, "device_id" | "created_at">) => {
+    const key = pendingApprovalKey(item);
+    dismissedRequestKeysRef.current.add(key);
+    setPending((items) => items.filter((row) => pendingApprovalKey(row) !== key));
   };
 
   const resolve = async (decision: "approve" | "reject") => {
@@ -146,23 +160,30 @@ export default function DeviceApprovalController() {
             pending: current,
           });
         }
-        await core.approveDevice(targetDeviceId, approverId, envelope ?? undefined, deviceShareB64);
-        toast.success(t("web.settingsPopup.devices.toast.trusted"));
+        const approved = await core.approveDevice(
+          targetDeviceId,
+          approverId,
+          envelope ?? undefined,
+          deviceShareB64,
+        );
+        if (!approvalResponseGrantsTrust(approved.status)) {
+          await refreshSettingsDevicesCache(() => core.listDevices(fingerprint));
+          return;
+        }
+        toast.success(t(deviceDecisionToastKey("approve")));
       } else {
         await core.rejectDevice(targetDeviceId, approverId, "dismissed by user");
-        toast.success(t("web.settingsPopup.devices.toast.revoked"));
+        toast.success(t(deviceDecisionToastKey("reject")));
       }
-      dismissDevice(targetDeviceId);
+      dismissDevice(current);
+      await refreshSettingsDevicesCache(() => core.listDevices(fingerprint));
       emitDevicesChanged();
     } catch (err) {
       if (isBenignApprovalRace(err)) {
-        dismissDevice(targetDeviceId);
+        dismissDevice(current);
+        await refreshSettingsDevicesCache(() => core.listDevices(fingerprint));
         emitDevicesChanged();
-        toast.success(
-          decision === "approve"
-            ? t("web.settingsPopup.devices.toast.trusted")
-            : t("web.settingsPopup.devices.toast.revoked"),
-        );
+        toast.success(t(deviceDecisionToastKey(decision)));
       } else {
         toast.error(t("web.settingsPopup.devices.error.generic"));
       }
@@ -180,12 +201,12 @@ export default function DeviceApprovalController() {
     setResolving(true);
     try {
       await core.blockDevice(targetDeviceId, approverId, { duration });
-      dismissDevice(targetDeviceId);
+      dismissDevice(current);
       emitDevicesChanged();
       toast.success(t("web.settingsPopup.devices.toast.blocked"));
     } catch (err) {
       if (isBenignApprovalRace(err)) {
-        dismissDevice(targetDeviceId);
+        dismissDevice(current);
         emitDevicesChanged();
         toast.success(t("web.settingsPopup.devices.toast.blocked"));
       } else {

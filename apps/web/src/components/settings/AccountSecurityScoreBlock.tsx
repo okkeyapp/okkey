@@ -39,7 +39,7 @@ const LEVEL_MESSAGE: Record<AccountSecurityLevel, string> = {
   critical: "web.settingsPopup.securityScore.level.critical",
 };
 
-const RECOMMENDATION_MESSAGE: Record<AccountSecurityRecommendationId, string> = {
+export const RECOMMENDATION_MESSAGE: Record<AccountSecurityRecommendationId, string> = {
   enableTwoFactor: "web.settingsPopup.securityScore.rec.enableTwoFactor",
   downloadBackupCodes: "web.settingsPopup.securityScore.rec.downloadBackupCodes",
   refreshBackupCodes: "web.settingsPopup.securityScore.rec.refreshBackupCodes",

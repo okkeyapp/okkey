@@ -158,6 +158,7 @@ function memberVaultAccessService(input: {
   planTier: "FREE" | "ENTERPRISE";
   builtinKey: string | null;
   currentProfileId?: string | null;
+  enterpriseLicenseLapsed?: boolean;
 }) {
   let accessUpdates = 0;
   let invitationProfileWrites = 0;
@@ -203,7 +204,13 @@ function memberVaultAccessService(input: {
     },
     publicAppBaseUrl: "http://localhost:5173",
     emailTemplates: { sendWorkspaceInvite: async () => {} },
-    config: selfHostedEnterprise,
+    config: input.enterpriseLicenseLapsed
+      ? entitlementConfig({
+          deploymentMode: "self_hosted",
+          enterpriseModulesEnabled: true,
+          enterpriseLicenseLapsed: true,
+        })
+      : selfHostedEnterprise,
   });
   return {
     service,
@@ -212,7 +219,11 @@ function memberVaultAccessService(input: {
   };
 }
 
-function sharedVaultProfileService(planTier: "FREE" | "ENTERPRISE", builtinKey: string | null) {
+function sharedVaultProfileService(
+  planTier: "FREE" | "ENTERPRISE",
+  builtinKey: string | null,
+  enterpriseLicenseLapsed = false,
+) {
   let profileWrites = 0;
   const service = new WorkspaceSharedVaultsService({
     vaults: {
@@ -252,7 +263,13 @@ function sharedVaultProfileService(planTier: "FREE" | "ENTERPRISE", builtinKey: 
       shareVault: async () => {},
       revokeVaultAccess: async () => {},
     },
-    config: selfHostedEnterprise,
+    config: enterpriseLicenseLapsed
+      ? entitlementConfig({
+          deploymentMode: "self_hosted",
+          enterpriseModulesEnabled: true,
+          enterpriseLicenseLapsed: true,
+        })
+      : selfHostedEnterprise,
   });
   return { service, profileWrites: () => profileWrites };
 }
@@ -266,8 +283,9 @@ const grantKey = {
 
 test("lapsed plan rejects applying a custom profile to a shared vault member", async () => {
   const { service, accessUpdates } = memberVaultAccessService({
-    planTier: "FREE",
+    planTier: "ENTERPRISE",
     builtinKey: null,
+    enterpriseLicenseLapsed: true,
   });
   await assert.rejects(
     () =>
@@ -326,8 +344,9 @@ test("paid self-hosted plan applies a custom profile to a shared vault member", 
 
 test("lapsed plan rejects a custom profile on a pending invitation", async () => {
   const { service, invitationProfileWrites } = memberVaultAccessService({
-    planTier: "FREE",
+    planTier: "ENTERPRISE",
     builtinKey: null,
+    enterpriseLicenseLapsed: true,
   });
   await assert.rejects(
     () =>
@@ -356,7 +375,7 @@ test("lapsed plan still assigns the built-in extended profile on an invitation",
 });
 
 test("shared vault profile update rejects a custom profile when the plan lapsed", async () => {
-  const { service, profileWrites } = sharedVaultProfileService("FREE", null);
+  const { service, profileWrites } = sharedVaultProfileService("ENTERPRISE", null, true);
   await assert.rejects(
     () =>
       service.updateVaultAccess(vaultId, actorId, {

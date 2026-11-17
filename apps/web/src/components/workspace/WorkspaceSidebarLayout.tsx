@@ -20,7 +20,7 @@ import { useLocale } from "../../locale/LocaleContext";
 import { ITEM_QUERY_PARAM, WORKSPACES_PATH } from "../../routes/paths";
 import ItemsListLeftPane, { type ItemsListRecord } from "./ItemsListLeftPane";
 import ItemsShellTopBar from "./ItemsShellTopBar";
-import SystemUpdateSidebarNotice from "../../system-updates/SystemUpdateSidebarNotice";
+import SystemUpdateSidebarButton from "../../system-updates/SystemUpdateSidebarButton";
 
 const mainPanelChromeClassName = cn(
   "flex min-h-0 min-w-0 flex-col rounded-xl bg-background text-foreground",
@@ -199,7 +199,7 @@ export default function WorkspaceSidebarLayout({
           folderEmptyLabel={folderEmptyLabel}
           accountMenu={accountMenu}
           footerPlainLinkLabels={footerPlainLinkLabels}
-          beforeFooter={<SystemUpdateSidebarNotice />}
+          beforeFooter={<SystemUpdateSidebarButton />}
           docsLocale={locale}
           vaultHeaderPlusAriaLabel={vaultHeaderPlusAriaLabel}
           folderHeaderPlusAriaLabel={folderHeaderPlusAriaLabel}

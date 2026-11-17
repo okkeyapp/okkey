@@ -35,6 +35,7 @@ class InMemoryWebAuthnRepo implements Pick<
   | "findByCredentialId"
   | "findByIdForUser"
   | "insert"
+  | "updateName"
   | "updateSignCount"
   | "deleteByIdForUser"
   | "deleteByAttachment"
@@ -98,6 +99,15 @@ class InMemoryWebAuthnRepo implements Pick<
     };
     this.credentials.push(record);
     return record;
+  }
+
+  async updateName(userId: string, credentialRowId: string, name: string): Promise<boolean> {
+    const row = this.credentials.find((c) => c.userId === userId && c.id === credentialRowId);
+    if (!row) {
+      return false;
+    }
+    row.name = name;
+    return true;
   }
 
   async updateSignCount(credentialRowId: string, signCount: number): Promise<void> {
@@ -282,4 +292,26 @@ test("bulk delete by attachment clears method and primary", async () => {
   const methods = await service.deleteCredentialsByAttachment("user-1", "platform");
   assert.equal(methods.passkeys.length, 0);
   assert.equal(methods.primary, "email");
+});
+
+test("renameCredential updates the display name with a length cap", async () => {
+  const repo = new InMemoryWebAuthnRepo();
+  const inserted = await repo.insert({
+    userId: "user-1",
+    credentialId: "cred-platform",
+    publicKey: new Uint8Array([1]),
+    signCount: 0,
+    transports: ["internal"],
+    authenticatorAttachment: "platform",
+    aaguid: null,
+    name: "Passkey",
+    backedUp: true,
+  });
+  const { service } = createService(repo, true);
+  const renamed = await service.renameCredential("user-1", inserted.id, "  Chrome on macOS  ");
+  assert.equal(renamed.passkeys[0]?.name, "Chrome on macOS");
+  await assert.rejects(
+    () => service.renameCredential("user-1", inserted.id, "x".repeat(65)),
+    (error: unknown) => error instanceof WebAuthnError && error.code === "WEBAUTHN_NAME_INVALID",
+  );
 });

@@ -4,6 +4,15 @@ import type { RegistrationService } from "./registration/service.ts";
 import type { ApiConfig } from "./config.ts";
 import { workspacePlanFeatureWriteDecision } from "./plan-entitlements.ts";
 import type { DeviceService } from "./device/service.ts";
+import type { DeviceApprovalStatusService } from "./device/approval-status.ts";
+import {
+  APPROVAL_STATUS_POLL_MAX_PER_DEVICE,
+  APPROVAL_STATUS_POLL_MAX_PER_IP,
+  APPROVAL_STATUS_RETRY_MAX_PER_DEVICE,
+  APPROVAL_STATUS_RETRY_MAX_PER_IP,
+  createMemoryRateCounter,
+  type ApprovalStatusRateLimit,
+} from "./device/approval-status-rate-limit.ts";
 import { registerCapsuleAccessSettingsProvider } from "./capsule/access-settings-provider.ts";
 import { getHeader, HttpApp, type RouteHandler } from "./http.ts";
 import type { Logger } from "./logger.ts";
@@ -15,6 +24,11 @@ import {
   createAuthEmailResendRoute,
   createAuthEmailStartRoute,
 } from "./routes/auth-email.ts";
+import { createAuthMasterPasswordLoginRoute } from "./routes/auth-master-password.ts";
+import {
+  createLoginVerifierEnrollRoute,
+  createLoginVerifierStatusRoute,
+} from "./routes/account-login-verifier.ts";
 import {
   createResolveAuthenticatedSession,
   createResolveAuthenticatedUserId,
@@ -29,6 +43,10 @@ import {
 import type { ExtensionAuthService } from "./extension-auth/service.ts";
 import { healthRouteHandler } from "./routes/health.ts";
 import { createReadyRouteHandler } from "./routes/ready.ts";
+import {
+  createDeviceApprovalRetryRoute,
+  createDeviceApprovalStatusRoute,
+} from "./routes/device-approval-status.ts";
 import {
   createApproveDeviceRoute,
   createConfirmShareDeliveryRoute,
@@ -74,6 +92,7 @@ import {
   createLoginMethodsGetRoute,
   createLoginMethodsPrimaryPatchRoute,
   createWebAuthnCredentialDeleteRoute,
+  createWebAuthnCredentialRenameRoute,
   createWebAuthnCredentialsBulkDeleteRoute,
   createWebAuthnLoginOptionsRoute,
   createWebAuthnLoginVerifyRoute,
@@ -139,8 +158,10 @@ import {
   createMemberVaultAccessGetRoute,
   createMemberVaultAccessPutRoute,
   createPendingVaultWrapsGetRoute,
+  createWorkspaceInvitationCopyLinkRoute,
   createWorkspaceInvitationDeleteRoute,
   createWorkspaceInvitationPatchRoute,
+  createWorkspaceInvitationResendRoute,
   createWorkspaceInvitationsCreateRoute,
   createWorkspaceKeyDeferredRotationRoute,
   createWorkspaceKeyPendingRecipientsRoute,
@@ -210,6 +231,12 @@ import type { PasskeyDeviceApprovalService } from "./webauthn/passkey-device-app
 import {
   createPasskeyApprovalOptionsRoute,
   createPasskeyApprovalVerifyRoute,
+  createPasskeyHandoffCreateRoute,
+  createPasskeyHandoffPublicOptionsRoute,
+  createPasskeyHandoffPublicRejectRoute,
+  createPasskeyHandoffPublicVerifyRoute,
+  createPasskeyHandoffStatusRoute,
+  createPasskeyShareWrapDeleteRoute,
   createPasskeyShareWrapOptionsRoute,
   createPasskeyShareWrapVerifyRoute,
 } from "./routes/passkey-device-approval.ts";
@@ -278,6 +305,9 @@ export interface AppDeps {
   vaultSharingService?: VaultSharingService;
   syncService?: SyncService;
   deviceService?: DeviceService;
+  /** Credential that can only read or retry one device's approval request. */
+  deviceApprovalStatus?: DeviceApprovalStatusService;
+  deviceApprovalStatusRateLimit?: ApprovalStatusRateLimit;
   accountRecoveryService?: AccountRecoveryService;
   sessionService?: SessionService;
   /** Browser extension PKCE session handoff (issue code + token exchange). */
@@ -471,9 +501,18 @@ export function createApiApp(
     createSystemUpdateService({
       deploymentMode: config.deploymentMode,
       currentVersion: config.systemVersion,
+      commitSha: config.gitSha,
+      releaseTag: config.releaseTag,
       enterpriseInstalled: config.enterpriseModulesEnabled,
       enterpriseVersion: config.enterpriseVersion,
-      feedUrl: config.updateFeedUrl,
+      enterpriseCommitSha: config.enterpriseGitSha,
+      coreFeedUrl: config.updateCoreFeedUrl,
+      enterpriseFeedUrl: config.updateEnterpriseFeedUrl,
+      enterpriseLicenseKey: config.enterpriseLicenseKey,
+      enterpriseLicenseLapsed: config.enterpriseLicenseLapsed,
+      setEnterpriseLicenseLapsed: (lapsed) => {
+        config.enterpriseLicenseLapsed = lapsed;
+      },
       isolated: config.updateIsolated,
       agent:
         config.updateAgentUrl.trim() && config.updateAgentToken.trim()
@@ -514,6 +553,11 @@ export function createApiApp(
       "POST",
       "/auth/email/confirm",
       createAuthEmailConfirmRoute(deps.authService, config.trustedProxyHops),
+    );
+    app.route(
+      "POST",
+      "/auth/login/master-password",
+      createAuthMasterPasswordLoginRoute(deps.authService, config.trustedProxyHops),
     );
   }
   if (deps.registrationService) {
@@ -632,12 +676,32 @@ export function createApiApp(
       createWebAuthnCredentialDeleteRoute(deps.webauthnService, resolveUserId),
     );
     app.route(
+      "PATCH",
+      "/account/webauthn/credentials/:credentialId",
+      createWebAuthnCredentialRenameRoute(deps.webauthnService, resolveUserId),
+    );
+    app.route(
       "DELETE",
       "/account/webauthn/credentials",
       createWebAuthnCredentialsBulkDeleteRoute(deps.webauthnService, resolveUserId),
     );
   }
   if (deps.passkeyDeviceApprovalService) {
+    app.route(
+      "POST",
+      "/auth/passkey-device-approval/:handoffId/options",
+      createPasskeyHandoffPublicOptionsRoute(deps.passkeyDeviceApprovalService, config.trustedProxyHops),
+    );
+    app.route(
+      "POST",
+      "/auth/passkey-device-approval/:handoffId/verify",
+      createPasskeyHandoffPublicVerifyRoute(deps.passkeyDeviceApprovalService, config.trustedProxyHops),
+    );
+    app.route(
+      "POST",
+      "/auth/passkey-device-approval/:handoffId/reject",
+      createPasskeyHandoffPublicRejectRoute(deps.passkeyDeviceApprovalService, config.trustedProxyHops),
+    );
     app.route(
       "POST",
       "/account/webauthn/credentials/:credentialId/share-wrap/options",
@@ -651,6 +715,15 @@ export function createApiApp(
       "POST",
       "/account/webauthn/credentials/:credentialId/share-wrap/verify",
       createPasskeyShareWrapVerifyRoute(
+        deps.passkeyDeviceApprovalService,
+        resolveUserId,
+        config.trustedProxyHops,
+      ),
+    );
+    app.route(
+      "DELETE",
+      "/account/webauthn/credentials/:credentialId/share-wrap",
+      createPasskeyShareWrapDeleteRoute(
         deps.passkeyDeviceApprovalService,
         resolveUserId,
         config.trustedProxyHops,
@@ -675,6 +748,23 @@ export function createApiApp(
           config.trustedProxyHops,
         ),
       );
+      app.route(
+        "POST",
+        "/devices/:deviceId/passkey-approval/handoff",
+        createPasskeyHandoffCreateRoute(
+          deps.passkeyDeviceApprovalService,
+          resolveSessionAllowUnboundDevice,
+          config.trustedProxyHops,
+        ),
+      );
+      app.route(
+        "GET",
+        "/devices/:deviceId/passkey-approval/handoff/:handoffId",
+        createPasskeyHandoffStatusRoute(
+          deps.passkeyDeviceApprovalService,
+          resolveSessionAllowUnboundDevice,
+        ),
+      );
     }
   }
   if (deps.vaultUnlockBootstrapService) {
@@ -685,10 +775,12 @@ export function createApiApp(
     );
   }
   if (deps.sessionService !== undefined && deps.usersRepository) {
+    // Display name/email on device-pending: allow a full (possibly untrusted) session.
+    // Profile writes still require a trusted device.
     app.route(
       "GET",
       "/account/profile",
-      createAccountProfileRoute(deps.usersRepository, resolveUserId),
+      createAccountProfileRoute(deps.usersRepository, resolveUserIdAllowUnboundDevice),
     );
     app.route(
       "PATCH",
@@ -723,6 +815,16 @@ export function createApiApp(
       "POST",
       "/account/master-password/change",
       createAccountMasterPasswordChangeRoute(deps.usersRepository, resolveUserIdForRestore),
+    );
+    app.route(
+      "GET",
+      "/account/login-verifier",
+      createLoginVerifierStatusRoute(deps.usersRepository, resolveUserId),
+    );
+    app.route(
+      "POST",
+      "/account/login-verifier",
+      createLoginVerifierEnrollRoute(deps.usersRepository, resolveUserId),
     );
     app.route(
       "POST",
@@ -814,6 +916,16 @@ export function createApiApp(
         "POST",
         "/workspaces/:workspaceId/invitations",
         createWorkspaceInvitationsCreateRoute(members, resolveUserId),
+      );
+      app.route(
+        "POST",
+        "/workspaces/:workspaceId/invitations/:invitationId/resend",
+        createWorkspaceInvitationResendRoute(members, resolveUserId),
+      );
+      app.route(
+        "POST",
+        "/workspaces/:workspaceId/invitations/:invitationId/copy-link",
+        createWorkspaceInvitationCopyLinkRoute(members, resolveUserId),
       );
       app.route(
         "DELETE",
@@ -1149,6 +1261,38 @@ export function createApiApp(
       ),
     );
   }
+  if (deps.deviceApprovalStatus) {
+    const memory = createMemoryRateCounter();
+    const counter = options.redis
+      ? {
+          incr: (key: string) => options.redis!.incr(key),
+          expire: (key: string, seconds: number) => options.redis!.expire(key, seconds),
+        }
+      : memory;
+    const approvalStatusRateLimit: ApprovalStatusRateLimit = deps.deviceApprovalStatusRateLimit ?? {
+      ...counter,
+      windowSeconds: config.authRateLimitWindowSeconds,
+      pollMaxPerIp: APPROVAL_STATUS_POLL_MAX_PER_IP,
+      pollMaxPerDevice: APPROVAL_STATUS_POLL_MAX_PER_DEVICE,
+      retryMaxPerIp: APPROVAL_STATUS_RETRY_MAX_PER_IP,
+      retryMaxPerDevice: APPROVAL_STATUS_RETRY_MAX_PER_DEVICE,
+      trustedProxyHops: config.trustedProxyHops,
+    };
+    app.route(
+      "GET",
+      "/devices/:deviceId/approval-status",
+      createDeviceApprovalStatusRoute(deps.deviceApprovalStatus, approvalStatusRateLimit),
+    );
+    app.route(
+      "POST",
+      "/devices/:deviceId/approval-retry",
+      createDeviceApprovalRetryRoute(
+        deps.deviceApprovalStatus,
+        approvalStatusRateLimit,
+        config.trustedProxyHops,
+      ),
+    );
+  }
   if (deps.deviceService) {
     app.route(
       "GET",
@@ -1455,6 +1599,9 @@ export function createApiApp(
         },
         assertEnterpriseModuleWrite: (workspace, feature) =>
           workspacePlanFeatureWriteDecision(config, workspace, feature),
+        setEnterpriseLicenseLapsed: (lapsed) => {
+          config.enterpriseLicenseLapsed = lapsed;
+        },
       });
       if (plugin.capsuleAccessSettings) {
         registerCapsuleAccessSettingsProvider(plugin.capsuleAccessSettings);

@@ -31,7 +31,17 @@ function emptyCell() {
 }
 
 function permissionsJson(overrides: Record<string, Record<string, number>> = {}) {
-  const resources = ["settings", "settings_items", "settings_capsules", "roles", "profiles", "members", "vaults", "billing"];
+  const resources = [
+    "settings",
+    "settings_items",
+    "settings_capsules",
+    "settings_mail",
+    "roles",
+    "profiles",
+    "members",
+    "vaults",
+    "billing",
+  ];
   return Object.fromEntries(resources.map((resource) => [resource, overrides[resource] ?? emptyCell()]));
 }
 

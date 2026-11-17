@@ -15,7 +15,13 @@ import type { ApiConfig } from "./config.ts";
 export type PlanEntitlementRuntimeConfig = Pick<
   ApiConfig,
   "deploymentMode" | "enterpriseModulesEnabled"
->;
+> & {
+  /**
+   * Self-hosted license lapse. The enterprise feed sets this when the license
+   * is expired and clears it when a later check is accepted. `plan_tier` is not a lapse.
+   */
+  enterpriseLicenseLapsed?: boolean;
+};
 
 export type WorkspacePlanEntitlementSource = {
   planTier?: string | null;
@@ -26,10 +32,14 @@ export type WorkspacePlanEntitlementSource = {
 /** Runtime entitlement context from API config (deployment mode and whether modules loaded). */
 export function planEntitlementRuntimeFromConfig(
   config: PlanEntitlementRuntimeConfig,
-): Pick<PlanEntitlementOptions, "deploymentMode" | "enterpriseModulesActive"> {
+): Pick<
+  PlanEntitlementOptions,
+  "deploymentMode" | "enterpriseModulesActive" | "enterpriseLicenseLapsed"
+> {
   return {
     deploymentMode: config.deploymentMode,
     enterpriseModulesActive: config.enterpriseModulesEnabled,
+    ...(config.enterpriseLicenseLapsed === true ? { enterpriseLicenseLapsed: true } : {}),
   };
 }
 

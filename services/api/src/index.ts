@@ -9,7 +9,9 @@ import { createServer } from "node:http";
 import { createApiApp } from "./app.ts";
 import { isEnterpriseBackendLoadable, loadConfig } from "./config.ts";
 import { RedisDeviceBindChallengeStore } from "./device/bind-challenge-store.ts";
+import { DeviceApprovalStatusService } from "./device/approval-status.ts";
 import { DeviceService } from "./device/service.ts";
+import { PostgresDeviceApprovalStatusStore } from "./storage/device-approval-status-repository.ts";
 import { json } from "./http.ts";
 import {
   createOutboundEmailSender,
@@ -76,13 +78,24 @@ async function main(): Promise<void> {
     approvalTtlMs: config.deviceApprovalTtlSeconds * 1000,
     logger,
   });
+  // Lazily bound after WorkspaceMembersService is constructed (pending-invite flush on SMTP activate).
+  let deliverPendingInvites: (() => Promise<void>) | null = null;
   const mailSettings = new MailSettingsService({
     store: new PostgresServerMailSettingsStore(storage.postgres),
     config,
     users: storage.repositories.users,
     workspaces: storage.repositories.workspaces,
+    assertPermission: async (workspaceId, userId, action) => {
+      await assertWorkspacePermission(storage.postgres, workspaceId, userId, "settings_mail", action);
+    },
     logger,
+    onSmtpActivated: async () => {
+      if (deliverPendingInvites) {
+        await deliverPendingInvites();
+      }
+    },
   });
+  await mailSettings.probeLegacySmtpOnce();
   const emailSender = await createOutboundEmailSender(config, logger, storage.redis, mailSettings);
   const emailTemplates = new EmailTemplateService(emailSender, {
     from: config.emailFrom,
@@ -101,6 +114,7 @@ async function main(): Promise<void> {
     users: storage.repositories.users,
     emailTemplates,
     config,
+    resolveEmailDeliverable: () => mailSettings.isOutboundActive(),
   });
   const emailChangeService = new EmailChangeService({
     redis: storage.redis,
@@ -188,13 +202,7 @@ async function main(): Promise<void> {
     redis: storage.redis,
     salesEmail: config.salesEmail,
     salesEmailDeliverable: isOutboundEmailDeliverable(config),
-    resolveSalesEmailDeliverable: async () => {
-      const snapshot = await mailSettings.effective();
-      if (snapshot.useSmtpTransport) {
-        return snapshot.smtpHost.trim().length > 0;
-      }
-      return isOutboundEmailDeliverable(config);
-    },
+    resolveSalesEmailDeliverable: () => mailSettings.isOutboundActive(),
     deploymentMode: config.deploymentMode,
     publicAppBaseUrl: config.publicAppBaseUrl,
     resolvePublicAppBaseUrl: () => mailSettings.publicAppBaseUrl(),
@@ -283,9 +291,15 @@ async function main(): Promise<void> {
     emailTemplates,
     publicAppBaseUrl: config.publicAppBaseUrl,
     resolvePublicAppBaseUrl: () => mailSettings.publicAppBaseUrl(),
+    resolveOutboundMailActive: () => mailSettings.isOutboundActive(),
+    logger,
     config,
     workspaceKeys: workspaceKeyService,
   });
+  deliverPendingInvites = async () => {
+    const result = await workspaceMembersService.deliverPendingInvitationEmails();
+    logger.info("pending invitation emails delivered after SMTP activate", result);
+  };
   const vaultUnlockBootstrapService = new VaultUnlockBootstrapService({
     users: storage.repositories.users,
     devices: storage.repositories.devices,
@@ -318,6 +332,10 @@ async function main(): Promise<void> {
     config,
     log: logger,
   });
+  const deviceApprovalStatus = new DeviceApprovalStatusService({
+    store: new PostgresDeviceApprovalStatusStore(storage.postgres),
+    requestTtlSeconds: config.deviceApprovalTtlSeconds,
+  });
   const deviceService = new DeviceService({
     devices: storage.repositories.devices,
     config,
@@ -327,7 +345,11 @@ async function main(): Promise<void> {
     geoIp,
     log: logger,
     bindChallenges: new RedisDeviceBindChallengeStore(storage.redis),
+    approvalStatus: deviceApprovalStatus,
   });
+  deviceApprovalStatus.onRetry((device, requestIp) =>
+    deviceService.notifyReopenedApproval(device, requestIp),
+  );
   const accountRecoveryService = new AccountRecoveryService({
     recovery: storage.repositories.accountRecovery,
     workspaces: storage.repositories.workspaces,
@@ -416,6 +438,7 @@ async function main(): Promise<void> {
     syncService,
     workspacePersonalSyncService,
     deviceService,
+    deviceApprovalStatus,
     accountRecoveryService,
     sessionService,
     extensionAuthService,

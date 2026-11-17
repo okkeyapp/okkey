@@ -1,6 +1,7 @@
 import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
 
 import {
+  clearTabVaultUnlock,
   expectUnlockRejectsMasterPassword,
   gotoItemsUnlocked,
   registerBootstrapAndUnlock,
@@ -88,9 +89,8 @@ test("3) second browser → device confirm → item decrypts", async () => {
 
   await gotoItemsUnlocked(page, E2E_MASTER_PASSWORD);
 
-  // Device fingerprints are derived from UA (`web_app-{browser}-{os}-…`). A second
-  // Chromium context with the default Playwright UA shares the primary fingerprint
-  // and is treated as already trusted (skips /account/device-pending → lock).
+  // Device fingerprints are derived from the user agent plus a per-profile install id.
+  // A second Chromium context with the same user agent is a different device.
   const second = await browserRef.newContext({
     locale: "en-US",
     userAgent:
@@ -121,9 +121,45 @@ test("3) second browser → device confirm → item decrypts", async () => {
   }
 });
 
+test("3b) same user agent second profile → reject, then block", async () => {
+  test.skip(!email, "registration did not run");
+
+  await gotoItemsUnlocked(page, E2E_MASTER_PASSWORD);
+  const sameProfile = await browserRef.newContext({ locale: "en-US" });
+  const page2 = await sameProfile.newPage();
+  try {
+    await signInWithEmailOtp(page2, email);
+    await expect(page2).toHaveURL(/\/account\/device-pending/, { timeout: 60_000 });
+    await expect(page2.getByText(/no longer has its device signing key/i)).toHaveCount(0);
+    await expect(page2.getByRole("heading", { name: /confirm this device/i })).toBeVisible({
+      timeout: 30_000,
+    });
+
+    const notNow = page.getByRole("button", { name: /^not now$/i });
+    await expect(notNow).toBeVisible({ timeout: 60_000 });
+    await notNow.click();
+    await expect(page2.getByRole("heading", { name: /this device was denied/i })).toBeVisible({
+      timeout: 60_000,
+    });
+
+    await page2.getByRole("button", { name: /request approval again/i }).click();
+    await expect(notNow).toBeVisible({ timeout: 60_000 });
+    await page.getByRole("button", { name: /block options/i }).click();
+    await page.getByRole("menuitem", { name: /block forever/i }).click();
+    await expect(page2.getByRole("heading", { name: /this device is blocked/i })).toBeVisible({
+      timeout: 60_000,
+    });
+    await expect(page2.getByText(/blocked until/i)).toHaveCount(0);
+    await expect(page2.getByText(/blocked permanently/i)).toBeVisible();
+  } finally {
+    await sameProfile.close();
+  }
+});
+
 test("4) recovery key → new master password → old rejected, new unlocks", async () => {
   test.skip(!email || !recoveryKey, "registration did not run");
 
+  await clearTabVaultUnlock(page);
   await page.goto("/account/lock");
   await expect(page.getByRole("heading", { name: /vault is locked/i })).toBeVisible({
     timeout: 30_000,
@@ -163,6 +199,7 @@ test("4) recovery key → new master password → old rejected, new unlocks", as
 
   // After recovery the app may land unlocked on /items or on lock. Force lock and
   // prove rotation: old master password is rejected; new password unlocks and decrypts.
+  await clearTabVaultUnlock(page);
   await page.goto("/account/lock");
   await expect(page.getByRole("heading", { name: /vault is locked/i })).toBeVisible({
     timeout: 60_000,

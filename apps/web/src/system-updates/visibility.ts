@@ -12,19 +12,47 @@ export type SystemUpdateAvailable = {
   summary: string;
   releasedAt: string;
   source: "feed";
+  minCoreVersion?: string | null;
+  releaseNotesUrl?: string | null;
+};
+
+export type SystemUpdateCheckError = "FEED_FETCH_FAILED" | "FEED_INVALID" | "LICENSE_EXPIRED";
+
+export type SystemUpdateComponentStatus = {
+  component: SystemUpdateComponent;
+  installedVersion: string;
+  update: SystemUpdateAvailable | null;
+  checkError: SystemUpdateCheckError | null;
+  feedConfigured: boolean;
+  minCoreVersion: string | null;
+  releaseNotesUrl: string | null;
 };
 
 export type SystemUpdateStatus = {
   deploymentMode: "self_hosted" | "saas";
   currentVersion: string;
+  /** Full git commit for a dev build. Null on a tagged release. */
+  commitSha: string | null;
+  /** Git tag such as `v1.0.0-beta.3` when this build was cut from a tag. */
+  releaseTag: string | null;
   enterpriseInstalled: boolean;
   enterpriseVersion: string | null;
+  /** Full git commit for the installed enterprise sibling. Null when unknown. */
+  enterpriseCommitSha?: string | null;
   feedConfigured: boolean;
   isolated: boolean;
   canApply: boolean;
   updates: SystemUpdateAvailable[];
+  /** Present when the API reports one row per component. */
+  components?: readonly SystemUpdateComponentStatus[];
   dismissed: Partial<Record<SystemUpdateComponent, string>>;
+  /** Last feed version opened in the system-update popup, per component. */
+  seen: Partial<Record<SystemUpdateComponent, string>>;
   feedError: string | null;
+  /** True when the enterprise feed refused because the license expired. */
+  enterpriseLicenseLapsed?: boolean;
+  /** Combined archives are applied only after the API can read them. */
+  offlineArchiveSupported?: boolean;
 };
 
 export type SystemUpdateJob = {
@@ -36,6 +64,17 @@ export type SystemUpdateJob = {
   toVersion: string;
   errorCode?: string;
   errorMessage?: string;
+  components?: Array<{
+    component: SystemUpdateComponent;
+    version: string;
+    applied: boolean;
+  }>;
+  /** Present on a settled job: what was applied, with versions. */
+  result?: {
+    scope: "core" | "enterprise" | "bundle" | "partial";
+    coreVersion?: string;
+    enterpriseVersion?: string;
+  };
 };
 
 type ParsedVersion = {
@@ -47,6 +86,7 @@ type ParsedVersion = {
 
 const SEMVER = /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$/;
 const STORAGE_KEY = "okkey.systemUpdate.dismissed";
+const SEEN_STORAGE_KEY = "okkey.systemUpdate.seen";
 
 function parseVersion(value: string): ParsedVersion | null {
   const match = SEMVER.exec(value.trim());
@@ -122,6 +162,19 @@ export function visibleUpdates(
   );
 }
 
+/** Yellow dot: a feed version newer than the last one opened in the popup. */
+export function shouldShowVersionDot(
+  updates: readonly { component: SystemUpdateComponent; toVersion: string }[],
+  seen: Partial<Record<SystemUpdateComponent, string>>,
+  localSeen: Partial<Record<SystemUpdateComponent, string>> = {},
+): boolean {
+  return updates.some(
+    (update) =>
+      shouldShowUpdate(update.toVersion, seen[update.component]) &&
+      shouldShowUpdate(update.toVersion, localSeen[update.component]),
+  );
+}
+
 function browserStorage(): Storage | null {
   if (typeof window === "undefined") {
     return null;
@@ -134,12 +187,43 @@ function browserStorage(): Storage | null {
 }
 
 export function readLocalDismissals(): Partial<Record<SystemUpdateComponent, string>> {
+  return readComponentMap(STORAGE_KEY);
+}
+
+export function writeLocalDismissal(component: SystemUpdateComponent, version: string): void {
+  const storage = browserStorage();
+  if (!storage) {
+    return;
+  }
+  const next = { ...readLocalDismissals(), [component]: version };
+  storage.setItem(STORAGE_KEY, JSON.stringify(next));
+}
+
+export function readLocalSeen(): Partial<Record<SystemUpdateComponent, string>> {
+  return readComponentMap(SEEN_STORAGE_KEY);
+}
+
+/** Remember a seen feed version. An older value does not replace a newer one. */
+export function writeLocalSeen(component: SystemUpdateComponent, version: string): void {
+  const storage = browserStorage();
+  if (!storage) {
+    return;
+  }
+  const current = readLocalSeen();
+  const previous = current[component];
+  if (previous && compareVersions(version, previous) <= 0) {
+    return;
+  }
+  storage.setItem(SEEN_STORAGE_KEY, JSON.stringify({ ...current, [component]: version }));
+}
+
+function readComponentMap(key: string): Partial<Record<SystemUpdateComponent, string>> {
   const storage = browserStorage();
   if (!storage) {
     return {};
   }
   try {
-    const raw = storage.getItem(STORAGE_KEY);
+    const raw = storage.getItem(key);
     if (!raw) {
       return {};
     }
@@ -158,13 +242,4 @@ export function readLocalDismissals(): Partial<Record<SystemUpdateComponent, str
   } catch {
     return {};
   }
-}
-
-export function writeLocalDismissal(component: SystemUpdateComponent, version: string): void {
-  const storage = browserStorage();
-  if (!storage) {
-    return;
-  }
-  const next = { ...readLocalDismissals(), [component]: version };
-  storage.setItem(STORAGE_KEY, JSON.stringify(next));
 }

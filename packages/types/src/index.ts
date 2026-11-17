@@ -257,7 +257,10 @@ export interface WorkspaceMemberActorRefDto {
   lastName: string | null;
 }
 
-export type WorkspaceMemberStatus = "active" | "pending";
+export type WorkspaceMemberStatus = "active" | "pending" | "pending_delivery";
+
+/** Whether the invitation email has been handed to outbound mail. */
+export type WorkspaceInvitationDeliveryStatus = "pending" | "sent";
 
 /** `GET /workspaces/:workspaceId/members` member or pending-invite row. */
 export interface WorkspaceMemberDto {
@@ -319,6 +322,7 @@ export type WorkspacePermissionPostLevel = 0 | 1;
 
 export type WorkspacePermissionResourceId =
   | "settings"
+  | "settings_mail"
   | "settings_items"
   | "settings_capsules"
   | "roles"
@@ -376,6 +380,7 @@ export function permissionAllowsObject(
 
 export const WORKSPACE_PERMISSION_RESOURCE_IDS: readonly WorkspacePermissionResourceId[] = [
   "settings",
+  "settings_mail",
   "settings_items",
   "settings_capsules",
   "roles",
@@ -405,7 +410,7 @@ function inheritSettingsNestedCell(
 
 /**
  * Fills missing permission resources. Legacy matrices without
- * `settings_items` / `settings_capsules` inherit those cells from `settings`.
+ * `settings_items` / `settings_capsules` / `settings_mail` inherit those cells from `settings`.
  */
 export function normalizeWorkspacePermissionsMatrix(
   input: Partial<WorkspacePermissionsMatrixDto> | WorkspacePermissionsMatrixDto | null | undefined,
@@ -414,6 +419,7 @@ export function normalizeWorkspacePermissionsMatrix(
     settings: { ...EMPTY_PERMISSION_CELL },
     settings_items: { ...EMPTY_PERMISSION_CELL },
     settings_capsules: { ...EMPTY_PERMISSION_CELL },
+    settings_mail: { ...EMPTY_PERMISSION_CELL },
     roles: { ...EMPTY_PERMISSION_CELL },
     profiles: { ...EMPTY_PERMISSION_CELL },
     members: { ...EMPTY_PERMISSION_CELL },
@@ -443,6 +449,9 @@ export function normalizeWorkspacePermissionsMatrix(
   }
   if (!input.settings_capsules) {
     normalized.settings_capsules = inheritSettingsNestedCell(normalized.settings);
+  }
+  if (!input.settings_mail) {
+    normalized.settings_mail = inheritSettingsNestedCell(normalized.settings);
   }
 
   return normalized;
@@ -506,6 +515,24 @@ export interface WorkspaceInvitationsCreateResponseDto {
     email: string;
     roleId: EntityId;
   }>;
+  /** `pending` when outbound mail is inactive; emails will send after mail is activated. */
+  deliveryStatus: WorkspaceInvitationDeliveryStatus;
+}
+
+/** `POST /workspaces/:workspaceId/invitations/:invitationId/resend` success body. */
+export interface WorkspaceInvitationResendResponseDto {
+  workspaceId: EntityId;
+  invitationId: EntityId;
+  deliveryStatus: WorkspaceInvitationDeliveryStatus;
+}
+
+/** `POST /workspaces/:workspaceId/invitations/:invitationId/copy-link` success body. */
+export interface WorkspaceInvitationCopyLinkResponseDto {
+  workspaceId: EntityId;
+  invitationId: EntityId;
+  /** Fresh single-use accept URL; returned once (token is stored hashed only). */
+  inviteUrl: string;
+  expiresAt: string;
 }
 
 /** `PATCH /workspaces/:workspaceId/members/:userId` body. */
@@ -909,6 +936,19 @@ export interface EmailAuthStartResponse {
   bootstrapRequired?: boolean;
   authStateId?: string;
   nextStep?: "registration";
+  /**
+   * False when this server accepts a master-password login proof instead of an
+   * emailed code (self-hosted and outbound mail is not deliverable). True on
+   * SaaS and whenever mail can be delivered. No other mail configuration is exposed.
+   */
+  emailDeliverable?: boolean;
+}
+
+/** `POST /auth/login/master-password` request. The master password is not sent. */
+export interface MasterPasswordLoginRequestDto {
+  email: string;
+  /** Standard base64 of the 32-byte login key. */
+  loginKey: string;
 }
 
 /** `POST /auth/email/confirm` success body. */
@@ -1242,6 +1282,17 @@ export interface PasskeyApprovalOptionsResponseDto {
   options: Record<string, unknown>;
   prf_salt: string;
   credentials: PasskeyShareWrapCredentialDto[];
+  /** Pending device wrap public keys. The client re-wraps raw share B for these keys. */
+  share_wrap_ed25519_public_key: string | null;
+  share_wrap_pq_public_key: string | null;
+}
+
+/** Max length for a WebAuthn credential display name. */
+export const WEBAUTHN_CREDENTIAL_NAME_MAX_LEN = 64;
+
+/** `PATCH /account/webauthn/credentials/:credentialId` request. */
+export interface WebAuthnCredentialRenameRequestDto {
+  name: string;
 }
 
 /** `POST /devices/:deviceId/passkey-approval/verify` request. */
@@ -1255,6 +1306,23 @@ export interface PasskeyApprovalVerifyRequestDto {
 export interface PasskeyApprovalVerifyResponseDto {
   device_id: string;
   status: "trusted";
+}
+
+/** How long an extension passkey handoff stays usable. The extension poll uses the same window. */
+export const PASSKEY_HANDOFF_TTL_MS = 180_000;
+
+/** 32 random bytes, base64url, no padding. */
+export function isPasskeyHandoffRequestId(value: string): boolean {
+  return /^[A-Za-z0-9_-]{43}$/.test(value);
+}
+
+export type PasskeyHandoffStatus = "pending" | "confirmed" | "rejected" | "expired";
+
+/** Create and status responses for an extension passkey handoff. */
+export interface PasskeyHandoffResponseDto {
+  request_id: string;
+  status: PasskeyHandoffStatus;
+  expires_at: string;
 }
 
 /** One event as returned by sync HTTP API (opaque base64 payload). */
@@ -1365,14 +1433,16 @@ export type SmtpTlsMode = "none" | "starttls" | "tls";
 /** `GET /workspaces/:workspaceId/server-mail-settings`. The SMTP password is never included. */
 export interface ServerMailSettingsResponseDto {
   smtp_host: string;
-  smtp_port: number;
-  smtp_tls_mode: SmtpTlsMode;
+  /** Null when cleared in the database. */
+  smtp_port: number | null;
+  /** Null when cleared in the database. */
+  smtp_tls_mode: SmtpTlsMode | null;
   smtp_username: string;
   email_from: string;
   public_app_url: string;
   /**
-   * True when a saved password, or the environment password if none is saved, can be used.
-   * False when a stored password exists but cannot be decrypted.
+   * True when a decryptable SMTP password is stored in the database.
+   * False when none is stored, or a stored password cannot be decrypted.
    */
   password_set: boolean;
   /**
@@ -1380,9 +1450,15 @@ export interface ServerMailSettingsResponseDto {
    * False when no password is stored or decryption succeeds.
    */
   password_unreadable: boolean;
+  /** True when SMTP passed a test send and is used for outbound mail / OTP. */
+  smtp_active: boolean;
+  smtp_verified_at: string | null;
 }
 
-/** `PATCH /workspaces/:workspaceId/server-mail-settings`. Empty strings clear that override. */
+/**
+ * `PATCH /workspaces/:workspaceId/server-mail-settings` — save form and mark SMTP inactive.
+ * Empty strings clear that field in the database.
+ */
 export interface ServerMailSettingsUpdateRequestDto {
   smtp_host?: string;
   smtp_port?: number | null;
@@ -1392,12 +1468,18 @@ export interface ServerMailSettingsUpdateRequestDto {
   public_app_url?: string;
   /** Empty or omitted keeps the stored password. */
   password?: string;
-  /** Drop the stored password so the environment value is used again. */
+  /** Drop the stored password. */
   clear_password?: boolean;
 }
 
-/** `POST /workspaces/:workspaceId/server-mail-settings/test-email` body. */
+/**
+ * `POST /workspaces/:workspaceId/server-mail-settings/test-email` —
+ * on success persists the body and marks SMTP active.
+ */
 export type ServerMailTestEmailRequestDto = ServerMailSettingsUpdateRequestDto;
+
+/** Successful test-email response includes the saved settings. */
+export type ServerMailTestEmailResponseDto = ServerMailSettingsResponseDto;
 
 /** `GET /workspaces/:workspaceId/settings` success body. */
 export interface WorkspaceSettingsResponseDto {
@@ -1760,6 +1842,28 @@ export interface DeviceRegisterResponseDto {
   status: "trusted" | "pending_approval" | "blocked";
   /** Present when status is `blocked`; null means permanently blocked. */
   blocked_until?: string | null;
+  /**
+   * One-time credential for this pending request. Not a session.
+   * Present only when status is `pending_approval`.
+   */
+  approval_status_token?: string;
+  approval_status_expires_at?: string;
+}
+
+/** `GET /devices/:deviceId/approval-status` — pending, approved, rejected, or blocked. */
+export interface DeviceApprovalStatusResponseDto {
+  device_id: EntityId;
+  status: "pending" | "approved" | "rejected" | "blocked";
+  blocked_until?: string | null;
+  expires_at: string;
+}
+
+/** `POST /devices/:deviceId/approval-retry` after a rejection. Rotates the credential. */
+export interface DeviceApprovalRetryResponseDto {
+  device_id: EntityId;
+  status: "pending_approval";
+  approval_status_token: string;
+  approval_status_expires_at: string;
 }
 
 /** `POST /devices/:deviceId/reject` success body. */
@@ -1769,7 +1873,7 @@ export interface DeviceRejectResponseDto {
 }
 
 /** Timed / permanent block durations for pending device dismissal. */
-export type DeviceBlockDuration = "1h" | "1d" | "1w" | "forever";
+export type DeviceBlockDuration = "1h" | "1d" | "forever";
 
 /** `POST /devices/:deviceId/block` request body. */
 export interface DeviceBlockRequestDto {
@@ -1923,6 +2027,11 @@ export interface RegisterCompleteRequestDto {
   /** Optional; stored server-side to restore UI after clearing browser storage. */
   first_name?: string;
   last_name?: string;
+  /**
+   * Standard base64 of the 32-byte login key derived from the new master password.
+   * Not the password and not password share C. Omitted by older clients.
+   */
+  login_key?: string;
 }
 
 /** `POST /auth/register/complete` success body (snake_case on wire). */
@@ -1977,6 +2086,22 @@ export interface AccountMasterPasswordChangeRequestDto {
    * only and never receives the password.
    */
   master_password_policy_version: number;
+  /**
+   * Standard base64 of the 32-byte login key for the new master password.
+   * When omitted, the server clears any stored login verifier.
+   */
+  login_key?: string;
+}
+
+/** `GET /account/login-verifier` (Bearer). */
+export interface LoginVerifierStatusDto {
+  enrolled: boolean;
+}
+
+/** `POST /account/login-verifier` (Bearer). */
+export interface LoginVerifierEnrollRequestDto {
+  /** Standard base64 of the 32-byte login key. Not the master password. */
+  login_key: string;
 }
 
 /** `POST /account/master-password/change` success body. */

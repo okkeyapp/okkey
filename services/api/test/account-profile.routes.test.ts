@@ -116,6 +116,7 @@ async function dispatch(input: {
   body?: unknown;
   vaultService?: VaultService;
   sessionService?: SessionService;
+  deviceService?: { isSessionDeviceTrusted: (userId: string, deviceId: string) => Promise<boolean> };
   usersRepository?: Pick<
     UsersRepository,
     "loadAccountProfile" | "updateAccountProfile" | "updateMasterPasswordShares"
@@ -124,6 +125,9 @@ async function dispatch(input: {
   const app = createApiApp(config, loggerStub(), {
     vaultService: input.vaultService ?? createVaultServiceStub(),
     ...(input.sessionService !== undefined ? { sessionService: input.sessionService } : {}),
+    ...(input.deviceService !== undefined
+      ? { deviceService: input.deviceService as never }
+      : {}),
     ...(input.usersRepository !== undefined ? { usersRepository: input.usersRepository } : {}),
   });
   const req = {
@@ -185,6 +189,40 @@ test("GET /account/profile with auth returns profile", async () => {
   assert.equal(payload.billing_region, "US");
   assert.equal(payload.vault_idle_lock_seconds, 900);
   assert.equal(payload.master_password_changed_at, "2026-01-01T00:00:00.000Z");
+});
+
+test("GET /account/profile works for an untrusted device session", async () => {
+  const res = await dispatch({
+    method: "GET",
+    url: "/account/profile",
+    sessionService: createSessionServiceStub(),
+    usersRepository: createUsersRepositoryStub(),
+    deviceService: {
+      isSessionDeviceTrusted: async () => false,
+    },
+    headers: { authorization: "Bearer test-access-token" },
+  });
+
+  assert.equal(res.statusCode, 200);
+  const payload = JSON.parse(res.body) as { first_name: string | null; last_name: string | null };
+  assert.equal(payload.first_name, "Ann");
+  assert.equal(payload.last_name, "Bee");
+});
+
+test("PATCH /account/profile requires a trusted device", async () => {
+  const res = await dispatch({
+    method: "PATCH",
+    url: "/account/profile",
+    sessionService: createSessionServiceStub(),
+    usersRepository: createUsersRepositoryStub(),
+    deviceService: {
+      isSessionDeviceTrusted: async () => false,
+    },
+    headers: { authorization: "Bearer test-access-token" },
+    body: { first_name: "Nope" },
+  });
+
+  assert.equal(res.statusCode, 401);
 });
 
 test("PATCH /account/profile updates display preferences", async () => {

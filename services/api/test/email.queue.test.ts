@@ -26,6 +26,7 @@ type EmailMessage = {
   subject: string;
   text: string;
   html: string;
+  authCodeLog?: { code: string; expiresAt: string };
 };
 
 type EmailSender = {
@@ -299,6 +300,7 @@ test("requeued dead-letter job unseals and sends the original verification code"
     subject: `${code} is your Okkey sign-in code`,
     text: `Your Okkey verification code is ${code}.`,
     html: `<strong>${code}</strong>`,
+    authCodeLog: { code, expiresAt: "2026-01-01T00:05:00.000Z" },
   };
   await redis.lPush(
     EMAIL_QUEUE_KEY,
@@ -343,6 +345,8 @@ test("requeued dead-letter job unseals and sends the original verification code"
   assert.equal(sent[0]!.subject, original.subject);
   assert.equal(sent[0]!.text, original.text);
   assert.equal(sent[0]!.html, original.html);
+  assert.equal(sent[0]!.authCodeLog?.code, code);
+  assert.equal(sent[0]!.authCodeLog?.expiresAt, "2026-01-01T00:05:00.000Z");
   // Successful send removes the matching DLQ copy automatically.
   assert.equal(redis.peekList(EMAIL_DEAD_KEY).length, 0);
 });

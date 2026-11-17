@@ -2,11 +2,13 @@ import type { WebMessageValues } from "@okkey/i18n";
 import type { PopupMenu } from "@okkey/ui";
 
 import type { WorkspaceSettingsSectionId } from "./workspaceSettingsCatalog";
+import { webDeploymentMode } from "../../../workspace/planEntitlements";
 import {
   BillingIcon,
   CapsulesIcon,
   GeneralIcon,
   ItemsIcon,
+  MailIcon,
   MembersIcon,
   PlanIcon,
   ProfilesIcon,
@@ -16,6 +18,7 @@ import {
 
 export const WORKSPACE_SETTINGS_SECTIONS: WorkspaceSettingsSectionId[] = [
   "general",
+  "mail",
   "items",
   "capsules",
   "roles",
@@ -29,6 +32,7 @@ export const WORKSPACE_SETTINGS_SECTIONS: WorkspaceSettingsSectionId[] = [
 /**
  * Billing & invoices UI is temporarily hidden (nav + routes redirect).
  * Keep `billing` in {@link WORKSPACE_SETTINGS_SECTIONS} / types so RBAC and deep links stay intact.
+ * Mail is self-host only (server SMTP settings).
  */
 export const WORKSPACE_SETTINGS_HIDDEN_SECTIONS: readonly WorkspaceSettingsSectionId[] = [
   "billing",
@@ -37,7 +41,13 @@ export const WORKSPACE_SETTINGS_HIDDEN_SECTIONS: readonly WorkspaceSettingsSecti
 export function isWorkspaceSettingsSectionVisible(
   section: WorkspaceSettingsSectionId,
 ): boolean {
-  return !WORKSPACE_SETTINGS_HIDDEN_SECTIONS.includes(section);
+  if (WORKSPACE_SETTINGS_HIDDEN_SECTIONS.includes(section)) {
+    return false;
+  }
+  if (section === "mail" && webDeploymentMode() === "saas") {
+    return false;
+  }
+  return true;
 }
 
 /** Top-level sidebar / mobile menu entries. */
@@ -48,6 +58,8 @@ export function workspaceSettingsSectionIcon(section: WorkspaceSettingsSectionId
   switch (section) {
     case "general":
       return GeneralIcon;
+    case "mail":
+      return MailIcon;
     case "items":
       return ItemsIcon;
     case "capsules":

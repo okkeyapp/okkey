@@ -1,13 +1,52 @@
 import type { WebMessageValues } from "@okkey/i18n";
-import { Alert, AlertDescription, AlertTitle, Button, Popup } from "@okkey/ui";
-import { useState } from "react";
+import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+  Button,
+  Popup,
+} from "@okkey/ui";
+import { useRef, useState, type SVGProps } from "react";
 
-import { applySystemUpdate, fetchSystemUpdateJob } from "./api";
-import type { SystemUpdateAvailable, SystemUpdateJob, SystemUpdateStatus } from "./visibility";
+import { applySystemUpdate, fetchSystemUpdateJob, fetchSystemUpdateStatus } from "./api";
+import {
+  classifyOfflineFile,
+  isCombinedArchiveName,
+  OFFLINE_FILE_ACCEPT,
+  OFFLINE_PACKAGE_MAX_SIZE_MB,
+  type OfflineArchiveChoice,
+  type OfflineChoice,
+  type OfflinePackageChoice,
+} from "./offline-files";
+import { readOfflineUpload } from "./read-offline-upload";
+import { planComponentUpdateOrder } from "./update-order";
+import { waitForRunningCore, type CoreRestartPoll } from "./wait-for-core";
+import type {
+  SystemUpdateAvailable,
+  SystemUpdateComponent,
+  SystemUpdateComponentStatus,
+  SystemUpdateJob,
+  SystemUpdateStatus,
+} from "./visibility";
 
 type Translate = (key: string, values?: WebMessageValues) => string;
 
 type Phase = "idle" | "downloading" | "running" | "succeeded" | "failed";
+
+type StoredOfflineFile = {
+  id: string;
+  file: File;
+  choice: OfflineChoice;
+};
+
+type UpdateRow = {
+  component: SystemUpdateComponent;
+  installedVersion: string;
+  update: SystemUpdateAvailable | null;
+  checkError: string | null;
+  releaseNotesUrl: string | null;
+  minCoreVersion: string | null;
+};
 
 const ERROR_KEYS = new Set([
   "SIGNATURE_MISSING",
@@ -18,7 +57,10 @@ const ERROR_KEYS = new Set([
   "FEED_FETCH_FAILED",
   "UPDATE_AGENT_UNAVAILABLE",
   "ENTERPRISE_APPLY_UNAVAILABLE",
+  "CORE_UPDATE_REQUIRED",
+  "CORE_RESTART_TIMEOUT",
   "APPLY_FAILED",
+  "BUNDLE_PARTIAL",
   "PACKAGE_INVALID",
 ]);
 
@@ -30,6 +72,7 @@ export default function SystemUpdateModal({
   onClose,
   onIgnore,
   onApplied,
+  coreRestart,
 }: {
   t: Translate;
   accessToken: string;
@@ -38,79 +81,118 @@ export default function SystemUpdateModal({
   onClose: () => void;
   onIgnore: () => void;
   onApplied: () => void;
+  /** Tests shorten the restart poll. Production uses the defaults. */
+  coreRestart?: CoreRestartPoll;
 }) {
-  const [fileName, setFileName] = useState("");
-  const [document, setDocument] = useState<unknown>(null);
-  const [fileError, setFileError] = useState("");
+  const [choices, setChoices] = useState<StoredOfflineFile[]>([]);
+  const fileIdRef = useRef(0);
   const [phase, setPhase] = useState<Phase>("idle");
   const [job, setJob] = useState<SystemUpdateJob | null>(null);
   const [errorCode, setErrorCode] = useState("");
+  const [offlineError, setOfflineError] = useState("");
+  const [restartTarget, setRestartTarget] = useState("");
+  const [applySource, setApplySource] = useState<"feed" | "file" | null>(null);
 
   const busy = phase === "downloading" || phase === "running";
   const progress =
     phase === "downloading" ? 30 : phase === "succeeded" ? 100 : job?.progress ?? (phase === "running" ? 15 : 0);
+  const rows = componentRows(status, updates);
+  const feedPlan = planComponentUpdateOrder(updates, status.currentVersion);
+  const notice = feedPlan.notice;
+  const feedHasWork = feedPlan.order.length > 0;
 
-  async function track(jobId: string): Promise<SystemUpdateJob> {
+  async function track(jobId: string, component: SystemUpdateComponent): Promise<SystemUpdateJob> {
     for (let attempt = 0; attempt < 120; attempt += 1) {
-      const next = await fetchSystemUpdateJob(accessToken, jobId);
-      setJob(next);
-      if (next.status === "succeeded" || next.status === "failed") {
-        return next;
+      try {
+        const next = await fetchSystemUpdateJob(accessToken, jobId);
+        setJob(next);
+        if (next.status === "succeeded" || next.status === "failed") {
+          return next;
+        }
+        setPhase("running");
+      } catch (error) {
+        // Core apply restarts the API before this poll can read the terminal job.
+        // A dropped connection is not an apply failure; keep the job id and read it again.
+        if (!isTransientJobPollError(error)) {
+          throw error;
+        }
       }
-      setPhase("running");
       await new Promise((resolve) => setTimeout(resolve, 1000));
     }
     return {
       id: jobId,
       status: "failed",
       progress: 0,
-      component: "okkey",
+      component,
       fromVersion: "",
       toVersion: "",
       errorCode: "APPLY_FAILED",
     };
   }
 
-  async function onUpdate() {
+  async function runJob(started: SystemUpdateJob): Promise<boolean> {
+    setJob(started);
+    setPhase("running");
+    const finished = await track(started.id, started.component);
+    if (finished.status === "failed") {
+      setPhase("failed");
+      setErrorCode(finished.errorCode || "APPLY_FAILED");
+      onApplied();
+      return false;
+    }
+    return true;
+  }
+
+  async function coreIsRunning(targetVersion: string): Promise<boolean> {
+    setRestartTarget(targetVersion);
+    setPhase("running");
+    const result = await waitForRunningCore(
+      targetVersion,
+      async () => {
+        const next = await fetchSystemUpdateStatus(accessToken);
+        return next.currentVersion;
+      },
+      coreRestart,
+    );
+    if (result === "ready") {
+      setRestartTarget("");
+      return true;
+    }
+    setPhase("failed");
+    setErrorCode("CORE_RESTART_TIMEOUT");
+    onApplied();
+    return false;
+  }
+
+  async function onFeedUpdate(only?: SystemUpdateComponent) {
     if (!status.canApply || busy) {
       return;
     }
     setErrorCode("");
+    setOfflineError("");
+    setApplySource("feed");
     setJob(null);
     try {
-      if (document) {
-        setPhase("running");
-        const started = await applySystemUpdate(accessToken, { source: "file", document });
-        setJob(started);
-        const finished = await track(started.id);
-        if (finished.status === "failed") {
-          setPhase("failed");
-          setErrorCode(finished.errorCode || "APPLY_FAILED");
-          return;
-        }
-        setPhase("succeeded");
-        onApplied();
-        return;
-      }
-      if (updates.length === 0) {
+      const selected = only ? updates.filter((update) => update.component === only) : updates;
+      const plan = planComponentUpdateOrder(selected, status.currentVersion);
+      if (plan.order.length === 0) {
         return;
       }
       setPhase("downloading");
-      const ordered = [...updates].sort(
-        (left, right) => Number(left.component !== "okkey") - Number(right.component !== "okkey"),
-      );
-      for (const update of ordered) {
+      const coreUpdate = plan.order.find((update) => update.component === "okkey");
+      for (const update of plan.order) {
+        if (update.component === "enterprise" && coreUpdate) {
+          const ready = await coreIsRunning(coreUpdate.toVersion);
+          if (!ready) {
+            return;
+          }
+        }
         const started = await applySystemUpdate(accessToken, {
           source: "feed",
           component: update.component,
         });
-        setJob(started);
-        setPhase("running");
-        const finished = await track(started.id);
-        if (finished.status === "failed") {
-          setPhase("failed");
-          setErrorCode(finished.errorCode || "APPLY_FAILED");
-          onApplied();
+        const ok = await runJob(started);
+        if (!ok) {
           return;
         }
       }
@@ -122,9 +204,217 @@ export default function SystemUpdateModal({
     }
   }
 
+  async function applyOfflineItems(items: readonly StoredOfflineFile[]): Promise<void> {
+    if (!status.canApply || busy) {
+      return;
+    }
+    const packages = items
+      .map((item) => item.choice)
+      .filter((choice): choice is OfflinePackageChoice => choice.kind === "package");
+    const archives = items
+      .map((item) => item.choice)
+      .filter((choice): choice is OfflineArchiveChoice => choice.kind === "archive");
+    const applicableArchives =
+      status.offlineArchiveSupported === true
+        ? archives.filter((archive) => archive.document && typeof archive.document === "object")
+        : [];
+    const plan = planComponentUpdateOrder(
+      packages.map((choice) => ({
+        component: choice.component,
+        toVersion: choice.version,
+        minCoreVersion: choice.minCoreVersion,
+        document: choice.document,
+      })),
+      status.currentVersion,
+    );
+    if (plan.order.length === 0 && applicableArchives.length === 0) {
+      setOfflineError(t("web.systemUpdate.error.OFFLINE_NOTHING_TO_APPLY"));
+      return;
+    }
+    setErrorCode("");
+    setOfflineError("");
+    setApplySource("file");
+    setJob(null);
+    try {
+      setPhase("running");
+      const coreFile = plan.order.find((choice) => choice.component === "okkey");
+      for (const choice of plan.order) {
+        if (choice.component === "enterprise" && coreFile) {
+          const ready = await coreIsRunning(coreFile.toVersion);
+          if (!ready) {
+            return;
+          }
+        }
+        const started = await applySystemUpdate(accessToken, { source: "file", document: choice.document });
+        const ok = await runJob(started);
+        if (!ok) {
+          return;
+        }
+      }
+      for (const archive of applicableArchives) {
+        const started = await applySystemUpdate(accessToken, {
+          source: "file",
+          document: archive.document,
+        });
+        const ok = await runJob(started);
+        if (!ok) {
+          return;
+        }
+      }
+      setPhase("succeeded");
+      onApplied();
+    } catch (error) {
+      setPhase("failed");
+      setErrorCode(readCode(error));
+    }
+  }
+
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const pendingArchives = choices
+    .map((item) => item.choice)
+    .filter((choice): choice is OfflineArchiveChoice => choice.kind === "archive")
+    .filter((archive) => {
+      if (status.offlineArchiveSupported !== true) {
+        return true;
+      }
+      return !(archive.document && typeof archive.document === "object");
+    });
+
+  function clearOfflineFile(id: string) {
+    setChoices((current) => current.filter((item) => item.id !== id));
+    setOfflineError("");
+  }
+
+  async function onOfflineFilesSelected(files: readonly File[]): Promise<void> {
+    setOfflineError("");
+    setErrorCode("");
+    if (files.length === 0) {
+      return;
+    }
+    if (busy) {
+      return;
+    }
+    if (!status.canApply) {
+      setOfflineError(t("web.systemUpdate.ownersOnly"));
+      return;
+    }
+    const maxBytes = OFFLINE_PACKAGE_MAX_SIZE_MB * 1024 * 1024;
+    const next: StoredOfflineFile[] = [];
+    let skippedOversized = false;
+    try {
+      for (const file of files) {
+        if (file.size > maxBytes) {
+          skippedOversized = true;
+          continue;
+        }
+        fileIdRef.current += 1;
+        const id = `offline-${fileIdRef.current}`;
+        const choice = await choiceForOfflineFile(file);
+        next.push({ id, file, choice });
+      }
+    } catch {
+      setOfflineError(t("web.systemUpdate.error.PACKAGE_INVALID"));
+      return;
+    }
+    if (next.length === 0) {
+      setOfflineError(
+        skippedOversized
+          ? t("web.systemUpdate.error.PACKAGE_TOO_LARGE")
+          : t("web.systemUpdate.error.PACKAGE_INVALID"),
+      );
+      return;
+    }
+    setChoices((current) => [...current, ...next]);
+    if (next.some((item) => item.choice.kind === "invalid")) {
+      setOfflineError(t("web.systemUpdate.error.PACKAGE_INVALID"));
+      return;
+    }
+    const hasPendingArchive = next.some((item) => {
+      if (item.choice.kind !== "archive") {
+        return false;
+      }
+      if (status.offlineArchiveSupported !== true) {
+        return true;
+      }
+      return !(item.choice.document && typeof item.choice.document === "object");
+    });
+    if (hasPendingArchive) {
+      return;
+    }
+    await applyOfflineItems(next);
+  }
+
+  function renderProgress() {
+    if (phase === "idle") {
+      return null;
+    }
+    return (
+      <div className="flex flex-col gap-2" aria-live="polite">
+        <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+          <div className="h-full bg-accent" style={{ width: `${progress}%` }} />
+        </div>
+        <p className="text-sm text-foreground">
+          {phase === "failed"
+            ? errorCode === "BUNDLE_PARTIAL"
+              ? t("web.systemUpdate.progressBundlePartial", { core: partialCoreVersion(job) })
+              : t("web.systemUpdate.progressFailed")
+            : restartTarget
+              ? t("web.systemUpdate.progressRestarting", { version: restartTarget })
+              : phase === "downloading"
+                ? t("web.systemUpdate.progressDownloading")
+                : phase === "succeeded"
+                  ? successText(t, job, updates)
+                  : job?.status === "applying"
+                    ? t("web.systemUpdate.progressApplying")
+                    : t("web.systemUpdate.progressVerifying")}
+        </p>
+      </div>
+    );
+  }
+
   const errorText = errorCode
-    ? t(ERROR_KEYS.has(errorCode) ? `web.systemUpdate.error.${errorCode}` : "web.systemUpdate.error.generic")
+    ? t(ERROR_KEYS.has(errorCode) ? `web.systemUpdate.error.${errorCode}` : "web.systemUpdate.error.generic", {
+        version: restartTarget,
+      })
     : "";
+
+  function renderFailure() {
+    const partial = errorCode === "BUNDLE_PARTIAL";
+    const message = applySource === "feed" ? errorText : offlineError || errorText;
+    if (!message) {
+      return null;
+    }
+    if (partial && errorText) {
+      return (
+        <Alert variant="warning" data-testid="system-update-partial">
+          <AlertTitle>{t("web.systemUpdate.progressBundlePartial", { core: partialCoreVersion(job) })}</AlertTitle>
+          <AlertDescription>
+            <p>{errorText}</p>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="mt-3"
+              data-testid="system-update-retry-enterprise"
+              disabled={busy}
+              onClick={() => {
+                void onFeedUpdate("enterprise");
+              }}
+            >
+              {t("web.systemUpdate.retryEnterprise")}
+            </Button>
+          </AlertDescription>
+        </Alert>
+      );
+    }
+    return (
+      <Alert variant="error" data-testid={applySource === "feed" ? undefined : "system-update-offline-error"}>
+        <AlertTitle>{t("web.systemUpdate.progressFailed")}</AlertTitle>
+        <AlertDescription>{message}</AlertDescription>
+      </Alert>
+    );
+  }
 
   return (
     <Popup
@@ -134,127 +424,378 @@ export default function SystemUpdateModal({
       closeLabel={t("web.systemUpdate.close")}
       closeDisabled={busy}
       onClose={onClose}
+      contentClassName="pb-6"
     >
-      <div className="flex flex-col gap-4">
-        {updates.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            {status.feedConfigured && !status.isolated
-              ? t("web.systemUpdate.upToDate")
-              : t("web.systemUpdate.emptyFeed")}
-          </p>
-        ) : (
-          <ul className="flex flex-col gap-3">
-            {updates.map((update) => (
-              <li key={update.component} className="rounded-lg bg-muted px-3 py-3">
-                <p className="text-sm font-medium text-foreground">
-                  {t(
-                    update.component === "enterprise"
-                      ? "web.systemUpdate.componentEnterprise"
-                      : "web.systemUpdate.componentOkkey",
-                  )}
-                </p>
-                <p className="mt-1 text-sm text-foreground">
-                  {t("web.systemUpdate.fromTo", { from: update.fromVersion, to: update.toVersion })}
-                </p>
-                <p className="mt-1 text-sm text-muted-foreground">{update.summary}</p>
-              </li>
-            ))}
-          </ul>
-        )}
+      <div className="flex flex-col">
+        <div className="flex flex-col gap-4">
+          <h3 className="text-base font-semibold text-foreground">{t("web.systemUpdate.onlineLabel")}</h3>
+          {status.isolated ? (
+            <div
+              className="rounded-lg bg-muted px-3 py-3"
+              data-testid="system-update-online-disabled"
+            >
+              <p className="text-sm text-foreground">{t("web.systemUpdate.onlineDisabled")}</p>
+            </div>
+          ) : rows.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              {status.feedConfigured
+                ? t("web.systemUpdate.upToDate")
+                : t("web.systemUpdate.emptyFeed")}
+            </p>
+          ) : (
+            <ul className="flex flex-col gap-3">
+              {rows.map((row) => {
+                const name = componentName(t, row.component);
+                const notes = safeHttpUrl(row.releaseNotesUrl);
+                const alone = row.update
+                  ? planComponentUpdateOrder([row.update], status.currentVersion)
+                  : null;
+                const rowBlocked = alone ? alone.order.length === 0 : true;
+                const showRowUpdate = status.canApply && Boolean(row.update);
+                return (
+                  <li
+                    key={row.component}
+                    className="rounded-lg bg-muted px-3 py-3"
+                    data-testid={`system-update-row-${row.component}`}
+                  >
+                    <p className="text-sm font-medium text-foreground">{name}</p>
+                    <p className="mt-1 text-sm text-foreground">
+                      {t("web.systemUpdate.currentVersion", {
+                        version: formatInstalledVersion(
+                          row.installedVersion,
+                          row.component === "okkey"
+                            ? status.commitSha
+                            : (status.enterpriseCommitSha ?? null),
+                        ),
+                      })}
+                    </p>
+                    {row.update ? (
+                      <p className="mt-1 text-sm text-foreground">
+                        {t("web.systemUpdate.newVersion", { version: row.update.toVersion })}
+                      </p>
+                    ) : row.checkError === "LICENSE_EXPIRED" ? (
+                      <p
+                        className="mt-1 text-sm text-muted-foreground"
+                        data-testid={`system-update-check-error-${row.component}`}
+                      >
+                        {t("web.systemUpdate.error.LICENSE_EXPIRED")}
+                      </p>
+                    ) : row.checkError ? (
+                      <p
+                        className="mt-1 text-sm text-muted-foreground"
+                        data-testid={`system-update-check-error-${row.component}`}
+                      >
+                        {t("web.systemUpdate.checkFailed", { component: name })}
+                      </p>
+                    ) : (
+                      <p className="mt-1 text-sm text-muted-foreground">{t("web.systemUpdate.rowUpToDate")}</p>
+                    )}
+                    {notes ? (
+                      <a
+                        className="mt-1 inline-flex text-sm text-foreground underline"
+                        data-testid={`system-update-notes-${row.component}`}
+                        href={notes}
+                        rel="noreferrer"
+                        target="_blank"
+                      >
+                        {t("web.systemUpdate.releaseNotes")}
+                      </a>
+                    ) : null}
+                    {row.update?.summary ? (
+                      <p className="mt-1 text-sm text-muted-foreground">{row.update.summary}</p>
+                    ) : null}
+                    {showRowUpdate ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="mt-3"
+                        data-testid={`system-update-apply-${row.component}`}
+                        disabled={busy || phase === "succeeded" || rowBlocked}
+                        onClick={() => {
+                          void onFeedUpdate(row.component);
+                        }}
+                      >
+                        {t("web.systemUpdate.updateThis", { component: name })}
+                      </Button>
+                    ) : null}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
 
-        {status.feedError ? (
-          <p className="text-sm text-muted-foreground">{t("web.systemUpdate.error.FEED_FETCH_FAILED")}</p>
-        ) : null}
-
-        <div className="flex flex-col gap-2">
-          <label className="text-sm font-medium text-foreground" htmlFor="system-update-file">
-            {t("web.systemUpdate.fileLabel")}
-          </label>
-          <p className="text-sm text-muted-foreground">{t("web.systemUpdate.fileHint")}</p>
-          <input
-            id="system-update-file"
-            className="text-sm text-foreground file:me-3 file:rounded-md file:border-0 file:bg-secondary file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-secondary-foreground"
-            type="file"
-            accept="application/json,.okpkg,.json"
-            disabled={busy || !status.canApply}
-            onChange={(event) => {
-              const file = event.target.files?.[0];
-              setFileError("");
-              setDocument(null);
-              setFileName("");
-              if (!file) {
-                return;
-              }
-              setFileName(file.name);
-              void file.text().then((text) => {
-                try {
-                  setDocument(JSON.parse(text) as unknown);
-                } catch {
-                  setDocument(null);
-                  setFileError(t("web.systemUpdate.error.PACKAGE_INVALID"));
-                }
-              });
-            }}
-          />
-          {fileName ? (
-            <p className="text-xs text-muted-foreground">
-              {t("web.systemUpdate.fileSelected")}: {fileName}
+          {notice ? (
+            <p className="text-sm text-foreground" data-testid="system-update-order-notice">
+              {notice.satisfiedBy
+                ? t("web.systemUpdate.minCoreFirst", { min: notice.minCoreVersion })
+                : t("web.systemUpdate.minCoreBlocked", { min: notice.minCoreVersion })}
             </p>
           ) : null}
-          {fileError ? <p className="text-sm text-destructive">{fileError}</p> : null}
+
+          {!status.components && status.feedError ? (
+            <p className="text-sm text-muted-foreground">{t("web.systemUpdate.error.FEED_FETCH_FAILED")}</p>
+          ) : null}
+
+          {applySource !== "file" ? renderProgress() : null}
+
+          {applySource === "feed" ? renderFailure() : null}
+
+          {!status.canApply ? (
+            <p className="text-sm text-muted-foreground">{t("web.systemUpdate.ownersOnly")}</p>
+          ) : null}
+
+          {feedHasWork ? (
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="outline" disabled={busy} onClick={onIgnore}>
+                {t("web.systemUpdate.ignore")}
+              </Button>
+              {status.canApply ? (
+                <Button
+                  type="button"
+                  data-testid="system-update-apply-all"
+                  disabled={busy || phase === "succeeded"}
+                  onClick={() => {
+                    void onFeedUpdate();
+                  }}
+                >
+                  {t("web.systemUpdate.update")}
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
         </div>
 
-        {phase !== "idle" ? (
-          <div className="flex flex-col gap-2" aria-live="polite">
-            <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
-              <div className="h-full bg-accent" style={{ width: `${progress}%` }} />
-            </div>
-            <p className="text-sm text-foreground">
-              {phase === "downloading"
-                ? t("web.systemUpdate.progressDownloading")
-                : phase === "succeeded"
-                  ? t("web.systemUpdate.progressSucceeded", {
-                      version: job?.toVersion || updates[0]?.toVersion || "",
-                    })
-                  : phase === "failed"
-                    ? t("web.systemUpdate.progressFailed")
-                    : job?.status === "applying"
-                      ? t("web.systemUpdate.progressApplying")
-                      : t("web.systemUpdate.progressVerifying")}
-            </p>
-          </div>
-        ) : null}
+        <div
+          className="-mx-6 my-6 border-t border-border max-md:-mx-4"
+          data-testid="system-update-section-divider"
+          role="separator"
+        />
 
-        {errorText ? (
-          <Alert variant="error">
-            <AlertTitle>{t("web.systemUpdate.progressFailed")}</AlertTitle>
-            <AlertDescription>{errorText}</AlertDescription>
-          </Alert>
-        ) : null}
-
-        {!status.canApply ? (
-          <p className="text-sm text-muted-foreground">{t("web.systemUpdate.ownersOnly")}</p>
-        ) : null}
-
-        <div className="flex justify-end gap-2">
-          <Button type="button" variant="outline" disabled={busy} onClick={onIgnore}>
-            {t("web.systemUpdate.ignore")}
-          </Button>
-          {status.canApply ? (
+        <div className="flex flex-col gap-2">
+          <h3 className="text-base font-semibold text-foreground">{t("web.systemUpdate.fileLabel")}</h3>
+          <p className="text-sm text-muted-foreground">{t("web.systemUpdate.fileHint")}</p>
+          <input
+            ref={fileInputRef}
+            id="system-update-file"
+            type="file"
+            accept={OFFLINE_FILE_ACCEPT}
+            multiple
+            className="hidden"
+            disabled={busy || !status.canApply}
+            onChange={(event) => {
+              // FileList is live — copy before clearing value, or the selection becomes empty.
+              const files = event.target.files ? Array.from(event.target.files) : [];
+              event.target.value = "";
+              void onOfflineFilesSelected(files);
+            }}
+          />
+          <div className="mt-3 flex justify-end">
             <Button
               type="button"
-              disabled={busy || phase === "succeeded" || (!document && updates.length === 0)}
-              onClick={() => {
-                void onUpdate();
-              }}
+              variant="outline"
+              className="h-9 gap-1.5 px-3"
+              disabled={busy || !status.canApply}
+              onClick={() => fileInputRef.current?.click()}
             >
-              {t("web.systemUpdate.update")}
+              <UploadIcon />
+              {t("web.systemUpdate.uploadOfflinePackage")}
             </Button>
+          </div>
+          {choices.length > 0 ? (
+            <ul className="flex flex-col gap-1" data-testid="system-update-offline-list">
+              {choices.map((item) => (
+                <li key={item.id} className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <span className="min-w-0 flex-1 truncate">
+                    {item.choice.kind === "package"
+                      ? t("web.systemUpdate.offlinePackage", {
+                          component: componentName(t, item.choice.component),
+                          version: item.choice.version,
+                        })
+                      : item.choice.kind === "archive"
+                        ? t("web.systemUpdate.offlineArchive", { name: item.choice.fileName })
+                        : item.choice.fileName}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="h-7 shrink-0 px-2 text-xs"
+                    disabled={busy}
+                    onClick={() => clearOfflineFile(item.id)}
+                  >
+                    {t("web.tools.import.fileClearLabel")}
+                  </Button>
+                </li>
+              ))}
+            </ul>
           ) : null}
+          {pendingArchives.length > 0 ? (
+            <p className="text-sm text-muted-foreground" data-testid="system-update-archive-pending">
+              {t("web.systemUpdate.offlineArchivePending")}
+            </p>
+          ) : null}
+          {applySource === "file" ? renderProgress() : null}
+          {applySource === "file" || offlineError ? renderFailure() : null}
         </div>
       </div>
     </Popup>
   );
+}
+
+function componentRows(
+  status: SystemUpdateStatus,
+  updates: readonly SystemUpdateAvailable[],
+): UpdateRow[] {
+  const visible = updates.filter((update) => update.component !== "enterprise" || status.enterpriseInstalled);
+  if (status.components && status.components.length > 0) {
+    return status.components
+      .filter((row) => row.component !== "enterprise" || status.enterpriseInstalled)
+      .map((row) => rowFromStatus(row, visible));
+  }
+  return visible.map((update) => ({
+    component: update.component,
+    installedVersion: update.fromVersion,
+    update,
+    checkError: null,
+    releaseNotesUrl: update.releaseNotesUrl ?? null,
+    minCoreVersion: update.minCoreVersion ?? null,
+  }));
+}
+
+function rowFromStatus(
+  row: SystemUpdateComponentStatus,
+  visible: readonly SystemUpdateAvailable[],
+): UpdateRow {
+  const update = visible.find((item) => item.component === row.component) ?? null;
+  return {
+    component: row.component,
+    installedVersion: row.installedVersion,
+    update,
+    checkError: row.checkError,
+    releaseNotesUrl: update?.releaseNotesUrl ?? row.releaseNotesUrl,
+    minCoreVersion: update?.minCoreVersion ?? row.minCoreVersion,
+  };
+}
+
+function partialCoreVersion(job: SystemUpdateJob | null): string {
+  return job?.result?.coreVersion || job?.components?.find((item) => item.component === "okkey")?.version || job?.toVersion || "";
+}
+
+function successText(
+  t: Translate,
+  job: SystemUpdateJob | null,
+  updates: readonly SystemUpdateAvailable[],
+): string {
+  const parts = job?.components ?? [];
+  const bundle = job?.result?.scope === "bundle" || (parts.length > 1 && parts.every((item) => item.applied));
+  if (bundle) {
+    return t("web.systemUpdate.progressBundleSucceeded", {
+      core: job?.result?.coreVersion || parts.find((item) => item.component === "okkey")?.version || "",
+      enterprise:
+        job?.result?.enterpriseVersion || parts.find((item) => item.component === "enterprise")?.version || "",
+    });
+  }
+  if (job?.result?.scope === "enterprise" || job?.component === "enterprise") {
+    return t("web.systemUpdate.progressEnterpriseSucceeded", {
+      version: job.result?.enterpriseVersion || job.toVersion || "",
+    });
+  }
+  return t("web.systemUpdate.progressSucceeded", {
+    version: job?.result?.coreVersion || job?.toVersion || updates[0]?.toVersion || "",
+  });
+}
+
+function componentName(t: Translate, component: SystemUpdateComponent): string {
+  return t(
+    component === "enterprise" ? "web.systemUpdate.componentEnterprise" : "web.systemUpdate.componentOkkey",
+  );
+}
+
+/** Append a short commit SHA in parentheses when the API reports one. */
+function formatInstalledVersion(version: string, commitSha: string | null | undefined): string {
+  const sha = (commitSha ?? "").trim().toLowerCase();
+  if (!sha || !/^[0-9a-f]{7,64}$/.test(sha)) {
+    return version;
+  }
+  return `${version} (${sha.slice(0, 7)})`;
+}
+
+function safeHttpUrl(value: string | null | undefined): string | null {
+  if (!value) {
+    return null;
+  }
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      return null;
+    }
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
+function UploadIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      width={16}
+      height={16}
+      viewBox="0 0 16 16"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      className="size-4 shrink-0"
+      aria-hidden
+      {...props}
+    >
+      <path
+        d="M14 10V12.6667C14 13.0203 13.8595 13.3594 13.6095 13.6095C13.3594 13.8595 13.0203 14 12.6667 14H3.33333C2.97971 14 2.64057 13.8595 2.39052 13.6095C2.14048 13.3594 2 13.0203 2 12.6667V10M4.66667 5.33333L8 2L11.3333 5.33333M8 2V10"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+/** JSON archives stay as parsed documents. A binary zip is wrapped for the update agent. */
+async function choiceForOfflineFile(file: File): Promise<OfflineChoice> {
+  if (!isCombinedArchiveName(file.name)) {
+    return classifyOfflineFile(file.name, await readFileText(file));
+  }
+  const document = await readOfflineUpload(file);
+  return {
+    kind: "archive",
+    fileName: file.name,
+    document: document && typeof document === "object" ? document : null,
+  };
+}
+
+function readFileText(file: File): Promise<string> {
+  if (typeof file.text === "function") {
+    return file.text();
+  }
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "");
+    reader.onerror = () => reject(reader.error ?? new Error("file read failed"));
+    reader.readAsText(file);
+  });
+}
+
+/** Network loss and gateway errors while the API process is coming back. */
+export function isTransientJobPollError(error: unknown): boolean {
+  if (!error || typeof error !== "object") {
+    return true;
+  }
+  const record = error as { code?: unknown; status?: unknown };
+  if (record.code === "UPDATE_AGENT_UNAVAILABLE") {
+    return true;
+  }
+  const status = typeof record.status === "number" ? record.status : 0;
+  if (status === 0) {
+    return true;
+  }
+  return status === 502 || status === 503 || status === 504;
 }
 
 function readCode(error: unknown): string {

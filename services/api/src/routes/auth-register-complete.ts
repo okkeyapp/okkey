@@ -1,5 +1,6 @@
 import { isCurrentMasterPasswordPolicyVersion } from "@okkey/types";
 
+import { decodeLoginKey } from "../crypto/login-verifier.ts";
 import {
   CLIENT_UPGRADE_REQUIRED,
   CLIENT_UPGRADE_REQUIRED_MESSAGE,
@@ -39,6 +40,8 @@ interface RegisterCompleteBody {
   /** Optional; persisted for UI when client storage is cleared. */
   first_name?: string;
   last_name?: string;
+  /** Base64 32-byte login key. Not the master password. */
+  login_key?: string;
   metadata?: {
     platform?: string;
     os_name?: string;
@@ -312,6 +315,19 @@ export function createRegisterCompleteRoute(
       return;
     }
 
+    let loginKey: Uint8Array | null = null;
+    if (body.login_key !== undefined && body.login_key !== "") {
+      loginKey = decodeLoginKey(body.login_key);
+      if (!loginKey) {
+        json(
+          ctx.res,
+          400,
+          errorPayload("REGISTRATION_BAD_REQUEST", "login_key must be 32 bytes", ctx.requestId),
+        );
+        return;
+      }
+    }
+
     const srvShare = decodeRequiredBase64(body.server_key_share);
     const kdfSalt = decodeRequiredBase64(body.password_kdf_salt);
     const devShare = decodeRequiredBase64(body.device_share);
@@ -359,6 +375,7 @@ export function createRegisterCompleteRoute(
         personalVaultName: personalVaultName ?? undefined,
         firstName: firstNameForDb,
         lastName: lastNameForDb,
+        loginKey,
       });
 
       const bodyOut: Record<string, unknown> = {

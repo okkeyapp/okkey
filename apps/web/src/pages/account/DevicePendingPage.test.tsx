@@ -8,6 +8,7 @@ import DevicePendingPage from "./DevicePendingPage";
 
 const auth = vi.hoisted(() => ({
   accessToken: "tok" as string | null,
+  deviceApprovalWatch: false,
   deviceTrustStatus: "pending" as
     | "idle"
     | "checking"
@@ -28,10 +29,20 @@ const auth = vi.hoisted(() => ({
 
 const passkey = vi.hoisted(() => ({
   approvePendingDeviceWithPasskey: vi.fn(
-    async (): Promise<{ ok: true } | { ok: false; code: "prf_unavailable" }> => ({
+    async (): Promise<{ ok: true } | { ok: false; code: "prf_unavailable" | "cancelled" }> => ({
       ok: true,
     }),
   ),
+}));
+
+const toastMocks = vi.hoisted(() => ({
+  error: vi.fn(),
+  message: vi.fn(),
+  success: vi.fn(),
+}));
+
+vi.mock("sonner", () => ({
+  toast: toastMocks,
 }));
 
 vi.mock("../../auth/passkeyDeviceApproval", () => ({
@@ -81,6 +92,7 @@ describe("DevicePendingPage copy", () => {
   beforeEach(() => {
     ensureLocalStorage();
     auth.accessToken = "tok";
+    auth.deviceApprovalWatch = false;
     auth.deviceTrustStatus = "pending";
     auth.deviceBlockedUntil = null;
     auth.deviceApprovers = [];
@@ -148,17 +160,63 @@ describe("DevicePendingPage copy", () => {
     expect(screen.queryByText(/a trusted device rejected this sign-in/i)).not.toBeInTheDocument();
   });
 
-  it("shows the passkey button and a clear error when PRF is missing", async () => {
+  it("shows the denied page from the approval-status credential without a session", () => {
+    auth.accessToken = null;
+    auth.deviceApprovalWatch = true;
+    auth.deviceTrustStatus = "rejected";
+    renderPage();
+
+    expect(screen.getByRole("heading", { name: "This device was denied" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /request approval again/i })).toBeInTheDocument();
+  });
+
+  it("shows the blocked page from the approval-status credential without a session", () => {
+    auth.accessToken = null;
+    auth.deviceApprovalWatch = true;
+    auth.deviceTrustStatus = "blocked";
+    auth.deviceBlockedUntil = null;
+    renderPage();
+
+    expect(screen.getByRole("heading", { name: "This device is blocked" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /request approval again/i })).not.toBeInTheDocument();
+  });
+
+  it("shows the passkey button and a toast when PRF is missing", async () => {
     passkey.approvePendingDeviceWithPasskey.mockResolvedValue({
       ok: false,
       code: "prf_unavailable",
     });
     renderPage();
     auth.refreshDeviceTrust.mockClear();
+    toastMocks.error.mockClear();
 
     fireEvent.click(screen.getByRole("button", { name: "Approve with passkey" }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent(/did not copy a device share/i);
+    await vi.waitFor(() => {
+      expect(toastMocks.error).toHaveBeenCalled();
+    });
+    expect(String(toastMocks.error.mock.calls[0]?.[0])).toMatch(/did not copy a device share/i);
     expect(auth.refreshDeviceTrust).not.toHaveBeenCalled();
+    expect(screen.queryByText(/did not copy a device share/i)).toBeNull();
+  });
+
+  it("toasts a cancel and allows Approve with passkey again", async () => {
+    passkey.approvePendingDeviceWithPasskey
+      .mockResolvedValueOnce({ ok: false, code: "cancelled" })
+      .mockResolvedValueOnce({ ok: true });
+    renderPage();
+    toastMocks.message.mockClear();
+
+    fireEvent.click(screen.getByRole("button", { name: "Approve with passkey" }));
+    await vi.waitFor(() => {
+      expect(toastMocks.message).toHaveBeenCalled();
+    });
+    expect(String(toastMocks.message.mock.calls[0]?.[0])).toMatch(/cancelled/i);
+    expect(screen.queryByText(/Passkey confirmation was cancelled/i)).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Approve with passkey" }));
+    await vi.waitFor(() => {
+      expect(passkey.approvePendingDeviceWithPasskey).toHaveBeenCalledTimes(2);
+    });
   });
 });

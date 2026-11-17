@@ -9,6 +9,7 @@ import type {
   BackupCodesRegenerateRequestDto,
   EmailAuthConfirmResponse,
   EmailAuthStartResponse,
+  MasterPasswordLoginRequestDto,
   ExtensionAuthCodeIssueRequestDto,
   ExtensionAuthCodeIssueResponseDto,
   ExtensionAuthTokenRequestDto,
@@ -62,6 +63,19 @@ export class AuthClient {
     return this.api.post<EmailAuthConfirmResponse>("/auth/email/confirm", {
       challengeId,
       code,
+    });
+  }
+
+  /**
+   * Self-host sign-in when the server reports email is not deliverable.
+   * `loginKey` is the base64 login key, never the master password.
+   */
+  async loginWithMasterPassword(
+    body: MasterPasswordLoginRequestDto,
+  ): Promise<EmailAuthConfirmResponse> {
+    return this.api.post<EmailAuthConfirmResponse>("/auth/login/master-password", {
+      email: body.email,
+      loginKey: body.loginKey,
     });
   }
 

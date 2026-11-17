@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -21,6 +22,7 @@ import {
   type EmailHttpApiInlineMode,
 } from "./email/http-api-inline-mode.ts";
 import { parseFaviconProvider, type FaviconProvider } from "./favicon/fetch-remote.ts";
+import { resolveCoreUpdateFeedUrl } from "./system-updates/core-feed.ts";
 
 type NodeEnv = "development" | "test" | "production";
 type EmailProvider = "logger" | "smtp" | "http-api" | "ses";
@@ -37,13 +39,30 @@ export interface ApiConfig {
   deploymentMode: DeploymentMode;
   /** Running core image tag (`OKKEY_VERSION`, else `OKKEY_IMAGE_TAG`). */
   systemVersion: string;
+  /** Full git commit for a dev build (`OKKEY_GIT_SHA`). Empty when unknown. */
+  gitSha: string;
+  /** Release tag when the image was built from a tag (`OKKEY_RELEASE_TAG`). */
+  releaseTag: string;
   /** Installed enterprise module version, when the sibling reports one. */
   enterpriseVersion: string;
+  /** Full git commit for the enterprise sibling (`OKKEY_ENTERPRISE_GIT_SHA`). */
+  enterpriseGitSha: string;
   /**
-   * Optional update feed URL. Empty means no outbound check.
-   * Never defaulted to a vendor or license host.
+   * Core (okkey) update feed URL.
+   * `OKKEY_UPDATE_CORE_FEED_URL` overrides the GitHub Releases default.
+   * `OKKEY_UPDATE_FEED_URL` is the previous name and still overrides when the
+   * core name is empty. An enterprise feed is a separate setting.
+   * This is not a license server.
    */
-  updateFeedUrl: string;
+  updateCoreFeedUrl: string;
+  /**
+   * Optional enterprise feed URL (`OKKEY_UPDATE_ENTERPRISE_FEED_URL`).
+   * Empty means there is no separate enterprise check.
+   * Contacted only when enterprise modules are installed.
+   */
+  updateEnterpriseFeedUrl: string;
+  /** Enterprise feed credential (`OKKEY_LICENSE_KEY`). Sent only on that feed. */
+  enterpriseLicenseKey: string;
   /** When true, update checks and feed downloads do not call the network. */
   updateIsolated: boolean;
   /** Base URL of the dedicated update agent. Empty disables apply. */
@@ -72,6 +91,10 @@ export interface ApiConfig {
   invitePreviewRateLimitPerIp: number;
   authRateLimitConfirmPerIp: number;
   authRateLimitResendPerIp: number;
+  /** POST /auth/login/master-password per-account budget within `authRateLimitWindowSeconds`. */
+  authRateLimitLoginKeyPerEmail: number;
+  /** Same window, keyed by client IP. */
+  authRateLimitLoginKeyPerIp: number;
   /** POST /auth/register/complete per-IP budget within `authRateLimitWindowSeconds`. */
   authRateLimitRegisterCompletePerIp: number;
   /** Same window; keyed by email from the auth state (normalized). */
@@ -101,6 +124,11 @@ export interface ApiConfig {
   /** Load enterprise backend plugins from `enterpriseModulesPath`. */
   enterpriseModulesEnabled: boolean;
   enterpriseModulesPath: string;
+  /**
+   * Self-hosted license lapse. Set only when the enterprise update feed reports
+   * an expired license. Not read from the environment.
+   */
+  enterpriseLicenseLapsed: boolean;
   defaultEmailLocale: string;
   /** Base URL for links in transactional email (e.g. https://app.example.com); empty = text-only hints */
   publicAppBaseUrl: string;
@@ -329,6 +357,30 @@ function resolveEnterpriseModulesPath(explicitPath: string | undefined): string 
   return path.resolve(servicesApiDir, "../../../../okkey-enterprise");
 }
 
+/**
+ * Prefer an explicit env SHA. In local development, fall back to `git rev-parse HEAD`
+ * in the given repo so the system-update UI can show a short commit without a pin.
+ */
+function resolveGitSha(fromEnv: string | undefined, nodeEnv: NodeEnv, repoRoot: string): string {
+  const trimmed = (fromEnv ?? "").trim();
+  if (trimmed) {
+    return trimmed;
+  }
+  if (nodeEnv !== "development") {
+    return "";
+  }
+  try {
+    return execFileSync("git", ["rev-parse", "HEAD"], {
+      cwd: repoRoot,
+      encoding: "utf8",
+      timeout: 2_000,
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+  } catch {
+    return "";
+  }
+}
+
 /** Fail-closed: sibling (or explicit) path must expose the API plugin entry. */
 export function isEnterpriseBackendLoadable(enterpriseModulesPath: string): boolean {
   return existsSync(path.join(enterpriseModulesPath, "backend/api-plugin/index.ts"));
@@ -436,8 +488,22 @@ export function loadConfig(): ApiConfig {
     deploymentMode,
     systemVersion:
       (process.env.OKKEY_VERSION ?? process.env.OKKEY_IMAGE_TAG ?? "").trim() || "unknown",
+    gitSha: resolveGitSha(process.env.OKKEY_GIT_SHA, nodeEnv, path.resolve(serviceRoot, "..")),
+    releaseTag: (process.env.OKKEY_RELEASE_TAG ?? "").trim(),
     enterpriseVersion: (process.env.OKKEY_ENTERPRISE_VERSION ?? "").trim(),
-    updateFeedUrl: (process.env.OKKEY_UPDATE_FEED_URL ?? "").trim(),
+    enterpriseGitSha: resolveGitSha(
+      process.env.OKKEY_ENTERPRISE_GIT_SHA,
+      nodeEnv,
+      // Sibling checkout next to Core: repositories/okkey-enterprise
+      path.resolve(serviceRoot, "../../../okkey-enterprise"),
+    ),
+    updateCoreFeedUrl: resolveCoreUpdateFeedUrl(
+      process.env.OKKEY_UPDATE_CORE_FEED_URL,
+      process.env.OKKEY_UPDATE_FEED_URL,
+    ),
+    updateEnterpriseFeedUrl: (process.env.OKKEY_UPDATE_ENTERPRISE_FEED_URL ?? "").trim(),
+    enterpriseLicenseKey: (process.env.OKKEY_LICENSE_KEY ?? "").trim(),
+    enterpriseLicenseLapsed: false,
     updateIsolated: parseBoolean(process.env.OKKEY_UPDATE_ISOLATED, false),
     updateAgentUrl: (process.env.OKKEY_UPDATE_AGENT_URL ?? "").trim(),
     updateAgentToken: (process.env.OKKEY_UPDATE_AGENT_TOKEN ?? "").trim(),
@@ -478,6 +544,14 @@ export function loadConfig(): ApiConfig {
     authRateLimitResendPerIp: parsePositiveInt(
       process.env.AUTH_RATE_LIMIT_RESEND_PER_IP,
       10,
+    ),
+    authRateLimitLoginKeyPerEmail: parsePositiveInt(
+      process.env.AUTH_RATE_LIMIT_LOGIN_KEY_PER_EMAIL,
+      5,
+    ),
+    authRateLimitLoginKeyPerIp: parsePositiveInt(
+      process.env.AUTH_RATE_LIMIT_LOGIN_KEY_PER_IP,
+      20,
     ),
     authRateLimitRegisterCompletePerIp: parsePositiveInt(
       process.env.AUTH_RATE_LIMIT_REGISTER_COMPLETE_PER_IP,
