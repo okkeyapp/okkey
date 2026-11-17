@@ -4,6 +4,15 @@ import type { RegistrationService } from "./registration/service.ts";
 import type { ApiConfig } from "./config.ts";
 import { workspacePlanFeatureWriteDecision } from "./plan-entitlements.ts";
 import type { DeviceService } from "./device/service.ts";
+import type { DeviceApprovalStatusService } from "./device/approval-status.ts";
+import {
+  APPROVAL_STATUS_POLL_MAX_PER_DEVICE,
+  APPROVAL_STATUS_POLL_MAX_PER_IP,
+  APPROVAL_STATUS_RETRY_MAX_PER_DEVICE,
+  APPROVAL_STATUS_RETRY_MAX_PER_IP,
+  createMemoryRateCounter,
+  type ApprovalStatusRateLimit,
+} from "./device/approval-status-rate-limit.ts";
 import { registerCapsuleAccessSettingsProvider } from "./capsule/access-settings-provider.ts";
 import { getHeader, HttpApp, type RouteHandler } from "./http.ts";
 import type { Logger } from "./logger.ts";
@@ -34,6 +43,10 @@ import {
 import type { ExtensionAuthService } from "./extension-auth/service.ts";
 import { healthRouteHandler } from "./routes/health.ts";
 import { createReadyRouteHandler } from "./routes/ready.ts";
+import {
+  createDeviceApprovalRetryRoute,
+  createDeviceApprovalStatusRoute,
+} from "./routes/device-approval-status.ts";
 import {
   createApproveDeviceRoute,
   createConfirmShareDeliveryRoute,
@@ -285,6 +298,9 @@ export interface AppDeps {
   vaultSharingService?: VaultSharingService;
   syncService?: SyncService;
   deviceService?: DeviceService;
+  /** Credential that can only read or retry one device's approval request. */
+  deviceApprovalStatus?: DeviceApprovalStatusService;
+  deviceApprovalStatusRateLimit?: ApprovalStatusRateLimit;
   accountRecoveryService?: AccountRecoveryService;
   sessionService?: SessionService;
   /** Browser extension PKCE session handoff (issue code + token exchange). */
@@ -1189,6 +1205,38 @@ export function createApiApp(
       "/vaults/:vaultId/events/batch",
       gateVaultUse(
         createSyncEventsAppendBatchRoute(deps.syncService, resolveUserId, config.cryptoRolloutMode),
+      ),
+    );
+  }
+  if (deps.deviceApprovalStatus) {
+    const memory = createMemoryRateCounter();
+    const counter = options.redis
+      ? {
+          incr: (key: string) => options.redis!.incr(key),
+          expire: (key: string, seconds: number) => options.redis!.expire(key, seconds),
+        }
+      : memory;
+    const approvalStatusRateLimit: ApprovalStatusRateLimit = deps.deviceApprovalStatusRateLimit ?? {
+      ...counter,
+      windowSeconds: config.authRateLimitWindowSeconds,
+      pollMaxPerIp: APPROVAL_STATUS_POLL_MAX_PER_IP,
+      pollMaxPerDevice: APPROVAL_STATUS_POLL_MAX_PER_DEVICE,
+      retryMaxPerIp: APPROVAL_STATUS_RETRY_MAX_PER_IP,
+      retryMaxPerDevice: APPROVAL_STATUS_RETRY_MAX_PER_DEVICE,
+      trustedProxyHops: config.trustedProxyHops,
+    };
+    app.route(
+      "GET",
+      "/devices/:deviceId/approval-status",
+      createDeviceApprovalStatusRoute(deps.deviceApprovalStatus, approvalStatusRateLimit),
+    );
+    app.route(
+      "POST",
+      "/devices/:deviceId/approval-retry",
+      createDeviceApprovalRetryRoute(
+        deps.deviceApprovalStatus,
+        approvalStatusRateLimit,
+        config.trustedProxyHops,
       ),
     );
   }

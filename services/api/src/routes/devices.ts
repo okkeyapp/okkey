@@ -484,6 +484,12 @@ export function createRegisterDeviceRoute(
         ...(result.status === "blocked"
           ? { blocked_until: result.blockedUntil ?? null }
           : {}),
+        ...(result.approvalStatusToken
+          ? {
+              approval_status_token: result.approvalStatusToken,
+              approval_status_expires_at: result.approvalStatusExpiresAt,
+            }
+          : {}),
       });
     } catch (error) {
       handleDeviceError(ctx.requestId, ctx.res, error);

@@ -20,6 +20,8 @@ import type {
   DeviceKeyRebindRequestDto,
   DeviceRegisterRequestDto,
   DeviceRegisterResponseDto,
+  DeviceApprovalRetryResponseDto,
+  DeviceApprovalStatusResponseDto,
   DeviceRejectResponseDto,
   DeviceBlockRequestDto,
   DeviceBlockResponseDto,
@@ -306,6 +308,9 @@ function parseCoreApiErrorBody(raw: unknown, res: Response): CoreApiErrorBody {
     requestId: "unknown",
   };
 }
+
+/** Header for the approval-status credential. It does not authenticate any other route. */
+export const DEVICE_APPROVAL_STATUS_HEADER = "X-Device-Approval-Token";
 
 /** API client with `Authorization: Bearer` for Vault, Sync, and Device routes. */
 export function createBearerApiClient(
@@ -1104,6 +1109,29 @@ export class CoreApiClient {
 
   registerDevice(body: DeviceRegisterRequestDto): Promise<DeviceRegisterResponseDto> {
     return this.api.post<DeviceRegisterResponseDto>("/devices/register", body);
+  }
+
+  /** Read one device's approval request. The credential is not sent as a session bearer. */
+  getDeviceApprovalStatus(
+    deviceId: string,
+    approvalStatusToken: string,
+  ): Promise<DeviceApprovalStatusResponseDto> {
+    return this.api.get<DeviceApprovalStatusResponseDto>(
+      `/devices/${encodeURIComponent(deviceId)}/approval-status`,
+      { headers: { [DEVICE_APPROVAL_STATUS_HEADER]: approvalStatusToken } },
+    );
+  }
+
+  /** After a rejection, ask again and rotate the approval-status credential. */
+  retryDeviceApproval(
+    deviceId: string,
+    approvalStatusToken: string,
+  ): Promise<DeviceApprovalRetryResponseDto> {
+    return this.api.post<DeviceApprovalRetryResponseDto>(
+      `/devices/${encodeURIComponent(deviceId)}/approval-retry`,
+      {},
+      { headers: { [DEVICE_APPROVAL_STATUS_HEADER]: approvalStatusToken } },
+    );
   }
 
   createDeviceBindChallenge(deviceId: string): Promise<DeviceBindChallengeResponseDto> {
