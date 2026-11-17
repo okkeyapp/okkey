@@ -45,8 +45,11 @@ export function useListWindow({
       if (total <= 0) {
         return 0;
       }
-      if (current === 0) {
-        return Math.min(safePageSize, total);
+      const firstPage = Math.min(safePageSize, total);
+      // The first non-empty total can be smaller than a page. Grow up to one page
+      // when rows are added; keep a window the user already expanded past that.
+      if (current < firstPage) {
+        return firstPage;
       }
       if (current > total) {
         return total;

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  approvalResponseGrantsTrust,
   deviceDecisionToastKey,
   pendingApprovalKey,
   visiblePendingDevices,
@@ -15,6 +16,12 @@ describe("device approval popup", () => {
     expect(deviceDecisionToastKey("reject")).toBe("web.settingsPopup.devices.toast.rejected");
     expect(deviceDecisionToastKey("approve")).toBe("web.settingsPopup.devices.toast.trusted");
     expect(deviceDecisionToastKey("reject")).not.toBe("web.settingsPopup.devices.toast.revoked");
+  });
+
+  it("does not treat pending_approval as a granted trust", () => {
+    expect(approvalResponseGrantsTrust("trusted")).toBe(true);
+    expect(approvalResponseGrantsTrust("pending_approval")).toBe(false);
+    expect(approvalResponseGrantsTrust(undefined)).toBe(false);
   });
 
   it("hides a dismissed request and shows a later request for the same device", () => {
