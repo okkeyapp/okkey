@@ -7,8 +7,9 @@ import {
   Spinner,
   Button,
 } from "@okkey/ui";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, Navigate, useSearchParams } from "react-router-dom";
+import { toast } from "sonner";
 
 import AccountUserBar from "../../components/account/AccountUserBar";
 import AppShellLayout from "../../components/app-shell/AppShellLayout";
@@ -16,7 +17,6 @@ import { useAuthenticatedCoreClient, useAuthVault } from "../../auth/AuthVaultCo
 import {
   approvePendingDeviceWithPasskey,
   passkeyApprovalErrorMessageKey,
-  type PasskeyApprovalErrorCode,
 } from "../../auth/passkeyDeviceApproval";
 import { useLocale } from "../../locale/LocaleContext";
 import {
@@ -64,23 +64,41 @@ export default function DevicePendingPage() {
 
   const [retrying, setRetrying] = useState(false);
   const [passkeyBusy, setPasskeyBusy] = useState(false);
-  const [passkeyError, setPasskeyError] = useState<PasskeyApprovalErrorCode | null>(null);
+  const passkeyAttemptRef = useRef(0);
+
+  // Clear stale passkey feedback whenever this waiting screen is shown again.
+  useEffect(() => {
+    if (deviceTrustStatus === "pending" || deviceTrustStatus === "checking") {
+      setPasskeyBusy(false);
+      passkeyAttemptRef.current += 1;
+    }
+  }, [deviceTrustStatus]);
 
   const onPasskeyApprove = async () => {
     if (!core || !currentDeviceId || passkeyBusy) {
       return;
     }
+    const attempt = ++passkeyAttemptRef.current;
     setPasskeyBusy(true);
-    setPasskeyError(null);
     try {
       const result = await approvePendingDeviceWithPasskey(core, currentDeviceId);
+      if (attempt !== passkeyAttemptRef.current) {
+        return;
+      }
       if (!result.ok) {
-        setPasskeyError(result.code);
+        const message = t(passkeyApprovalErrorMessageKey(result.code));
+        if (result.code === "cancelled") {
+          toast.message(message);
+        } else {
+          toast.error(message);
+        }
         return;
       }
       await refreshDeviceTrust();
     } finally {
-      setPasskeyBusy(false);
+      if (attempt === passkeyAttemptRef.current) {
+        setPasskeyBusy(false);
+      }
     }
   };
 
@@ -197,11 +215,6 @@ export default function DevicePendingPage() {
                     ? t("web.devicePending.passkeyBusy")
                     : t("web.devicePending.passkeyApprove")}
                 </Button>
-                {passkeyError ? (
-                  <p className="text-sm text-destructive" role="alert">
-                    {t(passkeyApprovalErrorMessageKey(passkeyError))}
-                  </p>
-                ) : null}
                 <Button type="button" variant="outline" asChild>
                   <Link to={ACCOUNT_RESTORE_PATH}>{t("web.devicePending.recoveryRequiredCta")}</Link>
                 </Button>

@@ -10,11 +10,16 @@ import {
 } from "../src/webauthn/passkey-device-approval.ts";
 import { shareWrapBodyRejection } from "../src/routes/passkey-device-approval.ts";
 import type { WebAuthnCredentialRecord } from "../src/webauthn/repository.ts";
-import { hybridDeviceShareBytes } from "./hybrid-share-fixture.ts";
+import { hybridDeviceShareBytes, hybridDeviceShareBytesForKeys } from "./hybrid-share-fixture.ts";
 
-const SHARE = hybridDeviceShareBytes(9);
+/** Pending placeholder and approval share share the same wrap public keys. */
+const PENDING_WRAP_ED = new Uint8Array(32).fill(9);
+const PENDING_WRAP_PQ = new Uint8Array(1184).fill(9);
+const PENDING_SHARE = hybridDeviceShareBytesForKeys(PENDING_WRAP_ED, PENDING_WRAP_PQ, 1);
+const SHARE = hybridDeviceShareBytesForKeys(PENDING_WRAP_ED, PENDING_WRAP_PQ, 9);
 const SHARE_B64 = Buffer.from(SHARE).toString("base64");
 const OTHER_SHARE = hybridDeviceShareBytes(1);
+const OTHER_SHARE_B64 = Buffer.from(OTHER_SHARE).toString("base64");
 
 class MemoryRedis {
   private readonly values = new Map<string, string>();
@@ -106,6 +111,22 @@ class MemoryCredentials {
 
 class MemoryDevices {
   writes: Uint8Array[] = [];
+  pendingShare: Uint8Array | null = PENDING_SHARE;
+  storedShares: Uint8Array[] = [];
+
+  async findOwnedDeviceAuth(_userId: string, deviceId: string) {
+    return {
+      id: deviceId,
+      status: "pending",
+      devicePublicKey: "cGs=",
+      deviceShare: this.pendingShare,
+      deviceFingerprint: "a".repeat(64),
+    };
+  }
+
+  async listDeviceShares() {
+    return this.storedShares.slice();
+  }
 
   async approvePendingWithClientShare(input: { deviceShare: Uint8Array }) {
     this.writes.push(input.deviceShare);
@@ -248,6 +269,14 @@ test("passkey approval stores the client share after a user-verified assertion",
   });
   assert.equal(approval.credentials.length, 1);
   assert.equal(approval.credentials[0]?.credentialId, authn.credentialId);
+  assert.equal(
+    approval.shareWrapEd25519PublicKeyB64,
+    Buffer.from(PENDING_WRAP_ED).toString("base64"),
+  );
+  assert.equal(
+    approval.shareWrapPqPublicKeyB64,
+    Buffer.from(PENDING_WRAP_PQ).toString("base64"),
+  );
 
   const result = await service.approvalVerify({
     userId: "user-1",
@@ -264,6 +293,32 @@ test("passkey approval stores the client share after a user-verified assertion",
   assert.match(serialized, /"outcome":"approved"/);
   assert.equal(serialized.includes(SHARE_B64), false);
   assert.equal(serialized.includes("prf"), false);
+});
+
+test("passkey approval rejects a share wrapped for another device", async () => {
+  const { service, devices, authn } = createHarness();
+  await saveWrappedPasskey(service, authn);
+  const approval = await service.approvalOptions({
+    userId: "user-1",
+    deviceId: "42",
+    requestIp: "203.0.113.15",
+  });
+  await assert.rejects(
+    () =>
+      service.approvalVerify({
+        userId: "user-1",
+        deviceId: "42",
+        challengeId: approval.challengeId,
+        response: authn.assertion({ challenge: approval.options.challenge, counter: 2 }),
+        deviceShareB64: OTHER_SHARE_B64,
+        requestIp: "203.0.113.15",
+      }),
+    (error: unknown) =>
+      error instanceof PasskeyDeviceApprovalError &&
+      error.code === "DEVICE_BAD_REQUEST" &&
+      error.message.includes("pending device"),
+  );
+  assert.equal(devices.writes.length, 0);
 });
 
 test("passkey approval rejects a missing UV flag and a replayed challenge", async () => {

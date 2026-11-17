@@ -1,8 +1,14 @@
 import { randomBytes } from "node:crypto";
+import { splitKeyShareBWrapPublicKeys } from "@okkey/crypto";
 import { PASSKEY_HANDOFF_TTL_MS } from "@okkey/types";
 import { generateEntityId } from "../entity-id.ts";
 import type { ApiConfig } from "../config.ts";
 import type { Logger } from "../logger.ts";
+import {
+  APPROVAL_SHARE_MUST_BE_NEW,
+  APPROVAL_SHARE_WRONG_RECIPIENT,
+  approvalShareRejection,
+} from "../device/approval-share.ts";
 import {
   assertSplitKeyShareB,
   SPLIT_KEY_SHARE_B_MAX_LEN,
@@ -95,7 +101,10 @@ export interface PasskeyDeviceApprovalDeps {
     WebAuthnCredentialsRepository,
     "findByIdForUser" | "findByCredentialId" | "listByUserId" | "updateSignCount" | "saveShareWrap" | "clearShareWrap"
   >;
-  devices: Pick<DevicesRepository, "approvePendingWithClientShare">;
+  devices: Pick<
+    DevicesRepository,
+    "approvePendingWithClientShare" | "findOwnedDeviceAuth" | "listDeviceShares"
+  >;
   config: Pick<
     ApiConfig,
     | "webauthnRpId"
@@ -383,6 +392,8 @@ export class PasskeyDeviceApprovalService {
     options: PublicKeyCredentialRequestOptionsJSON;
     prfSaltB64: string;
     credentials: PasskeyShareWrapCredential[];
+    shareWrapEd25519PublicKeyB64: string | null;
+    shareWrapPqPublicKeyB64: string | null;
   }> {
     const record = await this.requirePendingHandoff(input.requestId, input.requestIp);
     return this.approvalOptions({
@@ -445,6 +456,8 @@ export class PasskeyDeviceApprovalService {
     options: PublicKeyCredentialRequestOptionsJSON;
     prfSaltB64: string;
     credentials: PasskeyShareWrapCredential[];
+    shareWrapEd25519PublicKeyB64: string | null;
+    shareWrapPqPublicKeyB64: string | null;
   }> {
     const failKey = `passkey-approval:fail:${input.userId}:${input.deviceId}`;
     await this.assertFailureBudget(failKey, input);
@@ -468,6 +481,10 @@ export class PasskeyDeviceApprovalService {
         "no passkey has a share wrap",
       );
     }
+    const pending = await this.devices.findOwnedDeviceAuth(input.userId, input.deviceId);
+    const wrapPublic = pending?.deviceShare
+      ? splitKeyShareBWrapPublicKeys(pending.deviceShare)
+      : null;
     const salt = wrapped[wrapped.length - 1]!.shareWrapSalt!;
     const group = wrapped.filter((record) => sameBytes(record.shareWrapSalt!, salt));
     const options = await this.authenticationOptions(group);
@@ -493,6 +510,12 @@ export class PasskeyDeviceApprovalService {
         shareWrapSaltB64: encodeBase64(record.shareWrapSalt!),
         shareWrapVersion: PASSKEY_SHARE_WRAP_VERSION,
       })),
+      shareWrapEd25519PublicKeyB64: wrapPublic
+        ? encodeBase64(wrapPublic.ed25519PublicKey)
+        : null,
+      shareWrapPqPublicKeyB64: wrapPublic
+        ? encodeBase64(wrapPublic.mlkemEncapsulationKey)
+        : null,
     };
   }
 
@@ -527,6 +550,25 @@ export class PasskeyDeviceApprovalService {
     } catch {
       this.audit("share_rejected", input);
       throw new PasskeyDeviceApprovalError("DEVICE_BAD_REQUEST", 400, "invalid device_share");
+    }
+    const pending = await this.devices.findOwnedDeviceAuth(input.userId, input.deviceId);
+    const storedShares = await this.devices.listDeviceShares(input.userId);
+    const shareProblem = approvalShareRejection(
+      deviceShare,
+      pending?.deviceShare ?? null,
+      storedShares,
+    );
+    if (shareProblem === "reused") {
+      this.audit("share_rejected", input);
+      throw new PasskeyDeviceApprovalError("DEVICE_BAD_REQUEST", 400, APPROVAL_SHARE_MUST_BE_NEW);
+    }
+    if (shareProblem === "recipient") {
+      this.audit("share_rejected", input);
+      throw new PasskeyDeviceApprovalError(
+        "DEVICE_BAD_REQUEST",
+        400,
+        APPROVAL_SHARE_WRONG_RECIPIENT,
+      );
     }
     const challenge = await this.consumeChallenge(input.challengeId, input);
     if (challenge.kind !== "passkey_approval" || challenge.userId !== input.userId) {

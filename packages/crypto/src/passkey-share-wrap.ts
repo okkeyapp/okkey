@@ -1,6 +1,6 @@
 /**
  * AEAD wrap of device share B under a WebAuthn PRF output.
- * Share B is the hybrid frame the unlocked client already holds.
+ * Seal the raw 32-byte share B (not a hybrid frame sealed to another device).
  * The PRF output never leaves the client. The server stores only this ciphertext.
  */
 import { aead_decrypt, aead_encrypt, random_bytes, sha256 } from "@okkey/crypto-wasm";
