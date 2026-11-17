@@ -8,6 +8,7 @@ import SettingsLoginContent from "./SettingsLoginContent";
 const core = vi.hoisted(() => ({
   getLoginMethods: vi.fn(),
   deletePasskeyShareWrap: vi.fn(),
+  renameWebauthnCredential: vi.fn(),
 }));
 
 vi.mock("../../auth/AuthVaultContext", () => ({
@@ -42,6 +43,13 @@ const copy: Record<string, string> = {
   "web.settingsLogin.method.hardware": "Hardware key",
   "web.settingsLogin.add": "Add",
   "web.settingsLogin.deleteCredential": "Remove key",
+  "web.settingsLogin.rename.action": "Rename passkey",
+  "web.settingsLogin.rename.title": "Rename passkey",
+  "web.settingsLogin.rename.save": "Save",
+  "web.settingsLogin.rename.cancel": "Cancel",
+  "web.settingsLogin.rename.saved": "Passkey renamed",
+  "web.settingsLogin.rename.failed": "Could not rename this passkey. Try again.",
+  "web.settingsPopup.close": "Close",
   "web.settingsLogin.passkeyWrap.action": "Allow this passkey to approve new devices",
   "web.settingsLogin.passkeyWrap.ready": "This passkey can approve a new device",
   "web.settingsLogin.passkeyWrap.revoke": "Remove device approval from this passkey",
@@ -126,5 +134,30 @@ describe("SettingsLoginContent passkey approval row", () => {
       ).toHaveLength(2);
     });
     expect(screen.queryByText("This passkey can approve a new device")).toBeNull();
+  });
+
+  it("renames a passkey from the card action", async () => {
+    let current = loginMethods([]);
+    core.getLoginMethods.mockImplementation(async () => current);
+    core.renameWebauthnCredential.mockImplementation(async (_id: string, body: { name: string }) => {
+      current = {
+        ...current,
+        passkeys: current.passkeys.map((item) =>
+          item.id === "11" ? { ...item, name: body.name } : item,
+        ),
+      };
+      return current;
+    });
+    render(<SettingsLoginContent t={t} />);
+
+    fireEvent.click((await screen.findAllByRole("button", { name: "Rename passkey" }))[0]!);
+    const nameInput = await screen.findByDisplayValue("Passkey");
+    fireEvent.change(nameInput, { target: { value: "Laptop Chrome" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => {
+      expect(core.renameWebauthnCredential).toHaveBeenCalledWith("11", { name: "Laptop Chrome" });
+    });
+    expect(await screen.findByText("Laptop Chrome")).toBeTruthy();
   });
 });

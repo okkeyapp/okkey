@@ -2,6 +2,7 @@ import { Button, Spinner } from "@okkey/ui";
 import { isPasskeyHandoffRequestId } from "@okkey/types";
 import { useState } from "react";
 import { useSearchParams } from "react-router-dom";
+import { toast } from "sonner";
 
 import AppShellLayout from "../../components/app-shell/AppShellLayout";
 import OkkeyLogoMark from "../../components/app-shell/OkkeyLogoMark";
@@ -10,7 +11,6 @@ import {
   completePasskeyHandoff,
   passkeyApprovalErrorMessageKey,
   rejectPasskeyHandoff,
-  type PasskeyApprovalErrorCode,
 } from "../../auth/passkeyDeviceApproval";
 import { useLocale } from "../../locale/LocaleContext";
 
@@ -27,7 +27,6 @@ export default function PasskeyApprovalHandoffPage() {
   const valid = isPasskeyHandoffRequestId(requestId);
   const [phase, setPhase] = useState<PagePhase>("ready");
   const [busyAction, setBusyAction] = useState<"confirm" | "cancel" | null>(null);
-  const [error, setError] = useState<PasskeyApprovalErrorCode | null>(null);
 
   const onConfirm = () => {
     if (!valid || phase !== "ready") {
@@ -35,14 +34,18 @@ export default function PasskeyApprovalHandoffPage() {
     }
     setPhase("busy");
     setBusyAction("confirm");
-    setError(null);
     void (async () => {
       const result = await completePasskeyHandoff(createPublicApiClient(), requestId);
       if (result.ok) {
         setPhase("done");
         return;
       }
-      setError(result.code);
+      const message = t(passkeyApprovalErrorMessageKey(result.code));
+      if (result.code === "cancelled") {
+        toast.message(message);
+      } else {
+        toast.error(message);
+      }
       setBusyAction(null);
       setPhase("ready");
     })();
@@ -54,13 +57,12 @@ export default function PasskeyApprovalHandoffPage() {
     }
     setPhase("busy");
     setBusyAction("cancel");
-    setError(null);
     void (async () => {
       try {
         await rejectPasskeyHandoff(createPublicApiClient(), requestId);
         setPhase("rejected");
       } catch {
-        setError("failed");
+        toast.error(t(passkeyApprovalErrorMessageKey("failed")));
         setBusyAction(null);
         setPhase("ready");
       }
@@ -105,12 +107,6 @@ export default function PasskeyApprovalHandoffPage() {
               {t("web.devicePending.passkeyHandoff.cancel")}
             </Button>
           </div>
-        ) : null}
-
-        {error ? (
-          <p className="text-center text-sm text-destructive" role="alert">
-            {t(passkeyApprovalErrorMessageKey(error))}
-          </p>
         ) : null}
       </div>
     </AppShellLayout>

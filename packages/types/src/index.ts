@@ -1282,6 +1282,17 @@ export interface PasskeyApprovalOptionsResponseDto {
   options: Record<string, unknown>;
   prf_salt: string;
   credentials: PasskeyShareWrapCredentialDto[];
+  /** Pending device wrap public keys. The client re-wraps raw share B for these keys. */
+  share_wrap_ed25519_public_key: string | null;
+  share_wrap_pq_public_key: string | null;
+}
+
+/** Max length for a WebAuthn credential display name. */
+export const WEBAUTHN_CREDENTIAL_NAME_MAX_LEN = 64;
+
+/** `PATCH /account/webauthn/credentials/:credentialId` request. */
+export interface WebAuthnCredentialRenameRequestDto {
+  name: string;
 }
 
 /** `POST /devices/:deviceId/passkey-approval/verify` request. */
