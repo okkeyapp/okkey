@@ -2,7 +2,7 @@ import { formatWebMessage, type WebMessageValues } from "@okkey/i18n";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import SystemUpdateModal from "./SystemUpdateModal";
+import SystemUpdateModal, { isTransientJobPollError } from "./SystemUpdateModal";
 import type { SystemUpdateAvailable, SystemUpdateStatus } from "./visibility";
 
 const fetchMock = vi.fn();
@@ -718,4 +718,81 @@ describe("system update popup", () => {
     expect(await screen.findByText("Update applied. Enterprise 3.0.0 installed.")).toBeTruthy();
     expect(applied.map((body) => (body as { component?: string }).component)).toEqual(["okkey", "enterprise"]);
   });
+
+  it("reads core, enterprise, and partial results after the API drops mid-apply", async () => {
+    expect(isTransientJobPollError(new TypeError("Failed to fetch"))).toBe(true);
+    expect(isTransientJobPollError(Object.assign(new Error("no"), { status: 401, code: "AUTH_REQUIRED" }))).toBe(
+      false,
+    );
+
+    const value = status({
+      updates: [update("okkey", "1.2.0"), update("enterprise", "3.0.0")],
+      currentVersion: "1.0.0",
+    });
+    const cases: Array<{ button: string; job: Record<string, unknown>; text: string; partial?: boolean }> = [
+      {
+        button: "system-update-apply-okkey",
+        job: {
+          ...succeededJob("okkey"),
+          toVersion: "1.2.0",
+          result: { scope: "core", coreVersion: "1.2.0" },
+        },
+        text: "Update applied. Okkey is restarting on 1.2.0.",
+      },
+      {
+        button: "system-update-apply-enterprise",
+        job: {
+          ...succeededJob("enterprise"),
+          toVersion: "3.0.0",
+          result: { scope: "enterprise", enterpriseVersion: "3.0.0" },
+        },
+        text: "Update applied. Enterprise 3.0.0 installed.",
+      },
+      {
+        button: "system-update-apply-okkey",
+        job: {
+          id: "11111111-1111-4111-8111-111111111111",
+          status: "failed",
+          progress: 100,
+          component: "okkey",
+          fromVersion: "1.0.0",
+          toVersion: "1.2.0",
+          errorCode: "BUNDLE_PARTIAL",
+          result: { scope: "partial", coreVersion: "1.2.0", enterpriseVersion: "2.0.0" },
+        },
+        text: "Okkey 1.2.0 was applied. Enterprise stayed on the previous version.",
+        partial: true,
+      },
+    ];
+
+    for (const item of cases) {
+      let misses = 2;
+      fetchMock.mockImplementation(async (url: string) => {
+        const target = String(url);
+        if (target.endsWith("/system/updates/apply")) {
+          return json({ job: { ...item.job, status: "applying", progress: 40, errorCode: undefined } }, 202);
+        }
+        if (target.includes("/system/updates/jobs/")) {
+          if (misses > 0) {
+            misses -= 1;
+            throw new TypeError("Failed to fetch");
+          }
+          return json({ job: item.job });
+        }
+        return json(status({ currentVersion: "1.2.0", updates: [] }));
+      });
+      const view = renderModal(value);
+      fireEvent.click(screen.getByTestId(item.button));
+      if (item.partial) {
+        const warning = await screen.findByTestId("system-update-partial", {}, { timeout: 4000 });
+        expect(warning).toHaveTextContent(item.text);
+        expect(warning).toHaveTextContent("Retry Enterprise update");
+        expect(screen.queryByText("Update failed. This instance is still on the previous version.")).toBeNull();
+      } else {
+        expect(await screen.findByText(item.text, {}, { timeout: 4000 })).toBeTruthy();
+        expect(screen.queryByText("Update failed. This instance is still on the previous version.")).toBeNull();
+      }
+      view.unmount();
+    }
+  }, 20_000);
 });
