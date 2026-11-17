@@ -21,6 +21,7 @@ import {
   signedEnterprisePackage,
   startUpdateAgent,
   waitForJob,
+  writeComposeFile,
   writeHtpasswd,
   writeInstallEnv,
 } from "./helpers.ts";
@@ -75,8 +76,9 @@ async function main(): Promise<void> {
   });
 
   try {
-    log("write registry credentials");
+    log("write registry credentials and disposable compose file");
     writeHtpasswd(paths.htpasswd, REGISTRY_USER, REGISTRY_PASS);
+    writeComposeFile(paths.composeFile);
 
     log("start local registry with basic auth");
     run("docker", [

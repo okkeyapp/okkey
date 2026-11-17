@@ -25,6 +25,7 @@ export type E2ePaths = {
   authDir: string;
   htpasswd: string;
   composeFile: string;
+  stackDir: string;
 };
 
 export type UpdateJob = {
@@ -46,8 +47,10 @@ export function createWorkDir(root: string): E2ePaths {
   const workDir = path.join(tmpdir(), `okkey-update-agent-e2e-${process.pid}-${Date.now()}`);
   const installDir = path.join(workDir, "install");
   const authDir = path.join(workDir, "auth");
+  const stackDir = path.join(workDir, "stack");
   mkdirSync(installDir, { recursive: true });
   mkdirSync(authDir, { recursive: true });
+  mkdirSync(stackDir, { recursive: true });
   return {
     root,
     repoRoot: path.resolve(root, "../../../../.."),
@@ -56,8 +59,58 @@ export function createWorkDir(root: string): E2ePaths {
     envFile: path.join(installDir, ".env"),
     authDir,
     htpasswd: path.join(authDir, "htpasswd"),
-    composeFile: path.join(root, "stack", "compose.yml"),
+    stackDir,
+    composeFile: path.join(stackDir, "compose.yml"),
   };
+}
+
+/** Written only under the disposable work dir so supply-chain digest scans ignore it. */
+export function writeComposeFile(composeFile: string): void {
+  writeFileSync(
+    composeFile,
+    `# Disposable compose project for the update-agent enterprise apply e2e.
+services:
+  enterprise-api:
+    image: \${OKKEY_ENTERPRISE_API_IMAGE}:\${OKKEY_ENTERPRISE_IMAGE_TAG}
+    restart: "no"
+    environment:
+      OKKEY_ENTERPRISE_VERSION: \${OKKEY_ENTERPRISE_VERSION}
+      OKKEY_ENTERPRISE_IMAGE_TAG: \${OKKEY_ENTERPRISE_IMAGE_TAG}
+    healthcheck:
+      test: ["CMD-SHELL", "exit 0"]
+      interval: 1s
+      timeout: 1s
+      retries: 1
+      start_period: 0s
+
+  enterprise-web:
+    image: \${OKKEY_ENTERPRISE_WEB_IMAGE}:\${OKKEY_ENTERPRISE_IMAGE_TAG}
+    restart: "no"
+    environment:
+      OKKEY_ENTERPRISE_VERSION: \${OKKEY_ENTERPRISE_VERSION}
+      OKKEY_ENTERPRISE_IMAGE_TAG: \${OKKEY_ENTERPRISE_IMAGE_TAG}
+    healthcheck:
+      test: ["CMD-SHELL", "exit 0"]
+      interval: 1s
+      timeout: 1s
+      retries: 1
+      start_period: 0s
+
+  enterprise-worker:
+    image: \${OKKEY_ENTERPRISE_WORKER_IMAGE}:\${OKKEY_ENTERPRISE_IMAGE_TAG}
+    restart: "no"
+    environment:
+      OKKEY_ENTERPRISE_VERSION: \${OKKEY_ENTERPRISE_VERSION}
+      OKKEY_ENTERPRISE_IMAGE_TAG: \${OKKEY_ENTERPRISE_IMAGE_TAG}
+    healthcheck:
+      test: ["CMD-SHELL", "exit 0"]
+      interval: 1s
+      timeout: 1s
+      retries: 1
+      start_period: 0s
+`,
+    "utf8",
+  );
 }
 
 export function run(
