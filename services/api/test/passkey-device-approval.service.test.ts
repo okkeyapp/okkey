@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash, createSign, generateKeyPairSync, randomBytes } from "node:crypto";
 import type { AuthenticationResponseJSON } from "@simplewebauthn/server";
+import { isPasskeyHandoffRequestId } from "@okkey/types";
 import { createTestApiConfig } from "./test-api-config.ts";
 import {
   PasskeyDeviceApprovalError,
@@ -88,6 +89,19 @@ class MemoryCredentials {
     row.shareWrapVersion = 1;
     return true;
   }
+
+  async clearShareWrap(userId: string, credentialRowId: string) {
+    const row = this.records.find(
+      (item) => item.userId === userId && item.id === credentialRowId && item.shareWrap,
+    );
+    if (!row) {
+      return false;
+    }
+    row.shareWrap = null;
+    row.shareWrapSalt = null;
+    row.shareWrapVersion = null;
+    return true;
+  }
 }
 
 class MemoryDevices {
@@ -162,7 +176,7 @@ function authenticator(rpId = "localhost") {
   return { credentialId, publicKeyCose, assertion };
 }
 
-function createHarness() {
+function createHarness(options?: { now?: () => Date }) {
   const redis = new MemoryRedis();
   const credentials = new MemoryCredentials();
   const devices = new MemoryDevices();
@@ -196,6 +210,7 @@ function createHarness() {
       warn() {},
     },
     generateId: () => `challenge-${++seq}`,
+    now: options?.now,
   });
   return { service, credentials, devices, logs, authn, record };
 }
@@ -402,4 +417,185 @@ test("approval options are rate limited per user before a wrap is required", asy
       error instanceof PasskeyDeviceApprovalError &&
       error.code === "PASSKEY_APPROVAL_RATE_LIMITED",
   );
+});
+
+test("revoked passkey wrap cannot approve a device", async () => {
+  const { service, credentials, devices, authn } = createHarness();
+  const wrapOptions = await service.shareWrapOptions({
+    userId: "user-1",
+    credentialRowId: "cred-row-1",
+    requestIp: "203.0.113.7",
+  });
+  await service.shareWrapVerify({
+    userId: "user-1",
+    credentialRowId: "cred-row-1",
+    challengeId: wrapOptions.challengeId,
+    response: authn.assertion({ challenge: wrapOptions.options.challenge, counter: 1 }),
+    shareWrapB64: Buffer.from(wrapBytes).toString("base64"),
+    requestIp: "203.0.113.7",
+  });
+  const approval = await service.approvalOptions({
+    userId: "user-1",
+    deviceId: "42",
+    requestIp: "203.0.113.7",
+  });
+  await service.clearShareWrap({
+    userId: "user-1",
+    credentialRowId: "cred-row-1",
+    requestIp: "203.0.113.7",
+  });
+  assert.equal(credentials.records[0]?.shareWrap, null);
+  await assert.rejects(
+    () =>
+      service.approvalVerify({
+        userId: "user-1",
+        deviceId: "42",
+        challengeId: approval.challengeId,
+        response: authn.assertion({ challenge: approval.options.challenge, counter: 2 }),
+        deviceShareB64: SHARE_B64,
+        requestIp: "203.0.113.7",
+      }),
+    (error: unknown) =>
+      error instanceof PasskeyDeviceApprovalError &&
+      error.code === "PASSKEY_APPROVAL_VERIFICATION_FAILED",
+  );
+  assert.equal(devices.writes.length, 0);
+  await assert.rejects(
+    () =>
+      service.approvalOptions({
+        userId: "user-1",
+        deviceId: "42",
+        requestIp: "203.0.113.8",
+      }),
+    (error: unknown) =>
+      error instanceof PasskeyDeviceApprovalError &&
+      error.code === "PASSKEY_SHARE_WRAP_MISSING",
+  );
+});
+
+async function saveWrappedPasskey(service: PasskeyDeviceApprovalService, authn: ReturnType<typeof authenticator>) {
+  const wrapOptions = await service.shareWrapOptions({
+    userId: "user-1",
+    credentialRowId: "cred-row-1",
+    requestIp: "203.0.113.5",
+  });
+  await service.shareWrapVerify({
+    userId: "user-1",
+    credentialRowId: "cred-row-1",
+    challengeId: wrapOptions.challengeId,
+    response: authn.assertion({ challenge: wrapOptions.options.challenge, counter: 1 }),
+    shareWrapB64: Buffer.from(wrapBytes).toString("base64"),
+    requestIp: "203.0.113.5",
+  });
+}
+
+test("passkey handoff confirm is single-use", async () => {
+  const { service, devices, authn } = createHarness();
+  await saveWrappedPasskey(service, authn);
+  const created = await service.createHandoff({
+    userId: "user-1",
+    deviceId: "42",
+    requestIp: "203.0.113.10",
+  });
+  assert.equal(isPasskeyHandoffRequestId(created.requestId), true);
+  const options = await service.handoffOptions({
+    requestId: created.requestId,
+    requestIp: "203.0.113.10",
+  });
+  const result = await service.handoffVerify({
+    requestId: created.requestId,
+    challengeId: options.challengeId,
+    response: authn.assertion({ challenge: options.options.challenge, counter: 2 }),
+    deviceShareB64: SHARE_B64,
+    requestIp: "203.0.113.10",
+  });
+  assert.deepEqual(result, { deviceId: "42", status: "trusted" });
+  assert.equal(devices.writes.length, 1);
+  const status = await service.readHandoff({
+    userId: "user-1",
+    deviceId: "42",
+    requestId: created.requestId,
+  });
+  assert.equal(status.status, "confirmed");
+  await assert.rejects(
+    () =>
+      service.handoffVerify({
+        requestId: created.requestId,
+        challengeId: options.challengeId,
+        response: authn.assertion({ challenge: options.options.challenge, counter: 3 }),
+        deviceShareB64: SHARE_B64,
+        requestIp: "203.0.113.10",
+      }),
+    (error: unknown) =>
+      error instanceof PasskeyDeviceApprovalError && error.code === "PASSKEY_HANDOFF_USED",
+  );
+  assert.equal(devices.writes.length, 1);
+});
+
+test("passkey handoff reject does not trust the device", async () => {
+  const { service, devices } = createHarness();
+  const created = await service.createHandoff({
+    userId: "user-1",
+    deviceId: "42",
+    requestIp: "203.0.113.11",
+  });
+  await service.handoffReject({ requestId: created.requestId, requestIp: "203.0.113.11" });
+  const status = await service.readHandoff({
+    userId: "user-1",
+    deviceId: "42",
+    requestId: created.requestId,
+  });
+  assert.equal(status.status, "rejected");
+  assert.equal(devices.writes.length, 0);
+  await assert.rejects(
+    () => service.handoffOptions({ requestId: created.requestId, requestIp: "203.0.113.11" }),
+    (error: unknown) =>
+      error instanceof PasskeyDeviceApprovalError && error.code === "PASSKEY_HANDOFF_USED",
+  );
+  await assert.rejects(
+    () =>
+      service.readHandoff({
+        userId: "other-user",
+        deviceId: "42",
+        requestId: created.requestId,
+      }),
+    (error: unknown) =>
+      error instanceof PasskeyDeviceApprovalError && error.statusCode === 404,
+  );
+});
+
+test("passkey handoff expires and cannot approve", async () => {
+  let now = new Date("2026-01-01T00:00:00.000Z");
+  const { service, devices } = createHarness({ now: () => now });
+  const created = await service.createHandoff({
+    userId: "user-1",
+    deviceId: "42",
+    requestIp: "203.0.113.12",
+  });
+  now = new Date(now.getTime() + 181_000);
+  const status = await service.readHandoff({
+    userId: "user-1",
+    deviceId: "42",
+    requestId: created.requestId,
+  });
+  assert.equal(status.status, "expired");
+  assert.equal(devices.writes.length, 0);
+  await assert.rejects(
+    () => service.handoffVerify({
+      requestId: created.requestId,
+      challengeId: "challenge-unused",
+      response: {
+        id: "x",
+        rawId: "x",
+        type: "public-key",
+        response: { clientDataJSON: "", authenticatorData: "", signature: "" },
+        clientExtensionResults: {},
+      } as AuthenticationResponseJSON,
+      deviceShareB64: SHARE_B64,
+      requestIp: "203.0.113.12",
+    }),
+    (error: unknown) =>
+      error instanceof PasskeyDeviceApprovalError && error.code === "PASSKEY_HANDOFF_EXPIRED",
+  );
+  assert.equal(devices.writes.length, 0);
 });

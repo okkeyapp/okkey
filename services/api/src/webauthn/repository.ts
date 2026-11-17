@@ -295,6 +295,24 @@ export class WebAuthnCredentialsRepository {
     );
     return Boolean(rows[0]);
   }
+
+  /** Drop the PRF wrap so this credential can no longer approve a device. */
+  async clearShareWrap(userId: string, credentialRowId: string): Promise<boolean> {
+    const rows = await this.db.query<{ id: string }>(
+      `
+        UPDATE user_webauthn_credentials
+        SET share_wrap = NULL,
+            share_wrap_salt = NULL,
+            share_wrap_version = NULL
+        WHERE id = $1::bigint
+          AND user_id = $2::bigint
+          AND share_wrap IS NOT NULL
+        RETURNING id
+      `,
+      [credentialRowId, userId],
+    );
+    return Boolean(rows[0]);
+  }
 }
 
 export function toPublicCredentialDto(

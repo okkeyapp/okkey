@@ -230,6 +230,12 @@ import type { PasskeyDeviceApprovalService } from "./webauthn/passkey-device-app
 import {
   createPasskeyApprovalOptionsRoute,
   createPasskeyApprovalVerifyRoute,
+  createPasskeyHandoffCreateRoute,
+  createPasskeyHandoffPublicOptionsRoute,
+  createPasskeyHandoffPublicRejectRoute,
+  createPasskeyHandoffPublicVerifyRoute,
+  createPasskeyHandoffStatusRoute,
+  createPasskeyShareWrapDeleteRoute,
   createPasskeyShareWrapOptionsRoute,
   createPasskeyShareWrapVerifyRoute,
 } from "./routes/passkey-device-approval.ts";
@@ -677,6 +683,21 @@ export function createApiApp(
   if (deps.passkeyDeviceApprovalService) {
     app.route(
       "POST",
+      "/auth/passkey-device-approval/:handoffId/options",
+      createPasskeyHandoffPublicOptionsRoute(deps.passkeyDeviceApprovalService, config.trustedProxyHops),
+    );
+    app.route(
+      "POST",
+      "/auth/passkey-device-approval/:handoffId/verify",
+      createPasskeyHandoffPublicVerifyRoute(deps.passkeyDeviceApprovalService, config.trustedProxyHops),
+    );
+    app.route(
+      "POST",
+      "/auth/passkey-device-approval/:handoffId/reject",
+      createPasskeyHandoffPublicRejectRoute(deps.passkeyDeviceApprovalService, config.trustedProxyHops),
+    );
+    app.route(
+      "POST",
       "/account/webauthn/credentials/:credentialId/share-wrap/options",
       createPasskeyShareWrapOptionsRoute(
         deps.passkeyDeviceApprovalService,
@@ -688,6 +709,15 @@ export function createApiApp(
       "POST",
       "/account/webauthn/credentials/:credentialId/share-wrap/verify",
       createPasskeyShareWrapVerifyRoute(
+        deps.passkeyDeviceApprovalService,
+        resolveUserId,
+        config.trustedProxyHops,
+      ),
+    );
+    app.route(
+      "DELETE",
+      "/account/webauthn/credentials/:credentialId/share-wrap",
+      createPasskeyShareWrapDeleteRoute(
         deps.passkeyDeviceApprovalService,
         resolveUserId,
         config.trustedProxyHops,
@@ -710,6 +740,23 @@ export function createApiApp(
           deps.passkeyDeviceApprovalService,
           resolveSessionAllowUnboundDevice,
           config.trustedProxyHops,
+        ),
+      );
+      app.route(
+        "POST",
+        "/devices/:deviceId/passkey-approval/handoff",
+        createPasskeyHandoffCreateRoute(
+          deps.passkeyDeviceApprovalService,
+          resolveSessionAllowUnboundDevice,
+          config.trustedProxyHops,
+        ),
+      );
+      app.route(
+        "GET",
+        "/devices/:deviceId/passkey-approval/handoff/:handoffId",
+        createPasskeyHandoffStatusRoute(
+          deps.passkeyDeviceApprovalService,
+          resolveSessionAllowUnboundDevice,
         ),
       );
     }

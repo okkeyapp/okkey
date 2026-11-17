@@ -2,8 +2,14 @@
  * WebAuthn PRF wrap of share B, and the pending-device approval ceremony.
  * A missing PRF result stops the flow. The server is not asked to copy share B.
  */
-import type { CoreApiClient } from "@okkey/api";
-import { ApiRequestError } from "@okkey/api";
+import {
+  ApiRequestError,
+  postPasskeyHandoffOptions,
+  postPasskeyHandoffReject,
+  postPasskeyHandoffVerify,
+  type ApiClient,
+  type CoreApiClient,
+} from "@okkey/api";
 import {
   initCrypto,
   openPasskeyShareWrap,
@@ -32,6 +38,7 @@ export type PasskeyApprovalErrorCode =
   | "cancelled"
   | "rate_limited"
   | "replay"
+  | "expired"
   | "failed";
 
 export function passkeyWrapErrorMessageKey(code: PasskeyWrapErrorCode): string {
@@ -120,6 +127,9 @@ function mapApiError(error: unknown): PasskeyApprovalErrorCode | null {
   ) {
     return "replay";
   }
+  if (error.status === 410 || error.body.error === "PASSKEY_HANDOFF_EXPIRED") {
+    return "expired";
+  }
   if (error.body.error === "PASSKEY_SHARE_WRAP_MISSING") {
     return "no_wrap";
   }
@@ -165,10 +175,10 @@ export async function establishPasskeyShareWrap(
     return { ok: true };
   } catch (error) {
     const mapped = mapApiError(error);
-    if (mapped === "no_wrap") {
+    if (mapped === "no_wrap" || mapped === "expired" || mapped === null) {
       return { ok: false, code: "failed" };
     }
-    return { ok: false, code: mapped ?? "failed" };
+    return { ok: false, code: mapped };
   } finally {
     wipeBytes(prfOutput);
     wipeBytes(shareCopy);
@@ -221,4 +231,57 @@ export async function approvePendingDeviceWithPasskey(
     wipeBytes(prfOutput);
     wipeBytes(share);
   }
+}
+
+/** Web tab opened by the extension. WebAuthn runs on the website origin; the request id is the secret. */
+export async function completePasskeyHandoff(
+  api: ApiClient,
+  requestId: string,
+): Promise<{ ok: true } | { ok: false; code: PasskeyApprovalErrorCode }> {
+  let prfOutput: Uint8Array | null = null;
+  let share: Uint8Array | null = null;
+  try {
+    await initCrypto();
+    const options = await postPasskeyHandoffOptions(api, requestId);
+    const salt = base64ToBytes(options.prf_salt);
+    let assertion: AuthenticationResponseJSON;
+    try {
+      assertion = await startAuthentication({
+        optionsJSON: withPrfExtension(options.options, salt),
+      });
+    } catch (error) {
+      return { ok: false, code: mapCeremonyError(error) };
+    }
+    prfOutput = readPrfFirst(assertion);
+    if (!prfOutput) {
+      return { ok: false, code: "prf_unavailable" };
+    }
+    const wrapped = options.credentials.find(
+      (credential) => credential.credential_id === assertion.id,
+    );
+    if (!wrapped) {
+      return { ok: false, code: "failed" };
+    }
+    share = await openPasskeyShareWrap({
+      wrap: base64ToBytes(wrapped.share_wrap),
+      prfOutput,
+      salt: base64ToBytes(wrapped.share_wrap_salt),
+      credentialId: assertion.id,
+    });
+    await postPasskeyHandoffVerify(api, requestId, {
+      challengeId: options.challengeId,
+      response: assertion as unknown as Record<string, unknown>,
+      device_share: bytesToBase64(share),
+    });
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, code: mapApiError(error) ?? "failed" };
+  } finally {
+    wipeBytes(prfOutput);
+    wipeBytes(share);
+  }
+}
+
+export async function rejectPasskeyHandoff(api: ApiClient, requestId: string): Promise<void> {
+  await postPasskeyHandoffReject(api, requestId);
 }
