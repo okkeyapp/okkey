@@ -1,15 +1,18 @@
 import { wipeBytes } from "@okkey/crypto";
 import type { WebMessageValues } from "@okkey/i18n";
-import type {
-  AccountLoginMethodsResponseDto,
-  PrimaryLoginMethod,
-  WebAuthnAuthenticatorAttachment,
-  WebAuthnCredentialPublicDto,
+import {
+  WEBAUTHN_CREDENTIAL_NAME_MAX_LEN,
+  type AccountLoginMethodsResponseDto,
+  type PrimaryLoginMethod,
+  type WebAuthnAuthenticatorAttachment,
+  type WebAuthnCredentialPublicDto,
 } from "@okkey/types";
 import {
   Alert,
   AlertDescription,
   Button,
+  Input,
+  Popup,
   Select,
   SelectContent,
   SelectItem,
@@ -22,7 +25,7 @@ import {
   startRegistration,
   type PublicKeyCredentialCreationOptionsJSON,
 } from "@simplewebauthn/browser";
-import { CheckCircle2, Plus, Trash2, X } from "lucide-react";
+import { CheckCircle2, Pencil, Plus, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -38,6 +41,7 @@ import {
 import { useAuthenticatedCoreClient, useAuthVault } from "../../auth/AuthVaultContext";
 import { readVaultBundle } from "../../auth/localVaultBundle";
 import { base64ToBytes } from "../../auth/base64";
+import { defaultPasskeyName } from "../../auth/defaultPasskeyName";
 import {
   establishPasskeyShareWrap,
   passkeyWrapErrorMessageKey,
@@ -64,20 +68,24 @@ function PasskeyCard({
   credential,
   busy,
   deleteLabel,
+  renameLabel,
   allowLabel,
   readyLabel,
   revokeLabel,
   onDelete,
+  onRename,
   onAllow,
   onRevoke,
 }: {
   credential: WebAuthnCredentialPublicDto;
   busy: boolean;
   deleteLabel: string;
+  renameLabel: string;
   allowLabel: string;
   readyLabel: string;
   revokeLabel: string;
   onDelete: () => void;
+  onRename: () => void;
   onAllow: () => void;
   onRevoke: () => void;
 }) {
@@ -88,6 +96,17 @@ function PasskeyCard({
         <p className="min-w-0 flex-1 text-sm font-normal leading-5 text-foreground">
           {credential.name}
         </p>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="size-6 shrink-0 text-muted-foreground"
+          disabled={busy}
+          onClick={onRename}
+          aria-label={renameLabel}
+        >
+          <Pencil className="size-4" />
+        </Button>
         <Button
           type="button"
           variant="ghost"
@@ -209,6 +228,8 @@ export default function SettingsLoginContent({ t }: SettingsLoginContentProps) {
   );
   const [passkeyCap, setPasskeyCap] = useState<AccountWebAuthnCapability | null>(null);
   const [hardwareCap, setHardwareCap] = useState<AccountWebAuthnCapability | null>(null);
+  const [renameTarget, setRenameTarget] = useState<WebAuthnCredentialPublicDto | null>(null);
+  const [renameValue, setRenameValue] = useState("");
 
   const messageForCode = useCallback(
     (code: AccountWebAuthnErrorCode) => t(accountWebAuthnErrorMessageKey(code)),
@@ -306,6 +327,7 @@ export default function SettingsLoginContent({ t }: SettingsLoginContentProps) {
       const next = await core.webauthnRegisterVerify({
         challengeId,
         response: attestation as unknown as Record<string, unknown>,
+        name: attachment === "platform" ? defaultPasskeyName() : undefined,
       });
       setErrorAttachment(null);
       await applyMethods(next);
@@ -341,6 +363,7 @@ export default function SettingsLoginContent({ t }: SettingsLoginContentProps) {
         result = await establishPasskeyShareWrap(core, {
           credentialRowId,
           deviceShare,
+          userId,
         });
       } finally {
         wipeBytes(deviceShare);
@@ -356,6 +379,35 @@ export default function SettingsLoginContent({ t }: SettingsLoginContentProps) {
       toast.success(t("web.settingsLogin.passkeyWrap.saved"));
     } catch {
       setError(t(passkeyWrapErrorMessageKey("failed")));
+    } finally {
+      setBusy(false);
+      setBusyAttachment(null);
+    }
+  }
+
+  async function renamePasskey() {
+    if (!core || !renameTarget) {
+      return;
+    }
+    const nextName = renameValue.trim();
+    if (!nextName || nextName.length > WEBAUTHN_CREDENTIAL_NAME_MAX_LEN) {
+      return;
+    }
+    if (nextName === renameTarget.name) {
+      setRenameTarget(null);
+      return;
+    }
+    setBusy(true);
+    setBusyAttachment("platform");
+    setError(null);
+    setErrorAttachment("platform");
+    try {
+      const next = await core.renameWebauthnCredential(renameTarget.id, { name: nextName });
+      await applyMethods(next);
+      setRenameTarget(null);
+      toast.success(t("web.settingsLogin.rename.saved"));
+    } catch {
+      setError(t("web.settingsLogin.rename.failed"));
     } finally {
       setBusy(false);
       setBusyAttachment(null);
@@ -560,10 +612,15 @@ export default function SettingsLoginContent({ t }: SettingsLoginContentProps) {
             credential={cred}
             busy={busy}
             deleteLabel={t("web.settingsLogin.deleteCredential")}
+            renameLabel={t("web.settingsLogin.rename.action")}
             allowLabel={t("web.settingsLogin.passkeyWrap.action")}
             readyLabel={t("web.settingsLogin.passkeyWrap.ready")}
             revokeLabel={t("web.settingsLogin.passkeyWrap.revoke")}
             onDelete={() => void deleteCredential(cred.id, "platform")}
+            onRename={() => {
+              setRenameTarget(cred);
+              setRenameValue(cred.name);
+            }}
             onAllow={() => void allowPasskeyToApprove(cred.id)}
             onRevoke={() => void revokePasskeyApproval(cred.id)}
           />
@@ -657,6 +714,42 @@ export default function SettingsLoginContent({ t }: SettingsLoginContentProps) {
       <div className="pb-4">
         {email ? <EmailCredentialCard email={email} /> : null}
       </div>
+
+      {renameTarget ? (
+        <Popup
+          id="settings-login-passkey-rename"
+          width={420}
+          header={t("web.settingsLogin.rename.title")}
+          closeLabel={t("web.settingsPopup.close")}
+          onClose={() => setRenameTarget(null)}
+        >
+          <div className="flex flex-col gap-4 p-4">
+            <Input
+              value={renameValue}
+              maxLength={WEBAUTHN_CREDENTIAL_NAME_MAX_LEN}
+              onChange={(event) => setRenameValue(event.target.value)}
+              aria-label={t("web.settingsLogin.rename.title")}
+              autoFocus
+            />
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="secondary" onClick={() => setRenameTarget(null)}>
+                {t("web.settingsLogin.rename.cancel")}
+              </Button>
+              <Button
+                type="button"
+                disabled={
+                  busy ||
+                  !renameValue.trim() ||
+                  renameValue.trim().length > WEBAUTHN_CREDENTIAL_NAME_MAX_LEN
+                }
+                onClick={() => void renamePasskey()}
+              >
+                {t("web.settingsLogin.rename.save")}
+              </Button>
+            </div>
+          </div>
+        </Popup>
+      ) : null}
     </div>
   );
 }

@@ -9,6 +9,7 @@ import {
   type PublicKeyCredentialRequestOptionsJSON,
   type RegistrationResponseJSON,
 } from "@simplewebauthn/server";
+import { WEBAUTHN_CREDENTIAL_NAME_MAX_LEN } from "@okkey/types";
 import { generateEntityId } from "../entity-id.ts";
 import type { ApiConfig } from "../config.ts";
 import type { AuthService, AuthStatePayload } from "../auth/service.ts";
@@ -104,6 +105,21 @@ function isValidEmail(email: string): boolean {
 
 function defaultCredentialName(attachment: WebAuthnAttachment): string {
   return attachment === "platform" ? "Passkey" : "Security key";
+}
+
+function normalizeCredentialName(raw: string | undefined, attachment: WebAuthnAttachment): string {
+  const trimmed = raw?.trim() ?? "";
+  if (!trimmed) {
+    return defaultCredentialName(attachment);
+  }
+  if (trimmed.length > WEBAUTHN_CREDENTIAL_NAME_MAX_LEN) {
+    throw new WebAuthnError(
+      "WEBAUTHN_NAME_INVALID",
+      400,
+      `name must be 1–${WEBAUTHN_CREDENTIAL_NAME_MAX_LEN} characters`,
+    );
+  }
+  return trimmed;
 }
 
 export class WebAuthnService {
@@ -232,9 +248,7 @@ export class WebAuthnService {
     }
 
     const { credential, aaguid, credentialBackedUp } = verification.registrationInfo;
-    const name =
-      input.name?.trim() ||
-      defaultCredentialName(challenge.attachment);
+    const name = normalizeCredentialName(input.name, challenge.attachment);
 
     try {
       await this.credentials.insert({
@@ -253,6 +267,25 @@ export class WebAuthnService {
     }
 
     await this.redis.del(challengeKey(input.challengeId));
+    return this.getLoginMethods(userId);
+  }
+
+  async renameCredential(
+    userId: string,
+    credentialRowId: string,
+    nameRaw: string,
+  ): Promise<LoginMethodsResponse> {
+    const existing = await this.credentials.findByIdForUser(userId, credentialRowId);
+    if (!existing) {
+      throw new WebAuthnError("WEBAUTHN_CREDENTIAL_NOT_FOUND", 404, "credential not found");
+    }
+    const name = normalizeCredentialName(nameRaw, existing.authenticatorAttachment);
+    if (name !== existing.name) {
+      const updated = await this.credentials.updateName(userId, credentialRowId, name);
+      if (!updated) {
+        throw new WebAuthnError("WEBAUTHN_CREDENTIAL_NOT_FOUND", 404, "credential not found");
+      }
+    }
     return this.getLoginMethods(userId);
   }
 

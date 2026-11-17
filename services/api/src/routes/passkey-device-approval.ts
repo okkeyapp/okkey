@@ -221,6 +221,8 @@ export function createPasskeyApprovalOptionsRoute(
           share_wrap_salt: credential.shareWrapSaltB64,
           share_wrap_version: credential.shareWrapVersion,
         })),
+        share_wrap_ed25519_public_key: result.shareWrapEd25519PublicKeyB64,
+        share_wrap_pq_public_key: result.shareWrapPqPublicKeyB64,
       });
     } catch (error) {
       handleError(ctx.requestId, ctx.res, error);
@@ -406,6 +408,8 @@ export function createPasskeyHandoffPublicOptionsRoute(
           share_wrap_salt: credential.shareWrapSaltB64,
           share_wrap_version: credential.shareWrapVersion,
         })),
+        share_wrap_ed25519_public_key: result.shareWrapEd25519PublicKeyB64,
+        share_wrap_pq_public_key: result.shareWrapPqPublicKeyB64,
       });
     } catch (error) {
       handleError(ctx.requestId, ctx.res, error);
