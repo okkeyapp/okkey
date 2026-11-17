@@ -103,12 +103,20 @@ export default function SystemUpdateModal({
 
   async function track(jobId: string, component: SystemUpdateComponent): Promise<SystemUpdateJob> {
     for (let attempt = 0; attempt < 120; attempt += 1) {
-      const next = await fetchSystemUpdateJob(accessToken, jobId);
-      setJob(next);
-      if (next.status === "succeeded" || next.status === "failed") {
-        return next;
+      try {
+        const next = await fetchSystemUpdateJob(accessToken, jobId);
+        setJob(next);
+        if (next.status === "succeeded" || next.status === "failed") {
+          return next;
+        }
+        setPhase("running");
+      } catch (error) {
+        // Core apply restarts the API before this poll can read the terminal job.
+        // A dropped connection is not an apply failure; keep the job id and read it again.
+        if (!isTransientJobPollError(error)) {
+          throw error;
+        }
       }
-      setPhase("running");
       await new Promise((resolve) => setTimeout(resolve, 1000));
     }
     return {
@@ -772,6 +780,22 @@ function readFileText(file: File): Promise<string> {
     reader.onerror = () => reject(reader.error ?? new Error("file read failed"));
     reader.readAsText(file);
   });
+}
+
+/** Network loss and gateway errors while the API process is coming back. */
+export function isTransientJobPollError(error: unknown): boolean {
+  if (!error || typeof error !== "object") {
+    return true;
+  }
+  const record = error as { code?: unknown; status?: unknown };
+  if (record.code === "UPDATE_AGENT_UNAVAILABLE") {
+    return true;
+  }
+  const status = typeof record.status === "number" ? record.status : 0;
+  if (status === 0) {
+    return true;
+  }
+  return status === 502 || status === 503 || status === 504;
 }
 
 function readCode(error: unknown): string {
