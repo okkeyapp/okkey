@@ -86,7 +86,11 @@ async function pollJob(baseUrl: string, jobId: string): Promise<UpdateJob> {
     if (response.status !== 200) {
       throw new Error(`Job poll failed (${response.status})`);
     }
-    const job = (await response.json()) as UpdateJob;
+    const body = (await response.json()) as { job?: UpdateJob };
+    const job = body.job;
+    if (!job) {
+      throw new Error(`Job poll returned no job for ${jobId}`);
+    }
     if (job.status === "succeeded" || job.status === "failed") {
       return job;
     }
