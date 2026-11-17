@@ -1,0 +1,41 @@
+# Disposable compose project for the update-agent enterprise apply e2e.
+# Image references are filled by the runner via the install .env file.
+services:
+  enterprise-api:
+    image: ${OKKEY_ENTERPRISE_API_IMAGE}:${OKKEY_ENTERPRISE_IMAGE_TAG}
+    restart: "no"
+    environment:
+      OKKEY_ENTERPRISE_VERSION: ${OKKEY_ENTERPRISE_VERSION}
+      OKKEY_ENTERPRISE_IMAGE_TAG: ${OKKEY_ENTERPRISE_IMAGE_TAG}
+    healthcheck:
+      test: ["CMD-SHELL", "exit 0"]
+      interval: 1s
+      timeout: 1s
+      retries: 1
+      start_period: 0s
+
+  enterprise-web:
+    image: ${OKKEY_ENTERPRISE_WEB_IMAGE}:${OKKEY_ENTERPRISE_IMAGE_TAG}
+    restart: "no"
+    environment:
+      OKKEY_ENTERPRISE_VERSION: ${OKKEY_ENTERPRISE_VERSION}
+      OKKEY_ENTERPRISE_IMAGE_TAG: ${OKKEY_ENTERPRISE_IMAGE_TAG}
+    healthcheck:
+      test: ["CMD-SHELL", "exit 0"]
+      interval: 1s
+      timeout: 1s
+      retries: 1
+      start_period: 0s
+
+  enterprise-worker:
+    image: ${OKKEY_ENTERPRISE_WORKER_IMAGE}:${OKKEY_ENTERPRISE_IMAGE_TAG}
+    restart: "no"
+    environment:
+      OKKEY_ENTERPRISE_VERSION: ${OKKEY_ENTERPRISE_VERSION}
+      OKKEY_ENTERPRISE_IMAGE_TAG: ${OKKEY_ENTERPRISE_IMAGE_TAG}
+    healthcheck:
+      test: ["CMD-SHELL", "exit 0"]
+      interval: 1s
+      timeout: 1s
+      retries: 1
+      start_period: 0s

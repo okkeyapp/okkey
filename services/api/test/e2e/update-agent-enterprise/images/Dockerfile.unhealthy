@@ -1,0 +1,4 @@
+# Tiny fixture image with a failing health check for update-agent rollback e2e.
+FROM alpine:3.20
+HEALTHCHECK --interval=1s --timeout=1s --start-period=0s --retries=1 CMD exit 1
+CMD ["sh", "-c", "while true; do sleep 3600; done"]
