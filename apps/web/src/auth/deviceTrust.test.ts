@@ -6,7 +6,8 @@ const registerDevice = vi.fn();
 const createDeviceBindChallenge = vi.fn();
 const bindDeviceSession = vi.fn();
 const requestDeviceKeyRebind = vi.fn();
-const fingerprint = "a".repeat(64);
+const fingerprintState = vi.hoisted(() => ({ value: "a".repeat(64) }));
+const fingerprint = fingerprintState.value;
 const readVaultBundle = vi.fn(() => null as unknown);
 
 const hasDeviceSigningKey = vi.fn(async () => true);
@@ -19,7 +20,7 @@ vi.mock("./deviceFingerprint", async () => {
   const actual = await vi.importActual<typeof import("./deviceFingerprint")>("./deviceFingerprint");
   return {
     ...actual,
-    getOrCreateDeviceFingerprint: () => fingerprint,
+    getOrCreateDeviceFingerprint: () => fingerprintState.value,
   };
 });
 
@@ -83,6 +84,7 @@ function vaultBundle() {
 
 describe("resolveDeviceTrust", () => {
   beforeEach(() => {
+    fingerprintState.value = fingerprint;
     vi.clearAllMocks();
     listDevices.mockReset();
     registerDevice.mockReset();
@@ -136,6 +138,35 @@ describe("resolveDeviceTrust", () => {
     expect(snapshot.status).toBe("pending");
     expect(snapshot.deviceId).toBe("d-new");
     expect(snapshot.approverDevices).toHaveLength(1);
+  });
+
+  it("registers a second profile whose install id only extends the trusted fingerprint", async () => {
+    const coarse = "web_app-chrome-linux-unknown";
+    fingerprintState.value = `${coarse}.0123456789abcdef`;
+    hasDeviceSigningKey.mockResolvedValue(false);
+    listDevices.mockResolvedValue({
+      devices: [
+        {
+          device_id: "d-trusted",
+          device_fingerprint: coarse,
+          status: "trusted",
+        },
+      ],
+      pending: [],
+    });
+    registerDevice.mockResolvedValue({
+      device_id: "d-profile-2",
+      status: "pending_approval",
+    });
+
+    const snapshot = await resolveDeviceTrust(coreClient(), "u1");
+
+    expect(registerDevice).toHaveBeenCalledOnce();
+    expect(registerDevice.mock.calls[0]?.[0]?.device_fingerprint).toBe(fingerprintState.value);
+    expect(snapshot.status).toBe("pending");
+    expect(snapshot.deviceId).toBe("d-profile-2");
+    expect(snapshot.needsRecovery).not.toBe(true);
+    fingerprintState.value = fingerprint;
   });
 
   it("binds a trusted fingerprint with a device-key signature and does not register", async () => {
@@ -435,6 +466,7 @@ describe("resolveDeviceTrust", () => {
 
 describe("pollDeviceTrust", () => {
   beforeEach(() => {
+    fingerprintState.value = fingerprint;
     vi.clearAllMocks();
     clearBoundDeviceSession();
     hasDeviceSigningKey.mockResolvedValue(true);
