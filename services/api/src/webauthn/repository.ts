@@ -208,6 +208,19 @@ export class WebAuthnCredentialsRepository {
     return mapCredential(rows[0]);
   }
 
+  async updateName(userId: string, credentialRowId: string, name: string): Promise<boolean> {
+    const rows = await this.db.query<{ id: string }>(
+      `
+        UPDATE user_webauthn_credentials
+        SET name = $3
+        WHERE id = $1::bigint AND user_id = $2::bigint
+        RETURNING id
+      `,
+      [credentialRowId, userId, name],
+    );
+    return rows.length > 0;
+  }
+
   async updateSignCount(credentialRowId: string, signCount: number): Promise<void> {
     await this.db.query(
       `

@@ -231,6 +231,41 @@ export function createWebAuthnCredentialDeleteRoute(
   };
 }
 
+export function createWebAuthnCredentialRenameRoute(
+  webauthnService: WebAuthnService,
+  resolveUserId: (req: IncomingMessage) => Promise<string | null>,
+): RouteHandler {
+  return async (ctx) => {
+    const credentialId = ctx.params.credentialId?.trim() ?? "";
+    if (!credentialId) {
+      json(ctx.res, 400, errorPayload("AUTH_BAD_REQUEST", "credentialId is required", ctx.requestId));
+      return;
+    }
+    let body: { name?: string };
+    try {
+      body = await readJsonBody<{ name?: string }>(ctx.req);
+    } catch {
+      json(ctx.res, 400, errorPayload("AUTH_BAD_REQUEST", "invalid json", ctx.requestId));
+      return;
+    }
+    if (typeof body.name !== "string") {
+      json(ctx.res, 400, errorPayload("AUTH_BAD_REQUEST", "name is required", ctx.requestId));
+      return;
+    }
+    try {
+      const userId = await resolveUserId(ctx.req);
+      if (!userId) {
+        json(ctx.res, 401, errorPayload("AUTH_REQUIRED", "auth required", ctx.requestId));
+        return;
+      }
+      const methods = await webauthnService.renameCredential(userId, credentialId, body.name);
+      json(ctx.res, 200, wireLoginMethods(methods));
+    } catch (error) {
+      handleWebAuthnError(ctx.requestId, ctx.res, error);
+    }
+  };
+}
+
 export function createWebAuthnCredentialsBulkDeleteRoute(
   webauthnService: WebAuthnService,
   resolveUserId: (req: IncomingMessage) => Promise<string | null>,

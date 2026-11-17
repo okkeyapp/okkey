@@ -92,6 +92,7 @@ import {
   createLoginMethodsGetRoute,
   createLoginMethodsPrimaryPatchRoute,
   createWebAuthnCredentialDeleteRoute,
+  createWebAuthnCredentialRenameRoute,
   createWebAuthnCredentialsBulkDeleteRoute,
   createWebAuthnLoginOptionsRoute,
   createWebAuthnLoginVerifyRoute,
@@ -673,6 +674,11 @@ export function createApiApp(
       "DELETE",
       "/account/webauthn/credentials/:credentialId",
       createWebAuthnCredentialDeleteRoute(deps.webauthnService, resolveUserId),
+    );
+    app.route(
+      "PATCH",
+      "/account/webauthn/credentials/:credentialId",
+      createWebAuthnCredentialRenameRoute(deps.webauthnService, resolveUserId),
     );
     app.route(
       "DELETE",

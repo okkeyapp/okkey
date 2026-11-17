@@ -83,6 +83,7 @@ import type {
   PasskeyApprovalVerifyRequestDto,
   PasskeyApprovalVerifyResponseDto,
   PasskeyHandoffResponseDto,
+  WebAuthnCredentialRenameRequestDto,
   PasskeyShareWrapOptionsResponseDto,
   PasskeyShareWrapVerifyRequestDto,
   PasskeyShareWrapVerifyResponseDto,
@@ -410,6 +411,16 @@ export class CoreApiClient {
   deleteWebauthnCredential(credentialId: string): Promise<AccountLoginMethodsResponseDto> {
     return this.api.delete<AccountLoginMethodsResponseDto>(
       `/account/webauthn/credentials/${encodeURIComponent(credentialId)}`,
+    );
+  }
+
+  renameWebauthnCredential(
+    credentialId: string,
+    body: WebAuthnCredentialRenameRequestDto,
+  ): Promise<AccountLoginMethodsResponseDto> {
+    return this.api.patch<AccountLoginMethodsResponseDto>(
+      `/account/webauthn/credentials/${encodeURIComponent(credentialId)}`,
+      body,
     );
   }
 
