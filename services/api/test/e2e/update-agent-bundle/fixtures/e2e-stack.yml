@@ -1,0 +1,29 @@
+# Disposable compose project for the offline-bundle update-agent e2e.
+# Image tags are replaced by the test harness before `compose up`.
+services:
+  api:
+    image: ${OKKEY_E2E_BASE_IMAGE}
+    environment:
+      OKKEY_VERSION: "1.0.0"
+      OKKEY_IMAGE_TAG: "1.0.0"
+  web:
+    image: ${OKKEY_E2E_BASE_IMAGE}
+    environment:
+      OKKEY_IMAGE_TAG: "1.0.0"
+  worker:
+    image: ${OKKEY_E2E_BASE_IMAGE}
+    environment:
+      OKKEY_IMAGE_TAG: "1.0.0"
+  enterprise-api:
+    image: ${OKKEY_E2E_BASE_IMAGE}
+    environment:
+      OKKEY_ENTERPRISE_VERSION: "1.0.0"
+      OKKEY_ENTERPRISE_IMAGE_TAG: "1.0.0"
+  enterprise-web:
+    image: ${OKKEY_E2E_BASE_IMAGE}
+    environment:
+      OKKEY_ENTERPRISE_IMAGE_TAG: "1.0.0"
+  enterprise-worker:
+    image: ${OKKEY_E2E_BASE_IMAGE}
+    environment:
+      OKKEY_ENTERPRISE_IMAGE_TAG: "1.0.0"
