@@ -90,16 +90,27 @@ test("v* tag images are signed keyless with SBOM and provenance kept", () => {
 
 test("api/worker image build bakes OKKEY_GIT_SHA from the publish revision", () => {
   const dockerfile = readFileSync(join(root, "services/api/Dockerfile"), "utf8");
-  assert.match(dockerfile, /^ARG OKKEY_GIT_SHA=$/m);
-  assert.match(dockerfile, /^ENV OKKEY_GIT_SHA=\$\{OKKEY_GIT_SHA\}$/m);
+  // ARG/ENV must be on the final runtime stage (api/worker inherit it).
+  // A prior intermediate stage (prod-deps) must not be the only place they appear.
+  const runtimeIdx = dockerfile.search(/^FROM .+ AS runtime$/m);
+  assert.ok(runtimeIdx >= 0, "Dockerfile must declare an AS runtime stage");
+  const apiIdx = dockerfile.indexOf("\nFROM runtime AS api", runtimeIdx);
+  assert.ok(apiIdx > runtimeIdx, "api target must inherit FROM runtime");
+  const runtimeStage = dockerfile.slice(runtimeIdx, apiIdx);
+  assert.match(runtimeStage, /^ARG OKKEY_GIT_SHA=$/m);
+  assert.match(runtimeStage, /^ENV OKKEY_GIT_SHA=\$\{OKKEY_GIT_SHA\}$/m);
+  assert.equal(count(dockerfile, "ARG OKKEY_GIT_SHA="), 1);
+  assert.equal(count(dockerfile, "ENV OKKEY_GIT_SHA=${OKKEY_GIT_SHA}"), 1);
 
-  // Both amd64 and arm64 build jobs pass the revision as a build-arg.
+  // Both amd64 and arm64 build jobs pass the revision as a build-arg and then
+  // inspect Config.Env on the pushed final image (not an intermediate stage).
   assert.equal(
     count(workflow, "OKKEY_GIT_SHA=${{ needs.prep.outputs.revision }}"),
     2,
   );
   assert.match(workflow, /Assert OKKEY_GIT_SHA is baked into api\/worker image/);
   assert.match(workflow, /OKKEY_GIT_SHA=\$\{EXPECTED_SHA\} not found in image Env/);
+  assert.match(workflow, /docker image inspect "\$\{REF\}" --format '\{\{json \.Config\.Env\}\}'/);
 
   const compose = readFileSync(join(root, "deploy/docker/docker-compose.prod.yml"), "utf8");
   // An empty compose assignment would override the image ENV at runtime.
