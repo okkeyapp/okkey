@@ -23,11 +23,16 @@ function copyBytes(bytes: Uint8Array): ArrayBuffer {
   return copy.buffer;
 }
 
+/** Always allocate a detached copy so callers can wipe without touching IDB buffers. */
 function toBytes(value: ArrayBuffer | Uint8Array): Uint8Array {
   if (value instanceof Uint8Array) {
-    return new Uint8Array(value);
+    const copy = new Uint8Array(value.byteLength);
+    copy.set(value);
+    return copy;
   }
-  return new Uint8Array(value);
+  const copy = new Uint8Array(value.byteLength);
+  copy.set(new Uint8Array(value));
+  return copy;
 }
 
 function openDb(): Promise<IDBDatabase> {
