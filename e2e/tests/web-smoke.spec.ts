@@ -17,7 +17,8 @@ import { createLoginItem } from "../helpers/items";
  * Minimal browser smoke for the password-manager chain:
  * 1) registration → recovery key gate → unlock
  * 2) create Login item → visible after reload → ciphertext-only in DB
- * 3) second browser → device pending → trust → decrypt
+ * 3) second browser → reject → request again → trust → unlock / decrypt
+ * 3b) same UA second profile → reject → request again → block
  * 4) forgot master password → recovery key → new password proves old rejected
  * 5) Chromium extension PKCE → trust → unlock → item visible
  *
@@ -84,7 +85,7 @@ test("2) create Login item → reload → DB has no plaintext", async () => {
   await assertVaultBlobsHaveNoPlaintext([LOGIN_PASSWORD, E2E_MASTER_PASSWORD]);
 });
 
-test("3) second browser → device confirm → item decrypts", async () => {
+test("3) second browser → reject → request again → trust → unlock", async () => {
   test.skip(!email, "registration did not run");
 
   await gotoItemsUnlocked(page, E2E_MASTER_PASSWORD);
@@ -100,6 +101,29 @@ test("3) second browser → device confirm → item decrypts", async () => {
   try {
     await signInWithEmailOtp(page2, email);
     await expect(page2).toHaveURL(/\/account\/device-pending/, { timeout: 60_000 });
+    await expect(page2.getByRole("heading", { name: /confirm this device/i })).toBeVisible({
+      timeout: 30_000,
+    });
+
+    // Cover reject → request again → unlock in this same OTP start so the serial
+    // suite stays under AUTH_RATE_LIMIT_START_PER_EMAIL (extension PKCE needs a
+    // later start for the same address).
+    const notNow = page.getByRole("button", { name: /^not now$/i });
+    await expect(notNow).toBeVisible({ timeout: 60_000 });
+    await notNow.click();
+    await expect(page2.getByRole("heading", { name: /this device was denied/i })).toBeVisible({
+      timeout: 60_000,
+    });
+
+    await page2.getByRole("button", { name: /request approval again/i }).click();
+    await expect(page2.getByRole("heading", { name: /confirm this device/i })).toBeVisible({
+      timeout: 60_000,
+    });
+    // Session must rebind after reject so trusted approvers (and passkey options)
+    // are available again — not the empty "no trusted devices" state.
+    await expect(
+      page2.getByText(/no trusted devices are available yet/i),
+    ).toHaveCount(0);
 
     const trust = page.getByRole("button", { name: /^trust device$/i });
     await expect(trust).toBeVisible({ timeout: 60_000 });
@@ -146,8 +170,6 @@ test("3b) same user agent second profile → reject, then block", async () => {
     await expect(page2.getByRole("heading", { name: /confirm this device/i })).toBeVisible({
       timeout: 60_000,
     });
-    // After reject→retry the session must rebind so trusted approvers and passkey
-    // options are available again (not the empty "no trusted devices" state).
     await expect(
       page2.getByText(/no trusted devices are available yet/i),
     ).toHaveCount(0);
@@ -161,58 +183,6 @@ test("3b) same user agent second profile → reject, then block", async () => {
     await expect(page2.getByText(/blocked permanently/i)).toBeVisible();
   } finally {
     await sameProfile.close();
-  }
-});
-
-test("3c) reject → request again → trust → unlock with master password", async () => {
-  test.skip(!email, "registration did not run");
-
-  await gotoItemsUnlocked(page, E2E_MASTER_PASSWORD);
-  const third = await browserRef.newContext({
-    locale: "en-US",
-    userAgent:
-      "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_2) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/605.1.15",
-  });
-  const page3 = await third.newPage();
-  try {
-    await signInWithEmailOtp(page3, email);
-    await expect(page3).toHaveURL(/\/account\/device-pending/, { timeout: 60_000 });
-    await expect(page3.getByRole("heading", { name: /confirm this device/i })).toBeVisible({
-      timeout: 30_000,
-    });
-
-    const notNow = page.getByRole("button", { name: /^not now$/i });
-    await expect(notNow).toBeVisible({ timeout: 60_000 });
-    await notNow.click();
-    await expect(page3.getByRole("heading", { name: /this device was denied/i })).toBeVisible({
-      timeout: 60_000,
-    });
-
-    await page3.getByRole("button", { name: /request approval again/i }).click();
-    await expect(page3.getByRole("heading", { name: /confirm this device/i })).toBeVisible({
-      timeout: 60_000,
-    });
-    await expect(
-      page3.getByText(/no trusted devices are available yet/i),
-    ).toHaveCount(0);
-
-    const trust = page.getByRole("button", { name: /^trust device$/i });
-    await expect(trust).toBeVisible({ timeout: 60_000 });
-    await trust.click();
-    await expect(page3).toHaveURL(/\/account\/lock|\/items/, { timeout: 60_000 });
-
-    const lock3 = page3.getByRole("heading", { name: /vault is locked/i });
-    const topbar3 = page3.getByTestId("items-shell-topbar");
-    await expect(lock3.or(topbar3)).toBeVisible({ timeout: 60_000 });
-    if (await lock3.isVisible().catch(() => false)) {
-      await unlockWithMasterPassword(page3, E2E_MASTER_PASSWORD);
-    }
-    await expect(page3.getByTestId("items-shell-topbar")).toBeVisible({ timeout: 60_000 });
-    await expect(page3.getByText(LOGIN_TITLE, { exact: false }).first()).toBeVisible({
-      timeout: 60_000,
-    });
-  } finally {
-    await third.close();
   }
 });
 
