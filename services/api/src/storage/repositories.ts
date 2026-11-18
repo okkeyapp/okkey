@@ -2735,9 +2735,18 @@ export class DevicesRepository {
         `,
         [input.deviceId, input.now, input.rejectReason ?? "rejected by user"],
       );
-      // Keep the pending device's session and placeholder share. Clearing either
-      // broke "Try again" → passkey approve: no Bearer, no wrap public keys.
-      // Vault routes still require a trusted device, so this session cannot unlock.
+      // Keep the placeholder share (wrap public keys) and the Bearer, but unbind
+      // the session from this revoked row so "Try again" can rebind to the
+      // reopened pending device. Deleting the session forced a full sign-out;
+      // leaving it bound made block/approve invisible to GET /devices.
+      await tx.query(
+        `
+          UPDATE sessions
+          SET device_id = NULL
+          WHERE device_id = $1::bigint
+        `,
+        [input.deviceId],
+      );
       return { kind: "rejected", device: mapDevice(rejectedRows[0]) };
     }));
   }
