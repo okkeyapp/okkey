@@ -19,16 +19,22 @@ export const BUNDLE_ENTERPRISE_PATH = "packages/enterprise.okpkg";
 
 const APPLY_ORDER = ["okkey", "enterprise"] as const;
 
-/** Compressed zip stays under this size. */
+/**
+ * Compressed zip stays under this size.
+ * Keep in lockstep with `OFFLINE_BUNDLE_MAX_ARCHIVE_BYTES` in `@okkey/types`
+ * (update-agent and the offline-bundle CLI load this module without a built types package).
+ */
 export const BUNDLE_MAX_ARCHIVE_BYTES = 1_000_000;
 /**
  * JSON body that carries a max-size archive as base64.
  * Base64 expands by 4/3, plus a small envelope around `archiveBase64`.
  */
 export const BUNDLE_MAX_DOCUMENT_BYTES = 4 * Math.ceil(BUNDLE_MAX_ARCHIVE_BYTES / 3) + 2048;
+/** HTTP body ceiling for `POST /system/updates/apply` with an offline file. */
+export const BUNDLE_MAX_APPLY_BODY_BYTES = BUNDLE_MAX_DOCUMENT_BYTES + 512;
 export const BUNDLE_MAX_ENTRIES = 8;
-export const BUNDLE_MAX_UNCOMPRESSED_ENTRY = 1_000_000;
-export const BUNDLE_MAX_UNCOMPRESSED_TOTAL = 2_000_000;
+export const BUNDLE_MAX_UNCOMPRESSED_ENTRY = BUNDLE_MAX_ARCHIVE_BYTES;
+export const BUNDLE_MAX_UNCOMPRESSED_TOTAL = BUNDLE_MAX_ARCHIVE_BYTES * 2;
 const BUNDLE_MAX_NAME_BYTES = 128;
 const BUNDLE_RATIO_FLOOR = 64 * 1024;
 const BUNDLE_MAX_RATIO = 100;
@@ -74,7 +80,7 @@ export function buildOfflineBundle(corePackage: Buffer, enterprisePackage: Buffe
     { name: BUNDLE_ENTERPRISE_PATH, data: enterprisePackage },
   ]);
   if (zip.length > BUNDLE_MAX_ARCHIVE_BYTES) {
-    throw new SystemUpdateError(400, "PACKAGE_INVALID", "Offline bundle exceeds the size limit");
+    throw new SystemUpdateError(400, "PACKAGE_TOO_LARGE", "Offline bundle exceeds the size limit");
   }
   return {
     zip,
@@ -265,7 +271,7 @@ function zipBytesFromDocument(document: unknown): Buffer {
 
 function assertZipSize(zip: Buffer): Buffer {
   if (zip.length === 0 || zip.length > BUNDLE_MAX_ARCHIVE_BYTES) {
-    throw new SystemUpdateError(400, "PACKAGE_INVALID", "Offline bundle exceeds the size limit");
+    throw new SystemUpdateError(400, "PACKAGE_TOO_LARGE", "Offline bundle exceeds the size limit");
   }
   return zip;
 }

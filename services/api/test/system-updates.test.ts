@@ -27,6 +27,7 @@ import { applyVerifiedCorePackage, setEnvValue, type UpdateApplyEngine } from ".
 import { createDockerApplyEngine, type DockerTransport } from "../src/update-agent/docker-engine.ts";
 import { createUpdateAgent } from "../src/update-agent/server.ts";
 import { SystemUpdateError } from "../src/system-updates/errors.ts";
+import { BUNDLE_MAX_APPLY_BODY_BYTES, BUNDLE_MAX_DOCUMENT_BYTES } from "../src/system-updates/offline-bundle.ts";
 import { registerSystemUpdateRoutes } from "../src/system-updates/routes.ts";
 import type { SystemUpdateService } from "../src/system-updates/service.ts";
 
@@ -901,6 +902,82 @@ test("apply is not started by a status check", async () => {
   });
   assert.equal(applied.status, 202);
   assert.equal(started, 1);
+});
+
+test("POST /system/updates/apply rejects a body over the shared offline limit", async () => {
+  let started = 0;
+  const app = appWithRoutes("self_hosted", {
+    async statusFor() {
+      return {
+        deploymentMode: "self_hosted" as const,
+        currentVersion: "1.0.0",
+        enterpriseInstalled: false,
+        enterpriseVersion: null,
+        feedConfigured: false,
+        isolated: false,
+        canApply: true,
+        updates: [],
+        dismissed: {},
+        feedError: null,
+      };
+    },
+    async userCanApply() {
+      return true;
+    },
+    async dismiss() {},
+    async apply() {
+      started += 1;
+      throw new Error("apply should not run");
+    },
+    async job() {
+      return null;
+    },
+  });
+  const oversized = JSON.stringify({
+    source: "file",
+    document: {
+      format: "okkey-offline-bundle",
+      formatVersion: 1,
+      archiveBase64: "A".repeat(BUNDLE_MAX_APPLY_BODY_BYTES),
+    },
+  });
+  assert.ok(Buffer.byteLength(oversized) > BUNDLE_MAX_APPLY_BODY_BYTES);
+  const applied = await dispatch(app, {
+    method: "POST",
+    url: "/system/updates/apply",
+    headers: { "x-user-id": "owner" },
+    body: oversized,
+  });
+  assert.equal(applied.status, 400);
+  assert.equal((applied.body as { error?: string }).error, "PACKAGE_TOO_LARGE");
+  assert.equal(started, 0);
+});
+
+test("update agent refuses a body over the shared document limit", async () => {
+  const keys = generateUpdateKeyPair();
+  const envDir = mkdtempSync(path.join(tmpdir(), "okkey-update-"));
+  const envFile = path.join(envDir, ".env");
+  writeFileSync(envFile, "OKKEY_IMAGE_TAG=1.0.0-beta.2\n");
+  const calls: string[] = [];
+  const agent = createUpdateAgent({
+    token: "secret",
+    publicKeyPem: keys.publicKeyPem,
+    isolated: false,
+    project: "okkey",
+    envFilePath: envFile,
+    engine: recordingEngine(calls),
+  });
+  const oversized = {
+    format: "okkey-offline-bundle",
+    formatVersion: 1,
+    archiveBase64: "A".repeat(BUNDLE_MAX_DOCUMENT_BYTES),
+  };
+  const response = new MockResponse();
+  await agent.handler(fakeRequest(oversized), response as unknown as ServerResponse);
+  assert.equal(response.statusCode, 400);
+  const body = JSON.parse(response.body) as { error?: string };
+  assert.equal(body.error, "PACKAGE_TOO_LARGE");
+  assert.deepEqual(calls, []);
 });
 
 test("update agent refuses a missing, invalid, or interrupted signature without applying", async () => {

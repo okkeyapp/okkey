@@ -1,3 +1,8 @@
+import {
+  OFFLINE_BUNDLE_MAX_DOCUMENT_BYTES,
+  isOfflineUploadTooLarge,
+} from "@okkey/types";
+
 import type { SystemUpdateComponent } from "./visibility";
 
 /** Combined package archives. A binary archive is wrapped and unpacked by the update agent. */
@@ -6,8 +11,11 @@ export const OFFLINE_ARCHIVE_EXTENSIONS = [".okbundle", ".zip"] as const;
 /** Signed package plus the combined archive extensions the picker accepts. */
 export const OFFLINE_PACKAGE_EXTENSIONS = ["okpkg", "json", "okbundle", "zip"] as const;
 
-/** Upper bound for one offline package or archive in the file field. */
-export const OFFLINE_PACKAGE_MAX_SIZE_MB = 1024;
+/**
+ * Upper bound for one offline package or archive in the file field.
+ * Matches the server document / apply-body ceiling from `@okkey/types`.
+ */
+export const OFFLINE_PACKAGE_MAX_SIZE_BYTES = OFFLINE_BUNDLE_MAX_DOCUMENT_BYTES;
 
 export const OFFLINE_FILE_ACCEPT =
   ".okpkg,.json,.okbundle,.zip,application/json,application/zip";
@@ -38,6 +46,11 @@ export type OfflineChoice = OfflinePackageChoice | OfflineArchiveChoice | Offlin
 export function isCombinedArchiveName(fileName: string): boolean {
   const lower = fileName.trim().toLowerCase();
   return OFFLINE_ARCHIVE_EXTENSIONS.some((extension) => lower.endsWith(extension));
+}
+
+/** Reject oversized offline uploads before reading or posting them. */
+export function offlineFileExceedsSizeLimit(file: { size: number }): boolean {
+  return isOfflineUploadTooLarge(file.size);
 }
 
 /** Read component and version from a signed package. Archive bytes are wrapped elsewhere. */
