@@ -145,10 +145,10 @@ describe("system update popup", () => {
     expect(screen.getByRole("heading", { name: "Offline package" })).toBeInTheDocument();
   });
 
-  it("shows a muted notice when online updates are disabled by settings", () => {
+  it("shows a muted notice when online updates are disabled by the server administrator", () => {
     renderModal(status({ isolated: true, updates: [] }));
     expect(screen.getByTestId("system-update-online-disabled")).toHaveTextContent(
-      "Online updates are disabled in settings. Use an offline package below.",
+      "Online updates are disabled by the server administrator. Use an offline package below.",
     );
     expect(screen.queryByTestId("system-update-row-okkey")).not.toBeInTheDocument();
     expect(screen.queryByTestId("system-update-apply-all")).not.toBeInTheDocument();
