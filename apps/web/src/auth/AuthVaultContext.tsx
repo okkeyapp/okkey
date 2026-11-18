@@ -1419,7 +1419,10 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
   }, [accessToken, deviceApprovalWatch, followApprovalStatus, logout]);
 
   const retryDeviceRegistration = useCallback(async () => {
-    const approvalCredential = !accessToken || !userId ? readDeviceApprovalStatus() : null;
+    // Always reopen the rejected row via the approval credential when present,
+    // even if a Bearer survived the rejection. Register-only would mint a second
+    // pending fingerprint the old session cannot see as blocked.
+    const approvalCredential = readDeviceApprovalStatus();
     if (approvalCredential) {
       setDeviceTrustStatus("checking");
       setDeviceBlockedUntil(null);
@@ -1437,7 +1440,41 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
         pendingDeviceIdRef.current = next.device_id;
         setDeviceNeedsRecovery(false);
         setDeviceShareReapproval(false);
-        setDeviceApprovers([]);
+        if (accessToken && userId) {
+          const client = createAuthenticatedCoreClient(accessToken);
+          const fingerprint = getOrCreateDeviceFingerprint();
+          // Same fingerprint as the reopened row: refresh wrap keys / OT pubs.
+          await registerCurrentBrowserDevice(client, fingerprint, { userId });
+          const snapshot = await resolveDeviceTrust(client, userId);
+          if (snapshot.status === "blocked" && snapshot.blockedUntil == null) {
+            foreverBlockedRef.current = true;
+          } else {
+            foreverBlockedRef.current = false;
+          }
+          pendingDeviceIdRef.current =
+            snapshot.status === "pending" ||
+            snapshot.status === "rejected" ||
+            snapshot.status === "blocked"
+              ? snapshot.deviceId
+              : snapshot.status === "trusted"
+                ? null
+                : pendingDeviceIdRef.current;
+          setDeviceTrustStatus(snapshot.status);
+          setDeviceBlockedUntil(
+            snapshot.status === "blocked" ? (snapshot.blockedUntil ?? null) : null,
+          );
+          setCurrentDeviceId(snapshot.deviceId);
+          currentDeviceIdRef.current = snapshot.deviceId;
+          setDeviceApprovers(snapshot.approverDevices);
+          setDeviceNeedsRecovery(snapshot.needsRecovery === true);
+          setDeviceShareReapproval(snapshot.needsShareReapproval === true);
+          if (snapshot.status === "blocked") {
+            clearBoundDeviceSession();
+            void clearDeviceSigningKey();
+          }
+        } else {
+          setDeviceApprovers([]);
+        }
       } catch (error: unknown) {
         if (error instanceof ApiRequestError && error.status === 401) {
           clearDeviceApprovalStatus();
@@ -1461,8 +1498,6 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
     setDeviceBlockedUntil(null);
     const client = createAuthenticatedCoreClient(accessToken);
     try {
-      // Re-publish wrap keys / placeholder share after a rejection cleared them on
-      // older servers, then resolve trust so approvers and pending state are fresh.
       const fingerprint = getOrCreateDeviceFingerprint();
       await registerCurrentBrowserDevice(client, fingerprint, { userId });
       const snapshot = await resolveDeviceTrust(client, userId);
