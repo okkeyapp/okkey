@@ -1941,7 +1941,7 @@
   "web.systemUpdate.modalDescription": "Review online feed updates, or upload an offline package to apply it after a successful check.",
   "web.systemUpdate.close": "Close",
   "web.systemUpdate.onlineLabel": "Online update",
-  "web.systemUpdate.onlineDisabled": "Online updates are disabled in settings. Use an offline package below.",
+  "web.systemUpdate.onlineDisabled": "Online updates are disabled by the server administrator. Use an offline package below.",
   "web.systemUpdate.componentOkkey": "Okkey",
   "web.systemUpdate.componentEnterprise": "Enterprise",
   "web.systemUpdate.fromTo": "{from} → {to}",
