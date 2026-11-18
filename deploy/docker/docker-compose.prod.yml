@@ -154,7 +154,14 @@ services:
       # Loopback only — browsers use OKKEY_API_PUBLIC_URL; proxy overlay reaches api:4000 on the Docker network.
       - "127.0.0.1:${API_PORT:-4000}:4000"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:4000/health"]
+      # Use node fetch so the API image does not need curl/wget.
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:4000/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
       interval: 10s
       timeout: 5s
       retries: 12
@@ -225,9 +232,19 @@ services:
 
   # Dedicated update agent. The Docker socket is mounted on this service only.
   update-agent:
+    # Root is required: the api image is distroless nonroot (uid 65532), but the
+    # agent must rewrite host-owned /okkey/.env (mode 644) and open the Docker
+    # socket (root:docker 0660). Socket access is already root-equivalent.
+    # api/worker stay nonroot.
     image: ${OKKEY_API_IMAGE:-ghcr.io/okkeyapp/api}:${OKKEY_IMAGE_TAG:-1.0.0-beta.2}
     restart: unless-stopped
-    command: ["node", "--experimental-strip-types", "services/api/src/update-agent/main.ts"]
+    user: "0:0"
+    command:
+      [
+        "/usr/local/bin/node",
+        "--experimental-strip-types",
+        "services/api/src/update-agent/main.ts",
+      ]
     depends_on:
       api:
         condition: service_healthy
@@ -241,9 +258,24 @@ services:
       OKKEY_COMPOSE_PROJECT: ${OKKEY_COMPOSE_PROJECT:-okkey}
       OKKEY_INSTALL_DIR: /okkey
       DOCKER_SOCKET: /var/run/docker.sock
+      OKKEY_UPDATE_AGENT_PORT: "8090"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ${OKKEY_HOST_INSTALL_DIR:-.}:/okkey
+    # Override the api image HEALTHCHECK (port 4000). The agent listens on 8090;
+    # unauthenticated /v1/jobs returns 401 when the process is up.
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "/usr/local/bin/node",
+          "-e",
+          "fetch('http://127.0.0.1:8090/v1/jobs').then((r)=>process.exit(r.status===401?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
 
 volumes:
   okkey-postgres:
