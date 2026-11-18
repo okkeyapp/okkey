@@ -1112,6 +1112,13 @@ test("docker apply talks to the engine socket and rolls back a failed create", a
   const calls: string[] = [];
   const transport: DockerTransport = async (method, requestPath, body) => {
     calls.push(`${method} ${requestPath}`);
+    if (requestPath === "/_ping") {
+      return {
+        status: 200,
+        body: "OK",
+        headers: { "Api-Version": "1.43", MinAPIVersion: "1.24" },
+      };
+    }
     if (requestPath.startsWith("/v1.43/images/create")) {
       return { status: 200, body: "" };
     }
@@ -1468,7 +1475,14 @@ test("docker pull sends registry credentials only to the matching registry", asy
   const logs: string[] = [];
   const restoreLogs = captureLogs(logs);
   try {
-    const transport: DockerTransport = async (_method, _requestPath, _body, headers) => {
+    const transport: DockerTransport = async (_method, requestPath, _body, headers) => {
+      if (requestPath === "/_ping") {
+        return {
+          status: 200,
+          body: "OK",
+          headers: { "Api-Version": "1.43", MinAPIVersion: "1.24" },
+        };
+      }
       headersSeen.push(headers);
       return { status: 200, body: "" };
     };
@@ -1493,6 +1507,13 @@ test("docker apply rolls back when the new enterprise container does not become 
   let inspects = 0;
   const transport: DockerTransport = async (method, requestPath) => {
     calls.push(`${method} ${requestPath}`);
+    if (requestPath === "/_ping") {
+      return {
+        status: 200,
+        body: "OK",
+        headers: { "Api-Version": "1.43", MinAPIVersion: "1.24" },
+      };
+    }
     if (requestPath.includes("/containers/create")) {
       return { status: 201, body: JSON.stringify({ Id: "new-id" }) };
     }
@@ -1536,6 +1557,13 @@ test("docker apply rolls back when the new enterprise container does not become 
 
 test("running core version is read from the api container", async () => {
   const transport: DockerTransport = async (_method, requestPath) => {
+    if (requestPath === "/_ping") {
+      return {
+        status: 200,
+        body: "OK",
+        headers: { "Api-Version": "1.43", MinAPIVersion: "1.24" },
+      };
+    }
     if (requestPath.includes("/containers/json")) {
       return {
         status: 200,
