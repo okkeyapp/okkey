@@ -1941,7 +1941,7 @@
   "web.systemUpdate.modalDescription": "Проверьте онлайн-обновления из ленты или загрузите офлайн-пакет — он применится после успешной проверки.",
   "web.systemUpdate.close": "Закрыть",
   "web.systemUpdate.onlineLabel": "Онлайн-обновление",
-  "web.systemUpdate.onlineDisabled": "Онлайн-обновление отключено в настройках. Воспользуйтесь офлайн-пакетом ниже.",
+  "web.systemUpdate.onlineDisabled": "Онлайн-обновление отключено администратором сервера. Воспользуйтесь офлайн-пакетом ниже.",
   "web.systemUpdate.componentOkkey": "Okkey",
   "web.systemUpdate.componentEnterprise": "Enterprise",
   "web.systemUpdate.fromTo": "{from} → {to}",
