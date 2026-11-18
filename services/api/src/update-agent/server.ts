@@ -55,7 +55,7 @@ export function createUpdateAgent(options: UpdateAgentOptions) {
       const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
       size += buffer.length;
       if (size > BUNDLE_MAX_DOCUMENT_BYTES) {
-        throw new SystemUpdateError(400, "PACKAGE_INVALID", "Package exceeds the size limit");
+        throw new SystemUpdateError(400, "PACKAGE_TOO_LARGE", "Package exceeds the size limit");
       }
       chunks.push(buffer);
     }

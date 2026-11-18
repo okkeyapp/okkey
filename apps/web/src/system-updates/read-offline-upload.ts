@@ -1,3 +1,5 @@
+import { OFFLINE_BUNDLE_MAX_ARCHIVE_BYTES } from "@okkey/types";
+
 /** File picker for the current offline apply call. #306 posts parsed JSON as `document`. */
 
 export const OFFLINE_UPLOAD_ACCEPT =
@@ -12,6 +14,9 @@ export async function readOfflineUpload(file: File): Promise<unknown> {
     const name = file.name.trim().toLowerCase();
     if (!name.endsWith(".okbundle") && !name.endsWith(".zip")) {
       throw new Error("PACKAGE_INVALID");
+    }
+    if (bytes.byteLength > OFFLINE_BUNDLE_MAX_ARCHIVE_BYTES) {
+      throw new Error("PACKAGE_TOO_LARGE");
     }
     return {
       format: "okkey-offline-bundle",

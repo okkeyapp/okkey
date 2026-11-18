@@ -1,4 +1,5 @@
 import { formatWebMessage, type WebMessageValues } from "@okkey/i18n";
+import { OFFLINE_BUNDLE_MAX_DOCUMENT_BYTES } from "@okkey/types";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -440,6 +441,24 @@ describe("system update popup", () => {
     });
     expect(screen.getByTestId("system-update-archive-pending")).toBeInTheDocument();
     expect(applied).toHaveLength(0);
+  });
+
+  it("rejects an oversized offline file on selection with a localized message", async () => {
+    renderModal(status({ updates: [], currentVersion: "1.0.0", offlineArchiveSupported: true }));
+    const input = document.getElementById("system-update-file") as HTMLInputElement;
+    const file = new File(["x"], "huge.okbundle", { type: "application/zip" });
+    Object.defineProperty(file, "size", { value: OFFLINE_BUNDLE_MAX_DOCUMENT_BYTES + 1 });
+    Object.defineProperty(input, "files", { configurable: true, value: [file] });
+    fireEvent.change(input);
+
+    expect(
+      await screen.findByText("The offline package is larger than the allowed size."),
+    ).toBeInTheDocument();
+    expect(formatWebMessage("ru", "web.systemUpdate.error.PACKAGE_TOO_LARGE")).toBe(
+      "Офлайн-пакет больше допустимого размера.",
+    );
+    expect(applied).toHaveLength(0);
+    expect(screen.queryByTestId("system-update-offline-list")).not.toBeInTheDocument();
   });
 
   it("auto-applies an uploaded zip once archive support is on", async () => {

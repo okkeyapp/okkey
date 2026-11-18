@@ -70,7 +70,22 @@ server {
 
   add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
 
+  # Attachment and general API uploads (workspace file size may be higher).
   client_max_body_size 64m;
+
+  # Offline update apply bodies are capped near ~1.3 MiB (archive + base64 + envelope).
+  location /system/updates/ {
+    client_max_body_size 2m;
+    proxy_pass http://${OKKEY_API_UPSTREAM};
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto https;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection $connection_upgrade;
+    proxy_read_timeout 3600s;
+  }
 
   location / {
     proxy_pass http://${OKKEY_API_UPSTREAM};

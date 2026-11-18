@@ -1,8 +1,9 @@
 import type { IncomingMessage } from "node:http";
 
 import type { ApiConfig } from "../config.ts";
-import { HttpRequestError, json, readJsonBody, type RouteHandler } from "../http.ts";
+import { HttpRequestError, json, readJsonBody, readJsonBodyLimited, type RouteHandler } from "../http.ts";
 import { isSystemUpdateError } from "./errors.ts";
+import { BUNDLE_MAX_APPLY_BODY_BYTES } from "./offline-bundle.ts";
 import type { UpdateComponent } from "./package-format.ts";
 import type { SystemUpdateService } from "./service.ts";
 
@@ -87,11 +88,11 @@ export function registerSystemUpdateRoutes(
       return;
     }
     try {
-      const body = await readJsonBody<{
+      const body = await readJsonBodyLimited<{
         source?: unknown;
         component?: unknown;
         document?: unknown;
-      }>(ctx.req);
+      }>(ctx.req, BUNDLE_MAX_APPLY_BODY_BYTES);
       if (body.source !== "feed" && body.source !== "file") {
         throw new HttpRequestError(400, "PACKAGE_INVALID", "source must be feed or file");
       }

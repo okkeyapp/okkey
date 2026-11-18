@@ -228,23 +228,49 @@ export function json(
 }
 
 export async function readJsonBody<T>(req: IncomingMessage): Promise<T> {
+  return readJsonBodyLimited(req);
+}
+
+/**
+ * Read a JSON body and reject when the raw byte length exceeds `maxBytes`.
+ * Pass `maxBytes` for routes that accept large offline update documents.
+ */
+export async function readJsonBodyLimited<T>(
+  req: IncomingMessage,
+  maxBytes?: number,
+): Promise<T> {
   const mockedBody = (req as IncomingMessage & { body?: unknown }).body;
   if (mockedBody !== undefined) {
     if (typeof mockedBody === "string") {
+      if (maxBytes !== undefined && Buffer.byteLength(mockedBody) > maxBytes) {
+        throw new HttpRequestError(400, "PACKAGE_TOO_LARGE", "Request body exceeds the size limit");
+      }
       return JSON.parse(mockedBody) as T;
+    }
+    if (maxBytes !== undefined) {
+      const encoded = JSON.stringify(mockedBody);
+      if (Buffer.byteLength(encoded) > maxBytes) {
+        throw new HttpRequestError(400, "PACKAGE_TOO_LARGE", "Request body exceeds the size limit");
+      }
     }
     return mockedBody as T;
   }
 
-  let raw = "";
+  const chunks: Buffer[] = [];
+  let size = 0;
   for await (const chunk of req) {
-    raw += chunk.toString();
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    size += buffer.length;
+    if (maxBytes !== undefined && size > maxBytes) {
+      throw new HttpRequestError(400, "PACKAGE_TOO_LARGE", "Request body exceeds the size limit");
+    }
+    chunks.push(buffer);
   }
 
-  if (!raw) {
+  if (chunks.length === 0) {
     return {} as T;
   }
-  return JSON.parse(raw) as T;
+  return JSON.parse(Buffer.concat(chunks).toString("utf8")) as T;
 }
 
 export function getHeader(req: IncomingMessage, name: string): string | undefined {

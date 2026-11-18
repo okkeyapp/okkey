@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
 
+import { OFFLINE_BUNDLE_MAX_DOCUMENT_BYTES } from "@okkey/types";
+
 import { SystemUpdateError } from "./errors.ts";
 import {
   assertHttpUrl,
@@ -11,7 +13,7 @@ import {
 export type FeedFetch = (url: string, init: RequestInit) => Promise<Response>;
 
 const FETCH_TIMEOUT_MS = 15_000;
-const MAX_BYTES = 1_000_000;
+const MAX_BYTES = OFFLINE_BUNDLE_MAX_DOCUMENT_BYTES;
 const MAX_REDIRECTS = 3;
 
 /**
@@ -182,7 +184,7 @@ async function fetchText(
     }
     const text = await response.text();
     if (Buffer.byteLength(text) > MAX_BYTES) {
-      throw new SystemUpdateError(400, "PACKAGE_INVALID", "Update document exceeds the size limit");
+      throw new SystemUpdateError(400, "PACKAGE_TOO_LARGE", "Update document exceeds the size limit");
     }
     return text;
   }
