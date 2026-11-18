@@ -226,12 +226,23 @@ test("cli writes an ignore file for a valid fixture and fails closed otherwise",
   }
 });
 
-test("committed exceptions file is empty and still parses", () => {
+test("committed exceptions file parses and scopes ignores by image", () => {
   const text = readFileSync(
     join(root, ".github/security/cve-exceptions.yaml"),
     "utf8",
   );
   const records = parseCveExceptions(text);
-  assert.deepEqual(records, []);
-  assert.match(renderTrivyIgnore(records, "api"), /Do not edit/);
+  assert.ok(records.length > 0);
+  for (const record of records) {
+    assert.match(record.id, /^CVE-\d{4}-\d{4,}$/);
+    assert.ok(["api", "worker", "web"].includes(record.image));
+    assert.ok(record.package.length > 0);
+    assert.ok(record.reason.length >= 12);
+    assert.ok(record.accepted_by.length > 0);
+  }
+  const apiIgnore = renderTrivyIgnore(records, "api");
+  const webIgnore = renderTrivyIgnore(records, "web");
+  assert.match(apiIgnore, /Do not edit/);
+  assert.match(apiIgnore, /^CVE-/m);
+  assert.doesNotMatch(webIgnore, /^CVE-/m);
 });

@@ -55,6 +55,48 @@ RUN --mount=type=cache,target=/usr/local/share/.cache/yarn \
   && yarn build:ts-sdk \
   && yarn build:email
 
+# Production dependency set for the runtime image: only packages the API/worker
+# process loads. Excludes apps/web, apps/extension, and other client workspaces
+# so build-only tools never land in the published image.
+FROM node:25-bookworm-slim@sha256:81db02c4b671288a03915da9534dbd54f96d0e7c24d80ccc54f5b36b2e684370 AS prod-deps
+WORKDIR /app
+ARG NODE_VERSION
+RUN test "${NODE_VERSION}" = "25"
+ENV NODE_ENV=production
+ENV YARN_CACHE_FOLDER=/usr/local/share/.cache/yarn
+ENV YARN_NETWORK_TIMEOUT=600000
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update \
+  && apt-get upgrade -y \
+  && apt-get install -y --no-install-recommends ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /src/package.json /src/yarn.lock ./
+COPY --from=builder /src/packages/crypto ./packages/crypto
+COPY --from=builder /src/packages/email-templates ./packages/email-templates
+COPY --from=builder /src/packages/i18n ./packages/i18n
+COPY --from=builder /src/packages/id ./packages/id
+COPY --from=builder /src/packages/types ./packages/types
+
+RUN node <<'NODE'
+const fs = require("node:fs");
+const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
+pkg.workspaces = [
+  "packages/crypto",
+  "packages/email-templates",
+  "packages/i18n",
+  "packages/id",
+  "packages/types",
+];
+delete pkg.resolutions;
+fs.writeFileSync("package.json", `${JSON.stringify(pkg, null, 2)}\n`);
+NODE
+
+RUN --mount=type=cache,target=/usr/local/share/.cache/yarn \
+  yarn config set network-timeout 600000 \
+  && yarn install --frozen-lockfile --ignore-scripts --production --network-timeout 600000
+
 # node:25-bookworm-slim
 FROM node:25-bookworm-slim@sha256:81db02c4b671288a03915da9534dbd54f96d0e7c24d80ccc54f5b36b2e684370 AS runtime
 WORKDIR /app
@@ -62,14 +104,25 @@ ARG NODE_VERSION
 RUN test "${NODE_VERSION}" = "25"
 ENV NODE_ENV=production
 ENV DEPLOY_ENV=prod
+ENV DEBIAN_FRONTEND=noninteractive
 
+# Refresh OS packages on the pinned base. Health checks use node fetch, so curl
+# is not installed. Drop the base image package managers after upgrade.
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends ca-certificates curl \
+  && apt-get upgrade -y \
+  && apt-get install -y --no-install-recommends ca-certificates \
+  && rm -rf /usr/local/lib/node_modules \
+    /usr/local/bin/npm \
+    /usr/local/bin/npx \
+    /usr/local/bin/corepack \
+    /opt/yarn-v* \
+    /usr/local/bin/yarn \
+    /usr/local/bin/yarnpkg \
   && rm -rf /var/lib/apt/lists/*
 
-COPY --from=builder /src/package.json /src/yarn.lock ./
-COPY --from=builder /src/node_modules ./node_modules
-COPY --from=builder /src/packages ./packages
+COPY --from=prod-deps /app/package.json /app/yarn.lock ./
+COPY --from=prod-deps /app/node_modules ./node_modules
+COPY --from=prod-deps /app/packages ./packages
 COPY --from=builder /src/services/api ./services/api
 COPY --from=builder /src/scripts ./scripts
 

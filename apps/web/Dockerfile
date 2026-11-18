@@ -60,6 +60,8 @@ RUN --mount=type=cache,target=/usr/local/share/.cache/yarn \
 
 # nginx:1.27-alpine
 FROM nginx:1.27-alpine@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10 AS runtime
+# Refresh Alpine packages on the pinned base before copying static assets.
+RUN apk update && apk upgrade --no-cache
 COPY apps/web/docker/nginx.conf /etc/nginx/conf.d/default.conf
 COPY apps/web/docker/docker-entrypoint.sh /docker-entrypoint.d/40-okkey-runtime-config.sh
 COPY --from=builder /src/apps/web/dist /usr/share/nginx/html
