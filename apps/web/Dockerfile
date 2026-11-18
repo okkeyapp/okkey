@@ -58,13 +58,13 @@ RUN --mount=type=cache,target=/usr/local/share/.cache/yarn \
   && yarn build:i18n \
   && yarn --cwd apps/web vite build
 
-# nginx:1.27-alpine
-FROM nginx:1.27-alpine@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10 AS runtime
-# Pinned base digest alone still ships Alpine packages with known HIGH/CRITICAL
-# fixes in the 3.21 channel. Refresh OS packages at build so the published web
-# image clears Trivy CRITICAL/HIGH without CVE exceptions. The base digest
-# stays pinned; only security updates from that Alpine release train apply.
-RUN apk update && apk upgrade --no-cache
+# nginx:1.30.6-alpine-slim (stable channel on Alpine 3.24).
+# Prefer alpine-slim over full alpine: the pinned 1.27-alpine digest still
+# ships HIGH/CRITICAL OS packages (e.g. libcrypto3 3.3.3-r0), and current
+# full stable-alpine images still report HIGH on libxslt. alpine-slim keeps
+# the same nginx binary/modules our SPA needs, drops unused XSLT libs, and
+# clears Trivy CRITICAL/HIGH without an unpinned apk upgrade.
+FROM nginx:1.30.6-alpine-slim@sha256:e2355aa95529a7999dad94ddcb45a8768abf6fb0b204c93b1a3ffce477d7b893 AS runtime
 COPY apps/web/docker/nginx.conf /etc/nginx/conf.d/default.conf
 COPY apps/web/docker/docker-entrypoint.sh /docker-entrypoint.d/40-okkey-runtime-config.sh
 COPY --from=builder /src/apps/web/dist /usr/share/nginx/html
