@@ -323,6 +323,7 @@ jobs:
             NODE_VERSION=25
             RUST_TOOLCHAIN=1.86.0
             WASM_PACK_VERSION=0.13.1
+            # This repository's commit (prep.revision). Downstream rebuilds must pass it through unchanged.
             OKKEY_GIT_SHA=${{ needs.prep.outputs.revision }}
           outputs: type=image,name=${{ steps.img.outputs.name }},push-by-digest=true,name-canonical=true,push=true
 
@@ -452,6 +453,7 @@ jobs:
             NODE_VERSION=25
             RUST_TOOLCHAIN=1.86.0
             WASM_PACK_VERSION=0.13.1
+            # This repository's commit (prep.revision). Downstream rebuilds must pass it through unchanged.
             OKKEY_GIT_SHA=${{ needs.prep.outputs.revision }}
           outputs: type=image,name=${{ steps.img.outputs.name }},push-by-digest=true,name-canonical=true,push=true
 

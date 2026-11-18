@@ -135,8 +135,10 @@ services:
       OKKEY_DEPLOYMENT_MODE: self_hosted
       OKKEY_VERSION: ${OKKEY_IMAGE_TAG:-1.0.0-beta.2}
       # Do not set OKKEY_GIT_SHA here: an empty compose value would override the
-      # SHA baked into the api/worker image at build time. Leave it unset so the
-      # image ENV is used. OKKEY_ENTERPRISE_GIT_SHA is set by enterprise overlays.
+      # okkey-repo commit baked into the api/worker image at build time. Leave
+      # it unset so the image ENV is used. Packaging overlays must not replace
+      # that value with their own HEAD. OKKEY_ENTERPRISE_GIT_SHA is set by
+      # enterprise overlays when those modules are installed.
       OKKEY_ENTERPRISE_VERSION: ${OKKEY_ENTERPRISE_VERSION:-}
       # Empty core feed URL uses the GitHub Releases default inside the API.
       # OKKEY_UPDATE_FEED_URL is the previous name and still overrides when the core name is empty.

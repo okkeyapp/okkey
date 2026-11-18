@@ -5,12 +5,16 @@ const SHORT_SHA_LEN = 8;
 export type SidebarVersionLabel = {
   /** Visible sidebar text, for example `v1.0.0-beta.3` or `v1.0.0-beta.3 (2bf668f3)`. */
   label: string;
-  /** Full commit SHA when known (also used for `data-commit-sha`). */
+  /**
+   * Full okkey-repo commit when known (also used for `data-commit-sha`).
+   * Comes from API `commitSha` / `OKKEY_GIT_SHA`, not a packaging revision.
+   */
   tooltip: string | null;
 };
 
 /**
- * Sidebar button text is the version, plus a short commit SHA in parentheses when known.
+ * Sidebar button text is the version, plus a short okkey commit SHA in parentheses
+ * when known (first 8 chars of API `commitSha` / `OKKEY_GIT_SHA`).
  * A tagged build and a plain version string both show `v<semver>`.
  * A version that is only a commit SHA uses the dev-channel version `0.0.0-dev`.
  * When the SHA is empty or invalid, the label is the version only (no empty parentheses).
