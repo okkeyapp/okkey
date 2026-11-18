@@ -1598,11 +1598,34 @@ test("compose gives the docker socket to the update agent only", () => {
   const api = serviceBlock(yaml, "api");
   const worker = serviceBlock(yaml, "worker");
   const agent = serviceBlock(yaml, "update-agent");
-  assert.equal(web.includes("docker.sock"), false);
-  assert.equal(api.includes("docker.sock"), false);
-  assert.equal(worker.includes("docker.sock"), false);
-  assert.equal(agent.includes("/var/run/docker.sock"), true);
+  // Volume mounts only — comments may mention the socket without mounting it.
+  const sockVolume = /^\s*-\s*\/var\/run\/docker\.sock:\/var\/run\/docker\.sock\s*$/m;
+  assert.equal(sockVolume.test(web), false);
+  assert.equal(sockVolume.test(api), false);
+  assert.equal(sockVolume.test(worker), false);
+  assert.equal(sockVolume.test(agent), true);
   assert.match(agent, /update-agent\/main\.ts/);
+});
+
+test("compose runs update-agent as root with an agent healthcheck (not api :4000)", () => {
+  const yaml = readFileSync(
+    new URL("../../../deploy/docker/docker-compose.prod.yml", import.meta.url),
+    "utf8",
+  );
+  const api = serviceBlock(yaml, "api");
+  const worker = serviceBlock(yaml, "worker");
+  const agent = serviceBlock(yaml, "update-agent");
+  // Distroless api image defaults to uid 65532; the agent must be root to write
+  // host-owned /okkey/.env and open the Docker socket (root:docker 0660).
+  assert.match(agent, /^\s*user:\s*"0:0"\s*$/m);
+  assert.equal(/^\s*user:/m.test(api), false);
+  assert.equal(/^\s*user:/m.test(worker), false);
+  assert.match(agent, /OKKEY_INSTALL_DIR:\s*\/okkey/);
+  assert.match(agent, /DOCKER_SOCKET:\s*\/var\/run\/docker\.sock/);
+  // Inherited api HEALTHCHECK probes :4000; override must probe the agent port.
+  assert.match(agent, /127\.0\.0\.1:8090/);
+  assert.equal(agent.includes("4000/health"), false);
+  assert.match(agent, /r\.status===401/);
 });
 
 function assertNoCredentialLeak(blob: string, secret: string): void {
