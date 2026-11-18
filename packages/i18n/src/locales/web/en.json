@@ -335,6 +335,7 @@
   "web.devicePending.passkey.rate_limited": "Too many attempts. Wait a few minutes and try again.",
   "web.devicePending.passkey.replay": "That passkey confirmation was already used. Try again.",
   "web.devicePending.passkey.failed": "Passkey approval failed. Try again, or use a trusted device or your recovery key.",
+  "web.devicePending.passkey.session_required": "Sign in again on this device, then tap Approve with passkey. Your session ended after the previous attempt.",
   "web.devicePending.passkey.expired": "That passkey confirmation expired. Start again from the extension.",
   "web.devicePending.passkeyHandoff.waiting": "Confirm this device with your passkey in the browser tab.",
   "web.devicePending.passkeyHandoff.confirmed": "Passkey confirmed. Finishing approval…",

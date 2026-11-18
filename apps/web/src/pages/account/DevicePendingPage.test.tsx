@@ -8,6 +8,7 @@ import DevicePendingPage from "./DevicePendingPage";
 
 const auth = vi.hoisted(() => ({
   accessToken: "tok" as string | null,
+  userId: "user-1" as string | null,
   deviceApprovalWatch: false,
   deviceTrustStatus: "pending" as
     | "idle"
@@ -20,11 +21,16 @@ const auth = vi.hoisted(() => ({
   deviceBlockedUntil: null as string | null,
   deviceApprovers: [] as Array<Record<string, string>>,
   deviceNeedsRecovery: false,
+  deviceShareReapproval: false,
   refreshDeviceTrust: vi.fn(async () => undefined),
   retryDeviceRegistration: vi.fn(async () => undefined),
   currentDeviceId: "device-1" as string | null,
   profile: { email: "user@okkey.local", firstName: "Test", lastName: "User" },
   logout: vi.fn(),
+}));
+
+const coreClient = vi.hoisted(() => ({
+  current: {} as Record<string, never> | null,
 }));
 
 const passkey = vi.hoisted(() => ({
@@ -52,7 +58,7 @@ vi.mock("../../auth/passkeyDeviceApproval", () => ({
 
 vi.mock("../../auth/AuthVaultContext", () => ({
   useAuthVault: () => auth,
-  useAuthenticatedCoreClient: () => ({}) as never,
+  useAuthenticatedCoreClient: () => coreClient.current as never,
 }));
 
 function ensureLocalStorage(): void {
@@ -92,16 +98,21 @@ describe("DevicePendingPage copy", () => {
   beforeEach(() => {
     ensureLocalStorage();
     auth.accessToken = "tok";
+    auth.userId = "user-1";
     auth.deviceApprovalWatch = false;
     auth.deviceTrustStatus = "pending";
     auth.deviceBlockedUntil = null;
     auth.deviceApprovers = [];
     auth.deviceNeedsRecovery = false;
+    auth.deviceShareReapproval = false;
     auth.refreshDeviceTrust.mockClear();
     auth.retryDeviceRegistration.mockClear();
     auth.currentDeviceId = "device-1";
+    coreClient.current = {};
     passkey.approvePendingDeviceWithPasskey.mockReset();
     passkey.approvePendingDeviceWithPasskey.mockResolvedValue({ ok: true });
+    toastMocks.error.mockClear();
+    toastMocks.message.mockClear();
     localStorage.setItem(LOCALE_STORAGE_KEY, "en");
   });
 
@@ -217,6 +228,45 @@ describe("DevicePendingPage copy", () => {
     fireEvent.click(screen.getByRole("button", { name: "Approve with passkey" }));
     await vi.waitFor(() => {
       expect(passkey.approvePendingDeviceWithPasskey).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it("toasts when Approve with passkey is pressed without a session", async () => {
+    auth.accessToken = null;
+    auth.deviceApprovalWatch = true;
+    coreClient.current = null;
+    renderPage();
+
+    fireEvent.click(screen.getByRole("button", { name: "Approve with passkey" }));
+
+    await vi.waitFor(() => {
+      expect(toastMocks.error).toHaveBeenCalled();
+    });
+    expect(String(toastMocks.error.mock.calls[0]?.[0])).toMatch(/sign in again/i);
+    expect(passkey.approvePendingDeviceWithPasskey).not.toHaveBeenCalled();
+  });
+
+  it("passes userId into passkey approve so the hybrid can be persisted", async () => {
+    renderPage();
+    fireEvent.click(screen.getByRole("button", { name: "Approve with passkey" }));
+    await vi.waitFor(() => {
+      expect(passkey.approvePendingDeviceWithPasskey).toHaveBeenCalledWith(
+        expect.anything(),
+        "device-1",
+        expect.objectContaining({ userId: "user-1" }),
+      );
+    });
+  });
+
+  it("refreshes device trust after Try again so approvers are not stale", async () => {
+    auth.deviceTrustStatus = "rejected";
+    renderPage();
+    fireEvent.click(screen.getByRole("button", { name: /request approval again/i }));
+    await vi.waitFor(() => {
+      expect(auth.retryDeviceRegistration).toHaveBeenCalledTimes(1);
+    });
+    await vi.waitFor(() => {
+      expect(auth.refreshDeviceTrust).toHaveBeenCalled();
     });
   });
 });

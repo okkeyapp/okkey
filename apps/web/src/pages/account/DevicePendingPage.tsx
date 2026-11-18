@@ -45,6 +45,7 @@ export default function DevicePendingPage() {
   const [searchParams] = useSearchParams();
   const {
     accessToken,
+    userId,
     deviceApprovalWatch,
     deviceTrustStatus,
     deviceBlockedUntil,
@@ -75,13 +76,24 @@ export default function DevicePendingPage() {
   }, [deviceTrustStatus]);
 
   const onPasskeyApprove = async () => {
-    if (!core || !currentDeviceId || passkeyBusy) {
+    if (passkeyBusy) {
+      return;
+    }
+    if (!currentDeviceId) {
+      return;
+    }
+    if (!core) {
+      toast.error(t("web.devicePending.passkey.session_required"));
       return;
     }
     const attempt = ++passkeyAttemptRef.current;
     setPasskeyBusy(true);
     try {
-      const result = await approvePendingDeviceWithPasskey(core, currentDeviceId);
+      // Fresh options every click: wrap keys and passkey permissions can change
+      // after a rejection, "Try again", reload, or a permission toggle elsewhere.
+      const result = await approvePendingDeviceWithPasskey(core, currentDeviceId, {
+        userId,
+      });
       if (attempt !== passkeyAttemptRef.current) {
         return;
       }
@@ -109,20 +121,23 @@ export default function DevicePendingPage() {
     setRetrying(true);
     try {
       await retryDeviceRegistration();
+      // Refetch trusted-device list and pending state for a clean attempt.
+      await refreshDeviceTrust();
     } finally {
       setRetrying(false);
     }
   };
 
   useEffect(() => {
-    if (!accessToken) {
+    if (!accessToken && !deviceApprovalWatch) {
       return;
     }
     if (
       deviceTrustStatus !== "pending" &&
       deviceTrustStatus !== "checking" &&
       deviceTrustStatus !== "blocked" &&
-      deviceTrustStatus !== "error"
+      deviceTrustStatus !== "error" &&
+      deviceTrustStatus !== "rejected"
     ) {
       return;
     }
@@ -131,7 +146,7 @@ export default function DevicePendingPage() {
       void refreshDeviceTrust();
     }, 4_000);
     return () => window.clearInterval(timer);
-  }, [accessToken, deviceTrustStatus, refreshDeviceTrust]);
+  }, [accessToken, deviceApprovalWatch, deviceTrustStatus, refreshDeviceTrust]);
 
   if (deviceTrustStatus === "trusted") {
     if (!accessToken) {
