@@ -1023,6 +1023,77 @@ test("POST /devices/register binds the access-token session to the device", asyn
   assert.deepEqual(bound, [{ token: "tok-register", userId: "u1", deviceId: DEVICE_A }]);
 });
 
+test("POST /devices/register rebinds an unbound session on pending update (reject→retry)", async () => {
+  const bound: Array<{ token: string; userId: string; deviceId: string }> = [];
+  const res = await dispatch({
+    method: "POST",
+    url: "/devices/register",
+    headers: {
+      "x-user-id": "u1",
+      authorization: "Bearer tok-retry",
+      "x-forwarded-for": "10.0.0.1",
+    },
+    body: registerBody(),
+    deviceService: createDeviceServiceStub({
+      // Same pending row after reopenRejected: created stays false.
+      registerDevice: async () => ({
+        deviceId: DEVICE_A,
+        status: "pending_approval",
+        created: false,
+      }),
+    }),
+    sessionService: createSessionServiceStub({
+      resolveAccessToken: async () => ({
+        userId: "u1",
+        deviceId: null,
+        scope: null,
+        tokenHash: "hash:tok-retry",
+      }),
+      bindAccessTokenDevice: async (token, userId, deviceId) => {
+        bound.push({ token, userId, deviceId });
+        return true;
+      },
+    }),
+  });
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(bound, [{ token: "tok-retry", userId: "u1", deviceId: DEVICE_A }]);
+});
+
+test("POST /devices/register does not rebind a session already bound to another device", async () => {
+  let bound = false;
+  const res = await dispatch({
+    method: "POST",
+    url: "/devices/register",
+    headers: {
+      "x-user-id": "u1",
+      authorization: "Bearer tok-other",
+      "x-forwarded-for": "10.0.0.1",
+    },
+    body: registerBody(),
+    deviceService: createDeviceServiceStub({
+      registerDevice: async () => ({
+        deviceId: DEVICE_A,
+        status: "pending_approval",
+        created: false,
+      }),
+    }),
+    sessionService: createSessionServiceStub({
+      resolveAccessToken: async () => ({
+        userId: "u1",
+        deviceId: DEVICE_B,
+        scope: null,
+        tokenHash: "hash:tok-other",
+      }),
+      bindAccessTokenDevice: async () => {
+        bound = true;
+        return true;
+      },
+    }),
+  });
+  assert.equal(res.statusCode, 200);
+  assert.equal(bound, false);
+});
+
 test("POST /devices/:id/revoke rejects a leading-zero device id without revoking", async () => {
   let revoked = false;
   const res = await dispatch({

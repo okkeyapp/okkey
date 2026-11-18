@@ -133,13 +133,26 @@ export async function deviceShareB64ForRegister(input: {
   const minted = legacy == null;
   try {
     const stored = await loadSplitKeyShareWrapKey(userId);
-    if (stored && legacy) {
-      const wrapped = await wrapSplitKeyShareB({
-        share: legacy,
-        recipientEd25519PublicKey: stored.ed25519PublicKey,
-        recipientMlkemEncapsulationKey: stored.mlkemEncapsulationKey,
-      });
-      return { shareB64: bytesToBase64(wrapped), upgradedShareB64: bytesToBase64(wrapped) };
+    // Always reuse an existing wrap keypair. Reminting here left registration
+    // placeholder pubs on the server while IndexedDB held a newer pair, so
+    // passkey approval sealed to the server pubs and unlock opened with the
+    // wrong local keys ("Wrong master password").
+    if (stored) {
+      try {
+        const wrapped = await wrapSplitKeyShareB({
+          share: raw,
+          recipientEd25519PublicKey: stored.ed25519PublicKey,
+          recipientMlkemEncapsulationKey: stored.mlkemEncapsulationKey,
+        });
+        const shareB64 = bytesToBase64(wrapped);
+        return {
+          shareB64,
+          upgradedShareB64: legacy ? shareB64 : null,
+        };
+      } finally {
+        wipeBytes(stored.ed25519Seed);
+        wipeBytes(stored.mlkemDecapsulationKey);
+      }
     }
     const sealed = await sealSplitKeyShareB(raw);
     try {

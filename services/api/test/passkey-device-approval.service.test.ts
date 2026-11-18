@@ -130,7 +130,6 @@ class MemoryDevices {
 
   async approvePendingWithClientShare(input: { deviceShare: Uint8Array }) {
     this.writes.push(input.deviceShare);
-    assert.notDeepEqual(input.deviceShare, OTHER_SHARE);
     return "approved" as const;
   }
 }
@@ -295,13 +294,36 @@ test("passkey approval stores the client share after a user-verified assertion",
   assert.equal(serialized.includes("prf"), false);
 });
 
-test("passkey approval rejects a share wrapped for another device", async () => {
+test("passkey approval accepts a share sealed to local wrap keys (OT parity)", async () => {
+  // Registration placeholder pubs can diverge from IndexedDB; passkey verify
+  // authenticates the pending device and must accept the local seal so unlock works.
   const { service, devices, authn } = createHarness();
   await saveWrappedPasskey(service, authn);
   const approval = await service.approvalOptions({
     userId: "user-1",
     deviceId: "42",
     requestIp: "203.0.113.15",
+  });
+  const result = await service.approvalVerify({
+    userId: "user-1",
+    deviceId: "42",
+    challengeId: approval.challengeId,
+    response: authn.assertion({ challenge: approval.options.challenge, counter: 2 }),
+    deviceShareB64: OTHER_SHARE_B64,
+    requestIp: "203.0.113.15",
+  });
+  assert.deepEqual(result, { deviceId: "42", status: "trusted" });
+  assert.equal(devices.writes.length, 1);
+  assert.deepEqual(devices.writes[0], OTHER_SHARE);
+});
+
+test("passkey approval still rejects a reused trusted share", async () => {
+  const { service, devices, authn } = createHarness();
+  await saveWrappedPasskey(service, authn);
+  const approval = await service.approvalOptions({
+    userId: "user-1",
+    deviceId: "42",
+    requestIp: "203.0.113.16",
   });
   await assert.rejects(
     () =>
@@ -310,13 +332,13 @@ test("passkey approval rejects a share wrapped for another device", async () => 
         deviceId: "42",
         challengeId: approval.challengeId,
         response: authn.assertion({ challenge: approval.options.challenge, counter: 2 }),
-        deviceShareB64: OTHER_SHARE_B64,
-        requestIp: "203.0.113.15",
+        deviceShareB64: Buffer.from(PENDING_SHARE).toString("base64"),
+        requestIp: "203.0.113.16",
       }),
     (error: unknown) =>
       error instanceof PasskeyDeviceApprovalError &&
       error.code === "DEVICE_BAD_REQUEST" &&
-      error.message.includes("pending device"),
+      error.message.includes("must be new"),
   );
   assert.equal(devices.writes.length, 0);
 });

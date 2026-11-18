@@ -25,7 +25,11 @@ import {
   wipeBytes,
   wrapSplitKeyShareB,
 } from "@okkey/crypto";
-import { loadSplitKeyShareWrapKey, mapVaultUnlockBootstrapToStored } from "@okkey/vault";
+import {
+  envelopeB64ForPlaintextShare,
+  loadSplitKeyShareWrapKey,
+  mapVaultUnlockBootstrapToStored,
+} from "@okkey/vault";
 import {
   startAuthentication,
   type AuthenticationResponseJSON,
@@ -252,6 +256,8 @@ async function finishPasskeyApproval(input: {
     response: Record<string, unknown>;
     device_share: string;
   }) => Promise<unknown>;
+  /** When set, seal to this device's IndexedDB wrap keys (OT delivery parity). */
+  userId?: string | null;
 }): Promise<
   { ok: true; deviceShareB64: string } | { ok: false; code: PasskeyApprovalErrorCode }
 > {
@@ -289,11 +295,19 @@ async function finishPasskeyApproval(input: {
       // Older wraps sealed the approver's hybrid frame. Re-allow the passkey.
       return { ok: false, code: "wrap_outdated" };
     }
-    forPending = await wrapRawShareForPending({
-      rawShare,
-      ed25519PublicKeyB64: input.options.share_wrap_ed25519_public_key,
-      pqPublicKeyB64: input.options.share_wrap_pq_public_key,
-    });
+    const userId = input.userId?.trim() ?? "";
+    if (userId) {
+      // Seal to the pending device's local wrap keys so unlock-bootstrap /
+      // openBundleDeviceShare can open the same hybrid after approval.
+      const sealedB64 = await envelopeB64ForPlaintextShare({ userId, share: rawShare });
+      forPending = base64ToBytes(sealedB64);
+    } else {
+      forPending = await wrapRawShareForPending({
+        rawShare,
+        ed25519PublicKeyB64: input.options.share_wrap_ed25519_public_key,
+        pqPublicKeyB64: input.options.share_wrap_pq_public_key,
+      });
+    }
     if (!forPending) {
       return { ok: false, code: "failed" };
     }
@@ -349,15 +363,16 @@ export async function approvePendingDeviceWithPasskey(
   try {
     // Always fetch fresh options so wrap keys and passkey permissions are current
     // after a rejection, retry, reload, or permission change on another device.
+    const userId = options?.userId?.trim() ?? "";
     const approvalOptions = await core.passkeyApprovalOptions(deviceId);
     const result = await finishPasskeyApproval({
       options: approvalOptions,
       verify: (body) => core.passkeyApprovalVerify(deviceId, body),
+      userId,
     });
     if (!result.ok) {
       return result;
     }
-    const userId = options?.userId?.trim() ?? "";
     if (userId) {
       await persistPasskeyApprovedDeviceShare({
         core,
@@ -378,15 +393,16 @@ export async function completePasskeyHandoff(
   options?: { core?: CoreApiClient | null; userId?: string | null },
 ): Promise<{ ok: true } | { ok: false; code: PasskeyApprovalErrorCode }> {
   try {
+    const userId = options?.userId?.trim() ?? "";
     const approvalOptions = await postPasskeyHandoffOptions(api, requestId);
     const result = await finishPasskeyApproval({
       options: approvalOptions,
       verify: (body) => postPasskeyHandoffVerify(api, requestId, body),
+      userId,
     });
     if (!result.ok) {
       return result;
     }
-    const userId = options?.userId?.trim() ?? "";
     const core = options?.core;
     if (userId && core) {
       await persistPasskeyApprovedDeviceShare({

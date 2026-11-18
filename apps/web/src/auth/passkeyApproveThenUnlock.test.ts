@@ -33,6 +33,9 @@ vi.mock("@okkey/crypto", () => ({
 vi.mock("@okkey/vault", () => ({
   loadSplitKeyShareWrapKey: vi.fn(async () => null),
   mapVaultUnlockBootstrapToStored: vi.fn(),
+  envelopeB64ForPlaintextShare: vi.fn(async () =>
+    Buffer.from([9, 9, 9, 9]).toString("base64"),
+  ),
 }));
 
 const readVaultBundle = vi.hoisted(() => vi.fn());
