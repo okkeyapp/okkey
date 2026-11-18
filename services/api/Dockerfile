@@ -61,6 +61,11 @@ WORKDIR /app
 ARG NODE_VERSION
 RUN test "${NODE_VERSION}" = "25"
 ENV NODE_ENV=production
+# Baked at image build time (CI passes the commit SHA). Empty default for local
+# builds. Must live on the final runtime stage (api/worker inherit it) — not on
+# prod-deps / builder. ARG/ENV only; no shell required.
+ARG OKKEY_GIT_SHA=
+ENV OKKEY_GIT_SHA=${OKKEY_GIT_SHA}
 ENV DEPLOY_ENV=prod
 
 RUN apt-get update \

@@ -323,7 +323,28 @@ jobs:
             NODE_VERSION=25
             RUST_TOOLCHAIN=1.86.0
             WASM_PACK_VERSION=0.13.1
+            OKKEY_GIT_SHA=${{ needs.prep.outputs.revision }}
           outputs: type=image,name=${{ steps.img.outputs.name }},push-by-digest=true,name-canonical=true,push=true
+
+      - name: Assert OKKEY_GIT_SHA is baked into api/worker image
+        if: matrix.image == 'api' || matrix.image == 'worker'
+        shell: bash
+        env:
+          IMAGE: ${{ steps.img.outputs.name }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+          EXPECTED_SHA: ${{ needs.prep.outputs.revision }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${DIGEST}" || -z "${EXPECTED_SHA}" ]]; then
+            echo "missing image digest or expected git SHA" >&2
+            exit 1
+          fi
+          REF="${IMAGE}@${DIGEST}"
+          docker pull "${REF}"
+          ENV_JSON="$(docker image inspect "${REF}" --format '{{json .Config.Env}}')"
+          echo "${ENV_JSON}" | grep -F "OKKEY_GIT_SHA=${EXPECTED_SHA}" >/dev/null \
+            || { echo "OKKEY_GIT_SHA=${EXPECTED_SHA} not found in image Env: ${ENV_JSON}" >&2; exit 1; }
+          echo "OKKEY_GIT_SHA baked into ${REF}"
 
       - name: Export digest
         shell: bash
@@ -431,7 +452,28 @@ jobs:
             NODE_VERSION=25
             RUST_TOOLCHAIN=1.86.0
             WASM_PACK_VERSION=0.13.1
+            OKKEY_GIT_SHA=${{ needs.prep.outputs.revision }}
           outputs: type=image,name=${{ steps.img.outputs.name }},push-by-digest=true,name-canonical=true,push=true
+
+      - name: Assert OKKEY_GIT_SHA is baked into api/worker image
+        if: matrix.image == 'api' || matrix.image == 'worker'
+        shell: bash
+        env:
+          IMAGE: ${{ steps.img.outputs.name }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+          EXPECTED_SHA: ${{ needs.prep.outputs.revision }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${DIGEST}" || -z "${EXPECTED_SHA}" ]]; then
+            echo "missing image digest or expected git SHA" >&2
+            exit 1
+          fi
+          REF="${IMAGE}@${DIGEST}"
+          docker pull "${REF}"
+          ENV_JSON="$(docker image inspect "${REF}" --format '{{json .Config.Env}}')"
+          echo "${ENV_JSON}" | grep -F "OKKEY_GIT_SHA=${EXPECTED_SHA}" >/dev/null \
+            || { echo "OKKEY_GIT_SHA=${EXPECTED_SHA} not found in image Env: ${ENV_JSON}" >&2; exit 1; }
+          echo "OKKEY_GIT_SHA baked into ${REF}"
 
       - name: Export digest
         shell: bash
