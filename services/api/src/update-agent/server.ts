@@ -109,9 +109,6 @@ export function createUpdateAgent(options: UpdateAgentOptions) {
     job.component = payload.component;
     job.fromVersion = payload.fromVersion;
     job.toVersion = payload.version;
-    if (payload.component !== "enterprise") {
-      registryCredentials = undefined;
-    }
     job.status = "applying";
     job.progress = 60;
     try {
@@ -132,6 +129,7 @@ export function createUpdateAgent(options: UpdateAgentOptions) {
           project: options.project,
           envFilePath: options.envFilePath,
           isolated: options.isolated,
+          registryCredentials,
         });
       }
       job.status = "succeeded";

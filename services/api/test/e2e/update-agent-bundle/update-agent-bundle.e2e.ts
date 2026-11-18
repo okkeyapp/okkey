@@ -20,6 +20,7 @@ import {
   composeUp,
   createComposeHarness,
   readEnvFile,
+  serviceConfig,
   serviceImage,
   type ComposeHarness,
 } from "./helpers/compose.ts";
@@ -98,6 +99,11 @@ test("a valid offline bundle applies core first, then enterprise", async () => {
 
     for (const service of CORE_SERVICES) {
       assert.equal(await serviceImage(service), ENTERPRISE_IMAGE);
+      const config = await serviceConfig(service);
+      assert.equal(config.workingDir, "/okkey");
+      assert.equal(config.user, "nonroot");
+      assert.deepEqual(config.entrypoint, ["sh", "-c"]);
+      assert.ok(config.env.includes("OKKEY_GIT_SHA=enterprise-fixture"));
     }
 
     const env = await readEnvFile(harness.envFilePath);
@@ -147,6 +153,10 @@ test("enterprise health failure keeps core and rolls enterprise back", async () 
 
     for (const service of CORE_SERVICES) {
       assert.equal(await serviceImage(service), CORE_IMAGE);
+      const config = await serviceConfig(service);
+      assert.equal(config.workingDir, "/app");
+      assert.equal(config.user, "root");
+      assert.ok(config.env.includes("OKKEY_GIT_SHA=core-fixture"));
     }
 
     const env = await readEnvFile(harness.envFilePath);

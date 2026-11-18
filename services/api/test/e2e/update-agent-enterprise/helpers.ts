@@ -175,6 +175,14 @@ export function enterpriseImages(registry: string, tag: string): Record<string, 
   };
 }
 
+export function coreImages(registry: string, tag: string): Record<string, string> {
+  return {
+    api: `${registry}/okkey-e2e/api:${tag}`,
+    web: `${registry}/okkey-e2e/web:${tag}`,
+    worker: `${registry}/okkey-e2e/worker:${tag}`,
+  };
+}
+
 export function signedEnterprisePackage(input: {
   privateKeyPem: string;
   version: string;
@@ -194,6 +202,27 @@ export function signedEnterprisePackage(input: {
     imageTag: input.imageTag,
     minCoreVersion: input.minCoreVersion,
     images: enterpriseImages(input.registry, input.imageTag),
+  };
+  return signOfflinePackage(payload, input.privateKeyPem);
+}
+
+export function signedCorePackage(input: {
+  privateKeyPem: string;
+  version: string;
+  fromVersion: string;
+  imageTag: string;
+  registry: string;
+}): SignedOfflinePackage {
+  const payload: OfflinePackagePayload = {
+    format: "okkey-offline-package",
+    formatVersion: 1,
+    component: "okkey",
+    version: input.version,
+    fromVersion: input.fromVersion,
+    summary: "Update-agent core apply e2e package",
+    releasedAt: new Date().toISOString(),
+    imageTag: input.imageTag,
+    images: coreImages(input.registry, input.imageTag),
   };
   return signOfflinePackage(payload, input.privateKeyPem);
 }

@@ -94,6 +94,7 @@ export async function applyVerifiedCorePackage(input: {
   project: string;
   envFilePath: string;
   isolated: boolean;
+  registryCredentials?: RegistryPullCredentials;
 }): Promise<void> {
   if (input.payload.component !== "okkey") {
     throw new SystemUpdateError(
@@ -117,7 +118,7 @@ export async function applyVerifiedCorePackage(input: {
         );
       }
     } else {
-      await input.engine.pullImage(image);
+      await input.engine.pullImage(image, input.registryCredentials);
     }
   }
 

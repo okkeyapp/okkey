@@ -19,6 +19,7 @@ import {
   newAgentToken,
   postJob,
   run,
+  signedCorePackage,
   signedEnterprisePackage,
   startUpdateAgent,
   waitForJob,
@@ -32,9 +33,13 @@ const REGISTRY_USER = "okkey-e2e-pull";
 const REGISTRY_PASS = `e2e-pass-${process.pid}-${Date.now()}`;
 const PROJECT = `okkey-e2e-${process.pid}`;
 const AGENT_PORT = 18_090 + (process.pid % 1000);
+/** Core-like image config (WORKDIR /app, USER root). */
 const TAG_V1 = "1.0.0";
+/** Enterprise-like image config (WORKDIR /okkey, USER nonroot, ENTRYPOINT). */
 const TAG_V2 = "2.0.0";
 const TAG_BAD = "2.0.0-unhealthy";
+/** Core package tag used to exercise enterprise→core image config swap. */
+const TAG_CORE_RETURN = "1.5.0";
 
 async function main(): Promise<void> {
   const root = e2eRoot();
@@ -190,6 +195,73 @@ async function main(): Promise<void> {
       const image = runningImage(service);
       assert(image.includes(`:${TAG_V2}`), `${service} is not on ${TAG_V2}: ${image}`);
       assert(containerRunning(service), `${service} is not running after success`);
+      assertImageConfig(service, {
+        workingDir: "/okkey",
+        user: "nonroot",
+        entrypoint: ["sh", "-c"],
+        gitSha: "enterprise-fixture",
+      });
+    }
+
+    // --- (1b) core apply over enterprise uses core image config ---
+    log("case 1b: core apply over enterprise restores core image config");
+    for (const service of SERVICES) {
+      try {
+        run("docker", ["rmi", "-f", `${REGISTRY}/okkey-e2e/${service}:${TAG_CORE_RETURN}`]);
+      } catch {
+        // may already be absent locally
+      }
+    }
+    const coreReturnPackage = signedCorePackage({
+      privateKeyPem: coreKeys.privateKeyPem,
+      version: TAG_CORE_RETURN,
+      fromVersion: "1.4.0",
+      imageTag: TAG_CORE_RETURN,
+      registry: REGISTRY,
+    });
+    const coreStarted = await postJob(AGENT_PORT, token, coreReturnPackage, credentials);
+    const coreJob = await waitForJob(AGENT_PORT, token, coreStarted.id);
+    assert(
+      coreJob.status === "succeeded",
+      `expected core succeeded, got ${coreJob.status} ${coreJob.errorCode}: ${coreJob.errorMessage}`,
+    );
+    const afterCoreEnv = readFileSync(paths.envFile, "utf8");
+    assert(afterCoreEnv.includes(`OKKEY_IMAGE_TAG=${TAG_CORE_RETURN}`), "core image tag was not updated");
+    assert(!afterCoreEnv.includes("OKKEY_ENTERPRISE_IMAGE_TAG="), "enterprise tag pin should be cleared");
+    for (const service of SERVICES) {
+      const image = runningImage(service);
+      assert(image.includes(`:${TAG_CORE_RETURN}`), `${service} is not on ${TAG_CORE_RETURN}: ${image}`);
+      assert(containerRunning(service), `${service} is not running after core apply`);
+      assertImageConfig(service, {
+        workingDir: "/app",
+        user: "root",
+        entrypoint: null,
+        gitSha: "core-fixture",
+      });
+    }
+
+    // Re-apply enterprise so later rollback cases start from enterprise images again.
+    log("re-apply enterprise after core return");
+    for (const repo of PACKAGE_IMAGE_KEYS) {
+      try {
+        run("docker", ["rmi", "-f", `${REGISTRY}/okkey-e2e/${repo}:${TAG_V2}`]);
+      } catch {
+        // may already be absent locally
+      }
+    }
+    const reEnterprise = await postJob(AGENT_PORT, token, successPackage, credentials);
+    const reEnterpriseJob = await waitForJob(AGENT_PORT, token, reEnterprise.id);
+    assert(
+      reEnterpriseJob.status === "succeeded",
+      `expected re-enterprise succeeded, got ${reEnterpriseJob.status} ${reEnterpriseJob.errorCode}: ${reEnterpriseJob.errorMessage}`,
+    );
+    for (const service of SERVICES) {
+      assertImageConfig(service, {
+        workingDir: "/okkey",
+        user: "nonroot",
+        entrypoint: ["sh", "-c"],
+        gitSha: "enterprise-fixture",
+      });
     }
 
     // --- (2) health failure rolls back ---
@@ -279,13 +351,15 @@ function composeEnv(envFile: string): NodeJS.ProcessEnv {
 }
 
 async function buildAndPushImages(root: string): Promise<void> {
-  const healthyDockerfile = path.join(root, "images", "Dockerfile.healthy");
+  const coreDockerfile = path.join(root, "images", "Dockerfile.core");
+  const enterpriseDockerfile = path.join(root, "images", "Dockerfile.enterprise");
   const unhealthyDockerfile = path.join(root, "images", "Dockerfile.unhealthy");
   // Registry repos match signed-package image keys; compose services are api/web/worker.
+  // TAG_V1 is core-like so the first enterprise apply exercises core→enterprise config swap.
   for (const repo of PACKAGE_IMAGE_KEYS) {
     const builds = [
-      { tag: TAG_V1, dockerfile: healthyDockerfile },
-      { tag: TAG_V2, dockerfile: healthyDockerfile },
+      { tag: TAG_V1, dockerfile: coreDockerfile },
+      { tag: TAG_V2, dockerfile: enterpriseDockerfile },
       { tag: TAG_BAD, dockerfile: unhealthyDockerfile },
     ];
     for (const item of builds) {
@@ -294,6 +368,46 @@ async function buildAndPushImages(root: string): Promise<void> {
       run("docker", ["push", image]);
     }
   }
+  for (const service of SERVICES) {
+    const image = `${REGISTRY}/okkey-e2e/${service}:${TAG_CORE_RETURN}`;
+    run("docker", ["build", "-f", coreDockerfile, "-t", image, path.dirname(coreDockerfile)]);
+    run("docker", ["push", image]);
+  }
+}
+
+function assertImageConfig(
+  service: string,
+  expected: {
+    workingDir: string;
+    user: string;
+    entrypoint: string[] | null;
+    gitSha: string;
+  },
+): void {
+  const id = containerId(service);
+  const workingDir = run("docker", ["inspect", "--format", "{{.Config.WorkingDir}}", id]).trim();
+  const user = run("docker", ["inspect", "--format", "{{.Config.User}}", id]).trim();
+  const entrypointRaw = run("docker", ["inspect", "--format", "{{json .Config.Entrypoint}}", id]).trim();
+  const envRaw = run("docker", ["inspect", "--format", "{{json .Config.Env}}", id]).trim();
+  assert(workingDir === expected.workingDir, `${service} WorkingDir=${workingDir}, expected ${expected.workingDir}`);
+  assert(user === expected.user, `${service} User=${user}, expected ${expected.user}`);
+  const entrypoint = JSON.parse(entrypointRaw) as string[] | null;
+  if (expected.entrypoint === null) {
+    assert(
+      entrypoint === null || (Array.isArray(entrypoint) && entrypoint.length === 0),
+      `${service} Entrypoint=${entrypointRaw}, expected empty`,
+    );
+  } else {
+    assert(
+      JSON.stringify(entrypoint) === JSON.stringify(expected.entrypoint),
+      `${service} Entrypoint=${entrypointRaw}, expected ${JSON.stringify(expected.entrypoint)}`,
+    );
+  }
+  const env = JSON.parse(envRaw) as string[];
+  assert(
+    env.includes(`OKKEY_GIT_SHA=${expected.gitSha}`),
+    `${service} missing OKKEY_GIT_SHA=${expected.gitSha} in ${envRaw}`,
+  );
 }
 
 async function waitForRegistry(registryName: string): Promise<void> {

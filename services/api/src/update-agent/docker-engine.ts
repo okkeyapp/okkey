@@ -21,19 +21,24 @@ export type DockerTransport = (
   headers?: Record<string, string>,
 ) => Promise<DockerTransportResult>;
 
+type ImageConfig = {
+  User?: string;
+  Env?: string[];
+  Cmd?: string[] | null;
+  Entrypoint?: string[] | null;
+  WorkingDir?: string;
+  Labels?: Record<string, string>;
+  ExposedPorts?: Record<string, unknown> | null;
+  Healthcheck?: Record<string, unknown>;
+};
+
 type Inspect = {
   Id?: string;
   Name?: string;
-  Config?: {
+  Image?: string;
+  Config?: ImageConfig & {
     Hostname?: string;
-    User?: string;
-    Env?: string[];
-    Cmd?: string[] | null;
     Image?: string;
-    WorkingDir?: string;
-    Entrypoint?: string[] | null;
-    Labels?: Record<string, string>;
-    ExposedPorts?: Record<string, unknown> | null;
   };
   HostConfig?: Record<string, unknown>;
   NetworkSettings?: {
@@ -44,6 +49,11 @@ type Inspect = {
     Status?: string;
     Health?: { Status?: string };
   };
+};
+
+type ImageInspect = {
+  Id?: string;
+  Config?: ImageConfig;
 };
 
 const DEFAULT_HEALTH_TIMEOUT_MS = 60_000;
@@ -205,6 +215,18 @@ export function createDockerApplyEngine(
       const inspect = JSON.parse(inspectResponse.body) as Inspect;
       const previousName = (inspect.Name ?? container.name).replace(/^\//, "");
       const parkedName = `${previousName}-okkey-prev`;
+
+      const oldImageRef = (inspect.Image ?? inspect.Config?.Image ?? "").trim();
+      if (!oldImageRef) {
+        throw new SystemUpdateError(
+          502,
+          "APPLY_FAILED",
+          `Docker could not resolve the previous image for ${container.service}`,
+        );
+      }
+      const oldImage = await inspectImage(api, oldImageRef, container.service);
+      const newImage = await inspectImage(api, image, container.service);
+
       await dockerOk(api, "POST", `/containers/${container.id}/stop?t=20`);
       await dockerOk(api, "POST", `/containers/${container.id}/rename?name=${encodeURIComponent(parkedName)}`);
       let createdId = "";
@@ -212,7 +234,15 @@ export function createDockerApplyEngine(
         const created = await api.request(
           "POST",
           `/containers/create?name=${encodeURIComponent(previousName)}`,
-          JSON.stringify(createBody(inspect, image, envUpdates)),
+          JSON.stringify(
+            buildReplaceCreateBody({
+              container: inspect,
+              oldImage,
+              newImage,
+              imageRef: image,
+              envUpdates,
+            }),
+          ),
         );
         if (created.status >= 300) {
           throw new SystemUpdateError(502, "APPLY_FAILED", `Docker could not create ${container.service}`);
@@ -412,24 +442,86 @@ function parseVersionParts(version: string): number[] {
   return normalized.split(".").map((part) => Number(part));
 }
 
-function createBody(inspect: Inspect, image: string, envUpdates: Record<string, string>) {
-  const config = inspect.Config ?? {};
-  const networks = inspect.NetworkSettings?.Networks ?? {};
+/**
+ * Env keys/values set by the user or compose: present on the container but not
+ * identical to the old image Config.Env. Image defaults must not be carried forward.
+ */
+export function userProvidedEnv(
+  containerEnv: string[],
+  oldImageEnv: string[],
+): Record<string, string> {
+  const imageMap = envToMap(oldImageEnv);
+  const provided: Record<string, string> = {};
+  for (const [key, value] of Object.entries(envToMap(containerEnv))) {
+    if (imageMap[key] !== value) {
+      provided[key] = value;
+    }
+  }
+  return provided;
+}
+
+/**
+ * Final container Env for a replace: new image defaults, then user/compose overrides,
+ * then apply-time updates. New image values win for keys that only came from images
+ * (for example OKKEY_GIT_SHA).
+ */
+export function composeReplaceEnv(input: {
+  newImageEnv: string[];
+  userEnv: Record<string, string>;
+  updates: Record<string, string>;
+}): string[] {
+  return mergeEnv(mergeEnv(input.newImageEnv, input.userEnv), input.updates);
+}
+
+export function envToMap(env: string[]): Record<string, string> {
+  const map: Record<string, string> = {};
+  for (const entry of env) {
+    const eq = entry.indexOf("=");
+    if (eq <= 0) {
+      continue;
+    }
+    map[entry.slice(0, eq)] = entry.slice(eq + 1);
+  }
+  return map;
+}
+
+/**
+ * Create-container body for an image swap.
+ * Image-owned fields (WorkingDir, Entrypoint, Cmd, User, Healthcheck, ExposedPorts)
+ * come from the new image. Compose/runtime fields (Hostname, Labels, mounts, networks,
+ * restart, ports) come from the old container. Env is composed as above.
+ */
+export function buildReplaceCreateBody(input: {
+  container: Inspect;
+  oldImage: ImageInspect;
+  newImage: ImageInspect;
+  imageRef: string;
+  envUpdates: Record<string, string>;
+}): Record<string, unknown> {
+  const containerConfig = input.container.Config ?? {};
+  const newConfig = input.newImage.Config ?? {};
+  const oldImageEnv = input.oldImage.Config?.Env ?? [];
+  const userEnv = userProvidedEnv(containerConfig.Env ?? [], oldImageEnv);
+  const networks = input.container.NetworkSettings?.Networks ?? {};
   const endpoints: Record<string, { Aliases?: string[] }> = {};
   for (const [name, network] of Object.entries(networks)) {
     endpoints[name] = { Aliases: network.Aliases ?? undefined };
   }
-  const host = inspect.HostConfig ?? {};
-  return {
-    Hostname: config.Hostname,
-    User: config.User,
-    Env: mergeEnv(config.Env ?? [], envUpdates),
-    Cmd: config.Cmd,
-    Image: image,
-    WorkingDir: config.WorkingDir,
-    Entrypoint: config.Entrypoint,
-    Labels: config.Labels,
-    ExposedPorts: config.ExposedPorts,
+  const host = input.container.HostConfig ?? {};
+  const body: Record<string, unknown> = {
+    Hostname: containerConfig.Hostname,
+    User: newConfig.User ?? "",
+    Env: composeReplaceEnv({
+      newImageEnv: newConfig.Env ?? [],
+      userEnv,
+      updates: input.envUpdates,
+    }),
+    Cmd: newConfig.Cmd ?? null,
+    Image: input.imageRef,
+    WorkingDir: newConfig.WorkingDir ?? "",
+    Entrypoint: newConfig.Entrypoint ?? null,
+    Labels: containerConfig.Labels ?? {},
+    ExposedPorts: newConfig.ExposedPorts ?? {},
     HostConfig: {
       Binds: host.Binds,
       PortBindings: host.PortBindings,
@@ -445,6 +537,10 @@ function createBody(inspect: Inspect, image: string, envUpdates: Record<string, 
     },
     NetworkingConfig: { EndpointsConfig: endpoints },
   };
+  if (newConfig.Healthcheck) {
+    body.Healthcheck = newConfig.Healthcheck;
+  }
+  return body;
 }
 
 function mergeEnv(env: string[], updates: Record<string, string>): string[] {
@@ -454,6 +550,31 @@ function mergeEnv(env: string[], updates: Record<string, string>): string[] {
     kept.push(`${key}=${value}`);
   }
   return kept;
+}
+
+
+async function inspectImage(
+  api: DockerApiClient,
+  imageRef: string,
+  service: string,
+): Promise<ImageInspect> {
+  const response = await api.request("GET", `/images/${encodeURIComponent(imageRef)}/json`);
+  if (response.status !== 200) {
+    throw new SystemUpdateError(
+      502,
+      "APPLY_FAILED",
+      `Docker could not inspect image ${imageRef} for ${service}`,
+    );
+  }
+  try {
+    return JSON.parse(response.body) as ImageInspect;
+  } catch {
+    throw new SystemUpdateError(
+      502,
+      "APPLY_FAILED",
+      `Docker returned an invalid image inspect for ${service}`,
+    );
+  }
 }
 
 async function dockerOk(api: DockerApiClient, method: string, path: string): Promise<void> {
