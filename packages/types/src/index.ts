@@ -150,6 +150,13 @@ export {
   clampMaxFileSizeMb,
   resolveMaxFileSizeMbFromInput,
 } from "./workspace-file-upload.js";
+export {
+  OFFLINE_BUNDLE_MAX_APPLY_BODY_BYTES,
+  OFFLINE_BUNDLE_MAX_ARCHIVE_BYTES,
+  OFFLINE_BUNDLE_MAX_DOCUMENT_BYTES,
+  OFFLINE_BUNDLE_NGINX_CLIENT_MAX_BODY_SIZE_MB,
+  isOfflineUploadTooLarge,
+} from "./offline-bundle-limits.js";
 
 export interface Workspace {
   id: EntityId;

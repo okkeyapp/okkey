@@ -1,9 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
 import { SystemUpdateError } from "../src/system-updates/errors.ts";
@@ -11,10 +12,19 @@ import {
   BUNDLE_CORE_PATH,
   BUNDLE_ENTERPRISE_PATH,
   BUNDLE_MANIFEST_PATH,
+  BUNDLE_MAX_APPLY_BODY_BYTES,
+  BUNDLE_MAX_ARCHIVE_BYTES,
+  BUNDLE_MAX_DOCUMENT_BYTES,
   buildOfflineBundle,
   verifyOfflineBundle,
   writeZip,
 } from "../src/system-updates/offline-bundle.ts";
+import {
+  OFFLINE_BUNDLE_MAX_APPLY_BODY_BYTES,
+  OFFLINE_BUNDLE_MAX_ARCHIVE_BYTES,
+  OFFLINE_BUNDLE_MAX_DOCUMENT_BYTES,
+  OFFLINE_BUNDLE_NGINX_CLIENT_MAX_BODY_SIZE_MB,
+} from "@okkey/types";
 import {
   generateUpdateKeyPair,
   signOfflinePackage,
@@ -65,6 +75,56 @@ function signedBytes(payload: OfflinePackagePayload, privateKeyPem: string): Buf
 function bundleDocument(core: Buffer, enterprise: Buffer) {
   return buildOfflineBundle(core, enterprise).document;
 }
+
+test("archive and body limits stay aligned with the shared UI/server constants", () => {
+  assert.equal(BUNDLE_MAX_ARCHIVE_BYTES, OFFLINE_BUNDLE_MAX_ARCHIVE_BYTES);
+  assert.equal(BUNDLE_MAX_DOCUMENT_BYTES, OFFLINE_BUNDLE_MAX_DOCUMENT_BYTES);
+  assert.equal(BUNDLE_MAX_APPLY_BODY_BYTES, OFFLINE_BUNDLE_MAX_APPLY_BODY_BYTES);
+  assert.equal(BUNDLE_MAX_DOCUMENT_BYTES, 4 * Math.ceil(BUNDLE_MAX_ARCHIVE_BYTES / 3) + 2048);
+  assert.equal(BUNDLE_MAX_APPLY_BODY_BYTES, BUNDLE_MAX_DOCUMENT_BYTES + 512);
+  assert.ok(OFFLINE_BUNDLE_NGINX_CLIENT_MAX_BODY_SIZE_MB * 1024 * 1024 >= BUNDLE_MAX_APPLY_BODY_BYTES);
+  assert.ok(OFFLINE_BUNDLE_NGINX_CLIENT_MAX_BODY_SIZE_MB <= 4);
+
+  const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
+  for (const relative of [
+    "deploy/docker/proxy/nginx/conf.d/okkey.conf.template",
+    "deploy/docker/proxy/nginx/conf.d/okkey-compat.conf.template",
+  ]) {
+    const template = readFileSync(path.join(repoRoot, relative), "utf8");
+    assert.match(
+      template,
+      new RegExp(
+        String.raw`location /system/updates/ \{[\s\S]*?client_max_body_size ${OFFLINE_BUNDLE_NGINX_CLIENT_MAX_BODY_SIZE_MB}m;`,
+      ),
+    );
+  }
+});
+
+test("an archive over the shared size limit is rejected as PACKAGE_TOO_LARGE", () => {
+  const oversized = Buffer.alloc(BUNDLE_MAX_ARCHIVE_BYTES + 1, 1);
+  oversized[0] = 0x50;
+  oversized[1] = 0x4b;
+  try {
+    verifyOfflineBundle(wrap(oversized), {
+      corePublicKeyPem: "unused",
+      enterprisePublicKeyPem: "unused",
+    });
+    assert.fail("oversized archive was accepted");
+  } catch (error) {
+    assert.ok(error instanceof SystemUpdateError);
+    assert.equal(error.code, "PACKAGE_TOO_LARGE");
+    assert.match(error.message, /size limit/);
+  }
+
+  // Random bytes stay large after zip deflate (patterned fill compresses away).
+  assert.throws(
+    () => buildOfflineBundle(randomBytes(BUNDLE_MAX_ARCHIVE_BYTES), Buffer.from("x")),
+    (error: unknown) =>
+      error instanceof SystemUpdateError &&
+      error.code === "PACKAGE_TOO_LARGE" &&
+      /size limit/.test(error.message),
+  );
+});
 
 test("building an archive records core then enterprise and verifies with each key", () => {
   const coreKeys = generateUpdateKeyPair();
@@ -437,12 +497,16 @@ function manifestBytes(core: Buffer, enterprise: Buffer): Buffer {
   return Buffer.from(JSON.stringify(manifest), "utf8");
 }
 
-function assertBundleError(document: unknown, message: RegExp): void {
+function assertBundleError(
+  document: unknown,
+  message: RegExp,
+  code: "PACKAGE_INVALID" | "PACKAGE_TOO_LARGE" = "PACKAGE_INVALID",
+): void {
   try {
     verifyOfflineBundle(document, { corePublicKeyPem: "unused", enterprisePublicKeyPem: "unused" });
   } catch (error) {
     assert.ok(error instanceof SystemUpdateError);
-    assert.equal(error.code, "PACKAGE_INVALID");
+    assert.equal(error.code, code);
     assert.match(error.message, message);
     return;
   }
