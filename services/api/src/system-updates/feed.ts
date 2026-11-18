@@ -1,8 +1,7 @@
 import { createHash } from "node:crypto";
 
-import { OFFLINE_BUNDLE_MAX_DOCUMENT_BYTES } from "@okkey/types";
-
 import { SystemUpdateError } from "./errors.ts";
+import { BUNDLE_MAX_DOCUMENT_BYTES } from "./offline-bundle.ts";
 import {
   assertHttpUrl,
   parseUpdateFeed,
@@ -13,7 +12,7 @@ import {
 export type FeedFetch = (url: string, init: RequestInit) => Promise<Response>;
 
 const FETCH_TIMEOUT_MS = 15_000;
-const MAX_BYTES = OFFLINE_BUNDLE_MAX_DOCUMENT_BYTES;
+const MAX_BYTES = BUNDLE_MAX_DOCUMENT_BYTES;
 const MAX_REDIRECTS = 3;
 
 /**

@@ -1,5 +1,10 @@
 /**
- * Offline update package / combined archive size limits.
+ * Offline update package / combined archive size limits (web UI).
+ *
+ * Keep numeric literals in lockstep with `BUNDLE_MAX_*` in
+ * `services/api/src/system-updates/offline-bundle.ts`. The API/update-agent
+ * path cannot import this package (CLI and e2e load the API module without a
+ * built types dist). Unit tests assert the values match.
  *
  * Packages are signed JSON image manifests (typically a few KiB each), not
  * container layers. 1_000_000 bytes for the zip archive is intentional headroom
