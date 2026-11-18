@@ -41,30 +41,17 @@ test("passkey PRF wrap of raw share B then pending re-wrap unlocks with master p
   const salt = random32();
   const credentialId = "cred-approve-unlock";
 
-  // Bug that shipped: sealing the phone hybrid frame under PRF. Opening that
-  // and posting it as the pending device share leaves the wrong recipient
-  // ciphertext on the new device, so master-password unlock fails.
-  const badWrap = await sealPasskeyShareWrap({
-    deviceShare: phone.wrappedDeviceShare,
-    prfOutput,
-    salt,
-    credentialId,
-  });
-  const openedHybrid = await openPasskeyShareWrap({
-    wrap: badWrap,
-    prfOutput,
-    salt,
-    credentialId,
-  });
-  assert.equal(classifySplitKeyShareBWire(openedHybrid), "hybrid");
+  // Bug that shipped: sealing the phone hybrid frame under PRF. Seal now
+  // refuses anything other than the raw 32-byte share B.
   await assert.rejects(
     () =>
-      openStoredSplitKeyShareB({
-        stored: openedHybrid,
-        recipientEd25519Seed: pending.shareWrap.ed25519Seed,
-        recipientMlkemDecapsulationKey: pending.shareWrap.mlkemDecapsulationKey,
+      sealPasskeyShareWrap({
+        deviceShare: phone.wrappedDeviceShare,
+        prfOutput,
+        salt,
+        credentialId,
       }),
-    /decrypt|DECRYPT|failed|aead|recipient|wrap/i,
+    /raw 32-byte share B/i,
   );
 
   const wrap = await sealPasskeyShareWrap({
