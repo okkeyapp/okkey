@@ -1266,21 +1266,34 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
     setVaultIdleLockMsState(ms);
   }, []);
 
-  const applyApprovalSnapshot = useCallback((body: DeviceApprovalStatusResponseDto) => {
-    const snapshot = trustFromApprovalStatus(body);
-    if (snapshot.status === "trusted") {
-      clearDeviceApprovalStatus();
-      setDeviceApprovalWatch(false);
-    }
-    setDeviceTrustStatus(snapshot.status);
-    setDeviceBlockedUntil(snapshot.status === "blocked" ? snapshot.blockedUntil : null);
-    setCurrentDeviceId(snapshot.deviceId);
-    currentDeviceIdRef.current = snapshot.deviceId;
-    pendingDeviceIdRef.current = snapshot.status === "trusted" ? null : snapshot.deviceId;
-    if (snapshot.status === "blocked") {
-      clearBoundDeviceSession();
-    }
-  }, []);
+  const applyApprovalSnapshot = useCallback(
+    (body: DeviceApprovalStatusResponseDto) => {
+      const snapshot = trustFromApprovalStatus(body);
+      if (snapshot.status === "trusted") {
+        clearDeviceApprovalStatus();
+        setDeviceApprovalWatch(false);
+        foreverBlockedRef.current = false;
+      }
+      if (snapshot.status === "blocked" && snapshot.blockedUntil == null) {
+        foreverBlockedRef.current = true;
+      } else if (snapshot.status !== "trusted") {
+        foreverBlockedRef.current = false;
+      }
+      setDeviceTrustStatus(snapshot.status);
+      setDeviceBlockedUntil(snapshot.status === "blocked" ? snapshot.blockedUntil : null);
+      setCurrentDeviceId(snapshot.deviceId);
+      currentDeviceIdRef.current = snapshot.deviceId;
+      pendingDeviceIdRef.current = snapshot.status === "trusted" ? null : snapshot.deviceId;
+      if (snapshot.status === "blocked") {
+        clearBoundDeviceSession();
+        void clearDeviceSigningKey();
+        if (vaultUnlockedRef.current) {
+          lockVault();
+        }
+      }
+    },
+    [lockVault],
+  );
 
   const followApprovalStatus = useCallback(async (): Promise<boolean> => {
     const credential = readDeviceApprovalStatus();
@@ -1318,6 +1331,30 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       const fingerprint = getOrCreateDeviceFingerprint();
       const knownDeviceId = pendingDeviceIdRef.current ?? currentDeviceIdRef.current;
       const snapshot = await pollDeviceTrust(client, fingerprint, knownDeviceId, userId);
+
+      const credential = readDeviceApprovalStatus();
+      if (credential) {
+        try {
+          const approvalBody = await fetchDeviceApprovalStatus(credential);
+          const approval = trustFromApprovalStatus(approvalBody);
+          const bearerStale =
+            (approval.status === "blocked" && snapshot.status !== "blocked") ||
+            (approval.status === "trusted" && snapshot.status !== "trusted") ||
+            (approval.status === "pending" &&
+              (snapshot.status === "rejected" || snapshot.status === "error"));
+          if (bearerStale) {
+            // Session-scoped GET /devices can lag or miss the row after reject→retry
+            // while the approval credential still tracks the same pending device.
+            applyApprovalSnapshot(approvalBody);
+            return;
+          }
+        } catch (error: unknown) {
+          if (error instanceof ApiRequestError && error.status === 401) {
+            clearDeviceApprovalStatus();
+          }
+        }
+      }
+
       // Sticky forever-block is optimistic only; clear when server is no longer blocked
       // (Settings unblock / re-trust must leave /account/device-pending without reload).
       if (snapshot.status === "blocked" && snapshot.blockedUntil == null) {
@@ -1373,7 +1410,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       }
       // Best-effort; keep last known trust status on transient network errors.
     }
-  }, [accessToken, followApprovalStatus, lockVault, logout, userId]);
+  }, [accessToken, applyApprovalSnapshot, followApprovalStatus, lockVault, logout, userId]);
 
   const markDeviceBlockedForever = useCallback(() => {
     foreverBlockedRef.current = true;
