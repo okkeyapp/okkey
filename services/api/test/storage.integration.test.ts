@@ -590,12 +590,13 @@ test("integration: DevicesRepository approval transitions are consistent", async
     rejectReason: "no",
   });
   assert.equal(rejected.kind, "rejected");
-  assert.equal(rejected.device?.deviceShare, null);
+  // Placeholder share stays so passkey approval can read wrap public keys after retry.
+  assert.ok(rejected.device?.deviceShare);
   const rejectedShare = await db.query<{ device_share: Buffer | null }>(
     "SELECT device_share FROM devices WHERE id = $1",
     [pendingReject.id],
   );
-  assert.equal(rejectedShare[0]?.device_share, null);
+  assert.ok(rejectedShare[0]?.device_share);
 
   const revoked = await devices.revokeOwned({
     userId: user.id,

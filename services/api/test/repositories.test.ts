@@ -386,7 +386,7 @@ test("DevicesRepository.resolveApproval does not approve without a device share"
   );
 });
 
-test("DevicesRepository.resolveApproval reject ends device sessions", async () => {
+test("DevicesRepository.resolveApproval reject keeps share and unbinds sessions", async () => {
   const db = new FakeDb();
   db.enqueueResult([]);
   db.enqueueResult([makeDeviceRow({ status: "pending" })]);
@@ -405,9 +405,15 @@ test("DevicesRepository.resolveApproval reject ends device sessions", async () =
   });
   assert.equal(result.kind, "rejected");
   const rejectSql = db.queries.find((query) => /rejection_reason = \$3/.test(query.sql));
-  assert.match(rejectSql?.sql ?? "", /device_share = NULL/);
-  assert.match(db.queries.at(-1)?.sql ?? "", /DELETE FROM sessions/);
-  assert.deepEqual(db.queries.at(-1)?.params, [["d1"]]);
+  // Keep placeholder share (wrap keys) and Bearer; unbind so retry can rebind.
+  assert.doesNotMatch(rejectSql?.sql ?? "", /device_share = NULL/);
+  assert.ok(!db.queries.some((query) => /DELETE FROM sessions/.test(query.sql)));
+  assert.ok(
+    db.queries.some(
+      (query) =>
+        /UPDATE sessions/.test(query.sql) && /device_id = NULL/.test(query.sql),
+    ),
+  );
 });
 
 test("DevicesRepository.blockPending ends device sessions", async () => {

@@ -2707,8 +2707,7 @@ export class DevicesRepository {
             status = 'revoked',
             rejected_at = $2::timestamptz,
             rejection_reason = $3,
-            revoked_at = $2::timestamptz,
-            device_share = NULL
+            revoked_at = $2::timestamptz
           WHERE id = $1
           RETURNING
             id,
@@ -2736,7 +2735,18 @@ export class DevicesRepository {
         `,
         [input.deviceId, input.now, input.rejectReason ?? "rejected by user"],
       );
-      await deleteSessionsForDevices(tx, [input.deviceId]);
+      // Keep the placeholder share (wrap public keys) and the Bearer, but unbind
+      // the session from this revoked row so "Try again" can rebind to the
+      // reopened pending device. Deleting the session forced a full sign-out;
+      // leaving it bound made block/approve invisible to GET /devices.
+      await tx.query(
+        `
+          UPDATE sessions
+          SET device_id = NULL
+          WHERE device_id = $1::bigint
+        `,
+        [input.deviceId],
+      );
       return { kind: "rejected", device: mapDevice(rejectedRows[0]) };
     }));
   }

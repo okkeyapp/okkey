@@ -466,5 +466,6 @@ test("integration: raw device share is rejected and a rejected device clears its
     `SELECT device_share FROM devices WHERE id = $1::bigint`,
     [pendingId],
   );
-  assert.equal(rows[0]?.device_share, null);
+  // Placeholder share is kept so a later passkey approve can read wrap public keys.
+  assert.ok(rows[0]?.device_share);
 });
