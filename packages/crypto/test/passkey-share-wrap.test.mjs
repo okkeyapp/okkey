@@ -70,22 +70,16 @@ test("PRF wrap rejects a tampered ciphertext and a different credential id", asy
   );
 });
 
-test("PRF wrap round-trips a hybrid-sized share", async () => {
+test("PRF wrap refuses to seal a hybrid-sized share", async () => {
   const deviceShare = crypto.getRandomValues(new Uint8Array(2400));
-  const prfOutput = random32();
-  const salt = random32();
-  const wrap = await sealPasskeyShareWrap({
-    deviceShare,
-    prfOutput,
-    salt,
-    credentialId: "cred-hybrid",
-  });
-  assert.equal(wrap.length, PASSKEY_SHARE_WRAP_OVERHEAD + deviceShare.length);
-  const opened = await openPasskeyShareWrap({
-    wrap,
-    prfOutput,
-    salt,
-    credentialId: "cred-hybrid",
-  });
-  assert.deepEqual(opened, deviceShare);
+  await assert.rejects(
+    () =>
+      sealPasskeyShareWrap({
+        deviceShare,
+        prfOutput: random32(),
+        salt: random32(),
+        credentialId: "cred-hybrid",
+      }),
+    /raw 32-byte share B/i,
+  );
 });

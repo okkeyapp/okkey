@@ -14,7 +14,7 @@ import {
 } from "@okkey/crypto";
 
 import { base64ToBytes, bytesToBase64 } from "./base64";
-import { readVaultBundle } from "./localVaultBundle";
+import { readVaultBundle, writeVaultBundle } from "./localVaultBundle";
 import { envelopeB64ForPlaintextShare, loadSplitKeyShareWrapKey } from "@okkey/vault";
 
 const STORAGE_KEY = "okkey.device.share_delivery_keypair";
@@ -199,6 +199,12 @@ export async function acceptShareDeliveryIfPresent(
     });
     const wireB64 = await envelopeB64ForPlaintextShare({ userId, share });
     await core.confirmDeviceShareDelivery(deviceId, wireB64);
+    // Persist the claimed hybrid locally so unlock does not keep a pre-approval
+    // placeholder while waiting for unlock-bootstrap.
+    const existing = readVaultBundle(userId);
+    if (existing) {
+      writeVaultBundle({ ...existing, device_share_b64: wireB64 }, userId);
+    }
     discardOneTimeShareDelivery(fingerprint);
     clearShareDeliveryReapproval();
     return true;

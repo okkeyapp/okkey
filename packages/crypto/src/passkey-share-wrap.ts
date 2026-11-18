@@ -44,12 +44,17 @@ function assertInputs(input: {
   prfOutput: Uint8Array;
   salt: Uint8Array;
   credentialId: string;
+  /** When sealing, require the raw 32-byte share B (never a hybrid frame). */
+  requireRawShare?: boolean;
 }): void {
-  if (
-    input.deviceShare &&
-    (input.deviceShare.length === 0 || input.deviceShare.length > SHARE_MAX_LEN)
-  ) {
-    throw new Error("device share length is outside the passkey wrap limit");
+  if (input.deviceShare) {
+    if (input.requireRawShare) {
+      if (input.deviceShare.length !== 32) {
+        throw new Error("passkey share wrap must seal the raw 32-byte share B");
+      }
+    } else if (input.deviceShare.length === 0 || input.deviceShare.length > SHARE_MAX_LEN) {
+      throw new Error("device share length is outside the passkey wrap limit");
+    }
   }
   if (input.prfOutput.length !== PRF_LEN) {
     throw new Error("PRF output must be 32 bytes");
@@ -70,7 +75,7 @@ export async function sealPasskeyShareWrap(input: {
   credentialId: string;
 }): Promise<Uint8Array> {
   await ensureWasm();
-  assertInputs(input);
+  assertInputs({ ...input, requireRawShare: true });
   const shareCopy = input.deviceShare.slice();
   const key = deriveWrapKey(input.prfOutput, input.salt);
   const nonce = random_bytes(NONCE_LEN);
