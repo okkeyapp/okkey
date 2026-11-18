@@ -402,9 +402,11 @@ export async function resolveDeviceTrust(
         ? soleTrusted?.device_fingerprint
         : undefined,
     });
-    if (registered.status === "trusted") {
-      // POST /devices still binds the Bearer when it creates a trusted row.
+    if (registered.status === "trusted" || registered.status === "pending_approval") {
+      // POST /devices binds the Bearer for both trusted and newly created pending rows.
       boundSessionDeviceId = registered.device_id;
+    }
+    if (registered.status === "trusted") {
       const after = await core.listDevices(fingerprint).catch(() => listed);
       return {
         status: "trusted",

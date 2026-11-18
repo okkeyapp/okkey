@@ -386,7 +386,7 @@ test("DevicesRepository.resolveApproval does not approve without a device share"
   );
 });
 
-test("DevicesRepository.resolveApproval reject ends device sessions", async () => {
+test("DevicesRepository.resolveApproval reject keeps placeholder share and sessions", async () => {
   const db = new FakeDb();
   db.enqueueResult([]);
   db.enqueueResult([makeDeviceRow({ status: "pending" })]);
@@ -405,9 +405,10 @@ test("DevicesRepository.resolveApproval reject ends device sessions", async () =
   });
   assert.equal(result.kind, "rejected");
   const rejectSql = db.queries.find((query) => /rejection_reason = \$3/.test(query.sql));
-  assert.match(rejectSql?.sql ?? "", /device_share = NULL/);
-  assert.match(db.queries.at(-1)?.sql ?? "", /DELETE FROM sessions/);
-  assert.deepEqual(db.queries.at(-1)?.params, [["d1"]]);
+  // Pending reject keeps the placeholder share and the device session so
+  // "Try again" → passkey approve still has wrap keys and a Bearer.
+  assert.doesNotMatch(rejectSql?.sql ?? "", /device_share = NULL/);
+  assert.ok(!db.queries.some((query) => /DELETE FROM sessions/.test(query.sql)));
 });
 
 test("DevicesRepository.blockPending ends device sessions", async () => {

@@ -2707,8 +2707,7 @@ export class DevicesRepository {
             status = 'revoked',
             rejected_at = $2::timestamptz,
             rejection_reason = $3,
-            revoked_at = $2::timestamptz,
-            device_share = NULL
+            revoked_at = $2::timestamptz
           WHERE id = $1
           RETURNING
             id,
@@ -2736,7 +2735,9 @@ export class DevicesRepository {
         `,
         [input.deviceId, input.now, input.rejectReason ?? "rejected by user"],
       );
-      await deleteSessionsForDevices(tx, [input.deviceId]);
+      // Keep the pending device's session and placeholder share. Clearing either
+      // broke "Try again" → passkey approve: no Bearer, no wrap public keys.
+      // Vault routes still require a trusted device, so this session cannot unlock.
       return { kind: "rejected", device: mapDevice(rejectedRows[0]) };
     }));
   }

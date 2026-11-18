@@ -62,6 +62,7 @@ import {
 import {
   clearBoundDeviceSession,
   pollDeviceTrust,
+  registerCurrentBrowserDevice,
   resolveDeviceTrust,
   type DeviceTrustStatus,
 } from "./deviceTrust";
@@ -542,7 +543,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
         setDeviceApprovers(snapshot.approverDevices);
         setDeviceNeedsRecovery(snapshot.needsRecovery === true);
         setDeviceShareReapproval(snapshot.needsShareReapproval === true);
-        if (snapshot.status === "blocked" || snapshot.status === "rejected") {
+        if (snapshot.status === "blocked") {
           clearBoundDeviceSession();
           void clearDeviceSigningKey();
         }
@@ -1276,7 +1277,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
     setCurrentDeviceId(snapshot.deviceId);
     currentDeviceIdRef.current = snapshot.deviceId;
     pendingDeviceIdRef.current = snapshot.status === "trusted" ? null : snapshot.deviceId;
-    if (snapshot.status === "blocked" || snapshot.status === "rejected") {
+    if (snapshot.status === "blocked") {
       clearBoundDeviceSession();
     }
   }, []);
@@ -1347,7 +1348,9 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       if (snapshot.status !== "trusted" && vaultUnlockedRef.current) {
         lockVault();
       }
-      if (snapshot.status === "blocked" || snapshot.status === "rejected") {
+      // Keep the signing key after a soft rejection so "Try again" can rebind
+      // without a full sign-out. Blocked devices still wipe the key.
+      if (snapshot.status === "blocked") {
         clearBoundDeviceSession();
         void clearDeviceSigningKey();
       }
@@ -1434,6 +1437,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
         pendingDeviceIdRef.current = next.device_id;
         setDeviceNeedsRecovery(false);
         setDeviceShareReapproval(false);
+        setDeviceApprovers([]);
       } catch (error: unknown) {
         if (error instanceof ApiRequestError && error.status === 401) {
           clearDeviceApprovalStatus();
@@ -1457,8 +1461,10 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
     setDeviceBlockedUntil(null);
     const client = createAuthenticatedCoreClient(accessToken);
     try {
-      // Use full resolve path so lost-seed installs go through key-rebind / recovery
-      // instead of register → 409 DEVICE_FINGERPRINT_ALREADY_TRUSTED.
+      // Re-publish wrap keys / placeholder share after a rejection cleared them on
+      // older servers, then resolve trust so approvers and pending state are fresh.
+      const fingerprint = getOrCreateDeviceFingerprint();
+      await registerCurrentBrowserDevice(client, fingerprint, { userId });
       const snapshot = await resolveDeviceTrust(client, userId);
       if (snapshot.status === "blocked" && snapshot.blockedUntil == null) {
         foreverBlockedRef.current = true;
@@ -1482,7 +1488,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       setDeviceApprovers(snapshot.approverDevices);
       setDeviceNeedsRecovery(snapshot.needsRecovery === true);
       setDeviceShareReapproval(snapshot.needsShareReapproval === true);
-      if (snapshot.status === "blocked" || snapshot.status === "rejected") {
+      if (snapshot.status === "blocked") {
         clearBoundDeviceSession();
         void clearDeviceSigningKey();
       }
