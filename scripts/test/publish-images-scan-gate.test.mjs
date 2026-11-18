@@ -81,6 +81,11 @@ test("Trivy fails the job on CRITICAL and HIGH and loads generated ignores", () 
     assert.match(job, /\.github\/security\/cve-exceptions\.yaml/);
     assert.equal(job.split("image: [api, worker, web]").length - 1, 1);
   }
+
+  // buildx digests are OCI indexes; trivy-action v0.36.0 has no platform
+  // input, so each arch scan must set TRIVY_PLATFORM for that arch.
+  assert.match(jobBlock("scan-amd64"), /TRIVY_PLATFORM:\s*linux\/amd64/);
+  assert.match(jobBlock("scan-arm64"), /TRIVY_PLATFORM:\s*linux\/arm64/);
 });
 
 test("third-party Dockerfile and compose images are digest pinned", () => {
