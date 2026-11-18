@@ -23,7 +23,12 @@ import {
   type UpdateJob,
 } from "../src/system-updates/service.ts";
 import { compareVersions, coreSatisfiesMinimum, shouldShowUpdate } from "../src/system-updates/versions.ts";
-import { applyVerifiedCorePackage, setEnvValue, type UpdateApplyEngine } from "../src/update-agent/apply.ts";
+import {
+  applyVerifiedCorePackage,
+  removeEnvValue,
+  setEnvValue,
+  type UpdateApplyEngine,
+} from "../src/update-agent/apply.ts";
 import { createDockerApplyEngine, type DockerTransport } from "../src/update-agent/docker-engine.ts";
 import { createUpdateAgent } from "../src/update-agent/server.ts";
 import { SystemUpdateError } from "../src/system-updates/errors.ts";
@@ -1047,7 +1052,13 @@ test("update agent verifies a signature before apply and does not use the core k
   assert.deepEqual(ok.job.result, { scope: "core", coreVersion: "1.1.0" });
   assert.equal(calls.includes("pull"), false);
   assert.equal(calls.filter((call) => call.startsWith("replace")).length, 3);
-  assert.match(readFileSync(envFile, "utf8"), /OKKEY_IMAGE_TAG=1\.1\.0/);
+  const coreEnv = readFileSync(envFile, "utf8");
+  assert.match(coreEnv, /OKKEY_IMAGE_TAG=1\.1\.0/);
+  assert.match(coreEnv, /OKKEY_API_IMAGE=ghcr\.io\/okkeyapp\/api/);
+  assert.match(coreEnv, /OKKEY_WEB_IMAGE=ghcr\.io\/okkeyapp\/web/);
+  assert.match(coreEnv, /OKKEY_WORKER_IMAGE=ghcr\.io\/okkeyapp\/worker/);
+  assert.equal(coreEnv.includes("OKKEY_ENTERPRISE_IMAGE_TAG="), false);
+  assert.equal(coreEnv.includes("OKKEY_ENTERPRISE_VERSION="), false);
 
   calls.length = 0;
   writeFileSync(envFile, "OKKEY_IMAGE_TAG=1.0.0-beta.2\n");
@@ -1220,7 +1231,18 @@ test("update agent applies an enterprise package and keeps registry credentials 
     assert.match(env, /OKKEY_IMAGE_TAG=1\.4\.0/);
     assert.match(env, /OKKEY_ENTERPRISE_IMAGE_TAG=2\.0\.0/);
     assert.match(env, /OKKEY_ENTERPRISE_VERSION=2\.0\.0/);
-    assert.match(env, /OKKEY_ENTERPRISE_API_IMAGE=ghcr\.io\/example\/enterprise-api/);
+    assert.match(env, /OKKEY_API_IMAGE=ghcr\.io\/example\/enterprise-api/);
+    assert.match(env, /OKKEY_WEB_IMAGE=ghcr\.io\/example\/enterprise-web/);
+    assert.match(env, /OKKEY_WORKER_IMAGE=ghcr\.io\/example\/enterprise-worker/);
+    assert.equal(env.includes("OKKEY_ENTERPRISE_API_IMAGE="), false);
+    assert.deepEqual(
+      calls.filter((call) => call.startsWith("find:")),
+      ["find:api", "find:web", "find:worker"],
+    );
+    assert.deepEqual(
+      calls.filter((call) => call.startsWith("replace:")),
+      ["replace:api", "replace:web", "replace:worker"],
+    );
     assertNoCredentialLeak(logs.join("\n") + env, password);
   } finally {
     restoreLogs();
@@ -1295,7 +1317,7 @@ test("update agent rolls enterprise containers and tags back when health fails",
       },
       async replaceContainer(container: { service: string }) {
         calls.push(`replace:${container.service}`);
-        if (container.service === "enterprise-web") {
+        if (container.service === "web") {
           throw new Error("health failed");
         }
         return {
@@ -1313,7 +1335,7 @@ test("update agent rolls enterprise containers and tags back when health fails",
   await agent.settle();
   assert.equal(finished.job.errorCode, "APPLY_FAILED");
   assert.match(finished.job.errorMessage ?? "", /previous version was restored/);
-  assert.ok(calls.includes("rollback:enterprise-api"));
+  assert.ok(calls.includes("rollback:api"));
   assert.equal(calls.some((call) => call.startsWith("commit:")), false);
   assert.equal(readFileSync(envFile, "utf8"), originalEnv);
 });
@@ -1589,6 +1611,54 @@ test("setEnvValue replaces the image tag without dropping other keys", () => {
   );
 });
 
+test("removeEnvValue drops a key so compose can fall back", () => {
+  assert.equal(
+    removeEnvValue(
+      "OKKEY_IMAGE_TAG=1.0.0\nOKKEY_ENTERPRISE_IMAGE_TAG=2.0.0\nOKKEY_ENTERPRISE_VERSION=2.0.0\n",
+      "OKKEY_ENTERPRISE_IMAGE_TAG",
+    ),
+    "OKKEY_IMAGE_TAG=1.0.0\nOKKEY_ENTERPRISE_VERSION=2.0.0\n",
+  );
+});
+
+test("core apply over an enterprise install clears the enterprise tag pin", async () => {
+  const keys = generateUpdateKeyPair();
+  const signed = signOfflinePackage(payload(), keys.privateKeyPem);
+  const envDir = mkdtempSync(path.join(tmpdir(), "okkey-update-"));
+  const envFile = path.join(envDir, ".env");
+  writeFileSync(
+    envFile,
+    [
+      "OKKEY_IMAGE_TAG=1.0.0",
+      "OKKEY_ENTERPRISE_IMAGE_TAG=2.0.0",
+      "OKKEY_ENTERPRISE_VERSION=2.0.0",
+      "OKKEY_API_IMAGE=ghcr.io/example/enterprise-api",
+      "OKKEY_WEB_IMAGE=ghcr.io/example/enterprise-web",
+      "OKKEY_WORKER_IMAGE=ghcr.io/example/enterprise-worker",
+      "",
+    ].join("\n"),
+  );
+  const calls: string[] = [];
+  const agent = createUpdateAgent({
+    token: "secret",
+    publicKeyPem: keys.publicKeyPem,
+    isolated: true,
+    project: "okkey",
+    envFilePath: envFile,
+    engine: recordingEngine(calls, { exists: true }),
+  });
+  const finished = await postJob(agent, signed);
+  await agent.settle();
+  assert.equal(finished.job.status, "succeeded");
+  const env = readFileSync(envFile, "utf8");
+  assert.match(env, /OKKEY_IMAGE_TAG=1\.1\.0/);
+  assert.match(env, /OKKEY_API_IMAGE=ghcr\.io\/okkeyapp\/api/);
+  assert.match(env, /OKKEY_WEB_IMAGE=ghcr\.io\/okkeyapp\/web/);
+  assert.match(env, /OKKEY_WORKER_IMAGE=ghcr\.io\/okkeyapp\/worker/);
+  assert.equal(env.includes("OKKEY_ENTERPRISE_IMAGE_TAG="), false);
+  assert.equal(env.includes("OKKEY_ENTERPRISE_VERSION="), false);
+});
+
 test("compose gives the docker socket to the update agent only", () => {
   const yaml = readFileSync(
     new URL("../../../deploy/docker/docker-compose.prod.yml", import.meta.url),
@@ -1605,6 +1675,12 @@ test("compose gives the docker socket to the update agent only", () => {
   assert.equal(sockVolume.test(worker), false);
   assert.equal(sockVolume.test(agent), true);
   assert.match(agent, /update-agent\/main\.ts/);
+  for (const block of [api, web, worker, agent]) {
+    assert.match(
+      block,
+      /OKKEY_ENTERPRISE_IMAGE_TAG:-\$\{OKKEY_IMAGE_TAG:-1\.0\.0-beta\.2\}/,
+    );
+  }
 });
 
 test("compose runs update-agent as root with an agent healthcheck (not api :4000)", () => {

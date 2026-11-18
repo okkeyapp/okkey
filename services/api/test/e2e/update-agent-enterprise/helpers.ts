@@ -14,7 +14,11 @@ import {
   type SignedOfflinePackage,
 } from "../../../src/system-updates/package-format.ts";
 
-export const SERVICES = ["enterprise-api", "enterprise-web", "enterprise-worker"] as const;
+/** Production compose services that host enterprise images. */
+export const SERVICES = ["api", "web", "worker"] as const;
+
+/** Signed-package image keys (unchanged for package compatibility). */
+export const PACKAGE_IMAGE_KEYS = ["enterprise-api", "enterprise-web", "enterprise-worker"] as const;
 
 export type E2ePaths = {
   root: string;
@@ -69,13 +73,14 @@ export function writeComposeFile(composeFile: string): void {
   writeFileSync(
     composeFile,
     `# Disposable compose project for the update-agent enterprise apply e2e.
+# Mirrors production: api/web/worker with OKKEY_*_IMAGE + enterprise tag fallback.
 services:
-  enterprise-api:
-    image: \${OKKEY_ENTERPRISE_API_IMAGE}:\${OKKEY_ENTERPRISE_IMAGE_TAG}
+  api:
+    image: \${OKKEY_API_IMAGE}:\${OKKEY_ENTERPRISE_IMAGE_TAG:-\${OKKEY_IMAGE_TAG}}
     restart: "no"
     environment:
-      OKKEY_ENTERPRISE_VERSION: \${OKKEY_ENTERPRISE_VERSION}
-      OKKEY_ENTERPRISE_IMAGE_TAG: \${OKKEY_ENTERPRISE_IMAGE_TAG}
+      OKKEY_ENTERPRISE_VERSION: \${OKKEY_ENTERPRISE_VERSION:-}
+      OKKEY_ENTERPRISE_IMAGE_TAG: \${OKKEY_ENTERPRISE_IMAGE_TAG:-}
     healthcheck:
       test: ["CMD-SHELL", "exit 0"]
       interval: 1s
@@ -83,12 +88,12 @@ services:
       retries: 1
       start_period: 0s
 
-  enterprise-web:
-    image: \${OKKEY_ENTERPRISE_WEB_IMAGE}:\${OKKEY_ENTERPRISE_IMAGE_TAG}
+  web:
+    image: \${OKKEY_WEB_IMAGE}:\${OKKEY_ENTERPRISE_IMAGE_TAG:-\${OKKEY_IMAGE_TAG}}
     restart: "no"
     environment:
-      OKKEY_ENTERPRISE_VERSION: \${OKKEY_ENTERPRISE_VERSION}
-      OKKEY_ENTERPRISE_IMAGE_TAG: \${OKKEY_ENTERPRISE_IMAGE_TAG}
+      OKKEY_ENTERPRISE_VERSION: \${OKKEY_ENTERPRISE_VERSION:-}
+      OKKEY_ENTERPRISE_IMAGE_TAG: \${OKKEY_ENTERPRISE_IMAGE_TAG:-}
     healthcheck:
       test: ["CMD-SHELL", "exit 0"]
       interval: 1s
@@ -96,12 +101,12 @@ services:
       retries: 1
       start_period: 0s
 
-  enterprise-worker:
-    image: \${OKKEY_ENTERPRISE_WORKER_IMAGE}:\${OKKEY_ENTERPRISE_IMAGE_TAG}
+  worker:
+    image: \${OKKEY_WORKER_IMAGE}:\${OKKEY_ENTERPRISE_IMAGE_TAG:-\${OKKEY_IMAGE_TAG}}
     restart: "no"
     environment:
-      OKKEY_ENTERPRISE_VERSION: \${OKKEY_ENTERPRISE_VERSION}
-      OKKEY_ENTERPRISE_IMAGE_TAG: \${OKKEY_ENTERPRISE_IMAGE_TAG}
+      OKKEY_ENTERPRISE_VERSION: \${OKKEY_ENTERPRISE_VERSION:-}
+      OKKEY_ENTERPRISE_IMAGE_TAG: \${OKKEY_ENTERPRISE_IMAGE_TAG:-}
     healthcheck:
       test: ["CMD-SHELL", "exit 0"]
       interval: 1s
@@ -146,16 +151,16 @@ export function writeInstallEnv(
     coreTag: string;
   },
 ): void {
-  const repo = (service: string) => `${input.registry}/okkey-e2e/${service}`;
+  const repo = (packageKey: string) => `${input.registry}/okkey-e2e/${packageKey}`;
   writeFileSync(
     envFile,
     [
       `OKKEY_IMAGE_TAG=${input.coreTag}`,
       `OKKEY_ENTERPRISE_IMAGE_TAG=${input.tag}`,
       `OKKEY_ENTERPRISE_VERSION=${input.version}`,
-      `OKKEY_ENTERPRISE_API_IMAGE=${repo("enterprise-api")}`,
-      `OKKEY_ENTERPRISE_WEB_IMAGE=${repo("enterprise-web")}`,
-      `OKKEY_ENTERPRISE_WORKER_IMAGE=${repo("enterprise-worker")}`,
+      `OKKEY_API_IMAGE=${repo("enterprise-api")}`,
+      `OKKEY_WEB_IMAGE=${repo("enterprise-web")}`,
+      `OKKEY_WORKER_IMAGE=${repo("enterprise-worker")}`,
       "",
     ].join("\n"),
     "utf8",

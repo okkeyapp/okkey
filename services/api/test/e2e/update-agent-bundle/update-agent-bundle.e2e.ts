@@ -29,7 +29,6 @@ import {
   CORE_SERVICES,
   CORE_TAG,
   ENTERPRISE_IMAGE,
-  ENTERPRISE_SERVICES,
   ENTERPRISE_TAG,
 } from "./helpers/constants.ts";
 import {
@@ -94,12 +93,10 @@ test("a valid offline bundle applies core first, then enterprise", async () => {
       coreVersion: CORE_TAG,
       enterpriseVersion: ENTERPRISE_TAG,
     });
-    assert.deepEqual(replaceOrder, [...CORE_SERVICES, ...ENTERPRISE_SERVICES]);
+    // Both components target the same production services.
+    assert.deepEqual(replaceOrder, [...CORE_SERVICES, ...CORE_SERVICES]);
 
     for (const service of CORE_SERVICES) {
-      assert.equal(await serviceImage(service), CORE_IMAGE);
-    }
-    for (const service of ENTERPRISE_SERVICES) {
       assert.equal(await serviceImage(service), ENTERPRISE_IMAGE);
     }
 
@@ -107,6 +104,9 @@ test("a valid offline bundle applies core first, then enterprise", async () => {
     assert.match(env, new RegExp(`OKKEY_IMAGE_TAG=${CORE_TAG}`));
     assert.match(env, new RegExp(`OKKEY_ENTERPRISE_IMAGE_TAG=${ENTERPRISE_TAG}`));
     assert.match(env, new RegExp(`OKKEY_ENTERPRISE_VERSION=${ENTERPRISE_TAG}`));
+    assert.match(env, /OKKEY_API_IMAGE=/);
+    assert.match(env, /OKKEY_WEB_IMAGE=/);
+    assert.match(env, /OKKEY_WORKER_IMAGE=/);
   } finally {
     await stopAgent(server);
   }
@@ -143,19 +143,18 @@ test("enterprise health failure keeps core and rolls enterprise back", async () 
       { component: "enterprise", version: ENTERPRISE_TAG, applied: false },
     ]);
     assert.deepEqual(replaceOrder.slice(0, 3), [...CORE_SERVICES]);
-    assert.equal(replaceOrder[3], "enterprise-api");
+    assert.equal(replaceOrder[3], "api");
 
     for (const service of CORE_SERVICES) {
       assert.equal(await serviceImage(service), CORE_IMAGE);
     }
-    for (const service of ENTERPRISE_SERVICES) {
-      assert.equal(await serviceImage(service), BASE_IMAGE);
-    }
 
     const env = await readEnvFile(harness.envFilePath);
     assert.match(env, new RegExp(`OKKEY_IMAGE_TAG=${CORE_TAG}`));
-    assert.match(env, /OKKEY_ENTERPRISE_IMAGE_TAG=1\.0\.0/);
-    assert.match(env, /OKKEY_ENTERPRISE_VERSION=1\.0\.0/);
+    // Core cleared the enterprise tag pin; enterprise rollback restored that post-core env.
+    assert.equal(env.includes("OKKEY_ENTERPRISE_IMAGE_TAG="), false);
+    assert.equal(env.includes("OKKEY_ENTERPRISE_VERSION="), false);
+    assert.match(env, /OKKEY_API_IMAGE=/);
   } finally {
     await stopAgent(server);
   }
@@ -205,7 +204,7 @@ async function assertInvalidSignatureLeavesInstallUntouched(input: {
     );
     assert.deepEqual(replaceOrder, []);
 
-    for (const service of [...CORE_SERVICES, ...ENTERPRISE_SERVICES]) {
+    for (const service of CORE_SERVICES) {
       assert.equal(await serviceImage(service), BASE_IMAGE);
     }
     assert.equal(await readEnvFile(harness.envFilePath), beforeEnv);

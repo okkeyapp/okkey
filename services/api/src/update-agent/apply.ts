@@ -2,6 +2,7 @@ import { readFile, writeFile } from "node:fs/promises";
 
 import { SystemUpdateError } from "../system-updates/errors.ts";
 import {
+  COMPOSE_IMAGE_ENV_KEYS,
   CORE_IMAGE_SERVICES,
   type OfflinePackagePayload,
   type RegistryPullCredentials,
@@ -56,9 +57,36 @@ export function setEnvValue(contents: string, key: string, value: string): strin
   return joined.endsWith("\n") || joined === "" ? joined : `${joined}\n`;
 }
 
+/** Drop a key so compose `${VAR:-fallback}` treats it as unset. */
+export function removeEnvValue(contents: string, key: string): string {
+  const lines = contents.length > 0 ? contents.split(/\r?\n/) : [];
+  const next = lines.filter((line) => !line.startsWith(`${key}=`));
+  if (next.length === lines.length) {
+    return contents.endsWith("\n") || contents === "" ? contents : `${contents}\n`;
+  }
+  const joined = next.join("\n");
+  return joined.endsWith("\n") || joined === "" ? joined : `${joined}\n`;
+}
+
+/** Image reference without tag or digest (repository path only). */
+export function imageRepository(image: string): string {
+  const digest = image.lastIndexOf("@");
+  const withoutDigest = digest > 0 ? image.slice(0, digest) : image;
+  const slash = withoutDigest.lastIndexOf("/");
+  const colon = withoutDigest.lastIndexOf(":");
+  if (colon > slash) {
+    return withoutDigest.slice(0, colon);
+  }
+  return withoutDigest;
+}
+
 /**
  * Apply a verified core package. Callers must verify the signature first.
  * A failure rolls back containers that were already replaced and leaves the env file unchanged.
+ *
+ * On success, writes `OKKEY_*_IMAGE` from the package and clears
+ * `OKKEY_ENTERPRISE_IMAGE_TAG` / `OKKEY_ENTERPRISE_VERSION` so a later
+ * `compose up` uses the core tag (enterprise metadata must not pin the tag).
  */
 export async function applyVerifiedCorePackage(input: {
   payload: OfflinePackagePayload;
@@ -106,6 +134,7 @@ export async function applyVerifiedCorePackage(input: {
     containers.push(container);
   }
 
+  const previousEnv = await input.engine.readEnvFile(input.envFilePath);
   const replaced: Array<{ rollback: () => Promise<void>; commit: () => Promise<void> }> = [];
   try {
     for (const container of containers) {
@@ -117,11 +146,23 @@ export async function applyVerifiedCorePackage(input: {
         await input.engine.replaceContainer(container, image, {
           OKKEY_VERSION: input.payload.version,
           OKKEY_IMAGE_TAG: input.payload.imageTag,
+          // Clear leftover enterprise pins from a previous enterprise apply.
+          OKKEY_ENTERPRISE_VERSION: "",
+          OKKEY_ENTERPRISE_IMAGE_TAG: "",
         }),
       );
     }
-    const current = await input.engine.readEnvFile(input.envFilePath);
-    const next = setEnvValue(current, "OKKEY_IMAGE_TAG", input.payload.imageTag);
+    let next = setEnvValue(previousEnv, "OKKEY_IMAGE_TAG", input.payload.imageTag);
+    for (const service of CORE_IMAGE_SERVICES) {
+      const image = images[service];
+      if (!image) {
+        throw new SystemUpdateError(400, "PACKAGE_INVALID", "Package image disappeared");
+      }
+      next = setEnvValue(next, COMPOSE_IMAGE_ENV_KEYS[service], imageRepository(image));
+    }
+    // Core images must not keep an enterprise tag pin from a previous enterprise apply.
+    next = removeEnvValue(next, "OKKEY_ENTERPRISE_IMAGE_TAG");
+    next = removeEnvValue(next, "OKKEY_ENTERPRISE_VERSION");
     await input.engine.writeEnvFile(input.envFilePath, next);
     for (const item of replaced) {
       try {

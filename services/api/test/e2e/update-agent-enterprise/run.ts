@@ -10,6 +10,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import type { ChildProcess } from "node:child_process";
 
 import {
+  PACKAGE_IMAGE_KEYS,
   SERVICES,
   assert,
   createWorkDir,
@@ -126,10 +127,10 @@ async function main(): Promise<void> {
     assert(previousEnv.includes(`OKKEY_ENTERPRISE_IMAGE_TAG=${TAG_V1}`), "fixture setup env was wrong");
 
     log("drop local v2 tags so apply must pull through credentials");
-    for (const service of SERVICES) {
+    for (const repo of PACKAGE_IMAGE_KEYS) {
       for (const tag of [TAG_V2, TAG_BAD]) {
         try {
-          run("docker", ["rmi", "-f", `${REGISTRY}/okkey-e2e/${service}:${tag}`]);
+          run("docker", ["rmi", "-f", `${REGISTRY}/okkey-e2e/${repo}:${tag}`]);
         } catch {
           // image may already be absent locally
         }
@@ -178,6 +179,12 @@ async function main(): Promise<void> {
     const afterSuccessEnv = readFileSync(paths.envFile, "utf8");
     assert(afterSuccessEnv.includes(`OKKEY_ENTERPRISE_IMAGE_TAG=${TAG_V2}`), "env tag was not updated");
     assert(afterSuccessEnv.includes(`OKKEY_ENTERPRISE_VERSION=${TAG_V2}`), "env version was not updated");
+    assert(afterSuccessEnv.includes(`OKKEY_API_IMAGE=${REGISTRY}/okkey-e2e/enterprise-api`), "api image repo missing");
+    assert(afterSuccessEnv.includes(`OKKEY_WEB_IMAGE=${REGISTRY}/okkey-e2e/enterprise-web`), "web image repo missing");
+    assert(
+      afterSuccessEnv.includes(`OKKEY_WORKER_IMAGE=${REGISTRY}/okkey-e2e/enterprise-worker`),
+      "worker image repo missing",
+    );
     assert(!afterSuccessEnv.includes(REGISTRY_PASS), "registry password leaked into env file");
     for (const service of SERVICES) {
       const image = runningImage(service);
@@ -274,14 +281,15 @@ function composeEnv(envFile: string): NodeJS.ProcessEnv {
 async function buildAndPushImages(root: string): Promise<void> {
   const healthyDockerfile = path.join(root, "images", "Dockerfile.healthy");
   const unhealthyDockerfile = path.join(root, "images", "Dockerfile.unhealthy");
-  for (const service of SERVICES) {
+  // Registry repos match signed-package image keys; compose services are api/web/worker.
+  for (const repo of PACKAGE_IMAGE_KEYS) {
     const builds = [
       { tag: TAG_V1, dockerfile: healthyDockerfile },
       { tag: TAG_V2, dockerfile: healthyDockerfile },
       { tag: TAG_BAD, dockerfile: unhealthyDockerfile },
     ];
     for (const item of builds) {
-      const image = `${REGISTRY}/okkey-e2e/${service}:${item.tag}`;
+      const image = `${REGISTRY}/okkey-e2e/${repo}:${item.tag}`;
       run("docker", ["build", "-f", item.dockerfile, "-t", image, path.dirname(item.dockerfile)]);
       run("docker", ["push", image]);
     }

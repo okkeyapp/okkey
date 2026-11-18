@@ -20,8 +20,28 @@ export type UpdateComponent = (typeof UPDATE_COMPONENTS)[number];
 
 export const CORE_IMAGE_SERVICES = ["api", "web", "worker"] as const;
 
-/** Compose service names for the enterprise api, web, and worker images. */
+/**
+ * Package image keys for enterprise updates. Kept for signed-package compatibility.
+ * Runtime apply maps these onto the production compose services below.
+ */
 export const ENTERPRISE_IMAGE_SERVICES = ["enterprise-api", "enterprise-web", "enterprise-worker"] as const;
+
+/**
+ * Production compose hosts enterprise images on the same api/web/worker services
+ * as core (via OKKEY_*_IMAGE). There is no separate enterprise-* compose overlay.
+ */
+export const ENTERPRISE_COMPOSE_SERVICES = {
+  "enterprise-api": "api",
+  "enterprise-web": "web",
+  "enterprise-worker": "worker",
+} as const satisfies Record<(typeof ENTERPRISE_IMAGE_SERVICES)[number], (typeof CORE_IMAGE_SERVICES)[number]>;
+
+/** `.env` keys that select the image repository for each compose service. */
+export const COMPOSE_IMAGE_ENV_KEYS = {
+  api: "OKKEY_API_IMAGE",
+  web: "OKKEY_WEB_IMAGE",
+  worker: "OKKEY_WORKER_IMAGE",
+} as const satisfies Record<(typeof CORE_IMAGE_SERVICES)[number], string>;
 
 /**
  * Short-lived read-only registry credentials from an update feed.
