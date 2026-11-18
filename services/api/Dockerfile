@@ -152,6 +152,11 @@ FROM gcr.io/distroless/cc-debian12:nonroot@sha256:9dac0a79194e45a7da0158a9c6da57
 ARG NODE_VERSION
 # Distroless has no shell; keep the version pin documented for readers/CI.
 WORKDIR /app
+# Baked at image build time (CI passes the commit SHA). Empty default for local
+# builds. Must live on the final runtime stage (api/worker inherit it) — not on
+# prod-deps / builder. ARG/ENV only; no shell required.
+ARG OKKEY_GIT_SHA=
+ENV OKKEY_GIT_SHA=${OKKEY_GIT_SHA}
 ENV NODE_ENV=production
 ENV DEPLOY_ENV=prod
 
