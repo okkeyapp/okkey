@@ -520,21 +520,45 @@ describe("pollDeviceTrust", () => {
   });
 
   it("stays pending while the approval row is still listed", async () => {
-    listDevices.mockResolvedValue({
-      devices: [],
-      pending: [
-        {
-          device_id: "d-new",
-          device_fingerprint: fingerprint,
-          status: "pending_approval",
-        },
-      ],
-    });
+    listDevices
+      .mockResolvedValueOnce({
+        devices: [],
+        pending: [
+          {
+            device_id: "d-new",
+            device_fingerprint: fingerprint,
+            status: "pending_approval",
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        devices: [
+          {
+            device_id: "d-trusted",
+            device_fingerprint: "other-fp",
+            status: "trusted",
+            device_name: "Phone",
+          },
+        ],
+        pending: [
+          {
+            device_id: "d-new",
+            device_fingerprint: fingerprint,
+            status: "pending_approval",
+          },
+        ],
+      });
+    bindDeviceSession.mockResolvedValue({ device_id: "d-new", status: "pending" });
 
     const snapshot = await pollDeviceTrust(coreClient(), fingerprint, "d-new");
 
+    expect(createDeviceBindChallenge).toHaveBeenCalledWith("d-new");
+    expect(bindDeviceSession).toHaveBeenCalled();
     expect(snapshot.status).toBe("pending");
     expect(snapshot.deviceId).toBe("d-new");
+    expect(snapshot.approverDevices).toEqual([
+      expect.objectContaining({ device_id: "d-trusted", device_name: "Phone" }),
+    ]);
   });
 
   it("matches a pending device id even when the decimal forms differ", async () => {
@@ -555,7 +579,7 @@ describe("pollDeviceTrust", () => {
     expect(snapshot.deviceId).toBe("000202");
   });
 
-  it("reports rejected only after the pending row is gone", async () => {
+  it("reports rejected only after the pending row is gone without clearing the signing key", async () => {
     listDevices.mockResolvedValue({
       devices: [],
       pending: [],
@@ -566,6 +590,7 @@ describe("pollDeviceTrust", () => {
 
     expect(snapshot.status).toBe("rejected");
     expect(snapshot.deviceId).toBe("d-new");
+    expect(clearDeviceSigningKey).not.toHaveBeenCalled();
   });
 
   it("keeps error when bind proof fails so recovery gate cannot open unbound", async () => {
