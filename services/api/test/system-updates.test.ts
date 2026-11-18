@@ -23,8 +23,19 @@ import {
   type UpdateJob,
 } from "../src/system-updates/service.ts";
 import { compareVersions, coreSatisfiesMinimum, shouldShowUpdate } from "../src/system-updates/versions.ts";
-import { applyVerifiedCorePackage, setEnvValue, type UpdateApplyEngine } from "../src/update-agent/apply.ts";
-import { createDockerApplyEngine, type DockerTransport } from "../src/update-agent/docker-engine.ts";
+import {
+  applyVerifiedCorePackage,
+  removeEnvValue,
+  setEnvValue,
+  type UpdateApplyEngine,
+} from "../src/update-agent/apply.ts";
+import {
+  buildReplaceCreateBody,
+  composeReplaceEnv,
+  createDockerApplyEngine,
+  userProvidedEnv,
+  type DockerTransport,
+} from "../src/update-agent/docker-engine.ts";
 import { createUpdateAgent } from "../src/update-agent/server.ts";
 import { SystemUpdateError } from "../src/system-updates/errors.ts";
 import { BUNDLE_MAX_APPLY_BODY_BYTES, BUNDLE_MAX_DOCUMENT_BYTES } from "../src/system-updates/offline-bundle.ts";
@@ -1047,7 +1058,13 @@ test("update agent verifies a signature before apply and does not use the core k
   assert.deepEqual(ok.job.result, { scope: "core", coreVersion: "1.1.0" });
   assert.equal(calls.includes("pull"), false);
   assert.equal(calls.filter((call) => call.startsWith("replace")).length, 3);
-  assert.match(readFileSync(envFile, "utf8"), /OKKEY_IMAGE_TAG=1\.1\.0/);
+  const coreEnv = readFileSync(envFile, "utf8");
+  assert.match(coreEnv, /OKKEY_IMAGE_TAG=1\.1\.0/);
+  assert.match(coreEnv, /OKKEY_API_IMAGE=ghcr\.io\/okkeyapp\/api/);
+  assert.match(coreEnv, /OKKEY_WEB_IMAGE=ghcr\.io\/okkeyapp\/web/);
+  assert.match(coreEnv, /OKKEY_WORKER_IMAGE=ghcr\.io\/okkeyapp\/worker/);
+  assert.equal(coreEnv.includes("OKKEY_ENTERPRISE_IMAGE_TAG="), false);
+  assert.equal(coreEnv.includes("OKKEY_ENTERPRISE_VERSION="), false);
 
   calls.length = 0;
   writeFileSync(envFile, "OKKEY_IMAGE_TAG=1.0.0-beta.2\n");
@@ -1122,17 +1139,32 @@ test("docker apply talks to the engine socket and rolls back a failed create", a
     if (requestPath.startsWith("/v1.43/images/create")) {
       return { status: 200, body: "" };
     }
+    if (requestPath.startsWith("/v1.43/images/") && requestPath.endsWith("/json")) {
+      return {
+        status: 200,
+        body: JSON.stringify({
+          Config: {
+            Env: ["PATH=/usr/bin", "OKKEY_GIT_SHA=old"],
+            WorkingDir: "/app",
+            User: "",
+            Cmd: ["node", "index.js"],
+            Entrypoint: null,
+          },
+        }),
+      };
+    }
     if (requestPath.includes("/containers/create")) {
       assert.match(body ?? "", /ghcr.io\/okkeyapp\/api:1.1.0/);
       return { status: 500, body: "no" };
     }
-    if (requestPath.includes("/json")) {
+    if (requestPath.includes("/containers/") && requestPath.includes("/json")) {
       return {
         status: 200,
         body: JSON.stringify({
           Id: "old",
           Name: "/okkey-api-1",
-          Config: { Env: ["OKKEY_VERSION=1.0.0"], Labels: {} },
+          Image: "sha256:oldimage",
+          Config: { Env: ["PATH=/usr/bin", "OKKEY_GIT_SHA=old", "OKKEY_VERSION=1.0.0"], Labels: {} },
           HostConfig: { Binds: ["/data:/data"], PortBindings: {} },
           NetworkSettings: { Networks: { okkey_default: { Aliases: ["api"] } } },
         }),
@@ -1220,7 +1252,18 @@ test("update agent applies an enterprise package and keeps registry credentials 
     assert.match(env, /OKKEY_IMAGE_TAG=1\.4\.0/);
     assert.match(env, /OKKEY_ENTERPRISE_IMAGE_TAG=2\.0\.0/);
     assert.match(env, /OKKEY_ENTERPRISE_VERSION=2\.0\.0/);
-    assert.match(env, /OKKEY_ENTERPRISE_API_IMAGE=ghcr\.io\/example\/enterprise-api/);
+    assert.match(env, /OKKEY_API_IMAGE=ghcr\.io\/example\/enterprise-api/);
+    assert.match(env, /OKKEY_WEB_IMAGE=ghcr\.io\/example\/enterprise-web/);
+    assert.match(env, /OKKEY_WORKER_IMAGE=ghcr\.io\/example\/enterprise-worker/);
+    assert.equal(env.includes("OKKEY_ENTERPRISE_API_IMAGE="), false);
+    assert.deepEqual(
+      calls.filter((call) => call.startsWith("find:")),
+      ["find:api", "find:web", "find:worker"],
+    );
+    assert.deepEqual(
+      calls.filter((call) => call.startsWith("replace:")),
+      ["replace:api", "replace:web", "replace:worker"],
+    );
     assertNoCredentialLeak(logs.join("\n") + env, password);
   } finally {
     restoreLogs();
@@ -1295,7 +1338,7 @@ test("update agent rolls enterprise containers and tags back when health fails",
       },
       async replaceContainer(container: { service: string }) {
         calls.push(`replace:${container.service}`);
-        if (container.service === "enterprise-web") {
+        if (container.service === "web") {
           throw new Error("health failed");
         }
         return {
@@ -1313,7 +1356,7 @@ test("update agent rolls enterprise containers and tags back when health fails",
   await agent.settle();
   assert.equal(finished.job.errorCode, "APPLY_FAILED");
   assert.match(finished.job.errorMessage ?? "", /previous version was restored/);
-  assert.ok(calls.includes("rollback:enterprise-api"));
+  assert.ok(calls.includes("rollback:api"));
   assert.equal(calls.some((call) => call.startsWith("commit:")), false);
   assert.equal(readFileSync(envFile, "utf8"), originalEnv);
 });
@@ -1514,6 +1557,21 @@ test("docker apply rolls back when the new enterprise container does not become 
         headers: { "Api-Version": "1.43", MinAPIVersion: "1.24" },
       };
     }
+    if (requestPath.startsWith("/v1.43/images/") && requestPath.endsWith("/json")) {
+      return {
+        status: 200,
+        body: JSON.stringify({
+          Config: {
+            Env: ["PATH=/usr/bin"],
+            WorkingDir: "/okkey",
+            User: "nonroot",
+            Entrypoint: ["sh", "-c"],
+            Cmd: ["sleep infinity"],
+            Healthcheck: { Test: ["CMD-SHELL", "exit 0"] },
+          },
+        }),
+      };
+    }
     if (requestPath.includes("/containers/create")) {
       return { status: 201, body: JSON.stringify({ Id: "new-id" }) };
     }
@@ -1522,8 +1580,9 @@ test("docker apply rolls back when the new enterprise container does not become 
         status: 200,
         body: JSON.stringify({
           Id: "old",
-          Name: "/okkey-enterprise-api-1",
-          Config: { Env: ["OKKEY_ENTERPRISE_VERSION=1.0.0"], Labels: {} },
+          Name: "/okkey-api-1",
+          Image: "sha256:oldimage",
+          Config: { Env: ["PATH=/usr/bin", "OKKEY_ENTERPRISE_VERSION=1.0.0"], Labels: {} },
           HostConfig: {},
           NetworkSettings: { Networks: {} },
         }),
@@ -1542,7 +1601,7 @@ test("docker apply rolls back when the new enterprise container does not become 
   await assert.rejects(
     () =>
       engine.replaceContainer(
-        { id: "old", name: "okkey-enterprise-api-1", service: "enterprise-api", image: "old" },
+        { id: "old", name: "okkey-api-1", service: "api", image: "old" },
         "ghcr.io/example/enterprise-api:2.0.0",
         { OKKEY_ENTERPRISE_VERSION: "2.0.0" },
         { requireHealthy: true },
@@ -1551,8 +1610,201 @@ test("docker apply rolls back when the new enterprise container does not become 
   );
   assert.equal(inspects, 1);
   assert.ok(calls.some((call) => call.includes("DELETE") && call.includes("new-id")));
-  assert.ok(calls.some((call) => call.includes("/rename?name=okkey-enterprise-api-1") && !call.includes("okkey-prev")));
+  assert.ok(calls.some((call) => call.includes("/rename?name=okkey-api-1") && !call.includes("okkey-prev")));
   assert.ok(calls.some((call) => call.endsWith("/old/start")));
+});
+
+test("userProvidedEnv keeps only compose overrides against the old image", () => {
+  assert.deepEqual(
+    userProvidedEnv(
+      [
+        "PATH=/usr/bin",
+        "OKKEY_GIT_SHA=oldsha",
+        "DATABASE_URL=postgres://db",
+        "OKKEY_VERSION=1.0.0",
+      ],
+      ["PATH=/usr/bin", "OKKEY_GIT_SHA=oldsha"],
+    ),
+    {
+      DATABASE_URL: "postgres://db",
+      OKKEY_VERSION: "1.0.0",
+    },
+  );
+});
+
+test("composeReplaceEnv lets the new image win for image-owned keys", () => {
+  const env = composeReplaceEnv({
+    newImageEnv: ["PATH=/usr/bin", "OKKEY_GIT_SHA=newsha", "OKKEY_VERSION=image"],
+    userEnv: {
+      DATABASE_URL: "postgres://db",
+      OKKEY_VERSION: "1.0.0",
+    },
+    updates: { OKKEY_VERSION: "1.1.0", OKKEY_IMAGE_TAG: "1.1.0" },
+  });
+  assert.deepEqual(env.sort(), [
+    "DATABASE_URL=postgres://db",
+    "OKKEY_GIT_SHA=newsha",
+    "OKKEY_IMAGE_TAG=1.1.0",
+    "OKKEY_VERSION=1.1.0",
+    "PATH=/usr/bin",
+  ]);
+});
+
+test("buildReplaceCreateBody takes image config from the new image", () => {
+  const body = buildReplaceCreateBody({
+    container: {
+      Name: "/okkey-api-1",
+      Image: "sha256:old",
+      Config: {
+        Hostname: "api",
+        User: "root",
+        WorkingDir: "/app",
+        Entrypoint: null,
+        Cmd: ["node", "services/api/src/index.ts"],
+        Env: [
+          "PATH=/usr/bin",
+          "OKKEY_GIT_SHA=oldsha",
+          "DATABASE_URL=postgres://db",
+          "OKKEY_VERSION=1.0.0",
+        ],
+        Labels: { "com.docker.compose.service": "api" },
+      },
+      HostConfig: {
+        Binds: ["/data:/data"],
+        PortBindings: { "4000/tcp": [{ HostPort: "4000" }] },
+        RestartPolicy: { Name: "unless-stopped" },
+      },
+      NetworkSettings: { Networks: { okkey_default: { Aliases: ["api"] } } },
+    },
+    oldImage: {
+      Config: {
+        User: "root",
+        WorkingDir: "/app",
+        Env: ["PATH=/usr/bin", "OKKEY_GIT_SHA=oldsha"],
+        Cmd: ["node", "services/api/src/index.ts"],
+        Entrypoint: null,
+      },
+    },
+    newImage: {
+      Config: {
+        User: "nonroot",
+        WorkingDir: "/okkey",
+        Env: ["PATH=/usr/bin", "OKKEY_GIT_SHA=newsha"],
+        Cmd: ["node", "dist/index.js"],
+        Entrypoint: ["/okkey/entrypoint.sh"],
+        Healthcheck: { Test: ["CMD", "curl", "-f", "http://localhost:4000/health"] },
+        ExposedPorts: { "4000/tcp": {} },
+      },
+    },
+    imageRef: "ghcr.io/example/enterprise-api:2.0.0",
+    envUpdates: { OKKEY_ENTERPRISE_VERSION: "2.0.0" },
+  });
+  assert.equal(body.User, "nonroot");
+  assert.equal(body.WorkingDir, "/okkey");
+  assert.deepEqual(body.Entrypoint, ["/okkey/entrypoint.sh"]);
+  assert.deepEqual(body.Cmd, ["node", "dist/index.js"]);
+  assert.deepEqual(body.Healthcheck, { Test: ["CMD", "curl", "-f", "http://localhost:4000/health"] });
+  assert.deepEqual(body.ExposedPorts, { "4000/tcp": {} });
+  assert.equal(body.Hostname, "api");
+  assert.deepEqual(body.Labels, { "com.docker.compose.service": "api" });
+  assert.equal(body.Image, "ghcr.io/example/enterprise-api:2.0.0");
+  const env = body.Env as string[];
+  assert.ok(env.includes("OKKEY_GIT_SHA=newsha"));
+  assert.ok(env.includes("DATABASE_URL=postgres://db"));
+  assert.ok(env.includes("OKKEY_ENTERPRISE_VERSION=2.0.0"));
+  assert.ok(!env.includes("OKKEY_GIT_SHA=oldsha"));
+  assert.deepEqual((body.HostConfig as { Binds?: string[] }).Binds, ["/data:/data"]);
+});
+
+test("docker replace creates a body from the new image config", async () => {
+  let createBody = "";
+  const transport: DockerTransport = async (method, requestPath, body) => {
+    if (requestPath === "/_ping") {
+      return {
+        status: 200,
+        body: "OK",
+        headers: { "Api-Version": "1.43", MinAPIVersion: "1.24" },
+      };
+    }
+    if (requestPath.startsWith("/v1.43/images/") && requestPath.endsWith("/json")) {
+      const isNew = decodeURIComponent(requestPath).includes("enterprise-api:2.0.0");
+      return {
+        status: 200,
+        body: JSON.stringify({
+          Config: isNew
+            ? {
+                User: "nonroot",
+                WorkingDir: "/okkey",
+                Env: ["PATH=/usr/bin", "OKKEY_GIT_SHA=newsha"],
+                Entrypoint: ["/okkey/entrypoint.sh"],
+                Cmd: ["node", "dist/index.js"],
+                Healthcheck: { Test: ["CMD-SHELL", "exit 0"] },
+              }
+            : {
+                User: "root",
+                WorkingDir: "/app",
+                Env: ["PATH=/usr/bin", "OKKEY_GIT_SHA=oldsha"],
+                Entrypoint: null,
+                Cmd: ["node", "services/api/src/index.ts"],
+              },
+        }),
+      };
+    }
+    if (requestPath.includes("/containers/create")) {
+      createBody = body ?? "";
+      return { status: 201, body: JSON.stringify({ Id: "new-id" }) };
+    }
+    if (requestPath.includes("/containers/old/json")) {
+      return {
+        status: 200,
+        body: JSON.stringify({
+          Id: "old",
+          Name: "/okkey-api-1",
+          Image: "sha256:oldimage",
+          Config: {
+            Hostname: "api",
+            Env: [
+              "PATH=/usr/bin",
+              "OKKEY_GIT_SHA=oldsha",
+              "DATABASE_URL=postgres://db",
+              "OKKEY_VERSION=1.0.0",
+            ],
+            Labels: { "com.docker.compose.service": "api" },
+            WorkingDir: "/app",
+            User: "root",
+          },
+          HostConfig: { RestartPolicy: { Name: "unless-stopped" } },
+          NetworkSettings: { Networks: { okkey_default: { Aliases: ["api"] } } },
+        }),
+      };
+    }
+    if (requestPath.includes("/containers/new-id/json")) {
+      return {
+        status: 200,
+        body: JSON.stringify({ State: { Running: true, Health: { Status: "healthy" } } }),
+      };
+    }
+    return { status: 204, body: "" };
+  };
+  const engine = createDockerApplyEngine(transport);
+  const result = await engine.replaceContainer(
+    { id: "old", name: "okkey-api-1", service: "api", image: "old" },
+    "ghcr.io/example/enterprise-api:2.0.0",
+    { OKKEY_ENTERPRISE_VERSION: "2.0.0" },
+    { requireHealthy: true },
+  );
+  const parsed = JSON.parse(createBody) as {
+    User?: string;
+    WorkingDir?: string;
+    Entrypoint?: string[];
+    Env?: string[];
+  };
+  assert.equal(parsed.User, "nonroot");
+  assert.equal(parsed.WorkingDir, "/okkey");
+  assert.deepEqual(parsed.Entrypoint, ["/okkey/entrypoint.sh"]);
+  assert.ok(parsed.Env?.includes("OKKEY_GIT_SHA=newsha"));
+  assert.ok(parsed.Env?.includes("DATABASE_URL=postgres://db"));
+  await result.commit();
 });
 
 test("running core version is read from the api container", async () => {
@@ -1589,6 +1841,54 @@ test("setEnvValue replaces the image tag without dropping other keys", () => {
   );
 });
 
+test("removeEnvValue drops a key so compose can fall back", () => {
+  assert.equal(
+    removeEnvValue(
+      "OKKEY_IMAGE_TAG=1.0.0\nOKKEY_ENTERPRISE_IMAGE_TAG=2.0.0\nOKKEY_ENTERPRISE_VERSION=2.0.0\n",
+      "OKKEY_ENTERPRISE_IMAGE_TAG",
+    ),
+    "OKKEY_IMAGE_TAG=1.0.0\nOKKEY_ENTERPRISE_VERSION=2.0.0\n",
+  );
+});
+
+test("core apply over an enterprise install clears the enterprise tag pin", async () => {
+  const keys = generateUpdateKeyPair();
+  const signed = signOfflinePackage(payload(), keys.privateKeyPem);
+  const envDir = mkdtempSync(path.join(tmpdir(), "okkey-update-"));
+  const envFile = path.join(envDir, ".env");
+  writeFileSync(
+    envFile,
+    [
+      "OKKEY_IMAGE_TAG=1.0.0",
+      "OKKEY_ENTERPRISE_IMAGE_TAG=2.0.0",
+      "OKKEY_ENTERPRISE_VERSION=2.0.0",
+      "OKKEY_API_IMAGE=ghcr.io/example/enterprise-api",
+      "OKKEY_WEB_IMAGE=ghcr.io/example/enterprise-web",
+      "OKKEY_WORKER_IMAGE=ghcr.io/example/enterprise-worker",
+      "",
+    ].join("\n"),
+  );
+  const calls: string[] = [];
+  const agent = createUpdateAgent({
+    token: "secret",
+    publicKeyPem: keys.publicKeyPem,
+    isolated: true,
+    project: "okkey",
+    envFilePath: envFile,
+    engine: recordingEngine(calls, { exists: true }),
+  });
+  const finished = await postJob(agent, signed);
+  await agent.settle();
+  assert.equal(finished.job.status, "succeeded");
+  const env = readFileSync(envFile, "utf8");
+  assert.match(env, /OKKEY_IMAGE_TAG=1\.1\.0/);
+  assert.match(env, /OKKEY_API_IMAGE=ghcr\.io\/okkeyapp\/api/);
+  assert.match(env, /OKKEY_WEB_IMAGE=ghcr\.io\/okkeyapp\/web/);
+  assert.match(env, /OKKEY_WORKER_IMAGE=ghcr\.io\/okkeyapp\/worker/);
+  assert.equal(env.includes("OKKEY_ENTERPRISE_IMAGE_TAG="), false);
+  assert.equal(env.includes("OKKEY_ENTERPRISE_VERSION="), false);
+});
+
 test("compose gives the docker socket to the update agent only", () => {
   const yaml = readFileSync(
     new URL("../../../deploy/docker/docker-compose.prod.yml", import.meta.url),
@@ -1605,6 +1905,12 @@ test("compose gives the docker socket to the update agent only", () => {
   assert.equal(sockVolume.test(worker), false);
   assert.equal(sockVolume.test(agent), true);
   assert.match(agent, /update-agent\/main\.ts/);
+  for (const block of [api, web, worker, agent]) {
+    assert.match(
+      block,
+      /OKKEY_ENTERPRISE_IMAGE_TAG:-\$\{OKKEY_IMAGE_TAG:-1\.0\.0-beta\.2\}/,
+    );
+  }
 });
 
 test("compose runs update-agent as root with an agent healthcheck (not api :4000)", () => {

@@ -35,14 +35,23 @@ export async function stopLocalRegistry(): Promise<void> {
 }
 
 export async function buildAndPushStubImages(): Promise<void> {
-  const healthyLocal = "okkey-e2e-bundle-healthy:local";
+  const coreLocal = "okkey-e2e-bundle-core:local";
+  const enterpriseLocal = "okkey-e2e-bundle-enterprise:local";
   const unhealthyLocal = "okkey-e2e-bundle-unhealthy:local";
   await runOk("docker", [
     "build",
     "-t",
-    healthyLocal,
+    coreLocal,
     "-f",
-    `${FIXTURES_DIR}/Dockerfile.healthy`,
+    `${FIXTURES_DIR}/Dockerfile.core`,
+    FIXTURES_DIR,
+  ]);
+  await runOk("docker", [
+    "build",
+    "-t",
+    enterpriseLocal,
+    "-f",
+    `${FIXTURES_DIR}/Dockerfile.enterprise`,
     FIXTURES_DIR,
   ]);
   await runOk("docker", [
@@ -55,9 +64,9 @@ export async function buildAndPushStubImages(): Promise<void> {
   ]);
 
   for (const [local, remote] of [
-    [healthyLocal, BASE_IMAGE],
-    [healthyLocal, CORE_IMAGE],
-    [healthyLocal, ENTERPRISE_IMAGE],
+    [coreLocal, BASE_IMAGE],
+    [coreLocal, CORE_IMAGE],
+    [enterpriseLocal, ENTERPRISE_IMAGE],
     [unhealthyLocal, ENTERPRISE_BAD_IMAGE],
   ] as const) {
     await runOk("docker", ["tag", local, remote]);
@@ -70,7 +79,7 @@ export async function buildAndPushStubImages(): Promise<void> {
   }
 
   // Keep the base tag for compose to start from.
-  await runOk("docker", ["tag", healthyLocal, BASE_IMAGE]);
+  await runOk("docker", ["tag", coreLocal, BASE_IMAGE]);
 }
 
 async function waitForRegistry(): Promise<void> {

@@ -1,3 +1,0 @@
-FROM alpine:3.20
-HEALTHCHECK --interval=1s --timeout=1s --retries=3 CMD true
-CMD ["sleep", "infinity"]

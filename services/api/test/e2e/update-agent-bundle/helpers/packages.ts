@@ -12,7 +12,7 @@ import {
   CORE_TAG,
   ENTERPRISE_BAD_IMAGE,
   ENTERPRISE_IMAGE,
-  ENTERPRISE_SERVICES,
+  ENTERPRISE_PACKAGE_KEYS,
   ENTERPRISE_TAG,
   REPO_ROOT,
 } from "./constants.ts";
@@ -64,7 +64,7 @@ export function enterprisePackage(
     releasedAt: "2026-11-17T00:00:00.000Z",
     imageTag: ENTERPRISE_TAG,
     minCoreVersion: CORE_TAG,
-    images: Object.fromEntries(ENTERPRISE_SERVICES.map((service) => [service, image])),
+    images: Object.fromEntries(ENTERPRISE_PACKAGE_KEYS.map((service) => [service, image])),
     ...(options?.overrides ?? {}),
   };
   return Buffer.from(JSON.stringify(signOfflinePackage(payload, privateKeyPem)), "utf8");

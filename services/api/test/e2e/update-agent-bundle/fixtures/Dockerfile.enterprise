@@ -1,0 +1,9 @@
+# Enterprise-like stub for bundle e2e image-config swap.
+FROM alpine:3.20
+RUN adduser -D -u 65532 nonroot && mkdir -p /okkey && chown nonroot:nonroot /okkey
+WORKDIR /okkey
+USER nonroot
+ENV OKKEY_GIT_SHA=enterprise-fixture
+HEALTHCHECK --interval=1s --timeout=1s --retries=3 CMD true
+ENTRYPOINT ["sh", "-c"]
+CMD ["sleep infinity"]
