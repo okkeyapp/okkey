@@ -2,6 +2,12 @@
 # Shared image for okkey-api and okkey-worker (different CMD).
 # Third-party bases are pinned by multi-arch index digest. The tag documents
 # the channel; the pull uses the digest. NODE_VERSION must stay 25.
+#
+# Runtime is distroless/cc (no shell/package manager). There is no official
+# distroless/nodejs image for Node 25, so the Node binary and libatomic come
+# from the pinned node:25-bookworm-slim image after an OS upgrade. Patched
+# OpenSSL shared libraries (and matching dpkg status.d metadata) are overlaid
+# so scanners see the fixed bookworm package version.
 ARG NODE_VERSION=25
 
 # node:25-bookworm
@@ -97,41 +103,76 @@ RUN --mount=type=cache,target=/usr/local/share/.cache/yarn \
   yarn config set network-timeout 600000 \
   && yarn install --frozen-lockfile --ignore-scripts --production --network-timeout 600000
 
-# node:25-bookworm-slim
-FROM node:25-bookworm-slim@sha256:81db02c4b671288a03915da9534dbd54f96d0e7c24d80ccc54f5b36b2e684370 AS runtime
-WORKDIR /app
+# Collect the Node 25 binary plus the OS pieces the runtime still needs after
+# leaving bookworm-slim. TARGETARCH comes from BuildKit (amd64 / arm64).
+FROM node:25-bookworm-slim@sha256:81db02c4b671288a03915da9534dbd54f96d0e7c24d80ccc54f5b36b2e684370 AS node-runtime-bits
+ARG TARGETARCH
 ARG NODE_VERSION
 RUN test "${NODE_VERSION}" = "25"
-ENV NODE_ENV=production
-ENV DEPLOY_ENV=prod
 ENV DEBIAN_FRONTEND=noninteractive
-
-# Refresh OS packages on the pinned base. Health checks use node fetch, so curl
-# is not installed. Drop the base image package managers after upgrade.
 RUN apt-get update \
   && apt-get upgrade -y \
   && apt-get install -y --no-install-recommends ca-certificates \
-  && rm -rf /usr/local/lib/node_modules \
-    /usr/local/bin/npm \
-    /usr/local/bin/npx \
-    /usr/local/bin/corepack \
-    /opt/yarn-v* \
-    /usr/local/bin/yarn \
-    /usr/local/bin/yarnpkg \
   && rm -rf /var/lib/apt/lists/*
+RUN set -eux; \
+  case "${TARGETARCH}" in \
+    amd64) LIBDIR=x86_64-linux-gnu ;; \
+    arm64) LIBDIR=aarch64-linux-gnu ;; \
+    *) echo "unsupported TARGETARCH=${TARGETARCH}" >&2; exit 1 ;; \
+  esac; \
+  mkdir -p \
+    /export/usr/local/bin \
+    /export/lib/${LIBDIR} \
+    /export/usr/lib/${LIBDIR} \
+    /export/etc/ssl/certs \
+    /export/var/lib/dpkg/status.d; \
+  cp -a /usr/local/bin/node /export/usr/local/bin/node; \
+  cp -a /lib/${LIBDIR}/libatomic.so.1* /export/lib/${LIBDIR}/; \
+  cp -a /usr/lib/${LIBDIR}/libssl.so.3 /export/usr/lib/${LIBDIR}/; \
+  cp -a /usr/lib/${LIBDIR}/libcrypto.so.3 /export/usr/lib/${LIBDIR}/; \
+  if [ -d /usr/lib/${LIBDIR}/engines-3 ]; then \
+    cp -a /usr/lib/${LIBDIR}/engines-3 /export/usr/lib/${LIBDIR}/; \
+  fi; \
+  if [ -d /usr/lib/${LIBDIR}/ossl-modules ]; then \
+    cp -a /usr/lib/${LIBDIR}/ossl-modules /export/usr/lib/${LIBDIR}/; \
+  fi; \
+  cp -a /etc/ssl/certs/ca-certificates.crt /export/etc/ssl/certs/; \
+  # Distroless advertises packages via status.d; refresh OpenSSL + CA metadata
+  # so Trivy matches the overlaid shared libraries.
+  dpkg-query -s libssl3 \
+    | awk 'BEGIN{ORS="\n"} /^Package:|^Source:|^Version:|^Architecture:|^Maintainer:|^Installed-Size:|^Depends:|^Breaks:|^Replaces:|^Homepage:|^Priority:|^Section:|^Multi-Arch:|^Description:/{print}' \
+    > /export/var/lib/dpkg/status.d/libssl3; \
+  dpkg-query -s ca-certificates \
+    | awk 'BEGIN{ORS="\n"} /^Package:|^Source:|^Version:|^Architecture:|^Maintainer:|^Installed-Size:|^Depends:|^Breaks:|^Replaces:|^Homepage:|^Priority:|^Section:|^Multi-Arch:|^Description:/{print}' \
+    > /export/var/lib/dpkg/status.d/ca-certificates
 
-COPY --from=prod-deps /app/package.json /app/yarn.lock ./
-COPY --from=prod-deps /app/node_modules ./node_modules
-COPY --from=prod-deps /app/packages ./packages
-COPY --from=builder /src/services/api ./services/api
-COPY --from=builder /src/scripts ./scripts
+# gcr.io/distroless/cc-debian12:nonroot — no shell, package managers, or OS
+# utilities (perl/gzip/util-linux/ncurses/pam/acl/udev). Runs as uid 65532.
+FROM gcr.io/distroless/cc-debian12:nonroot@sha256:9dac0a79194e45a7da0158a9c6da57b217585af0786db3845d1f0ec1a0dd182f AS runtime
+ARG NODE_VERSION
+# Distroless has no shell; keep the version pin documented for readers/CI.
+WORKDIR /app
+ENV NODE_ENV=production
+ENV DEPLOY_ENV=prod
 
-# Default: API HTTP server. Worker image overrides CMD.
+COPY --from=node-runtime-bits /export/ /
+COPY --from=prod-deps --chown=65532:65532 /app/package.json /app/yarn.lock ./
+COPY --from=prod-deps --chown=65532:65532 /app/node_modules ./node_modules
+COPY --from=prod-deps --chown=65532:65532 /app/packages ./packages
+COPY --from=builder --chown=65532:65532 /src/services/api ./services/api
+COPY --from=builder --chown=65532:65532 /src/scripts ./scripts
+
+USER nonroot
 EXPOSE 4000
-CMD ["node", "--experimental-strip-types", "services/api/src/index.ts"]
+# Absolute node path: works as PID 1 for SIGTERM/SIGINT; compose healthchecks
+# still resolve `node` via PATH (/usr/local/bin).
+CMD ["/usr/local/bin/node", "--experimental-strip-types", "services/api/src/index.ts"]
 
 FROM runtime AS api
-CMD ["node", "--experimental-strip-types", "services/api/src/index.ts"]
+# Exec-form only: distroless has no /bin/sh. Compose uses the same node fetch probe.
+HEALTHCHECK --interval=10s --timeout=5s --start-period=40s --retries=12 \
+  CMD ["/usr/local/bin/node", "-e", "fetch('http://127.0.0.1:4000/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+CMD ["/usr/local/bin/node", "--experimental-strip-types", "services/api/src/index.ts"]
 
 FROM runtime AS worker
-CMD ["node", "--experimental-strip-types", "services/api/src/worker.ts"]
+CMD ["/usr/local/bin/node", "--experimental-strip-types", "services/api/src/worker.ts"]

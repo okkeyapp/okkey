@@ -232,7 +232,6 @@ test("committed exceptions file parses and scopes ignores by image", () => {
     "utf8",
   );
   const records = parseCveExceptions(text);
-  assert.ok(records.length > 0);
   for (const record of records) {
     assert.match(record.id, /^CVE-\d{4}-\d{4,}$/);
     assert.ok(["api", "worker", "web"].includes(record.image));
@@ -243,6 +242,23 @@ test("committed exceptions file parses and scopes ignores by image", () => {
   const apiIgnore = renderTrivyIgnore(records, "api");
   const webIgnore = renderTrivyIgnore(records, "web");
   assert.match(apiIgnore, /Do not edit/);
-  assert.match(apiIgnore, /^CVE-/m);
-  assert.doesNotMatch(webIgnore, /^CVE-/m);
+  assert.match(webIgnore, /Do not edit/);
+  // Empty committed list is valid (no HIGH/CRITICAL left after hardening).
+  // When records exist, ignores must stay scoped to the named image.
+  if (records.length === 0) {
+    assert.doesNotMatch(apiIgnore, /^CVE-/m);
+    assert.doesNotMatch(webIgnore, /^CVE-/m);
+    return;
+  }
+  const apiIds = records.filter((r) => r.image === "api").map((r) => r.id);
+  const webIds = records.filter((r) => r.image === "web").map((r) => r.id);
+  for (const id of apiIds) {
+    assert.match(apiIgnore, new RegExp(`^${id}$`, "m"));
+  }
+  for (const id of webIds) {
+    assert.match(webIgnore, new RegExp(`^${id}$`, "m"));
+  }
+  if (apiIds.length > 0 && webIds.length === 0) {
+    assert.doesNotMatch(webIgnore, /^CVE-/m);
+  }
 });
