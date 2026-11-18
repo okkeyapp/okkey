@@ -40,6 +40,7 @@ export type ComponentUpdateStatus = {
 export type SystemUpdateStatus = {
   deploymentMode: "self_hosted" | "saas";
   currentVersion: string;
+  /** Okkey repository commit for the running core image (`OKKEY_GIT_SHA`). */
   commitSha: string | null;
   releaseTag: string | null;
   enterpriseInstalled: boolean;
@@ -109,7 +110,10 @@ export type UpdateAgentClient = {
 export type SystemUpdateServiceOptions = {
   deploymentMode: "self_hosted" | "saas";
   currentVersion: string;
-  /** Full git commit (`OKKEY_GIT_SHA`). Empty on a tagged release. */
+  /**
+   * This repository's commit that built the running core image (`OKKEY_GIT_SHA`).
+   * Empty when unknown. Never a packaging/wrapper revision.
+   */
   commitSha?: string;
   /** Release tag (`OKKEY_RELEASE_TAG`), for example `v1.0.0-beta.3`. */
   releaseTag?: string;
