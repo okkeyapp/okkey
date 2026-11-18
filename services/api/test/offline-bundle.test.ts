@@ -176,12 +176,18 @@ test("a valid archive applies core before enterprise", async () => {
     { component: "okkey", version: "1.2.0", applied: true },
     { component: "enterprise", version: "2.0.0", applied: true },
   ]);
-  const coreReplace = calls.indexOf("replace:api");
-  const enterpriseReplace = calls.indexOf("replace:enterprise-api");
-  assert.ok(coreReplace >= 0 && enterpriseReplace > coreReplace);
+  const replaceApi = calls.map((call, index) => (call === "replace:api" ? index : -1)).filter((index) => index >= 0);
+  assert.equal(replaceApi.length, 2);
+  assert.ok((replaceApi[1] ?? -1) > (replaceApi[0] ?? -1));
+  assert.deepEqual(
+    calls.filter((call) => call.startsWith("replace:")),
+    ["replace:api", "replace:web", "replace:worker", "replace:api", "replace:web", "replace:worker"],
+  );
   const env = readFileSync(envFile, "utf8");
   assert.match(env, /OKKEY_IMAGE_TAG=1\.2\.0/);
+  assert.match(env, /OKKEY_ENTERPRISE_IMAGE_TAG=2\.0\.0/);
   assert.match(env, /OKKEY_ENTERPRISE_VERSION=2\.0\.0/);
+  assert.match(env, /OKKEY_API_IMAGE=ghcr\.io\/example\/enterprise-api/);
   assert.equal(calls.some((call) => call.startsWith("rollback:")), false);
 });
 
@@ -359,11 +365,13 @@ test("enterprise failure after core succeeded keeps core and rolls enterprise ba
   ]);
   assert.ok(calls.includes("commit:api"));
   assert.equal(calls.some((call) => call.startsWith("rollback:api")), false);
-  assert.equal(calls.includes("replace:enterprise-api"), false);
+  // Enterprise never reached replace (pull failed). Core already cleared the enterprise tag pin.
+  assert.equal(calls.filter((call) => call.startsWith("replace:")).length, 3);
   const env = readFileSync(envFile, "utf8");
   assert.match(env, /OKKEY_IMAGE_TAG=1\.2\.0/);
-  assert.match(env, /OKKEY_ENTERPRISE_IMAGE_TAG=1\.0\.0/);
-  assert.equal(env.includes("OKKEY_ENTERPRISE_VERSION=2.0.0"), false);
+  assert.match(env, /OKKEY_API_IMAGE=ghcr\.io\/okkeyapp\/api/);
+  assert.equal(env.includes("OKKEY_ENTERPRISE_IMAGE_TAG="), false);
+  assert.equal(env.includes("OKKEY_ENTERPRISE_VERSION="), false);
 });
 
 test("an uploaded zip is unpacked, verified, and applied by the update agent", async () => {
@@ -387,12 +395,14 @@ test("an uploaded zip is unpacked, verified, and applied by the update agent", a
     { component: "okkey", version: "1.2.0", applied: true },
     { component: "enterprise", version: "2.0.0", applied: true },
   ]);
-  const coreReplace = calls.indexOf("replace:api");
-  const enterpriseReplace = calls.indexOf("replace:enterprise-api");
-  assert.ok(coreReplace >= 0 && enterpriseReplace > coreReplace);
+  const replaceApi = calls.map((call, index) => (call === "replace:api" ? index : -1)).filter((index) => index >= 0);
+  assert.equal(replaceApi.length, 2);
+  assert.ok((replaceApi[1] ?? -1) > (replaceApi[0] ?? -1));
   const env = readFileSync(envFile, "utf8");
   assert.match(env, /OKKEY_IMAGE_TAG=1\.2\.0/);
+  assert.match(env, /OKKEY_ENTERPRISE_IMAGE_TAG=2\.0\.0/);
   assert.match(env, /OKKEY_ENTERPRISE_VERSION=2\.0\.0/);
+  assert.match(env, /OKKEY_API_IMAGE=ghcr\.io\/example\/enterprise-api/);
 });
 
 test("a tampered uploaded zip is rejected and nothing is applied", async () => {

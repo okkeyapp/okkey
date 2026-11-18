@@ -79,7 +79,8 @@ services:
     restart: "no"
 
   api:
-    image: ${OKKEY_API_IMAGE:-ghcr.io/okkeyapp/api}:${OKKEY_IMAGE_TAG:-1.0.0-beta.2}
+    # Prefer OKKEY_ENTERPRISE_IMAGE_TAG when set (enterprise install); else OKKEY_IMAGE_TAG.
+    image: ${OKKEY_API_IMAGE:-ghcr.io/okkeyapp/api}:${OKKEY_ENTERPRISE_IMAGE_TAG:-${OKKEY_IMAGE_TAG:-1.0.0-beta.2}}
     restart: unless-stopped
     depends_on:
       postgres:
@@ -168,7 +169,7 @@ services:
       start_period: 40s
 
   worker:
-    image: ${OKKEY_WORKER_IMAGE:-ghcr.io/okkeyapp/worker}:${OKKEY_IMAGE_TAG:-1.0.0-beta.2}
+    image: ${OKKEY_WORKER_IMAGE:-ghcr.io/okkeyapp/worker}:${OKKEY_ENTERPRISE_IMAGE_TAG:-${OKKEY_IMAGE_TAG:-1.0.0-beta.2}}
     restart: unless-stopped
     depends_on:
       postgres:
@@ -219,7 +220,7 @@ services:
       GEOIP_ENABLED: ${GEOIP_ENABLED:-false}
 
   web:
-    image: ${OKKEY_WEB_IMAGE:-ghcr.io/okkeyapp/web}:${OKKEY_IMAGE_TAG:-1.0.0-beta.2}
+    image: ${OKKEY_WEB_IMAGE:-ghcr.io/okkeyapp/web}:${OKKEY_ENTERPRISE_IMAGE_TAG:-${OKKEY_IMAGE_TAG:-1.0.0-beta.2}}
     restart: unless-stopped
     # Do not mount the Docker socket on this service. Package apply runs only in update-agent.
     depends_on:
@@ -231,12 +232,14 @@ services:
       - "${WEB_PORT:-8080}:80"
 
   # Dedicated update agent. The Docker socket is mounted on this service only.
+  # Same image repo/tag selection as api (shares OKKEY_API_IMAGE).
   update-agent:
     # Root is required: the api image is distroless nonroot (uid 65532), but the
     # agent must rewrite host-owned /okkey/.env (mode 644) and open the Docker
     # socket (root:docker 0660). Socket access is already root-equivalent.
     # api/worker stay nonroot.
-    image: ${OKKEY_API_IMAGE:-ghcr.io/okkeyapp/api}:${OKKEY_IMAGE_TAG:-1.0.0-beta.2}
+    # Prefer OKKEY_ENTERPRISE_IMAGE_TAG when set (enterprise install); else OKKEY_IMAGE_TAG.
+    image: ${OKKEY_API_IMAGE:-ghcr.io/okkeyapp/api}:${OKKEY_ENTERPRISE_IMAGE_TAG:-${OKKEY_IMAGE_TAG:-1.0.0-beta.2}}
     restart: unless-stopped
     user: "0:0"
     command:

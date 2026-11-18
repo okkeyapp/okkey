@@ -93,6 +93,35 @@ export async function serviceImage(service: string): Promise<string> {
   return image;
 }
 
+export async function serviceConfig(service: string): Promise<{
+  workingDir: string;
+  user: string;
+  entrypoint: string[] | null;
+  env: string[];
+}> {
+  const idResult = await runOk("docker", [
+    "ps",
+    "-q",
+    "--filter",
+    `label=com.docker.compose.project=${PROJECT}`,
+    "--filter",
+    `label=com.docker.compose.service=${service}`,
+  ]);
+  const id = idResult.stdout.trim().split(/\s+/)[0] ?? "";
+  if (!id) {
+    throw new Error(`No running container for compose service ${service}`);
+  }
+  const workingDir = (await runOk("docker", ["inspect", "--format", "{{.Config.WorkingDir}}", id])).stdout.trim();
+  const user = (await runOk("docker", ["inspect", "--format", "{{.Config.User}}", id])).stdout.trim();
+  const entrypoint = JSON.parse(
+    (await runOk("docker", ["inspect", "--format", "{{json .Config.Entrypoint}}", id])).stdout.trim(),
+  ) as string[] | null;
+  const env = JSON.parse(
+    (await runOk("docker", ["inspect", "--format", "{{json .Config.Env}}", id])).stdout.trim(),
+  ) as string[];
+  return { workingDir, user, entrypoint, env };
+}
+
 export async function readEnvFile(envFilePath: string): Promise<string> {
   const { readFileSync } = await import("node:fs");
   return readFileSync(envFilePath, "utf8");
