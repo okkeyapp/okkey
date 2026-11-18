@@ -39,7 +39,10 @@ export interface ApiConfig {
   deploymentMode: DeploymentMode;
   /** Running core image tag (`OKKEY_VERSION`, else `OKKEY_IMAGE_TAG`). */
   systemVersion: string;
-  /** Full git commit for a dev build (`OKKEY_GIT_SHA`). Empty when unknown. */
+  /**
+   * This repository's commit that built the running core image (`OKKEY_GIT_SHA`).
+   * Never a packaging/wrapper revision. Empty when unknown.
+   */
   gitSha: string;
   /** Release tag when the image was built from a tag (`OKKEY_RELEASE_TAG`). */
   releaseTag: string;
@@ -358,8 +361,10 @@ function resolveEnterpriseModulesPath(explicitPath: string | undefined): string 
 }
 
 /**
- * Prefer an explicit env SHA. In local development, fall back to `git rev-parse HEAD`
- * in the given repo so the system-update UI can show a short commit without a pin.
+ * Prefer an explicit env SHA (`OKKEY_GIT_SHA` for core). That value must be this
+ * repository's commit for the core image — not a packaging/wrapper HEAD.
+ * In local development, fall back to `git rev-parse HEAD` in the given repo so
+ * the system-update UI can show a short commit without a pin.
  */
 function resolveGitSha(fromEnv: string | undefined, nodeEnv: NodeEnv, repoRoot: string): string {
   const trimmed = (fromEnv ?? "").trim();

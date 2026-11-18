@@ -31,7 +31,11 @@ export type SystemUpdateComponentStatus = {
 export type SystemUpdateStatus = {
   deploymentMode: "self_hosted" | "saas";
   currentVersion: string;
-  /** Full git commit for a dev build. Null on a tagged release. */
+  /**
+   * Okkey core image commit (`OKKEY_GIT_SHA` from the API). Null when unknown.
+   * This is the okkey repository commit the deployed core was built from — not
+   * a packaging/wrapper revision.
+   */
   commitSha: string | null;
   /** Git tag such as `v1.0.0-beta.3` when this build was cut from a tag. */
   releaseTag: string | null;

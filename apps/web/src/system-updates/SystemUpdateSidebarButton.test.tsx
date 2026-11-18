@@ -218,13 +218,12 @@ describe("system update version button", () => {
     expect(await screen.findByTestId("system-update-available-icon")).toHaveClass("text-orange-500");
   });
 
-  it("keeps the short SHA out of the sidebar button on a dev build", async () => {
+  it("shows the short commit SHA in the sidebar button when the API reports one", async () => {
     status.releaseTag = null;
     status.commitSha = FULL_SHA;
     renderButton();
     const button = await screen.findByTestId("system-update-version");
-    expect(button).toHaveTextContent("v1.0.0-beta.3");
-    expect(button).not.toHaveTextContent("6e6ee86");
+    expect(button).toHaveTextContent(`v1.0.0-beta.3 (${FULL_SHA.slice(0, 8)})`);
     expect(button).toHaveAttribute("data-commit-sha", FULL_SHA);
     expect(button).not.toHaveAttribute("title");
   });
