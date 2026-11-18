@@ -425,11 +425,13 @@ export function createRegisterDeviceRoute(
       const requestIp = await getRequestIp(ctx.req, { trustedProxyHops });
       const accessToken = getBearerToken(ctx.req);
       let sessionDeviceId: string | null = null;
-      if (reclaimSoleTrusted && accessToken && sessionService?.resolveAccessToken) {
+      let sessionUnbound = false;
+      if (accessToken && sessionService?.resolveAccessToken) {
         const resolved = await sessionService.resolveAccessToken(accessToken);
         if (resolved && resolved.userId === userId) {
           const bound = resolved.deviceId?.trim() ?? "";
           sessionDeviceId = bound.length > 0 ? bound : null;
+          sessionUnbound = bound.length === 0;
         }
       }
       // Kept across a pending-row replacement so this session can bind to the new row.
@@ -453,7 +455,8 @@ export function createRegisterDeviceRoute(
         reclaimSoleTrusted,
         previousDeviceId: previousDeviceId.value,
         previousDeviceFingerprint: previousDeviceFingerprint.value,
-        sessionDeviceId,
+        // Sole-trusted reclaim still needs the previous bound device id when present.
+        sessionDeviceId: reclaimSoleTrusted ? sessionDeviceId : undefined,
         claimAfterRecovery,
         provedDeviceId,
         recoveryPending,
@@ -472,7 +475,16 @@ export function createRegisterDeviceRoute(
         (result.status === "trusted" || result.status === "pending_approval");
       // Rebind only the new pending row. Never attach this session to the existing trusted device.
       const bindRecoveryPending = recoveryPending && result.status === "pending_approval";
-      if (accessToken && sessionService && (bindCreated || bindRecoveryPending)) {
+      // Reject unbinds the Bearer (device_id NULL). "Request approval again" reopens the
+      // same pending row (created=false); without a rebind, GET /devices stays fingerprint-
+      // only and passkey approval options return 403.
+      const bindUnboundPending =
+        sessionUnbound && result.status === "pending_approval";
+      if (
+        accessToken &&
+        sessionService &&
+        (bindCreated || bindRecoveryPending || bindUnboundPending)
+      ) {
         await sessionService.bindAccessTokenDevice(accessToken, userId, result.deviceId, {
           replaceExistingDevice: claimAfterRecovery,
         });

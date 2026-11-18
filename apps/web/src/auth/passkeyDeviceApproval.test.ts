@@ -13,6 +13,9 @@ const classifySplitKeyShareBWire = vi.hoisted(() =>
   vi.fn((bytes: Uint8Array) => (bytes.length === 32 ? "legacy" : "hybrid")),
 );
 const loadSplitKeyShareWrapKey = vi.hoisted(() => vi.fn(async () => null));
+const envelopeB64ForPlaintextShare = vi.hoisted(() =>
+  vi.fn(async () => Buffer.from([9, 9, 9, 9]).toString("base64")),
+);
 
 vi.mock("@simplewebauthn/browser", () => ({
   startAuthentication,
@@ -45,6 +48,7 @@ const mapVaultUnlockBootstrapToStored = vi.hoisted(() =>
 vi.mock("@okkey/vault", () => ({
   loadSplitKeyShareWrapKey,
   mapVaultUnlockBootstrapToStored,
+  envelopeB64ForPlaintextShare,
 }));
 
 const readVaultBundle = vi.hoisted(() => vi.fn(() => null));
@@ -131,10 +135,14 @@ describe("passkey device approval client", () => {
     wrapSplitKeyShareB.mockClear();
     classifySplitKeyShareBWire.mockClear();
     loadSplitKeyShareWrapKey.mockClear();
+    envelopeB64ForPlaintextShare.mockClear();
     readVaultBundle.mockReset();
     writeVaultBundle.mockReset();
     mapVaultUnlockBootstrapToStored.mockClear();
     readVaultBundle.mockReturnValue(null);
+    envelopeB64ForPlaintextShare.mockResolvedValue(
+      Buffer.from([9, 9, 9, 9]).toString("base64"),
+    );
     openPasskeyShareWrap.mockResolvedValue(new Uint8Array(32).fill(7));
     classifySplitKeyShareBWire.mockImplementation((bytes: Uint8Array) =>
       bytes.length === 32 ? "legacy" : "hybrid",
@@ -177,6 +185,7 @@ describe("passkey device approval client", () => {
     const result = await approvePendingDeviceWithPasskey(client as never, "42");
     expect(result).toEqual({ ok: true });
     expect(wrapSplitKeyShareB).toHaveBeenCalledTimes(1);
+    expect(envelopeB64ForPlaintextShare).not.toHaveBeenCalled();
     expect(client.passkeyApprovalVerify).toHaveBeenCalledTimes(1);
     const body = client.passkeyApprovalVerify.mock.calls[0]?.[1];
     if (!body) {
@@ -184,6 +193,25 @@ describe("passkey device approval client", () => {
     }
     expect(body.device_share).toBe(Buffer.from([9, 9, 9, 9]).toString("base64"));
     expect(body.device_share).not.toBe(Buffer.alloc(32, 7).toString("base64"));
+  });
+
+  it("seals to local IndexedDB wrap keys when userId is known (OT parity)", async () => {
+    startAuthentication.mockResolvedValue({
+      id: "cred-webauthn",
+      clientExtensionResults: { prf: { results: { first: prf } } },
+    });
+    envelopeB64ForPlaintextShare.mockResolvedValueOnce(
+      Buffer.from([8, 8, 8, 8]).toString("base64"),
+    );
+    const client = core();
+    const result = await approvePendingDeviceWithPasskey(client as never, "42", {
+      userId: "user-1",
+    });
+    expect(result).toEqual({ ok: true });
+    expect(envelopeB64ForPlaintextShare).toHaveBeenCalledTimes(1);
+    expect(wrapSplitKeyShareB).not.toHaveBeenCalled();
+    const body = client.passkeyApprovalVerify.mock.calls[0]?.[1];
+    expect(body?.device_share).toBe(Buffer.from([8, 8, 8, 8]).toString("base64"));
   });
 
   it("persists the approved hybrid locally so unlock does not keep a placeholder", async () => {
