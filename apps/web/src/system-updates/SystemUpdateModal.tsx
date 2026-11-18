@@ -13,7 +13,7 @@ import {
   classifyOfflineFile,
   isCombinedArchiveName,
   OFFLINE_FILE_ACCEPT,
-  OFFLINE_PACKAGE_MAX_SIZE_MB,
+  offlineFileExceedsSizeLimit,
   type OfflineArchiveChoice,
   type OfflineChoice,
   type OfflinePackageChoice,
@@ -62,6 +62,7 @@ const ERROR_KEYS = new Set([
   "APPLY_FAILED",
   "BUNDLE_PARTIAL",
   "PACKAGE_INVALID",
+  "PACKAGE_TOO_LARGE",
 ]);
 
 export default function SystemUpdateModal({
@@ -299,12 +300,11 @@ export default function SystemUpdateModal({
       setOfflineError(t("web.systemUpdate.ownersOnly"));
       return;
     }
-    const maxBytes = OFFLINE_PACKAGE_MAX_SIZE_MB * 1024 * 1024;
     const next: StoredOfflineFile[] = [];
     let skippedOversized = false;
     try {
       for (const file of files) {
-        if (file.size > maxBytes) {
+        if (offlineFileExceedsSizeLimit(file)) {
           skippedOversized = true;
           continue;
         }
@@ -313,8 +313,15 @@ export default function SystemUpdateModal({
         const choice = await choiceForOfflineFile(file);
         next.push({ id, file, choice });
       }
-    } catch {
-      setOfflineError(t("web.systemUpdate.error.PACKAGE_INVALID"));
+    } catch (error) {
+      const code = error instanceof Error ? error.message : "";
+      setOfflineError(
+        t(
+          code === "PACKAGE_TOO_LARGE"
+            ? "web.systemUpdate.error.PACKAGE_TOO_LARGE"
+            : "web.systemUpdate.error.PACKAGE_INVALID",
+        ),
+      );
       return;
     }
     if (next.length === 0) {
