@@ -1,17 +1,25 @@
 import { SystemUpdateError } from "../system-updates/errors.ts";
 import {
+  COMPOSE_IMAGE_ENV_KEYS,
+  ENTERPRISE_COMPOSE_SERVICES,
   ENTERPRISE_IMAGE_SERVICES,
   type OfflinePackagePayload,
   type RegistryPullCredentials,
 } from "../system-updates/package-format.ts";
 import { coreSatisfiesMinimum } from "../system-updates/versions.ts";
-import { setEnvValue, type ServiceContainer, type UpdateApplyEngine } from "./apply.ts";
+import {
+  imageRepository,
+  setEnvValue,
+  type ServiceContainer,
+  type UpdateApplyEngine,
+} from "./apply.ts";
 import { credentialSecrets, scrubSecrets } from "./registry-auth.ts";
 
-const ENTERPRISE_IMAGE_ENV: Record<(typeof ENTERPRISE_IMAGE_SERVICES)[number], string> = {
-  "enterprise-api": "OKKEY_ENTERPRISE_API_IMAGE",
-  "enterprise-web": "OKKEY_ENTERPRISE_WEB_IMAGE",
-  "enterprise-worker": "OKKEY_ENTERPRISE_WORKER_IMAGE",
+type EnterpriseTarget = {
+  packageService: (typeof ENTERPRISE_IMAGE_SERVICES)[number];
+  composeService: (typeof ENTERPRISE_COMPOSE_SERVICES)[(typeof ENTERPRISE_IMAGE_SERVICES)[number]];
+  container: ServiceContainer;
+  image: string;
 };
 
 /**
@@ -19,6 +27,9 @@ const ENTERPRISE_IMAGE_ENV: Record<(typeof ENTERPRISE_IMAGE_SERVICES)[number], s
  * Callers must verify the signature with the enterprise trusted key first.
  * `minCoreVersion` is checked before any tag, pull, or container change.
  * Registry credentials are passed only to the image pull.
+ *
+ * Package image keys stay `enterprise-api|web|worker`. Runtime replaces the
+ * production compose services `api|web|worker` and writes `OKKEY_*_IMAGE`.
  */
 export async function applyVerifiedEnterprisePackage(input: {
   payload: OfflinePackagePayload;
@@ -53,17 +64,22 @@ export async function applyVerifiedEnterprisePackage(input: {
     );
   }
 
-  const containers: ServiceContainer[] = [];
-  for (const service of ENTERPRISE_IMAGE_SERVICES) {
-    const container = await input.engine.findServiceContainer(input.project, service);
+  const targets: EnterpriseTarget[] = [];
+  for (const packageService of ENTERPRISE_IMAGE_SERVICES) {
+    const composeService = ENTERPRISE_COMPOSE_SERVICES[packageService];
+    const image = images[packageService];
+    if (!image) {
+      throw new SystemUpdateError(400, "PACKAGE_INVALID", `Enterprise package is missing the ${packageService} image`);
+    }
+    const container = await input.engine.findServiceContainer(input.project, composeService);
     if (!container) {
       throw new SystemUpdateError(
         409,
         "APPLY_FAILED",
-        `Compose service ${service} is not running in project ${input.project}. Nothing was changed`,
+        `Compose service ${composeService} is not running in project ${input.project}. Nothing was changed`,
       );
     }
-    containers.push(container);
+    targets.push({ packageService, composeService, container, image });
   }
 
   const secrets = credentialSecrets(input.registryCredentials);
@@ -74,12 +90,8 @@ export async function applyVerifiedEnterprisePackage(input: {
     let next = previousEnv;
     next = setEnvValue(next, "OKKEY_ENTERPRISE_IMAGE_TAG", input.payload.imageTag);
     next = setEnvValue(next, "OKKEY_ENTERPRISE_VERSION", input.payload.version);
-    for (const service of ENTERPRISE_IMAGE_SERVICES) {
-      const image = images[service];
-      if (!image) {
-        throw new SystemUpdateError(400, "PACKAGE_INVALID", "Package image disappeared");
-      }
-      next = setEnvValue(next, ENTERPRISE_IMAGE_ENV[service], imageRepository(image));
+    for (const target of targets) {
+      next = setEnvValue(next, COMPOSE_IMAGE_ENV_KEYS[target.composeService], imageRepository(target.image));
     }
     if (secrets.some((secret) => secret.length >= 6 && next.includes(secret))) {
       throw new SystemUpdateError(500, "APPLY_FAILED", "Refusing to store registry credentials");
@@ -87,33 +99,25 @@ export async function applyVerifiedEnterprisePackage(input: {
     await input.engine.writeEnvFile(input.envFilePath, next);
     envWritten = true;
 
-    for (const service of ENTERPRISE_IMAGE_SERVICES) {
-      const image = images[service];
-      if (!image) {
-        throw new SystemUpdateError(400, "PACKAGE_INVALID", "Package image disappeared");
-      }
+    for (const target of targets) {
       if (input.isolated) {
-        if (!(await input.engine.imageExists(image))) {
+        if (!(await input.engine.imageExists(target.image))) {
           throw new SystemUpdateError(
             400,
             "APPLY_FAILED",
-            `Image ${image} is not present locally, and isolated mode will not download it`,
+            `Image ${target.image} is not present locally, and isolated mode will not download it`,
           );
         }
       } else {
-        await input.engine.pullImage(image, input.registryCredentials);
+        await input.engine.pullImage(target.image, input.registryCredentials);
       }
     }
 
-    for (const container of containers) {
-      const image = images[container.service];
-      if (!image) {
-        throw new SystemUpdateError(400, "PACKAGE_INVALID", "Package image disappeared");
-      }
+    for (const target of targets) {
       replaced.push(
         await input.engine.replaceContainer(
-          container,
-          image,
+          target.container,
+          target.image,
           {
             OKKEY_ENTERPRISE_VERSION: input.payload.version,
             OKKEY_ENTERPRISE_IMAGE_TAG: input.payload.imageTag,
@@ -196,15 +200,4 @@ function readEnvValue(contents: string, key: string): string {
     }
   }
   return "";
-}
-
-function imageRepository(image: string): string {
-  const digest = image.lastIndexOf("@");
-  const withoutDigest = digest > 0 ? image.slice(0, digest) : image;
-  const slash = withoutDigest.lastIndexOf("/");
-  const colon = withoutDigest.lastIndexOf(":");
-  if (colon > slash) {
-    return withoutDigest.slice(0, colon);
-  }
-  return withoutDigest;
 }

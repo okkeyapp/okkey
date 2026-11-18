@@ -1,4 +1,9 @@
-# Tiny fixture image with a failing health check for update-agent rollback e2e.
+# Unhealthy enterprise-like fixture for rollback e2e.
 FROM alpine:3.20
+RUN adduser -D -u 65532 nonroot && mkdir -p /okkey && chown nonroot:nonroot /okkey
+WORKDIR /okkey
+USER nonroot
+ENV OKKEY_GIT_SHA=enterprise-unhealthy
 HEALTHCHECK --interval=1s --timeout=1s --start-period=0s --retries=1 CMD exit 1
-CMD ["sh", "-c", "while true; do sleep 3600; done"]
+ENTRYPOINT ["sh", "-c"]
+CMD ["while true; do sleep 3600; done"]
