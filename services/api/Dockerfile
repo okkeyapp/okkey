@@ -68,6 +68,10 @@ FROM node:25-bookworm-slim@sha256:81db02c4b671288a03915da9534dbd54f96d0e7c24d80c
 WORKDIR /app
 ARG NODE_VERSION
 RUN test "${NODE_VERSION}" = "25"
+# Baked at image build time (CI passes the commit SHA). Empty default for local builds.
+# ARG/ENV only — safe for distroless runtimes (no shell required).
+ARG OKKEY_GIT_SHA=
+ENV OKKEY_GIT_SHA=${OKKEY_GIT_SHA}
 ENV NODE_ENV=production
 ENV YARN_CACHE_FOLDER=/usr/local/share/.cache/yarn
 ENV YARN_NETWORK_TIMEOUT=600000

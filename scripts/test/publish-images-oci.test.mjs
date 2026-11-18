@@ -87,3 +87,22 @@ test("v* tag images are signed keyless with SBOM and provenance kept", () => {
   assert.doesNotMatch(signBlock, /continue-on-error/);
   assert.doesNotMatch(signBlock, /workflow_dispatch/);
 });
+
+test("api/worker image build bakes OKKEY_GIT_SHA from the publish revision", () => {
+  const dockerfile = readFileSync(join(root, "services/api/Dockerfile"), "utf8");
+  assert.match(dockerfile, /^ARG OKKEY_GIT_SHA=$/m);
+  assert.match(dockerfile, /^ENV OKKEY_GIT_SHA=\$\{OKKEY_GIT_SHA\}$/m);
+
+  // Both amd64 and arm64 build jobs pass the revision as a build-arg.
+  assert.equal(
+    count(workflow, "OKKEY_GIT_SHA=${{ needs.prep.outputs.revision }}"),
+    2,
+  );
+  assert.match(workflow, /Assert OKKEY_GIT_SHA is baked into api\/worker image/);
+  assert.match(workflow, /OKKEY_GIT_SHA=\$\{EXPECTED_SHA\} not found in image Env/);
+
+  const compose = readFileSync(join(root, "deploy/docker/docker-compose.prod.yml"), "utf8");
+  // An empty compose assignment would override the image ENV at runtime.
+  assert.doesNotMatch(compose, /^\s*OKKEY_GIT_SHA\s*:/m);
+  assert.doesNotMatch(compose, /^\s*OKKEY_ENTERPRISE_GIT_SHA\s*:/m);
+});
