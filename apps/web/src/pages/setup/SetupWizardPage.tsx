@@ -41,9 +41,12 @@ import AppShellLayout from "../../components/app-shell/AppShellLayout";
 import OkkeyLogoMark from "../../components/app-shell/OkkeyLogoMark";
 import { downloadRecoveryKeyPdf } from "../../components/settings/recoveryKeyPdf";
 import { RecoveryInfoTriangleIcon } from "../../components/settings/RecoveryInfoTriangleIcon";
+import WorkspaceLogoTile from "../../components/workspace/WorkspaceLogoTile";
 import WorkspaceTileColorPicker from "../../components/workspace/settings/WorkspaceTileColorPicker";
 import { DEFAULT_WORKSPACE_TILE_COLOR } from "../../components/workspace/settings/workspaceSettingsCatalog";
+import { UploadIcon } from "../../components/workspace/settings/workspaceSettingsIcons";
 import { useAuthVault } from "../../auth/AuthVaultContext";
+import { assertWorkspaceLogoImage, commitWorkspaceLogoReplacement } from "../../workspace/logoImage";
 import { bytesToBase64 } from "../../auth/base64";
 import { parseBrowserEnvironment } from "../../auth/browserEnvironment";
 import { getOrCreateDeviceFingerprint } from "../../auth/deviceFingerprint";
@@ -146,6 +149,11 @@ export default function SetupWizardPage() {
   const [workspaceName, setWorkspaceName] = useState("");
   const [tileColor, setTileColor] = useState(DEFAULT_WORKSPACE_TILE_COLOR);
   const [inviteEmails, setInviteEmails] = useState("");
+  const [logoPreviewUrl, setLogoPreviewUrl] = useState<string | null>(null);
+  const [logoFileName, setLogoFileName] = useState<string | null>(null);
+  const logoPlaintextRef = useRef<Uint8Array | null>(null);
+  const logoVaultKeyRef = useRef<Uint8Array | null>(null);
+  const logoFileInputRef = useRef<HTMLInputElement | null>(null);
   const [authStateId, setAuthStateId] = useState<string | null>(null);
 
   const [masterPassword, setMasterPassword] = useState("");
@@ -193,8 +201,45 @@ export default function SetupWizardPage() {
         wipeBytes(vaultKeyPendingEnrollRef.current);
         vaultKeyPendingEnrollRef.current = null;
       }
+      if (logoVaultKeyRef.current) {
+        wipeBytes(logoVaultKeyRef.current);
+        logoVaultKeyRef.current = null;
+      }
+      if (logoPreviewUrl) {
+        URL.revokeObjectURL(logoPreviewUrl);
+      }
     };
-  }, []);
+  }, [logoPreviewUrl]);
+
+  function clearPendingLogo() {
+    logoPlaintextRef.current = null;
+    setLogoFileName(null);
+    setLogoPreviewUrl((prev) => {
+      if (prev) {
+        URL.revokeObjectURL(prev);
+      }
+      return null;
+    });
+  }
+
+  async function handleLogoFileSelected(file: File) {
+    try {
+      const plaintext = new Uint8Array(await file.arrayBuffer());
+      assertWorkspaceLogoImage(plaintext);
+      logoPlaintextRef.current = plaintext;
+      setLogoFileName(file.name);
+      setLogoPreviewUrl((prev) => {
+        if (prev) {
+          URL.revokeObjectURL(prev);
+        }
+        return URL.createObjectURL(file);
+      });
+      setError(null);
+    } catch {
+      clearPendingLogo();
+      setError(t("web.setupWizard.logoInvalid"));
+    }
+  }
 
   useEffect(() => {
     if (!testing) {
@@ -508,6 +553,13 @@ export default function SetupWizardPage() {
       clearEmailLoginFlow();
       writeLastLoginMethodHint({ email, primary: "email" });
       vaultKeyPendingEnrollRef.current = material.vaultKey;
+      if (logoPlaintextRef.current) {
+        if (logoVaultKeyRef.current) {
+          wipeBytes(logoVaultKeyRef.current);
+        }
+        // Keep a copy for optional logo upload after finish issues a full session.
+        logoVaultKeyRef.current = material.vaultKey.slice();
+      }
       wipeBytes(pwd);
       wipeBytes(material.serverKeyShare);
       wipeBytes(material.deviceShare);
@@ -634,6 +686,36 @@ export default function SetupWizardPage() {
       masterPasswordRef.current = "";
       setMasterPassword("");
       setRepeatMasterPassword("");
+      if (unlock.ok && logoPlaintextRef.current && logoVaultKeyRef.current) {
+        try {
+          const { encryptWorkspaceLogo } = await import("../../workspace/workspaceKeyClient");
+          const core = createAuthenticatedCoreClient(finished.access_token);
+          const ciphertext = await encryptWorkspaceLogo({
+            core,
+            workspaceId: finished.workspace_id,
+            vaultKey: logoVaultKeyRef.current,
+            userId: finished.user_id,
+            plaintext: logoPlaintextRef.current,
+          });
+          await commitWorkspaceLogoReplacement({
+            ciphertext,
+            putCiphertext: async (body) => {
+              await core.putWorkspaceLogo(finished.workspace_id, body);
+            },
+            deleteLegacy: null,
+          });
+        } catch (logoError) {
+          if (import.meta.env.DEV) {
+            console.error("[setup/logo]", logoError);
+          }
+          // Logo is optional; do not block landing in the app after a successful finish.
+        }
+      }
+      if (logoVaultKeyRef.current) {
+        wipeBytes(logoVaultKeyRef.current);
+        logoVaultKeyRef.current = null;
+      }
+      clearPendingLogo();
       if (!unlock.ok) {
         navigate(`${ITEMS_PATH}?${WORKSPACE_QUERY_PARAM}=${encodeURIComponent(finished.workspace_id)}`, {
           replace: true,
@@ -918,6 +1000,55 @@ export default function SetupWizardPage() {
           <div className="flex w-full flex-col gap-2">
             <span className="okkey-small font-medium text-copy-primary">{t("web.setupWizard.workspaceColor")}</span>
             <WorkspaceTileColorPicker value={tileColor} t={t} onChange={setTileColor} disabled={busy} />
+          </div>
+          <div className="flex w-full flex-col gap-3">
+            <span className="okkey-small font-medium text-copy-primary">{t("web.setupWizard.workspaceLogo")}</span>
+            <div className="flex flex-wrap items-center gap-4">
+              <WorkspaceLogoTile
+                className="size-[60px] shrink-0"
+                tileColor={tileColor}
+                hasCustomLogo={Boolean(logoPreviewUrl)}
+                imageSrc={logoPreviewUrl ?? undefined}
+                loading={false}
+              />
+              <div className="flex flex-wrap items-center gap-2">
+                <input
+                  ref={logoFileInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  className="hidden"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    event.target.value = "";
+                    if (file) {
+                      void handleLogoFileSelected(file);
+                    }
+                  }}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-9 gap-1.5 px-3"
+                  disabled={busy}
+                  onClick={() => logoFileInputRef.current?.click()}
+                >
+                  <UploadIcon />
+                  {logoPreviewUrl
+                    ? t("web.workspaceSettings.general.replaceLogo")
+                    : t("web.workspaceSettings.general.uploadLogo")}
+                </Button>
+                {logoPreviewUrl ? (
+                  <Button type="button" variant="ghost" disabled={busy} onClick={() => clearPendingLogo()}>
+                    {t("web.setupWizard.logoRemove")}
+                  </Button>
+                ) : null}
+              </div>
+            </div>
+            <p className="text-sm text-copy-secondary">
+              {logoFileName
+                ? t("web.setupWizard.logoSelected", { name: logoFileName })
+                : t("web.setupWizard.logoHint")}
+            </p>
           </div>
           <div className="flex w-full flex-col gap-2">
             <span className="okkey-small font-medium text-copy-primary">{t("web.setupWizard.invitesLabel")}</span>

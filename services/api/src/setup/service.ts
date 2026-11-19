@@ -113,6 +113,9 @@ export type SetupServiceDeps = {
       sql: string,
       params?: unknown[],
     ): Promise<T[]>;
+    transaction<T>(fn: (tx: {
+      query<R extends Record<string, unknown>>(sql: string, params?: unknown[]): Promise<R[]>;
+    }) => Promise<T>): Promise<T>;
   };
   config: Pick<
     ApiConfig,
@@ -459,6 +462,8 @@ export class SetupService {
   /**
    * After register/complete + recovery enroll/ack: mint a full device-bound session,
    * apply workspace branding + invites, consume the setup code, and mark setup complete.
+   * Durable finish writes run in one Postgres transaction so a failure never marks setup
+   * complete while leaving half-applied branding/invites.
    * Uses the registration result cache (auth state id on the setup session) — the
    * short-lived registration_recovery bearer may already be revoked by export ack.
    */
@@ -468,8 +473,8 @@ export class SetupService {
       throw new SetupError("SETUP_REGISTRATION_INCOMPLETE", 409, "owner registration is incomplete");
     }
 
-    const { registrationResultRedisKey } = await import("../registration/service.ts");
-    const cachedRaw = await this.redis.get(registrationResultRedisKey(session.authStateId));
+    // Same key as registration/service.ts registrationResultRedisKey (avoid importing that module).
+    const cachedRaw = await this.redis.get(`registration:result:${session.authStateId}`);
     if (!cachedRaw) {
       throw new SetupError("SETUP_REGISTRATION_INCOMPLETE", 409, "owner registration is incomplete");
     }
@@ -507,60 +512,125 @@ export class SetupService {
 
     const workspaceName = sanitizeWorkspaceName(input.workspaceName);
     const tileColor = sanitizeTileColor(input.tileColor);
+    const completedAt = this.now().toISOString();
+    const inviteTtlMs = 14 * 24 * 60 * 60 * 1000;
 
-    await this.workspaceSettings.updateSettings(cached.workspaceId, cached.userId, {
-      name: workspaceName,
-      tileColor,
+    await this.postgres.transaction(async (tx) => {
+      await tx.query(
+        `
+          UPDATE workspaces
+          SET name = $1, tile_color = $2, updated_at = now()
+          WHERE id = $3
+        `,
+        [workspaceName, tileColor, cached.workspaceId],
+      );
+
+      if (input.dismissPersonalDataBootstrap === true) {
+        await tx.query(
+          `
+            INSERT INTO workspace_member_item_category_preferences (
+              id,
+              workspace_id,
+              user_id,
+              favorite_category_ids,
+              favorite_template_ids,
+              favorite_order,
+              personal_data_bootstrap_dismissed
+            )
+            VALUES (
+              $1,
+              $2,
+              $3,
+              '["login","secure_note","credit_card","personal_data","passport","secure_files"]'::jsonb,
+              '[]'::jsonb,
+              '["category:login","category:secure_note","category:credit_card","category:personal_data","category:passport","category:secure_files"]'::jsonb,
+              TRUE
+            )
+            ON CONFLICT (workspace_id, user_id)
+            DO UPDATE SET
+              personal_data_bootstrap_dismissed = TRUE,
+              updated_at = now()
+          `,
+          [generateEntityId(), cached.workspaceId, cached.userId],
+        );
+      }
+
+      const invitations = input.invitations ?? [];
+      if (invitations.length > 0) {
+        const roleRows = await tx.query<{ id: string; builtin_key: string | null }>(
+          `
+            SELECT id, builtin_key
+            FROM roles
+            WHERE workspace_id = $1 AND builtin_key IN ('admin', 'user')
+          `,
+          [cached.workspaceId],
+        );
+        const roleByBuiltin = new Map(
+          roleRows.map((r) => [String(r.builtin_key), String(r.id)] as const),
+        );
+        const batch: Array<{ email: string; roleId: string }> = [];
+        for (const invite of invitations.slice(0, 50)) {
+          const email = normalizeEmail(invite.email);
+          if (!isValidEmail(email)) {
+            continue;
+          }
+          if (session.ownerEmail && email === session.ownerEmail) {
+            continue;
+          }
+          const builtin = invite.roleBuiltinId === "admin" ? "admin" : "user";
+          const roleId = roleByBuiltin.get(builtin) ?? roleByBuiltin.get("user");
+          if (!roleId) {
+            throw new SetupError(
+              "SETUP_ROLE_MISSING",
+              500,
+              "workspace roles are missing; cannot create invitations",
+            );
+          }
+          batch.push({ email, roleId });
+        }
+
+        for (const item of batch) {
+          const invitationId = generateEntityId();
+          const rawToken = randomBytes(32).toString("base64url");
+          const tokenHash = createHash("sha256").update(rawToken, "utf8").digest("hex");
+          const expiresAt = new Date(this.now().getTime() + inviteTtlMs).toISOString();
+          await tx.query(
+            `
+              INSERT INTO workspace_invitations (
+                id, workspace_id, email, role_id, invited_by_user_id, token_hash, status,
+                expires_at, delivery_status, delivery_method
+              ) VALUES ($1, $2, $3, $4, $5, $6, 'pending', $7::timestamptz, 'pending', 'email')
+            `,
+            [
+              invitationId,
+              cached.workspaceId,
+              item.email,
+              item.roleId,
+              cached.userId,
+              tokenHash,
+              expiresAt,
+            ],
+          );
+        }
+      }
+
+      const marked = await tx.query<{ setup_completed_at: string | Date | null }>(
+        `
+          UPDATE server_instance_settings
+          SET setup_completed_at = COALESCE(setup_completed_at, $1::timestamptz),
+              updated_at = now()
+          WHERE id = TRUE
+          RETURNING setup_completed_at
+        `,
+        [completedAt],
+      );
+      if (!marked[0]?.setup_completed_at) {
+        throw new SetupError("SETUP_INSTANCE_MISSING", 500, "server instance settings row missing");
+      }
     });
 
-    if (input.dismissPersonalDataBootstrap === true) {
-      await this.dismissPersonalDataBootstrap(cached.workspaceId, cached.userId);
-    }
-
-    const invitations = input.invitations ?? [];
-    if (invitations.length > 0) {
-      const roleRows = await this.postgres.query<{ id: string; builtin_id: string | null }>(
-        `
-          SELECT id, builtin_id
-          FROM workspace_roles
-          WHERE workspace_id = $1 AND builtin_id IN ('admin', 'user')
-        `,
-        [cached.workspaceId],
-      );
-      const roleByBuiltin = new Map(
-        roleRows.map((r) => [String(r.builtin_id), String(r.id)] as const),
-      );
-      const batch: Array<{ email: string; roleId: string }> = [];
-      for (const invite of invitations) {
-        const email = normalizeEmail(invite.email);
-        if (!isValidEmail(email)) {
-          continue;
-        }
-        if (session.ownerEmail && email === session.ownerEmail) {
-          continue;
-        }
-        const builtin = invite.roleBuiltinId === "admin" ? "admin" : "user";
-        const roleId = roleByBuiltin.get(builtin) ?? roleByBuiltin.get("user");
-        if (!roleId) {
-          continue;
-        }
-        batch.push({ email, roleId });
-      }
-      if (batch.length > 0) {
-        try {
-          await this.workspaceMembers.createInvitations(
-            cached.workspaceId,
-            cached.userId,
-            batch.slice(0, 50),
-          );
-        } catch (error) {
-          this.logger?.warn("setup invitations failed", {
-            workspace_id: cached.workspaceId,
-            cause: error instanceof Error ? error.message : String(error),
-          });
-        }
-      }
-    }
+    // Mirror completion into the settings store view (same DB after commit; in-memory tests too).
+    await this.instanceSettings.markSetupCompleted(completedAt);
 
     const full = await this.sessionService.createSession(cached.userId, {
       ttlSeconds: this.config.sessionTtlSeconds,
@@ -570,7 +640,6 @@ export class SetupService {
 
     await this.consumeSetupCode();
     await this.redis.del(this.sessionKey(session.id));
-    await this.instanceSettings.markSetupCompleted(this.now().toISOString());
 
     this.logger?.info("self-host setup completed", {
       event: "setup_completed",
@@ -599,36 +668,6 @@ export class SetupService {
 
   async hasPendingInvitation(email: string): Promise<boolean> {
     return this.workspaceMembers.hasPendingInvitationForEmail(normalizeEmail(email));
-  }
-
-  private async dismissPersonalDataBootstrap(workspaceId: string, userId: string): Promise<void> {
-    await this.postgres.query(
-      `
-        INSERT INTO workspace_member_item_category_preferences (
-          id,
-          workspace_id,
-          user_id,
-          favorite_category_ids,
-          favorite_template_ids,
-          favorite_order,
-          personal_data_bootstrap_dismissed
-        )
-        VALUES (
-          $1,
-          $2,
-          $3,
-          '["login","secure_note","credit_card","personal_data","passport","secure_files"]'::jsonb,
-          '[]'::jsonb,
-          '["category:login","category:secure_note","category:credit_card","category:personal_data","category:passport","category:secure_files"]'::jsonb,
-          TRUE
-        )
-        ON CONFLICT (workspace_id, user_id)
-        DO UPDATE SET
-          personal_data_bootstrap_dismissed = TRUE,
-          updated_at = now()
-      `,
-      [generateEntityId(), workspaceId, userId],
-    );
   }
 
   private async bumpAttempts(): Promise<number> {
