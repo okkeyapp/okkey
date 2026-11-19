@@ -3,6 +3,7 @@ import { intlLocaleTag } from "@okkey/i18n";
 import {
   Button,
   ControlGroup,
+  DeviceClientOsLabel,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -226,21 +227,24 @@ export default function DeviceApprovalController() {
       closeOnEscape={false}
       closeLabel={t("web.capsules.approval.closeLabel")}
       footer={
-        <div className="flex justify-end gap-2">
+        <>
           <Button
             type="button"
             variant="outline"
-            className="gap-2"
+            className="gap-2 max-sm:w-full"
             disabled={resolving}
             onClick={() => void resolve("approve")}
           >
             <IconCheck16 className="size-4 shrink-0" />
             {t("web.settingsPopup.devices.pending.trust")}
           </Button>
-          <ControlGroup className="w-auto" aria-label={t("web.settingsPopup.devices.pending.notNow")}>
+          <ControlGroup
+            className="w-auto max-sm:w-full"
+            aria-label={t("web.settingsPopup.devices.pending.notNow")}
+          >
             <Button
               type="button"
-              className="gap-2"
+              className="min-w-0 flex-1 gap-2"
               disabled={resolving}
               onClick={() => void resolve("reject")}
             >
@@ -276,24 +280,28 @@ export default function DeviceApprovalController() {
               </DropdownMenuContent>
             </DropdownMenu>
           </ControlGroup>
-        </div>
+        </>
       }
     >
       <div className="flex flex-col gap-4 text-sm">
         <p className="text-muted-foreground">{t("web.settingsPopup.devices.pending.body")}</p>
-        <div className="flex items-center gap-4 rounded-xl bg-secondary p-4">
-          <DeviceTypeIcon
-            form={resolveDeviceFormIcon(current)}
-            brand={resolveDeviceBrandIcon(current)}
-          />
-          <div className="flex min-w-0 flex-1 flex-col">
-            <p className="truncate text-sm font-medium text-foreground">{formatDeviceTitle(current)}</p>
-            <p className="text-sm text-muted-foreground">{formatDeviceClientOs(current)}</p>
-            <p className="text-sm text-muted-foreground">
-              {formatAbsoluteDate(current.created_at, locale)}
-            </p>
+        <div className="flex flex-col gap-3 rounded-xl bg-secondary p-4 sm:flex-row sm:items-center sm:gap-4">
+          <div className="flex min-w-0 flex-1 items-center gap-4">
+            <DeviceTypeIcon
+              form={resolveDeviceFormIcon(current)}
+              brand={resolveDeviceBrandIcon(current)}
+            />
+            <div className="flex min-w-0 flex-1 flex-col">
+              <p className="truncate text-sm font-medium text-foreground">
+                {formatDeviceTitle(current)}
+              </p>
+              <DeviceClientOsLabel value={formatDeviceClientOs(current)} />
+              <p className="text-sm text-muted-foreground">
+                {formatAbsoluteDate(current.created_at, locale)}
+              </p>
+            </div>
           </div>
-          <div className="shrink-0 text-right text-[13px] leading-5 text-muted-foreground">
+          <div className="min-w-0 break-words text-[13px] leading-5 text-muted-foreground sm:shrink-0 sm:text-right">
             <p>
               {t("web.settingsPopup.devices.pending.ip", {
                 ip: current.ip_address || "unknown",

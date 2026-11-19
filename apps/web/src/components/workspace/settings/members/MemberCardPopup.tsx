@@ -672,21 +672,34 @@ export default function MemberCardPopup({
   );
 
   const footer = readOnly ? (
-    <div className="flex w-full items-center justify-between gap-2">
+    <div className="flex w-full min-w-0 flex-wrap items-center justify-between gap-2 max-sm:flex-col max-sm:items-stretch">
       {actionsMenu}
-      <Button type="button" variant="outline" disabled={removing} onClick={handleClose}>
+      <Button
+        type="button"
+        variant="outline"
+        className="max-sm:w-full"
+        disabled={removing}
+        onClick={handleClose}
+      >
         {t("web.settingsPopup.close")}
       </Button>
     </div>
   ) : (
-    <div className="flex w-full items-center justify-between gap-2">
+    <div className="flex w-full min-w-0 flex-wrap items-center justify-between gap-2 max-sm:flex-col max-sm:items-stretch">
       {actionsMenu}
-      <div className="flex items-center gap-2">
-        <Button type="button" variant="outline" disabled={saving || removing} onClick={handleClose}>
+      <div className="flex min-w-0 flex-wrap items-center justify-end gap-2 max-sm:w-full max-sm:flex-col max-sm:items-stretch">
+        <Button
+          type="button"
+          variant="outline"
+          className="max-sm:w-full"
+          disabled={saving || removing}
+          onClick={handleClose}
+        >
           {t("web.newItemPopup.cancel")}
         </Button>
         <Button
           type="button"
+          className="max-sm:w-full"
           disabled={!canConfigure || !dirty || saving || removing}
           onClick={() => void handleSave()}
         >

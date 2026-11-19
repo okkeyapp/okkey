@@ -158,6 +158,7 @@ export {
   Popup,
   PopupMobileMenu,
   POPUP_ANIMATION_MS,
+  popupFooterActionsClassName,
   type PopupMenu,
   type PopupMenuItem,
   type PopupProps,
@@ -413,6 +414,10 @@ export {
   type DeviceFormIcon,
   type DeviceIconHints,
 } from "./components/devices/device-type-icon.js";
+export {
+  DeviceClientOsLabel,
+  type DeviceClientOsLabelProps,
+} from "./components/devices/device-client-os-label.js";
 export {
   DevicePendingView,
   type DevicePendingApprover,

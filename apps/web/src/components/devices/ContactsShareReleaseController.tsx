@@ -178,16 +178,14 @@ export default function ContactsShareReleaseController() {
       closeOnEscape={false}
       closeLabel={t("web.capsules.approval.closeLabel")}
       footer={
-        <div className="flex justify-end gap-2">
-          <Button
-            type="button"
-            className="gap-2"
-            disabled={resolving}
-            onClick={() => void release()}
-          >
-            {t("account.restore.enterprise.contacts.release")}
-          </Button>
-        </div>
+        <Button
+          type="button"
+          className="gap-2 max-sm:w-full"
+          disabled={resolving}
+          onClick={() => void release()}
+        >
+          {t("account.restore.enterprise.contacts.release")}
+        </Button>
       }
     >
       <div className="flex flex-col gap-4 text-sm">

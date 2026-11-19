@@ -397,7 +397,7 @@ export default function EditItemPopup({
         closeDisabled={saving || savingTemplate}
         panelClassName="min-h-[min(720px,calc(100dvh-32px))]"
         footer={
-          <div className="flex w-full items-center justify-between gap-2">
+          <div className="flex w-full min-w-0 flex-wrap items-center justify-between gap-2 max-sm:flex-col max-sm:items-stretch">
             <NewItemFormActionsMenu
               t={t}
               disabled={saving || savingTemplate}
@@ -406,11 +406,18 @@ export default function EditItemPopup({
                 setSaveTemplateOpen(true);
               }}
             />
-            <div className="flex items-center gap-2">
-              <Button type="button" variant="outline" onClick={requestClosePopup} disabled={saving || savingTemplate}>
+            <div className="flex min-w-0 flex-wrap items-center justify-end gap-2 max-sm:w-full max-sm:flex-col max-sm:items-stretch">
+              <Button
+                type="button"
+                variant="outline"
+                className="max-sm:w-full"
+                onClick={requestClosePopup}
+                disabled={saving || savingTemplate}
+              >
                 {t("web.newItemPopup.cancel")}
               </Button>
               <PopupSaveButton
+                className="max-sm:w-full"
                 saving={saving}
                 disabled={!canSave}
                 saveLabel={t("web.newItemPopup.save")}

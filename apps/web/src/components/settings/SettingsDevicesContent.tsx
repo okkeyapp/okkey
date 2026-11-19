@@ -4,6 +4,7 @@ import type { DeviceBlockDuration, DeviceListItemDto } from "@okkey/types";
 import {
   Button,
   ControlGroup,
+  DeviceClientOsLabel,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuGroup,
@@ -15,6 +16,7 @@ import {
   buttonVariants,
   controlGroupItemFixedClassName,
   cn,
+  popupFooterActionsClassName,
 } from "@okkey/ui";
 import { ChevronDownIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -501,21 +503,23 @@ export default function SettingsDevicesContent({ t }: SettingsDevicesContentProp
               {t("web.settingsPopup.devices.pending.body")}
             </p>
           </div>
-          <div className="flex items-center gap-4">
-            <DeviceTypeIcon
-              form={resolveDeviceFormIcon(primaryPending)}
-              brand={resolveDeviceBrandIcon(primaryPending)}
-            />
-            <div className="flex min-w-0 flex-1 flex-col">
-              <p className="truncate text-sm font-medium text-foreground">
-                {formatDeviceTitle(primaryPending)}
-              </p>
-              <p className="text-sm text-muted-foreground">{formatDeviceClientOs(primaryPending)}</p>
-              <p className="text-sm text-muted-foreground">
-                {formatAbsoluteDate(primaryPending.created_at, locale)}
-              </p>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
+            <div className="flex min-w-0 flex-1 items-center gap-4">
+              <DeviceTypeIcon
+                form={resolveDeviceFormIcon(primaryPending)}
+                brand={resolveDeviceBrandIcon(primaryPending)}
+              />
+              <div className="flex min-w-0 flex-1 flex-col">
+                <p className="truncate text-sm font-medium text-foreground">
+                  {formatDeviceTitle(primaryPending)}
+                </p>
+                <DeviceClientOsLabel value={formatDeviceClientOs(primaryPending)} />
+                <p className="text-sm text-muted-foreground">
+                  {formatAbsoluteDate(primaryPending.created_at, locale)}
+                </p>
+              </div>
             </div>
-            <div className="shrink-0 text-right text-[13px] leading-5 text-muted-foreground">
+            <div className="min-w-0 break-words text-[13px] leading-5 text-muted-foreground sm:shrink-0 sm:text-right">
               <p>
                 {t("web.settingsPopup.devices.pending.ip", {
                   ip: primaryPending.ip_address || "unknown",
@@ -536,21 +540,24 @@ export default function SettingsDevicesContent({ t }: SettingsDevicesContentProp
               </p>
             </div>
           </div>
-          <div className="flex items-center justify-end gap-2">
+          <div className={popupFooterActionsClassName}>
             <Button
               type="button"
               variant="secondary"
-              className="gap-2"
+              className="gap-2 max-sm:w-full"
               disabled={busyId === primaryPending.device_id}
               onClick={() => void trustPending(primaryPending)}
             >
               <IconCheck16 className="size-4 shrink-0" />
               {t("web.settingsPopup.devices.pending.trust")}
             </Button>
-            <ControlGroup className="w-auto" aria-label={t("web.settingsPopup.devices.pending.notNow")}>
+            <ControlGroup
+              className="w-auto max-sm:w-full"
+              aria-label={t("web.settingsPopup.devices.pending.notNow")}
+            >
               <Button
                 type="button"
-                className="gap-2"
+                className="min-w-0 flex-1 gap-2"
                 disabled={busyId === primaryPending.device_id}
                 onClick={() =>
                   void dismissPending(primaryPending.device_id, "dismissed by user")
@@ -622,7 +629,7 @@ export default function SettingsDevicesContent({ t }: SettingsDevicesContentProp
                     </span>
                   ) : null}
                 </div>
-                <p className="text-sm text-muted-foreground">{formatDeviceClientOs(device)}</p>
+                <DeviceClientOsLabel value={formatDeviceClientOs(device)} />
                 <div className="pt-1.5 text-[13px] leading-5 text-muted-foreground">
                   <p>{formatAddedLabel(device.created_at, locale, t)}</p>
                   <p>{formatLastActiveLabel(device.last_seen_at, locale, t)}</p>
@@ -713,7 +720,7 @@ export default function SettingsDevicesContent({ t }: SettingsDevicesContentProp
                       <p className="truncate text-sm font-medium text-foreground">
                         {formatDeviceTitle(device)}
                       </p>
-                      <p className="text-sm text-muted-foreground">{formatDeviceClientOs(device)}</p>
+                      <DeviceClientOsLabel value={formatDeviceClientOs(device)} />
                       <p className="text-sm text-muted-foreground">
                         {device.blocked_until
                           ? t("web.settingsPopup.devices.blocked.until", {
@@ -779,12 +786,18 @@ export default function SettingsDevicesContent({ t }: SettingsDevicesContentProp
               aria-label={t("web.settingsPopup.devices.rename.title")}
               autoFocus
             />
-            <div className="flex justify-end gap-2">
-              <Button type="button" variant="secondary" onClick={() => setRenameTarget(null)}>
+            <div className={popupFooterActionsClassName}>
+              <Button
+                type="button"
+                variant="secondary"
+                className="max-sm:w-full"
+                onClick={() => setRenameTarget(null)}
+              >
                 {t("web.settingsPopup.devices.rename.cancel")}
               </Button>
               <Button
                 type="button"
+                className="max-sm:w-full"
                 disabled={!renameValue.trim() || busyId === renameTarget.device_id}
                 onClick={() => void submitRename()}
               >
