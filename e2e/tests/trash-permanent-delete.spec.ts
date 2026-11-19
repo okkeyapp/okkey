@@ -88,10 +88,12 @@ test("1) register → create item → soft-delete → delete permanently → gon
 
   await openRowActions(page, ITEM_A);
   await page.getByRole("menuitem", { name: /delete permanently/i }).click();
-  const purgeHeading = page.getByRole("heading", { name: /delete permanently/i });
-  await expect(purgeHeading).toBeVisible({ timeout: 10_000 });
-  await page.getByRole("button", { name: /delete permanently/i }).click();
-  await expect(purgeHeading).toBeHidden({ timeout: 30_000 });
+  const purgeDialog = page.getByRole("dialog");
+  await expect(purgeDialog.getByRole("heading", { name: /delete permanently/i })).toBeVisible({
+    timeout: 10_000,
+  });
+  await purgeDialog.getByRole("button", { name: /delete permanently/i }).click();
+  await expect(purgeDialog).toBeHidden({ timeout: 30_000 });
   await expect(page.getByText(ITEM_A, { exact: false })).toHaveCount(0, { timeout: 30_000 });
 
   await page.reload();
@@ -127,10 +129,12 @@ test("2) empty trash removes all soft-deleted items the user may delete", async 
   await expect(page.getByText(ITEM_C, { exact: false }).first()).toBeVisible({ timeout: 30_000 });
 
   await page.getByRole("button", { name: /empty trash/i }).click();
-  const emptyHeading = page.getByRole("heading", { name: /empty trash/i });
-  await expect(emptyHeading).toBeVisible({ timeout: 10_000 });
-  await page.getByRole("button", { name: /^empty trash$/i }).click();
-  await expect(emptyHeading).toBeHidden({ timeout: 30_000 });
+  const emptyDialog = page.getByRole("dialog");
+  await expect(emptyDialog.getByRole("heading", { name: /empty trash/i })).toBeVisible({
+    timeout: 10_000,
+  });
+  await emptyDialog.getByRole("button", { name: /^empty trash$/i }).click();
+  await expect(emptyDialog).toBeHidden({ timeout: 30_000 });
 
   await expect(page.getByText(ITEM_B, { exact: false })).toHaveCount(0, { timeout: 30_000 });
   await expect(page.getByText(ITEM_C, { exact: false })).toHaveCount(0, { timeout: 30_000 });
