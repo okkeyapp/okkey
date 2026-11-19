@@ -21,6 +21,7 @@ import { ITEM_QUERY_PARAM, WORKSPACES_PATH } from "../../routes/paths";
 import ItemsListLeftPane, { type ItemsListRecord } from "./ItemsListLeftPane";
 import ItemsShellTopBar from "./ItemsShellTopBar";
 import SystemUpdateSidebarButton from "../../system-updates/SystemUpdateSidebarButton";
+import SidebarTipsBanner from "../../tips/SidebarTipsBanner";
 
 const mainPanelChromeClassName = cn(
   "flex min-h-0 min-w-0 flex-col rounded-xl bg-background text-foreground",
@@ -81,6 +82,10 @@ export type WorkspaceSidebarLayoutProps = {
   itemsListRecords?: readonly ItemsListRecord[];
   /** False until workspace item sync bootstrap completes. */
   itemsListRecordsLoaded?: boolean;
+  /** Current workspace id for Tips (server-email tip ownership check). */
+  tipsWorkspaceId?: string;
+  /** True when the signed-in user owns `tipsWorkspaceId`. */
+  tipsIsWorkspaceOwner?: boolean;
 };
 
 function ShellMainHeader({
@@ -167,6 +172,8 @@ export default function WorkspaceSidebarLayout({
   itemsListFoldersLoaded,
   itemsListRecords = [],
   itemsListRecordsLoaded = true,
+  tipsWorkspaceId,
+  tipsIsWorkspaceOwner = false,
 }: WorkspaceSidebarLayoutProps) {
   const { locale, setLocale, t } = useLocale();
   const [searchParams] = useSearchParams();
@@ -200,6 +207,14 @@ export default function WorkspaceSidebarLayout({
           accountMenu={accountMenu}
           footerPlainLinkLabels={footerPlainLinkLabels}
           beforeFooter={<SystemUpdateSidebarButton />}
+          afterFooterPlainLinks={
+            tipsWorkspaceId ? (
+              <SidebarTipsBanner
+                workspaceId={tipsWorkspaceId}
+                isWorkspaceOwner={tipsIsWorkspaceOwner}
+              />
+            ) : null
+          }
           docsLocale={locale}
           vaultHeaderPlusAriaLabel={vaultHeaderPlusAriaLabel}
           folderHeaderPlusAriaLabel={folderHeaderPlusAriaLabel}

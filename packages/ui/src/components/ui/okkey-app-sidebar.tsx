@@ -1105,6 +1105,11 @@ export type OkkeyAppSidebarProps = {
   /** Host-rendered block above Documentation / Help. Self-host passes the version button. */
   beforeFooter?: React.ReactNode;
   /**
+   * Host-rendered block below Documentation / Help and above the account menu
+   * (e.g. Tips banner).
+   */
+  afterFooterPlainLinks?: React.ReactNode;
+  /**
    * UI locale for the Documentation and Help footer links.
    * Russian opens the unprefixed docs home; English opens `/en/`.
    * Defaults to English (gallery).
@@ -1364,6 +1369,7 @@ function OkkeyAppSidebarInner({
   accountMenu,
   footerPlainLinkLabels,
   beforeFooter,
+  afterFooterPlainLinks,
   docsLocale = "en",
   showFooterPlainLinks = true,
   vaultHeaderPlusAriaLabel = "Add vault",
@@ -1393,6 +1399,7 @@ function OkkeyAppSidebarInner({
   | "accountMenu"
   | "footerPlainLinkLabels"
   | "beforeFooter"
+  | "afterFooterPlainLinks"
   | "docsLocale"
   | "showFooterPlainLinks"
   | "vaultHeaderPlusAriaLabel"
@@ -1689,6 +1696,7 @@ function OkkeyAppSidebarInner({
                 <OkkeySidebarPlainLinksMenu items={footerPlainItems} />
               )
             ) : null}
+            {afterFooterPlainLinks}
           </div>
         </div>
       </SidebarContent>
@@ -1818,6 +1826,7 @@ export function OkkeyAppSidebar({
   accountMenu,
   footerPlainLinkLabels,
   beforeFooter,
+  afterFooterPlainLinks,
   docsLocale,
   showFooterPlainLinks,
   vaultHeaderPlusAriaLabel,
@@ -1893,6 +1902,7 @@ export function OkkeyAppSidebar({
                   accountMenu={accountMenu}
                   footerPlainLinkLabels={footerPlainLinkLabels}
                   beforeFooter={beforeFooter}
+                  afterFooterPlainLinks={afterFooterPlainLinks}
                   docsLocale={docsLocale}
                   showFooterPlainLinks={showFooterPlainLinks}
                   vaultHeaderPlusAriaLabel={vaultHeaderPlusAriaLabel}
@@ -1937,6 +1947,7 @@ export function OkkeyAppSidebar({
                     accountMenu={accountMenu}
                     footerPlainLinkLabels={footerPlainLinkLabels}
                     beforeFooter={beforeFooter}
+                    afterFooterPlainLinks={afterFooterPlainLinks}
                     docsLocale={docsLocale}
                     showFooterPlainLinks={showFooterPlainLinks}
                     vaultHeaderPlusAriaLabel={vaultHeaderPlusAriaLabel}
