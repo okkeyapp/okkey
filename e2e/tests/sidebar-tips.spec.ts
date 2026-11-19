@@ -3,6 +3,7 @@ import { expect, test, type Browser, type BrowserContext, type Page } from "@pla
 import { gotoItemsUnlocked, registerBootstrapAndUnlock } from "../helpers/auth";
 import { resetE2eCatalog } from "../helpers/db";
 import { E2E_MASTER_PASSWORD, uniqueEmail } from "../helpers/env";
+import { dismissOpenItemDialog } from "../helpers/items";
 
 /**
  * Tips banner (TSK-256): show unfinished tips, navigate to a settings target,
@@ -38,6 +39,8 @@ test("tips banner shows, navigates to settings, dismiss persists after reload", 
     masterPassword: E2E_MASTER_PASSWORD,
   });
   await expect(page.getByTestId("items-shell-topbar")).toBeVisible();
+  // Personal-data bootstrap may open `#editItem` and block sidebar clicks.
+  await dismissOpenItemDialog(page);
 
   const banner = page.getByTestId("sidebar-tips-banner");
   await expect(banner).toBeVisible({ timeout: 60_000 });
