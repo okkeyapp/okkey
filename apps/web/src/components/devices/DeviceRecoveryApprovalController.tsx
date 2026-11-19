@@ -10,7 +10,6 @@ import {
 import {
   Button,
   ControlGroup,
-  DeviceClientOsLabel,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -30,10 +29,10 @@ import { useAuthVault, useAuthenticatedCoreClient } from "../../auth/AuthVaultCo
 import { formatDeviceClientOs, formatDeviceTitle } from "../../auth/browserEnvironment";
 import { IconCheck16, IconNotNow16 } from "../items/itemCategoryIcons";
 import {
-  DeviceTypeIcon,
   resolveDeviceBrandIcon,
   resolveDeviceFormIcon,
 } from "../settings/DeviceTypeIcon";
+import PendingDeviceInfoCard from "./PendingDeviceInfoCard";
 import {
   getSettingsPopupCacheState,
   subscribeSettingsPopupCache,
@@ -342,40 +341,22 @@ export default function DeviceRecoveryApprovalController() {
     >
       <div className="flex flex-col gap-4 text-sm">
         <p className="text-muted-foreground">{t("account.restore.enterprise.devices.popup.body")}</p>
-        <div className="flex flex-col gap-3 rounded-xl bg-secondary p-4 sm:flex-row sm:items-center sm:gap-4">
-          <div className="flex min-w-0 flex-1 items-center gap-4">
-            <DeviceTypeIcon
-              form={resolveDeviceFormIcon(deviceHints)}
-              brand={resolveDeviceBrandIcon(deviceHints)}
-            />
-            <div className="flex min-w-0 flex-1 flex-col">
-              <p className="truncate text-sm font-medium text-foreground">
-                {formatDeviceTitle(deviceHints)}
-              </p>
-              <DeviceClientOsLabel value={formatDeviceClientOs(deviceHints)} />
-              <p className="text-sm text-muted-foreground">
-                {formatAbsoluteDate(current.createdAt, locale)}
-              </p>
-            </div>
-          </div>
-          <div className="min-w-0 break-words text-[13px] leading-5 text-muted-foreground sm:shrink-0 sm:text-right">
-            <p>
-              {t("web.settingsPopup.devices.pending.ip", {
-                ip: current.requestIp || "unknown",
-              })}
-            </p>
-            <p>
-              {t("web.settingsPopup.devices.pending.country", {
-                country: current.country || t("web.settingsPopup.devices.pending.unknownLocation"),
-              })}
-            </p>
-            <p>
-              {t("web.settingsPopup.devices.pending.city", {
-                city: current.city || t("web.settingsPopup.devices.pending.unknownLocation"),
-              })}
-            </p>
-          </div>
-        </div>
+        <PendingDeviceInfoCard
+          form={resolveDeviceFormIcon(deviceHints)}
+          brand={resolveDeviceBrandIcon(deviceHints)}
+          title={formatDeviceTitle(deviceHints)}
+          clientOs={formatDeviceClientOs(deviceHints)}
+          timestamp={formatAbsoluteDate(current.createdAt, locale)}
+          ipLabel={t("web.settingsPopup.devices.pending.ip", {
+            ip: current.requestIp || "unknown",
+          })}
+          countryLabel={t("web.settingsPopup.devices.pending.country", {
+            country: current.country || t("web.settingsPopup.devices.pending.unknownLocation"),
+          })}
+          cityLabel={t("web.settingsPopup.devices.pending.city", {
+            city: current.city || t("web.settingsPopup.devices.pending.unknownLocation"),
+          })}
+        />
       </div>
     </Popup>
   );

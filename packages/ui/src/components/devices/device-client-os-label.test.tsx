@@ -8,16 +8,16 @@ function textOf(value: string): string {
 }
 
 describe("DeviceClientOsLabel", () => {
-  it("keeps the readable subtitle text", () => {
-    expect(textOf("Web · Yandex · macOS")).toBe("Web · Yandex · macOS");
+  it("keeps the readable subtitle text (NBSP before ·)", () => {
+    const text = textOf("Web · Yandex · macOS");
+    expect(text.replace(/\u00A0/g, " ")).toBe("Web · Yandex · macOS");
   });
 
-  it("wraps each segment in whitespace-nowrap spans so separators cannot orphan", () => {
+  it("exposes the full value as title and truncates when constrained", () => {
     const html = renderToStaticMarkup(<DeviceClientOsLabel value="Web · Yandex · macOS" />);
-    expect(html.match(/whitespace-nowrap/g)?.length).toBe(3);
-    expect(html).toContain(">Web</span>");
-    expect(html).toContain("> · Yandex</span>");
-    expect(html).toContain("> · macOS</span>");
+    expect(html).toContain('title="Web · Yandex · macOS"');
+    expect(html).toContain("truncate");
+    expect(html).toContain('data-testid="pending-device-client-os"');
   });
 
   it("renders empty/unknown values without crashing", () => {

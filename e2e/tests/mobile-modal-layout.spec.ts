@@ -11,6 +11,7 @@ import { dismissOpenItemDialog } from "../helpers/items";
 import {
   assertDialogActionButtonsInViewport,
   assertNoHorizontalOverflow,
+  assertPendingDeviceRowsDoNotOverlap,
 } from "../helpers/modalLayout";
 
 /**
@@ -112,9 +113,15 @@ test("device-approval popup fits narrow screens", async () => {
     await expect(notNow).toBeVisible();
 
     await assertDialogActionButtonsInViewport(page, approval, [trust, notNow]);
+    if ((await approval.getByTestId("pending-device-info-card").count()) > 0) {
+      await assertPendingDeviceRowsDoNotOverlap(approval);
+    }
 
     await page.setViewportSize({ width: 320, height: 568 });
     await assertDialogActionButtonsInViewport(page, approval, [trust, notNow]);
+    if ((await approval.getByTestId("pending-device-info-card").count()) > 0) {
+      await assertPendingDeviceRowsDoNotOverlap(approval);
+    }
 
     // Keep the pending session tidy for later suites sharing the DB.
     await notNow.click();

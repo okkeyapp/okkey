@@ -18,6 +18,7 @@ import {
   cn,
   popupFooterActionsClassName,
 } from "@okkey/ui";
+import PendingDeviceInfoCard from "../devices/PendingDeviceInfoCard";
 import { ChevronDownIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -503,43 +504,24 @@ export default function SettingsDevicesContent({ t }: SettingsDevicesContentProp
               {t("web.settingsPopup.devices.pending.body")}
             </p>
           </div>
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
-            <div className="flex min-w-0 flex-1 items-center gap-4">
-              <DeviceTypeIcon
-                form={resolveDeviceFormIcon(primaryPending)}
-                brand={resolveDeviceBrandIcon(primaryPending)}
-              />
-              <div className="flex min-w-0 flex-1 flex-col">
-                <p className="truncate text-sm font-medium text-foreground">
-                  {formatDeviceTitle(primaryPending)}
-                </p>
-                <DeviceClientOsLabel value={formatDeviceClientOs(primaryPending)} />
-                <p className="text-sm text-muted-foreground">
-                  {formatAbsoluteDate(primaryPending.created_at, locale)}
-                </p>
-              </div>
-            </div>
-            <div className="min-w-0 break-words text-[13px] leading-5 text-muted-foreground sm:shrink-0 sm:text-right">
-              <p>
-                {t("web.settingsPopup.devices.pending.ip", {
-                  ip: primaryPending.ip_address || "unknown",
-                })}
-              </p>
-              <p>
-                {t("web.settingsPopup.devices.pending.country", {
-                  country:
-                    primaryPending.country ||
-                    t("web.settingsPopup.devices.pending.unknownLocation"),
-                })}
-              </p>
-              <p>
-                {t("web.settingsPopup.devices.pending.city", {
-                  city:
-                    primaryPending.city || t("web.settingsPopup.devices.pending.unknownLocation"),
-                })}
-              </p>
-            </div>
-          </div>
+          <PendingDeviceInfoCard
+            className="rounded-none bg-transparent p-0"
+            form={resolveDeviceFormIcon(primaryPending)}
+            brand={resolveDeviceBrandIcon(primaryPending)}
+            title={formatDeviceTitle(primaryPending)}
+            clientOs={formatDeviceClientOs(primaryPending)}
+            timestamp={formatAbsoluteDate(primaryPending.created_at, locale)}
+            ipLabel={t("web.settingsPopup.devices.pending.ip", {
+              ip: primaryPending.ip_address || "unknown",
+            })}
+            countryLabel={t("web.settingsPopup.devices.pending.country", {
+              country:
+                primaryPending.country || t("web.settingsPopup.devices.pending.unknownLocation"),
+            })}
+            cityLabel={t("web.settingsPopup.devices.pending.city", {
+              city: primaryPending.city || t("web.settingsPopup.devices.pending.unknownLocation"),
+            })}
+          />
           <div className={popupFooterActionsClassName}>
             <Button
               type="button"

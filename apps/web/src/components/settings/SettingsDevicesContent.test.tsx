@@ -189,7 +189,9 @@ describe("SettingsDevicesContent", () => {
     render(<SettingsDevicesContent t={t} />);
 
     expect(
-      await screen.findByText((_, node) => node?.textContent === "Web · Chrome · macOS"),
+      await screen.findByText(
+        (_, node) => (node?.textContent ?? "").replace(/\u00A0/g, " ") === "Web · Chrome · macOS",
+      ),
     ).toBeTruthy();
     expect(screen.getByText("Web Chrome")).toBeTruthy();
   });

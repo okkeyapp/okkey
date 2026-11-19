@@ -1,5 +1,3 @@
-import * as React from "react";
-
 import { cn } from "../../lib/utils.js";
 
 const DEVICE_CLIENT_OS_SEPARATOR = " · ";
@@ -11,24 +9,28 @@ export type DeviceClientOsLabelProps = {
 };
 
 /**
- * Renders device channel / client / OS so narrow screens wrap between segments
- * without orphaning the middle-dot separators onto their own lines.
+ * Renders device channel / client / OS.
+ * Uses non-breaking spaces before middle dots so wraps never orphan separators,
+ * truncates with ellipsis when the row is constrained, and exposes the full
+ * value via `title` for hover/long-press.
  */
 export function DeviceClientOsLabel({ value, className }: DeviceClientOsLabelProps) {
   const parts = value.split(DEVICE_CLIENT_OS_SEPARATOR).filter((part) => part.length > 0);
-
-  if (parts.length <= 1) {
-    return <p className={cn("text-sm text-muted-foreground", className)}>{value}</p>;
-  }
+  const display =
+    parts.length <= 1
+      ? value
+      : `${parts[0]}${parts
+          .slice(1)
+          .map((part) => `\u00A0· ${part}`)
+          .join("")}`;
 
   return (
-    <p className={cn("text-sm text-muted-foreground", className)}>
-      {parts.map((part, index) => (
-        <span key={`${part}-${index}`} className="whitespace-nowrap">
-          {index > 0 ? DEVICE_CLIENT_OS_SEPARATOR : null}
-          {part}
-        </span>
-      ))}
+    <p
+      className={cn("min-w-0 truncate text-sm text-muted-foreground", className)}
+      title={value}
+      data-testid="pending-device-client-os"
+    >
+      {display}
     </p>
   );
 }

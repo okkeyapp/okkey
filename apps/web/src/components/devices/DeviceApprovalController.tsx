@@ -3,7 +3,6 @@ import { intlLocaleTag } from "@okkey/i18n";
 import {
   Button,
   ControlGroup,
-  DeviceClientOsLabel,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -26,10 +25,10 @@ import { formatDeviceClientOs, formatDeviceTitle } from "../../auth/browserEnvir
 import { getOrCreateDeviceFingerprint } from "../../auth/deviceFingerprint";
 import { IconCheck16, IconNotNow16 } from "../items/itemCategoryIcons";
 import {
-  DeviceTypeIcon,
   resolveDeviceBrandIcon,
   resolveDeviceFormIcon,
 } from "../settings/DeviceTypeIcon";
+import PendingDeviceInfoCard from "./PendingDeviceInfoCard";
 import { useLocale } from "../../locale/LocaleContext";
 import {
   refreshSettingsDevicesCache,
@@ -285,40 +284,22 @@ export default function DeviceApprovalController() {
     >
       <div className="flex flex-col gap-4 text-sm">
         <p className="text-muted-foreground">{t("web.settingsPopup.devices.pending.body")}</p>
-        <div className="flex flex-col gap-3 rounded-xl bg-secondary p-4 sm:flex-row sm:items-center sm:gap-4">
-          <div className="flex min-w-0 flex-1 items-center gap-4">
-            <DeviceTypeIcon
-              form={resolveDeviceFormIcon(current)}
-              brand={resolveDeviceBrandIcon(current)}
-            />
-            <div className="flex min-w-0 flex-1 flex-col">
-              <p className="truncate text-sm font-medium text-foreground">
-                {formatDeviceTitle(current)}
-              </p>
-              <DeviceClientOsLabel value={formatDeviceClientOs(current)} />
-              <p className="text-sm text-muted-foreground">
-                {formatAbsoluteDate(current.created_at, locale)}
-              </p>
-            </div>
-          </div>
-          <div className="min-w-0 break-words text-[13px] leading-5 text-muted-foreground sm:shrink-0 sm:text-right">
-            <p>
-              {t("web.settingsPopup.devices.pending.ip", {
-                ip: current.ip_address || "unknown",
-              })}
-            </p>
-            <p>
-              {t("web.settingsPopup.devices.pending.country", {
-                country: current.country || t("web.settingsPopup.devices.pending.unknownLocation"),
-              })}
-            </p>
-            <p>
-              {t("web.settingsPopup.devices.pending.city", {
-                city: current.city || t("web.settingsPopup.devices.pending.unknownLocation"),
-              })}
-            </p>
-          </div>
-        </div>
+        <PendingDeviceInfoCard
+          form={resolveDeviceFormIcon(current)}
+          brand={resolveDeviceBrandIcon(current)}
+          title={formatDeviceTitle(current)}
+          clientOs={formatDeviceClientOs(current)}
+          timestamp={formatAbsoluteDate(current.created_at, locale)}
+          ipLabel={t("web.settingsPopup.devices.pending.ip", {
+            ip: current.ip_address || "unknown",
+          })}
+          countryLabel={t("web.settingsPopup.devices.pending.country", {
+            country: current.country || t("web.settingsPopup.devices.pending.unknownLocation"),
+          })}
+          cityLabel={t("web.settingsPopup.devices.pending.city", {
+            city: current.city || t("web.settingsPopup.devices.pending.unknownLocation"),
+          })}
+        />
       </div>
     </Popup>
   );

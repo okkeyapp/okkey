@@ -2,6 +2,8 @@ import type { ReactNode, SVGProps } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { Button, Popup, type PopupMenu } from "@okkey/ui";
 
+import PendingDeviceInfoCard from "../../components/devices/PendingDeviceInfoCard";
+
 function PopupDemoSettingsIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden {...props}>
@@ -44,6 +46,7 @@ const POPUP_QUERY_PARAM = "popup";
 const SETTINGS_POPUP_ID = "settings";
 const CAPSULE_POPUP_ID = "capsule";
 const VAULT_POPUP_ID = "vault";
+const RECOVERY_DEVICE_POPUP_ID = "recoveryDevice";
 const DEFAULT_SETTINGS_MENU_ITEM_ID = "main";
 
 const settingsMenuItems = [
@@ -209,6 +212,15 @@ export default function DevUIPopupPage() {
               Open vault popup
             </Button>
           </PopupDemoCard>
+
+          <PopupDemoCard
+            title="Account recovery request"
+            description={`Writes ?${POPUP_QUERY_PARAM}=${RECOVERY_DEVICE_POPUP_ID}; layout fixture for device/geo rows.`}
+          >
+            <Button type="button" onClick={() => setPopupQuery(RECOVERY_DEVICE_POPUP_ID)}>
+              Open recovery device popup
+            </Button>
+          </PopupDemoCard>
         </div>
 
         {activePopup?.popupId === CAPSULE_POPUP_ID ? (
@@ -264,6 +276,43 @@ export default function DevUIPopupPage() {
           >
             <div className="min-h-[260px] text-sm text-muted-foreground">
               Header accepts a React node, while footer and menu are optional.
+            </div>
+          </Popup>
+        ) : null}
+
+        {activePopup?.popupId === RECOVERY_DEVICE_POPUP_ID ? (
+          <Popup
+            id={RECOVERY_DEVICE_POPUP_ID}
+            width={520}
+            header="Account recovery request"
+            closeLabel="Close"
+            onClose={closePopup}
+            footer={
+              <>
+                <Button type="button" variant="outline" onClick={closePopup}>
+                  Approve
+                </Button>
+                <Button type="button" onClick={closePopup}>
+                  Reject
+                </Button>
+              </>
+            }
+          >
+            <div className="flex flex-col gap-4 text-sm">
+              <p className="text-muted-foreground">
+                A trusted device is requesting vault recovery. Confirm the device details before
+                approving.
+              </p>
+              <PendingDeviceInfoCard
+                form="laptop"
+                brand="windows"
+                title="Windows 11"
+                clientOs="Desktop · App · Windows 11 Enterprise Long Build Name"
+                timestamp="19 Nov 2026, 14:30"
+                ipLabel="IP: 203.0.113.42"
+                countryLabel="Country: United States of America"
+                cityLabel="City: San Francisco"
+              />
             </div>
           </Popup>
         ) : null}
