@@ -97,13 +97,19 @@ test("product tour walks steps and keeps personal-data step after reload", async
   await page.getByTestId("product-tour-next").click();
   await expect(page.getByTestId("product-tour-overlay")).toBeHidden({ timeout: 15_000 });
 
-  // Close without saving → tour completes.
-  await page.locator("#editItem").getByRole("button", { name: /^cancel$/i }).click({ force: true });
+  // Close without saving → tour completes (and must not reopen step 4).
+  const editItem = page.locator("#editItem");
+  await editItem.getByRole("button", { name: /^cancel$/i }).click({ force: true });
   const leave = page.getByRole("heading", { name: /leave without saving/i });
-  if (await leave.isVisible().catch(() => false)) {
+  try {
+    await leave.waitFor({ state: "visible", timeout: 5_000 });
     await page.getByRole("button", { name: /^continue$/i }).click({ force: true });
+    await expect(leave).toBeHidden({ timeout: 10_000 });
+  } catch {
+    // Form was not dirty — Cancel already cleared the popup.
   }
-  await expect(page.locator("#editItem")).toBeHidden({ timeout: 15_000 });
+  await expect(editItem).toBeHidden({ timeout: 15_000 });
+  await expect(page.getByRole("dialog")).toHaveCount(0, { timeout: 15_000 });
 
   await page.reload();
   await gotoItemsUnlocked(page, E2E_MASTER_PASSWORD);

@@ -136,6 +136,11 @@ export default function ProductTourController({
       return;
     }
 
+    // After OK, keep the open popup for fill/save/close — do not reopen if the user closes it.
+    if (!step4OverlayVisible) {
+      return;
+    }
+
     if (hasSoftDeletedPersonalDataItem(items) && !personalDataBootstrapDismissed) {
       markPersonalDataBootstrapDismissed();
     }
@@ -229,6 +234,7 @@ export default function ProductTourController({
     profile?.lastName,
     searchParams,
     step,
+    step4OverlayVisible,
     t,
     userId,
     vaults,
