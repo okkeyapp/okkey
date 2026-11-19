@@ -2,9 +2,14 @@
 <html lang="en" data-accent="a2" data-okkey-web-app="true">
   <head>
     <meta charset="UTF-8" />
+    <!--
+      Combined mobile viewport (TSK-308 + TSK-307):
+      - viewport-fit=cover → env(safe-area-inset-*) for full-height shells
+      - maximum-scale=1, user-scalable=no → no pinch / focus over-zoom on iPhone Safari
+    -->
     <meta
       name="viewport"
-      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"
+      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
     />
     <title>Okkey</title>
     <link rel="icon" href="/favicon.ico" sizes="any" />

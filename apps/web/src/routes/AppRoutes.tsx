@@ -2,7 +2,7 @@ import workspaceTenancyModule from "@okkey-enterprise/workspace-tenancy";
 import legalModule from "@okkey-enterprise/legal";
 import passwordMonitoringModule from "@okkey-enterprise/monitoring";
 import InviteLandingPage from "../pages/invite/InviteLandingPage";
-import { Spinner } from "@okkey/ui";
+import { cn, minHAppClassName, Spinner } from "@okkey/ui";
 import { type ReactNode } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 
@@ -90,7 +90,10 @@ function RootRedirect() {
 function ExtensionHandoffBusy() {
   return (
     <div
-      className="flex min-h-dvh min-h-screen w-full items-center justify-center okkey-body text-copy-secondary"
+      className={cn(
+        "flex w-full items-center justify-center okkey-body text-copy-secondary",
+        minHAppClassName,
+      )}
       role="status"
       aria-busy="true"
     >

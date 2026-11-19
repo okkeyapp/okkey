@@ -1,4 +1,4 @@
-import { Spinner } from "@okkey/ui";
+import { cn, minHAppClassName, Spinner } from "@okkey/ui";
 import { useEffect, useState } from "react";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 
@@ -97,7 +97,10 @@ export default function ProtectedVaultLayout() {
   if (hasExtensionAuthPending()) {
     return (
       <div
-        className="flex min-h-dvh min-h-screen w-full items-center justify-center okkey-body text-copy-secondary"
+        className={cn(
+          "flex w-full items-center justify-center okkey-body text-copy-secondary",
+          minHAppClassName,
+        )}
         role="status"
         aria-busy="true"
       >
@@ -113,7 +116,10 @@ export default function ProtectedVaultLayout() {
   ) {
     return (
       <div
-        className="flex min-h-dvh min-h-screen w-full items-center justify-center okkey-body text-copy-secondary"
+        className={cn(
+          "flex w-full items-center justify-center okkey-body text-copy-secondary",
+          minHAppClassName,
+        )}
         role="status"
         aria-busy="true"
       >
@@ -140,7 +146,10 @@ export default function ProtectedVaultLayout() {
   if (recoveryGate.phase === "loading") {
     return (
       <div
-        className="flex min-h-dvh min-h-screen w-full items-center justify-center okkey-body text-copy-secondary"
+        className={cn(
+          "flex w-full items-center justify-center okkey-body text-copy-secondary",
+          minHAppClassName,
+        )}
         role="status"
         aria-busy="true"
       >

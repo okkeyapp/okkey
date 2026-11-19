@@ -163,15 +163,22 @@
     max-width: 100%;
   }
 
+  /*
+   * Mobile Safari: classic `100vh` is the large viewport (toolbars hidden) and
+   * makes the document taller than the visible area. Prefer `dvh` with a `vh`
+   * fallback for older browsers (TSK-308).
+   */
   body {
     @apply bg-background text-foreground antialiased tracking-normal;
     margin: 0;
     min-height: 100vh;
+    min-height: 100dvh;
     max-width: 100%;
   }
 
   #root {
     min-height: 100vh;
+    min-height: 100dvh;
     max-width: 100%;
     min-width: 0;
   }
@@ -203,6 +210,8 @@
 
   .okkey-popup-panel {
     animation: okkey-popup-panel-in 240ms cubic-bezier(0.16, 1, 0.3, 1);
+    /* vh fallback then dvh — do not dual-stack Tailwind arbitrary max-h classes */
+    max-height: calc(100vh - 32px);
     max-height: calc(100dvh - 32px);
     box-shadow:
       0 10px 15px -3px rgb(0 0 0 / 0.1),
@@ -220,6 +229,11 @@
   @media (max-width: 767px) {
     .okkey-popup-sheet:not([data-layout="desktop"]) {
       animation: okkey-popup-sheet-in 240ms cubic-bezier(0.16, 1, 0.3, 1);
+      /* vh fallback then dvh — Tailwind utilities may override when dvh is supported */
+      min-height: 88vh;
+      min-height: 88dvh;
+      max-height: calc(100vh - 16px);
+      max-height: calc(100dvh - 16px);
     }
 
     .okkey-popup-sheet:not([data-layout="desktop"])[data-state="closing"] {

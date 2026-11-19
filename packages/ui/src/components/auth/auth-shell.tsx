@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 
 import { cn } from "../../lib/utils.js";
+import { minHAppClassName, safeAreaPaddingClassName } from "../../lib/viewport-height.js";
 import { BodyGradient } from "./body-gradient.js";
 
 export type AuthShellLocaleOption = {
@@ -87,12 +88,15 @@ export function AuthShell({
   // Non-compact (auth-callback tab): fill the viewport and center the column on both axes.
   // Avoid nested `min-h-0 flex-1` under `min-h-screen` only — that often fails to grow in
   // extension pages, leaving content top/left. Use an explicit full-height flex center.
+  // `minHAppClassName`: 100vh fallback + 100dvh (Safari toolbars); safe-area when edge-to-edge.
   if (!compact) {
     return (
       <div
         className={cn(
           // overflow-x-hidden: defensive clip for absolute chrome; padding is responsive (px-4 sm:px-10).
-          "relative isolate flex h-full min-h-dvh w-full max-w-[100vw] flex-col overflow-x-hidden bg-background text-foreground",
+          "relative isolate flex h-full w-full max-w-[100vw] flex-col overflow-x-hidden bg-background text-foreground",
+          minHAppClassName,
+          safeAreaPaddingClassName,
           className,
         )}
       >

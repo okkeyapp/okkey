@@ -1,5 +1,14 @@
 import { getWebLocaleNativeName, READY_WEB_LOCALES, type WebLocale } from "@okkey/i18n";
-import { cn, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@okkey/ui";
+import {
+  cn,
+  minHAppClassName,
+  safeAreaPaddingClassName,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@okkey/ui";
 import type { ReactNode } from "react";
 
 import { useLocale } from "../../locale/LocaleContext";
@@ -51,7 +60,14 @@ export default function AppShellLayout({
   return (
     // overflow-x-hidden: defensive clip for absolute chrome/gradients; main screens also use
     // responsive padding + min-w-0 so document scrollWidth stays within the viewport.
-    <div className="relative isolate min-h-dvh min-h-screen max-w-[100vw] overflow-x-hidden bg-background text-foreground">
+    // minHApp / safe-area: Safari toolbar-safe height (TSK-308).
+    <div
+      className={cn(
+        "relative isolate max-w-[100vw] overflow-x-hidden bg-background text-foreground",
+        minHAppClassName,
+        safeAreaPaddingClassName,
+      )}
+    >
       <BodyGradient />
 
       {topLeft != null ? <div className="absolute left-4 top-10 z-10 sm:left-10">{topLeft}</div> : null}
@@ -73,7 +89,7 @@ export default function AppShellLayout({
         </div>
       )}
 
-      <div className="relative flex min-h-dvh min-h-screen min-w-0 flex-col">
+      <div className="relative flex min-h-full min-w-0 flex-col">
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">
           <div
             className={cn(
