@@ -4,6 +4,7 @@ import type { ItemPlaintextV2, Vault } from "@okkey/types";
 import { generateEntityId } from "@okkey/types";
 import { Input, cn, serializeKeyFieldFileValue } from "@okkey/ui";
 import type { KeyFieldFileValue } from "@okkey/ui";
+import { NO_LINKED_ACCOUNT_VALUE, normalizeLinkedAccountItemId } from "@okkey/vault-ui";
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 
 import { getDatePickerLocale } from "../../lib/datePickerLocale";
@@ -28,6 +29,7 @@ import ItemRecordFavicon from "./ItemRecordFavicon";
 import { ItemRecordFaviconField } from "./ItemRecordFaviconField";
 import NewItemSaveLocationSection, { useSyncedNewItemVaultId } from "./NewItemSaveLocationSection";
 import NewItemTagsSection from "./NewItemTagsSection";
+import SignInWithField from "./SignInWithField";
 import { useAuthVault } from "../../auth/AuthVaultContext";
 import { useWorkspaceItems } from "../../items/WorkspaceItemsContext";
 import {
@@ -46,6 +48,8 @@ export type NewItemSavePayload = {
   categoryId: string;
   sections: KeyFormEditorSection[];
   tags: string[];
+  /** Optional "Sign in with" login item id (login category only). */
+  linkedAccountItemId?: string;
   attachmentItemId?: string;
   createdAtMs?: number;
 };
@@ -61,6 +65,7 @@ export type NewItemFormPrefillValues = {
   folderId: string;
   sections: KeyFormEditorSection[];
   tags: string[];
+  linkedAccountItemId?: string;
   attachmentItemId?: string;
   faviconId?: string;
   faviconItemId?: string;
@@ -75,6 +80,7 @@ export type NewItemFormInitialValues = {
   folderId: string;
   sections: KeyFormEditorSection[];
   tags: string[];
+  linkedAccountItemId?: string;
   createdAtMs: number;
   attachmentItemId?: string;
   faviconId?: string;
@@ -151,6 +157,11 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
     initialValues?.sections ?? prefillValues?.sections ?? null,
   );
   const [tags, setTags] = useState<string[]>(initialValues?.tags ?? prefillValues?.tags ?? []);
+  const [linkedAccountItemId, setLinkedAccountItemId] = useState(
+    normalizeLinkedAccountItemId(initialValues?.linkedAccountItemId ?? prefillValues?.linkedAccountItemId) ??
+      NO_LINKED_ACCOUNT_VALUE,
+  );
+  const normalizedLinkedAccountItemId = normalizeLinkedAccountItemId(linkedAccountItemId);
   const [vaultId, setVaultId] = useState(initialValues?.vaultId ?? prefillValues?.vaultId ?? "");
   const selectedVault = useMemo(() => vaults.find((vault) => vault.id === vaultId), [vaultId, vaults]);
   const itemEncryptionKey = useResolvedVaultEncryptionKey(vaultId || undefined);
@@ -368,6 +379,7 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
     folderId: string;
     sectionsJson: string;
     tagsJson: string;
+    linkedAccountItemId: string;
   } | null>(null);
   const formBaselineCapturedRef = useRef(false);
   const [formBaselineReady, setFormBaselineReady] = useState(false);
@@ -404,6 +416,7 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
         folderId,
         sectionsJson: JSON.stringify(formSections ?? initialSections),
         tagsJson: JSON.stringify(tags),
+        linkedAccountItemId: normalizedLinkedAccountItemId ?? NO_LINKED_ACCOUNT_VALUE,
       };
       formBaselineCapturedRef.current = true;
       setFormBaselineReady(true);
@@ -415,6 +428,7 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
     formSections,
     initialSections,
     isEditMode,
+    normalizedLinkedAccountItemId,
     tags,
     templateName,
     trimmedRecordName,
@@ -443,6 +457,9 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
     if (JSON.stringify(tags) !== baseline.tagsJson) {
       return true;
     }
+    if ((normalizedLinkedAccountItemId ?? NO_LINKED_ACCOUNT_VALUE) !== baseline.linkedAccountItemId) {
+      return true;
+    }
     if (vaultId !== baseline.vaultId) {
       return true;
     }
@@ -451,7 +468,16 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
     }
 
     return false;
-  }, [formBaselineReady, formSections, getSyncInput, initialSections, tags, trimmedRecordName, vaultId]);
+  }, [
+    formBaselineReady,
+    formSections,
+    getSyncInput,
+    initialSections,
+    normalizedLinkedAccountItemId,
+    tags,
+    trimmedRecordName,
+    vaultId,
+  ]);
 
   const hasUnsavedChanges = useCallback(() => {
     if (hasItemContentChanges()) {
@@ -471,8 +497,9 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
         vaultId,
         sections: sectionsForCommit,
         categoryId: category?.id,
+        linkedAccountItemId: normalizedLinkedAccountItemId,
       }).ok,
-    [recordName, vaultId, sectionsForCommit, category?.id],
+    [recordName, vaultId, sectionsForCommit, category?.id, normalizedLinkedAccountItemId],
   );
 
   const canSave = useMemo(() => {
@@ -501,10 +528,17 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
           vaultId,
           sections: sectionsForCommit,
           categoryId: category?.id,
+          linkedAccountItemId: normalizedLinkedAccountItemId,
         }),
       getSavePayload: () => {
         const sections = sectionsForCommit;
-        const validation = validateNewItemForm({ recordName, vaultId, sections, categoryId: category?.id });
+        const validation = validateNewItemForm({
+          recordName,
+          vaultId,
+          sections,
+          categoryId: category?.id,
+          linkedAccountItemId: normalizedLinkedAccountItemId,
+        });
         if (!validation.ok || !category) {
           return null;
         }
@@ -516,6 +550,7 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
           categoryId: category.id,
           sections,
           tags,
+          ...(normalizedLinkedAccountItemId ? { linkedAccountItemId: normalizedLinkedAccountItemId } : {}),
           createdAtMs: initialValues?.createdAtMs,
         };
       },
@@ -648,7 +683,23 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
       hasUnsavedChanges: () => hasUnsavedChanges(),
       hasItemContentChanges: () => hasItemContentChanges(),
     }),
-    [folderId, formSections, sectionsForCommit, getSyncInput, hasItemContentChanges, hasUnsavedChanges, initialSections, category, trimmedRecordName, initialValues, prefillValues, tags, resolveAttachmentContext, vaultId],
+    [
+      folderId,
+      formSections,
+      sectionsForCommit,
+      getSyncInput,
+      hasItemContentChanges,
+      hasUnsavedChanges,
+      initialSections,
+      category,
+      trimmedRecordName,
+      initialValues,
+      prefillValues,
+      tags,
+      normalizedLinkedAccountItemId,
+      resolveAttachmentContext,
+      vaultId,
+    ],
   );
 
   if (!category) {
@@ -724,6 +775,15 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
         showValidation={showValidation}
       />
 
+      {category.id === "login" ? (
+        <SignInWithField
+          t={t}
+          value={linkedAccountItemId}
+          onValueChange={setLinkedAccountItemId}
+          excludeItemId={initialValues?.itemId}
+        />
+      ) : null}
+
       <NewItemTagsSection tags={tags} onTagsChange={setTags} t={t} />
 
       <NewItemSaveLocationSection
@@ -751,6 +811,7 @@ export function buildItemFromNewItemSavePayload(payload: NewItemSavePayload) {
     categoryId: payload.categoryId,
     nowMs: payload.createdAtMs,
     tags: payload.tags,
+    linkedAccountItemId: payload.linkedAccountItemId,
   });
 }
 
@@ -766,6 +827,7 @@ export function buildItemFromEditSavePayload(
     title: payload.recordName,
     categoryId: payload.categoryId,
     tags: payload.tags,
+    linkedAccountItemId: payload.linkedAccountItemId,
   });
   return {
     ...built,

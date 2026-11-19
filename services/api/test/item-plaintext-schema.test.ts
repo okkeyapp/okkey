@@ -61,6 +61,27 @@ test("preset factories: login, secure_note, credit_card round-trip JSON", () => 
   }
 });
 
+test("linkedAccountItemId round-trips inside encrypted plaintext JSON", () => {
+  const item = createPresetItemPlaintextV2({
+    categoryId: ITEM_CATEGORY_LOGIN,
+    itemId: testEntityId(),
+    vaultId: testEntityId(),
+    title: "App via SSO",
+    nowMs: 1_700_000_000_000,
+  });
+  const linkedId = testEntityId();
+  const withLink = { ...item, linkedAccountItemId: linkedId };
+  const bytes = new TextEncoder().encode(JSON.stringify(withLink));
+  const back = parseAndNormalizeItemPlaintextUtf8(bytes);
+  assert.ok(back);
+  assert.equal(back?.linkedAccountItemId, linkedId);
+  const without = parseAndNormalizeItemPlaintextUtf8(
+    new TextEncoder().encode(JSON.stringify(item)),
+  );
+  assert.ok(without);
+  assert.equal(without?.linkedAccountItemId, undefined);
+});
+
 test("unknown field type is preserved as unknown value bucket", () => {
   const raw = {
     schemaVersion: ITEM_PLAINTEXT_SCHEMA_VERSION_LATEST,

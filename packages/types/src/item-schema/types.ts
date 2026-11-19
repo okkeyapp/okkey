@@ -139,4 +139,10 @@ export interface ItemPlaintextV2 {
   faviconId?: EntityId;
   /** How the favicon was set; manual disables website auto-fetch for login items. */
   faviconSource?: ItemFaviconSource;
+  /**
+   * Optional link to another login item this account is signed in through ("Sign in with").
+   * Client-only plaintext; omitted when unset. Older clients ignore unknown keys on decode
+   * and drop the field on re-save until they learn it.
+   */
+  linkedAccountItemId?: EntityId;
 }

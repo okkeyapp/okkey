@@ -128,6 +128,7 @@ export default function EditItemPopup({
       folderId,
       sections: itemPlaintextToKeyFormSections(item, keyFormMessages, { includeEmptyFields: true }),
       tags: item.tags ?? [],
+      ...(item.linkedAccountItemId ? { linkedAccountItemId: item.linkedAccountItemId } : {}),
       createdAtMs: item.createdAtMs,
       attachmentItemId: item.itemId,
       ...(item.faviconId ? { faviconId: item.faviconId } : {}),
