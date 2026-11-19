@@ -204,6 +204,11 @@ export {
   mutedSurfaceOpenBgClassName,
   mutedSurfaceOpenBgImportantClassName,
 } from "./lib/input-like-control-classes.js";
+export {
+  hAppShellClassName,
+  minHAppClassName,
+  safeAreaPaddingClassName,
+} from "./lib/viewport-height.js";
 export { Spinner, spinnerVariants, type SpinnerProps } from "./components/ui/spinner.js";
 export { Skeleton, type SkeletonProps } from "./components/ui/skeleton.js";
 export {

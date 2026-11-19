@@ -15,6 +15,7 @@ import { webEnterpriseModulesActive, workspaceHasPlanFeature } from "./planEntit
 import {
   cn,
   DropdownMenuItem,
+  minHAppClassName,
   OkkeyNavMonitoringIcon,
   okkeyWorkspaceShellNavItems,
   Spinner,
@@ -851,7 +852,10 @@ export default function WorkspaceRoutesLayout() {
   if (phase === "loading" || !resolvedWorkspaceId) {
     return (
       <div
-        className="flex min-h-[100dvh] w-full items-center justify-center okkey-body text-copy-secondary"
+        className={cn(
+          "flex w-full items-center justify-center okkey-body text-copy-secondary",
+          minHAppClassName,
+        )}
         role="status"
         aria-busy="true"
       >

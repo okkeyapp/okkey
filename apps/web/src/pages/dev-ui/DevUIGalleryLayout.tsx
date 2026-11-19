@@ -1,6 +1,17 @@
 import { Link, matchPath, NavLink, Outlet, useLocation } from "react-router-dom";
 
-import { Button, Sidebar, SidebarContent, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarProvider } from "@okkey/ui";
+import {
+  Button,
+  cn,
+  minHAppClassName,
+  Sidebar,
+  SidebarContent,
+  SidebarHeader,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarProvider,
+} from "@okkey/ui";
 
 import { devUiGalleryPath, ROOT_PATH } from "../../routes/paths";
 
@@ -31,7 +42,7 @@ export default function DevUIGalleryLayout() {
 
   return (
     <SidebarProvider defaultExpanded>
-      <main className="min-h-screen bg-background text-foreground">
+      <main className={cn(minHAppClassName, "bg-background text-foreground")}>
         <div className="mx-auto flex max-w-6xl flex-col gap-8 px-4 py-6 lg:flex-row lg:gap-10 lg:px-6">
           <Sidebar className="w-full shrink-0 bg-transparent lg:sticky lg:top-6 lg:w-[255px] lg:self-start">
             <SidebarHeader className="px-2 pb-2">

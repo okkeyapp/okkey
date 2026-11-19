@@ -1,8 +1,10 @@
 import { getWebLocaleNativeName, READY_WEB_LOCALES, type WebLocale, type WebMessageValues } from "@okkey/i18n";
 import {
   cn,
+  hAppShellClassName,
   OkkeyAppSidebar,
   OkkeyAppSidebarToolbar,
+  safeAreaPaddingClassName,
   ScrollArea,
   Select,
   SelectContent,
@@ -187,7 +189,13 @@ export default function WorkspaceSidebarLayout({
   const isItemsDetailEmptyPanel = isItemsTwoPane && !activeItemId;
 
   return (
-    <div className="relative isolate flex h-[100dvh] min-h-0 max-w-[100vw] flex-col overflow-hidden bg-background text-foreground">
+    <div
+      className={cn(
+        "relative isolate flex min-h-0 max-w-[100vw] flex-col overflow-hidden bg-background text-foreground",
+        hAppShellClassName,
+        safeAreaPaddingClassName,
+      )}
+    >
       <BodyGradient />
 
       <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
