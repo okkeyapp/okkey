@@ -230,7 +230,11 @@ export default function AccountRestorePage() {
     }
 
     const existingBundle = readVaultBundle(userId);
-    const freshBrowser = !existingBundle;
+    // A local bundle alone is not enough to reuse share B. Pending / approval-driven
+    // recovery on this browser must mint B' and claim; a stale or foreign hybrid
+    // share would fail openStoredSplitKeyShareB (aead) and skip the claim path.
+    const mustClaimNewDevice =
+      deviceTrustStatus !== "trusted" || Boolean(approval);
 
     const newPwd = new TextEncoder().encode(newPassword);
     let rebalanced: Awaited<ReturnType<typeof rebalanceServerShareForNewPassword>> | null = null;
@@ -240,21 +244,29 @@ export default function AccountRestorePage() {
     let ownedVaultKey: Uint8Array | null = vaultKey;
     let mintedFreshShare = false;
     let approvalCompleted = false;
+    const freshBrowser = !existingBundle;
 
     try {
       await initCrypto();
       const core = createAuthenticatedCoreClient(accessToken);
 
-      if (existingBundle) {
-        const stored = base64ToBytes(existingBundle.device_share_b64);
-        const keys = await loadSplitKeyShareWrapKey(userId);
-        deviceB = await openStoredSplitKeyShareB({
-          stored,
-          recipientEd25519Seed: keys?.ed25519Seed,
-          recipientMlkemDecapsulationKey: keys?.mlkemDecapsulationKey,
-        });
-      } else {
-        // Fresh browser: mint a new device share B' and claim sole trusted device after MP change.
+      if (existingBundle && !mustClaimNewDevice) {
+        try {
+          const stored = base64ToBytes(existingBundle.device_share_b64);
+          const keys = await loadSplitKeyShareWrapKey(userId);
+          deviceB = await openStoredSplitKeyShareB({
+            stored,
+            recipientEd25519Seed: keys?.ed25519Seed,
+            recipientMlkemDecapsulationKey: keys?.mlkemDecapsulationKey,
+          });
+        } catch {
+          // Corrupt or foreign local share: fall through to mint + claim.
+          deviceB = null;
+        }
+      }
+
+      if (!deviceB) {
+        // New or untrusted browser: mint B' and claim sole trusted device after MP change.
         deviceB = crypto.getRandomValues(new Uint8Array(32));
         mintedFreshShare = true;
       }
@@ -377,7 +389,7 @@ export default function AccountRestorePage() {
     } catch (err) {
       if (passwordChanged) {
         setFormError(t("account.restore.error.rotateFailed"));
-      } else if (freshBrowser) {
+      } else if (freshBrowser || mintedFreshShare) {
         setFormError(t("account.restore.error.bootstrapFailed"));
       }
       throw err;
