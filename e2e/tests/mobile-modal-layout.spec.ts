@@ -80,7 +80,8 @@ test("new-item picker modal footer stays in viewport", async () => {
   await assertDialogActionButtonsInViewport(page, dialog, [cancel]);
   await page.setViewportSize(iphone.viewport ?? { width: 390, height: 844 });
 
-  await page.keyboard.press("Escape");
+  // Mobile sheet does not dismiss on Escape; use the footer Cancel action.
+  await cancel.click();
   await expect(dialog).toBeHidden({ timeout: 15_000 });
 });
 
