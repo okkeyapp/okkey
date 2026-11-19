@@ -630,20 +630,22 @@ describe("validateNewItemForm secure_files", () => {
 });
 
 describe("validateNewItemForm login website URLs", () => {
+  const credentialsSection = {
+    id: "credentials",
+    variant: "primary" as const,
+    fields: [
+      { id: "login", type: "text" as const, label: "login", value: "user", required: true },
+      { id: "password", type: "password" as const, label: "password", value: "secret", required: true },
+    ],
+  };
+
   const loginSections = [
-    {
-      id: "credentials",
-      variant: "primary" as const,
-      fields: [
-        { id: "login", type: "text" as const, label: "login", value: "user", required: true },
-        { id: "password", type: "password" as const, label: "password", value: "secret", required: true },
-      ],
-    },
+    credentialsSection,
     {
       id: "websites",
       variant: "primary" as const,
       fields: [
-        { id: "website-1", type: "url" as const, label: "website URL", value: "https://example.com", required: true },
+        { id: "website-1", type: "url" as const, label: "website URL", value: "https://example.com", required: false },
         { id: "website-2", type: "url" as const, label: "website URL", value: "  ", required: true },
       ],
     },
@@ -661,24 +663,42 @@ describe("validateNewItemForm login website URLs", () => {
     expect(result.issues).toEqual([]);
   });
 
-  it("still requires the primary website URL", () => {
+  it("allows a login with credentials and no website URL", () => {
     const result = validateNewItemForm({
       recordName: "Example",
       vaultId: "vault-1",
       categoryId: "login",
-      sections: loginSections.map((section) =>
-        section.id === "websites"
-          ? {
-              ...section,
-              fields: section.fields.map((field) =>
-                field.id === "website-1" ? { ...field, value: "   " } : field,
-              ),
-            }
-          : section,
-      ),
+      sections: [
+        credentialsSection,
+        {
+          id: "websites",
+          variant: "primary" as const,
+          fields: [
+            {
+              id: "website-1",
+              type: "url" as const,
+              label: "website URL",
+              value: "   ",
+              required: true,
+            },
+          ],
+        },
+      ],
     });
 
-    expect(result.ok).toBe(false);
-    expect(result.issues).toEqual([{ kind: "field", fieldId: "website-1", sectionId: "websites" }]);
+    expect(result.ok).toBe(true);
+    expect(result.issues).toEqual([]);
+  });
+
+  it("still accepts a filled website URL", () => {
+    const result = validateNewItemForm({
+      recordName: "Example",
+      vaultId: "vault-1",
+      categoryId: "login",
+      sections: loginSections,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.issues).toEqual([]);
   });
 });

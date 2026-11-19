@@ -58,4 +58,12 @@ describe("resolveWebsiteIconDisplay", () => {
     expect(clientSideFaviconUrl("https://localhost/a")).toBeNull();
     expect(clientSideFaviconUrlFromUrls([])).toBeNull();
   });
+
+  it("does not build a favicon request for blank or missing website URLs", () => {
+    expect(resolveWebsiteIconDisplay("client", [])).toEqual({ kind: "monogram" });
+    expect(resolveWebsiteIconDisplay("client", ["", "   "])).toEqual({ kind: "monogram" });
+    expect(clientSideFaviconUrl("")).toBeNull();
+    expect(clientSideFaviconUrl("   ")).toBeNull();
+    expect(clientSideFaviconUrlFromUrls(["", "  "])).toBeNull();
+  });
 });

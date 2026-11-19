@@ -57,7 +57,7 @@ async function fillAndAssert(field: Locator, value: string): Promise<void> {
 /** Create a Login / Password item via the new-item popup (qa/web 7.1 subset). */
 export async function createLoginItem(
   page: Page,
-  input: { title: string; login: string; password: string; url: string },
+  input: { title: string; login: string; password: string; url?: string },
 ): Promise<void> {
   await dismissOpenItemDialog(page);
 
@@ -93,7 +93,11 @@ export async function createLoginItem(
   await expect(nameField).toHaveValue(input.title);
 
   await fillAndAssert(passwordField, input.password);
-  await fillAndAssert(urlField, input.url);
+  if (input.url !== undefined && input.url.trim().length > 0) {
+    await fillAndAssert(urlField, input.url);
+  } else {
+    await expect(urlField).toHaveValue("");
+  }
   await expect(nameField).toHaveValue(input.title);
   await expect(loginField).toHaveValue(input.login);
 
@@ -104,4 +108,16 @@ export async function createLoginItem(
   await expect(page.getByText(input.title, { exact: false }).first()).toBeVisible({
     timeout: 30_000,
   });
+}
+
+/** Open an item from the list, then open the edit dialog. */
+export async function openLoginItemForEdit(page: Page, title: string): Promise<Locator> {
+  await page.getByRole("button", { name: new RegExp(title, "i") }).first().click();
+  await page.getByRole("button", { name: /^edit$/i }).click();
+  const dialog = page.locator("#editItem");
+  await expect(dialog).toBeVisible({ timeout: 15_000 });
+  await expect(dialog.getByRole("heading", { name: /edit (item|record)/i })).toBeVisible({
+    timeout: 15_000,
+  });
+  return dialog;
 }

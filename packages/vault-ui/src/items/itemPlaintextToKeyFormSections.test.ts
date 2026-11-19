@@ -1108,8 +1108,8 @@ describe("urlAutofillScope persist", () => {
   });
 });
 
-describe("blank extra website URLs", () => {
-  it("drops empty extra URL rows on save and requires only the primary URL", () => {
+describe("blank website URLs", () => {
+  it("drops empty URL rows on save and treats all website URLs as optional", () => {
     const sections = getDefaultSectionsForCategory("login", messages).map((section) => ({
       ...section,
       fields: section.fields.map((field) => {
@@ -1162,8 +1162,50 @@ describe("blank extra website URLs", () => {
     const restored = itemPlaintextToKeyFormSections(item, messages, { includeEmptyFields: true });
     const websites = restored.find((section) => section.id === "websites");
     expect(websites?.fields.map((field) => ({ id: field.id, required: field.required }))).toEqual([
-      { id: "website-1", required: true },
+      { id: "website-1", required: false },
       { id: "website-3", required: false },
+    ]);
+  });
+
+  it("saves a login with credentials and no website URL", () => {
+    const sections = getDefaultSectionsForCategory("login", messages).map((section) => ({
+      ...section,
+      fields: section.fields.map((field) => {
+        if (field.id === "login") {
+          return { ...field, value: "user@example.com" };
+        }
+        if (field.id === "password") {
+          return { ...field, value: "secret" };
+        }
+        if (field.id === "website-1") {
+          return { ...field, value: "   " };
+        }
+        return field;
+      }),
+    }));
+
+    expect(sections.find((section) => section.id === "websites")?.fields[0]?.required).toBe(false);
+
+    const item = keyFormSectionsToItemPlaintext({
+      sections,
+      itemId: "item-login-no-url",
+      vaultId: "vault-1",
+      title: "No URL Login",
+      categoryId: "login",
+      nowMs: 1,
+    });
+
+    expect(item.fields.filter((field) => field.type === "url")).toEqual([]);
+
+    const restored = itemPlaintextToKeyFormSections(item, messages, { includeEmptyFields: true });
+    const websites = restored.find((section) => section.id === "websites");
+    expect(websites?.fields).toEqual([
+      expect.objectContaining({
+        id: "website-1",
+        type: "url",
+        value: "",
+        required: false,
+      }),
     ]);
   });
 });

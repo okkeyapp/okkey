@@ -16,24 +16,14 @@ function isBlankWebsiteUrl(field: KeyFormEditorField): boolean {
   return field.type === "url" && (typeof field.value !== "string" || field.value.trim().length === 0);
 }
 
-/** Drop blank extra website rows. The first URL field stays so a missing primary URL can still fail validation. */
+/** Drop blank website URL rows (primary and extras). Website URL is optional for logins. */
 export function omitBlankExtraWebsiteUrls(sections: readonly KeyFormEditorSection[]): KeyFormEditorSection[] {
   return sections.map((section) => {
     if (section.id !== "websites") {
       return section;
     }
 
-    let seenUrl = false;
-    const fields = section.fields.filter((field) => {
-      if (field.type !== "url") {
-        return true;
-      }
-      if (!seenUrl) {
-        seenUrl = true;
-        return true;
-      }
-      return !isBlankWebsiteUrl(field);
-    });
+    const fields = section.fields.filter((field) => !isBlankWebsiteUrl(field));
     return fields.length === section.fields.length ? section : { ...section, fields };
   });
 }
