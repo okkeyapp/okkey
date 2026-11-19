@@ -1,9 +1,8 @@
 #!/usr/bin/env node
 /**
  * TSK-305: production web image must not bake localhost:4000 as the API /
- * enterprise API base. Checks Dockerfile + entrypoint defaults and, when a
- * production dist/ exists, greps the built bundle for a hardcoded API-base
- * default (i18n copy that mentions localhost for local-dev help is ignored).
+ * enterprise API base, and the production bundle must not embed that host
+ * in user-facing copy either.
  *
  * Usage:
  *   node scripts/check-web-prod-api-base.mjs
@@ -47,6 +46,14 @@ if (!/import\.meta\.env\.PROD\s*\?\s*""\s*:\s*"http:\/\/localhost:4000"/.test(cl
   );
 }
 
+for (const locale of ["en", "ru"]) {
+  const localePath = `packages/i18n/src/locales/web/${locale}.json`;
+  const localeSrc = read(localePath);
+  if (localeSrc.includes(LOCALHOST_API) || localeSrc.includes("localhost:4000")) {
+    fail(`${localePath} must not mention localhost:4000 in user-facing strings`);
+  }
+}
+
 // --- Built bundle (optional unless --require-dist) ---
 const distDir = path.join(repoRoot, "apps/web/dist");
 const distExists = fs.existsSync(distDir);
@@ -61,7 +68,7 @@ if (!distExists) {
   const configJs = path.join(distDir, "config.js");
   if (fs.existsSync(configJs)) {
     const config = fs.readFileSync(configJs, "utf8");
-    if (config.includes(LOCALHOST_API)) {
+    if (config.includes(LOCALHOST_API) || config.includes("localhost:4000")) {
       fail("apps/web/dist/config.js must not hardcode localhost:4000");
     }
   }
@@ -73,38 +80,20 @@ if (!distExists) {
   if (files.length === 0) {
     fail("apps/web/dist/assets has no .js bundles");
   } else {
-    /** Match API-base default literals, not i18n help text that mentions the port. */
-    const apiBaseDefaultPatterns = [
-      // Minified: const x="http://localhost:4000" used as compile-time API default
-      /["']http:\/\/localhost:4000["']\s*,\s*["']{2}/,
-      /["']http:\/\/localhost:4000["']\s*;/,
-      // Unminified / partially minified fallback helpers
-      /fallbackApiBase|DEV_API_BASE|DEFAULT_API_BASE|compileTimeApiBaseFallback/,
-      /apiBaseUrl\s*:\s*["']http:\/\/localhost:4000["']/,
-      /baseUrl\s*:\s*["']http:\/\/localhost:4000["']/,
-    ];
-
     const hits = [];
     for (const name of files) {
       const content = fs.readFileSync(path.join(assetsDir, name), "utf8");
-      for (const pattern of apiBaseDefaultPatterns) {
-        if (pattern.test(content)) {
-          hits.push(`${name} (~${pattern})`);
-        }
-      }
-      // Bare localhost:4000 string that is NOT part of an i18n sentence (no letters before).
-      // Flag `="http://localhost:4000"` / `:"http://localhost:4000"` assignment forms.
-      if (/[=:]\s*["']http:\/\/localhost:4000["']/.test(content)) {
-        hits.push(`${name} (assigned localhost:4000 literal)`);
+      if (content.includes(LOCALHOST_API) || content.includes("localhost:4000")) {
+        hits.push(name);
       }
     }
     if (hits.length > 0) {
       fail(
-        `production web bundle must not hardcode localhost:4000 as the API/enterprise base; found: ${hits.join("; ")}`,
+        `production web bundle must not contain localhost:4000 (API base or i18n); found in: ${hits.join(", ")}`,
       );
     } else {
       console.log(
-        `check-web-prod-api-base: scanned ${files.length} JS asset(s); no API-base localhost:4000 default`,
+        `check-web-prod-api-base: scanned ${files.length} JS asset(s); no localhost:4000`,
       );
     }
   }
