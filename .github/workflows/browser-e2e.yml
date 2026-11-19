@@ -238,16 +238,8 @@ jobs:
           tail -n 200 /tmp/okkey-web.log || true
           exit 1
 
-      # TSK-313 temporary stability proof: remove the loop after CI shows 15/15 green.
       - name: Run browser e2e smoke (xvfb for extension)
-        shell: bash
-        run: |
-          set -euo pipefail
-          for i in $(seq 1 15); do
-            echo "::group::browser e2e attempt ${i}/15"
-            xvfb-run --auto-servernum yarn test:browser
-            echo "::endgroup::"
-          done
+        run: xvfb-run --auto-servernum yarn test:browser
 
       - name: Upload Playwright report
         if: always()
