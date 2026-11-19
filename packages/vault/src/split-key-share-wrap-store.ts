@@ -123,6 +123,15 @@ export async function persistSplitKeyShareWrapKey(
   }
 }
 
+/**
+ * Load the wrap key for `userId`.
+ *
+ * Registration may have stored the pair under `"pending"` before the user id
+ * was known. Promote that row onto `userId` instead of reading it in place —
+ * otherwise passkey approval can seal to the pending pubs while a later
+ * register/unlock path mints a different pair under `userId`, and unlock
+ * surfaces "Incorrect master password".
+ */
 export async function loadSplitKeyShareWrapKey(
   userId: string,
 ): Promise<SplitKeyShareWrapKey | null> {
@@ -134,12 +143,16 @@ export async function loadSplitKeyShareWrapKey(
   if (own) {
     return own;
   }
-  // Registration stores the key before the user id exists. Read it until the
-  // success path copies it onto the user id.
   if (id === "pending") {
     return null;
   }
-  return idbGet("pending");
+  const pending = await idbGet("pending");
+  if (!pending) {
+    return null;
+  }
+  await persistSplitKeyShareWrapKey(id, pending);
+  await clearSplitKeyShareWrapKey("pending");
+  return pending;
 }
 
 export async function clearSplitKeyShareWrapKey(userId: string): Promise<void> {

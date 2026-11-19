@@ -301,6 +301,32 @@ async function finishPasskeyApproval(input: {
       // openBundleDeviceShare can open the same hybrid after approval.
       const sealedB64 = await envelopeB64ForPlaintextShare({ userId, share: rawShare });
       forPending = base64ToBytes(sealedB64);
+      // Refuse to upload a hybrid this browser cannot open — that used to
+      // become "Incorrect master password" on the lock screen.
+      let opened: Uint8Array | null = null;
+      try {
+        const keys = await loadSplitKeyShareWrapKey(userId);
+        if (!keys) {
+          return { ok: false, code: "failed" };
+        }
+        try {
+          opened = await openStoredSplitKeyShareB({
+            stored: forPending,
+            recipientEd25519Seed: keys.ed25519Seed,
+            recipientMlkemDecapsulationKey: keys.mlkemDecapsulationKey,
+          });
+          if (opened.length !== 32) {
+            return { ok: false, code: "failed" };
+          }
+        } finally {
+          wipeBytes(keys.ed25519Seed);
+          wipeBytes(keys.mlkemDecapsulationKey);
+        }
+      } catch {
+        return { ok: false, code: "failed" };
+      } finally {
+        wipeBytes(opened);
+      }
     } else {
       forPending = await wrapRawShareForPending({
         rawShare,

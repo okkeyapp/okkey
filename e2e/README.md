@@ -18,6 +18,12 @@ generation is unchanged by this harness.
 - Infra: Postgres + Redis + Mailpit (`SMTP :1025`, HTTP `:8025`)
 - API with `EMAIL_PROVIDER=smtp`, `EMAIL_SMTP_HOST=127.0.0.1`, `EMAIL_SMTP_PORT=1025`, `EMAIL_DELIVERY_MODE=sync`
 - Web at `E2E_BASE_URL` (default `http://127.0.0.1:4173`) with `VITE_API_BASE_URL` pointing at the API
+- Passkey approve → unlock (`tests/passkey-approve-unlock.spec.ts`) needs
+  `E2E_BASE_URL=http://localhost:4173` and API `WEBAUTHN_RP_ID=localhost` (Chromium
+  WebAuthn rejects `127.0.0.1` for the authenticator ceremony). CI
+  `browser-e2e.yml` uses the same localhost RP settings. The suite includes a
+  stale IndexedDB `"pending"` wrap-key promotion case that fails without
+  promote-on-load.
 
 ## Local
 
