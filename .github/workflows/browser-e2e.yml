@@ -82,12 +82,13 @@ jobs:
       CRYPTO_ROLLOUT_MODE: compat
       CRYPTO_ROLLOUT_ENABLED: "true"
       CRYPTO_ROLLOUT_STATE: resume
-      CORS_ORIGIN: http://127.0.0.1:4173,http://localhost:4173
-      WEBAUTHN_RP_ID: 127.0.0.1
+      # Passkey / WebAuthn PRF e2e needs localhost (Chromium rejects 127.0.0.1).
+      CORS_ORIGIN: http://localhost:4173,http://127.0.0.1:4173
+      WEBAUTHN_RP_ID: localhost
       WEBAUTHN_RP_NAME: Okkey
-      WEBAUTHN_ORIGINS: http://127.0.0.1:4173
-      PUBLIC_APP_BASE_URL: http://127.0.0.1:4173
-      E2E_BASE_URL: http://127.0.0.1:4173
+      WEBAUTHN_ORIGINS: http://localhost:4173
+      PUBLIC_APP_BASE_URL: http://localhost:4173
+      E2E_BASE_URL: http://localhost:4173
       E2E_API_BASE_URL: http://127.0.0.1:4000
       E2E_DATABASE_URL: postgresql://okkey:okkey@postgres:5432/okkey
       E2E_MAILPIT_URL: http://mailpit:8025
@@ -224,10 +225,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          nohup yarn --cwd apps/web preview --host 127.0.0.1 --port 4173 --strictPort > /tmp/okkey-web.log 2>&1 &
+          nohup yarn --cwd apps/web preview --host localhost --port 4173 --strictPort > /tmp/okkey-web.log 2>&1 &
           echo $! > /tmp/okkey-web.pid
           for i in $(seq 1 60); do
-            if curl -sf http://127.0.0.1:4173/ >/dev/null; then
+            if curl -sf http://localhost:4173/ >/dev/null; then
               echo "Web preview is up"
               exit 0
             fi

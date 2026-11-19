@@ -20,7 +20,10 @@ generation is unchanged by this harness.
 - Web at `E2E_BASE_URL` (default `http://127.0.0.1:4173`) with `VITE_API_BASE_URL` pointing at the API
 - Passkey approve → unlock (`tests/passkey-approve-unlock.spec.ts`) needs
   `E2E_BASE_URL=http://localhost:4173` and API `WEBAUTHN_RP_ID=localhost` (Chromium
-  WebAuthn rejects `127.0.0.1` for the authenticator ceremony)
+  WebAuthn rejects `127.0.0.1` for the authenticator ceremony). CI
+  `browser-e2e.yml` uses the same localhost RP settings. The suite includes a
+  stale IndexedDB `"pending"` wrap-key promotion case that fails without
+  promote-on-load.
 
 ## Local
 

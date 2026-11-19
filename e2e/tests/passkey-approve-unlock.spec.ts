@@ -10,6 +10,13 @@ import { resetE2eCatalog } from "../helpers/db";
 import { E2E_MASTER_PASSWORD, uniqueEmail } from "../helpers/env";
 import { dismissOpenItemDialog } from "../helpers/items";
 import {
+  clearPendingShareWrapRecord,
+  exportShareWrapRecords,
+  importShareWrapRecords,
+  listShareWrapIds,
+  type ShareWrapRecord,
+} from "../helpers/share-wrap-idb";
+import {
   attachVirtualPasskey,
   detachVirtualPasskey,
   type VirtualPasskey,
@@ -23,6 +30,11 @@ import {
  * this flow uses one browser profile: enroll+wrap on the trusted install, wipe
  * all local state, then email-OTP sign-in again (new pending device + session
  * bound to it) and self-approve with the same virtual passkey.
+ *
+ * The second test forces the stale IndexedDB `"pending"` wrap-key row scenario
+ * that fails without promote-on-load: reinject wrap material only under
+ * `"pending"`, approve, then delete `"pending"` so unlock must use the
+ * promoted user-scoped row.
  */
 test.describe.configure({ mode: "serial" });
 
@@ -145,9 +157,51 @@ async function dumpUnlockDiagnostics(page: Page, label: string): Promise<void> {
   console.log(`[tsk-158 ${label} console]`, pageConsole.slice(-50));
 }
 
+async function unlockAfterApproveOrFail(page: Page, label: string): Promise<void> {
+  await expect(page).toHaveURL(/\/account\/lock|\/items/, { timeout: 90_000 });
+  await dumpUnlockDiagnostics(page, label);
+
+  const lock = page.getByRole("heading", { name: /vault is locked/i });
+  const topbar = page.getByTestId("items-shell-topbar");
+  await expect(lock.or(topbar)).toBeVisible({ timeout: 60_000 });
+  if (await topbar.isVisible().catch(() => false)) {
+    throw new Error("vault unlocked without master password after passkey approve");
+  }
+  await page.locator("#unlock-master-password").fill(E2E_MASTER_PASSWORD);
+  await page.getByRole("button", { name: /^unlock$/i }).click();
+  const incorrect = page.getByText(/incorrect master password/i);
+  const unavailable = page.getByText(/device share|not available|denied|approve/i);
+  const unlocked = page.getByTestId("items-shell-topbar");
+  await expect(incorrect.or(unavailable).or(unlocked)).toBeVisible({ timeout: 60_000 });
+  if (await incorrect.isVisible().catch(() => false)) {
+    await dumpUnlockDiagnostics(page, `${label}-incorrect`);
+    throw new Error("incorrect master password on first unlock after passkey approve");
+  }
+  if (await unavailable.isVisible().catch(() => false)) {
+    await dumpUnlockDiagnostics(page, `${label}-unavailable`);
+    throw new Error("device share unavailable on first unlock after passkey approve");
+  }
+  await expect(unlocked).toBeVisible({ timeout: 5_000 });
+}
+
+function asPendingOnly(records: ShareWrapRecord[]): ShareWrapRecord[] {
+  const source =
+    records.find((row) => row.id !== "pending") ??
+    records.find((row) => row.id === "pending") ??
+    null;
+  if (!source) {
+    throw new Error("expected at least one share-wrap IndexedDB row after passkey enroll");
+  }
+  return [{ ...source, id: "pending" }];
+}
+
 test.beforeAll(async ({ browser }) => {
-  await resetE2eCatalog();
   browserRef = browser;
+});
+
+test.beforeEach(async () => {
+  // First-run registration requires an empty users table per test.
+  await resetE2eCatalog();
 });
 
 test.afterAll(async () => {
@@ -201,26 +255,7 @@ test("passkey approve on new device → master password unlocks", async () => {
     await expect(approve).toBeVisible({ timeout: 30_000 });
     await approve.click();
 
-    await expect(page).toHaveURL(/\/account\/lock|\/items/, { timeout: 90_000 });
-    await dumpUnlockDiagnostics(page, "after-passkey-approve");
-
-    // First unlock after passkey approve (the Saša failure point).
-    const lock = page.getByRole("heading", { name: /vault is locked/i });
-    const topbar = page.getByTestId("items-shell-topbar");
-    await expect(lock.or(topbar)).toBeVisible({ timeout: 60_000 });
-    if (await topbar.isVisible().catch(() => false)) {
-      throw new Error("vault unlocked without master password after passkey approve");
-    }
-    await page.locator("#unlock-master-password").fill(E2E_MASTER_PASSWORD);
-    await page.getByRole("button", { name: /^unlock$/i }).click();
-    const incorrect = page.getByText(/incorrect master password/i);
-    const unlocked = page.getByTestId("items-shell-topbar");
-    await expect(incorrect.or(unlocked)).toBeVisible({ timeout: 60_000 });
-    if (await incorrect.isVisible().catch(() => false)) {
-      await dumpUnlockDiagnostics(page, "first-unlock-failed");
-      throw new Error("incorrect master password on first unlock after passkey approve");
-    }
-    await expect(unlocked).toBeVisible({ timeout: 5_000 });
+    await unlockAfterApproveOrFail(page, "after-passkey-approve");
 
     // Lock → unlock again
     await clearTabVaultUnlock(page);
@@ -233,6 +268,64 @@ test("passkey approve on new device → master password unlocks", async () => {
     await page.goto("/account/lock");
     await page.reload();
     await unlockWithMasterPassword(page, E2E_MASTER_PASSWORD);
+  } finally {
+    if (passkey) {
+      await detachVirtualPasskey(passkey);
+    }
+    await context.close();
+  }
+});
+
+test("stale pending wrap-key row → promote then unlock after approve", async () => {
+  const email = uniqueEmail("passkey-pending-promote");
+  pageConsole.length = 0;
+
+  const context = await browserRef.newContext({
+    locale: "en-US",
+    permissions: ["clipboard-read", "clipboard-write"],
+  });
+  const page = await context.newPage();
+  page.on("console", (msg) => {
+    pageConsole.push(`${msg.type()}:${msg.text()}`);
+  });
+  page.on("pageerror", (err) => {
+    pageConsole.push(`pageerror:${err.message}`);
+  });
+
+  let passkey: VirtualPasskey | null = null;
+  try {
+    passkey = await attachVirtualPasskey(page);
+    await registerBootstrapAndUnlock(page, {
+      email,
+      masterPassword: E2E_MASTER_PASSWORD,
+    });
+    await enrollPasskeyAndAllowApprove(page);
+
+    const enrolledWraps = await exportShareWrapRecords(page);
+    expect(enrolledWraps.length).toBeGreaterThan(0);
+
+    await wipeLocalBrowserProfile(page);
+    // Origin must exist before IndexedDB writes stick.
+    await page.goto("/auth/sign-in");
+    await importShareWrapRecords(page, asPendingOnly(enrolledWraps));
+    expect(await listShareWrapIds(page)).toEqual(["pending"]);
+
+    await signInWithEmailOtp(page, email);
+    await expect(page).toHaveURL(/\/account\/device-pending/, { timeout: 60_000 });
+
+    const approve = page.getByRole("button", { name: /approve with passkey/i });
+    await expect(approve).toBeVisible({ timeout: 30_000 });
+    await approve.click();
+
+    await expect(page).toHaveURL(/\/account\/lock|\/items/, { timeout: 90_000 });
+    // Force the stale-pending failure mode: without promote-on-load, approve
+    // sealed via the pending row and clearing it leaves unlock with no wrap key.
+    await clearPendingShareWrapRecord(page);
+    const wrapIds = await listShareWrapIds(page);
+    expect(wrapIds.includes("pending")).toBe(false);
+    expect(wrapIds.some((id) => id !== "pending")).toBe(true);
+
+    await unlockAfterApproveOrFail(page, "after-pending-clear");
   } finally {
     if (passkey) {
       await detachVirtualPasskey(passkey);
