@@ -186,10 +186,36 @@ describe("system update popup", () => {
       }),
     );
     expect(screen.getByTestId("system-update-row-okkey")).toHaveTextContent(
-      "Current version 1.0.0-betta.3 (6e6ee86)",
+      "Current version 1.0.0-betta.3 (core 6e6ee86 · enterprise abcdef0)",
     );
     expect(screen.getByTestId("system-update-row-enterprise")).toHaveTextContent(
       "Current version 1.0.0-betta.3 (abcdef0)",
+    );
+  });
+
+  it("keeps a core-only Okkey SHA when enterpriseCommitSha is absent", () => {
+    renderModal(
+      status({
+        updates: [],
+        currentVersion: "0.0.0-dev",
+        commitSha: "6e6ee86abcdef0123456789abcdef0123456789",
+        enterpriseCommitSha: null,
+        enterpriseInstalled: false,
+        components: [
+          {
+            component: "okkey",
+            installedVersion: "0.0.0-dev",
+            update: null,
+            checkError: null,
+            feedConfigured: true,
+            minCoreVersion: null,
+            releaseNotesUrl: null,
+          },
+        ],
+      }),
+    );
+    expect(screen.getByTestId("system-update-row-okkey")).toHaveTextContent(
+      "Current version 0.0.0-dev (6e6ee86)",
     );
   });
 
