@@ -1,6 +1,7 @@
 import * as React from "react";
 import { createPortal, flushSync } from "react-dom";
 
+import { registerPopupLayer } from "../../lib/popup-layer.js";
 import {
   getScrollAreaViewport,
   popupChromeSurfaceClassName,
@@ -21,7 +22,7 @@ import {
 import { ScrollArea } from "./scroll-area.js";
 
 type PopupWidth = number | string;
-const POPUP_ANIMATION_MS = 240;
+export const POPUP_ANIMATION_MS = 240;
 /** Any intentional downward drag dismisses the sheet on release. */
 const MOBILE_SHEET_DRAG_DISMISS_PX = 4;
 
@@ -193,6 +194,11 @@ export type PopupProps = Omit<React.ComponentPropsWithoutRef<"div">, "title"> & 
   closeLabel?: string;
   /** When true, overlay click and close button do nothing. */
   closeDisabled?: boolean;
+  /**
+   * When false, Escape does not dismiss the popup (forced / security-critical flows).
+   * Defaults to true. Overlay / close-button dismiss still follow `closeDisabled` / `onClose`.
+   */
+  closeOnEscape?: boolean;
   panelClassName?: string;
   contentClassName?: string;
   /**
@@ -491,6 +497,17 @@ function usePopupScrollEdges(scrollAreaRef: React.RefObject<HTMLElement | null>)
   return edges;
 }
 
+function restoreFocusTo(opener: Element | null): void {
+  if (!(opener instanceof HTMLElement) || !opener.isConnected) {
+    return;
+  }
+  try {
+    opener.focus();
+  } catch {
+    // Ignore elements that cannot receive focus.
+  }
+}
+
 export const Popup = React.forwardRef<HTMLDivElement, PopupProps>(
   (
     {
@@ -506,6 +523,7 @@ export const Popup = React.forwardRef<HTMLDivElement, PopupProps>(
       onCloseRequest,
       closeLabel = "Close popup",
       closeDisabled = false,
+      closeOnEscape = true,
       layout = "responsive",
       children,
       style,
@@ -521,19 +539,20 @@ export const Popup = React.forwardRef<HTMLDivElement, PopupProps>(
     const [isSheetDragging, setIsSheetDragging] = React.useState(false);
     const closeTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
     const contentScrollAreaRef = React.useRef<HTMLDivElement>(null);
+    const layerIdRef = React.useRef<symbol>(Symbol("okkey-popup-layer"));
+    const openerRef = React.useRef<Element | null>(null);
+    const capturedOpenerRef = React.useRef(false);
     const scrollEdges = usePopupScrollEdges(contentScrollAreaRef);
     const popupStyle = {
       "--okkey-popup-width": popupWidthToCssValue(width),
       ...style,
     } as React.CSSProperties;
 
-    React.useEffect(() => {
-      return () => {
-        if (closeTimerRef.current) {
-          clearTimeout(closeTimerRef.current);
-        }
-      };
-    }, []);
+    // Capture the opener before children / portal steal focus.
+    if (!capturedOpenerRef.current && typeof document !== "undefined") {
+      capturedOpenerRef.current = true;
+      openerRef.current = document.activeElement;
+    }
 
     const requestClose = React.useCallback(() => {
       if (!onClose || isClosing || closeDisabled) {
@@ -545,9 +564,36 @@ export const Popup = React.forwardRef<HTMLDivElement, PopupProps>(
 
       setIsClosing(true);
       closeTimerRef.current = setTimeout(() => {
+        closeTimerRef.current = null;
+        const opener = openerRef.current;
         onClose();
+        restoreFocusTo(opener);
       }, POPUP_ANIMATION_MS);
     }, [closeDisabled, isClosing, onClose, onCloseRequest]);
+
+    const closeOnEscapeRef = React.useRef(closeOnEscape);
+    closeOnEscapeRef.current = closeOnEscape;
+    const requestCloseRef = React.useRef(requestClose);
+    requestCloseRef.current = requestClose;
+
+    React.useEffect(() => {
+      const unregister = registerPopupLayer({
+        id: layerIdRef.current,
+        onEscape: () => {
+          if (!closeOnEscapeRef.current) {
+            return;
+          }
+          requestCloseRef.current();
+        },
+      });
+      return () => {
+        unregister();
+        if (closeTimerRef.current) {
+          clearTimeout(closeTimerRef.current);
+          closeTimerRef.current = null;
+        }
+      };
+    }, []);
 
     const handleSheetDragMove = React.useCallback((offset: number) => {
       setSheetDragOffset(offset);

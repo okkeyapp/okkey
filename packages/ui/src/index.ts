@@ -154,7 +154,14 @@ export { Separator, type SeparatorProps } from "./components/ui/separator.js";
 export { Slider, type SliderProps } from "./components/ui/slider.js";
 export { Switch, type SwitchProps } from "./components/ui/switch.js";
 export { ScrollArea, ScrollBar } from "./components/ui/scroll-area.js";
-export { Popup, PopupMobileMenu, type PopupMenu, type PopupMenuItem, type PopupProps } from "./components/ui/popup.js";
+export {
+  Popup,
+  PopupMobileMenu,
+  POPUP_ANIMATION_MS,
+  type PopupMenu,
+  type PopupMenuItem,
+  type PopupProps,
+} from "./components/ui/popup.js";
 export {
   getScrollAreaViewport,
   popupChromeSurfaceClassName,
