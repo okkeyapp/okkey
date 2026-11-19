@@ -319,7 +319,7 @@ export function registerSetupRoutes(
         workspaceName,
         tileColor,
         invitations,
-        dismissPersonalDataBootstrap: body.dismiss_personal_data_bootstrap !== false,
+        dismissPersonalDataBootstrap: body.dismiss_personal_data_bootstrap === true,
       });
       json(ctx.res, 200, {
         access_token: result.accessToken,
