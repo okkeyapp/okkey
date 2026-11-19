@@ -609,11 +609,14 @@ if [[ ! -f .env ]]; then
   log "==> Generated JWT_SECRET, SESSION_SECRET, EMAIL_DEAD_LETTER_SEAL_KEY, POSTGRES_PASSWORD, MINIO_ROOT_PASSWORD"
 else
   log "==> Reusing existing .env"
-  if [[ -n "${OKKEY_IMAGE_TAG:-}" ]] || [[ -n "${OKKEY_CHANNEL:-}" ]]; then
-    log "==> Note: OKKEY_IMAGE_TAG / OKKEY_CHANNEL set but .env already exists — edit OKKEY_IMAGE_TAG in .env or remove .env to apply"
+  # Process env still wins for this run (same as compose), but is not written into .env.
+  if [[ -n "${OKKEY_IMAGE_TAG:-}" ]]; then
+    log "==> Note: OKKEY_IMAGE_TAG=${OKKEY_IMAGE_TAG} is set in the process environment — this run uses it for pull/verify, but it is not written to the existing .env"
+  elif [[ -n "${OKKEY_CHANNEL:-}" ]]; then
+    log "==> Note: OKKEY_CHANNEL set but .env already exists — OKKEY_CHANNEL only applies on a fresh install; edit OKKEY_IMAGE_TAG in .env to change the persisted tag"
   fi
   if [[ -n "${OKKEY_API_IMAGE:-}" || -n "${OKKEY_WORKER_IMAGE:-}" || -n "${OKKEY_WEB_IMAGE:-}" ]]; then
-    log "==> Note: OKKEY_API_IMAGE / OKKEY_WORKER_IMAGE / OKKEY_WEB_IMAGE set but .env already exists — edit image names in .env or remove .env to apply"
+    log "==> Note: OKKEY_API_IMAGE / OKKEY_WORKER_IMAGE / OKKEY_WEB_IMAGE set in the process environment — this run uses them for pull/verify, but they are not written to the existing .env"
   fi
   if [[ "${OKKEY_RESET_VOLUMES:-}" == "1" ]]; then
     reset_compose_volumes
@@ -632,7 +635,8 @@ fi
 replace_env OKKEY_COMPOSE_PROJECT "$(compose_project_name)"
 replace_env OKKEY_HOST_INSTALL_DIR "${OKKEY_INSTALL_DIR}"
 
-image_tag="$(env_file_value OKKEY_IMAGE_TAG)"
+# Same precedence as compose interpolation for ${OKKEY_IMAGE_TAG}: process env → .env → default.
+image_tag="$(resolve_env_value OKKEY_IMAGE_TAG)"
 image_tag="${image_tag:-dev}"
 log "==> Pulling images and starting stack (compose project=$(compose_project_name), OKKEY_IMAGE_TAG=${image_tag})"
 # OKKEY_SKIP_PULL=1: use images already present locally (e.g. :local / pre-loaded tags).

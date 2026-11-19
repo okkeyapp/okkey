@@ -356,11 +356,26 @@ ${RUN_DOCKER}"
   printf '%s\n' "${RUN_COSIGN}" | grep -Fq "ghcr.io/okkeyapp/${image}@sha256:" && fail "must not verify default ghcr ${image} when process env set
 ${RUN_COSIGN}"
 done
-# Existing .env is not silently rewritten; note is logged.
-printf '%s\n' "${RUN_OUT}" | grep -Fq 'OKKEY_API_IMAGE / OKKEY_WORKER_IMAGE / OKKEY_WEB_IMAGE set but .env already exists' || fail "missing existing-.env image note
+# Existing .env is not silently rewritten; note says this run uses process env.
+printf '%s\n' "${RUN_OUT}" | grep -Fq 'OKKEY_API_IMAGE / OKKEY_WORKER_IMAGE / OKKEY_WEB_IMAGE set in the process environment — this run uses them for pull/verify, but they are not written to the existing .env' || fail "missing existing-.env image note
 ${RUN_OUT}"
 printf '%s\n' "${RUN_ENV}" | grep -Eq '^OKKEY_API_IMAGE=' && fail "must not rewrite existing .env with process-env images
 ${RUN_ENV}"
+
+# Existing .env tag A + exported OKKEY_IMAGE_TAG=B → verify inspects tag B.
+run_install "1.0.0-beta.3" 1 0 OKKEY_IMAGE_TAG=exported-tag-b --
+[[ "${RUN_RC}" -eq 0 ]] || fail "process-env tag override should succeed
+${RUN_OUT}"
+printf '%s\n' "${RUN_OUT}" | grep -Fq 'OKKEY_IMAGE_TAG=exported-tag-b is set in the process environment — this run uses it for pull/verify, but it is not written to the existing .env' || fail "missing existing-.env tag note
+${RUN_OUT}"
+printf '%s\n' "${RUN_ENV}" | grep -Eq '^OKKEY_IMAGE_TAG=1.0.0-beta.3$' || fail "must not rewrite existing .env tag
+${RUN_ENV}"
+for image in api worker web; do
+  printf '%s\n' "${RUN_DOCKER}" | grep -Fq "ghcr.io/okkeyapp/${image}:exported-tag-b" || fail "inspect must use process-env tag for ${image}
+${RUN_DOCKER}"
+  printf '%s\n' "${RUN_DOCKER}" | grep -Fq "ghcr.io/okkeyapp/${image}:1.0.0-beta.3" && fail "must not inspect .env tag when process-env tag wins for ${image}
+${RUN_DOCKER}"
+done
 
 # .env-only image overrides still drive verify when process env is unset.
 INSTALL_ENV_EXTRA=$'OKKEY_API_IMAGE=envfile.example/okkey/api\nOKKEY_WORKER_IMAGE=envfile.example/okkey/worker\nOKKEY_WEB_IMAGE=envfile.example/okkey/web'
