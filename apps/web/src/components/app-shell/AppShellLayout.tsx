@@ -49,13 +49,15 @@ export default function AppShellLayout({
     copyright ?? t("web.shell.copyright", { year: new Date().getFullYear() });
 
   return (
-    <div className="relative isolate min-h-dvh min-h-screen overflow-x-hidden bg-background text-foreground">
+    // overflow-x-hidden: defensive clip for absolute chrome/gradients; main screens also use
+    // responsive padding + min-w-0 so document scrollWidth stays within the viewport.
+    <div className="relative isolate min-h-dvh min-h-screen max-w-[100vw] overflow-x-hidden bg-background text-foreground">
       <BodyGradient />
 
-      {topLeft != null ? <div className="absolute left-10 top-10 z-10">{topLeft}</div> : null}
+      {topLeft != null ? <div className="absolute left-4 top-10 z-10 sm:left-10">{topLeft}</div> : null}
 
       {busy ? null : (
-        <div className="absolute right-10 top-10 z-10">
+        <div className="absolute right-4 top-10 z-10 sm:right-10">
           <Select value={locale} onValueChange={(v) => setLocale(v as WebLocale)} variant="inline">
             <SelectTrigger aria-label={t("web.shell.language.ariaLabel")} className="text-sm font-medium text-foreground">
               <SelectValue />
@@ -71,13 +73,13 @@ export default function AppShellLayout({
         </div>
       )}
 
-      <div className="relative flex min-h-dvh min-h-screen flex-col">
-        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+      <div className="relative flex min-h-dvh min-h-screen min-w-0 flex-col">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">
           <div
             className={cn(
-              "flex min-h-full flex-1 flex-col items-center justify-center",
-              busy ? "px-10 py-10" : "py-10 pb-20",
-              !busy && (frameClassName ?? "px-10"),
+              "flex min-h-full min-w-0 flex-1 flex-col items-center justify-center",
+              busy ? "px-4 py-10 sm:px-10" : "py-10 pb-20",
+              !busy && (frameClassName ?? "px-4 sm:px-10"),
             )}
           >
             {busy ? (
@@ -109,7 +111,7 @@ export default function AppShellLayout({
         </div>
 
         {busy ? null : (
-          <footer className="pointer-events-none absolute inset-x-0 bottom-8 okkey-body px-10 text-center text-copy-secondary">
+          <footer className="pointer-events-none absolute inset-x-0 bottom-8 okkey-body px-4 text-center text-copy-secondary sm:px-10">
             {resolvedCopyright}
           </footer>
         )}

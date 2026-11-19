@@ -1,11 +1,17 @@
 /**
  * Shared surface styles for single-line controls (Input, Select trigger, etc.).
  * Matches outline-style field: border, shadow, hover border, focus ring.
+ *
+ * Mobile text is `text-base` (16px) so iOS Safari does not auto-zoom focused fields;
+ * desktop keeps `text-sm`.
  */
 import { cn } from "./utils.js";
 
+/** Typography for editable form controls — ≥16px below `md` to avoid iOS focus zoom. */
+export const formControlTextClassName = "text-base md:text-sm";
+
 export const inputLikeControlClassName =
-  "h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground transition-[color,box-shadow,border-color] " +
+  `h-9 w-full rounded-md border border-input bg-background px-3 ${formControlTextClassName} text-foreground transition-[color,box-shadow,border-color] ` +
   "shadow-[0_1px_2px_rgba(0,0,0,0.05)] dark:shadow-[0_1px_2px_rgba(255,255,255,0.05)] " +
   "placeholder:text-muted-foreground " +
   "hover:border-[color-mix(in_hsl,hsl(var(--input))_82%,hsl(var(--accent))_18%)] hover:shadow-none " +

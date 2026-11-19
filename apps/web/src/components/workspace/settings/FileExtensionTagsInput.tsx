@@ -174,7 +174,7 @@ export default function FileExtensionTagsInput({
           value={draft}
           placeholder={localExtensions.length === 0 ? placeholder : undefined}
           aria-label={inputAriaLabel}
-          className="min-w-[4rem] flex-1 border-0 bg-transparent p-0 text-sm text-foreground outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed"
+          className="min-w-[4rem] flex-1 border-0 bg-transparent p-0 text-base text-foreground outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed md:text-sm"
           onChange={(event) => setDraft(event.target.value)}
           onKeyDown={handleTokenSeparatorKey}
         />

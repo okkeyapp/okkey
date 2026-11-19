@@ -34,8 +34,8 @@ function ClearIcon({ className, ...props }: SVGProps<SVGSVGElement>) {
 }
 
 const searchWrapClassName = cn(
-  "flex h-9 w-full max-w-[420px] shrink-0 items-stretch rounded-md border border-transparent",
-  "bg-[rgba(0,0,0,0.05)] text-sm text-foreground shadow-none transition-[color,box-shadow,border-color,background-color]",
+  "flex h-9 w-full min-w-0 max-w-[420px] items-stretch rounded-md border border-transparent",
+  "bg-[rgba(0,0,0,0.05)] text-base text-foreground shadow-none transition-[color,box-shadow,border-color,background-color] md:text-sm",
   "dark:bg-white/[0.06]",
   "hover:border-[color-mix(in_hsl,hsl(var(--input))_82%,hsl(var(--accent))_18%)]",
   "dark:hover:border-[color-mix(in_hsl,hsl(var(--input))_76%,hsl(var(--accent))_24%)]",
@@ -143,7 +143,7 @@ export function WorkspaceSearchField({
             onSubmit?.(e.currentTarget.value);
           }}
           className={cn(
-            "min-w-0 flex-1 border-0 bg-transparent py-1.5 text-sm leading-5 text-foreground outline-none",
+            "min-w-0 flex-1 border-0 bg-transparent py-1.5 text-base leading-5 text-foreground outline-none md:text-sm",
             "placeholder:text-muted-foreground",
             "focus-visible:outline-none",
           )}

@@ -17,8 +17,9 @@ import { useLocale } from "../../locale/LocaleContext";
 
 const OTP_LENGTH = 6;
 
+/** Fluid cells (same pattern as AuthOtpPage) so 6 OTP inputs fit narrow modals. */
 const otpCellClassName =
-  "h-[54px] w-[54px] min-w-[54px] max-w-[54px] shrink-0 p-0 text-center text-lg font-semibold tabular-nums";
+  "h-[54px] w-full min-w-0 p-0 text-center text-lg font-semibold tabular-nums";
 
 type SettingsEmailChangePopupProps = {
   open: boolean;
@@ -322,13 +323,13 @@ export default function SettingsEmailChangePopup({
                 {resendDisabled ? <span className="min-w-[1.5ch] tabular-nums">{resendWaitSec}</span> : t("auth.otp.sendAgain")}
               </Button>
             </div>
-            <p className="text-sm leading-5 text-muted-foreground">
+            <p className="break-words text-sm leading-5 text-muted-foreground">
               {t("web.settingsPopup.emailChange.otpDescription", { email: email.trim() })}
             </p>
             <div
               role="group"
               aria-labelledby="settings-email-change-otp-label"
-              className="flex flex-wrap items-center justify-center gap-2.5"
+              className="grid w-full grid-cols-6 gap-2.5"
             >
               {digits.map((digit, index) => (
                 <Input

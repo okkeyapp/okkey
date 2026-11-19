@@ -91,19 +91,20 @@ export function AuthShell({
     return (
       <div
         className={cn(
-          "relative isolate flex h-full min-h-dvh w-full flex-col overflow-x-hidden bg-background text-foreground",
+          // overflow-x-hidden: defensive clip for absolute chrome; padding is responsive (px-4 sm:px-10).
+          "relative isolate flex h-full min-h-dvh w-full max-w-[100vw] flex-col overflow-x-hidden bg-background text-foreground",
           className,
         )}
       >
         <BodyGradient />
 
-        {topLeft != null ? <div className="absolute left-10 top-10 z-10">{topLeft}</div> : null}
-        {topRight != null ? <div className="absolute right-10 top-10 z-10">{topRight}</div> : null}
+        {topLeft != null ? <div className="absolute left-4 top-10 z-10 sm:left-10">{topLeft}</div> : null}
+        {topRight != null ? <div className="absolute right-4 top-10 z-10 sm:right-10">{topRight}</div> : null}
 
         <div
           className={cn(
-            "relative flex min-h-0 flex-1 flex-col items-center justify-center",
-            frameClassName ?? "px-10 py-10",
+            "relative flex min-h-0 min-w-0 flex-1 flex-col items-center justify-center",
+            frameClassName ?? "px-4 py-10 sm:px-10",
           )}
         >
           <div className={cn("flex w-full flex-col items-center gap-6", contentClassName ?? "max-w-sm")}>
