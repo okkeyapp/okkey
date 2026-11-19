@@ -1,4 +1,4 @@
-import type { EmailLocale } from "@okkey/i18n";
+import { intlLocaleTag, type EmailLocale } from "@okkey/i18n";
 
 /**
  * Locale-aware UTC timestamp for all email templates.
@@ -9,7 +9,7 @@ export function formatUtcWhen(locale: EmailLocale, iso: string): string {
   if (Number.isNaN(d.getTime())) {
     return iso;
   }
-  const formatted = new Intl.DateTimeFormat(locale === "ru" ? "ru-RU" : "en-US", {
+  const formatted = new Intl.DateTimeFormat(intlLocaleTag(locale), {
     dateStyle: "medium",
     timeStyle: "short",
     timeZone: "UTC",

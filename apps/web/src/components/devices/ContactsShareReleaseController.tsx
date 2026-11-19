@@ -1,4 +1,5 @@
 import { createBearerApiClient } from "@okkey/api";
+import { intlLocaleTag } from "@okkey/i18n";
 import {
   base64ToBytes,
   unsealContactShare,
@@ -42,7 +43,7 @@ function formatAbsoluteDate(iso: string, locale: string): string {
   if (Number.isNaN(date.getTime())) {
     return iso;
   }
-  return new Intl.DateTimeFormat(locale === "ru" ? "ru-RU" : "en-US", {
+  return new Intl.DateTimeFormat(intlLocaleTag(locale), {
     day: "numeric",
     month: "short",
     year: "numeric",

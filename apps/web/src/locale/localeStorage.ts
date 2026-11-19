@@ -1,4 +1,4 @@
-import { isWebLocale, type WebLocale } from "@okkey/i18n";
+import { isWebLocale, localeTextDirection, type WebLocale } from "@okkey/i18n";
 
 export const LOCALE_STORAGE_KEY = "okkey.locale";
 /** Query param used by email deep-links (`buildEmailAppPathUrl` / `lng`). */
@@ -142,7 +142,8 @@ export function writeStoredLocale(locale: WebLocale): void {
 }
 
 export function applyLocaleToDocument(locale: WebLocale): void {
-  document.documentElement.lang = locale === "ru" ? "ru" : "en";
+  document.documentElement.lang = locale;
+  document.documentElement.dir = localeTextDirection(locale);
 }
 
 export type { WebLocale };

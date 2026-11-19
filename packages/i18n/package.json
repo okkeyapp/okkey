@@ -10,6 +10,7 @@
     "intl-messageformat": "^10.7.0"
   },
   "scripts": {
-    "build": "node scripts/gen-web-bundles.mjs && tsc -p tsconfig.json && node scripts/copy-locale-json.mjs"
+    "build": "node scripts/gen-locale-bundles.mjs && tsc -p tsconfig.json && node scripts/copy-locale-json.mjs",
+    "test": "node --test dist/*.test.js scripts/*.test.mjs"
   }
 }

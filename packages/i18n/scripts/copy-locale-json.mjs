@@ -17,3 +17,10 @@ function copyLocaleSubdir(name) {
 
 copyLocaleSubdir("email");
 copyLocaleSubdir("web");
+
+const manifestSrc = path.join(pkgRoot, "src", "locales", "manifest.json");
+const manifestDestDir = path.join(pkgRoot, "dist", "locales");
+if (fs.existsSync(manifestSrc)) {
+  fs.mkdirSync(manifestDestDir, { recursive: true });
+  fs.copyFileSync(manifestSrc, path.join(manifestDestDir, "manifest.json"));
+}

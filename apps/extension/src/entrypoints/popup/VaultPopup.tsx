@@ -1,6 +1,11 @@
 import { forwardRef, useCallback, useEffect, useMemo, useRef, useState, type ForwardedRef } from "react";
 import { ApiRequestError, type CoreApiClient } from "@okkey/api";
-import { getWebLocaleNativeName, WEB_LOCALES, type WebLocale } from "@okkey/i18n";
+import {
+  getWebLocaleNativeName,
+  isWebLocale,
+  READY_WEB_LOCALES,
+  type WebLocale,
+} from "@okkey/i18n";
 import {
   MIN_MASTER_PASSWORD_LENGTH,
   type ItemPlaintextV2,
@@ -1289,12 +1294,12 @@ export function VaultPopup(props: VaultPopupProps) {
     () => ({
       label: t("web.accountMenu.language", { lang: getWebLocaleNativeName(locale) }),
       currentCode: locale,
-      options: WEB_LOCALES.map((code) => ({
+      options: READY_WEB_LOCALES.map((code) => ({
         code,
         label: getWebLocaleNativeName(code),
       })),
       onSelect: (code: string) => {
-        if (code === "en" || code === "ru") {
+        if (isWebLocale(code)) {
           onLocaleChange(code);
         }
       },
@@ -1499,7 +1504,7 @@ export function VaultPopup(props: VaultPopupProps) {
               filter={filter}
               sort={sort}
               selectedId={selectedId}
-              locale={locale === "ru" ? "ru" : "en"}
+              locale={locale}
               searchQuery={search}
               suggestionsScopeLabel={
                 suggestionsActive ? t("extension.vault.filterSuggestions") : null

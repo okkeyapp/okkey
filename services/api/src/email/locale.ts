@@ -1,5 +1,5 @@
 import type { EmailLocale } from "@okkey/i18n";
-import { EMAIL_LOCALES } from "@okkey/i18n";
+import { EMAIL_LOCALES, FALLBACK_LOCALE, isEmailLocale } from "@okkey/i18n";
 
 export type { EmailLocale };
 
@@ -11,14 +11,14 @@ export function normalizeSupportedLocaleTag(raw: string | undefined | null): Ema
     return null;
   }
   const base = raw.trim().toLowerCase().split("-")[0] ?? "";
-  if (base === "ru" || base === "en") {
+  if (base.length > 0 && isEmailLocale(base)) {
     return base;
   }
   return null;
 }
 
 /**
- * Pick final template locale: instance default chain, then hard `en`.
+ * Pick final template locale: instance default chain, then hard fallback (English).
  * @deprecated Prefer {@link resolveEmailLocaleForRecipient} for outbound mail.
  */
 export function resolveEmailLocale(
@@ -35,7 +35,7 @@ export function resolveEmailLocale(
     return fromFallback;
   }
 
-  return "en";
+  return FALLBACK_LOCALE;
 }
 
 /**
@@ -72,7 +72,7 @@ export interface EmailLocaleHintsInput {
 }
 
 /**
- * Product rule: user profile → explicit client locale → Accept-Language → instance default → `en`.
+ * Product rule: user profile → explicit client locale → Accept-Language → instance default → fallback.
  */
 export function resolveEmailLocaleForRecipient(input: EmailLocaleHintsInput): EmailLocale {
   const fromUser = normalizeSupportedLocaleTag(input.userLocale ?? undefined);

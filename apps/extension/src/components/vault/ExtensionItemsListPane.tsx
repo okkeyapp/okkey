@@ -230,7 +230,7 @@ export function ExtensionItemsListPane(props: ExtensionItemsListPaneProps) {
         <div className="flex w-full items-center gap-2">
           <ItemsListFilterDropdown
             t={t}
-            locale={locale === "ru" ? "ru" : "en"}
+            locale={locale}
             filter={filter}
             onFilterChange={onFilterChange}
             searchScopeLabel={searchScopeLabel}

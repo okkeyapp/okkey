@@ -1,4 +1,4 @@
-import type { WebMessageValues } from "@okkey/i18n";
+import type { WebLocale, WebMessageValues } from "@okkey/i18n";
 import { Alert, AlertDescription, AlertTitle, Button } from "@okkey/ui";
 import { ApiRequestError } from "@okkey/api";
 import type { SVGProps } from "react";
@@ -210,7 +210,7 @@ export default function SelfHostedFreePlanSection({
 
   function openMailto(input: {
     contactEmail: string;
-    locale: "en" | "ru";
+    locale: WebLocale;
     region: RegionCode | null;
     workspaceMemberCount: number;
   }) {
@@ -237,7 +237,7 @@ export default function SelfHostedFreePlanSection({
 
   async function handleSubmit(input: {
     contactEmail: string;
-    locale: "en" | "ru";
+    locale: WebLocale;
     region: RegionCode | null;
     workspaceMemberCount: number;
   }) {

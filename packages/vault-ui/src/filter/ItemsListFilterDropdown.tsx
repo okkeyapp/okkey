@@ -5,7 +5,7 @@
  * Monitoring list filters are display-only here (set via URL / monitoring page);
  * the dropdown menu never lists monitoring rows.
  */
-import type { WebLocale, WebMessageValues } from "@okkey/i18n";
+import { formatWebMessage, type WebLocale, type WebMessageValues } from "@okkey/i18n";
 import {
   ChevronDownGlyph,
   DropdownMenu,
@@ -182,7 +182,7 @@ function monitoringFilterLabelKey(filter: ItemsListMonitoringFilter): string {
 }
 
 function scopeRowCloseAriaLabel(locale: WebLocale): string {
-  return locale === "ru" ? "Сбросить область списка" : "Clear list scope";
+  return formatWebMessage(locale, "web.itemsList.clearScopeAria");
 }
 
 /** Red circular close control on the active scope chip row (web parity). */

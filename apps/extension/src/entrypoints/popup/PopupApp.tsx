@@ -26,13 +26,7 @@ import {
   TooltipTrigger,
   cn,
 } from "@okkey/ui";
-import {
-  formatWebMessage,
-  getWebLocaleNativeName,
-  WEB_LOCALES,
-  type WebLocale,
-  type WebMessageValues,
-} from "@okkey/i18n";
+import { formatWebMessage, getWebLocaleNativeName, READY_WEB_LOCALES, type WebLocale, type WebMessageValues, intlLocaleTag } from "@okkey/i18n";
 import { buildVaultUnlockAttestation, UnsupportedIdentityBundleError, unwrapUnlockMaterialWithPin, wipeBytes } from "@okkey/crypto";
 import { isClientUpgradeRequiredError } from "@okkey/api";
 import {
@@ -173,7 +167,7 @@ function formatAbsoluteDate(iso: string, locale: WebLocale): string {
   if (Number.isNaN(date.getTime())) {
     return iso;
   }
-  return new Intl.DateTimeFormat(locale === "ru" ? "ru-RU" : "en-US", {
+  return new Intl.DateTimeFormat(intlLocaleTag(locale), {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
@@ -282,7 +276,7 @@ export function PopupApp() {
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
-        {WEB_LOCALES.map((code) => (
+        {READY_WEB_LOCALES.map((code) => (
           <SelectItem key={code} value={code}>
             {getWebLocaleNativeName(code)}
           </SelectItem>

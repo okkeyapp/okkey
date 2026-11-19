@@ -1,4 +1,4 @@
-import type { WebLocale } from "@okkey/i18n";
+import { isWebLocale, type WebLocale } from "@okkey/i18n";
 import { useEffect, useState } from "react";
 
 import { useAuthenticatedCoreClient } from "../../../../auth/AuthVaultContext";
@@ -31,7 +31,7 @@ export function usePlanRequestProfile(): {
       if (cachedProfile && !cancelled) {
         setEmail(cachedProfile.email);
         setRegion(resolvePrefillRegion(cachedProfile.billing_region));
-        if (cachedProfile.locale === "en" || cachedProfile.locale === "ru") {
+        if (isWebLocale(cachedProfile.locale)) {
           setProfileLocale(cachedProfile.locale);
         }
       }
@@ -50,7 +50,7 @@ export function usePlanRequestProfile(): {
         }
         setEmail(normalized.email);
         setRegion(resolvePrefillRegion(normalized.billing_region));
-        if (normalized.locale === "en" || normalized.locale === "ru") {
+        if (isWebLocale(normalized.locale)) {
           setProfileLocale(normalized.locale);
         }
       } catch {

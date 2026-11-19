@@ -1,4 +1,4 @@
-import { getWebLocaleNativeName, WEB_LOCALES, type WebLocale, type WebMessageValues } from "@okkey/i18n";
+import { getWebLocaleNativeName, READY_WEB_LOCALES, type WebLocale, type WebMessageValues } from "@okkey/i18n";
 import {
   cn,
   OkkeyAppSidebar,
@@ -104,7 +104,7 @@ function ShellMainHeader({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {WEB_LOCALES.map((code) => (
+            {READY_WEB_LOCALES.map((code) => (
               <SelectItem key={code} value={code}>
                 {getWebLocaleNativeName(code)}
               </SelectItem>

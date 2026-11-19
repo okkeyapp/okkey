@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import { FALLBACK_LOCALE, isEmailLocale } from "@okkey/i18n";
 import {
   canRequestPlanUpgrade,
   normalizePlanTier,
@@ -268,8 +269,7 @@ export class PlanChangeRequestService {
       );
     }
 
-    const locale =
-      input.locale === "ru" || input.locale === "en" ? input.locale : "en";
+    const locale = isEmailLocale(input.locale) ? input.locale : FALLBACK_LOCALE;
 
     const rawMemberCount = input.workspaceMemberCount;
     const clientMemberCountValid =

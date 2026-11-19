@@ -5,7 +5,7 @@ import {
   recoveryPossessionPublicKey,
   wrapVaultKeyWithRecoverySecret,
 } from "@okkey/crypto";
-import type { WebMessageValues } from "@okkey/i18n";
+import { intlLocaleTag, type WebMessageValues } from "@okkey/i18n";
 import type { AccountRecoveryStatusResponseDto } from "@okkey/types";
 import { canEnableTrustedDevicesRecovery } from "@okkey/types";
 import {
@@ -120,7 +120,7 @@ function formatGeneratedAt(
   if (Number.isNaN(date.getTime())) {
     return t("web.settingsPopup.recovery.key.never");
   }
-  const absolute = new Intl.DateTimeFormat(locale === "ru" ? "ru-RU" : "en-US", {
+  const absolute = new Intl.DateTimeFormat(intlLocaleTag(locale), {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",

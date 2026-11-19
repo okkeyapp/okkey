@@ -1,7 +1,17 @@
-export type EmailLocale = "en" | "ru";
+import { EMAIL_LOCALES, emailBundles, type EmailLocale } from "./email-bundles.gen.js";
+import { isAppLocale, type AppLocale } from "./locale-meta.js";
 
-export const EMAIL_LOCALES: EmailLocale[] = ["en", "ru"];
+export type { EmailLocale };
+export { EMAIL_LOCALES, emailBundles };
+
+/** EmailLocale is the shared AppLocale set (web ↔ email JSON parity). */
+export type { AppLocale };
 
 export function isEmailLocale(value: string): value is EmailLocale {
-  return value === "en" || value === "ru";
+  return Object.prototype.hasOwnProperty.call(emailBundles, value);
+}
+
+/** Prefer {@link isEmailLocale}; kept for call sites that already use AppLocale checks. */
+export function isSupportedEmailLocale(value: string): value is AppLocale {
+  return isAppLocale(value) && isEmailLocale(value);
 }

@@ -1,4 +1,4 @@
-import { getWebLocaleNativeName, WEB_LOCALES, type WebLocale } from "@okkey/i18n";
+import { getWebLocaleNativeName, READY_WEB_LOCALES, type WebLocale } from "@okkey/i18n";
 import { cn, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@okkey/ui";
 import type { ReactNode } from "react";
 
@@ -61,7 +61,7 @@ export default function AppShellLayout({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {WEB_LOCALES.map((code) => (
+              {READY_WEB_LOCALES.map((code) => (
                 <SelectItem key={code} value={code}>
                   {getWebLocaleNativeName(code)}
                 </SelectItem>

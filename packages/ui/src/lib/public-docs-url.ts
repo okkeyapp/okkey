@@ -1,10 +1,14 @@
+import { docsPathPrefix, FALLBACK_LOCALE, type AppLocale } from "@okkey/i18n";
+
 /**
  * Origin of the public Okkey docs site.
  * Russian is the default locale and is not prefixed. English is under `/en/`.
+ * Prefixes come from `@okkey/i18n` locale manifest (`docsPathPrefix`).
  */
 export const PUBLIC_DOCS_ORIGIN = "https://docs.okkey.io";
 
-export type PublicDocsLocale = "en" | "ru";
+/** Any app locale; unknown codes fall back to English docs paths. */
+export type PublicDocsLocale = AppLocale | string;
 
 /** Topics linked from the web UI (Learn more controls and the sidebar footer). */
 export const PUBLIC_DOCS_TOPICS = [
@@ -22,52 +26,34 @@ export const PUBLIC_DOCS_TOPICS = [
 export type PublicDocsTopic = (typeof PUBLIC_DOCS_TOPICS)[number];
 
 /**
- * Paths on the public docs site.
+ * Locale-independent path slugs on the public docs site.
  * `home` is the intro page (`/`). There is no separate help article.
  * Roles, members, profiles, and workspace vaults are separate workspace pages.
  * Generator, import, and export are separate tools pages.
  */
-const PUBLIC_DOCS_PATHS: Record<PublicDocsTopic, Record<PublicDocsLocale, string>> = {
-  home: {
-    ru: "/",
-    en: "/en/",
-  },
-  roles: {
-    ru: "/workspace/roles",
-    en: "/en/workspace/roles",
-  },
-  members: {
-    ru: "/workspace/members",
-    en: "/en/workspace/members",
-  },
-  profiles: {
-    ru: "/workspace/profiles",
-    en: "/en/workspace/profiles",
-  },
-  workspaceVaults: {
-    ru: "/workspace/vaults",
-    en: "/en/workspace/vaults",
-  },
-  generator: {
-    ru: "/tools/generator",
-    en: "/en/tools/generator",
-  },
-  import: {
-    ru: "/tools/import",
-    en: "/en/tools/import",
-  },
-  export: {
-    ru: "/tools/export",
-    en: "/en/tools/export",
-  },
-  capsules: {
-    ru: "/capsules",
-    en: "/en/capsules",
-  },
+const PUBLIC_DOCS_SLUGS: Record<PublicDocsTopic, string> = {
+  home: "/",
+  roles: "/workspace/roles",
+  members: "/workspace/members",
+  profiles: "/workspace/profiles",
+  workspaceVaults: "/workspace/vaults",
+  generator: "/tools/generator",
+  import: "/tools/import",
+  export: "/tools/export",
+  capsules: "/capsules",
 };
 
-/** Absolute docs URL for the UI locale. Opens off the vault origin. */
+function docsPathForTopic(topic: PublicDocsTopic, locale: PublicDocsLocale): string {
+  const prefix = docsPathPrefix(typeof locale === "string" ? locale : FALLBACK_LOCALE);
+  const slug = PUBLIC_DOCS_SLUGS[topic];
+  if (topic === "home") {
+    return prefix === "" ? "/" : `${prefix}/`;
+  }
+  return `${prefix}${slug}`;
+}
+
+/** Absolute docs URL for the UI locale. Opens off the vault origin. Falls back to English paths. */
 export function publicDocsUrl(topic: PublicDocsTopic, locale: PublicDocsLocale): string {
-  const path = PUBLIC_DOCS_PATHS[topic][locale];
+  const path = docsPathForTopic(topic, locale);
   return new URL(path, PUBLIC_DOCS_ORIGIN).href;
 }

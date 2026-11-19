@@ -13,6 +13,7 @@ import {
   productSemverToStoreVersion,
   resolveExtensionManifestVersion,
 } from "./extensionStoreVersion.ts";
+import { assertStoreLocalesPackageAligned } from "./storeLocales.ts";
 
 const extensionRoot = fileURLToPath(new URL("../..", import.meta.url));
 const repoRoot = fileURLToPath(new URL("../../../..", import.meta.url));
@@ -258,6 +259,7 @@ test("AMO sources allowlist includes a rebuildable workspace slice", () => {
     '"yarn.lock"',
     '"scripts/ensure-crypto-wasm-dist.mjs"',
     '"apps/extension/store/*.md"',
+    '"apps/extension/store/locales.json"',
     '"packages/api/src/**"',
     '"packages/auth/src/**"',
     '"packages/crypto/src/**"',
@@ -276,18 +278,20 @@ test("AMO sources allowlist includes a rebuildable workspace slice", () => {
   }
   assert.match(source, /description:\s*"__MSG_extDescription__"/);
   assert.match(source, /default_title:\s*"__MSG_actionTitle__"/);
-  assert.match(source, /default_locale:\s*"en"/);
+  const { config } = assertStoreLocalesPackageAligned(extensionRoot);
+  assert.equal(config.defaultLocale, "en");
+  assert.match(source, /default_locale:\s*readExtensionStoreLocalesConfig\(__dirname\)\.defaultLocale/);
   assert.match(source, /data_collection_permissions:/);
   assert.match(source, /!\*\*\/\*\.test\.ts/);
   assert.match(source, /!\*\*\/\*\.test\.tsx/);
   const popupHtml = readFileSync(`${extensionRoot}/src/entrypoints/popup/index.html`, "utf8");
   assert.match(popupHtml, /<title>__MSG_actionTitle__<\/title>/);
-  for (const locale of ["en", "ru"]) {
+  for (const locale of config.locales) {
     const messages = JSON.parse(
       readFileSync(`${extensionRoot}/public/_locales/${locale}/messages.json`, "utf8"),
     ) as { actionTitle?: { message?: string } };
     assert.equal(typeof messages.actionTitle?.message, "string");
-    assert.ok(messages.actionTitle.message.length > 0);
+    assert.ok(messages.actionTitle.message!.length > 0);
   }
 });
 

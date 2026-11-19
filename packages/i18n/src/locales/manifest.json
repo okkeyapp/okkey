@@ -1,0 +1,28 @@
+{
+  "readinessThresholdPercent": 80,
+  "defaults": {
+    "fallback": "en",
+    "web": "en",
+    "email": "en",
+    "extensionUi": "ru",
+    "storePackage": "en"
+  },
+  "locales": {
+    "en": {
+      "intl": "en-US",
+      "dir": "ltr",
+      "dateFns": "enUS",
+      "docsPathPrefix": "/en",
+      "yearMonthOrder": "month-year",
+      "ready": true
+    },
+    "ru": {
+      "intl": "ru-RU",
+      "dir": "ltr",
+      "dateFns": "ru",
+      "docsPathPrefix": "",
+      "yearMonthOrder": "year-month",
+      "ready": true
+    }
+  }
+}

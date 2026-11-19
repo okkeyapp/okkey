@@ -1,9 +1,13 @@
 import { IntlMessageFormat } from "intl-messageformat";
 
+import { FALLBACK_LOCALE, intlLocaleTag, READY_LOCALES } from "./locale-meta.js";
 import { webBundles, type WebLocale, WEB_LOCALES } from "./web-bundles.gen.js";
 
 export type { WebLocale };
 export { webBundles, WEB_LOCALES };
+
+/** Locales offered in language switchers (ready + coverage threshold). */
+export { READY_LOCALES as READY_WEB_LOCALES };
 
 export type WebMessageValues = Record<
   string,
@@ -16,7 +20,8 @@ export type WebMessageValues = Record<
 export function getWebMessagePattern(locale: WebLocale, messageKey: string): string {
   const bundle = webBundles[locale] as Record<string, string>;
   const primary = bundle[messageKey];
-  const pattern = primary ?? (webBundles.en as Record<string, string>)[messageKey];
+  const pattern =
+    primary ?? (webBundles[FALLBACK_LOCALE as WebLocale] as Record<string, string>)[messageKey];
   if (pattern === undefined) {
     throw new Error(`Missing web i18n key: ${messageKey}`);
   }
@@ -33,12 +38,12 @@ export function formatWebMessage(
 ): string {
   const bundle = webBundles[locale] as Record<string, string>;
   const primary = bundle[messageKey];
-  const pattern = primary ?? (webBundles.en as Record<string, string>)[messageKey];
+  const pattern =
+    primary ?? (webBundles[FALLBACK_LOCALE as WebLocale] as Record<string, string>)[messageKey];
   if (pattern === undefined) {
     throw new Error(`Missing web i18n key: ${messageKey}`);
   }
-  const loc = locale === "ru" ? "ru" : "en";
-  return new IntlMessageFormat(pattern, loc).format(values) as string;
+  return new IntlMessageFormat(pattern, intlLocaleTag(locale)).format(values) as string;
 }
 
 /** Label for the locale picker (each bundle defines its own `web.locale.nativeName`). */

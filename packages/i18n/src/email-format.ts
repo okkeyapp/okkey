@@ -1,15 +1,12 @@
 import { IntlMessageFormat } from "intl-messageformat";
-import type { EmailLocale } from "./email-locale.js";
-import en from "./locales/email/en.json" with { type: "json" };
-import ru from "./locales/email/ru.json" with { type: "json" };
 
-const bundles: Record<EmailLocale, Record<string, string>> = {
-  en: en as Record<string, string>,
-  ru: ru as Record<string, string>,
-};
+import { emailBundles, type EmailLocale } from "./email-bundles.gen.js";
+import { FALLBACK_LOCALE, intlLocaleTag } from "./locale-meta.js";
+
+export type { EmailLocale };
 
 function loadBundle(locale: EmailLocale): Record<string, string> {
-  return bundles[locale];
+  return emailBundles[locale] as Record<string, string>;
 }
 
 export type EmailMessageValues = Record<
@@ -26,10 +23,9 @@ export function formatEmailMessage(
   values: EmailMessageValues,
 ): string {
   const primary = loadBundle(locale)[messageKey];
-  const pattern = primary ?? loadBundle("en")[messageKey];
+  const pattern = primary ?? loadBundle(FALLBACK_LOCALE as EmailLocale)[messageKey];
   if (pattern === undefined) {
     throw new Error(`Missing email i18n key: ${messageKey}`);
   }
-  const loc = locale === "ru" ? "ru" : "en";
-  return new IntlMessageFormat(pattern, loc).format(values) as string;
+  return new IntlMessageFormat(pattern, intlLocaleTag(locale)).format(values) as string;
 }

@@ -1,5 +1,6 @@
 import { isEmailLocale, type EmailLocale } from "./email-locale.js";
 import { formatEmailMessage } from "./email-format.js";
+import { FALLBACK_LOCALE } from "./locale-meta.js";
 
 /** Fields for the shared license-request subject/body (SMTP + mailto). */
 export type LicenseRequestEmailFields = {
@@ -34,7 +35,7 @@ function dash(value: string | null | undefined): string {
 }
 
 function resolveEmailLocale(locale: string): EmailLocale {
-  return isEmailLocale(locale) ? locale : "en";
+  return isEmailLocale(locale) ? locale : FALLBACK_LOCALE;
 }
 
 /**

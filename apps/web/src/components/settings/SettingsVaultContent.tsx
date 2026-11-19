@@ -1,4 +1,4 @@
-import type { WebMessageValues } from "@okkey/i18n";
+import { intlLocaleTag, type WebMessageValues } from "@okkey/i18n";
 import { MIN_MASTER_PASSWORD_LENGTH } from "@okkey/types";
 import {
   Button,
@@ -46,7 +46,7 @@ function formatRelativePast(
   if (Number.isNaN(date.getTime())) {
     return t("web.settingsPopup.vault.masterPassword.unknownDate");
   }
-  const absolute = new Intl.DateTimeFormat(locale === "ru" ? "ru-RU" : "en-US", {
+  const absolute = new Intl.DateTimeFormat(intlLocaleTag(locale), {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
