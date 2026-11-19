@@ -64,9 +64,10 @@ export async function downloadSignedPackage(
   packageUrl: string,
   expectedSha256: string,
   fetchImpl: FeedFetch,
+  headers?: Record<string, string>,
 ): Promise<SignedOfflinePackage> {
   const url = assertHttpUrl(packageUrl).toString();
-  const body = await fetchText(url, fetchImpl);
+  const body = await fetchText(url, fetchImpl, headers);
   const actual = createHash("sha256").update(body).digest("hex");
   if (actual !== expectedSha256.toLowerCase()) {
     throw new SystemUpdateError(
