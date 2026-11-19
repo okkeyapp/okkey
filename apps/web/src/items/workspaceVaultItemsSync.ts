@@ -469,6 +469,13 @@ export function createWorkspaceVaultItemsSyncController(input: {
       }
       throw new Error(outboxFailureMessage(remaining.lastErrorCode, remaining.lastErrorMessage));
     }
+    // Purge may succeed via idempotent retry / already-gone without a contiguous
+    // append payload — always rematerialize so the item leaves local trash.
+    if (request.eventType === "ITEM_PURGE") {
+      await replayVaultIncremental(vaultId);
+      await writeCachedState(input.userId, input.workspaceId, vaultStates);
+      return;
+    }
     await materializeAfterDrain(vaultId, stateBefore, tipBefore, appended);
   }
 

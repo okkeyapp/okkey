@@ -91,6 +91,8 @@ export default function ItemDetailCard({ itemId, vaults, workspaceId: workspaceI
   const cardRootRef = useRef<HTMLDivElement>(null);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [purgeConfirmOpen, setPurgeConfirmOpen] = useState(false);
+  const [purging, setPurging] = useState(false);
+  const [purgeError, setPurgeError] = useState<string | null>(null);
   const headerScrolled = useScrollAncestorScrolled(
     cardRootRef,
     0,
@@ -252,19 +254,31 @@ export default function ItemDetailCard({ itemId, vaults, workspaceId: workspaceI
     if (!canDelete || !(listRecord?.deleted ?? false)) {
       return;
     }
+    setPurgeError(null);
     setPurgeConfirmOpen(true);
   }, [canDelete, listRecord?.deleted]);
 
   const confirmPurgeItem = useCallback(() => {
+    if (purging) {
+      return;
+    }
     void (async () => {
       if (!(await requestZoneUnlock("deletion", { persist: false }))) {
         return;
       }
-      await purgeItem(itemId);
-      setSearchParams((prev) => withoutOpenItemQueryParam(prev, [itemId]), { replace: true });
-      setPurgeConfirmOpen(false);
+      setPurging(true);
+      setPurgeError(null);
+      try {
+        await purgeItem(itemId);
+        setSearchParams((prev) => withoutOpenItemQueryParam(prev, [itemId]), { replace: true });
+        setPurgeConfirmOpen(false);
+      } catch {
+        setPurgeError(t("web.purgeItemsConfirmPopup.error"));
+      } finally {
+        setPurging(false);
+      }
     })();
-  }, [itemId, purgeItem, requestZoneUnlock, setSearchParams]);
+  }, [itemId, purgeItem, purging, requestZoneUnlock, setSearchParams, t]);
 
   const confirmDeleteItem = useCallback(() => {
     void (async () => {
@@ -434,8 +448,16 @@ export default function ItemDetailCard({ itemId, vaults, workspaceId: workspaceI
       <PurgeItemsConfirmPopup
         open={purgeConfirmOpen}
         mode="single"
+        purging={purging}
+        errorMessage={purgeError}
         t={t}
-        onClose={() => setPurgeConfirmOpen(false)}
+        onClose={() => {
+          if (purging) {
+            return;
+          }
+          setPurgeConfirmOpen(false);
+          setPurgeError(null);
+        }}
         onConfirm={confirmPurgeItem}
       />
 

@@ -987,6 +987,7 @@
   "web.purgeItemsConfirmPopup.emptyTrashTitle": "Empty trash?",
   "web.purgeItemsConfirmPopup.emptyTrashDescription": "All items in Recently deleted that you are allowed to delete will be permanently deleted. This action cannot be undone.",
   "web.purgeItemsConfirmPopup.emptyTrashConfirm": "Empty trash",
+  "web.purgeItemsConfirmPopup.error": "Could not permanently delete. Check your connection and try again.",
   "web.deleteCapsulesConfirmPopup.titleSingle": "Delete capsule?",
   "web.deleteCapsulesConfirmPopup.titleMultiple": "Delete capsules?",
   "web.deleteCapsulesConfirmPopup.descriptionSingle": "The capsule will be permanently deleted. Its link will stop working.",

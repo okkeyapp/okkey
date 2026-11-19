@@ -256,6 +256,26 @@ export class SyncOutboxClient {
 
   async enqueue(payload: OutboxEntryPayload): Promise<OutboxEntry> {
     await this.ensureLoaded();
+    // Deduplicate ITEM_PURGE retries / double-clicks for the same item so a
+    // single batch cannot carry two purges that race on the server.
+    if (
+      payload.request.eventType === "ITEM_PURGE" &&
+      typeof payload.request.referencedItemId === "string" &&
+      payload.request.referencedItemId.length > 0
+    ) {
+      const existing = this.entries.find(
+        (entry) =>
+          entry.vaultId === payload.vaultId &&
+          entry.request.eventType === "ITEM_PURGE" &&
+          entry.request.referencedItemId === payload.request.referencedItemId &&
+          (entry.status === "pending" ||
+            entry.status === "sending" ||
+            entry.status === "failed"),
+      );
+      if (existing) {
+        return { ...existing, request: { ...existing.request } };
+      }
+    }
     if (this.entries.length >= this.maxQueueSize) {
       throw new Error("OUTBOX_CAPACITY_REACHED");
     }
@@ -351,6 +371,18 @@ export class SyncOutboxClient {
     const touchedViaReplay =
       isSameItemMutation && referencedItemId ? replay.items.has(referencedItemId) : false;
     if (touchedViaWire || touchedViaReplay) {
+      // ITEM_PURGE: peer/self already purged — rebase and retry; server returns
+      // the existing tombstone as an idempotent success.
+      if (entry.request.eventType === "ITEM_PURGE") {
+        entry.request.baseVersion = conflict.latestVersion;
+        entry.status = "pending";
+        entry.nextAttemptAtMs = this.nowMs();
+        entry.lastErrorCode = undefined;
+        entry.lastErrorMessage = undefined;
+        entry.updatedAtMs = this.nowMs();
+        this.options.hooks?.onConflictResolved?.(entry);
+        return;
+      }
       entry.status = "dead";
       entry.lastErrorCode = ITEM_UPDATE_CONFLICT;
       entry.lastErrorMessage = "item was updated concurrently";
@@ -447,6 +479,14 @@ export class SyncOutboxClient {
     entry.lastErrorCode = parsed.code;
     entry.lastErrorMessage = parsed.message;
     entry.updatedAtMs = this.nowMs();
+    if (
+      entry.request.eventType === "ITEM_PURGE" &&
+      (parsed.code === "SYNC_ITEM_NOT_IN_TRASH" || parsed.code === "SYNC_ITEM_NOT_FOUND")
+    ) {
+      // Already purged (or history already cleared) — treat as success.
+      this.entries = this.entries.filter((candidate) => candidate.id !== entry.id);
+      return;
+    }
     if (
       this.isTerminalConflict(parsed) ||
       entry.attemptCount >= this.maxAttempts ||

@@ -65,7 +65,7 @@ const SYNC_EVENT_TYPES = new Set([
 
 const ITEM_EVENT_TYPES = new Set(["ITEM_CREATE", "ITEM_UPDATE", "ITEM_DELETE", "ITEM_PURGE"]);
 
-const EVENT_TYPES_REQUIRING_IDEMPOTENCY = new Set(["ITEM_CREATE"]);
+const EVENT_TYPES_REQUIRING_IDEMPOTENCY = new Set(["ITEM_CREATE", "ITEM_PURGE"]);
 
 /** Max decoded ciphertext size per event (DoS guard). */
 export const SYNC_MAX_ENCRYPTED_PAYLOAD_BYTES = 512 * 1024;
@@ -96,7 +96,17 @@ type PreparedAppendIdempotent = {
   itemDeletedAtMs?: number;
 };
 
-type PreparedAppend = PreparedAppendInsert | PreparedAppendIdempotent;
+/** Second+ ITEM_PURGE for the same item inside one batch — reuse the first response. */
+type PreparedAppendBatchDuplicatePurge = {
+  kind: "batch_duplicate_purge";
+  referencedItemId: string;
+  itemDeletedAtMs?: number;
+};
+
+type PreparedAppend =
+  | PreparedAppendInsert
+  | PreparedAppendIdempotent
+  | PreparedAppendBatchDuplicatePurge;
 
 export class SyncServiceError extends Error {
   readonly code: string;
@@ -126,6 +136,7 @@ export interface SyncServiceDeps {
     | "deleteByVaultAndReferencedItemIdExcept"
     | "hasItemCreateEvent"
     | "findByIdempotencyKey"
+    | "findItemPurgeEvent"
   > & {
     appendBatch?: EventsRepository["appendBatch"];
   };
@@ -366,10 +377,12 @@ export class SyncService {
 
     try {
       const batchCreatedItemIds = new Set<string>();
+      const batchPurgedItemIds = new Set<string>();
       const preparedList: PreparedAppend[] = [];
       for (const input of inputs) {
         const prepared = await this.prepareAppend(vaultId, userId, vault, input, {
           batchCreatedItemIds,
+          batchPurgedItemIds,
         });
         preparedList.push(prepared);
         if (
@@ -378,6 +391,13 @@ export class SyncService {
           prepared.storage.referencedItemId
         ) {
           batchCreatedItemIds.add(prepared.storage.referencedItemId);
+        }
+        if (
+          prepared.kind === "insert" &&
+          prepared.storage.eventType === "ITEM_PURGE" &&
+          prepared.storage.referencedItemId
+        ) {
+          batchPurgedItemIds.add(prepared.storage.referencedItemId);
         }
       }
 
@@ -399,11 +419,27 @@ export class SyncService {
       }
 
       const out: SyncEventResponse[] = new Array(preparedList.length);
+      const firstPurgeByItemId = new Map<string, SyncEventResponse>();
       let insertCursor = 0;
       for (let i = 0; i < preparedList.length; i += 1) {
         const prepared = preparedList[i]!;
         if (prepared.kind === "idempotent") {
           out[i] = mapEventToResponse(prepared.event);
+          if (prepared.event.eventType === "ITEM_PURGE" && prepared.event.referencedItemId) {
+            firstPurgeByItemId.set(prepared.event.referencedItemId, out[i]!);
+          }
+          continue;
+        }
+        if (prepared.kind === "batch_duplicate_purge") {
+          const prior = firstPurgeByItemId.get(prepared.referencedItemId);
+          if (!prior) {
+            throw new SyncServiceError(
+              "INTERNAL_SERVER_ERROR",
+              500,
+              "duplicate ITEM_PURGE in batch without a prior purge response",
+            );
+          }
+          out[i] = prior;
           continue;
         }
         const row = insertedRows[insertCursor]!;
@@ -411,6 +447,9 @@ export class SyncService {
         await this.applySoftDeleteIndex(vaultId, row, prepared.itemDeletedAtMs);
         await this.applyItemPurgeCleanup(vaultId, row);
         out[i] = mapEventToResponse(row);
+        if (row.eventType === "ITEM_PURGE" && row.referencedItemId) {
+          firstPurgeByItemId.set(row.referencedItemId, out[i]!);
+        }
       }
       recordCryptoOperationOutcome(this.log, {
         operation,
@@ -535,7 +574,10 @@ export class SyncService {
     userId: string,
     vault: VaultRecord,
     input: SyncAppendEventInput,
-    options?: { batchCreatedItemIds?: ReadonlySet<string> },
+    options?: {
+      batchCreatedItemIds?: ReadonlySet<string>;
+      batchPurgedItemIds?: ReadonlySet<string>;
+    },
   ): Promise<PreparedAppend> {
     if (!SYNC_EVENT_TYPES.has(input.eventType)) {
       throw new SyncServiceError("SYNC_INVALID_EVENT_TYPE", 400, "invalid eventType");
@@ -647,6 +689,18 @@ export class SyncService {
       }
     }
 
+    // Same idempotency key → return the committed row (retry after 502 / drop).
+    if (input.idempotencyKey) {
+      const existingByKey = await this.events.findByIdempotencyKey(vaultId, input.idempotencyKey);
+      if (existingByKey && existingByKey.eventType === input.eventType) {
+        return {
+          kind: "idempotent",
+          event: existingByKey,
+          itemDeletedAtMs: input.itemDeletedAtMs,
+        };
+      }
+    }
+
     let referencedItemId: string | null = null;
     if (input.referencedItemId !== undefined && input.referencedItemId !== "") {
       if (!isEntityId(input.referencedItemId)) {
@@ -663,6 +717,25 @@ export class SyncService {
         400,
         "referencedItemId is required for item events",
       );
+    }
+
+    // ITEM_PURGE is idempotent per item: a second purge (new key / retry) is a no-op success.
+    if (input.eventType === "ITEM_PURGE" && referencedItemId) {
+      const existingPurge = await this.events.findItemPurgeEvent(vaultId, referencedItemId);
+      if (existingPurge) {
+        return {
+          kind: "idempotent",
+          event: existingPurge,
+          itemDeletedAtMs: input.itemDeletedAtMs,
+        };
+      }
+      if (options?.batchPurgedItemIds?.has(referencedItemId)) {
+        return {
+          kind: "batch_duplicate_purge",
+          referencedItemId,
+          itemDeletedAtMs: input.itemDeletedAtMs,
+        };
+      }
     }
 
     const batchCreated = options?.batchCreatedItemIds;

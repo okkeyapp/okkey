@@ -987,6 +987,7 @@
   "web.purgeItemsConfirmPopup.emptyTrashTitle": "Очистить корзину?",
   "web.purgeItemsConfirmPopup.emptyTrashDescription": "Все записи в «Недавно удалённые», которые вы можете удалить, будут удалены безвозвратно. Это действие нельзя отменить.",
   "web.purgeItemsConfirmPopup.emptyTrashConfirm": "Очистить корзину",
+  "web.purgeItemsConfirmPopup.error": "Не удалось удалить безвозвратно. Проверьте соединение и попробуйте снова.",
   "web.deleteCapsulesConfirmPopup.titleSingle": "Удалить капсулу?",
   "web.deleteCapsulesConfirmPopup.titleMultiple": "Удалить капсулы?",
   "web.deleteCapsulesConfirmPopup.descriptionSingle": "Капсула будет удалена без возможности восстановления. Ссылка перестанет работать.",

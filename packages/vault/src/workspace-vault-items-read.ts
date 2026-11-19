@@ -460,6 +460,11 @@ export function createWorkspaceVaultItemsReadController(input: {
           : "OUTBOX_ENTRY_NOT_APPENDED",
       );
     }
+    if (request.eventType === "ITEM_PURGE") {
+      await replayVaultIncremental(vaultId);
+      await writeCachedState(input.userId, input.workspaceId, vaultStates);
+      return;
+    }
     // Clean write: apply POST response locally and skip list GET (incl. empty tail).
     // After VERSION_MISMATCH rebase, versions may gap — fall back to incremental replay.
     if (areContiguousEventVersions(appended, tipBefore)) {

@@ -62,3 +62,17 @@ test("purgeItem keepEventId uses except-delete", async () => {
   });
   assert.equal(kept, "e-purge");
 });
+
+test("EventsRepository purge deletes never target ITEM_PURGE SQL", async () => {
+  // Guard against regressions that wipe tombstones (and tip versions) on cleanup.
+  const { readFileSync } = await import("node:fs");
+  const { fileURLToPath } = await import("node:url");
+  const { dirname, join } = await import("node:path");
+  const root = join(dirname(fileURLToPath(import.meta.url)), "../src/storage/repositories.ts");
+  const source = readFileSync(root, "utf8");
+  assert.match(source, /event_type <> 'ITEM_PURGE'/);
+  assert.match(
+    source,
+    /async deleteByVaultAndReferencedItemIdExcept[\s\S]*event_type <> 'ITEM_PURGE'/,
+  );
+});

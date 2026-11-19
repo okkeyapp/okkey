@@ -263,6 +263,7 @@ function syncService(mode: CryptoRolloutMode, signer: Signer): SyncService {
       listAfterVersion: async () => [],
       hasItemCreateEvent: async () => true,
       findByIdempotencyKey: async () => null,
+      findItemPurgeEvent: async () => null,
       deleteByVaultAndReferencedItemId: async () => {},
       deleteByVaultAndReferencedItemIdExcept: async () => {},
       append: async (input) => ({

@@ -49,4 +49,18 @@ describe("PurgeItemsConfirmPopup", () => {
     );
     expect(container).toBeEmptyDOMElement();
   });
+
+  it("keeps the dialog open and shows an error message", () => {
+    render(
+      <PurgeItemsConfirmPopup
+        open
+        mode="single"
+        errorMessage="web.purgeItemsConfirmPopup.error"
+        t={t}
+        onClose={() => undefined}
+        onConfirm={() => undefined}
+      />,
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent("web.purgeItemsConfirmPopup.error");
+  });
 });

@@ -6,6 +6,8 @@ type PurgeItemsConfirmPopupProps = {
   /** `single` = one item; `multiple` = selected; `emptyTrash` = all purgeable trash items. */
   mode: "single" | "multiple" | "emptyTrash";
   purging?: boolean;
+  /** Shown under the description when a purge attempt fails; keeps the dialog open. */
+  errorMessage?: string | null;
   t: (messageKey: string, values?: WebMessageValues) => string;
   onClose: () => void;
   onConfirm: () => void;
@@ -19,6 +21,7 @@ export function PurgeItemsConfirmPopup({
   open,
   mode,
   purging = false,
+  errorMessage = null,
   t,
   onClose,
   onConfirm,
@@ -76,6 +79,11 @@ export function PurgeItemsConfirmPopup({
       }
     >
       <p className="w-full text-sm leading-5 text-muted-foreground">{t(descriptionKey)}</p>
+      {errorMessage ? (
+        <p className="mt-3 w-full text-sm leading-5 text-destructive" role="alert">
+          {errorMessage}
+        </p>
+      ) : null}
     </Popup>
   );
 }

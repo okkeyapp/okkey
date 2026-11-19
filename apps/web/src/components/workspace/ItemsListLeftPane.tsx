@@ -803,6 +803,8 @@ export default function ItemsListLeftPane({
     | { kind: "emptyTrash" }
     | null
   >(null);
+  const [purging, setPurging] = useState(false);
+  const [purgeError, setPurgeError] = useState<string | null>(null);
 
   const vaultMeta = vaultQ ? vaults.find((v) => v.id === vaultQ) : undefined;
   const folderPath = folderQ ? findWorkspaceFolderPathById(folderTree, folderQ) : "";
@@ -1105,6 +1107,7 @@ export default function ItemsListLeftPane({
     if (!row.deleted || !rowActionPermits(row).canDelete) {
       return;
     }
+    setPurgeError(null);
     setPurgeConfirm({ kind: "single", row });
   };
 
@@ -1121,33 +1124,42 @@ export default function ItemsListLeftPane({
     if (!purgeableTrashRows.length) {
       return;
     }
+    setPurgeError(null);
     setPurgeConfirm({ kind: "emptyTrash" });
   };
 
   const confirmPendingPurge = () => {
-    if (!purgeConfirm) {
+    if (!purgeConfirm || purging) {
       return;
     }
     void (async () => {
       if (!(await requestZoneUnlock("deletion", { persist: false }))) {
         return;
       }
-      if (purgeConfirm.kind === "single") {
-        const row = purgeConfirm.row;
-        await purgeItem(row.id);
-        setSearchParams((prev) => withoutOpenItemQueryParam(prev, [row.id]), { replace: true });
-      } else if (purgeConfirm.kind === "bulk") {
-        const itemIds = purgeConfirm.rows.map((row) => row.id);
-        await finishBulkSelection(async () => {
+      setPurging(true);
+      setPurgeError(null);
+      try {
+        if (purgeConfirm.kind === "single") {
+          const row = purgeConfirm.row;
+          await purgeItem(row.id);
+          setSearchParams((prev) => withoutOpenItemQueryParam(prev, [row.id]), { replace: true });
+        } else if (purgeConfirm.kind === "bulk") {
+          const itemIds = purgeConfirm.rows.map((row) => row.id);
+          await finishBulkSelection(async () => {
+            await purgeItems(itemIds);
+            setSearchParams((prev) => withoutOpenItemQueryParam(prev, itemIds), { replace: true });
+          });
+        } else {
+          const itemIds = purgeableTrashRows.map((row) => row.id);
           await purgeItems(itemIds);
           setSearchParams((prev) => withoutOpenItemQueryParam(prev, itemIds), { replace: true });
-        });
-      } else {
-        const itemIds = purgeableTrashRows.map((row) => row.id);
-        await purgeItems(itemIds);
-        setSearchParams((prev) => withoutOpenItemQueryParam(prev, itemIds), { replace: true });
+        }
+        setPurgeConfirm(null);
+      } catch {
+        setPurgeError(t("web.purgeItemsConfirmPopup.error"));
+      } finally {
+        setPurging(false);
       }
-      setPurgeConfirm(null);
     })();
   };
 
@@ -1690,6 +1702,7 @@ export default function ItemsListLeftPane({
                     if (!rows.length) {
                       return;
                     }
+                    setPurgeError(null);
                     setPurgeConfirm({ kind: "bulk", rows });
                   }}
                 >
@@ -1719,8 +1732,16 @@ export default function ItemsListLeftPane({
               ? "multiple"
               : "single"
         }
+        purging={purging}
+        errorMessage={purgeError}
         t={t}
-        onClose={() => setPurgeConfirm(null)}
+        onClose={() => {
+          if (purging) {
+            return;
+          }
+          setPurgeConfirm(null);
+          setPurgeError(null);
+        }}
         onConfirm={confirmPendingPurge}
       />
     </div>

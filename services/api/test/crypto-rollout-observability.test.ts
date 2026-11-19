@@ -57,6 +57,7 @@ function createSyncServiceWithLogger(config: {
       listAfterVersion: async () => [],
       hasItemCreateEvent: async () => true,
       findByIdempotencyKey: async () => null,
+      findItemPurgeEvent: async () => null,
       append: async (input) => ({
         id: "e1",
         vaultId: input.vaultId,

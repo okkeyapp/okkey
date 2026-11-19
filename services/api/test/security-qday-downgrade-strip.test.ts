@@ -56,6 +56,7 @@ function createSyncService(
       listAfterVersion: async () => [],
       hasItemCreateEvent: async () => true,
       findByIdempotencyKey: async () => null,
+      findItemPurgeEvent: async () => null,
       append: async (input) => {
         await appendImpl({ payloadSchemaVersion: input.payloadSchemaVersion ?? 2 });
         return {

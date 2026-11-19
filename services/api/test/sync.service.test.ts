@@ -49,6 +49,7 @@ test("listEvents returns mapped events for readable vault", async () => {
       ],
       hasItemCreateEvent: async () => true,
       findByIdempotencyKey: async () => null,
+      findItemPurgeEvent: async () => null,
       append: async () => {
         throw new Error("not used");
       },
@@ -80,6 +81,7 @@ test("appendEvent validates event type", async () => {
       listAfterVersion: async () => [],
       hasItemCreateEvent: async () => true,
       findByIdempotencyKey: async () => null,
+      findItemPurgeEvent: async () => null,
       append: async () => {
         throw new Error("not used");
       },
@@ -119,6 +121,7 @@ test("appendEvent maps version conflict", async () => {
       listAfterVersion: async () => [],
       hasItemCreateEvent: async () => true,
       findByIdempotencyKey: async () => null,
+      findItemPurgeEvent: async () => null,
       append: async () => {
         throw new VersionConflictError(1, 5);
       },
@@ -161,6 +164,7 @@ test("appendEvent rejects FOLDER_CREATE on vault stream", async () => {
       listAfterVersion: async () => [],
       hasItemCreateEvent: async () => true,
       findByIdempotencyKey: async () => null,
+      findItemPurgeEvent: async () => null,
       append: async () => {
         throw new Error("not used");
       },
@@ -201,6 +205,7 @@ test("appendEvent requires idempotencyKey for ITEM_CREATE", async () => {
       listAfterVersion: async () => [],
       hasItemCreateEvent: async () => false,
       findByIdempotencyKey: async () => null,
+      findItemPurgeEvent: async () => null,
       append: async () => {
         throw new Error("not used");
       },
@@ -256,6 +261,7 @@ test("appendEvent rejects ITEM_CREATE in shared vault without sharedVaults plan"
       listAfterVersion: async () => [],
       hasItemCreateEvent: async () => false,
       findByIdempotencyKey: async () => null,
+      findItemPurgeEvent: async () => null,
       append: async () => {
         throw new Error("not used");
       },
@@ -297,6 +303,7 @@ test("appendEvent rejects ITEM_UPDATE when ITEM_CREATE is missing", async () => 
       listAfterVersion: async () => [],
       hasItemCreateEvent: async () => false,
       findByIdempotencyKey: async () => null,
+      findItemPurgeEvent: async () => null,
       append: async () => {
         throw new Error("not used");
       },
@@ -356,6 +363,7 @@ test("appendEvent allows ITEM_UPDATE in shared vault without sharedVaults plan",
       listAfterVersion: async () => [],
       hasItemCreateEvent: async () => true,
       findByIdempotencyKey: async () => null,
+      findItemPurgeEvent: async () => null,
       append: async () => ({
         id: "e1",
         vaultId: "1000000000000000004",
@@ -406,6 +414,7 @@ test("appendEvent persists itemSoftDeleted=true for ITEM_DELETE", async () => {
       listAfterVersion: async () => [],
       hasItemCreateEvent: async () => true,
       findByIdempotencyKey: async () => null,
+      findItemPurgeEvent: async () => null,
       append: async (input) => {
         capturedSoft = input.itemSoftDeleted ?? null;
         return {
@@ -467,6 +476,7 @@ test("appendEvent persists itemSoftDeleted=true for soft-delete ITEM_UPDATE on s
       listAfterVersion: async () => [],
       hasItemCreateEvent: async () => true,
       findByIdempotencyKey: async () => null,
+      findItemPurgeEvent: async () => null,
       append: async (input) => {
         capturedSoft = input.itemSoftDeleted ?? null;
         return {
@@ -543,6 +553,7 @@ test("appendEvent does not upsert softDeletes when idempotent row lacks soft-del
       listAfterVersion: async () => [],
       hasItemCreateEvent: async () => true,
       findByIdempotencyKey: async () => existing,
+      findItemPurgeEvent: async () => null,
       append: async () => existing,
       deleteByVaultAndReferencedItemId: async () => 0,
       deleteByVaultAndReferencedItemIdExcept: async () => 0,
@@ -589,6 +600,7 @@ test("appendEvent persists itemSoftDeleted=false when omitted on ITEM_UPDATE", a
       listAfterVersion: async () => [],
       hasItemCreateEvent: async () => true,
       findByIdempotencyKey: async () => null,
+      findItemPurgeEvent: async () => null,
       append: async (input) => {
         capturedSoft = input.itemSoftDeleted ?? null;
         return {
@@ -640,6 +652,7 @@ test("appendEvent rejects oversized payload", async () => {
       listAfterVersion: async () => [],
       hasItemCreateEvent: async () => true,
       findByIdempotencyKey: async () => null,
+      findItemPurgeEvent: async () => null,
       append: async () => {
         throw new Error("not used");
       },
@@ -683,6 +696,7 @@ test("appendEvent rejects strip attack: missing crypto_version in encryptedBlob"
       listAfterVersion: async () => [],
       hasItemCreateEvent: async () => true,
       findByIdempotencyKey: async () => null,
+      findItemPurgeEvent: async () => null,
       append: async () => {
         throw new Error("not used");
       },
@@ -728,6 +742,7 @@ test("appendEvent rejects strip attack: legacy encryptedBlob string when legacy 
       listAfterVersion: async () => [],
       hasItemCreateEvent: async () => true,
       findByIdempotencyKey: async () => null,
+      findItemPurgeEvent: async () => null,
       append: async () => {
         throw new Error("not used");
       },
@@ -757,6 +772,7 @@ test("listEvents returns VAULT_NOT_FOUND when vault does not exist", async () =>
       listAfterVersion: async () => [],
       hasItemCreateEvent: async () => true,
       findByIdempotencyKey: async () => null,
+      findItemPurgeEvent: async () => null,
       append: async () => {
         throw new Error("not used");
       },
@@ -789,6 +805,7 @@ test("listEvents returns ACCESS_DENIED when user cannot read vault", async () =>
       listAfterVersion: async () => [],
       hasItemCreateEvent: async () => true,
       findByIdempotencyKey: async () => null,
+      findItemPurgeEvent: async () => null,
       append: async () => {
         throw new Error("not used");
       },
@@ -812,6 +829,7 @@ test("appendEvent returns VAULT_NOT_FOUND when vault does not exist", async () =
       listAfterVersion: async () => [],
       hasItemCreateEvent: async () => true,
       findByIdempotencyKey: async () => null,
+      findItemPurgeEvent: async () => null,
       append: async () => {
         throw new Error("not used");
       },
@@ -850,6 +868,7 @@ test("appendEvent returns ACCESS_DENIED when user cannot read vault", async () =
       listAfterVersion: async () => [],
       hasItemCreateEvent: async () => true,
       findByIdempotencyKey: async () => null,
+      findItemPurgeEvent: async () => null,
       append: async () => {
         throw new Error("not used");
       },
@@ -888,6 +907,7 @@ test("appendEvent maps CryptoDowngradeInvariantError to CRYPTO_DOWNGRADE_NOT_ALL
       listAfterVersion: async () => [],
       hasItemCreateEvent: async () => true,
       findByIdempotencyKey: async () => null,
+      findItemPurgeEvent: async () => null,
       append: async () => {
         throw new CryptoDowngradeInvariantError("1000000000000000002", 2, 1);
       },
@@ -968,6 +988,7 @@ test("appendEvent rejects disallowed crypto profile by policy", async () => {
       listAfterVersion: async () => [],
       hasItemCreateEvent: async () => true,
       findByIdempotencyKey: async () => null,
+      findItemPurgeEvent: async () => null,
       append: async () => {
         throw new Error("not used");
       },
@@ -1010,6 +1031,7 @@ test("appendEvent preserves encryptedBlob crypto_version", async () => {
       listAfterVersion: async () => [],
       hasItemCreateEvent: async () => true,
       findByIdempotencyKey: async () => null,
+      findItemPurgeEvent: async () => null,
       append: async (input) => {
         capturedVersion = input.payloadSchemaVersion;
         return {
@@ -1072,6 +1094,7 @@ test("appendEvent strict mode rejects actor without PQ capability", async () => 
       listAfterVersion: async () => [],
       hasItemCreateEvent: async () => true,
       findByIdempotencyKey: async () => null,
+      findItemPurgeEvent: async () => null,
       append: async () => {
         throw new Error("not used");
       },
@@ -1126,6 +1149,7 @@ test("appendEvent compat mode allows actor without PQ capability", async () => {
       listAfterVersion: async () => [],
       hasItemCreateEvent: async () => true,
       findByIdempotencyKey: async () => null,
+      findItemPurgeEvent: async () => null,
       append: async (input) => ({
         id: "e1",
         vaultId: input.vaultId,
@@ -1188,6 +1212,7 @@ test("appendEvent strict mode requires signature for VAULT_SHARE", async () => {
       listAfterVersion: async () => [],
       hasItemCreateEvent: async () => true,
       findByIdempotencyKey: async () => null,
+      findItemPurgeEvent: async () => null,
       append: async () => {
         throw new Error("not used");
       },
@@ -1242,6 +1267,7 @@ test("appendEvent rejects malformed signature envelope when provided", async () 
       listAfterVersion: async () => [],
       hasItemCreateEvent: async () => true,
       findByIdempotencyKey: async () => null,
+      findItemPurgeEvent: async () => null,
       append: async () => {
         throw new Error("not used");
       },
@@ -1295,6 +1321,7 @@ test("appendEvent rejects duplicate ITEM_CREATE for the same referencedItemId", 
       listAfterVersion: async () => [],
       hasItemCreateEvent: async () => true,
       findByIdempotencyKey: async () => null,
+      findItemPurgeEvent: async () => null,
       append: async () => {
         throw new Error("append must not be called");
       },
@@ -1351,6 +1378,7 @@ test("appendEvent returns existing ITEM_CREATE on matching idempotency retry", a
       listAfterVersion: async () => [],
       hasItemCreateEvent: async () => true,
       findByIdempotencyKey: async () => existing,
+      findItemPurgeEvent: async () => null,
       append: async () => {
         throw new Error("append must not be called for idempotent retry");
       },
@@ -1411,6 +1439,7 @@ test("appendEvents retries the same idempotency keys without a second insert", a
         ),
       findByIdempotencyKey: async (_vault, key) =>
         stored.find((row) => row.idempotencyKey === key) ?? null,
+      findItemPurgeEvent: async () => null,
       append: async () => {
         throw new Error("single append must not be used");
       },
@@ -1473,6 +1502,7 @@ test("appendEvents maps a batch version conflict to 409", async () => {
       listAfterVersion: async () => [],
       hasItemCreateEvent: async () => false,
       findByIdempotencyKey: async () => null,
+      findItemPurgeEvent: async () => null,
       append: async () => {
         throw new Error("not used");
       },
@@ -1519,6 +1549,7 @@ test("appendEvent ITEM_PURGE rejects when item is not in trash", async () => {
       listAfterVersion: async () => [],
       hasItemCreateEvent: async () => true,
       findByIdempotencyKey: async () => null,
+      findItemPurgeEvent: async () => null,
       append: async () => {
         throw new Error("should not append");
       },
@@ -1538,6 +1569,7 @@ test("appendEvent ITEM_PURGE rejects when item is not in trash", async () => {
         eventType: "ITEM_PURGE",
         encryptedBlob: mkBlob("x"),
         baseVersion: 1,
+        idempotencyKey: testEntityId(),
         referencedItemId: TEST_ITEM_ID,
       }),
     (error: unknown) =>
@@ -1551,6 +1583,7 @@ test("appendEvent ITEM_PURGE keeps tombstone and purges prior history", async ()
   let exceptCalls = 0;
   let softDeleteRemoves = 0;
   let purgedKeepId = "";
+  const purgeKey = testEntityId();
   const service = new SyncService({
     vaults: {
       findById: async () => ({
@@ -1569,6 +1602,7 @@ test("appendEvent ITEM_PURGE keeps tombstone and purges prior history", async ()
       listAfterVersion: async () => [],
       hasItemCreateEvent: async () => true,
       findByIdempotencyKey: async () => null,
+      findItemPurgeEvent: async () => null,
       append: async (input) => ({
         id: "e-purge",
         vaultId: "1000000000000000004",
@@ -1576,7 +1610,7 @@ test("appendEvent ITEM_PURGE keeps tombstone and purges prior history", async ()
         eventType: "ITEM_PURGE",
         encryptedPayload: input.encryptedPayload,
         payloadSchemaVersion: input.payloadSchemaVersion ?? 2,
-        idempotencyKey: null,
+        idempotencyKey: input.idempotencyKey ?? null,
         clientCreatedAt: null,
         referencedItemId: input.referencedItemId ?? null,
         itemSoftDeleted: input.itemSoftDeleted ?? null,
@@ -1603,6 +1637,7 @@ test("appendEvent ITEM_PURGE keeps tombstone and purges prior history", async ()
     eventType: "ITEM_PURGE",
     encryptedBlob: mkBlob("x"),
     baseVersion: 2,
+    idempotencyKey: purgeKey,
     referencedItemId: TEST_ITEM_ID,
   });
   assert.equal(event.eventType, "ITEM_PURGE");
@@ -1631,6 +1666,7 @@ test("appendEvent ITEM_PURGE rejects when ITEM_CREATE is missing", async () => {
       listAfterVersion: async () => [],
       hasItemCreateEvent: async () => false,
       findByIdempotencyKey: async () => null,
+      findItemPurgeEvent: async () => null,
       append: async () => {
         throw new Error("should not append");
       },
@@ -1650,6 +1686,7 @@ test("appendEvent ITEM_PURGE rejects when ITEM_CREATE is missing", async () => {
         eventType: "ITEM_PURGE",
         encryptedBlob: mkBlob("x"),
         baseVersion: 1,
+        idempotencyKey: testEntityId(),
         referencedItemId: TEST_ITEM_ID,
       }),
     (error: unknown) =>
@@ -1657,4 +1694,142 @@ test("appendEvent ITEM_PURGE rejects when ITEM_CREATE is missing", async () => {
       error.code === "SYNC_ITEM_NOT_FOUND" &&
       error.statusCode === 404,
   );
+});
+
+test("appendEvent ITEM_PURGE is idempotent when tombstone already exists", async () => {
+  const existing = {
+    id: "e-purge-existing",
+    vaultId: "1000000000000000004",
+    actorId: "1000000000000000003",
+    eventType: "ITEM_PURGE",
+    encryptedPayload: new Uint8Array([1]),
+    payloadSchemaVersion: 2,
+    idempotencyKey: testEntityId(),
+    clientCreatedAt: null,
+    referencedItemId: TEST_ITEM_ID,
+    itemSoftDeleted: false,
+    version: 9,
+    createdAt: "2026-01-01T00:00:00.000Z",
+  };
+  let appendCalls = 0;
+  const service = new SyncService({
+    vaults: {
+      findById: async () => ({
+        id: "1000000000000000004",
+        workspaceId: "1000000000000000001",
+        name: "Shared",
+        isPersonal: false,
+        ownerId: "1000000000000000003",
+        cryptoVersion: 2,
+        createdAt: "",
+        updatedAt: "",
+      }),
+      canReadVault: async () => true,
+    },
+    events: {
+      listAfterVersion: async () => [],
+      hasItemCreateEvent: async () => false,
+      findByIdempotencyKey: async () => null,
+      findItemPurgeEvent: async () => existing,
+      append: async () => {
+        appendCalls += 1;
+        throw new Error("should not append");
+      },
+      deleteByVaultAndReferencedItemIdExcept: async () => 0,
+    },
+    softDeletes: {
+      upsert: async () => {},
+      remove: async () => {},
+      exists: async () => false,
+    },
+  });
+
+  const event = await service.appendEvent("1000000000000000004", "1000000000000000003", {
+    eventType: "ITEM_PURGE",
+    encryptedBlob: mkBlob("retry"),
+    baseVersion: 8,
+    idempotencyKey: testEntityId(),
+    referencedItemId: TEST_ITEM_ID,
+  });
+  assert.equal(event.id, "e-purge-existing");
+  assert.equal(event.version, 9);
+  assert.equal(appendCalls, 0);
+});
+
+test("appendEvents dedupes duplicate ITEM_PURGE for the same item in one batch", async () => {
+  const itemId = TEST_ITEM_ID;
+  let insertCalls = 0;
+  let exceptCalls = 0;
+  const service = new SyncService({
+    vaults: {
+      findById: async () => ({
+        id: "1000000000000000004",
+        workspaceId: "1000000000000000001",
+        name: "Shared",
+        isPersonal: false,
+        ownerId: "1000000000000000003",
+        cryptoVersion: 2,
+        createdAt: "",
+        updatedAt: "",
+      }),
+      canReadVault: async () => true,
+    },
+    events: {
+      listAfterVersion: async () => [],
+      hasItemCreateEvent: async () => true,
+      findByIdempotencyKey: async () => null,
+      findItemPurgeEvent: async () => null,
+      append: async () => {
+        throw new Error("single append must not be used");
+      },
+      appendBatch: async (inputs) => {
+        insertCalls += inputs.length;
+        return inputs.map((input, index) => ({
+          id: `e-purge-${index}`,
+          vaultId: input.vaultId,
+          actorId: input.actorId ?? null,
+          eventType: input.eventType,
+          encryptedPayload: input.encryptedPayload,
+          payloadSchemaVersion: input.payloadSchemaVersion ?? 2,
+          idempotencyKey: input.idempotencyKey ?? null,
+          clientCreatedAt: input.clientCreatedAt ?? null,
+          referencedItemId: input.referencedItemId ?? null,
+          itemSoftDeleted: input.itemSoftDeleted ?? false,
+          version: 10 + index,
+          createdAt: "2026-01-01T00:00:00.000Z",
+        }));
+      },
+      deleteByVaultAndReferencedItemIdExcept: async () => {
+        exceptCalls += 1;
+        return 1;
+      },
+    },
+    softDeletes: {
+      upsert: async () => {},
+      remove: async () => {},
+      exists: async () => true,
+    },
+  });
+
+  const results = await service.appendEvents("1000000000000000004", "1000000000000000003", [
+    {
+      eventType: "ITEM_PURGE",
+      encryptedBlob: mkBlob("a"),
+      baseVersion: 9,
+      idempotencyKey: testEntityId(),
+      referencedItemId: itemId,
+    },
+    {
+      eventType: "ITEM_PURGE",
+      encryptedBlob: mkBlob("b"),
+      baseVersion: 10,
+      idempotencyKey: testEntityId(),
+      referencedItemId: itemId,
+    },
+  ]);
+  assert.equal(insertCalls, 1);
+  assert.equal(exceptCalls, 1);
+  assert.equal(results.length, 2);
+  assert.equal(results[0]!.id, results[1]!.id);
+  assert.equal(results[0]!.eventType, "ITEM_PURGE");
 });
