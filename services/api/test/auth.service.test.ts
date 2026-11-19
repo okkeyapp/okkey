@@ -82,6 +82,7 @@ function setupAuthService(params?: {
   generatedCode?: string;
   /** Defaults to true so OTP-path unit tests keep sending. */
   emailDeliverable?: boolean;
+  resolveRegistrationAllowed?: (email: string) => Promise<boolean>;
   resolveInviteRegistration?: ConstructorParameters<typeof AuthService>[0]["resolveInviteRegistration"];
 }) {
   const redis = new InMemoryRedis();
@@ -133,6 +134,7 @@ function setupAuthService(params?: {
     config,
     // Default tests exercise the OTP path; undeliverable cases override this.
     resolveEmailDeliverable: async () => params?.emailDeliverable ?? true,
+    resolveRegistrationAllowed: params?.resolveRegistrationAllowed,
     resolveInviteRegistration: params?.resolveInviteRegistration,
     now: () => redis.now(),
     generateCode: () => generatedCode,
@@ -160,25 +162,32 @@ test("startEmailLogin sends normalized email and 6-digit code", async () => {
   assert.equal(result.bootstrapRequired, undefined);
 });
 
-test("startEmailLogin first-run (empty DB, self_hosted) skips OTP and returns bootstrapRequired", async () => {
-  const { service, sentEmails, redis } = setupAuthService({ hasAnyUsers: false });
-
-  const result = await service.startEmailLogin({
-    email: "Admin@Example.com",
-    requestIp: "127.0.0.1",
+test("startEmailLogin empty catalog on self_host requires setup when registration blocked", async () => {
+  const { service, sentEmails } = setupAuthService({
+    hasAnyUsers: false,
+    resolveRegistrationAllowed: async () => false,
   });
 
-  assert.equal(result.bootstrapRequired, true);
-  assert.equal(result.nextStep, "registration");
-  assert.ok(result.authStateId);
-  assert.equal(result.challengeId, "");
+  await assert.rejects(
+    () =>
+      service.startEmailLogin({
+        email: "Admin@Example.com",
+        requestIp: "127.0.0.1",
+      }),
+    (error: unknown) =>
+      error instanceof Error &&
+      "code" in error &&
+      (error as { code: string }).code === "SETUP_REQUIRED",
+  );
   assert.equal(sentEmails.length, 0);
+});
 
-  const raw = await redis.get(`auth:state:${result.authStateId}`);
-  assert.ok(raw);
-  const state = JSON.parse(raw) as { email: string; userId: string | null };
-  assert.equal(state.email, "admin@example.com");
-  assert.equal(state.userId, null);
+test("claimEmptyCatalogBootstrap is exclusive and idempotent for the same email", async () => {
+  const { service, redis } = setupAuthService({ hasAnyUsers: false });
+
+  assert.equal(await service.claimEmptyCatalogBootstrap("Admin@Example.com"), true);
+  assert.equal(await service.claimEmptyCatalogBootstrap("admin@example.com"), true);
+  assert.equal(await service.claimEmptyCatalogBootstrap("other@example.com"), false);
   assert.equal(await redis.get("auth:bootstrap:first-user"), "admin@example.com");
 });
 
@@ -200,38 +209,47 @@ test("startEmailLogin empty catalog on saas still requires email OTP", async () 
   assert.equal(sentEmails[0].purpose, "registration");
 });
 
-test("startEmailLogin first-run claim is idempotent for the same email", async () => {
-  const { service, sentEmails } = setupAuthService({ hasAnyUsers: false });
-
-  const first = await service.startEmailLogin({
-    email: "admin@example.com",
-    requestIp: "127.0.0.1",
-  });
-  const second = await service.startEmailLogin({
-    email: "admin@example.com",
-    requestIp: "127.0.0.1",
+test("startEmailLogin second empty-catalog email is blocked when setup is required", async () => {
+  const { service, sentEmails } = setupAuthService({
+    hasAnyUsers: false,
+    resolveRegistrationAllowed: async () => false,
   });
 
-  assert.equal(first.bootstrapRequired, true);
-  assert.equal(second.bootstrapRequired, true);
-  assert.ok(second.authStateId);
-  assert.notEqual(second.authStateId, first.authStateId);
+  await assert.rejects(
+    () =>
+      service.startEmailLogin({
+        email: "admin@example.com",
+        requestIp: "127.0.0.1",
+      }),
+    (error: unknown) =>
+      error instanceof Error &&
+      "code" in error &&
+      (error as { code: string }).code === "SETUP_REQUIRED",
+  );
+  await assert.rejects(
+    () =>
+      service.startEmailLogin({
+        email: "other@example.com",
+        requestIp: "127.0.0.1",
+      }),
+    (error: unknown) =>
+      error instanceof Error &&
+      "code" in error &&
+      (error as { code: string }).code === "SETUP_REQUIRED",
+  );
   assert.equal(sentEmails.length, 0);
 });
 
-test("startEmailLogin second empty-catalog email requires OTP while claim is held", async () => {
-  const { service, sentEmails } = setupAuthService({ hasAnyUsers: false });
-
-  const first = await service.startEmailLogin({
-    email: "admin@example.com",
-    requestIp: "127.0.0.1",
+test("startEmailLogin after setup allows OTP for open registration", async () => {
+  const { service, sentEmails } = setupAuthService({
+    hasAnyUsers: true,
   });
+
   const second = await service.startEmailLogin({
     email: "other@example.com",
     requestIp: "127.0.0.1",
   });
 
-  assert.equal(first.bootstrapRequired, true);
   assert.equal(second.bootstrapRequired, undefined);
   assert.ok(second.challengeId);
   assert.equal(sentEmails.length, 1);
@@ -615,4 +633,71 @@ test("ordinary startEmailLogin without invite still requires emailed code", asyn
   assert.equal(result.inviteRegistration, undefined);
   assert.ok(result.challengeId);
   assert.equal(sentEmails.length, 1);
+});
+
+test("invite_only + valid invite link allows registration without pending email invite", async () => {
+  const { service, sentEmails, redis } = setupAuthService({
+    hasAnyUsers: true,
+    // Simulate invite_only with no email-bound pending invite.
+    resolveRegistrationAllowed: async () => false,
+    resolveInviteRegistration: async () => ({
+      outcome: "valid",
+      tokenHash: "c".repeat(64),
+    }),
+  });
+
+  const result = await service.startEmailLogin({
+    email: "link-guest@example.com",
+    requestIp: "127.0.0.1",
+    inviteToken: "valid-link-token",
+  });
+
+  assert.equal(result.inviteRegistration, true);
+  assert.equal(result.nextStep, "registration");
+  assert.ok(result.authStateId);
+  assert.equal(sentEmails.length, 0);
+  const raw = await redis.get(`auth:state:${result.authStateId}`);
+  assert.ok(raw);
+  assert.equal((JSON.parse(raw) as { inviteTokenHash?: string }).inviteTokenHash, "c".repeat(64));
+});
+
+test("invite_only + no invite rejects with REGISTRATION_INVITE_ONLY", async () => {
+  const { service, sentEmails } = setupAuthService({
+    hasAnyUsers: true,
+    resolveRegistrationAllowed: async () => false,
+  });
+
+  await assert.rejects(
+    () =>
+      service.startEmailLogin({
+        email: "stranger@example.com",
+        requestIp: "127.0.0.1",
+      }),
+    (error: unknown) =>
+      error instanceof AuthError && error.code === "REGISTRATION_INVITE_ONLY",
+  );
+  assert.equal(sentEmails.length, 0);
+});
+
+test("invite_only + revoked or used invite link is rejected (not 403 invite_only)", async () => {
+  for (const [outcome, code] of [
+    ["revoked", "INVITE_REVOKED"],
+    ["used", "INVITE_USED"],
+  ] as const) {
+    const { service, sentEmails } = setupAuthService({
+      hasAnyUsers: true,
+      resolveRegistrationAllowed: async () => false,
+      resolveInviteRegistration: async () => ({ outcome }),
+    });
+    await assert.rejects(
+      () =>
+        service.startEmailLogin({
+          email: "guest@example.com",
+          requestIp: "127.0.0.1",
+          inviteToken: "stale-link-token",
+        }),
+      (error: unknown) => error instanceof AuthError && error.code === code,
+    );
+    assert.equal(sentEmails.length, 0);
+  }
 });

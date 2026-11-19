@@ -1,8 +1,9 @@
+import { createHash } from "node:crypto";
 import net from "node:net";
 
 import pg from "pg";
 
-import { E2E_DATABASE_URL } from "./env";
+import { E2E_DATABASE_URL, E2E_SETUP_CODE } from "./env";
 
 const E2E_REDIS_URL = process.env.E2E_REDIS_URL ?? process.env.REDIS_URL ?? "redis://127.0.0.1:6379";
 
@@ -85,8 +86,9 @@ export async function markE2eSmtpDeliverable(): Promise<void> {
 
 /**
  * Each browser spec starts and ends on an empty account catalog.
- * Bootstrap registration is only offered when no user exists, and the first-run
- * claim lives in Redis, so both stores are cleared. Specs do not share users.
+ * First-run setup code + claim live in Redis, so both stores are cleared.
+ * Specs do not share users. After flush, re-seed the hashed setup code so
+ * `/setup` works without restarting the API.
  */
 export async function resetE2eCatalog(): Promise<void> {
   const client = new pg.Client({ connectionString: E2E_DATABASE_URL });
@@ -94,10 +96,24 @@ export async function resetE2eCatalog(): Promise<void> {
   await client.connect();
   try {
     await client.query("TRUNCATE TABLE users RESTART IDENTITY CASCADE");
+    await client.query(
+      `
+        UPDATE server_instance_settings
+        SET setup_completed_at = NULL,
+            registration_mode = 'open',
+            updated_at = now()
+        WHERE id = TRUE
+      `,
+    );
   } finally {
     await client.end();
   }
   await redisCommand(E2E_REDIS_URL, ["FLUSHDB"]);
+  const normalized = E2E_SETUP_CODE.trim().toLowerCase().replace(/\s+/g, "");
+  const hash = createHash("sha256").update(normalized, "utf8").digest("hex");
+  const ttl = String(7 * 24 * 60 * 60);
+  await redisCommand(E2E_REDIS_URL, ["SET", "setup:code:hash", hash, "EX", ttl]);
+  await redisCommand(E2E_REDIS_URL, ["SET", "setup:code:attempts", "0", "EX", ttl]);
 }
 
 /** Legacy wraps have no possession public key, so proof must refuse them. */

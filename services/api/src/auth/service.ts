@@ -91,8 +91,16 @@ export interface AuthServiceDeps {
    */
   resolveEmailDeliverable?: () => Promise<boolean>;
   /**
+   * When set, called for emails that are not yet registered and did not skip via
+   * a valid invite link. Return false to reject open registration (e.g. invite-only).
+   * Existing users always continue the login path.
+   */
+  resolveRegistrationAllowed?: (email: string) => Promise<boolean>;
+  /**
    * Soft invite lookup for registration OTP skip. Unknown tokens must return
    * `not_found` so callers keep the emailed-code path (never silently skip).
+   * Checked before {@link resolveRegistrationAllowed} so invite_only + valid
+   * invite link still registers.
    */
   resolveInviteRegistration?: (
     rawToken: string,
@@ -223,6 +231,7 @@ export class AuthService {
   private readonly emailTemplates: Pick<EmailTemplateService, "sendAuthEmailCode">;
   private readonly config: ApiConfig;
   private readonly resolveEmailDeliverable?: () => Promise<boolean>;
+  private readonly resolveRegistrationAllowed?: (email: string) => Promise<boolean>;
   private readonly resolveInviteRegistration?: AuthServiceDeps["resolveInviteRegistration"];
   private readonly now: () => Date;
   private readonly generateCode: () => string;
@@ -235,6 +244,7 @@ export class AuthService {
     this.emailTemplates = deps.emailTemplates;
     this.config = deps.config;
     this.resolveEmailDeliverable = deps.resolveEmailDeliverable;
+    this.resolveRegistrationAllowed = deps.resolveRegistrationAllowed;
     this.resolveInviteRegistration = deps.resolveInviteRegistration;
     this.now = deps.now ?? (() => new Date());
     this.generateCode = deps.generateCode ?? createCode;
@@ -248,27 +258,13 @@ export class AuthService {
       throw new AuthError("AUTH_EMAIL_INVALID", 400, "invalid email");
     }
 
-    // Self-host first-run only: empty users + exclusive claim → skip OTP / SMTP.
-    if (await this.tryClaimEmptyCatalogBootstrap(email)) {
-      await this.consumeStartRateLimits(email, input.requestIp);
-      const authStateId = await this.createRegistrationAuthState(email);
-      const now = this.now();
-      const expiresAt = new Date(
-        now.getTime() + this.config.registrationAuthStateTtlSeconds * 1000,
-      ).toISOString();
-      return {
-        challengeId: "",
-        expiresAt,
-        resendAvailableAt: expiresAt,
-        bootstrapRequired: true,
-        authStateId,
-        nextStep: "registration",
-        emailDeliverable: await this.emailDeliverable(),
-      };
-    }
-
+    // First-run self-host registration is gated by the setup wizard (setup code),
+    // not by skipping OTP from email start. Empty-catalog claim lives in SetupService.
+    //
+    // Invite-link skip runs before invite_only / empty-catalog gates: link invites have
+    // no email row, so hasPendingInvitation(email) would otherwise 403 REGISTRATION_INVITE_ONLY.
     // Valid one-time invite → skip emailed code for new accounts only.
-    // Unknown tokens fall through to OTP; expired/used/revoked/wrong-email error clearly.
+    // Unknown tokens fall through; expired/used/revoked/wrong-email error clearly.
     const inviteSkip = await this.tryInviteRegistrationSkip(email, input.inviteToken);
     if (inviteSkip) {
       await this.consumeStartRateLimits(email, input.requestIp);
@@ -286,6 +282,26 @@ export class AuthService {
         nextStep: "registration",
         emailDeliverable: await this.emailDeliverable(),
       };
+    }
+
+    const existingUser = await this.users.findByEmail(email);
+    if (!existingUser && this.resolveRegistrationAllowed) {
+      const allowed = await this.resolveRegistrationAllowed(email);
+      if (!allowed) {
+        const empty = !(await this.users.hasAnyUsers());
+        if (empty && this.config.deploymentMode === "self_hosted") {
+          throw new AuthError(
+            "SETUP_REQUIRED",
+            403,
+            "complete first-run setup before registering",
+          );
+        }
+        throw new AuthError(
+          "REGISTRATION_INVITE_ONLY",
+          403,
+          "registration requires an invitation",
+        );
+      }
     }
 
     const mappedId = await this.redis.get(emailActiveChallengeKey(email));
@@ -591,10 +607,10 @@ export class AuthService {
   }
 
   /**
-   * True when this request may skip email OTP for empty-catalog self-host bootstrap.
-   * SaaS always requires OTP. Concurrent empty-catalog starts: only the claim holder skips.
+   * Exclusive claim for self-host empty-catalog first registration.
+   * Used by the setup wizard. Concurrent callers: only one email holds the claim.
    */
-  private async tryClaimEmptyCatalogBootstrap(email: string): Promise<boolean> {
+  async claimEmptyCatalogBootstrap(email: string): Promise<boolean> {
     if (this.config.deploymentMode !== "self_hosted") {
       return false;
     }
@@ -602,16 +618,22 @@ export class AuthService {
       return false;
     }
 
+    const normalized = normalizeEmail(email);
     const claimKey = firstUserBootstrapClaimKey();
     const ttlSeconds = this.config.registrationAuthStateTtlSeconds;
-    const claimed = await this.redis.setIfNotExistsWithTtl(claimKey, email, ttlSeconds);
+    const claimed = await this.redis.setIfNotExistsWithTtl(claimKey, normalized, ttlSeconds);
     if (claimed) {
       return true;
     }
 
     // Idempotent retry for the same email that already holds the claim.
     const holder = await this.redis.get(claimKey);
-    return holder === email;
+    return holder === normalized;
+  }
+
+  /** Mint Redis auth state for registration (email already trusted — OTP confirm or setup). */
+  async createRegistrationAuthStateForTrustedEmail(email: string): Promise<string> {
+    return this.createRegistrationAuthState(normalizeEmail(email));
   }
 
   /**

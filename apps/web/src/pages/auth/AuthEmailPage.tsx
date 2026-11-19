@@ -18,10 +18,13 @@ import {
   AUTH_OTP_PATH,
   AUTH_WEBAUTHN_PATH,
   PRIVACY_POLICY_PATH,
+  SETUP_PATH,
 } from "../../routes/paths";
 import { useLocale } from "../../locale/LocaleContext";
+import { createSetupApiClient } from "../../setup/setupApi";
 import { emailStartErrorI18nKey } from "./emailStartErrors";
 import { shouldPromptMasterPasswordLogin } from "./masterPasswordLogin";
+import { webDeploymentMode } from "../../workspace/planEntitlements";
 
 function shouldSkipEmailCode(start: {
   authStateId?: string;
@@ -45,6 +48,26 @@ export default function AuthEmailPage() {
   const [email, setEmail] = useState(() => invitedEmail || readLastLoginMethodHint()?.email || "");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (webDeploymentMode() !== "self_hosted") {
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const status = await createSetupApiClient().getStatus();
+        if (!cancelled && status.required) {
+          navigate(SETUP_PATH, { replace: true });
+        }
+      } catch {
+        /* keep email page if status probe fails */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [navigate]);
 
   useEffect(() => {
     if (invitedEmail) {

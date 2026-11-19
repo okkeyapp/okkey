@@ -281,6 +281,144 @@ export class MailSettingsService {
     return this.publicSettings();
   }
 
+  /** Public mail settings without workspace ACL (first-run setup wizard). */
+  async getPublicSettings(): Promise<ServerMailSettingsPublic> {
+    return this.publicSettings();
+  }
+
+  /**
+   * Persist SMTP form during first-run setup. Marks SMTP inactive (same as owner save).
+   * Env is not re-merged after the one-time seed.
+   */
+  async updateForSetup(
+    patch: ServerMailSettingsPatch,
+    actorId: string,
+  ): Promise<ServerMailSettingsPublic> {
+    const current = await this.ensureSeeded();
+    const next = this.applyPatch(current, patch);
+    next.smtpVerifiedAt = null;
+    next.smtpLegacyProbedAt = new Date().toISOString();
+    next.updatedBy = actorId;
+    await this.store.write(next, actorId);
+    this.logger?.info("server mail settings saved inactive", { actorId });
+    return toPublicMailSettingsFromRow(next, this.resolvePassword(next));
+  }
+
+  /**
+   * Explicit skip: leave mail inactive (clear verification) without requiring SMTP fields.
+   */
+  async skipMailForSetup(actorId: string): Promise<ServerMailSettingsPublic> {
+    const current = await this.ensureSeeded();
+    const next: ServerMailSettingsRow = {
+      ...current,
+      smtpVerifiedAt: null,
+      smtpLegacyProbedAt: current.smtpLegacyProbedAt ?? new Date().toISOString(),
+      updatedBy: actorId,
+    };
+    await this.store.write(next, actorId);
+    this.logger?.info("server mail settings skipped during setup", { actorId });
+    return toPublicMailSettingsFromRow(next, this.resolvePassword(next));
+  }
+
+  /**
+   * Update public app URL without clearing SMTP verification (server-address wizard step).
+   */
+  async updatePublicAppUrlPreservingVerification(
+    publicAppUrl: string,
+    actorId: string,
+  ): Promise<ServerMailSettingsPublic> {
+    const current = await this.ensureSeeded();
+    const next: ServerMailSettingsRow = {
+      ...current,
+      publicAppUrl: parsePublicAppUrl(publicAppUrl),
+      updatedBy: actorId,
+    };
+    await this.store.write(next, actorId);
+    this.logger?.info("server public app url updated during setup", { actorId });
+    return toPublicMailSettingsFromRow(next, this.resolvePassword(next));
+  }
+
+  /**
+   * Test email during first-run setup (no workspace owner yet). Recipient is explicit.
+   * On success persists settings and marks SMTP active — same activation rule as owner UI.
+   */
+  async sendTestEmailForSetup(
+    patch: ServerMailSettingsPatch,
+    recipientEmail: string,
+    actorId: string,
+  ): Promise<ServerMailSettingsPublic> {
+    const to = recipientEmail.trim();
+    if (!to) {
+      throw new MailSettingsError("OWNER_EMAIL_MISSING", 400, "recipient email is missing");
+    }
+
+    const current = await this.ensureSeeded();
+    const next = this.applyPatch(current, patch);
+    const resolved = this.resolvePassword(next);
+    if (resolved.unreadable && !patch.clearPassword && !(patch.password && patch.password.length > 0)) {
+      throw new MailSettingsError(
+        "SMTP_PASSWORD_UNAVAILABLE",
+        409,
+        "stored smtp password could not be decrypted",
+      );
+    }
+
+    const snapshot = this.snapshotFromRow(next, resolved, { forceTransport: true });
+    if (!snapshot.smtpHost.trim() || !snapshot.emailFrom.trim()) {
+      throw new MailSettingsError(
+        "SMTP_NOT_CONFIGURED",
+        400,
+        "smtp host, port, encryption, and sender address are required to send a test email",
+      );
+    }
+
+    const message: EmailMessage = {
+      to,
+      from: snapshot.emailFrom,
+      subject: "Okkey SMTP test",
+      text: snapshot.publicAppBaseUrl
+        ? `This is a test message from your Okkey server.\nPublic app URL: ${snapshot.publicAppBaseUrl}\n`
+        : "This is a test message from your Okkey server.\n",
+      html: snapshot.publicAppBaseUrl
+        ? `<p>This is a test message from your Okkey server.</p><p>Public app URL: ${escapeHtml(snapshot.publicAppBaseUrl)}</p>`
+        : "<p>This is a test message from your Okkey server.</p>",
+    };
+
+    try {
+      await this.dispatchSmtp(snapshot, message);
+    } catch (error) {
+      const cause =
+        error &&
+        typeof error === "object" &&
+        "details" in error &&
+        typeof (error as { details?: { cause?: unknown } }).details?.cause === "string"
+          ? (error as { details: { cause: string } }).details.cause
+          : error instanceof Error
+            ? error.message
+            : "smtp send failed";
+      const messageText = redactSecret(cause, snapshot.smtpPassword).slice(0, 500);
+      this.logger?.warn("server mail test email failed", { actorId });
+      throw new MailSettingsError("EMAIL_TRANSPORT_ERROR", 502, messageText);
+    }
+
+    next.smtpVerifiedAt = new Date().toISOString();
+    next.smtpLegacyProbedAt = next.smtpLegacyProbedAt ?? next.smtpVerifiedAt;
+    next.updatedBy = actorId;
+    await this.store.write(next, actorId);
+    this.logger?.info("server mail settings verified", { actorId });
+    if (this.onSmtpActivated) {
+      try {
+        await this.onSmtpActivated();
+      } catch (error) {
+        this.logger?.warn("onSmtpActivated hook failed", {
+          actorId,
+          cause: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+    return toPublicMailSettingsFromRow(next, this.resolvePassword(next));
+  }
+
   /**
    * Persist form values and mark SMTP inactive (e.g. "Save anyway" after a failed test).
    */

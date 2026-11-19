@@ -267,6 +267,8 @@ import {
 import { registerSystemUpdateRoutes } from "./system-updates/routes.ts";
 import { registerServerMailSettingsRoutes } from "./mail-settings/routes.ts";
 import type { MailSettingsService } from "./mail-settings/service.ts";
+import { registerSetupRoutes } from "./setup/routes.ts";
+import type { SetupService } from "./setup/service.ts";
 import {
   createSystemUpdateService,
   type SystemUpdateService,
@@ -334,6 +336,8 @@ export interface AppDeps {
   systemUpdateService?: SystemUpdateService;
   /** Self-host SMTP and public app URL. Absent in tests that do not exercise mail settings. */
   mailSettingsService?: MailSettingsService;
+  /** Self-host first-run setup wizard (public routes). */
+  setupService?: SetupService;
 }
 
 export function createApiApp(
@@ -535,6 +539,13 @@ export function createApiApp(
       config,
       deps.mailSettingsService,
       resolveUserId,
+    );
+  }
+  if (deps.setupService) {
+    registerSetupRoutes(
+      (method, path, handler) => app.route(method, path, handler),
+      config,
+      deps.setupService,
     );
   }
   app.route("GET", "/ready", createReadyRouteHandler(readyCheck));
