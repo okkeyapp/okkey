@@ -1,7 +1,6 @@
 import type { Vault } from "@okkey/types";
 import { generateEntityId } from "@okkey/types";
 import { useEffect, useRef } from "react";
-import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
 import { useAuthVault } from "../../auth/AuthVaultContext";
 import {
@@ -13,13 +12,7 @@ import { isPersonalDataBootstrapDismissed } from "../../items/personalDataBootst
 import { useWorkspaceItems } from "../../items/WorkspaceItemsContext";
 import { useWorkspaceVaultProfiles } from "../../items/WorkspaceVaultProfilesContext";
 import { useLocale } from "../../locale/LocaleContext";
-import {
-  EDIT_ITEM_POPUP_ID,
-  POPUP_QUERY_PARAM,
-  buildPopupQueryValue,
-  parsePopupQueryValue,
-  popupQuerySearch,
-} from "../../routes/popupQuery";
+import { useProductTour } from "../../product-tour/ProductTourContext";
 import { createKeyFormEditorMessages } from "../key-form/keyFormI18n";
 import { useItemCategoryPreferences } from "./useItemCategoryPreferences";
 
@@ -32,8 +25,10 @@ type PersonalDataBootstrapControllerProps = {
 /**
  * After unlock, once items for the workspace are bootstrapped: if the user has never
  * had a personal_data item (and has not dismissed bootstrap via delete), create one in
- * the personal vault (no folder) with profile prefill and open its edit popup.
- * Soft-delete and a server dismissed flag (cached in localStorage) both skip recreate.
+ * the personal vault (no folder) with profile prefill.
+ *
+ * Does not open the edit popup — the first-sign-in product tour owns that explanation.
+ * While the product tour is still incomplete, creation is deferred to the tour's last step.
  */
 export default function PersonalDataBootstrapController({
   workspaceId,
@@ -49,15 +44,9 @@ export default function PersonalDataBootstrapController({
     personalDataBootstrapDismissed,
     markPersonalDataBootstrapDismissed,
   } = useItemCategoryPreferences();
-  const navigate = useNavigate();
-  const location = useLocation();
-  const [searchParams] = useSearchParams();
+  const { ready: tourReady, completed: tourCompleted } = useProductTour();
   const doneWorkspaceIdRef = useRef<string | null>(null);
   const inFlightWorkspaceIdRef = useRef<string | null>(null);
-  const navigateRef = useRef(navigate);
-  const locationRef = useRef(location);
-  navigateRef.current = navigate;
-  locationRef.current = location;
 
   useEffect(() => {
     if (
@@ -66,8 +55,13 @@ export default function PersonalDataBootstrapController({
       !vaultsListReady ||
       !workspaceId ||
       !userId ||
-      !preferencesReady
+      !preferencesReady ||
+      !tourReady
     ) {
+      return;
+    }
+    // Tour step 4 creates and opens Personal data; skip silent create until the tour is done.
+    if (!tourCompleted) {
       return;
     }
     if (doneWorkspaceIdRef.current === workspaceId) {
@@ -95,11 +89,6 @@ export default function PersonalDataBootstrapController({
       return;
     }
 
-    // Defer while another popup is open so we do not stack UI; retry when it closes.
-    if (parsePopupQueryValue(searchParams.get(POPUP_QUERY_PARAM))) {
-      return;
-    }
-
     const title = t("web.newItemPopup.categories.personalData");
     const messages = createKeyFormEditorMessages(locale);
     const itemId = generateEntityId();
@@ -117,23 +106,11 @@ export default function PersonalDataBootstrapController({
 
     void (async () => {
       try {
-        const createdId = await createItem(item);
+        await createItem(item);
         if (inFlightWorkspaceIdRef.current !== workspaceId) {
           return;
         }
         doneWorkspaceIdRef.current = workspaceId;
-        const currentLocation = locationRef.current;
-        navigateRef.current(
-          {
-            pathname: currentLocation.pathname,
-            search: popupQuerySearch(
-              currentLocation.search,
-              buildPopupQueryValue(EDIT_ITEM_POPUP_ID, createdId),
-            ),
-            hash: currentLocation.hash,
-          },
-          { replace: false },
-        );
       } catch {
         if (inFlightWorkspaceIdRef.current === workspaceId) {
           inFlightWorkspaceIdRef.current = null;
@@ -156,8 +133,9 @@ export default function PersonalDataBootstrapController({
     profile?.email,
     profile?.firstName,
     profile?.lastName,
-    searchParams,
     t,
+    tourCompleted,
+    tourReady,
     userId,
     vaultUnlocked,
     vaults,

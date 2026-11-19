@@ -2080,6 +2080,9 @@ export interface RegisterCompleteResponseDto {
   scope?: "registration_recovery";
 }
 
+/** First-sign-in product tour step index (web). */
+export type ProductTourStep = 1 | 2 | 3 | 4;
+
 /** `GET /account/profile` (Bearer) — non-sensitive display fields for UI. */
 export interface AccountProfileResponseDto {
   email: string;
@@ -2091,6 +2094,10 @@ export interface AccountProfileResponseDto {
   vault_idle_lock_seconds: number;
   /** ISO timestamp of last master-password set/change; null if unknown (legacy). */
   master_password_changed_at: string | null;
+  /** When true, the first-sign-in product tour will not be shown again. */
+  product_tour_completed: boolean;
+  /** Current product tour step (1–4) while `product_tour_completed` is false. */
+  product_tour_step: ProductTourStep;
 }
 
 /** `PATCH /account/profile` (Bearer) — non-sensitive account preferences. */
@@ -2101,6 +2108,10 @@ export interface AccountProfileUpdateRequestDto {
   billing_region?: string | null;
   /** Inactivity timeout before vault locks on device (seconds); 60…86400. */
   vault_idle_lock_seconds?: number;
+  /** Mark the first-sign-in product tour finished or skipped. */
+  product_tour_completed?: boolean;
+  /** Persist the current product tour step (1–4). */
+  product_tour_step?: ProductTourStep;
 }
 
 /** `POST /account/master-password/change` (Bearer) — opaque split-key rebalance only. */

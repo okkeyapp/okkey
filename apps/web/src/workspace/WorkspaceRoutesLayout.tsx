@@ -59,6 +59,8 @@ import { createWorkspaceRequest, toastWorkspaceCreated } from "../pages/workspac
 import NewItemPopup from "../components/items/NewItemPopup";
 import EditItemPopup from "../components/items/EditItemPopup";
 import PersonalDataBootstrapController from "../components/items/PersonalDataBootstrapController";
+import { ProductTourProvider } from "../product-tour/ProductTourContext";
+import ProductTourController from "../product-tour/ProductTourController";
 import NewCapsulePopup from "../components/capsules/NewCapsulePopup";
 import workspaceCapsulesModule from "@okkey-enterprise/workspace-capsules";
 import DeviceApprovalController from "../components/devices/DeviceApprovalController";
@@ -1097,10 +1099,12 @@ function WorkspaceShellWithItems({
       : item,
   );
   const enterpriseModulesOn = webEnterpriseModulesActive();
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
 
   return (
     <WorkspaceItemTemplatesProvider workspaceId={resolvedWorkspaceId}>
       <ItemCategoryPreferencesProvider workspaceId={resolvedWorkspaceId}>
+        <ProductTourProvider>
         <WorkspaceVaultProfilesProvider value={workspaceVaultProfilesState}>
         <WorkspaceItemsProvider value={workspaceItemsState}>
           <NewItemPopup
@@ -1139,6 +1143,13 @@ function WorkspaceShellWithItems({
             vaults={vaults}
             vaultsListReady={vaultsListReady}
           />
+          <ProductTourController
+            workspaceId={resolvedWorkspaceId}
+            vaults={vaults}
+            vaultsListReady={vaultsListReady}
+            accountMenuOpen={accountMenuOpen}
+            onAccountMenuOpenChange={setAccountMenuOpen}
+          />
           <FoldersSettingsPopup t={t} />
           <NewVaultPopup
             workspaceId={resolvedWorkspaceId}
@@ -1174,6 +1185,8 @@ function WorkspaceShellWithItems({
             folderSectionTitle={t("web.nav.foldersSection")}
             folderEmptyLabel={t("web.nav.foldersEmpty")}
             accountMenu={accountMenu}
+            accountMenuOpen={accountMenuOpen}
+            onAccountMenuOpenChange={setAccountMenuOpen}
             footerPlainLinkLabels={footerPlainLinkLabels}
             vaultHeaderPlusAriaLabel={t("web.nav.createVault")}
             folderHeaderPlusAriaLabel={t("web.nav.folderSettings")}
@@ -1234,6 +1247,7 @@ function WorkspaceShellWithItems({
           </WorkspaceSidebarLayout>
         </WorkspaceItemsProvider>
         </WorkspaceVaultProfilesProvider>
+        </ProductTourProvider>
       </ItemCategoryPreferencesProvider>
     </WorkspaceItemTemplatesProvider>
   );

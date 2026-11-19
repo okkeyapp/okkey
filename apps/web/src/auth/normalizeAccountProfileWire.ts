@@ -10,6 +10,8 @@ export type NormalizedAccountProfileWire = {
   billing_region: string | null;
   vault_idle_lock_seconds: number;
   master_password_changed_at: string | null;
+  product_tour_completed: boolean;
+  product_tour_step: number;
 };
 
 function pickTrimmedString(o: Record<string, unknown>, snake: string, camel: string): string | null {
@@ -45,6 +47,20 @@ export function normalizeAccountProfileWire(raw: unknown): NormalizedAccountProf
     }
   }
 
+  const completedRaw = o.product_tour_completed ?? o.productTourCompleted;
+  const product_tour_completed = completedRaw === true;
+
+  const stepRaw = o.product_tour_step ?? o.productTourStep;
+  let product_tour_step = 1;
+  if (typeof stepRaw === "number" && Number.isInteger(stepRaw) && stepRaw >= 1 && stepRaw <= 4) {
+    product_tour_step = stepRaw;
+  } else if (typeof stepRaw === "string" && stepRaw.trim()) {
+    const n = Number(stepRaw);
+    if (Number.isInteger(n) && n >= 1 && n <= 4) {
+      product_tour_step = n;
+    }
+  }
+
   return {
     email,
     first_name,
@@ -53,5 +69,7 @@ export function normalizeAccountProfileWire(raw: unknown): NormalizedAccountProf
     billing_region,
     vault_idle_lock_seconds,
     master_password_changed_at: pickTrimmedString(o, "master_password_changed_at", "masterPasswordChangedAt"),
+    product_tour_completed,
+    product_tour_step,
   };
 }

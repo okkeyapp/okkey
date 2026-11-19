@@ -63,6 +63,8 @@ export type WorkspaceSidebarLayoutProps = {
   | "folderSectionTitle"
   | "folderEmptyLabel"
   | "accountMenu"
+  | "accountMenuOpen"
+  | "onAccountMenuOpenChange"
   | "footerPlainLinkLabels"
   | "vaultHeaderPlusAriaLabel"
   | "folderHeaderPlusAriaLabel"
@@ -160,6 +162,8 @@ export default function WorkspaceSidebarLayout({
   folderSectionTitle,
   folderEmptyLabel,
   accountMenu,
+  accountMenuOpen,
+  onAccountMenuOpenChange,
   footerPlainLinkLabels,
   vaultHeaderPlusAriaLabel,
   folderHeaderPlusAriaLabel,
@@ -205,6 +209,8 @@ export default function WorkspaceSidebarLayout({
           folderSectionTitle={folderSectionTitle}
           folderEmptyLabel={folderEmptyLabel}
           accountMenu={accountMenu}
+          accountMenuOpen={accountMenuOpen}
+          onAccountMenuOpenChange={onAccountMenuOpenChange}
           footerPlainLinkLabels={footerPlainLinkLabels}
           beforeFooter={<SystemUpdateSidebarButton />}
           afterFooterPlainLinks={

@@ -131,6 +131,20 @@ vi.mock("../components/items/EditItemPopup", () => ({
 vi.mock("../components/items/PersonalDataBootstrapController", () => ({
   default: () => null,
 }));
+vi.mock("../product-tour/ProductTourController", () => ({
+  default: () => null,
+}));
+vi.mock("../product-tour/ProductTourContext", () => ({
+  ProductTourProvider: ({ children }: { children: ReactNode }) => children,
+  useProductTour: () => ({
+    ready: true,
+    completed: true,
+    step: 1,
+    setStep: async () => {},
+    complete: async () => {},
+    skip: async () => {},
+  }),
+}));
 
 vi.mock("../components/folders/FoldersSettingsPopup", () => ({
   default: () => null,

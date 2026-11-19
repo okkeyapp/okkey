@@ -1,16 +1,20 @@
 import { expect, type Locator, type Page } from "@playwright/test";
 
+import { skipProductTourIfVisible } from "./productTour";
+
 /**
- * After first unlock, personal-data bootstrap creates a row and may open `#editItem`
- * asynchronously. Wait until that settles, then dismiss via Cancel → leave-without-saving
- * Continue so Login create is not raced by a late-opening edit dialog.
+ * After first unlock, the product tour (or a leftover edit dialog) may be open.
+ * Skip the tour when present, then dismiss any open `#editItem` so Login create
+ * is not raced by a late-opening edit dialog.
  */
 export async function dismissOpenItemDialog(page: Page): Promise<void> {
+  await skipProductTourIfVisible(page);
+
   const editItem = page.locator("#editItem");
   const personalDataRow = page.getByRole("button", { name: /personal data/i }).first();
 
-  // Bootstrap create+navigate can take several seconds. Wait until either signal
-  // appears — do not use locator.or().toBeVisible() (strict mode fails when both exist).
+  // Silent personal-data create (after tour skip) or a leftover edit dialog can take a
+  // moment. Prefer an edit/row signal; fall back to idle once the shell is settled.
   await expect
     .poll(
       async () => {
@@ -19,6 +23,9 @@ export async function dismissOpenItemDialog(page: Page): Promise<void> {
         }
         if (await personalDataRow.isVisible().catch(() => false)) {
           return "row";
+        }
+        if (await page.getByTestId("items-shell-topbar").isVisible().catch(() => false)) {
+          return "idle";
         }
         return "";
       },

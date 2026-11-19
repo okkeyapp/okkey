@@ -12,10 +12,21 @@ type AccountProfilePatchBody = {
   locale?: unknown;
   billing_region?: unknown;
   vault_idle_lock_seconds?: unknown;
+  product_tour_completed?: unknown;
+  product_tour_step?: unknown;
 };
 
 const MIN_IDLE_SECONDS = 60;
 const MAX_IDLE_SECONDS = 86_400;
+const MIN_TOUR_STEP = 1;
+const MAX_TOUR_STEP = 4;
+
+function clampTourStep(step: number): number {
+  if (!Number.isInteger(step) || step < MIN_TOUR_STEP || step > MAX_TOUR_STEP) {
+    return MIN_TOUR_STEP;
+  }
+  return step;
+}
 
 function profilePayload(row: {
   email: string;
@@ -25,6 +36,8 @@ function profilePayload(row: {
   billingRegion: string | null;
   vaultIdleLockSeconds: number;
   masterPasswordChangedAt: string;
+  productTourCompleted: boolean;
+  productTourStep: number;
 }) {
   return {
     email: row.email,
@@ -34,6 +47,8 @@ function profilePayload(row: {
     billing_region: row.billingRegion,
     vault_idle_lock_seconds: row.vaultIdleLockSeconds,
     master_password_changed_at: row.masterPasswordChangedAt,
+    product_tour_completed: Boolean(row.productTourCompleted),
+    product_tour_step: clampTourStep(row.productTourStep),
   };
 }
 
@@ -95,6 +110,27 @@ function parseVaultIdleLockSeconds(value: unknown): number | undefined {
   return n;
 }
 
+function parseProductTourCompleted(value: unknown): boolean | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (typeof value !== "boolean") {
+    return undefined;
+  }
+  return value;
+}
+
+function parseProductTourStep(value: unknown): number | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  const n = typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN;
+  if (!Number.isInteger(n) || n < MIN_TOUR_STEP || n > MAX_TOUR_STEP) {
+    return undefined;
+  }
+  return n;
+}
+
 export function createAccountProfileRoute(
   users: Pick<UsersRepository, "loadAccountProfile" | "updateAccountProfile">,
   resolveUserId: (req: IncomingMessage) => Promise<string | null>,
@@ -117,6 +153,8 @@ export function createAccountProfileRoute(
       const locale = parseLocale(body.locale);
       const billingRegion = parseBillingRegion(body.billing_region);
       const vaultIdleLockSeconds = parseVaultIdleLockSeconds(body.vault_idle_lock_seconds);
+      const productTourCompleted = parseProductTourCompleted(body.product_tour_completed);
+      const productTourStep = parseProductTourStep(body.product_tour_step);
 
       const invalidFirstName = body.first_name !== undefined && firstName === undefined;
       const invalidLastName = body.last_name !== undefined && lastName === undefined;
@@ -124,7 +162,18 @@ export function createAccountProfileRoute(
       const invalidRegion = body.billing_region !== undefined && billingRegion === undefined;
       const invalidIdle =
         body.vault_idle_lock_seconds !== undefined && vaultIdleLockSeconds === undefined;
-      if (invalidFirstName || invalidLastName || invalidLocale || invalidRegion || invalidIdle) {
+      const invalidTourCompleted =
+        body.product_tour_completed !== undefined && productTourCompleted === undefined;
+      const invalidTourStep = body.product_tour_step !== undefined && productTourStep === undefined;
+      if (
+        invalidFirstName ||
+        invalidLastName ||
+        invalidLocale ||
+        invalidRegion ||
+        invalidIdle ||
+        invalidTourCompleted ||
+        invalidTourStep
+      ) {
         json(ctx.res, 400, errorPayload("INVALID_PROFILE_PATCH", "profile patch is invalid", ctx.requestId));
         return;
       }
@@ -135,6 +184,8 @@ export function createAccountProfileRoute(
         ...(locale !== undefined ? { locale } : {}),
         ...(billingRegion !== undefined ? { billingRegion } : {}),
         ...(vaultIdleLockSeconds !== undefined ? { vaultIdleLockSeconds } : {}),
+        ...(productTourCompleted !== undefined ? { productTourCompleted } : {}),
+        ...(productTourStep !== undefined ? { productTourStep } : {}),
       });
       if (!updated) {
         json(ctx.res, 404, errorPayload("USER_NOT_FOUND", "user not found", ctx.requestId));

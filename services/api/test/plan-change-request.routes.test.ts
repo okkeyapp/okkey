@@ -126,6 +126,8 @@ function makeService(nowMs: () => number) {
         billingRegion: "US",
         vaultIdleLockSeconds: 900,
         masterPasswordChangedAt: new Date().toISOString(),
+        productTourCompleted: true,
+        productTourStep: 1,
       }),
     },
     emailTemplates: {

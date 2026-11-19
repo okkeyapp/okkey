@@ -12,6 +12,7 @@ type AppShellNavLinkProps = {
   children: ReactNode;
   "aria-current"?: ComponentProps<"a">["aria-current"];
   onClick?: ComponentProps<"a">["onClick"];
+  "data-tour-anchor"?: string;
 };
 
 const AppShellNavLink = forwardRef<HTMLAnchorElement, AppShellNavLinkProps>(function AppShellNavLink(

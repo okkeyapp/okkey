@@ -42,6 +42,7 @@ const MAIL_LEGACY_PROBE = "0057_server_mail_legacy_probe.sql";
 const INVITE_DELIVERY = "0058_workspace_invitation_delivery_status.sql";
 const APPROVAL_STATUS = "0059_device_approval_status_tokens.sql";
 const INVITE_LINK_DELIVERY = "0060_workspace_invitation_link_delivery.sql";
+const PRODUCT_TOUR = "0061_product_tour.sql";
 const FAMILY_TIER = "0047_retire_family_plan_tier.sql";
 
 test("duplicateMigrationNumbers reports shared prefixes only", () => {
@@ -95,6 +96,7 @@ test("migration numbers are unique and legacy filenames are aliases only", () =>
     INVITE_DELIVERY,
     APPROVAL_STATUS,
     INVITE_LINK_DELIVERY,
+    PRODUCT_TOUR,
   ];
   const tail = files.slice(files.indexOf(ordered[0]));
   assert.deepEqual(tail, ordered);
@@ -158,6 +160,7 @@ test("upgrade from v1.0.0-beta.2 applies migrations after 0043 once", async (t) 
     INVITE_DELIVERY,
     APPROVAL_STATUS,
     INVITE_LINK_DELIVERY,
+    PRODUCT_TOUR,
   ]);
 
   await withSchema(async ({ db, query }) => {

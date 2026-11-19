@@ -203,6 +203,8 @@ function createHarness(options?: { publicKey?: string | null; now?: () => number
         billingRegion: null,
         vaultIdleLockSeconds: 900,
         masterPasswordChangedAt: "2026-01-01T00:00:00.000Z",
+        productTourCompleted: true,
+        productTourStep: 1,
       }),
       updateAccountProfile: async () => {
         throw new Error("profile patch must not run");

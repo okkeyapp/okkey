@@ -2018,5 +2018,16 @@
   "web.systemUpdate.error.PACKAGE_INVALID": "Файл не является офлайн-пакетом Okkey. Нужен подписанный документ с payload.component (okkey|enterprise), payload.version и signature — либо общий архив .okbundle/.zip.",
   "web.systemUpdate.error.PACKAGE_TOO_LARGE": "Офлайн-пакет больше допустимого размера.",
   "web.systemUpdate.error.OFFLINE_NOTHING_TO_APPLY": "Пакет распознан, но сейчас из него нечего применять.",
-  "web.systemUpdate.error.generic": "Обновление не применено. Экземпляр остался на прежней версии."
+  "web.systemUpdate.error.generic": "Обновление не применено. Экземпляр остался на прежней версии.",
+  "web.productTour.skip": "Пропустить тур",
+  "web.productTour.next": "Далее",
+  "web.productTour.ok": "OK",
+  "web.productTour.step1.title": "Создание записей",
+  "web.productTour.step1.body": "Этой кнопкой можно добавить пароли, заметки, карты и другие записи в сейф.",
+  "web.productTour.step2.title": "Ваши настройки",
+  "web.productTour.step2.body": "В «Мои настройки» — параметры аккаунта, в «Настройки устройства» — параметры этого браузера.",
+  "web.productTour.step3.title": "Настройки пространства",
+  "web.productTour.step3.body": "Здесь управляются сейфы, участники и параметры рабочего пространства.",
+  "web.productTour.step4.title": "Личные данные",
+  "web.productTour.step4.body": "Мы создали запись «Личные данные» для автозаполнения. Заполните её, сохраните или закройте, когда закончите."
 }
