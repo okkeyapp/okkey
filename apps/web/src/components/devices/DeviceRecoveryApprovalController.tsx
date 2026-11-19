@@ -282,6 +282,7 @@ export default function DeviceRecoveryApprovalController() {
       header={t("account.restore.enterprise.devices.popup.title")}
       width={520}
       closeDisabled
+      closeOnEscape={false}
       closeLabel={t("web.capsules.approval.closeLabel")}
       footer={
         <div className="flex justify-end gap-2">

@@ -222,6 +222,7 @@ export default function DeviceApprovalController() {
       header={t("web.settingsPopup.devices.pending.title")}
       width={520}
       closeDisabled
+      closeOnEscape={false}
       closeLabel={t("web.capsules.approval.closeLabel")}
       footer={
         <div className="flex justify-end gap-2">

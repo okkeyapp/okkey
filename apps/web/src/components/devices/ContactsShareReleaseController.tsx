@@ -174,6 +174,7 @@ export default function ContactsShareReleaseController() {
       header={t("account.restore.enterprise.contacts.popup.title")}
       width={520}
       closeDisabled
+      closeOnEscape={false}
       closeLabel={t("web.capsules.approval.closeLabel")}
       footer={
         <div className="flex justify-end gap-2">
