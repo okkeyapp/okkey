@@ -308,7 +308,10 @@ export class SetupService {
     if (this.config.deploymentMode !== "self_hosted") {
       throw new SetupError("SETUP_NOT_AVAILABLE", 404, "setup is not available");
     }
-    if (await this.users.hasAnyUsers()) {
+    // Owner registration creates the first user before finish; do not gate on hasAnyUsers.
+    // setupCompletedAt (and deleting the Redis session) close the wizard after finish.
+    const instance = await this.instanceSettings.read();
+    if (instance.setupCompletedAt) {
       throw new SetupError("SETUP_NOT_REQUIRED", 409, "setup is already complete");
     }
     const raw = await this.redis.get(this.sessionKey(id));
