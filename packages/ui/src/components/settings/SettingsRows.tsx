@@ -35,7 +35,7 @@ export function SettingsRow({
         </div>
         <div
           className={cn(
-            "flex min-h-12 w-[250px] shrink-0 items-center justify-end",
+            "flex min-h-12 w-[250px] max-w-full shrink-0 items-center justify-end",
             stackOnMobile ? "max-md:w-full" : "max-md:w-auto",
             controlClassName,
           )}

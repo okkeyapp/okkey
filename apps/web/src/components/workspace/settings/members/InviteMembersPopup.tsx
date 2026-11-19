@@ -373,10 +373,10 @@ export default function InviteMembersPopup({
             {createdLinks.map((link, index) => (
               <div
                 key={link.invitationId}
-                className="flex items-center gap-2 rounded-lg border border-border px-3 py-2"
+                className="flex min-w-0 flex-wrap items-center gap-2 rounded-lg border border-border px-3 py-2 sm:flex-nowrap"
               >
                 <span className="w-6 shrink-0 text-sm text-muted-foreground">{index + 1}.</span>
-                <div className="min-w-0 flex-1">
+                <div className="min-w-0 flex-1 basis-[12rem]">
                   <p className="truncate text-sm font-medium text-foreground">
                     {roleLabel(link.roleId)}
                   </p>
@@ -386,6 +386,7 @@ export default function InviteMembersPopup({
                   type="button"
                   variant="outline"
                   size="sm"
+                  className="shrink-0"
                   disabled={copyingId === link.invitationId}
                   data-testid={`invite-copy-created-${link.invitationId}`}
                   onClick={() => void handleCopyCreatedLink(link)}
@@ -398,13 +399,13 @@ export default function InviteMembersPopup({
         ) : (
           <>
             {rows.map((row, index) => (
-              <div key={row.id} className="flex items-center gap-2">
+              <div key={row.id} className="flex min-w-0 flex-wrap items-center gap-2 sm:flex-nowrap">
                 <span className="w-6 shrink-0 text-sm text-muted-foreground">{index + 1}.</span>
                 {deliveryMethod === "email" ? (
                   <Input
                     value={row.email}
                     placeholder={t("web.workspaceSettings.members.invite.emailPlaceholder")}
-                    className="min-w-0 flex-1"
+                    className="min-w-0 flex-1 basis-[12rem]"
                     disabled={saving}
                     onChange={(event) => {
                       const value = event.target.value;
@@ -416,7 +417,7 @@ export default function InviteMembersPopup({
                     }}
                   />
                 ) : (
-                  <p className="min-w-0 flex-1 text-sm text-muted-foreground">
+                  <p className="min-w-0 flex-1 basis-[12rem] text-sm text-muted-foreground">
                     {t("web.workspaceSettings.members.invite.linkRowLabel")}
                   </p>
                 )}
@@ -431,7 +432,7 @@ export default function InviteMembersPopup({
                     );
                   }}
                 >
-                  <SelectTrigger className="h-9 w-[160px] shrink-0">
+                  <SelectTrigger className="h-9 w-full min-w-0 shrink-0 sm:w-[160px]">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>

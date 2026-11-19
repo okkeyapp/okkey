@@ -511,7 +511,7 @@ export default function AuthRegistrationPage() {
       description={
         <>
           {t("auth.registration.descriptionBeforeEmail")}{" "}
-          <span className="font-semibold">{email}</span>
+          <span className="break-all font-semibold">{email}</span>
         </>
       }
       logo={<OkkeyLogoMark className="h-[60px] w-[61px]" />}

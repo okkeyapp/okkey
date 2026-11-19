@@ -337,9 +337,9 @@ export default function SettingsDeviceSettingsContent({ t, page }: SettingsDevic
           <SettingsRow
             label={t("web.settingsPopup.general.theme")}
             border={false}
-            controlClassName="w-[338px] overflow-visible max-md:justify-start"
+            controlClassName="w-full max-w-[338px] overflow-visible max-md:w-full max-md:max-w-none max-md:justify-start sm:w-[338px]"
           >
-            <div className="flex w-[338px] min-w-[338px] max-w-full justify-end gap-3 max-md:w-full max-md:min-w-0 max-md:justify-start">
+            <div className="flex w-full min-w-0 max-w-full flex-wrap justify-end gap-3 max-md:justify-start sm:w-[338px]">
               {themeOptions.map((option) => {
                 const active = themePreference === option.value;
                 return (
@@ -347,12 +347,12 @@ export default function SettingsDeviceSettingsContent({ t, page }: SettingsDevic
                     key={option.value}
                     type="button"
                     variant="ghost"
-                    className="group h-auto w-[100px] min-w-[100px] flex-col gap-0 !bg-transparent p-0 text-center !shadow-none outline-none hover:!bg-transparent hover:!shadow-none focus:!bg-transparent focus:!shadow-none focus-visible:!bg-transparent focus-visible:!shadow-none active:!bg-transparent active:!shadow-none"
+                    className="group h-auto w-[100px] min-w-0 max-w-[100px] flex-1 flex-col gap-0 !bg-transparent p-0 text-center !shadow-none outline-none hover:!bg-transparent hover:!shadow-none focus:!bg-transparent focus:!shadow-none focus-visible:!bg-transparent focus-visible:!shadow-none active:!bg-transparent active:!shadow-none sm:min-w-[100px] sm:flex-none"
                     onClick={() => updateThemePreference(option.value)}
                   >
                     <span
                       className={cn(
-                        "relative flex h-[70px] w-[100px] overflow-hidden rounded-[10px] border border-border bg-background",
+                        "relative flex h-[70px] w-full max-w-[100px] overflow-hidden rounded-[10px] border border-border bg-background",
                         "items-center justify-center transition-[border-color,box-shadow]",
                         "group-focus-visible:border-accent group-focus-visible:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]",
                         active && "border-accent shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]",

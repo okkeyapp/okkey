@@ -195,6 +195,7 @@ export {
   keyFormAdditionalDividerBorderTClassName,
   keyFormAdditionalDividerBorderYClassName,
   keyFormAdditionalFieldBorderClassName,
+  formControlTextClassName,
   inputLikeControlClassName,
   mutedSurfaceActiveBgClassName,
   mutedSurfaceActiveBgImportantClassName,

@@ -154,14 +154,39 @@
     -webkit-appearance: none;
   }
 
+  /*
+   * Mobile Safari: disable double-tap zoom (pinch is also capped via viewport meta).
+   * Form controls use ≥16px below `md` so focus does not auto-zoom (see formControlTextClassName).
+   */
+  html {
+    touch-action: manipulation;
+    max-width: 100%;
+  }
+
   body {
     @apply bg-background text-foreground antialiased tracking-normal;
     margin: 0;
     min-height: 100vh;
+    max-width: 100%;
   }
 
   #root {
     min-height: 100vh;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  /*
+   * Belt-and-suspenders for native form controls that skip shared Input classes
+   * (search field, key-field, OTP cells still set text-base via Tailwind).
+   * Utilities win over this base rule when present; 16px floor applies when not.
+   */
+  @media (max-width: 767px) {
+    input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="hidden"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="image"]):not([type="color"]),
+    textarea,
+    select {
+      font-size: 16px;
+    }
   }
 }
 

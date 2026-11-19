@@ -207,7 +207,7 @@ const keyFieldOverlayTriggerClassName =
   "pointer-events-none absolute inset-0 z-10 invisible group-hover/key-field:visible group-hover/key-field:pointer-events-auto focus-visible:outline-none";
 
 const keyFieldSingleLineControlClassName =
-  "m-0 block w-full min-w-0 border-0 bg-transparent p-0 text-sm leading-5 text-foreground outline-none";
+  "m-0 block w-full min-w-0 border-0 bg-transparent p-0 text-base leading-5 text-foreground outline-none md:text-sm";
 
 /** Matches Tailwind `h-5` / `leading-5` for a single-line control. */
 const KEY_FIELD_SINGLE_LINE_HEIGHT_PX = 20;
@@ -1013,7 +1013,7 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
           }}
           onBlur={() => setIsValueFocused(false)}
           className={cn(
-            "min-h-10 w-full min-w-0 resize-none overflow-hidden bg-transparent p-0 text-sm leading-5 text-foreground outline-none placeholder:text-muted-foreground",
+            "min-h-10 w-full min-w-0 resize-none overflow-hidden bg-transparent p-0 text-base leading-5 text-foreground outline-none placeholder:text-muted-foreground md:text-sm",
             multilineScrollMaxHeightPx != null && "pr-4",
           )}
         />
@@ -1379,7 +1379,7 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
                     {...(passwordGeneratorTrigger
                       ? { "data-password-generator-trigger": true }
                       : {})}
-                    className="h-5 w-full min-w-0 bg-transparent p-0 text-sm leading-5 text-foreground outline-none placeholder:text-muted-foreground"
+                    className="h-5 w-full min-w-0 bg-transparent p-0 text-base leading-5 text-foreground outline-none placeholder:text-muted-foreground md:text-sm"
                   />
                 )
               ) : recoveryCodesValue ? (
