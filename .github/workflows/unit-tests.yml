@@ -165,6 +165,12 @@ jobs:
       - name: Run web tests
         run: yarn test:web
 
+      - name: Build web (production) and assert no localhost:4000 API base
+        run: |
+          set -euo pipefail
+          yarn --cwd apps/web vite build
+          node scripts/check-web-prod-api-base.mjs --require-dist
+
       - name: Run extension tests
         run: yarn --cwd apps/extension test
 
