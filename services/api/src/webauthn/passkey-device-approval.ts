@@ -6,7 +6,6 @@ import type { ApiConfig } from "../config.ts";
 import type { Logger } from "../logger.ts";
 import {
   APPROVAL_SHARE_MUST_BE_NEW,
-  APPROVAL_SHARE_WRONG_RECIPIENT,
   approvalShareRejection,
 } from "../device/approval-share.ts";
 import {
@@ -553,6 +552,9 @@ export class PasskeyDeviceApprovalService {
     }
     const pending = await this.devices.findOwnedDeviceAuth(input.userId, input.deviceId);
     const storedShares = await this.devices.listDeviceShares(input.userId);
+    // Passkey verify authenticates the pending device; seal to that device's local
+    // wrap keys (OT confirmShareDelivery parity). Only reject reused envelopes —
+    // a recipient mismatch vs the registration placeholder must not block unlock.
     const shareProblem = approvalShareRejection(
       deviceShare,
       pending?.deviceShare ?? null,
@@ -561,14 +563,6 @@ export class PasskeyDeviceApprovalService {
     if (shareProblem === "reused") {
       this.audit("share_rejected", input);
       throw new PasskeyDeviceApprovalError("DEVICE_BAD_REQUEST", 400, APPROVAL_SHARE_MUST_BE_NEW);
-    }
-    if (shareProblem === "recipient") {
-      this.audit("share_rejected", input);
-      throw new PasskeyDeviceApprovalError(
-        "DEVICE_BAD_REQUEST",
-        400,
-        APPROVAL_SHARE_WRONG_RECIPIENT,
-      );
     }
     const challenge = await this.consumeChallenge(input.challengeId, input);
     if (challenge.kind !== "passkey_approval" || challenge.userId !== input.userId) {

@@ -4,6 +4,9 @@
  *
  * The PRF wrap must contain the raw 32-byte share B. On approve, the client
  * re-wraps that share for the pending device's wrap public keys before upload.
+ * After verify, the uploaded hybrid is written to the local vault (same as the
+ * one-time delivery claim path) so unlock does not keep a registration placeholder
+ * when unlock-bootstrap cannot run yet.
  */
 import {
   ApiRequestError,
@@ -22,7 +25,11 @@ import {
   wipeBytes,
   wrapSplitKeyShareB,
 } from "@okkey/crypto";
-import { loadSplitKeyShareWrapKey } from "@okkey/vault";
+import {
+  envelopeB64ForPlaintextShare,
+  loadSplitKeyShareWrapKey,
+  mapVaultUnlockBootstrapToStored,
+} from "@okkey/vault";
 import {
   startAuthentication,
   type AuthenticationResponseJSON,
@@ -30,6 +37,8 @@ import {
 } from "@simplewebauthn/browser";
 
 import { base64ToBytes, bytesToBase64 } from "./base64";
+import { getOrCreateDeviceFingerprint } from "./deviceFingerprint";
+import { readVaultBundle, writeVaultBundle } from "./localVaultBundle";
 
 export type PasskeyWrapErrorCode =
   | "prf_unavailable"
@@ -247,7 +256,11 @@ async function finishPasskeyApproval(input: {
     response: Record<string, unknown>;
     device_share: string;
   }) => Promise<unknown>;
-}): Promise<{ ok: true } | { ok: false; code: PasskeyApprovalErrorCode }> {
+  /** When set, seal to this device's IndexedDB wrap keys (OT delivery parity). */
+  userId?: string | null;
+}): Promise<
+  { ok: true; deviceShareB64: string } | { ok: false; code: PasskeyApprovalErrorCode }
+> {
   let prfOutput: Uint8Array | null = null;
   let rawShare: Uint8Array | null = null;
   let forPending: Uint8Array | null = null;
@@ -282,20 +295,55 @@ async function finishPasskeyApproval(input: {
       // Older wraps sealed the approver's hybrid frame. Re-allow the passkey.
       return { ok: false, code: "wrap_outdated" };
     }
-    forPending = await wrapRawShareForPending({
-      rawShare,
-      ed25519PublicKeyB64: input.options.share_wrap_ed25519_public_key,
-      pqPublicKeyB64: input.options.share_wrap_pq_public_key,
-    });
+    const userId = input.userId?.trim() ?? "";
+    if (userId) {
+      // Seal to the pending device's local wrap keys so unlock-bootstrap /
+      // openBundleDeviceShare can open the same hybrid after approval.
+      const sealedB64 = await envelopeB64ForPlaintextShare({ userId, share: rawShare });
+      forPending = base64ToBytes(sealedB64);
+      // Refuse to upload a hybrid this browser cannot open — that used to
+      // become "Incorrect master password" on the lock screen.
+      let opened: Uint8Array | null = null;
+      try {
+        const keys = await loadSplitKeyShareWrapKey(userId);
+        if (!keys) {
+          return { ok: false, code: "failed" };
+        }
+        try {
+          opened = await openStoredSplitKeyShareB({
+            stored: forPending,
+            recipientEd25519Seed: keys.ed25519Seed,
+            recipientMlkemDecapsulationKey: keys.mlkemDecapsulationKey,
+          });
+          if (opened.length !== 32) {
+            return { ok: false, code: "failed" };
+          }
+        } finally {
+          wipeBytes(keys.ed25519Seed);
+          wipeBytes(keys.mlkemDecapsulationKey);
+        }
+      } catch {
+        return { ok: false, code: "failed" };
+      } finally {
+        wipeBytes(opened);
+      }
+    } else {
+      forPending = await wrapRawShareForPending({
+        rawShare,
+        ed25519PublicKeyB64: input.options.share_wrap_ed25519_public_key,
+        pqPublicKeyB64: input.options.share_wrap_pq_public_key,
+      });
+    }
     if (!forPending) {
       return { ok: false, code: "failed" };
     }
+    const deviceShareB64 = bytesToBase64(forPending);
     await input.verify({
       challengeId: input.options.challengeId,
       response: assertion as unknown as Record<string, unknown>,
-      device_share: bytesToBase64(forPending),
+      device_share: deviceShareB64,
     });
-    return { ok: true };
+    return { ok: true, deviceShareB64 };
   } catch (error) {
     return { ok: false, code: mapApiError(error) ?? "failed" };
   } finally {
@@ -305,16 +353,60 @@ async function finishPasskeyApproval(input: {
   }
 }
 
+/**
+ * Write the hybrid that was just uploaded so unlock does not keep a pre-approval
+ * placeholder when unlock-bootstrap is unreachable (unbound session, offline).
+ */
+export async function persistPasskeyApprovedDeviceShare(input: {
+  core: CoreApiClient;
+  userId: string;
+  deviceShareB64: string;
+}): Promise<void> {
+  const userId = input.userId.trim();
+  const deviceShareB64 = input.deviceShareB64.trim();
+  if (!userId || !deviceShareB64) {
+    return;
+  }
+  const existing = readVaultBundle(userId);
+  if (existing) {
+    writeVaultBundle({ ...existing, device_share_b64: deviceShareB64 }, userId);
+    return;
+  }
+  try {
+    const dto = await input.core.getVaultUnlockBootstrap(getOrCreateDeviceFingerprint());
+    const stored = mapVaultUnlockBootstrapToStored(dto);
+    writeVaultBundle({ ...stored, device_share_b64: deviceShareB64 }, userId);
+  } catch {
+    /* Bundle fields arrive on the next successful unlock-bootstrap. */
+  }
+}
+
 export async function approvePendingDeviceWithPasskey(
   core: CoreApiClient,
   deviceId: string,
+  options?: { userId?: string | null },
 ): Promise<{ ok: true } | { ok: false; code: PasskeyApprovalErrorCode }> {
   try {
-    const options = await core.passkeyApprovalOptions(deviceId);
-    return finishPasskeyApproval({
-      options,
+    // Always fetch fresh options so wrap keys and passkey permissions are current
+    // after a rejection, retry, reload, or permission change on another device.
+    const userId = options?.userId?.trim() ?? "";
+    const approvalOptions = await core.passkeyApprovalOptions(deviceId);
+    const result = await finishPasskeyApproval({
+      options: approvalOptions,
       verify: (body) => core.passkeyApprovalVerify(deviceId, body),
+      userId,
     });
+    if (!result.ok) {
+      return result;
+    }
+    if (userId) {
+      await persistPasskeyApprovedDeviceShare({
+        core,
+        userId,
+        deviceShareB64: result.deviceShareB64,
+      });
+    }
+    return { ok: true };
   } catch (error) {
     return { ok: false, code: mapApiError(error) ?? "failed" };
   }
@@ -324,13 +416,28 @@ export async function approvePendingDeviceWithPasskey(
 export async function completePasskeyHandoff(
   api: ApiClient,
   requestId: string,
+  options?: { core?: CoreApiClient | null; userId?: string | null },
 ): Promise<{ ok: true } | { ok: false; code: PasskeyApprovalErrorCode }> {
   try {
-    const options = await postPasskeyHandoffOptions(api, requestId);
-    return finishPasskeyApproval({
-      options,
+    const userId = options?.userId?.trim() ?? "";
+    const approvalOptions = await postPasskeyHandoffOptions(api, requestId);
+    const result = await finishPasskeyApproval({
+      options: approvalOptions,
       verify: (body) => postPasskeyHandoffVerify(api, requestId, body),
+      userId,
     });
+    if (!result.ok) {
+      return result;
+    }
+    const core = options?.core;
+    if (userId && core) {
+      await persistPasskeyApprovedDeviceShare({
+        core,
+        userId,
+        deviceShareB64: result.deviceShareB64,
+      });
+    }
+    return { ok: true };
   } catch (error) {
     return { ok: false, code: mapApiError(error) ?? "failed" };
   }

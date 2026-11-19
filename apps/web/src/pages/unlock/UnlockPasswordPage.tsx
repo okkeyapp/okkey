@@ -87,6 +87,7 @@ export default function UnlockPasswordPage() {
   const [masterPassword, setMasterPassword] = useState("");
   const [showUnlockError, setShowUnlockError] = useState(false);
   const [serverShareError, setServerShareError] = useState(false);
+  const [deviceShareError, setDeviceShareError] = useState(false);
   const [masterPasswordLocked, setMasterPasswordLocked] = useState(
     () => userId !== null && isMasterPasswordLocked(userId),
   );
@@ -302,6 +303,7 @@ export default function UnlockPasswordPage() {
     }
     setShowUnlockError(false);
     setServerShareError(false);
+    setDeviceShareError(false);
     setNoBundleError(false);
     setPinError(null);
     if (vaultUnlockBootstrapLoading || bioBusy) {
@@ -322,6 +324,10 @@ export default function UnlockPasswordPage() {
     }
     if (!unlocked.ok && unlocked.reason === "server_share_unavailable") {
       setServerShareError(true);
+      return;
+    }
+    if (!unlocked.ok && unlocked.reason === "device_share_unavailable") {
+      setDeviceShareError(true);
       return;
     }
     if (!unlocked.ok && unlocked.reason === "no_bundle") {
@@ -553,6 +559,14 @@ export default function UnlockPasswordPage() {
             <AlertErrorIcon className="size-4" />
             <AlertTitle>{t("unlock.errorTitle")}</AlertTitle>
             <AlertDescription>{t("unlock.errorServerShareUnavailable")}</AlertDescription>
+          </Alert>
+        ) : null}
+
+        {deviceShareError ? (
+          <Alert variant="error">
+            <AlertErrorIcon className="size-4" />
+            <AlertTitle>{t("unlock.errorTitle")}</AlertTitle>
+            <AlertDescription>{t("unlock.errorDeviceShareUnavailable")}</AlertDescription>
           </Alert>
         ) : null}
 

@@ -217,6 +217,23 @@ async function bindDeviceWithProof(
 }
 
 /**
+ * After binding a pending session, re-list so redacted trusted approvers are
+ * visible. The pre-bind list for an unbound Bearer is fingerprint-only.
+ */
+async function approversAfterPendingBind(
+  core: CoreApiClient,
+  fingerprint: string,
+  fallback: DeviceListItemDto[],
+): Promise<DeviceListItemDto[]> {
+  try {
+    const listed = await core.listDevices(fingerprint);
+    return trustedApprovers(listed.devices);
+  } catch {
+    return trustedApprovers(fallback);
+  }
+}
+
+/**
  * Resolve whether the current browser is a trusted device; register as pending when new.
  *
  * Reclaims the sole trusted device only when migrating a legacy hex fingerprint on the
@@ -339,16 +356,12 @@ export async function resolveDeviceTrust(
     }
   }
   if (pendingMatch && !canReclaimSole && !canBootstrapTrusted) {
-    if (
-      await rotateLostShareDeliveryKey(core, fingerprint, pendingMatch, userId)
-    ) {
-      return {
-        status: "pending",
-        deviceId: pendingMatch.device_id,
-        approverDevices: trustedApprovers(listed.devices),
-        needsShareReapproval: true,
-      };
-    }
+    const needsShareReapproval = await rotateLostShareDeliveryKey(
+      core,
+      fingerprint,
+      pendingMatch,
+      userId,
+    );
     if (!(await hasDeviceSigningKey())) {
       const shareB64 = bundle?.device_share_b64?.trim() ?? "";
       if (shareB64) {
@@ -357,13 +370,19 @@ export async function resolveDeviceTrust(
           return {
             status: "pending",
             deviceId: pendingMatch.device_id,
-            approverDevices: trustedApprovers(listed.devices),
+            approverDevices: await approversAfterPendingBind(
+              core,
+              fingerprint,
+              listed.devices,
+            ),
+            needsShareReapproval: needsShareReapproval || undefined,
           };
         } catch (error: unknown) {
           return {
             status: "pending",
             deviceId: pendingMatch.device_id,
             approverDevices: trustedApprovers(listed.devices),
+            needsShareReapproval: needsShareReapproval || undefined,
             errorMessage: error instanceof Error ? error.message : String(error),
           };
         }
@@ -374,6 +393,7 @@ export async function resolveDeviceTrust(
         status: "pending",
         deviceId: pendingMatch.device_id,
         approverDevices: trustedApprovers(listed.devices),
+        needsShareReapproval: needsShareReapproval || undefined,
       };
     }
     try {
@@ -381,13 +401,19 @@ export async function resolveDeviceTrust(
       return {
         status: "pending",
         deviceId: pendingMatch.device_id,
-        approverDevices: trustedApprovers(listed.devices),
+        approverDevices: await approversAfterPendingBind(
+          core,
+          fingerprint,
+          listed.devices,
+        ),
+        needsShareReapproval: needsShareReapproval || undefined,
       };
     } catch (error: unknown) {
       return {
         status: "pending",
         deviceId: pendingMatch.device_id,
         approverDevices: trustedApprovers(listed.devices),
+        needsShareReapproval: needsShareReapproval || undefined,
         errorMessage: error instanceof Error ? error.message : String(error),
       };
     }
@@ -402,9 +428,11 @@ export async function resolveDeviceTrust(
         ? soleTrusted?.device_fingerprint
         : undefined,
     });
-    if (registered.status === "trusted") {
-      // POST /devices still binds the Bearer when it creates a trusted row.
+    if (registered.status === "trusted" || registered.status === "pending_approval") {
+      // POST /devices binds the Bearer for both trusted and newly created pending rows.
       boundSessionDeviceId = registered.device_id;
+    }
+    if (registered.status === "trusted") {
       const after = await core.listDevices(fingerprint).catch(() => listed);
       return {
         status: "trusted",
@@ -626,6 +654,47 @@ export async function pollDeviceTrust(
   const pendingMatch = findPendingRow(listed, fingerprint, pendingDeviceId);
 
   if (pendingMatch) {
+    // Reject unbinds the session; keep the signing key and rebind so the wait
+    // UI can list trusted approvers and passkey options are allowed again.
+    if (boundSessionDeviceId !== pendingMatch.device_id) {
+      if (await hasDeviceSigningKey()) {
+        try {
+          await bindDeviceWithProof(core, pendingMatch.device_id);
+          return {
+            status: "pending",
+            deviceId: pendingMatch.device_id,
+            approverDevices: await approversAfterPendingBind(
+              core,
+              fingerprint,
+              listed.devices,
+            ),
+            needsShareReapproval: needsShareDeliveryReapproval(),
+          };
+        } catch {
+          /* Fall through with the fingerprint-scoped list. */
+        }
+      } else {
+        const shareB64 =
+          (userId ? readVaultBundle(userId)?.device_share_b64?.trim() : "") ?? "";
+        if (shareB64) {
+          try {
+            await bindDeviceWithShareProof(core, pendingMatch.device_id, shareB64);
+            return {
+              status: "pending",
+              deviceId: pendingMatch.device_id,
+              approverDevices: await approversAfterPendingBind(
+                core,
+                fingerprint,
+                listed.devices,
+              ),
+              needsShareReapproval: needsShareDeliveryReapproval(),
+            };
+          } catch {
+            /* Fall through with the fingerprint-scoped list. */
+          }
+        }
+      }
+    }
     return {
       status: "pending",
       deviceId: pendingMatch.device_id,
@@ -635,7 +704,8 @@ export async function pollDeviceTrust(
   }
 
   if (pendingDeviceId) {
-    await clearDeviceSigningKey();
+    // Soft reject: keep the signing key so "Request approval again" can rebind
+    // without minting a new key or signing out. Blocked paths still clear it.
     return {
       status: "rejected",
       deviceId: pendingDeviceId,
