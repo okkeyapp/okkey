@@ -25,41 +25,32 @@ export async function assertNoHorizontalOverflow(
   }
 }
 
-function assertBoxInViewport(
-  box: { x: number; y: number; width: number; height: number },
-  viewport: { width: number; height: number },
-  label: string,
-): void {
-  expect(box.x, `${label} left`).toBeGreaterThanOrEqual(-1);
-  expect(box.x + box.width, `${label} right`).toBeLessThanOrEqual(viewport.width + 1);
-  expect(box.y, `${label} top`).toBeGreaterThanOrEqual(-1);
-  expect(box.y + box.height, `${label} bottom`).toBeLessThanOrEqual(viewport.height + 1);
-}
-
 /**
- * Assert a dialog fits the viewport horizontally and that specific footer/action
- * buttons stay fully on-screen. Scrollable content buttons are intentionally ignored.
+ * Wait for sheet open animation, then assert dialog has no horizontal overflow and
+ * footer/action buttons are fully inside the viewport. Scrollable content buttons
+ * are intentionally ignored.
  */
 export async function assertDialogActionButtonsInViewport(
   page: Page,
   dialog: Locator,
   actionButtons: Locator[],
 ): Promise<void> {
-  const viewport = page.viewportSize();
-  expect(viewport).toBeTruthy();
-
   await expect(dialog).toBeVisible();
-  await assertNoHorizontalOverflow(page, dialog);
 
-  const dialogBox = await dialog.boundingBox();
-  expect(dialogBox, "dialog should have a bounding box").toBeTruthy();
-  assertBoxInViewport(dialogBox!, viewport!, "dialog");
+  // Bottom-sheet enter animation can leave buttons below the fold until it settles.
+  const sheet = dialog.locator(".okkey-popup-sheet").first();
+  if ((await sheet.count()) > 0) {
+    await sheet.evaluate(async (el) => {
+      const animations = el.getAnimations({ subtree: true });
+      await Promise.all(animations.map((animation) => animation.finished.catch(() => undefined)));
+    });
+  }
+
+  await assertNoHorizontalOverflow(page, dialog);
 
   expect(actionButtons.length).toBeGreaterThan(0);
   for (const button of actionButtons) {
     await expect(button).toBeVisible();
-    const box = await button.boundingBox();
-    expect(box, "action button should have a bounding box").toBeTruthy();
-    assertBoxInViewport(box!, viewport!, "action button");
+    await expect(button).toBeInViewport({ ratio: 1 });
   }
 }

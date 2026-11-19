@@ -660,8 +660,10 @@ export const Popup = React.forwardRef<HTMLDivElement, PopupProps>(
             data-state={isClosing ? "closing" : "open"}
             className={cn(
               "okkey-popup-sheet pointer-events-auto flex w-full min-h-0 max-w-full flex-col",
+              // Definite height (not only max-height) so flex children + % max-height resolve and
+              // footer actions cannot paint past the viewport on narrow screens.
               !isDesktopLayout &&
-                "max-md:w-full max-md:min-h-[min(88dvh,calc(100dvh-env(safe-area-inset-top,0px)))] max-md:max-h-[calc(100dvh-env(safe-area-inset-top,0px))]",
+                "max-md:h-[min(88dvh,calc(100dvh-env(safe-area-inset-top,0px)))] max-md:max-h-[calc(100dvh-env(safe-area-inset-top,0px))] max-md:w-full max-md:overflow-hidden",
               !isDesktopLayout && (isSheetDragging || sheetDragOffset > 0) && "max-md:[animation:none]",
               !isDesktopLayout && sheetDragOffset > 0 && !isClosing && "max-md:transition-none",
             )}

@@ -213,7 +213,9 @@
     }
 
     .okkey-popup-sheet:not([data-layout="desktop"]) .okkey-popup-panel {
+      /* Sheet owns the viewport budget; panel must fill remaining height, not 100dvh-32px. */
       animation: none;
+      max-height: 100%;
     }
 
     .okkey-popup-sheet:not([data-layout="desktop"]) .okkey-popup-panel[data-state="closing"] {
