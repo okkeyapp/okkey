@@ -1,0 +1,122 @@
+# Build Core images and run the Trivy CRITICAL/HIGH gate on pull requests.
+#
+# Scope: api / worker / web (amd64 only). arm64 stays covered by
+# publish-images on release/hotfix/tag/dispatch.
+#
+# Never logs into a registry and never pushes. Images are written to a local
+# docker tar and scanned with the same Trivy pin / severity / ignore-unfixed /
+# CVE-exception path as publish-images (via .github/actions/trivy-scan-image).
+#
+# Path filters cover Dockerfile inputs and the scan wiring so unrelated PRs
+# skip the heavy build. Fork PRs need no secrets.
+name: PR image scan
+
+on:
+  pull_request:
+    branches:
+      - dev
+      - "release/**"
+    paths:
+      - "services/api/Dockerfile"
+      - "apps/web/Dockerfile"
+      - "services/**"
+      - "apps/web/**"
+      - "packages/**"
+      - "rust/**"
+      - "rust-toolchain.toml"
+      - "scripts/**"
+      - "deploy/**"
+      - "package.json"
+      - "yarn.lock"
+      - ".github/workflows/pr-image-scan.yml"
+      - ".github/workflows/publish-images.yml"
+      - ".github/actions/trivy-scan-image/**"
+      - ".github/security/cve-exceptions.yaml"
+
+permissions:
+  contents: read
+  actions: write # GHA cache for buildx (no registry login or push)
+
+concurrency:
+  group: okkey-pr-image-scan-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-scan:
+    name: build-and-scan (${{ matrix.image }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: api
+            file: services/api/Dockerfile
+            target: api
+            cache_scope: services-api
+          - image: worker
+            file: services/api/Dockerfile
+            target: worker
+            cache_scope: services-api
+          - image: web
+            file: apps/web/Dockerfile
+            target: runtime
+            cache_scope: web
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          # Match publish-images: scan the PR head, not the ephemeral merge commit.
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - name: Build image to local tar
+        id: build
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          file: ${{ matrix.file }}
+          target: ${{ matrix.target }}
+          platforms: linux/amd64
+          # No registry: write a single-platform docker tar for Trivy.
+          push: false
+          outputs: type=docker,dest=/tmp/okkey-${{ matrix.image }}.tar
+          # Local load/tar cannot carry the multi-manifest attestations used on
+          # publish push-by-digest; layers and Dockerfile match publish builds.
+          provenance: false
+          sbom: false
+          cache-from: type=gha,scope=${{ matrix.cache_scope }}-linux-amd64
+          cache-to: type=gha,mode=max,scope=${{ matrix.cache_scope }}-linux-amd64
+          build-args: |
+            NODE_VERSION=25
+            RUST_TOOLCHAIN=1.86.0
+            WASM_PACK_VERSION=0.13.1
+            OKKEY_GIT_SHA=${{ github.event.pull_request.head.sha }}
+
+      - name: Prepare Trivy report paths
+        id: reports
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/trivy-reports
+          echo "table=/tmp/trivy-reports/okkey-${{ matrix.image }}-amd64.txt" >> "$GITHUB_OUTPUT"
+          echo "sarif=/tmp/trivy-reports/okkey-${{ matrix.image }}-amd64.sarif" >> "$GITHUB_OUTPUT"
+
+      - name: Scan image with Trivy
+        uses: ./.github/actions/trivy-scan-image
+        with:
+          image: ${{ matrix.image }}
+          input: /tmp/okkey-${{ matrix.image }}.tar
+          table-output: ${{ steps.reports.outputs.table }}
+          sarif-output: ${{ steps.reports.outputs.sarif }}
+
+      - name: Upload Trivy reports
+        if: ${{ always() && steps.build.outcome == 'success' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: trivy-${{ matrix.image }}-amd64
+          path: /tmp/trivy-reports/*
+          if-no-files-found: warn
+          retention-days: 14

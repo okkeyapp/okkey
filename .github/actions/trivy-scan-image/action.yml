@@ -1,0 +1,94 @@
+# Shared Trivy gate for Core images (api / worker / web).
+# Used by publish-images (pushed digests) and pr-image-scan (local OCI tarballs).
+# Keep severity, exit-code, ignore-unfixed, scanners, vuln-type, timeout, and
+# aquasecurity/trivy-action pin identical to the historical publish scan jobs.
+name: Trivy scan image
+description: >
+  Render CVE exceptions into .trivyignore and scan a container image with the
+  same Trivy CRITICAL/HIGH gate as Publish container images.
+inputs:
+  image:
+    description: Image key for CVE exceptions (api, worker, or web)
+    required: true
+  image-ref:
+    description: Image reference to scan (registry digest or local tag)
+    required: false
+    default: ""
+  input:
+    description: Path to a docker/OCI tar to scan instead of image-ref
+    required: false
+    default: ""
+  platform:
+    description: >
+      TRIVY_PLATFORM for multi-arch OCI indexes (for example linux/amd64).
+      Leave empty when scanning a single-platform tar or local image.
+    required: false
+    default: ""
+  exceptions-path:
+    description: Path to cve-exceptions.yaml
+    required: false
+    default: .github/security/cve-exceptions.yaml
+  render-script:
+    description: Path to scripts/render-trivy-ignore.mjs
+    required: false
+    default: scripts/render-trivy-ignore.mjs
+  table-output:
+    description: Optional path to write the table report
+    required: false
+    default: ""
+  sarif-output:
+    description: >
+      Optional path to also write a SARIF report. Uses exit-code 0 so upload
+      still works after a failing table gate.
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: Render Trivy ignore list
+      shell: bash
+      run: |
+        set -euo pipefail
+        node "${{ inputs.render-script }}" \
+          --exceptions "${{ inputs.exceptions-path }}" \
+          --image "${{ inputs.image }}" \
+          --out .trivyignore
+
+    - name: Scan image (table)
+      uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+      env:
+        # Digest refs from buildx push-by-digest are OCI indexes (image +
+        # attestation). Pin the child platform; trivy-action v0.36.0 has no
+        # platform input. Empty is fine for single-platform tarballs.
+        TRIVY_PLATFORM: ${{ inputs.platform }}
+      with:
+        image-ref: ${{ inputs.image-ref }}
+        input: ${{ inputs.input }}
+        format: table
+        output: ${{ inputs.table-output }}
+        exit-code: "1"
+        ignore-unfixed: "false"
+        vuln-type: os,library
+        scanners: vuln
+        severity: CRITICAL,HIGH
+        timeout: 10m
+        trivyignores: .trivyignore
+
+    - name: Scan image (SARIF)
+      if: ${{ always() && inputs.sarif-output != '' }}
+      uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+      env:
+        TRIVY_PLATFORM: ${{ inputs.platform }}
+      with:
+        image-ref: ${{ inputs.image-ref }}
+        input: ${{ inputs.input }}
+        format: sarif
+        output: ${{ inputs.sarif-output }}
+        exit-code: "0"
+        ignore-unfixed: "false"
+        vuln-type: os,library
+        scanners: vuln
+        severity: CRITICAL,HIGH
+        timeout: 10m
+        trivyignores: .trivyignore

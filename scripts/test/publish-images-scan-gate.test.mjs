@@ -9,6 +9,14 @@ const workflow = readFileSync(
   join(root, ".github/workflows/publish-images.yml"),
   "utf8",
 );
+const prWorkflow = readFileSync(
+  join(root, ".github/workflows/pr-image-scan.yml"),
+  "utf8",
+);
+const trivyAction = readFileSync(
+  join(root, ".github/actions/trivy-scan-image/action.yml"),
+  "utf8",
+);
 
 function jobBlock(name) {
   const marker = `\n  ${name}:`;
@@ -65,27 +73,66 @@ test("scan jobs sit between digest builds and manifest tags / cosign", () => {
   assert.doesNotMatch(workflow, /continue-on-error/);
 });
 
-test("Trivy fails the job on CRITICAL and HIGH and loads generated ignores", () => {
+test("shared Trivy action fails on CRITICAL and HIGH and loads generated ignores", () => {
+  assert.match(
+    trivyAction,
+    /aquasecurity\/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0\.36\.0/,
+  );
+  assert.match(trivyAction, /severity: CRITICAL,HIGH/);
+  assert.match(trivyAction, /exit-code: "1"/);
+  assert.match(trivyAction, /ignore-unfixed: "false"/);
+  assert.match(trivyAction, /scanners: vuln/);
+  assert.match(trivyAction, /trivyignores: \.trivyignore/);
+  assert.match(trivyAction, /inputs\.render-script/);
+  assert.match(trivyAction, /cve-exceptions\.yaml/);
+
   for (const name of ["scan-amd64", "scan-arm64"]) {
     const job = jobBlock(name);
-    assert.match(
-      job,
-      /aquasecurity\/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0\.36\.0/,
-    );
-    assert.match(job, /severity: CRITICAL,HIGH/);
-    assert.match(job, /exit-code: "1"/);
-    assert.match(job, /ignore-unfixed: "false"/);
-    assert.match(job, /scanners: vuln/);
-    assert.match(job, /trivyignores: \.trivyignore/);
+    assert.match(job, /\.\/\.github\/actions\/trivy-scan-image/);
     assert.match(job, /scripts\/render-trivy-ignore\.mjs/);
     assert.match(job, /\.github\/security\/cve-exceptions\.yaml/);
+    assert.match(job, /\.github\/actions\/trivy-scan-image/);
     assert.equal(job.split("image: [api, worker, web]").length - 1, 1);
   }
 
   // buildx digests are OCI indexes; trivy-action v0.36.0 has no platform
   // input, so each arch scan must set TRIVY_PLATFORM for that arch.
-  assert.match(jobBlock("scan-amd64"), /TRIVY_PLATFORM:\s*linux\/amd64/);
-  assert.match(jobBlock("scan-arm64"), /TRIVY_PLATFORM:\s*linux\/arm64/);
+  assert.match(jobBlock("scan-amd64"), /platform:\s*linux\/amd64/);
+  assert.match(jobBlock("scan-arm64"), /platform:\s*linux\/arm64/);
+});
+
+test("PR image scan builds local amd64 tars and reuses the shared Trivy action", () => {
+  assert.match(prWorkflow, /name: PR image scan/);
+  assert.match(prWorkflow, /pull_request:/);
+  assert.match(prWorkflow, /branches:\s*\n\s*- dev\n\s*- "release\/\*\*"/);
+  assert.match(prWorkflow, /build-and-scan \(\$\{\{ matrix\.image \}\}\)/);
+  assert.match(prWorkflow, /platforms: linux\/amd64/);
+  assert.match(prWorkflow, /push:\s*false/);
+  assert.match(prWorkflow, /type=docker,dest=\/tmp\/okkey-\$\{\{ matrix\.image \}\}\.tar/);
+  assert.doesNotMatch(prWorkflow, /docker\/login-action/);
+  assert.match(
+    prWorkflow,
+    /permissions:\s*\n\s*contents: read\s*\n\s*actions: write/,
+  );
+  assert.doesNotMatch(prWorkflow, /^\s*packages:\s*write\s*$/m);
+  assert.doesNotMatch(prWorkflow, /push:\s*true/);
+  assert.match(prWorkflow, /\.\/\.github\/actions\/trivy-scan-image/);
+  assert.match(prWorkflow, /input:\s*\/tmp\/okkey-\$\{\{ matrix\.image \}\}\.tar/);
+  assert.match(prWorkflow, /table-output:/);
+  assert.match(prWorkflow, /sarif-output:/);
+  assert.match(prWorkflow, /Upload Trivy reports/);
+  assert.match(
+    prWorkflow,
+    /OKKEY_GIT_SHA=\$\{\{ github\.event\.pull_request\.head\.sha \}\}/,
+  );
+  assert.match(
+    prWorkflow,
+    /NODE_VERSION=25\n\s*RUST_TOOLCHAIN=1\.86\.0\n\s*WASM_PACK_VERSION=0\.13\.1/,
+  );
+  // Same GHA cache scopes as publish amd64 builds.
+  assert.match(prWorkflow, /scope=\$\{\{ matrix\.cache_scope \}\}-linux-amd64/);
+  assert.match(prWorkflow, /cache_scope: services-api/);
+  assert.match(prWorkflow, /cache_scope: web/);
 });
 
 test("web runtime pins nginx alpine-slim at or above 1.30.7 for Trivy (TSK-293)", () => {
