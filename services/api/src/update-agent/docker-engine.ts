@@ -3,6 +3,7 @@ import http from "node:http";
 import { isSystemUpdateError, SystemUpdateError } from "../system-updates/errors.ts";
 import type { RegistryPullCredentials } from "../system-updates/package-format.ts";
 import type { ServiceContainer, UpdateApplyEngine } from "./apply.ts";
+import { digestRefFromRepoDigests } from "./cosign-verify.ts";
 import { encodeRegistryAuth, imageRegistryHost } from "./registry-auth.ts";
 
 /** Highest Docker Engine API version this agent intentionally speaks. */
@@ -53,6 +54,7 @@ type Inspect = {
 
 type ImageInspect = {
   Id?: string;
+  RepoDigests?: string[];
   Config?: ImageConfig;
 };
 
@@ -163,6 +165,13 @@ export function createDockerApplyEngine(
     async imageExists(image: string) {
       const response = await api.request("GET", `/images/${encodeURIComponent(image)}/json`);
       return response.status === 200;
+    },
+    async resolveImageDigestRef(image: string) {
+      if (image.includes("@sha256:")) {
+        return image;
+      }
+      const inspected = await inspectImage(api, image, "image");
+      return digestRefFromRepoDigests(image, inspected.RepoDigests ?? []);
     },
     async findServiceContainer(project, service) {
       const filters = encodeURIComponent(

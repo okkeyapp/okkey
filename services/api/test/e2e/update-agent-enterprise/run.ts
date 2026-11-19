@@ -21,6 +21,7 @@ import {
   run,
   signedCorePackage,
   signedEnterprisePackage,
+  ensureFakeCosignOnPath,
   startUpdateAgent,
   waitForJob,
   writeComposeFile,
@@ -152,6 +153,7 @@ async function main(): Promise<void> {
     };
 
     log("start update-agent");
+    const cosignBinDir = ensureFakeCosignOnPath(path.join(paths.workDir, "bin"));
     agent = await startUpdateAgent({
       root,
       repoRoot: paths.repoRoot,
@@ -161,6 +163,7 @@ async function main(): Promise<void> {
       project: PROJECT,
       installDir: paths.installDir,
       port: AGENT_PORT,
+      cosignBinDir,
     });
 
     // --- (1) successful apply ---

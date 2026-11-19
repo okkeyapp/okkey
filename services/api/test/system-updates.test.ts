@@ -1275,6 +1275,9 @@ test("a failed core apply restores replaced services and does not rewrite the im
     async imageExists() {
       return true;
     },
+    async resolveImageDigestRef(image: string) {
+      return image.includes("@sha256:") ? image : `${image}@sha256:${"a".repeat(64)}`;
+    },
     async findServiceContainer(_project, service) {
       return { id: service, name: service, service, image: "old" };
     },
@@ -1493,9 +1496,9 @@ test("update agent rolls enterprise tags back when a pull fails", async () => {
     });
     await agent.settle();
     assert.equal(finished.job.errorCode, "APPLY_FAILED");
-    assert.match(finished.job.errorMessage ?? "", /previous version was restored/);
     assert.match(finished.job.errorMessage ?? "", /\[redacted\]/);
-    assert.match(tagDuringPull, /OKKEY_ENTERPRISE_IMAGE_TAG=2\.0\.0/);
+    // Pull and cosign run before any .env write, so a pull failure leaves tags unchanged.
+    assert.equal(tagDuringPull, originalEnv);
     assert.equal(readFileSync(envFile, "utf8"), originalEnv);
     assert.equal(calls.some((call) => call.startsWith("replace")), false);
     assertNoCredentialLeak(`${logs.join("\n")}\n${finished.job.errorMessage ?? ""}\n${readFileSync(envFile, "utf8")}`, password);
@@ -2116,6 +2119,9 @@ test("compose runs update-agent as root with an agent healthcheck (not api :4000
   assert.equal(/^\s*user:/m.test(worker), false);
   assert.match(agent, /OKKEY_INSTALL_DIR:\s*\/okkey/);
   assert.match(agent, /DOCKER_SOCKET:\s*\/var\/run\/docker\.sock/);
+  // Cosign keyless verify uses the same env names as deploy/docker/install.sh.
+  assert.match(agent, /OKKEY_COSIGN_CERTIFICATE_IDENTITY_REGEXP/);
+  assert.match(agent, /OKKEY_COSIGN_CERTIFICATE_OIDC_ISSUER/);
   // Inherited api HEALTHCHECK probes :4000; override must probe the agent port.
   assert.match(agent, /127\.0\.0\.1:8090/);
   assert.equal(agent.includes("4000/health"), false);
@@ -2180,6 +2186,10 @@ function recordingEngine(calls: string[], options: { exists?: boolean } = {}) {
     async imageExists() {
       calls.push("exists");
       return options.exists ?? false;
+    },
+    async resolveImageDigestRef(image: string) {
+      calls.push(`digest:${image}`);
+      return image.includes("@sha256:") ? image : `${image}@sha256:${"a".repeat(64)}`;
     },
     async findServiceContainer(_project: string, service: string) {
       calls.push(`find:${service}`);
