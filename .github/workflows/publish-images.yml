@@ -30,11 +30,12 @@
 #
 # Multi-arch: linux/amd64 + linux/arm64 via native runners (no QEMU).
 # Each pushed digest is scanned with Trivy (CRITICAL,HIGH) before the
-# manifest tags are created and before cosign signs. Buildx push-by-digest
-# with attestations yields an OCI index (platform + attestation), so each
-# scan job sets TRIVY_PLATFORM to that arch — trivy-action v0.36.0 has no
-# platform input; without TRIVY_PLATFORM, Trivy defaults to linux/amd64 and
-# fails on arm64 indexes. A finding fails the job unless
+# manifest tags are created and before cosign signs. Scan settings are shared
+# with PR CI via .github/actions/trivy-scan-image. Buildx push-by-digest with
+# attestations yields an OCI index (platform + attestation), so each scan job
+# sets TRIVY_PLATFORM to that arch — trivy-action v0.36.0 has no platform
+# input; without TRIVY_PLATFORM, Trivy defaults to linux/amd64 and fails on
+# arm64 indexes. A finding fails the job unless
 # .github/security/cve-exceptions.yaml has a valid unexpired record for that
 # CVE and image. Tag/sign needs the scan jobs.
 # The cleanup cron does not scan.
@@ -499,6 +500,7 @@ jobs:
 
   # Vulnerability gate for the amd64 digests pushed above. Skipped when amd64
   # was not built. The cleanup cron never reaches this job.
+  # Scan settings live in .github/actions/trivy-scan-image (shared with PR CI).
   scan-amd64:
     name: scan (amd64)
     needs: [prep, build-amd64]
@@ -517,16 +519,8 @@ jobs:
           sparse-checkout: |
             scripts/render-trivy-ignore.mjs
             .github/security/cve-exceptions.yaml
+            .github/actions/trivy-scan-image/action.yml
           sparse-checkout-cone-mode: false
-
-      - name: Render Trivy ignore list
-        shell: bash
-        run: |
-          set -euo pipefail
-          node scripts/render-trivy-ignore.mjs \
-            --exceptions .github/security/cve-exceptions.yaml \
-            --image "${{ matrix.image }}" \
-            --out .trivyignore
 
       - name: Download digest
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
@@ -575,24 +569,17 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Scan pushed digest
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        env:
+        uses: ./.github/actions/trivy-scan-image
+        with:
+          image: ${{ matrix.image }}
+          image-ref: ${{ steps.digest.outputs.ref }}
           # Digest refs are OCI indexes (image + attestation). Pin the child
           # platform; trivy-action v0.36.0 has no platform input.
-          TRIVY_PLATFORM: linux/amd64
-        with:
-          image-ref: ${{ steps.digest.outputs.ref }}
-          format: table
-          exit-code: "1"
-          ignore-unfixed: "false"
-          vuln-type: os,library
-          scanners: vuln
-          severity: CRITICAL,HIGH
-          timeout: 10m
-          trivyignores: .trivyignore
+          platform: linux/amd64
 
   # Vulnerability gate for the arm64 digests pushed above. Skipped when arm64
   # was not built. The cleanup cron never reaches this job.
+  # Scan settings live in .github/actions/trivy-scan-image (shared with PR CI).
   scan-arm64:
     name: scan (arm64)
     needs: [prep, build-arm64]
@@ -611,16 +598,8 @@ jobs:
           sparse-checkout: |
             scripts/render-trivy-ignore.mjs
             .github/security/cve-exceptions.yaml
+            .github/actions/trivy-scan-image/action.yml
           sparse-checkout-cone-mode: false
-
-      - name: Render Trivy ignore list
-        shell: bash
-        run: |
-          set -euo pipefail
-          node scripts/render-trivy-ignore.mjs \
-            --exceptions .github/security/cve-exceptions.yaml \
-            --image "${{ matrix.image }}" \
-            --out .trivyignore
 
       - name: Download digest
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
@@ -669,23 +648,14 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Scan pushed digest
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        env:
+        uses: ./.github/actions/trivy-scan-image
+        with:
+          image: ${{ matrix.image }}
+          image-ref: ${{ steps.digest.outputs.ref }}
           # Digest refs are OCI indexes (image + attestation). Pin the child
           # platform; without this, Trivy defaults to linux/amd64 and fails
           # with "no child with platform linux/amd64" on arm64 indexes.
-          # trivy-action v0.36.0 has no platform input — use TRIVY_PLATFORM.
-          TRIVY_PLATFORM: linux/arm64
-        with:
-          image-ref: ${{ steps.digest.outputs.ref }}
-          format: table
-          exit-code: "1"
-          ignore-unfixed: "false"
-          vuln-type: os,library
-          scanners: vuln
-          severity: CRITICAL,HIGH
-          timeout: 10m
-          trivyignores: .trivyignore
+          platform: linux/arm64
 
   # Merge per-arch digests into multi-arch manifests and apply channel tags.
   # Tags and cosign run only after the scan for every built arch succeeded.
