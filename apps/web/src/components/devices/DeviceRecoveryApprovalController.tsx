@@ -1,4 +1,5 @@
 import { ApiRequestError, createBearerApiClient } from "@okkey/api";
+import { intlLocaleTag } from "@okkey/i18n";
 import { readStoredLocale } from "../../locale/localeStorage";
 import type { EnterpriseDeviceRecoveryRequestDto } from "@okkey-enterprise/types";
 import { EnterpriseAccountRecoveryClient } from "@okkey-enterprise/api";
@@ -45,7 +46,7 @@ function formatAbsoluteDate(iso: string, locale: string): string {
   if (Number.isNaN(date.getTime())) {
     return iso;
   }
-  return new Intl.DateTimeFormat(locale === "ru" ? "ru-RU" : "en-US", {
+  return new Intl.DateTimeFormat(intlLocaleTag(locale), {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",

@@ -5,8 +5,7 @@ import AppShellLayout from "../../components/app-shell/AppShellLayout";
 import OkkeyLogoMark from "../../components/app-shell/OkkeyLogoMark";
 import { useLocale } from "../../locale/LocaleContext";
 import { ROOT_PATH } from "../../routes/paths";
-import { selfHostedPrivacyHtmlEn } from "./content/selfHosted.en";
-import { selfHostedPrivacyHtmlRu } from "./content/selfHosted.ru";
+import { legalPrivacyHtmlForLocale } from "./legalPrivacyHtml";
 import PrivacyPolicyHtml from "./PrivacyPolicyHtml";
 
 /**
@@ -15,7 +14,7 @@ import PrivacyPolicyHtml from "./PrivacyPolicyHtml";
  */
 export default function PrivacyPolicyPage() {
   const { t, locale } = useLocale();
-  const html = locale === "ru" ? selfHostedPrivacyHtmlRu : selfHostedPrivacyHtmlEn;
+  const html = legalPrivacyHtmlForLocale(locale);
 
   return (
     <AppShellLayout

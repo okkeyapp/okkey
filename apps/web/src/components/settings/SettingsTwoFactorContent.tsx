@@ -1,6 +1,6 @@
 import { ApiRequestError } from "@okkey/api";
 import { AuthClient } from "@okkey/auth";
-import type { WebMessageValues } from "@okkey/i18n";
+import { intlLocaleTag, type WebMessageValues } from "@okkey/i18n";
 import type { TotpEnrollStartResponseDto, TwoFactorStatusResponseDto } from "@okkey/types";
 import {
   Alert,
@@ -67,7 +67,7 @@ function formatBackupCodesGeneratedAt(
   if (Number.isNaN(date.getTime())) {
     return null;
   }
-  const absolute = new Intl.DateTimeFormat(locale === "ru" ? "ru-RU" : "en-US", {
+  const absolute = new Intl.DateTimeFormat(intlLocaleTag(locale), {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",

@@ -1,3 +1,5 @@
+import { intlLocaleTag } from "@okkey/i18n";
+
 const SENT_AT_STORAGE_PREFIX = "okkey.licenseRequest.sentAt:";
 
 /** Client-side sent_at for logger/mailto path (API does not persist when not deliverable). */
@@ -36,8 +38,9 @@ export function formatLicenseRequestSentAt(iso: string, locale: string): string 
   if (Number.isNaN(date.getTime())) {
     return iso;
   }
-  // e.g. RU `22.10.2026, 16:13` / EN-GB `22/10/2026, 16:13`
-  return new Intl.DateTimeFormat(locale === "ru" ? "ru-RU" : "en-GB", {
+  // Day-first compact stamp: RU via intl map; English keeps en-GB (historical).
+  const tag = locale === "en" ? "en-GB" : intlLocaleTag(locale);
+  return new Intl.DateTimeFormat(tag, {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",

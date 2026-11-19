@@ -1,5 +1,5 @@
 import { ApiRequestError, CoreApiClient } from "@okkey/api";
-import type { WebMessageValues } from "@okkey/i18n";
+import { isWebLocale, type WebMessageValues } from "@okkey/i18n";
 import type { InvitationPreviewDto } from "@okkey/types";
 import { Alert, AlertDescription, AlertTitle, Button, Spinner } from "@okkey/ui";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
@@ -60,7 +60,7 @@ export default function InviteLandingPage() {
       try {
         const client = createAuthenticatedCoreClient(accessToken);
         const dto = normalizeAccountProfileWire(await client.getAccountProfile());
-        if (!cancelled && dto && (dto.locale === "en" || dto.locale === "ru")) {
+        if (!cancelled && dto && isWebLocale(dto.locale)) {
           setLocale(dto.locale);
         }
       } catch {

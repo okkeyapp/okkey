@@ -1,3 +1,4 @@
+import { localeTextDirection } from "@okkey/i18n";
 import { Body, Container, Head, Html, Img, Preview, Section, Text } from "@react-email/components";
 import * as React from "react";
 
@@ -67,6 +68,8 @@ const EMAIL_COLOR_SCHEME_CSS = `
 type EmailShellProps = {
   /** BCP-47 language for `<html lang>` — must match the email locale. */
   lang?: string;
+  /** Text direction for `<html dir>` — leave room for RTL locales. */
+  dir?: "ltr" | "rtl";
   /** Document title — same string as the email subject. */
   title: string;
   preview: string;
@@ -76,13 +79,21 @@ type EmailShellProps = {
 };
 
 /** Shared transactional chrome: canvas, white card, logo header, rule, then body. */
-export function EmailShell({ lang = "en", title, preview, footer, children }: EmailShellProps) {
+export function EmailShell({
+  lang = "en",
+  dir,
+  title,
+  preview,
+  footer,
+  children,
+}: EmailShellProps) {
+  const resolvedDir = dir ?? localeTextDirection(lang);
   const hasFooter =
     footer !== undefined &&
     footer !== null &&
     !(typeof footer === "string" && footer.trim().length === 0);
   return (
-    <Html lang={lang} dir="ltr">
+    <Html lang={lang} dir={resolvedDir}>
       <Head>
         <title>{title}</title>
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />

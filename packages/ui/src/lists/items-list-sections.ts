@@ -1,3 +1,5 @@
+import { intlLocaleTag, yearMonthOrder, type AppLocale } from "@okkey/i18n";
+
 export type ItemsListSort = "date_desc" | "date_asc" | "name_asc" | "name_desc";
 
 export type ItemsListSectionRow = {
@@ -12,7 +14,7 @@ export type ItemsListSection<TRow extends ItemsListSectionRow = ItemsListSection
   rows: TRow[];
 };
 
-export type ItemsListLocale = "en" | "ru";
+export type ItemsListLocale = AppLocale | string;
 
 function firstGrapheme(title: string): string {
   const t = title.trim();
@@ -30,12 +32,13 @@ function alphaGroupKeyAndLabel(title: string, locale: ItemsListLocale): { key: s
   if (!/\p{L}/u.test(g)) {
     return { key: "#", label: "#" };
   }
-  const loc = locale === "ru" ? "ru" : "en";
+  const loc = intlLocaleTag(locale);
   const label = g.toLocaleUpperCase(loc).normalize("NFC");
   return { key: label, label };
 }
 
-function compareAlphaSectionKeys(a: string, b: string, ascending: boolean): number {
+function compareAlphaSectionKeys(a: string, b: string, ascending: boolean, locale: ItemsListLocale): number {
+  const collatorLocale = intlLocaleTag(locale);
   const rank = (x: string, y: string) => {
     if (x === "#") {
       return y === "#" ? 0 : -1;
@@ -43,7 +46,7 @@ function compareAlphaSectionKeys(a: string, b: string, ascending: boolean): numb
     if (y === "#") {
       return 1;
     }
-    return x.localeCompare(y, "ru", { sensitivity: "base" });
+    return x.localeCompare(y, collatorLocale, { sensitivity: "base" });
   };
   const r = rank(a, b);
   return ascending ? r : -r;
@@ -51,8 +54,8 @@ function compareAlphaSectionKeys(a: string, b: string, ascending: boolean): numb
 
 function formatYearMonthHeading(locale: ItemsListLocale, d: Date): string {
   const y = d.getFullYear();
-  const month = new Intl.DateTimeFormat(locale === "ru" ? "ru" : "en-US", { month: "long" }).format(d);
-  return locale === "ru" ? `${y} ${month}` : `${month} ${y}`;
+  const month = new Intl.DateTimeFormat(intlLocaleTag(locale), { month: "long" }).format(d);
+  return yearMonthOrder(locale) === "year-month" ? `${y} ${month}` : `${month} ${y}`;
 }
 
 function yearMonthKey(d: Date): string {
@@ -111,7 +114,7 @@ export function buildItemsListSections<TRow extends ItemsListSectionRow>(
     }
   }
   const asc = sort === "name_asc";
-  const keys = [...map.keys()].sort((a, b) => compareAlphaSectionKeys(a, b, asc));
+  const keys = [...map.keys()].sort((a, b) => compareAlphaSectionKeys(a, b, asc, locale));
   return keys.map((key) => {
     const v = map.get(key)!;
     return { key, label: v.label, rows: v.rows };

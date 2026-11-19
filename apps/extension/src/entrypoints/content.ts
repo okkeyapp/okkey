@@ -128,7 +128,12 @@ type PendingSaveCreds = {
   formType: AutofillFormType;
 };
 
-function msg(locale: "ru" | "en", key: string, fallback: string, values?: Record<string, string | number>): string {
+function msg(
+  locale: WebLocale,
+  key: string,
+  fallback: string,
+  values?: Record<string, string | number>,
+): string {
   try {
     return formatWebMessage(locale, key, values);
   } catch {
@@ -136,69 +141,45 @@ function msg(locale: "ru" | "en", key: string, fallback: string, values?: Record
   }
 }
 
+/** Overlay copy via web i18n; English literals are emergency fallbacks only. */
 function overlayStrings(locale: WebLocale) {
-  const ru = locale === "ru";
-  const usernameGeneratorCta = msg(
-    locale,
-    "extension.autofill.usernameGenerator",
-    ru ? "Генератор логина" : "Username generator",
-  );
-  const emptyTooltip = msg(
-    locale,
-    "extension.autofill.noItems",
-    ru ? "Нет элементов для автозаполнения" : "No items to autofill",
-  );
-  return ru
-    ? {
-        unlockCta: msg(locale, "extension.autofill.unlockCta", "Разблокировать Okkey"),
-        unlockTooltip: "Разблокируйте Okkey",
-        saveTitle: msg(locale, "extension.autofill.saveTitle", "Сохранить учётную запись?"),
-        updateTitle: msg(locale, "extension.autofill.updateTitle", "Обновить учётную запись"),
-        saveBody: msg(
-          locale,
-          "extension.autofill.saveBody",
-          "Okkey может сохранить логин и пароль для этого сайта.",
-        ),
-        saveUnlockBody: "Чтобы сохранить учётную запись, сначала нужно разблокировать Okkey.",
-        updateUnlockBody: "Чтобы обновить учётную запись, сначала нужно разблокировать Okkey.",
-        saveConfirm: msg(locale, "extension.autofill.saveConfirm", "Сохранить"),
-        updateConfirm: msg(locale, "extension.autofill.updateConfirm", "Обновить"),
-        saveCancel: msg(locale, "extension.autofill.saveCancel", "Отмена"),
-        closeAria: "Закрыть",
-        updateFieldsTemplate: "Обновить: {fields}",
-        fieldLogin: msg(locale, "web.keyForm.fieldLabels.login", "логин (емейл)"),
-        fieldPassword: msg(locale, "web.keyForm.fieldLabels.password", "пароль"),
-        fieldUrl: msg(locale, "web.keyForm.fieldLabels.url", "URL сайта"),
-        emptyTooltip,
-        workspaceFallback: "Workspace",
-        vaultFallback: "Сейф",
-        usernameGeneratorCta,
-      }
-    : {
-        unlockCta: msg(locale, "extension.autofill.unlockCta", "Unlock Okkey"),
-        unlockTooltip: "Unlock Okkey",
-        saveTitle: msg(locale, "extension.autofill.saveTitle", "Save this login?"),
-        updateTitle: msg(locale, "extension.autofill.updateTitle", "Update account"),
-        saveBody: msg(
-          locale,
-          "extension.autofill.saveBody",
-          "Okkey can save the username and password for this site.",
-        ),
-        saveUnlockBody: "To save this login, unlock Okkey first.",
-        updateUnlockBody: "To update this login, unlock Okkey first.",
-        saveConfirm: msg(locale, "extension.autofill.saveConfirm", "Save"),
-        updateConfirm: msg(locale, "extension.autofill.updateConfirm", "Update"),
-        saveCancel: msg(locale, "extension.autofill.saveCancel", "Cancel"),
-        closeAria: "Close",
-        updateFieldsTemplate: "Update: {fields}",
-        fieldLogin: msg(locale, "web.keyForm.fieldLabels.login", "login"),
-        fieldPassword: msg(locale, "web.keyForm.fieldLabels.password", "password"),
-        fieldUrl: msg(locale, "web.keyForm.fieldLabels.url", "website URL"),
-        emptyTooltip,
-        workspaceFallback: "Workspace",
-        vaultFallback: "Vault",
-        usernameGeneratorCta,
-      };
+  return {
+    unlockCta: msg(locale, "extension.autofill.unlockCta", "Unlock Okkey"),
+    unlockTooltip: msg(locale, "extension.autofill.unlockTooltip", "Unlock Okkey"),
+    saveTitle: msg(locale, "extension.autofill.saveTitle", "Save this login?"),
+    updateTitle: msg(locale, "extension.autofill.updateTitle", "Update account"),
+    saveBody: msg(
+      locale,
+      "extension.autofill.saveBody",
+      "Okkey can save the username and password for this site.",
+    ),
+    saveUnlockBody: msg(
+      locale,
+      "extension.autofill.saveUnlockBody",
+      "To save this login, unlock Okkey first.",
+    ),
+    updateUnlockBody: msg(
+      locale,
+      "extension.autofill.updateUnlockBody",
+      "To update this login, unlock Okkey first.",
+    ),
+    saveConfirm: msg(locale, "extension.autofill.saveConfirm", "Save"),
+    updateConfirm: msg(locale, "extension.autofill.updateConfirm", "Update"),
+    saveCancel: msg(locale, "extension.autofill.saveCancel", "Cancel"),
+    closeAria: msg(locale, "extension.autofill.closeAria", "Close"),
+    updateFieldsTemplate: msg(locale, "extension.autofill.updateFields", "Update: {fields}"),
+    fieldLogin: msg(locale, "web.keyForm.fieldLabels.login", "login"),
+    fieldPassword: msg(locale, "web.keyForm.fieldLabels.password", "password"),
+    fieldUrl: msg(locale, "web.keyForm.fieldLabels.url", "website URL"),
+    emptyTooltip: msg(locale, "extension.autofill.noItems", "No items to autofill"),
+    workspaceFallback: msg(locale, "extension.autofill.workspaceFallback", "Workspace"),
+    vaultFallback: msg(locale, "extension.autofill.vaultFallback", "Vault"),
+    usernameGeneratorCta: msg(
+      locale,
+      "extension.autofill.usernameGenerator",
+      "Username generator",
+    ),
+  };
 }
 
 function truncateWithEllipsis(text: string, maxLen: number): string {

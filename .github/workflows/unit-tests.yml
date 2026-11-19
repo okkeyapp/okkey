@@ -225,6 +225,8 @@ jobs:
           yarn build:wasm
           yarn build:ts-sdk
           yarn --cwd packages/api build
+          # @okkey/ui imports @okkey/i18n for docs/locale helpers
+          yarn build:i18n
           yarn --cwd packages/ui build
           yarn --cwd packages/vault build
 

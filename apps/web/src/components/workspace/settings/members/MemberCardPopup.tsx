@@ -14,7 +14,7 @@ import {
   unwrapVaultKeyForSelf,
   wrapVaultKeyForRecipient,
 } from "@okkey/crypto";
-import type { WebMessageValues } from "@okkey/i18n";
+import { intlLocaleTag, type WebMessageValues } from "@okkey/i18n";
 import {
   Button,
   Input,
@@ -121,7 +121,7 @@ function formatDateTime(iso: string | null, locale: string): string {
   if (Number.isNaN(date.getTime())) {
     return "—";
   }
-  return new Intl.DateTimeFormat(locale === "ru" ? "ru-RU" : "en-US", {
+  return new Intl.DateTimeFormat(intlLocaleTag(locale), {
     day: "numeric",
     month: "long",
     year: "numeric",

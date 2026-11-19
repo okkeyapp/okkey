@@ -9,6 +9,7 @@ import {
   parseLastSubmittedStoreVersion,
   resolveExtensionManifestVersion,
 } from "./src/lib/extensionStoreVersion.ts";
+import { readExtensionStoreLocalesConfig } from "./src/lib/storeLocales.ts";
 
 const repoRoot = path.resolve(__dirname, "../..");
 const cryptoWasmSrc = path.resolve(repoRoot, "packages/crypto/dist/okkey_crypto_engine_bg.wasm");
@@ -93,6 +94,7 @@ export default defineConfig({
       "apps/extension/scripts/store-version.ts",
       "apps/extension/scripts/ensure-store-wasm.mjs",
       "apps/extension/store/*.md",
+      "apps/extension/store/locales.json",
       "apps/extension/store/LAST_SUBMITTED_MANIFEST_VERSION",
       // Shared packages — sources only (rebuild dist / wasm)
       "packages/api/package.json",
@@ -174,9 +176,9 @@ export default defineConfig({
     // See store/PERMISSIONS.md and extensionManifestPermissions.
     const permissions = extensionManifestPermissions(browser);
     return {
-      // Store consoles expose EN+RU listing locales from package `_locales/`.
+      // Store listing languages come from store/locales.json + public/_locales/.
       // In-app UI still uses `@okkey/i18n` + chrome.storage (not browser.i18n).
-      default_locale: "en",
+      default_locale: readExtensionStoreLocalesConfig(__dirname).defaultLocale,
       name: "__MSG_extName__",
       description: "__MSG_extDescription__",
       version: manifestVersion,

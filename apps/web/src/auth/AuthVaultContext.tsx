@@ -1,3 +1,4 @@
+import { isWebLocale } from "@okkey/i18n";
 import {
   MASTER_PASSWORD_POLICY_VERSION,
   masterPasswordMeetsNewPasswordPolicy,
@@ -684,7 +685,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
           return;
         }
         // Locale from account profile must apply before Settings opens (clear-cache → login).
-        if (dto.locale === "en" || dto.locale === "ru") {
+        if (isWebLocale(dto.locale)) {
           setLocale(dto.locale);
         }
         // Idle lock is device-local; migrate former server value once if unset on this device.

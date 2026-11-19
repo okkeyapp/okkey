@@ -1,14 +1,10 @@
-import type { WebLocale } from "@okkey/i18n";
+import { intlLocaleTag, type WebLocale } from "@okkey/i18n";
 
 export type FormatUserLocalDateTimeOptions = {
   locale: WebLocale;
   /** Defaults to the viewer's IANA timezone from the runtime (e.g. Europe/Moscow). */
   timeZone?: string;
 };
-
-function webLocaleToIntlLocale(locale: WebLocale): string {
-  return locale === "ru" ? "ru-RU" : "en-US";
-}
 
 export function resolveUserTimeZone(): string {
   return Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -20,7 +16,7 @@ export function formatUserLocalDateParts(
   { locale, timeZone = resolveUserTimeZone() }: FormatUserLocalDateTimeOptions,
 ): { date: string; time: string } {
   const date = new Date(atMs);
-  const intlLocale = webLocaleToIntlLocale(locale);
+  const intlLocale = intlLocaleTag(locale);
 
   return {
     date: new Intl.DateTimeFormat(intlLocale, {

@@ -12,7 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@okkey/ui";
-import { getWebLocaleNativeName, WEB_LOCALES, type WebLocale, type WebMessageValues } from "@okkey/i18n";
+import { getWebLocaleNativeName, READY_WEB_LOCALES, type WebLocale, type WebMessageValues, isWebLocale } from "@okkey/i18n";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 
@@ -118,7 +118,7 @@ export default function SettingsGeneralContent({ t }: SettingsGeneralContentProp
     }
     const savedRegion = normalizeRegionCode(cachedProfile.billing_region);
     setRegion(savedRegion ?? detectBrowserRegion());
-    if (cachedProfile.locale === "en" || cachedProfile.locale === "ru") {
+    if (isWebLocale(cachedProfile.locale)) {
       setLocale(cachedProfile.locale);
     }
   }, [cachedProfile, setLocale]);
@@ -239,7 +239,7 @@ export default function SettingsGeneralContent({ t }: SettingsGeneralContentProp
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {WEB_LOCALES.map((code) => (
+              {READY_WEB_LOCALES.map((code) => (
                 <SelectItem key={code} value={code}>
                   {getWebLocaleNativeName(code)}
                 </SelectItem>

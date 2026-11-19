@@ -7,6 +7,7 @@ import {
   Spinner,
   Button,
 } from "@okkey/ui";
+import { intlLocaleTag } from "@okkey/i18n";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, Navigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
@@ -31,7 +32,7 @@ function formatAbsoluteDate(iso: string, locale: string): string {
   if (Number.isNaN(date.getTime())) {
     return iso;
   }
-  return new Intl.DateTimeFormat(locale === "ru" ? "ru-RU" : "en-US", {
+  return new Intl.DateTimeFormat(intlLocaleTag(locale), {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",

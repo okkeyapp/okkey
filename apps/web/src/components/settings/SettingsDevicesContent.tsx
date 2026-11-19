@@ -1,5 +1,5 @@
 import { ApiRequestError } from "@okkey/api";
-import type { WebMessageValues } from "@okkey/i18n";
+import { intlLocaleTag, type WebMessageValues } from "@okkey/i18n";
 import type { DeviceBlockDuration, DeviceListItemDto } from "@okkey/types";
 import {
   Button,
@@ -84,7 +84,7 @@ function formatAbsoluteDate(iso: string, locale: string): string {
   if (Number.isNaN(date.getTime())) {
     return iso;
   }
-  return new Intl.DateTimeFormat(locale === "ru" ? "ru-RU" : "en-US", {
+  return new Intl.DateTimeFormat(intlLocaleTag(locale), {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",

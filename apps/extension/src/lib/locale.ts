@@ -1,16 +1,16 @@
-import type { WebLocale } from "@okkey/i18n";
+import {
+  isWebLocale,
+  LOCALE_DEFAULTS,
+  type WebLocale,
+} from "@okkey/i18n";
 
 import { extensionLocalStorage } from "./extensionStorageApi.ts";
 
 /** Same key as the extension popup language switcher (chrome.storage.local + page mirror). */
 export const EXTENSION_LOCALE_STORAGE_KEY = "okkey.extension.locale";
 
-const DEFAULT_LOCALE: WebLocale = "ru";
-
-/** Keep in sync with `@okkey/i18n` WEB_LOCALES (ru/en). Avoid runtime package import for node:test. */
-function isWebLocale(value: unknown): value is WebLocale {
-  return value === "ru" || value === "en";
-}
+/** In-app UI default (manifest `defaults.extensionUi`). Store package default remains `en`. */
+const DEFAULT_LOCALE: WebLocale = LOCALE_DEFAULTS.extensionUi;
 
 function extensionPageLocalStorage(): Storage | null {
   try {
@@ -27,7 +27,7 @@ function extensionPageLocalStorage(): Storage | null {
 function readLocalStorageMirror(): WebLocale | null {
   try {
     const raw = extensionPageLocalStorage()?.getItem(EXTENSION_LOCALE_STORAGE_KEY);
-    return isWebLocale(raw) ? raw : null;
+    return raw != null && isWebLocale(raw) ? raw : null;
   } catch {
     return null;
   }
@@ -60,7 +60,7 @@ export async function loadExtensionLocale(): Promise<WebLocale> {
     try {
       const bag = await area.get(EXTENSION_LOCALE_STORAGE_KEY);
       const stored = bag[EXTENSION_LOCALE_STORAGE_KEY];
-      if (isWebLocale(stored)) {
+      if (typeof stored === "string" && isWebLocale(stored)) {
         writeLocalStorageMirror(stored);
         return stored;
       }
@@ -129,7 +129,7 @@ export function subscribeExtensionLocale(
       return;
     }
     const change = changes[EXTENSION_LOCALE_STORAGE_KEY];
-    if (!change || !isWebLocale(change.newValue)) {
+    if (!change || typeof change.newValue !== "string" || !isWebLocale(change.newValue)) {
       return;
     }
     writeLocalStorageMirror(change.newValue);
