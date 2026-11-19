@@ -1019,7 +1019,7 @@ export default function NewCapsulePopup({
         panelClassName="min-h-[min(720px,calc(100dvh-32px))]"
         contentClassName="flex flex-col gap-4 overflow-visible"
         footer={
-          <div className="flex w-full items-center justify-between gap-2">
+          <div className="flex w-full min-w-0 flex-wrap items-center justify-between gap-2 max-sm:flex-col max-sm:items-stretch">
             {isEditing && editingDetail ? (
               <CapsuleActionsMenu
                 t={t}
@@ -1033,14 +1033,18 @@ export default function NewCapsulePopup({
                 onDelete={() => setDeleteConfirmOpen(true)}
               />
             ) : (
-              <span />
+              <span className="max-sm:hidden" />
             )}
-            <div className="flex items-center gap-2">
-              <Button variant="outline" onClick={handleClose}>
+            <div className="flex min-w-0 flex-wrap items-center justify-end gap-2 max-sm:w-full max-sm:flex-col max-sm:items-stretch">
+              <Button variant="outline" className="max-sm:w-full" onClick={handleClose}>
                 {t("web.newItemPopup.cancel")}
               </Button>
               {!typeLocked && !allTypesDisabled ? (
-                <Button disabled={!canSave || saving} onClick={() => void save()}>
+                <Button
+                  className="max-sm:w-full"
+                  disabled={!canSave || saving}
+                  onClick={() => void save()}
+                >
                   {t("web.newItemPopup.save")}
                 </Button>
               ) : null}

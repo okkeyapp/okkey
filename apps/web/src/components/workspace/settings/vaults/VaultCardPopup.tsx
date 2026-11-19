@@ -629,20 +629,37 @@ export default function VaultCardPopup({
     );
 
   const footer = readOnly ? (
-    <div className="flex w-full items-center justify-between gap-2">
+    <div className="flex w-full min-w-0 flex-wrap items-center justify-between gap-2 max-sm:flex-col max-sm:items-stretch">
       {deleteActions}
-      <Button type="button" variant="outline" onClick={handleClose} disabled={deleting}>
+      <Button
+        type="button"
+        variant="outline"
+        className="max-sm:w-full"
+        onClick={handleClose}
+        disabled={deleting}
+      >
         {t("web.settingsPopup.close")}
       </Button>
     </div>
   ) : (
-    <div className="flex w-full items-center justify-between gap-2">
+    <div className="flex w-full min-w-0 flex-wrap items-center justify-between gap-2 max-sm:flex-col max-sm:items-stretch">
       {deleteActions}
-      <div className="flex items-center gap-2">
-        <Button type="button" variant="outline" onClick={handleClose} disabled={saving}>
+      <div className="flex min-w-0 flex-wrap items-center justify-end gap-2 max-sm:w-full max-sm:flex-col max-sm:items-stretch">
+        <Button
+          type="button"
+          variant="outline"
+          className="max-sm:w-full"
+          onClick={handleClose}
+          disabled={saving}
+        >
           {t("web.newItemPopup.cancel")}
         </Button>
-        <Button type="button" onClick={() => void handleSave()} disabled={!canSave}>
+        <Button
+          type="button"
+          className="max-sm:w-full"
+          onClick={() => void handleSave()}
+          disabled={!canSave}
+        >
           {t("web.workspaceSettings.save")}
         </Button>
       </div>

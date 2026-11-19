@@ -29,10 +29,10 @@ import { useAuthVault, useAuthenticatedCoreClient } from "../../auth/AuthVaultCo
 import { formatDeviceClientOs, formatDeviceTitle } from "../../auth/browserEnvironment";
 import { IconCheck16, IconNotNow16 } from "../items/itemCategoryIcons";
 import {
-  DeviceTypeIcon,
   resolveDeviceBrandIcon,
   resolveDeviceFormIcon,
 } from "../settings/DeviceTypeIcon";
+import PendingDeviceInfoCard from "./PendingDeviceInfoCard";
 import {
   getSettingsPopupCacheState,
   subscribeSettingsPopupCache,
@@ -286,11 +286,11 @@ export default function DeviceRecoveryApprovalController() {
       closeOnEscape={false}
       closeLabel={t("web.capsules.approval.closeLabel")}
       footer={
-        <div className="flex justify-end gap-2">
+        <>
           <Button
             type="button"
             variant="outline"
-            className="gap-2"
+            className="gap-2 max-sm:w-full"
             disabled={resolving}
             onClick={() => void approve()}
           >
@@ -298,12 +298,12 @@ export default function DeviceRecoveryApprovalController() {
             {t("account.restore.enterprise.devices.popup.approve")}
           </Button>
           <ControlGroup
-            className="w-auto"
+            className="w-auto max-sm:w-full"
             aria-label={t("account.restore.enterprise.devices.popup.reject")}
           >
             <Button
               type="button"
-              className="gap-2"
+              className="min-w-0 flex-1 gap-2"
               disabled={resolving}
               onClick={() => void reject()}
             >
@@ -336,43 +336,27 @@ export default function DeviceRecoveryApprovalController() {
               </DropdownMenuContent>
             </DropdownMenu>
           </ControlGroup>
-        </div>
+        </>
       }
     >
       <div className="flex flex-col gap-4 text-sm">
         <p className="text-muted-foreground">{t("account.restore.enterprise.devices.popup.body")}</p>
-        <div className="flex items-center gap-4 rounded-xl bg-secondary p-4">
-          <DeviceTypeIcon
-            form={resolveDeviceFormIcon(deviceHints)}
-            brand={resolveDeviceBrandIcon(deviceHints)}
-          />
-          <div className="flex min-w-0 flex-1 flex-col">
-            <p className="truncate text-sm font-medium text-foreground">
-              {formatDeviceTitle(deviceHints)}
-            </p>
-            <p className="text-sm text-muted-foreground">{formatDeviceClientOs(deviceHints)}</p>
-            <p className="text-sm text-muted-foreground">
-              {formatAbsoluteDate(current.createdAt, locale)}
-            </p>
-          </div>
-          <div className="shrink-0 text-right text-[13px] leading-5 text-muted-foreground">
-            <p>
-              {t("web.settingsPopup.devices.pending.ip", {
-                ip: current.requestIp || "unknown",
-              })}
-            </p>
-            <p>
-              {t("web.settingsPopup.devices.pending.country", {
-                country: current.country || t("web.settingsPopup.devices.pending.unknownLocation"),
-              })}
-            </p>
-            <p>
-              {t("web.settingsPopup.devices.pending.city", {
-                city: current.city || t("web.settingsPopup.devices.pending.unknownLocation"),
-              })}
-            </p>
-          </div>
-        </div>
+        <PendingDeviceInfoCard
+          form={resolveDeviceFormIcon(deviceHints)}
+          brand={resolveDeviceBrandIcon(deviceHints)}
+          title={formatDeviceTitle(deviceHints)}
+          clientOs={formatDeviceClientOs(deviceHints)}
+          timestamp={formatAbsoluteDate(current.createdAt, locale)}
+          ipLabel={t("web.settingsPopup.devices.pending.ip", {
+            ip: current.requestIp || "unknown",
+          })}
+          countryLabel={t("web.settingsPopup.devices.pending.country", {
+            country: current.country || t("web.settingsPopup.devices.pending.unknownLocation"),
+          })}
+          cityLabel={t("web.settingsPopup.devices.pending.city", {
+            city: current.city || t("web.settingsPopup.devices.pending.unknownLocation"),
+          })}
+        />
       </div>
     </Popup>
   );

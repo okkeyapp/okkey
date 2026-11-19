@@ -35,7 +35,7 @@ export default function DeleteMemberConfirmPopup({
       onClose={onCancel}
       closeDisabled={deleting}
       footer={
-        <div className="flex w-full items-center justify-end gap-2">
+        <>
           <Button type="button" variant="outline" onClick={onCancel} disabled={deleting}>
             {t("web.newItemPopup.cancel")}
           </Button>
@@ -47,7 +47,7 @@ export default function DeleteMemberConfirmPopup({
           >
             {t("web.workspaceSettings.members.deleteConfirm.delete")}
           </Button>
-        </div>
+        </>
       }
     >
       <p className="text-sm text-muted-foreground">

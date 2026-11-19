@@ -285,10 +285,14 @@ const popupFooterPaddingClassName = (withMenu: boolean, desktopLayout: boolean) 
   withMenu
     ? desktopLayout
       ? "px-4 pt-4 pb-4"
-      : "px-4 pt-4 pb-4 max-md:pt-3"
+      : "px-4 pt-4 pb-4 max-md:pt-3 max-md:pb-[max(1rem,env(safe-area-inset-bottom,0px))]"
     : desktopLayout
       ? "px-6 pt-4 pb-6"
-      : "px-6 pt-4 pb-6 max-md:px-4 max-md:pt-3 max-md:pb-4";
+      : "px-6 pt-4 pb-6 max-md:px-4 max-md:pt-3 max-md:pb-[max(1rem,env(safe-area-inset-bottom,0px))]";
+
+/** Shared footer action row for callers that wrap buttons in their own flex container. */
+export const popupFooterActionsClassName =
+  "flex w-full min-w-0 flex-wrap items-center justify-end gap-2 max-sm:flex-col max-sm:items-stretch";
 
 function PopupTitleSection({
   header,
@@ -628,8 +632,9 @@ export const Popup = React.forwardRef<HTMLDivElement, PopupProps>(
         aria-modal={role === "dialog" ? true : undefined}
         data-state={isClosing ? "closing" : "open"}
         className={cn(
-          "okkey-popup-overlay fixed inset-0 z-popup !m-0 flex items-center justify-center overflow-hidden bg-black/30 p-4 text-foreground",
-          !isDesktopLayout && "max-md:items-end max-md:p-0",
+          "okkey-popup-overlay fixed inset-0 z-popup !m-0 flex items-center justify-center overflow-hidden bg-black/30 text-foreground",
+          "p-4 pt-[max(1rem,env(safe-area-inset-top,0px))] pb-[max(1rem,env(safe-area-inset-bottom,0px))] pl-[max(1rem,env(safe-area-inset-left,0px))] pr-[max(1rem,env(safe-area-inset-right,0px))]",
+          !isDesktopLayout && "max-md:items-end max-md:p-0 max-md:pt-[env(safe-area-inset-top,0px)]",
           className,
         )}
         onClick={(event) => {
@@ -643,19 +648,22 @@ export const Popup = React.forwardRef<HTMLDivElement, PopupProps>(
       >
         <div
           className={cn(
-            // Overlay already has p-4; 100% is the padded host (extension shell is 600px).
-            "pointer-events-none relative flex max-h-[calc(100dvh-32px)] max-w-full",
+            // Overlay already has padding; 100% is the padded host (extension shell is 600px).
+            "pointer-events-none relative flex max-h-[calc(100dvh-2rem-env(safe-area-inset-top,0px)-env(safe-area-inset-bottom,0px))] max-w-full",
             isDesktopLayout
               ? "w-[min(var(--okkey-popup-width),100%)]"
-              : "w-[min(var(--okkey-popup-width),calc(100vw-32px))] max-md:max-h-none max-md:w-full",
+              : "w-[min(var(--okkey-popup-width),calc(100vw-2rem-env(safe-area-inset-left,0px)-env(safe-area-inset-right,0px)))] max-md:max-h-none max-md:w-full",
           )}
         >
           <div
             data-layout={layout}
             data-state={isClosing ? "closing" : "open"}
             className={cn(
-              "okkey-popup-sheet pointer-events-auto flex w-full min-h-0 flex-col",
-              !isDesktopLayout && "max-md:w-full max-md:min-h-[88dvh] max-md:max-h-[calc(100dvh-16px)]",
+              "okkey-popup-sheet pointer-events-auto flex w-full min-h-0 max-w-full flex-col",
+              // Definite height (not only max-height) so flex children + % max-height resolve and
+              // footer actions cannot paint past the viewport on narrow screens.
+              !isDesktopLayout &&
+                "max-md:h-[min(88dvh,calc(100dvh-env(safe-area-inset-top,0px)))] max-md:max-h-[calc(100dvh-env(safe-area-inset-top,0px))] max-md:w-full max-md:overflow-hidden",
               !isDesktopLayout && (isSheetDragging || sheetDragOffset > 0) && "max-md:[animation:none]",
               !isDesktopLayout && sheetDragOffset > 0 && !isClosing && "max-md:transition-none",
             )}
@@ -681,11 +689,13 @@ export const Popup = React.forwardRef<HTMLDivElement, PopupProps>(
             <div
               data-state={isClosing ? "closing" : "open"}
               className={cn(
-                "okkey-popup-panel relative flex min-h-0 w-full max-h-[calc(100dvh-32px)] flex-col overflow-hidden rounded-2xl bg-background",
+                "okkey-popup-panel relative flex min-h-0 w-full max-h-[calc(100dvh-2rem-env(safe-area-inset-top,0px)-env(safe-area-inset-bottom,0px))] max-w-full flex-col overflow-hidden rounded-2xl bg-background",
                 menu && (isDesktopLayout ? "flex-row" : "md:flex-row"),
                 !isDesktopLayout &&
-                  "max-md:w-full max-md:min-h-0 max-md:flex-1 max-md:max-h-none max-md:flex-col max-md:rounded-b-none max-md:rounded-t-2xl",
+                  "max-md:w-full max-md:flex-1 max-md:max-h-full max-md:flex-col max-md:rounded-b-none max-md:rounded-t-2xl",
                 panelClassName,
+                // Callers often set desktop min-heights; never let those push the mobile sheet past the viewport.
+                !isDesktopLayout && "max-md:min-h-0",
               )}
               onClick={(event) => event.stopPropagation()}
             >
@@ -770,7 +780,9 @@ export const Popup = React.forwardRef<HTMLDivElement, PopupProps>(
                 className={cn(
                   popupChromeSurfaceClassName,
                   popupFooterShadowClassName(scrollEdges.fromBottom),
-                  "flex shrink-0 items-center justify-end gap-2",
+                  "flex w-full min-w-0 shrink-0 flex-wrap items-center justify-end gap-2",
+                  "max-sm:flex-col max-sm:items-stretch",
+                  "[&>button]:max-w-full [&>div]:min-w-0 [&>div]:max-w-full",
                   popupFooterPaddingClassName(hasMenu, isDesktopLayout),
                 )}
               >
