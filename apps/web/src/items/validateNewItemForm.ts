@@ -33,8 +33,17 @@ function isFieldValueEmpty(field: KeyFormEditorField): boolean {
 export function isConfiguredNewItemForm(
   categoryId: string | undefined,
   sections: readonly KeyFormEditorSection[] | null,
+  options?: { linkedAccountItemId?: string },
 ): boolean {
   if (categoryId === "database" || categoryId === "server" || categoryId === "wifi_router" || categoryId === "credit_card" || categoryId === "bank_account" || categoryId === "crypto_wallet" || categoryId === "personal_data" || categoryId === "passport" || categoryId === "secure_files" || categoryId === "secure_note") {
+    return true;
+  }
+
+  if (
+    categoryId === "login" &&
+    typeof options?.linkedAccountItemId === "string" &&
+    options.linkedAccountItemId.trim().length > 0
+  ) {
     return true;
   }
 
@@ -47,6 +56,10 @@ export function isConfiguredNewItemForm(
   }
 
   return false;
+}
+
+function isLoginCredentialFieldId(fieldId: string): boolean {
+  return fieldId === "login" || fieldId === "password";
 }
 
 function appendUnconfiguredFormIssues(
@@ -85,8 +98,14 @@ export function validateNewItemForm(input: {
   vaultId: string;
   sections: readonly KeyFormEditorSection[] | null;
   categoryId?: string;
+  /** When set on a login item, username/password are not required (relation-only allowed). */
+  linkedAccountItemId?: string;
 }): NewItemFormValidationResult {
   const issues: NewItemFormValidationIssue[] = [];
+  const linkedAccountItemId =
+    typeof input.linkedAccountItemId === "string" ? input.linkedAccountItemId.trim() : "";
+  const relaxLoginCredentials =
+    input.categoryId === "login" && linkedAccountItemId.length > 0;
 
   if (!input.recordName.trim()) {
     issues.push({ kind: "recordName" });
@@ -108,6 +127,9 @@ export function validateNewItemForm(input: {
         }
       }
       if (!field.required) {
+        continue;
+      }
+      if (relaxLoginCredentials && section.id === "credentials" && isLoginCredentialFieldId(field.id)) {
         continue;
       }
       const isEmpty =
@@ -138,7 +160,11 @@ export function validateNewItemForm(input: {
     appendFlexiblePresetSectionIssues(SECURE_FILES_SECTION_ID, input.sections ?? [], issues, isKeyFormFieldFilled);
   } else if (input.categoryId === "secure_note") {
     appendFlexiblePresetSectionIssues(SECURE_NOTE_SECTION_ID, input.sections ?? [], issues, isKeyFormFieldFilled);
-  } else if (!isConfiguredNewItemForm(input.categoryId, input.sections)) {
+  } else if (
+    !isConfiguredNewItemForm(input.categoryId, input.sections, {
+      linkedAccountItemId: linkedAccountItemId || undefined,
+    })
+  ) {
     appendUnconfiguredFormIssues(input.sections ?? [], issues);
   }
 

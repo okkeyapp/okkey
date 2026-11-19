@@ -58,6 +58,14 @@ export {
 export { keyFormSectionsToItemPlaintext, omitBlankExtraWebsiteUrls } from "./items/keyFormToItemPlaintext.js";
 
 export {
+  NO_LINKED_ACCOUNT_VALUE,
+  resolveLinkedAccountItem,
+  clearLinkedAccountItemId,
+  normalizeLinkedAccountItemId,
+  type LinkedAccountResolution,
+} from "./items/linkedAccountItem.js";
+
+export {
   isKeyFormFieldFilled,
   isItemFieldFilled,
   filterFilledKeyFormSections,

@@ -46,6 +46,7 @@ import ItemDetailTopBar from "./ItemDetailTopBar";
 import DeleteItemsConfirmPopup from "./DeleteItemsConfirmPopup";
 import { ItemsDetailPanelEmptyStateFill } from "./ItemsDetailPanelEmptyState";
 import ItemTagsReadonly from "./ItemTagsReadonly";
+import ItemSignInWithDetail from "./ItemSignInWithDetail";
 import { downloadKeyFieldFileAttachment } from "../../api/key-field-files";
 import { useClientWebsiteIconSrc } from "../../items/faviconMode";
 import { useItemFaviconAttachmentUrl } from "../../items/useItemFaviconAttachmentUrl";
@@ -438,6 +439,15 @@ export default function ItemDetailCard({ itemId, vaults, workspaceId: workspaceI
             onFileOpen={handleFileOpen}
             fileUploadConstraints={fileUploadConstraints}
           />
+
+          {item.categoryId === "login" ? (
+            <ItemSignInWithDetail
+              t={t}
+              itemId={item.itemId}
+              linkedAccountItemId={item.linkedAccountItemId}
+              canEdit={canEdit && !(listRecord?.deleted ?? false)}
+            />
+          ) : null}
 
           {(item.tags ?? []).length > 0 ? (
             <ItemTagsReadonly t={t} tags={item.tags ?? []} onTagClick={handleTagClick} />

@@ -162,11 +162,17 @@ export function keyFormSectionsToItemPlaintext(input: {
   categoryId: string;
   nowMs?: number;
   tags?: readonly string[];
+  /** Optional "Sign in with" target login item id (encrypted payload only). */
+  linkedAccountItemId?: string;
 }): ItemPlaintextV2 {
   const now = input.nowMs ?? Date.now();
   const sections: ItemSectionV2[] = [];
   const fields: ItemFieldV2[] = [];
   const sectionsToSave = sectionsForItemPlaintext(input.sections);
+  const linkedAccountItemId =
+    typeof input.linkedAccountItemId === "string" && input.linkedAccountItemId.trim()
+      ? input.linkedAccountItemId.trim()
+      : undefined;
 
   sectionsToSave.forEach((section, sectionIndex) => {
     sections.push({
@@ -199,5 +205,6 @@ export function keyFormSectionsToItemPlaintext(input: {
     sections,
     fields,
     ...(input.tags && input.tags.length > 0 ? { tags: [...input.tags] } : {}),
+    ...(linkedAccountItemId ? { linkedAccountItemId } : {}),
   };
 }
