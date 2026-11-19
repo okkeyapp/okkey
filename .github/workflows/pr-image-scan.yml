@@ -7,8 +7,10 @@
 # docker tar and scanned with the same Trivy pin / severity / ignore-unfixed /
 # CVE-exception path as publish-images (via .github/actions/trivy-scan-image).
 #
-# Path filters cover Dockerfile inputs and the scan wiring so unrelated PRs
-# skip the heavy build. Fork PRs need no secrets.
+# Always runs on every PR into the target branches so the check names can be
+# required without hanging Pending. Image-relevant path detection is inside the
+# workflow: unrelated PRs skip the heavy build+Trivy steps with success.
+# Fork PRs need no secrets.
 name: PR image scan
 
 on:
@@ -16,34 +18,52 @@ on:
     branches:
       - dev
       - "release/**"
-    paths:
-      - "services/api/Dockerfile"
-      - "apps/web/Dockerfile"
-      - "services/**"
-      - "apps/web/**"
-      - "packages/**"
-      - "rust/**"
-      - "rust-toolchain.toml"
-      - "scripts/**"
-      - "deploy/**"
-      - "package.json"
-      - "yarn.lock"
-      - ".github/workflows/pr-image-scan.yml"
-      - ".github/workflows/publish-images.yml"
-      - ".github/actions/trivy-scan-image/**"
-      - ".github/security/cve-exceptions.yaml"
 
 permissions:
   contents: read
   actions: write # GHA cache for buildx (no registry login or push)
+  pull-requests: read # dorny/paths-filter lists PR files via the API
 
 concurrency:
   group: okkey-pr-image-scan-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
+  # Always reports a conclusion. build-and-scan jobs depend on this but do not
+  # use a job-level `if` so their check names stay Success (not Skipped/Pending)
+  # when nothing image-related changed.
+  changes:
+    name: detect-image-paths
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      images: ${{ steps.filter.outputs.images }}
+    steps:
+      - name: Detect image-relevant path changes
+        uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36 # v3.0.2
+        id: filter
+        with:
+          filters: |
+            images:
+              - 'services/api/Dockerfile'
+              - 'apps/web/Dockerfile'
+              - 'services/**'
+              - 'apps/web/**'
+              - 'packages/**'
+              - 'rust/**'
+              - 'rust-toolchain.toml'
+              - 'scripts/**'
+              - 'deploy/**'
+              - 'package.json'
+              - 'yarn.lock'
+              - '.github/workflows/pr-image-scan.yml'
+              - '.github/workflows/publish-images.yml'
+              - '.github/actions/trivy-scan-image/**'
+              - '.github/security/cve-exceptions.yaml'
+
   build-and-scan:
     name: build-and-scan (${{ matrix.image }})
+    needs: changes
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     strategy:
@@ -63,17 +83,27 @@ jobs:
             target: runtime
             cache_scope: web
     steps:
+      - name: Skip heavy work when unrelated
+        if: needs.changes.outputs.images != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "No image-relevant paths changed; skipping build and Trivy (check stays green)."
+
       - name: Checkout
+        if: needs.changes.outputs.images == 'true'
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           # Match publish-images: scan the PR head, not the ephemeral merge commit.
           ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Set up Docker Buildx
+        if: needs.changes.outputs.images == 'true'
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
 
       - name: Build image to local tar
         id: build
+        if: needs.changes.outputs.images == 'true'
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
           context: .
@@ -97,6 +127,7 @@ jobs:
 
       - name: Prepare Trivy report paths
         id: reports
+        if: needs.changes.outputs.images == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -105,6 +136,7 @@ jobs:
           echo "sarif=/tmp/trivy-reports/okkey-${{ matrix.image }}-amd64.sarif" >> "$GITHUB_OUTPUT"
 
       - name: Scan image with Trivy
+        if: needs.changes.outputs.images == 'true'
         uses: ./.github/actions/trivy-scan-image
         with:
           image: ${{ matrix.image }}
@@ -113,7 +145,7 @@ jobs:
           sarif-output: ${{ steps.reports.outputs.sarif }}
 
       - name: Upload Trivy reports
-        if: ${{ always() && steps.build.outcome == 'success' }}
+        if: ${{ always() && needs.changes.outputs.images == 'true' && steps.build.outcome == 'success' }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: trivy-${{ matrix.image }}-amd64

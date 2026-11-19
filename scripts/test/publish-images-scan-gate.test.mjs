@@ -105,7 +105,28 @@ test("PR image scan builds local amd64 tars and reuses the shared Trivy action",
   assert.match(prWorkflow, /name: PR image scan/);
   assert.match(prWorkflow, /pull_request:/);
   assert.match(prWorkflow, /branches:\s*\n\s*- dev\n\s*- "release\/\*\*"/);
+  // No trigger-level paths filter: required checks must not stay Pending on
+  // docs-only PRs. Relevance is detected inside the workflow instead.
+  {
+    const onBlock = prWorkflow.match(/^on:\n([\s\S]*?)(?=^permissions:)/m);
+    assert.ok(onBlock, "expected on: block before permissions");
+    assert.doesNotMatch(onBlock[1], /^\s+paths:\s*$/m);
+  }
+  assert.match(
+    prWorkflow,
+    /dorny\/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36 # v3\.0\.2/,
+  );
+  assert.match(prWorkflow, /name: detect-image-paths/);
+  assert.match(prWorkflow, /outputs:\s*\n\s*images:/);
   assert.match(prWorkflow, /build-and-scan \(\$\{\{ matrix\.image \}\}\)/);
+  assert.match(prWorkflow, /needs: changes/);
+  // Job-level skip would report Skipped and break required checks; gate steps.
+  assert.doesNotMatch(
+    prWorkflow,
+    /build-and-scan:[\s\S]*?\n    if: needs\.changes/,
+  );
+  assert.match(prWorkflow, /needs\.changes\.outputs\.images == 'true'/);
+  assert.match(prWorkflow, /needs\.changes\.outputs\.images != 'true'/);
   assert.match(prWorkflow, /platforms: linux\/amd64/);
   assert.match(prWorkflow, /push:\s*false/);
   assert.match(prWorkflow, /type=docker,dest=\/tmp\/okkey-\$\{\{ matrix\.image \}\}\.tar/);
