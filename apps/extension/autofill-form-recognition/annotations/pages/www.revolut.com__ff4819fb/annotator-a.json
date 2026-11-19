@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "pageId": "www.revolut.com__ff4819fb",
+  "url": "https://www.revolut.com/login/",
+  "lang": "EN",
+  "annotator": "A",
+  "status": "blocked",
+  "pageKind": "login",
+  "forms": [],
+  "notes": "known bot-block/timeout from corpus notes"
+}

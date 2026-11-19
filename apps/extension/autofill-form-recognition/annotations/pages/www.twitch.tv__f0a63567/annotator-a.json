@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "pageId": "www.twitch.tv__f0a63567",
+  "url": "https://www.twitch.tv/login",
+  "lang": "EN",
+  "annotator": "A",
+  "status": "annotated",
+  "pageKind": "login",
+  "forms": [
+    {
+      "formId": "form-1",
+      "selector": "form",
+      "fields": [
+        {
+          "selector": "#login-username",
+          "role": "username",
+          "hints": {
+            "type": "text",
+            "id": "login-username",
+            "autocomplete": "username webauthn",
+            "ariaLabel": "Enter your username",
+            "labelText": "Username"
+          }
+        },
+        {
+          "selector": "#password-input",
+          "role": "password",
+          "hints": {
+            "type": "password",
+            "id": "password-input",
+            "autocomplete": "current-password",
+            "ariaLabel": "Enter your password",
+            "labelText": "Password"
+          }
+        }
+      ]
+    }
+  ],
+  "notes": "Annotator A drafted from HTML5/semantic rules on captured DOM (independent of classifier)."
+}

@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "pageId": "www.instagram.com__b820e4c7",
+  "url": "https://www.instagram.com/accounts/login/",
+  "lang": "EN",
+  "annotator": "A",
+  "status": "blocked",
+  "pageKind": "login",
+  "forms": [],
+  "notes": "HTTP 429"
+}

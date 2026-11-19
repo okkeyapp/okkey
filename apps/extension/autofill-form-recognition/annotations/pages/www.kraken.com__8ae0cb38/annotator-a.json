@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "pageId": "www.kraken.com__8ae0cb38",
+  "url": "https://www.kraken.com/sign-in",
+  "lang": "EN",
+  "annotator": "A",
+  "status": "annotated",
+  "pageKind": "login",
+  "forms": [
+    {
+      "formId": "form-1",
+      "selector": "form#sign-in-form",
+      "fields": [
+        {
+          "selector": "#sign-in-username",
+          "role": "username",
+          "hints": {
+            "type": "text",
+            "name": "username",
+            "id": "sign-in-username",
+            "autocomplete": "username",
+            "labelText": "Email or username"
+          }
+        },
+        {
+          "selector": "#sign-in-password",
+          "role": "password",
+          "hints": {
+            "type": "password",
+            "name": "password",
+            "id": "sign-in-password",
+            "autocomplete": "current-password",
+            "labelText": "Password"
+          }
+        }
+      ]
+    }
+  ],
+  "notes": "Annotator A drafted from HTML5/semantic rules on captured DOM (independent of classifier)."
+}

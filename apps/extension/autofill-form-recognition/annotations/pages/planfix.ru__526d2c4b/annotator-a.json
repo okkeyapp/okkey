@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "pageId": "planfix.ru__526d2c4b",
+  "url": "https://planfix.ru/",
+  "lang": "RU",
+  "annotator": "A",
+  "status": "annotated",
+  "pageKind": "login",
+  "forms": [
+    {
+      "formId": "form-1",
+      "selector": null,
+      "fields": [
+        {
+          "selector": "input[type=\"text\"][name=\"email\"]",
+          "role": "username",
+          "hints": {
+            "type": "text",
+            "name": "email",
+            "placeholder": "Введите ваш email"
+          }
+        }
+      ]
+    }
+  ],
+  "notes": "Annotator A drafted from HTML5/semantic rules on captured DOM (independent of classifier)."
+}

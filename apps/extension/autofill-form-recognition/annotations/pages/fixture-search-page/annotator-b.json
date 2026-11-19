@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "pageId": "fixture-search-page",
+  "url": "fixture://search-page",
+  "lang": "EN",
+  "pageKind": "search",
+  "forms": [
+    {
+      "formId": "form-1",
+      "selector": "form#search",
+      "fields": []
+    }
+  ],
+  "notes": "Synthetic search page: no metric roles annotated. Card/search fields are out of (b).",
+  "annotator": "B",
+  "status": "annotated"
+}

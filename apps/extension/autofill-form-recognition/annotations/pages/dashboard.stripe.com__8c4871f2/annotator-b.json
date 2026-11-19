@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "pageId": "dashboard.stripe.com__8c4871f2",
+  "url": "https://dashboard.stripe.com/login",
+  "lang": "EN",
+  "annotator": "B",
+  "status": "empty",
+  "pageKind": "login",
+  "forms": [],
+  "notes": "Reserved for independent annotator B."
+}

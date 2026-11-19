@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "pageId": "account.mail.ru__9c34c74d",
+  "url": "https://account.mail.ru/login",
+  "lang": "RU",
+  "annotator": "A",
+  "status": "annotated",
+  "pageKind": "login",
+  "forms": [
+    {
+      "formId": "form-1",
+      "selector": "form",
+      "fields": [
+        {
+          "selector": "#email",
+          "role": "username",
+          "hints": {
+            "type": "text",
+            "id": "email",
+            "autocomplete": "off",
+            "placeholder": "Имя ящика"
+          }
+        }
+      ]
+    }
+  ],
+  "notes": "Annotator A drafted from HTML5/semantic rules on captured DOM (independent of classifier)."
+}

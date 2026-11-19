@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "pageId": "lk.rosreestr.ru__5057f77e",
+  "url": "https://lk.rosreestr.ru/",
+  "lang": "RU",
+  "annotator": "A",
+  "status": "blocked",
+  "pageKind": "login",
+  "forms": [],
+  "notes": "known bot-block/timeout from corpus notes"
+}

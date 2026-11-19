@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "pageId": "www.alibaba.com__09eb9d80",
+  "url": "https://login.alibaba.com/",
+  "lang": "EN",
+  "annotator": "A",
+  "status": "annotated",
+  "pageKind": "login",
+  "forms": [
+    {
+      "formId": "form-1",
+      "selector": "form",
+      "fields": [
+        {
+          "selector": "input[type=\"text\"][name=\"email\"]",
+          "role": "username",
+          "hints": {
+            "type": "text",
+            "name": "email",
+            "autocomplete": "off",
+            "ariaLabel": "Enter your email address",
+            "maxLength": 128
+          }
+        }
+      ]
+    }
+  ],
+  "notes": "Annotator A drafted from HTML5/semantic rules on captured DOM (independent of classifier)."
+}

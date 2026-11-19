@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "pageId": "myaccount.nytimes.com__4267058c",
+  "url": "https://myaccount.nytimes.com/auth/login",
+  "lang": "EN",
+  "annotator": "A",
+  "status": "blocked",
+  "pageKind": "login",
+  "forms": [],
+  "notes": "known bot-block/timeout from corpus notes"
+}

@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "pageId": "www.detmir.ru__3cda0ff7",
+  "url": "https://www.detmir.ru/",
+  "lang": "RU",
+  "annotator": "A",
+  "status": "blocked",
+  "pageKind": "login",
+  "forms": [],
+  "notes": "known bot-block/timeout from corpus notes"
+}

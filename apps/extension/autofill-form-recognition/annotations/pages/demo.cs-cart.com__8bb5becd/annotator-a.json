@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "pageId": "demo.cs-cart.com__8bb5becd",
+  "url": "https://demo.cs-cart.com/admin.php",
+  "lang": "EN",
+  "annotator": "A",
+  "status": "annotated",
+  "pageKind": "login",
+  "forms": [
+    {
+      "formId": "form-1",
+      "selector": "form#form2474557813",
+      "fields": [
+        {
+          "selector": "input[type=\"email\"][name=\"email\"]",
+          "role": "username",
+          "hints": {
+            "type": "email",
+            "name": "email",
+            "ariaLabel": "email"
+          }
+        },
+        {
+          "selector": "#input_4424745331432",
+          "role": "username",
+          "hints": {
+            "type": "tel",
+            "name": "tildaspec-phone-part[]",
+            "id": "input_4424745331432",
+            "placeholder": "(000) 000-0000",
+            "maxLength": 14
+          }
+        },
+        {
+          "selector": "input[type=\"checkbox\"][name=\"email-consent-checkbox\"]",
+          "role": "username",
+          "hints": {
+            "type": "checkbox",
+            "name": "email-consent-checkbox",
+            "labelText": "I agree to receive marketing emails and special offers from CS‑Cart#rec2474557813 [data-elem-id=\"1784187592815000009\"] .t-checkbox__indicator:after{border-color:#8493a9;}"
+          }
+        }
+      ]
+    }
+  ],
+  "notes": "Annotator A drafted from HTML5/semantic rules on captured DOM (independent of classifier)."
+}

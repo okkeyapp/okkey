@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "pageId": "www.doordash.com__2fd4777a",
+  "url": "https://www.doordash.com/consumer/login/",
+  "lang": "EN",
+  "annotator": "A",
+  "status": "blocked",
+  "pageKind": "login",
+  "forms": [],
+  "notes": "known bot-block/timeout from corpus notes"
+}

@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "pageId": "kuper.ru__80d493f8",
+  "url": "https://kuper.ru/",
+  "lang": "RU",
+  "annotator": "A",
+  "status": "blocked",
+  "pageKind": "login",
+  "forms": [],
+  "notes": "HTTP 403"
+}

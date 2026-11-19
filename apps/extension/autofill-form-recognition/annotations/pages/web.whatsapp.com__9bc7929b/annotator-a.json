@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "pageId": "web.whatsapp.com__9bc7929b",
+  "url": "https://web.whatsapp.com/",
+  "lang": "EN",
+  "annotator": "A",
+  "status": "blocked",
+  "pageKind": "login",
+  "forms": [],
+  "notes": "known bot-block/timeout from corpus notes"
+}

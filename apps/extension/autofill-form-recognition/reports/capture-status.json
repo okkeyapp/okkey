@@ -1,0 +1,2379 @@
+[
+  {
+    "pageId": "account.adobe.com__d1e34424",
+    "domain": "account.adobe.com",
+    "url": "https://auth.services.adobe.com/en_US/index.html",
+    "lang": "EN",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:50:21.096Z",
+    "detail": "inputs=2 annotatedForms=1"
+  },
+  {
+    "pageId": "account.battle.net__98208fe6",
+    "domain": "account.battle.net",
+    "url": "https://account.battle.net/login",
+    "lang": "EN",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:51:06.201Z",
+    "detail": "inputs=76 annotatedForms=1"
+  },
+  {
+    "pageId": "account.booking.com__e57fe141",
+    "domain": "account.booking.com",
+    "url": "https://account.booking.com/sign-in",
+    "lang": "EN",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:50:53.337Z",
+    "detail": "inputs=2 annotatedForms=1"
+  },
+  {
+    "pageId": "account.ghost.org__8f79f242",
+    "domain": "account.ghost.org",
+    "url": "https://account.ghost.org/signin/",
+    "lang": "EN",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:51:20.421Z",
+    "detail": "inputs=1 annotatedForms=0"
+  },
+  {
+    "pageId": "account.mail.ru__9c34c74d",
+    "domain": "account.mail.ru",
+    "url": "https://account.mail.ru/login",
+    "lang": "RU",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:49:07.361Z",
+    "detail": "inputs=3 annotatedForms=1"
+  },
+  {
+    "pageId": "account.proton.me__f19aea01",
+    "domain": "account.proton.me",
+    "url": "https://account.proton.me/login",
+    "lang": "EN",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:49:06.620Z",
+    "detail": "inputs=2 annotatedForms=1"
+  },
+  {
+    "pageId": "accounts.binance.com__592188c5",
+    "domain": "accounts.binance.com",
+    "url": "https://accounts.binance.com/en/login",
+    "lang": "EN",
+    "status": "captured",
+    "httpStatus": 202,
+    "cachedAt": "2026-11-19T12:49:56.837Z",
+    "detail": "inputs=9 annotatedForms=1"
+  },
+  {
+    "pageId": "accounts.google.com__0ddfdaac",
+    "domain": "accounts.google.com",
+    "url": "https://accounts.google.com/signin",
+    "lang": "EN",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:48:58.660Z",
+    "detail": "inputs=8 annotatedForms=1"
+  },
+  {
+    "pageId": "accounts.nintendo.com__b4cb6344",
+    "domain": "accounts.nintendo.com",
+    "url": "https://accounts.nintendo.com/",
+    "lang": "EN",
+    "status": "skipped",
+    "httpStatus": "timeout",
+    "detail": "known bot-block/timeout from corpus notes"
+  },
+  {
+    "pageId": "accounts.shopify.com__3af816c1",
+    "domain": "accounts.shopify.com",
+    "url": "https://www.shopify.com/login",
+    "lang": "EN",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:51:21.133Z",
+    "detail": "inputs=1 annotatedForms=0"
+  },
+  {
+    "pageId": "accounts.spotify.com__ed007f9c",
+    "domain": "accounts.spotify.com",
+    "url": "https://accounts.spotify.com/login",
+    "lang": "EN",
+    "status": "blocked",
+    "httpStatus": 200,
+    "detail": "anti-bot interstitial"
+  },
+  {
+    "pageId": "accounts.zoho.com__354b00bb",
+    "domain": "accounts.zoho.com",
+    "url": "https://accounts.zoho.com/signin",
+    "lang": "EN",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:49:08.719Z",
+    "detail": "inputs=16 annotatedForms=1"
+  },
+  {
+    "pageId": "aliexpress.ru__89f50f42",
+    "domain": "aliexpress.ru",
+    "url": "https://aliexpress.ru/",
+    "lang": "RU",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:49:34.888Z",
+    "detail": "inputs=0 annotatedForms=0"
+  },
+  {
+    "pageId": "app.tuta.com__7386cdd8",
+    "domain": "app.tuta.com",
+    "url": "https://app.tuta.com/login",
+    "lang": "EN",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:49:06.679Z",
+    "detail": "inputs=0 annotatedForms=0"
+  },
+  {
+    "pageId": "appleid.apple.com__6a1f8adf",
+    "domain": "appleid.apple.com",
+    "url": "https://appleid.apple.com/sign-in",
+    "lang": "EN",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:48:59.300Z",
+    "detail": "inputs=7 annotatedForms=0"
+  },
+  {
+    "pageId": "auth.openai.com__0ea07fc3",
+    "domain": "auth.openai.com",
+    "url": "https://chatgpt.com/auth/login",
+    "lang": "EN",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:50:18.482Z",
+    "detail": "inputs=0 annotatedForms=0"
+  },
+  {
+    "pageId": "auth0.com__dac89392",
+    "domain": "auth0.com",
+    "url": "https://manage.auth0.com/",
+    "lang": "EN",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:49:01.339Z",
+    "detail": "inputs=16 annotatedForms=1"
+  },
+  {
+    "pageId": "bcs.ru__69138ae8",
+    "domain": "bcs.ru",
+    "url": "https://bcs.ru/",
+    "lang": "RU",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:49:53.780Z",
+    "detail": "inputs=0 annotatedForms=0"
+  },
+  {
+    "pageId": "bolt.eu__cba80817",
+    "domain": "bolt.eu",
+    "url": "https://bolt.eu/",
+    "lang": "EN",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:51:01.962Z",
+    "detail": "inputs=0 annotatedForms=0"
+  },
+  {
+    "pageId": "boosty.to__b1fc1ebd",
+    "domain": "boosty.to",
+    "url": "https://boosty.to/",
+    "lang": "RU",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:51:08.424Z",
+    "detail": "inputs=0 annotatedForms=0"
+  },
+  {
+    "pageId": "bsky.app__8fd02f86",
+    "domain": "bsky.app",
+    "url": "https://bsky.app/",
+    "lang": "EN",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:49:25.202Z",
+    "detail": "inputs=1 annotatedForms=0"
+  },
+  {
+    "pageId": "canvas.instructure.com__90f39629",
+    "domain": "canvas.instructure.com",
+    "url": "https://canvas.instructure.com/login/canvas",
+    "lang": "EN",
+    "status": "skipped",
+    "httpStatus": "503",
+    "detail": "known bot-block/timeout from corpus notes"
+  },
+  {
+    "pageId": "claude.ai__2e3f39bd",
+    "domain": "claude.ai",
+    "url": "https://claude.ai/login",
+    "lang": "EN",
+    "status": "skipped",
+    "httpStatus": "403",
+    "detail": "known bot-block/timeout from corpus notes"
+  },
+  {
+    "pageId": "cloud.digitalocean.com__9017ff51",
+    "domain": "cloud.digitalocean.com",
+    "url": "https://cloud.digitalocean.com/login",
+    "lang": "EN",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:50:34.034Z",
+    "detail": "inputs=2 annotatedForms=1"
+  },
+  {
+    "pageId": "cloud.ru__f652a8bd",
+    "domain": "cloud.ru",
+    "url": "https://console.cloud.ru/",
+    "lang": "RU",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:50:29.697Z",
+    "detail": "inputs=0 annotatedForms=0"
+  },
+  {
+    "pageId": "cloud.vk.com__d14856e8",
+    "domain": "cloud.vk.com",
+    "url": "https://msk.cloud.vk.com/",
+    "lang": "RU",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:50:34.585Z",
+    "detail": "inputs=0 annotatedForms=0"
+  },
+  {
+    "pageId": "console.cloud.google.com__02935d5f",
+    "domain": "console.cloud.google.com",
+    "url": "https://console.cloud.google.com/",
+    "lang": "EN",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:50:31.882Z",
+    "detail": "inputs=8 annotatedForms=1"
+  },
+  {
+    "pageId": "console.hetzner.cloud__425f3dbd",
+    "domain": "console.hetzner.cloud",
+    "url": "https://console.hetzner.cloud/",
+    "lang": "EN",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:50:37.053Z",
+    "detail": "inputs=3 annotatedForms=0"
+  },
+  {
+    "pageId": "console.yandex.cloud__cce4cf8e",
+    "domain": "console.yandex.cloud",
+    "url": "https://console.yandex.cloud/",
+    "lang": "RU",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:50:29.473Z",
+    "detail": "inputs=4 annotatedForms=0"
+  },
+  {
+    "pageId": "dash.cloudflare.com__94f7a1f8",
+    "domain": "dash.cloudflare.com",
+    "url": "https://dash.cloudflare.com/login",
+    "lang": "EN",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:50:36.348Z",
+    "detail": "inputs=8 annotatedForms=1"
+  },
+  {
+    "pageId": "dashboard.stripe.com__8c4871f2",
+    "domain": "dashboard.stripe.com",
+    "url": "https://dashboard.stripe.com/login",
+    "lang": "EN",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:49:57.928Z",
+    "detail": "inputs=3 annotatedForms=1"
+  },
+  {
+    "pageId": "demo.cs-cart.com__8bb5becd",
+    "domain": "demo.cs-cart.com",
+    "url": "https://demo.cs-cart.com/admin.php",
+    "lang": "EN",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:51:24.580Z",
+    "detail": "inputs=18 annotatedForms=1"
+  },
+  {
+    "pageId": "demo.home-assistant.io__1bd6a5cc",
+    "domain": "demo.home-assistant.io",
+    "url": "https://demo.home-assistant.io/",
+    "lang": "EN",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:51:29.325Z",
+    "detail": "inputs=0 annotatedForms=0"
+  },
+  {
+    "pageId": "demo.opencart.com__c55088f0",
+    "domain": "demo.opencart.com",
+    "url": "https://www.opencart.com/index.php?route=cms/demo",
+    "lang": "EN",
+    "status": "blocked",
+    "httpStatus": 403,
+    "detail": "HTTP 403"
+  },
+  {
+    "pageId": "demo.phpmyadmin.net__30a26dd6",
+    "domain": "demo.phpmyadmin.net",
+    "url": "https://demo.phpmyadmin.net/master-config/",
+    "lang": "EN",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:51:31.989Z",
+    "detail": "inputs=54 annotatedForms=0"
+  },
+  {
+    "pageId": "demo.prestashop.com__587ce983",
+    "domain": "demo.prestashop.com",
+    "url": "https://demo.prestashop.com/",
+    "lang": "EN",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:51:18.459Z",
+    "detail": "inputs=0 annotatedForms=0"
+  },
+  {
+    "pageId": "demo.qnap.com__ba998b25",
+    "domain": "demo.qnap.com",
+    "url": "https://demo.qnap.com/",
+    "lang": "EN",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:51:36.774Z",
+    "detail": "inputs=7 annotatedForms=0"
+  },
+  {
+    "pageId": "demo.sogo.nu__58bef1da",
+    "domain": "demo.sogo.nu",
+    "url": "https://demo.sogo.nu/SOGo/",
+    "lang": "EN",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:51:33.196Z",
+    "detail": "inputs=2 annotatedForms=1"
+  },
+  {
+    "pageId": "demo.synology.com__8666e2c0",
+    "domain": "demo.synology.com",
+    "url": "https://demo.synology.com/",
+    "lang": "EN",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:51:30.687Z",
+    "detail": "inputs=0 annotatedForms=0"
+  },
+  {
+    "pageId": "discord.com__d04b102a",
+    "domain": "discord.com",
+    "url": "https://discord.com/login",
+    "lang": "EN",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:49:25.112Z",
+    "detail": "inputs=2 annotatedForms=1"
+  },
+  {
+    "pageId": "dzen.ru__8d26b0b7",
+    "domain": "dzen.ru",
+    "url": "https://dzen.ru/",
+    "lang": "RU",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:49:22.350Z",
+    "detail": "inputs=2 annotatedForms=0"
+  },
+  {
+    "pageId": "eda.yandex.ru__89ba3911",
+    "domain": "eda.yandex.ru",
+    "url": "https://eda.yandex.ru/",
+    "lang": "RU",
+    "status": "blocked",
+    "httpStatus": 200,
+    "detail": "anti-bot interstitial"
+  },
+  {
+    "pageId": "en.wikipedia.org__461a7208",
+    "domain": "en.wikipedia.org",
+    "url": "https://en.wikipedia.org/wiki/Special:UserLogin",
+    "lang": "EN",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:49:11.216Z",
+    "detail": "inputs=27 annotatedForms=1"
+  },
+  {
+    "pageId": "esia.gosuslugi.ru__2b389499",
+    "domain": "esia.gosuslugi.ru",
+    "url": "https://esia.gosuslugi.ru/login/",
+    "lang": "RU",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:49:02.985Z",
+    "detail": "inputs=0 annotatedForms=0"
+  },
+  {
+    "pageId": "flowwow.com__2647e43a",
+    "domain": "flowwow.com",
+    "url": "https://flowwow.com/",
+    "lang": "RU",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:49:38.808Z",
+    "detail": "inputs=0 annotatedForms=0"
+  },
+  {
+    "pageId": "foxford.ru__dbdc777b",
+    "domain": "foxford.ru",
+    "url": "https://foxford.ru/",
+    "lang": "RU",
+    "status": "skipped",
+    "httpStatus": "401",
+    "detail": "known bot-block/timeout from corpus notes"
+  },
+  {
+    "pageId": "gb.ru__a7a4ac8a",
+    "domain": "gb.ru",
+    "url": "https://gb.ru/",
+    "lang": "RU",
+    "status": "skipped",
+    "httpStatus": "401",
+    "detail": "known bot-block/timeout from corpus notes"
+  },
+  {
+    "pageId": "getcourse.ru__c6383d0b",
+    "domain": "getcourse.ru",
+    "url": "https://getcourse.ru/",
+    "lang": "RU",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:50:11.693Z",
+    "detail": "inputs=0 annotatedForms=0"
+  },
+  {
+    "pageId": "gitea.com__2c75ed9f",
+    "domain": "gitea.com",
+    "url": "https://gitea.com/user/login",
+    "lang": "EN",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:51:35.024Z",
+    "detail": "inputs=3 annotatedForms=1"
+  },
+  {
+    "pageId": "github.com__578a1c1d",
+    "domain": "github.com",
+    "url": "https://github.com/login",
+    "lang": "EN",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:50:12.964Z",
+    "detail": "inputs=46 annotatedForms=1"
+  },
+  {
+    "pageId": "gitlab.com__e1295431",
+    "domain": "gitlab.com",
+    "url": "https://gitlab.com/users/sign_in",
+    "lang": "EN",
+    "status": "skipped",
+    "httpStatus": "403",
+    "detail": "known bot-block/timeout from corpus notes"
+  },
+  {
+    "pageId": "goldapple.ru__48628afe",
+    "domain": "goldapple.ru",
+    "url": "https://goldapple.ru/",
+    "lang": "RU",
+    "status": "blocked",
+    "httpStatus": 403,
+    "detail": "HTTP 403"
+  },
+  {
+    "pageId": "habr.com__ae7a931c",
+    "domain": "habr.com",
+    "url": "https://habr.com/ru/auth/login/",
+    "lang": "RU",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:50:07.903Z",
+    "detail": "inputs=9 annotatedForms=1"
+  },
+  {
+    "pageId": "hh.ru__88735fb6",
+    "domain": "hh.ru",
+    "url": "https://hh.ru/account/login",
+    "lang": "RU",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:49:13.381Z",
+    "detail": "inputs=3 annotatedForms=0"
+  },
+  {
+    "pageId": "hoff.ru__aaae0c4d",
+    "domain": "hoff.ru",
+    "url": "https://hoff.ru/",
+    "lang": "RU",
+    "status": "skipped",
+    "httpStatus": "401",
+    "detail": "known bot-block/timeout from corpus notes"
+  },
+  {
+    "pageId": "i.tochka.com__bc647948",
+    "domain": "i.tochka.com",
+    "url": "https://i.tochka.com/",
+    "lang": "RU",
+    "status": "error",
+    "detail": "page.goto: net::ERR_CERT_AUTHORITY_INVALID at https://i.tochka.com/\nCall log:\n  - navigating to \"https://i.tochka.com/\", waiting until \"domcontentloaded\"\n"
+  },
+  {
+    "pageId": "id.atlassian.com__9a725e50",
+    "domain": "id.atlassian.com",
+    "url": "https://id.atlassian.com/login",
+    "lang": "EN",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:50:15.299Z",
+    "detail": "inputs=3 annotatedForms=1"
+  },
+  {
+    "pageId": "id.rambler.ru__eb75fe1a",
+    "domain": "id.rambler.ru",
+    "url": "https://mail.rambler.ru/",
+    "lang": "RU",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:49:06.689Z",
+    "detail": "inputs=3 annotatedForms=1"
+  },
+  {
+    "pageId": "id.vk.ru__eac015da",
+    "domain": "id.vk.ru",
+    "url": "https://id.vk.ru/",
+    "lang": "RU",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:49:14.543Z",
+    "detail": "inputs=0 annotatedForms=0"
+  },
+  {
+    "pageId": "identity.joomla.org__984d3880",
+    "domain": "identity.joomla.org",
+    "url": "https://identity.joomla.org/",
+    "lang": "EN",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:51:18.103Z",
+    "detail": "inputs=0 annotatedForms=0"
+  },
+  {
+    "pageId": "kontur.ru__22e0ea91",
+    "domain": "kontur.ru",
+    "url": "https://kontur.ru/",
+    "lang": "RU",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:50:09.112Z",
+    "detail": "inputs=2 annotatedForms=0"
+  },
+  {
+    "pageId": "kuper.ru__80d493f8",
+    "domain": "kuper.ru",
+    "url": "https://kuper.ru/",
+    "lang": "RU",
+    "status": "blocked",
+    "httpStatus": 403,
+    "detail": "HTTP 403"
+  },
+  {
+    "pageId": "lenta.ru__5988c655",
+    "domain": "lenta.ru",
+    "url": "https://lenta.ru/",
+    "lang": "RU",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:50:45.136Z",
+    "detail": "inputs=2 annotatedForms=0"
+  },
+  {
+    "pageId": "lesta.ru__968ce375",
+    "domain": "lesta.ru",
+    "url": "https://lesta.ru/",
+    "lang": "RU",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:51:05.243Z",
+    "detail": "inputs=1 annotatedForms=0"
+  },
+  {
+    "pageId": "lk.rosreestr.ru__5057f77e",
+    "domain": "lk.rosreestr.ru",
+    "url": "https://lk.rosreestr.ru/",
+    "lang": "RU",
+    "status": "skipped",
+    "httpStatus": "000",
+    "detail": "known bot-block/timeout from corpus notes"
+  },
+  {
+    "pageId": "lk.sfr.gov.ru__5a810fe4",
+    "domain": "lk.sfr.gov.ru",
+    "url": "https://es.pfrf.ru/",
+    "lang": "RU",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:50:04.062Z",
+    "detail": "inputs=0 annotatedForms=0"
+  },
+  {
+    "pageId": "lkfl2.nalog.gov.ru__9a2aaea0",
+    "domain": "lkfl2.nalog.gov.ru",
+    "url": "https://www.nalog.gov.ru/",
+    "lang": "RU",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:50:04.330Z",
+    "detail": "inputs=9 annotatedForms=0"
+  },
+  {
+    "pageId": "login.coinbase.com__d4bfd658",
+    "domain": "login.coinbase.com",
+    "url": "https://login.coinbase.com/",
+    "lang": "EN",
+    "status": "skipped",
+    "httpStatus": "403",
+    "detail": "known bot-block/timeout from corpus notes"
+  },
+  {
+    "pageId": "login.live.com__48fe8b27",
+    "domain": "login.live.com",
+    "url": "https://login.live.com/",
+    "lang": "EN",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:48:58.799Z",
+    "detail": "inputs=1 annotatedForms=1"
+  },
+  {
+    "pageId": "login.microsoftonline.com__2bc6011a",
+    "domain": "login.microsoftonline.com",
+    "url": "https://login.microsoftonline.com/",
+    "lang": "EN",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:48:58.984Z",
+    "detail": "inputs=22 annotatedForms=1"
+  },
+  {
+    "pageId": "login.nhs.uk__90738ac4",
+    "domain": "login.nhs.uk",
+    "url": "https://www.nhs.uk/",
+    "lang": "EN",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:50:07.175Z",
+    "detail": "inputs=1 annotatedForms=0"
+  },
+  {
+    "pageId": "login.okta.com__ab54d29b",
+    "domain": "login.okta.com",
+    "url": "https://login.okta.com/",
+    "lang": "EN",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:49:00.788Z",
+    "detail": "inputs=3 annotatedForms=0"
+  },
+  {
+    "pageId": "login.salesforce.com__f48fad09",
+    "domain": "login.salesforce.com",
+    "url": "https://login.salesforce.com/",
+    "lang": "EN",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:50:20.963Z",
+    "detail": "inputs=3 annotatedForms=1"
+  },
+  {
+    "pageId": "login.squarespace.com__748e54d4",
+    "domain": "login.squarespace.com",
+    "url": "https://login.squarespace.com/",
+    "lang": "EN",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:51:20.927Z",
+    "detail": "inputs=2 annotatedForms=1"
+  },
+  {
+    "pageId": "login.typo3.org__18a5d254",
+    "domain": "login.typo3.org",
+    "url": "https://login.typo3.org/",
+    "lang": "EN",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:51:27.637Z",
+    "detail": "inputs=0 annotatedForms=0"
+  },
+  {
+    "pageId": "login.yahoo.com__b37574e5",
+    "domain": "login.yahoo.com",
+    "url": "https://login.yahoo.com/",
+    "lang": "EN",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:49:03.961Z",
+    "detail": "inputs=11 annotatedForms=1"
+  },
+  {
+    "pageId": "market.yandex.ru__2812633c",
+    "domain": "market.yandex.ru",
+    "url": "https://market.yandex.ru/",
+    "lang": "RU",
+    "status": "blocked",
+    "httpStatus": 200,
+    "detail": "anti-bot interstitial"
+  },
+  {
+    "pageId": "mastodon.social__ab54721e",
+    "domain": "mastodon.social",
+    "url": "https://mastodon.social/auth/sign_in",
+    "lang": "EN",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:49:25.431Z",
+    "detail": "inputs=3 annotatedForms=1"
+  },
+  {
+    "pageId": "max.ru__ae1c581d",
+    "domain": "max.ru",
+    "url": "https://max.ru/",
+    "lang": "RU",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:49:20.462Z",
+    "detail": "inputs=0 annotatedForms=0"
+  },
+  {
+    "pageId": "medium.com__2cece6f8",
+    "domain": "medium.com",
+    "url": "https://medium.com/m/signin",
+    "lang": "EN",
+    "status": "skipped",
+    "httpStatus": "403",
+    "detail": "known bot-block/timeout from corpus notes"
+  },
+  {
+    "pageId": "meduza.io__5dcb16af",
+    "domain": "meduza.io",
+    "url": "https://meduza.io/",
+    "lang": "RU",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:50:44.263Z",
+    "detail": "inputs=1 annotatedForms=1"
+  },
+  {
+    "pageId": "megamarket.ru__42582c78",
+    "domain": "megamarket.ru",
+    "url": "https://megamarket.ru/",
+    "lang": "RU",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:49:31.541Z",
+    "detail": "inputs=0 annotatedForms=0"
+  },
+  {
+    "pageId": "mkb.ru__7a45c2d7",
+    "domain": "mkb.ru",
+    "url": "https://online.mkb.ru/",
+    "lang": "RU",
+    "status": "timeout",
+    "detail": "page.goto: Timeout 18000ms exceeded.\nCall log:\n  - navigating to \"https://online.mkb.ru/\", waiting until \"domcontentloaded\"\n"
+  },
+  {
+    "pageId": "my.gov.au__9e34db4c",
+    "domain": "my.gov.au",
+    "url": "https://my.gov.au/",
+    "lang": "EN",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:50:05.260Z",
+    "detail": "inputs=0 annotatedForms=0"
+  },
+  {
+    "pageId": "my.modulbank.ru__38c6122e",
+    "domain": "my.modulbank.ru",
+    "url": "https://my.modulbank.ru/",
+    "lang": "RU",
+    "status": "skipped",
+    "httpStatus": "000",
+    "detail": "known bot-block/timeout from corpus notes"
+  },
+  {
+    "pageId": "my.selectel.ru__1370b97e",
+    "domain": "my.selectel.ru",
+    "url": "https://my.selectel.ru/",
+    "lang": "RU",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:50:26.455Z",
+    "detail": "inputs=0 annotatedForms=0"
+  },
+  {
+    "pageId": "myaccount.nytimes.com__4267058c",
+    "domain": "myaccount.nytimes.com",
+    "url": "https://myaccount.nytimes.com/auth/login",
+    "lang": "EN",
+    "status": "skipped",
+    "httpStatus": "403",
+    "detail": "known bot-block/timeout from corpus notes"
+  },
+  {
+    "pageId": "nethouse.ru__e70ca6dd",
+    "domain": "nethouse.ru",
+    "url": "https://nethouse.ru/",
+    "lang": "RU",
+    "status": "timeout",
+    "detail": "page.goto: Timeout 18000ms exceeded.\nCall log:\n  - navigating to \"https://nethouse.ru/\", waiting until \"domcontentloaded\"\n"
+  },
+  {
+    "pageId": "netology.ru__578684cd",
+    "domain": "netology.ru",
+    "url": "https://netology.ru/",
+    "lang": "RU",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:51:14.294Z",
+    "detail": "inputs=0 annotatedForms=0"
+  },
+  {
+    "pageId": "ok.ru__93391230",
+    "domain": "ok.ru",
+    "url": "https://ok.ru/",
+    "lang": "RU",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:49:19.716Z",
+    "detail": "inputs=7 annotatedForms=1"
+  },
+  {
+    "pageId": "okko.tv__34d9e666",
+    "domain": "okko.tv",
+    "url": "https://okko.tv/",
+    "lang": "RU",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:50:40.175Z",
+    "detail": "inputs=0 annotatedForms=0"
+  },
+  {
+    "pageId": "online.raiffeisen.ru__978da72d",
+    "domain": "online.raiffeisen.ru",
+    "url": "https://online.raiffeisen.ru/",
+    "lang": "RU",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:49:47.327Z",
+    "detail": "inputs=0 annotatedForms=0"
+  },
+  {
+    "pageId": "online.sberbank.ru__b078eddb",
+    "domain": "online.sberbank.ru",
+    "url": "https://online.sberbank.ru/",
+    "lang": "RU",
+    "status": "skipped",
+    "httpStatus": "200",
+    "detail": "known bot-block/timeout from corpus notes"
+  },
+  {
+    "pageId": "online.vtb.ru__e5d9bd01",
+    "domain": "online.vtb.ru",
+    "url": "https://online.vtb.ru/",
+    "lang": "RU",
+    "status": "error",
+    "detail": "page.goto: net::ERR_CERT_AUTHORITY_INVALID at https://online.vtb.ru/\nCall log:\n  - navigating to \"https://online.vtb.ru/\", waiting until \"domcontentloaded\"\n"
+  },
+  {
+    "pageId": "pass.rzd.ru__b4f17ec5",
+    "domain": "pass.rzd.ru",
+    "url": "https://pass.rzd.ru/",
+    "lang": "RU",
+    "status": "skipped",
+    "httpStatus": "000",
+    "detail": "known bot-block/timeout from corpus notes"
+  },
+  {
+    "pageId": "passport.yandex.ru__4168feba",
+    "domain": "passport.yandex.ru",
+    "url": "https://passport.yandex.ru/auth",
+    "lang": "RU",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:48:59.860Z",
+    "detail": "inputs=4 annotatedForms=1"
+  },
+  {
+    "pageId": "pikabu.ru__2a185151",
+    "domain": "pikabu.ru",
+    "url": "https://pikabu.ru/",
+    "lang": "RU",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:49:17.698Z",
+    "detail": "inputs=1 annotatedForms=1"
+  },
+  {
+    "pageId": "planfix.ru__526d2c4b",
+    "domain": "planfix.ru",
+    "url": "https://planfix.ru/",
+    "lang": "RU",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:50:21.052Z",
+    "detail": "inputs=3 annotatedForms=1"
+  },
+  {
+    "pageId": "play.grafana.org__a2fff2cf",
+    "domain": "play.grafana.org",
+    "url": "https://play.grafana.org/login",
+    "lang": "EN",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:51:35.993Z",
+    "detail": "inputs=2 annotatedForms=1"
+  },
+  {
+    "pageId": "portal.azure.com__2703da9f",
+    "domain": "portal.azure.com",
+    "url": "https://portal.azure.com/",
+    "lang": "EN",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:50:33.553Z",
+    "detail": "inputs=0 annotatedForms=0"
+  },
+  {
+    "pageId": "practicum.yandex.ru__a6499d23",
+    "domain": "practicum.yandex.ru",
+    "url": "https://practicum.yandex.ru/",
+    "lang": "RU",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:51:11.297Z",
+    "detail": "inputs=2 annotatedForms=0"
+  },
+  {
+    "pageId": "premier.one__abe29b5a",
+    "domain": "premier.one",
+    "url": "https://premier.one/",
+    "lang": "RU",
+    "status": "timeout",
+    "detail": "page.goto: Timeout 18000ms exceeded.\nCall log:\n  - navigating to \"https://premier.one/\", waiting until \"domcontentloaded\"\n"
+  },
+  {
+    "pageId": "ru.wikipedia.org__4a99890b",
+    "domain": "ru.wikipedia.org",
+    "url": "https://ru.wikipedia.org/w/index.php?title=Special:UserLogin",
+    "lang": "RU",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:49:09.934Z",
+    "detail": "inputs=27 annotatedForms=1"
+  },
+  {
+    "pageId": "rutube.ru__9aec7ba6",
+    "domain": "rutube.ru",
+    "url": "https://rutube.ru/",
+    "lang": "RU",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:49:19.606Z",
+    "detail": "inputs=1 annotatedForms=0"
+  },
+  {
+    "pageId": "samokat.ru__809096d2",
+    "domain": "samokat.ru",
+    "url": "https://samokat.ru/",
+    "lang": "RU",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:50:59.838Z",
+    "detail": "inputs=0 annotatedForms=0"
+  },
+  {
+    "pageId": "sbis.ru__526c9b1b",
+    "domain": "sbis.ru",
+    "url": "https://sbis.ru/",
+    "lang": "RU",
+    "status": "skipped",
+    "httpStatus": "timeout",
+    "detail": "known bot-block/timeout from corpus notes"
+  },
+  {
+    "pageId": "school.moodledemo.net__86aba515",
+    "domain": "school.moodledemo.net",
+    "url": "https://school.moodledemo.net/login/index.php",
+    "lang": "EN",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:51:17.774Z",
+    "detail": "inputs=7 annotatedForms=1"
+  },
+  {
+    "pageId": "secure.chase.com__fa329d27",
+    "domain": "secure.chase.com",
+    "url": "https://secure.chase.com/",
+    "lang": "EN",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:49:54.860Z",
+    "detail": "inputs=0 annotatedForms=0"
+  },
+  {
+    "pageId": "secure.login.gov__3a2dde98",
+    "domain": "secure.login.gov",
+    "url": "https://secure.login.gov/",
+    "lang": "EN",
+    "status": "blocked",
+    "httpStatus": 200,
+    "detail": "anti-bot interstitial"
+  },
+  {
+    "pageId": "signin.aws.amazon.com__60d68e38",
+    "domain": "signin.aws.amazon.com",
+    "url": "https://console.aws.amazon.com/",
+    "lang": "EN",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:50:32.232Z",
+    "detail": "inputs=6 annotatedForms=1"
+  },
+  {
+    "pageId": "signin.ebay.com__f9199be6",
+    "domain": "signin.ebay.com",
+    "url": "https://www.ebay.com/signin/",
+    "lang": "EN",
+    "status": "blocked",
+    "httpStatus": 403,
+    "detail": "HTTP 403"
+  },
+  {
+    "pageId": "skillbox.ru__2d2b12f2",
+    "domain": "skillbox.ru",
+    "url": "https://skillbox.ru/",
+    "lang": "RU",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:51:14.842Z",
+    "detail": "inputs=16 annotatedForms=1"
+  },
+  {
+    "pageId": "skyeng.ru__0e025cb1",
+    "domain": "skyeng.ru",
+    "url": "https://skyeng.ru/",
+    "lang": "RU",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:51:13.707Z",
+    "detail": "inputs=15 annotatedForms=3"
+  },
+  {
+    "pageId": "slack.com__3adc6dce",
+    "domain": "slack.com",
+    "url": "https://slack.com/",
+    "lang": "EN",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:50:17.758Z",
+    "detail": "inputs=7 annotatedForms=0"
+  },
+  {
+    "pageId": "sprinthost.ru__16bd34e3",
+    "domain": "sprinthost.ru",
+    "url": "https://sprinthost.ru/",
+    "lang": "RU",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:50:30.931Z",
+    "detail": "inputs=0 annotatedForms=0"
+  },
+  {
+    "pageId": "sso.beget.com__a252a5c6",
+    "domain": "sso.beget.com",
+    "url": "https://cp.beget.com/",
+    "lang": "RU",
+    "status": "timeout",
+    "detail": "page.goto: Timeout 18000ms exceeded.\nCall log:\n  - navigating to \"https://cp.beget.com/\", waiting until \"domcontentloaded\"\n"
+  },
+  {
+    "pageId": "stackoverflow.com__4e82300e",
+    "domain": "stackoverflow.com",
+    "url": "https://stackoverflow.com/users/login",
+    "lang": "EN",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:50:13.697Z",
+    "detail": "inputs=25 annotatedForms=1"
+  },
+  {
+    "pageId": "start.ru__12d0a2c7",
+    "domain": "start.ru",
+    "url": "https://start.ru/",
+    "lang": "RU",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:50:41.367Z",
+    "detail": "inputs=1 annotatedForms=0"
+  },
+  {
+    "pageId": "stepik.org__7c04cc76",
+    "domain": "stepik.org",
+    "url": "https://stepik.org/login",
+    "lang": "RU",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:51:11.423Z",
+    "detail": "inputs=3 annotatedForms=1"
+  },
+  {
+    "pageId": "store.steampowered.com__27e7cdd4",
+    "domain": "store.steampowered.com",
+    "url": "https://store.steampowered.com/login/",
+    "lang": "EN",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:51:04.022Z",
+    "detail": "inputs=5 annotatedForms=1"
+  },
+  {
+    "pageId": "sutochno.ru__57670dab",
+    "domain": "sutochno.ru",
+    "url": "https://sutochno.ru/",
+    "lang": "RU",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:50:55.010Z",
+    "detail": "inputs=2 annotatedForms=0"
+  },
+  {
+    "pageId": "taxi.yandex.ru__801960e6",
+    "domain": "taxi.yandex.ru",
+    "url": "https://taxi.yandex.ru/",
+    "lang": "RU",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:51:01.867Z",
+    "detail": "inputs=4 annotatedForms=0"
+  },
+  {
+    "pageId": "tenchat.ru__7129d000",
+    "domain": "tenchat.ru",
+    "url": "https://tenchat.ru/",
+    "lang": "RU",
+    "status": "skipped",
+    "httpStatus": "timeout",
+    "detail": "known bot-block/timeout from corpus notes"
+  },
+  {
+    "pageId": "tilda.cc__0af511c3",
+    "domain": "tilda.cc",
+    "url": "https://tilda.cc/login/",
+    "lang": "RU",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:51:18.953Z",
+    "detail": "inputs=2 annotatedForms=1"
+  },
+  {
+    "pageId": "timepad.ru__9ae3a927",
+    "domain": "timepad.ru",
+    "url": "https://timepad.ru/",
+    "lang": "RU",
+    "status": "blocked",
+    "httpStatus": 200,
+    "detail": "anti-bot interstitial"
+  },
+  {
+    "pageId": "timeweb.com__4a865b4e",
+    "domain": "timeweb.com",
+    "url": "https://timeweb.com/",
+    "lang": "RU",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:50:24.094Z",
+    "detail": "inputs=5 annotatedForms=1"
+  },
+  {
+    "pageId": "travelata.ru__7cc581cc",
+    "domain": "travelata.ru",
+    "url": "https://travelata.ru/",
+    "lang": "RU",
+    "status": "skipped",
+    "httpStatus": "401",
+    "detail": "known bot-block/timeout from corpus notes"
+  },
+  {
+    "pageId": "try.nextcloud.com__150738a6",
+    "domain": "try.nextcloud.com",
+    "url": "https://try.nextcloud.com/",
+    "lang": "EN",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:51:29.765Z",
+    "detail": "inputs=4 annotatedForms=0"
+  },
+  {
+    "pageId": "uchi.ru__4ca8efe8",
+    "domain": "uchi.ru",
+    "url": "https://uchi.ru/",
+    "lang": "RU",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:51:16.948Z",
+    "detail": "inputs=2 annotatedForms=1"
+  },
+  {
+    "pageId": "unifi.ui.com__8ae64c9c",
+    "domain": "unifi.ui.com",
+    "url": "https://unifi.ui.com/",
+    "lang": "EN",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:51:31.633Z",
+    "detail": "inputs=2 annotatedForms=1"
+  },
+  {
+    "pageId": "users.wix.com__0e7d13dd",
+    "domain": "users.wix.com",
+    "url": "https://users.wix.com/signin",
+    "lang": "EN",
+    "status": "blocked",
+    "httpStatus": 200,
+    "detail": "anti-bot interstitial"
+  },
+  {
+    "pageId": "vc.ru__17480cb1",
+    "domain": "vc.ru",
+    "url": "https://vc.ru/",
+    "lang": "RU",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:49:18.746Z",
+    "detail": "inputs=0 annotatedForms=0"
+  },
+  {
+    "pageId": "vercel.com__a5d89579",
+    "domain": "vercel.com",
+    "url": "https://vercel.com/login",
+    "lang": "EN",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:50:36.043Z",
+    "detail": "inputs=1 annotatedForms=1"
+  },
+  {
+    "pageId": "vk.com__ea2f61b9",
+    "domain": "vk.com",
+    "url": "https://vk.com/login",
+    "lang": "RU",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:49:14.060Z",
+    "detail": "inputs=0 annotatedForms=0"
+  },
+  {
+    "pageId": "vkplay.ru__0783ea14",
+    "domain": "vkplay.ru",
+    "url": "https://vkplay.ru/",
+    "lang": "RU",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:51:07.008Z",
+    "detail": "inputs=2 annotatedForms=0"
+  },
+  {
+    "pageId": "vkusvill.ru__1d4b46af",
+    "domain": "vkusvill.ru",
+    "url": "https://vkusvill.ru/",
+    "lang": "RU",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:51:01.373Z",
+    "detail": "inputs=54 annotatedForms=1"
+  },
+  {
+    "pageId": "web.alfabank.ru__0d30bbf3",
+    "domain": "web.alfabank.ru",
+    "url": "https://web.alfabank.ru/",
+    "lang": "RU",
+    "status": "error",
+    "detail": "page.goto: net::ERR_CERT_AUTHORITY_INVALID at https://web.alfabank.ru/\nCall log:\n  - navigating to \"https://web.alfabank.ru/\", waiting until \"domcontentloaded\"\n"
+  },
+  {
+    "pageId": "web.telegram.org__9008e159",
+    "domain": "web.telegram.org",
+    "url": "https://web.telegram.org/a/",
+    "lang": "RU",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:49:22.144Z",
+    "detail": "inputs=0 annotatedForms=0"
+  },
+  {
+    "pageId": "web.whatsapp.com__9bc7929b",
+    "domain": "web.whatsapp.com",
+    "url": "https://web.whatsapp.com/",
+    "lang": "EN",
+    "status": "skipped",
+    "httpStatus": "400",
+    "detail": "known bot-block/timeout from corpus notes"
+  },
+  {
+    "pageId": "webflow.com__68be0cb8",
+    "domain": "webflow.com",
+    "url": "https://webflow.com/login",
+    "lang": "EN",
+    "status": "blocked",
+    "httpStatus": 403,
+    "detail": "HTTP 403"
+  },
+  {
+    "pageId": "webhost-lin.demo.plesk.com__467072d7",
+    "domain": "webhost-lin.demo.plesk.com",
+    "url": "https://webhost-lin.demo.plesk.com:8443/login_up.php",
+    "lang": "EN",
+    "status": "skipped",
+    "httpStatus": "000",
+    "detail": "known bot-block/timeout from corpus notes"
+  },
+  {
+    "pageId": "wise.com__f35c3504",
+    "domain": "wise.com",
+    "url": "https://wise.com/login",
+    "lang": "EN",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:49:56.955Z",
+    "detail": "inputs=3 annotatedForms=1"
+  },
+  {
+    "pageId": "wolt.com__09a89a22",
+    "domain": "wolt.com",
+    "url": "https://wolt.com/en/login",
+    "lang": "EN",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:51:05.289Z",
+    "detail": "inputs=2 annotatedForms=1"
+  },
+  {
+    "pageId": "wordpress.com__d2e865ba",
+    "domain": "wordpress.com",
+    "url": "https://wordpress.com/log-in",
+    "lang": "EN",
+    "status": "skipped",
+    "httpStatus": "403",
+    "detail": "known bot-block/timeout from corpus notes"
+  },
+  {
+    "pageId": "www.1c.ru__021597ed",
+    "domain": "www.1c.ru",
+    "url": "https://www.1c.ru/",
+    "lang": "RU",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:50:10.827Z",
+    "detail": "inputs=0 annotatedForms=0"
+  },
+  {
+    "pageId": "www.aeroflot.ru__e2ef5737",
+    "domain": "www.aeroflot.ru",
+    "url": "https://www.aeroflot.ru/",
+    "lang": "RU",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:50:49.829Z",
+    "detail": "inputs=0 annotatedForms=0"
+  },
+  {
+    "pageId": "www.agoda.com__e5f113a9",
+    "domain": "www.agoda.com",
+    "url": "https://www.agoda.com/",
+    "lang": "EN",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:50:57.665Z",
+    "detail": "inputs=4 annotatedForms=0"
+  },
+  {
+    "pageId": "www.airbnb.com__8036fc6d",
+    "domain": "www.airbnb.com",
+    "url": "https://www.airbnb.com/login",
+    "lang": "EN",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:50:55.565Z",
+    "detail": "inputs=1 annotatedForms=1"
+  },
+  {
+    "pageId": "www.alibaba.com__09eb9d80",
+    "domain": "www.alibaba.com",
+    "url": "https://login.alibaba.com/",
+    "lang": "EN",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:49:40.036Z",
+    "detail": "inputs=2 annotatedForms=1"
+  },
+  {
+    "pageId": "www.aliexpress.com__7680fd3e",
+    "domain": "www.aliexpress.com",
+    "url": "https://www.aliexpress.com/",
+    "lang": "EN",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:49:41.619Z",
+    "detail": "inputs=3 annotatedForms=0"
+  },
+  {
+    "pageId": "www.amazon.com__b3bed408",
+    "domain": "www.amazon.com",
+    "url": "https://www.amazon.com/ap/signin?openid.pape.max_auth_age=0&openid.return_to=https%3A%2F%2Fwww.amazon.com%2F&openid.identity=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0%2Fidentifier_select&openid.assoc_handle=usflex&openid.mode=checkid_setup&openid.claimed_id=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0%2Fidentifier_select&openid.ns=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0",
+    "lang": "EN",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:49:37.113Z",
+    "detail": "inputs=24 annotatedForms=1"
+  },
+  {
+    "pageId": "www.amocrm.ru__e2729ea5",
+    "domain": "www.amocrm.ru",
+    "url": "https://www.amocrm.ru/account/login/",
+    "lang": "RU",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:50:10.979Z",
+    "detail": "inputs=34 annotatedForms=0"
+  },
+  {
+    "pageId": "www.aviasales.ru__55428513",
+    "domain": "www.aviasales.ru",
+    "url": "https://www.aviasales.ru/",
+    "lang": "RU",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:50:48.499Z",
+    "detail": "inputs=4 annotatedForms=0"
+  },
+  {
+    "pageId": "www.avito.ru__45ea280f",
+    "domain": "www.avito.ru",
+    "url": "https://www.avito.ru/",
+    "lang": "RU",
+    "status": "skipped",
+    "httpStatus": "439",
+    "detail": "known bot-block/timeout from corpus notes"
+  },
+  {
+    "pageId": "www.bankofamerica.com__cd6249a2",
+    "domain": "www.bankofamerica.com",
+    "url": "https://www.bankofamerica.com/login/",
+    "lang": "EN",
+    "status": "blocked",
+    "httpStatus": 403,
+    "detail": "HTTP 403"
+  },
+  {
+    "pageId": "www.bestbuy.com__ab740584",
+    "domain": "www.bestbuy.com",
+    "url": "https://www.bestbuy.com/identity/global/signin",
+    "lang": "EN",
+    "status": "timeout",
+    "detail": "page.goto: Timeout 18000ms exceeded.\nCall log:\n  - navigating to \"https://www.bestbuy.com/identity/global/signin\", waiting until \"domcontentloaded\"\n"
+  },
+  {
+    "pageId": "www.bitrix24.ru__42abd52d",
+    "domain": "www.bitrix24.ru",
+    "url": "https://www.bitrix24.ru/auth/",
+    "lang": "RU",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:51:26.011Z",
+    "detail": "inputs=1 annotatedForms=1"
+  },
+  {
+    "pageId": "www.canva.com__c38d8513",
+    "domain": "www.canva.com",
+    "url": "https://www.canva.com/login",
+    "lang": "EN",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:50:20.812Z",
+    "detail": "inputs=0 annotatedForms=0"
+  },
+  {
+    "pageId": "www.cian.ru__6b77d0df",
+    "domain": "www.cian.ru",
+    "url": "https://www.cian.ru/",
+    "lang": "RU",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:49:36.409Z",
+    "detail": "inputs=0 annotatedForms=0"
+  },
+  {
+    "pageId": "www.citilink.ru__8aaa9a01",
+    "domain": "www.citilink.ru",
+    "url": "https://www.citilink.ru/",
+    "lang": "RU",
+    "status": "skipped",
+    "httpStatus": "429",
+    "detail": "known bot-block/timeout from corpus notes"
+  },
+  {
+    "pageId": "www.coursera.org__122d40bb",
+    "domain": "www.coursera.org",
+    "url": "https://www.coursera.org/login",
+    "lang": "EN",
+    "status": "blocked",
+    "httpStatus": 200,
+    "detail": "anti-bot interstitial"
+  },
+  {
+    "pageId": "www.cpanel.net__00c200bf",
+    "domain": "www.cpanel.net",
+    "url": "https://www.cpanel.net/",
+    "lang": "EN",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:51:34.462Z",
+    "detail": "inputs=0 annotatedForms=0"
+  },
+  {
+    "pageId": "www.detmir.ru__3cda0ff7",
+    "domain": "www.detmir.ru",
+    "url": "https://www.detmir.ru/",
+    "lang": "RU",
+    "status": "skipped",
+    "httpStatus": "418",
+    "detail": "known bot-block/timeout from corpus notes"
+  },
+  {
+    "pageId": "www.directadmin.com__f0b4fac8",
+    "domain": "www.directadmin.com",
+    "url": "https://www.directadmin.com/demo.php",
+    "lang": "EN",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:51:33.838Z",
+    "detail": "inputs=22 annotatedForms=0"
+  },
+  {
+    "pageId": "www.dns-shop.ru__480b5865",
+    "domain": "www.dns-shop.ru",
+    "url": "https://www.dns-shop.ru/",
+    "lang": "RU",
+    "status": "skipped",
+    "httpStatus": "401",
+    "detail": "known bot-block/timeout from corpus notes"
+  },
+  {
+    "pageId": "www.doordash.com__2fd4777a",
+    "domain": "www.doordash.com",
+    "url": "https://www.doordash.com/consumer/login/",
+    "lang": "EN",
+    "status": "skipped",
+    "httpStatus": "403",
+    "detail": "known bot-block/timeout from corpus notes"
+  },
+  {
+    "pageId": "www.drive2.ru__aad97e13",
+    "domain": "www.drive2.ru",
+    "url": "https://www.drive2.ru/",
+    "lang": "RU",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:49:22.676Z",
+    "detail": "inputs=0 annotatedForms=0"
+  },
+  {
+    "pageId": "www.drom.ru__f4e68b32",
+    "domain": "www.drom.ru",
+    "url": "https://www.drom.ru/",
+    "lang": "RU",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:49:34.240Z",
+    "detail": "inputs=7 annotatedForms=0"
+  },
+  {
+    "pageId": "www.dropbox.com__6695a28a",
+    "domain": "www.dropbox.com",
+    "url": "https://www.dropbox.com/login",
+    "lang": "EN",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:50:18.729Z",
+    "detail": "inputs=2 annotatedForms=1"
+  },
+  {
+    "pageId": "www.drupal.org__28048acd",
+    "domain": "www.drupal.org",
+    "url": "https://www.drupal.org/user/login",
+    "lang": "EN",
+    "status": "blocked",
+    "httpStatus": 200,
+    "detail": "anti-bot interstitial"
+  },
+  {
+    "pageId": "www.duolingo.com__78a33d1e",
+    "domain": "www.duolingo.com",
+    "url": "https://www.duolingo.com/login",
+    "lang": "EN",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:51:15.936Z",
+    "detail": "inputs=2 annotatedForms=1"
+  },
+  {
+    "pageId": "www.eldorado.ru__249d6df9",
+    "domain": "www.eldorado.ru",
+    "url": "https://www.eldorado.ru/",
+    "lang": "RU",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:49:30.196Z",
+    "detail": "inputs=2 annotatedForms=0"
+  },
+  {
+    "pageId": "www.epicgames.com__c5c184bf",
+    "domain": "www.epicgames.com",
+    "url": "https://www.epicgames.com/id/login",
+    "lang": "EN",
+    "status": "skipped",
+    "httpStatus": "403",
+    "detail": "known bot-block/timeout from corpus notes"
+  },
+  {
+    "pageId": "www.etsy.com__2c079c2b",
+    "domain": "www.etsy.com",
+    "url": "https://www.etsy.com/signin",
+    "lang": "EN",
+    "status": "skipped",
+    "httpStatus": "403",
+    "detail": "known bot-block/timeout from corpus notes"
+  },
+  {
+    "pageId": "www.expedia.com__ddef9ce1",
+    "domain": "www.expedia.com",
+    "url": "https://www.expedia.com/login",
+    "lang": "EN",
+    "status": "skipped",
+    "httpStatus": "429",
+    "detail": "known bot-block/timeout from corpus notes"
+  },
+  {
+    "pageId": "www.facebook.com__067af5a6",
+    "domain": "www.facebook.com",
+    "url": "https://www.facebook.com/login",
+    "lang": "EN",
+    "status": "skipped",
+    "httpStatus": "400",
+    "detail": "known bot-block/timeout from corpus notes"
+  },
+  {
+    "pageId": "www.fastmail.com__7ebf34a1",
+    "domain": "www.fastmail.com",
+    "url": "https://www.fastmail.com/login/",
+    "lang": "EN",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:49:08.842Z",
+    "detail": "inputs=3 annotatedForms=1"
+  },
+  {
+    "pageId": "www.figma.com__da7d62ec",
+    "domain": "www.figma.com",
+    "url": "https://www.figma.com/login",
+    "lang": "EN",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:50:15.086Z",
+    "detail": "inputs=2 annotatedForms=1"
+  },
+  {
+    "pageId": "www.finam.ru__1e230c8c",
+    "domain": "www.finam.ru",
+    "url": "https://www.finam.ru/",
+    "lang": "RU",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:49:54.119Z",
+    "detail": "inputs=0 annotatedForms=0"
+  },
+  {
+    "pageId": "www.fssp.gov.ru__f3bd62d7",
+    "domain": "www.fssp.gov.ru",
+    "url": "https://www.fssp.gov.ru/",
+    "lang": "RU",
+    "status": "skipped",
+    "httpStatus": "503",
+    "detail": "known bot-block/timeout from corpus notes"
+  },
+  {
+    "pageId": "www.gazprombank.ru__81504bfd",
+    "domain": "www.gazprombank.ru",
+    "url": "https://www.gazprombank.ru/",
+    "lang": "RU",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:49:50.064Z",
+    "detail": "inputs=30 annotatedForms=0"
+  },
+  {
+    "pageId": "www.gosuslugi.ru__524b76fe",
+    "domain": "www.gosuslugi.ru",
+    "url": "https://www.gosuslugi.ru/",
+    "lang": "RU",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:50:00.883Z",
+    "detail": "inputs=0 annotatedForms=0"
+  },
+  {
+    "pageId": "www.gov.spb.ru__586636f6",
+    "domain": "www.gov.spb.ru",
+    "url": "https://portal.gov.spb.ru/",
+    "lang": "RU",
+    "status": "skipped",
+    "httpStatus": "000",
+    "detail": "known bot-block/timeout from corpus notes"
+  },
+  {
+    "pageId": "www.hilton.com__48ffc3dd",
+    "domain": "www.hilton.com",
+    "url": "https://www.hilton.com/en/hilton-honors/login/",
+    "lang": "EN",
+    "status": "blocked",
+    "httpStatus": 403,
+    "detail": "HTTP 403"
+  },
+  {
+    "pageId": "www.ikea.com__e36d3834",
+    "domain": "www.ikea.com",
+    "url": "https://www.ikea.com/us/en/profile/login/",
+    "lang": "EN",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:49:42.393Z",
+    "detail": "inputs=2 annotatedForms=1"
+  },
+  {
+    "pageId": "www.insales.ru__3363f43f",
+    "domain": "www.insales.ru",
+    "url": "https://www.insales.ru/",
+    "lang": "RU",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:51:26.542Z",
+    "detail": "inputs=7 annotatedForms=1"
+  },
+  {
+    "pageId": "www.instagram.com__b820e4c7",
+    "domain": "www.instagram.com",
+    "url": "https://www.instagram.com/accounts/login/",
+    "lang": "EN",
+    "status": "blocked",
+    "httpStatus": 429,
+    "detail": "HTTP 429"
+  },
+  {
+    "pageId": "www.irs.gov__9926758e",
+    "domain": "www.irs.gov",
+    "url": "https://www.irs.gov/",
+    "lang": "EN",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:50:03.168Z",
+    "detail": "inputs=3 annotatedForms=0"
+  },
+  {
+    "pageId": "www.ispmanager.com__56b9a01e",
+    "domain": "www.ispmanager.com",
+    "url": "https://www.ispmanager.com/demo",
+    "lang": "RU",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:51:34.754Z",
+    "detail": "inputs=19 annotatedForms=0"
+  },
+  {
+    "pageId": "www.ivi.ru__a3069136",
+    "domain": "www.ivi.ru",
+    "url": "https://www.ivi.ru/",
+    "lang": "RU",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:50:41.846Z",
+    "detail": "inputs=0 annotatedForms=0"
+  },
+  {
+    "pageId": "www.khanacademy.org__2c144964",
+    "domain": "www.khanacademy.org",
+    "url": "https://www.khanacademy.org/login",
+    "lang": "EN",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:51:15.406Z",
+    "detail": "inputs=2 annotatedForms=1"
+  },
+  {
+    "pageId": "www.kinopoisk.ru__b3143dd1",
+    "domain": "www.kinopoisk.ru",
+    "url": "https://www.kinopoisk.ru/",
+    "lang": "RU",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:50:41.808Z",
+    "detail": "inputs=1 annotatedForms=0"
+  },
+  {
+    "pageId": "www.kommersant.ru__d98a3233",
+    "domain": "www.kommersant.ru",
+    "url": "https://www.kommersant.ru/",
+    "lang": "RU",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:50:42.978Z",
+    "detail": "inputs=4 annotatedForms=0"
+  },
+  {
+    "pageId": "www.kraken.com__8ae0cb38",
+    "domain": "www.kraken.com",
+    "url": "https://www.kraken.com/sign-in",
+    "lang": "EN",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:49:59.111Z",
+    "detail": "inputs=10 annotatedForms=1"
+  },
+  {
+    "pageId": "www.lamoda.ru__43329de1",
+    "domain": "www.lamoda.ru",
+    "url": "https://www.lamoda.ru/",
+    "lang": "RU",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:49:29.611Z",
+    "detail": "inputs=0 annotatedForms=0"
+  },
+  {
+    "pageId": "www.leroymerlin.ru__4c74436c",
+    "domain": "www.leroymerlin.ru",
+    "url": "https://www.leroymerlin.ru/",
+    "lang": "RU",
+    "status": "skipped",
+    "httpStatus": "000",
+    "detail": "known bot-block/timeout from corpus notes"
+  },
+  {
+    "pageId": "www.letu.ru__cea1f370",
+    "domain": "www.letu.ru",
+    "url": "https://www.letu.ru/",
+    "lang": "RU",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:49:36.249Z",
+    "detail": "inputs=0 annotatedForms=0"
+  },
+  {
+    "pageId": "www.linkedin.com__d0d41a78",
+    "domain": "www.linkedin.com",
+    "url": "https://www.linkedin.com/",
+    "lang": "EN",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:49:22.329Z",
+    "detail": "inputs=4 annotatedForms=0"
+  },
+  {
+    "pageId": "www.livejournal.com__51d242ac",
+    "domain": "www.livejournal.com",
+    "url": "https://www.livejournal.com/",
+    "lang": "RU",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:49:11.673Z",
+    "detail": "inputs=21 annotatedForms=0"
+  },
+  {
+    "pageId": "www.marriott.com__0eacd631",
+    "domain": "www.marriott.com",
+    "url": "https://www.marriott.com/",
+    "lang": "EN",
+    "status": "skipped",
+    "httpStatus": "403",
+    "detail": "known bot-block/timeout from corpus notes"
+  },
+  {
+    "pageId": "www.mos.ru__b130ef3b",
+    "domain": "www.mos.ru",
+    "url": "https://login.mos.ru/",
+    "lang": "RU",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:50:03.274Z",
+    "detail": "inputs=42 annotatedForms=0"
+  },
+  {
+    "pageId": "www.moysklad.ru__6a361172",
+    "domain": "www.moysklad.ru",
+    "url": "https://www.moysklad.ru/",
+    "lang": "RU",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:50:12.821Z",
+    "detail": "inputs=0 annotatedForms=0"
+  },
+  {
+    "pageId": "www.mtsbank.ru__59ffbb50",
+    "domain": "www.mtsbank.ru",
+    "url": "https://online.mtsbank.ru/",
+    "lang": "RU",
+    "status": "error",
+    "detail": "page.goto: net::ERR_CERT_AUTHORITY_INVALID at https://online.mtsbank.ru/\nCall log:\n  - navigating to \"https://online.mtsbank.ru/\", waiting until \"domcontentloaded\"\n"
+  },
+  {
+    "pageId": "www.mvideo.ru__bdf34097",
+    "domain": "www.mvideo.ru",
+    "url": "https://www.mvideo.ru/",
+    "lang": "RU",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:49:31.115Z",
+    "detail": "inputs=2 annotatedForms=0"
+  },
+  {
+    "pageId": "www.netflix.com__dc28a027",
+    "domain": "www.netflix.com",
+    "url": "https://www.netflix.com/login",
+    "lang": "EN",
+    "status": "blocked",
+    "httpStatus": 200,
+    "detail": "anti-bot interstitial"
+  },
+  {
+    "pageId": "www.nic.ru__210659c6",
+    "domain": "www.nic.ru",
+    "url": "https://www.nic.ru/login/",
+    "lang": "RU",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:50:25.359Z",
+    "detail": "inputs=0 annotatedForms=0"
+  },
+  {
+    "pageId": "www.nike.com__81a3dc11",
+    "domain": "www.nike.com",
+    "url": "https://www.nike.com/login",
+    "lang": "EN",
+    "status": "blocked",
+    "httpStatus": 200,
+    "detail": "anti-bot interstitial"
+  },
+  {
+    "pageId": "www.notion.so__7ea9281c",
+    "domain": "www.notion.so",
+    "url": "https://www.notion.so/login",
+    "lang": "EN",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:50:15.745Z",
+    "detail": "inputs=2 annotatedForms=1"
+  },
+  {
+    "pageId": "www.ostrovok.ru__c62a19a7",
+    "domain": "www.ostrovok.ru",
+    "url": "https://www.ostrovok.ru/",
+    "lang": "RU",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:50:53.545Z",
+    "detail": "inputs=4 annotatedForms=1"
+  },
+  {
+    "pageId": "www.ozon.ru__a2d168e9",
+    "domain": "www.ozon.ru",
+    "url": "https://www.ozon.ru/",
+    "lang": "RU",
+    "status": "blocked",
+    "httpStatus": 403,
+    "detail": "HTTP 403"
+  },
+  {
+    "pageId": "www.patreon.com__46088363",
+    "domain": "www.patreon.com",
+    "url": "https://www.patreon.com/",
+    "lang": "EN",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:50:46.978Z",
+    "detail": "inputs=2 annotatedForms=0"
+  },
+  {
+    "pageId": "www.paypal.com__14651315",
+    "domain": "www.paypal.com",
+    "url": "https://www.paypal.com/",
+    "lang": "EN",
+    "status": "blocked",
+    "httpStatus": 403,
+    "detail": "HTTP 403"
+  },
+  {
+    "pageId": "www.perekrestok.ru__74194899",
+    "domain": "www.perekrestok.ru",
+    "url": "https://www.perekrestok.ru/",
+    "lang": "RU",
+    "status": "blocked",
+    "httpStatus": 403,
+    "detail": "HTTP 403"
+  },
+  {
+    "pageId": "www.playstation.com__6523fc7f",
+    "domain": "www.playstation.com",
+    "url": "https://id.sonyentertainmentnetwork.com/signin/",
+    "lang": "EN",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:51:07.601Z",
+    "detail": "inputs=0 annotatedForms=0"
+  },
+  {
+    "pageId": "www.psbank.ru__5a924dfb",
+    "domain": "www.psbank.ru",
+    "url": "https://ib.psbank.ru/",
+    "lang": "RU",
+    "status": "error",
+    "detail": "page.goto: net::ERR_CERT_AUTHORITY_INVALID at https://ib.psbank.ru/\nCall log:\n  - navigating to \"https://ib.psbank.ru/\", waiting until \"domcontentloaded\"\n"
+  },
+  {
+    "pageId": "www.rbc.ru__db31eaed",
+    "domain": "www.rbc.ru",
+    "url": "https://www.rbc.ru/",
+    "lang": "RU",
+    "status": "skipped",
+    "httpStatus": "401",
+    "detail": "known bot-block/timeout from corpus notes"
+  },
+  {
+    "pageId": "www.reddit.com__b1d003bd",
+    "domain": "www.reddit.com",
+    "url": "https://www.reddit.com/login/",
+    "lang": "EN",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:49:22.237Z",
+    "detail": "inputs=4 annotatedForms=1"
+  },
+  {
+    "pageId": "www.reg.ru__a8909a37",
+    "domain": "www.reg.ru",
+    "url": "https://www.reg.ru/user/login",
+    "lang": "RU",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:50:24.443Z",
+    "detail": "inputs=0 annotatedForms=0"
+  },
+  {
+    "pageId": "www.revolut.com__ff4819fb",
+    "domain": "www.revolut.com",
+    "url": "https://www.revolut.com/login/",
+    "lang": "EN",
+    "status": "skipped",
+    "httpStatus": "403",
+    "detail": "known bot-block/timeout from corpus notes"
+  },
+  {
+    "pageId": "www.roblox.com__cd85dc3f",
+    "domain": "www.roblox.com",
+    "url": "https://www.roblox.com/login",
+    "lang": "EN",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:51:09.183Z",
+    "detail": "inputs=4 annotatedForms=1"
+  },
+  {
+    "pageId": "www.rosbank.ru__a50e0baa",
+    "domain": "www.rosbank.ru",
+    "url": "https://online.rosbank.ru/",
+    "lang": "RU",
+    "status": "skipped",
+    "httpStatus": "000",
+    "detail": "known bot-block/timeout from corpus notes"
+  },
+  {
+    "pageId": "www.rshb.ru__57e06f67",
+    "domain": "www.rshb.ru",
+    "url": "https://online.rshb.ru/",
+    "lang": "RU",
+    "status": "error",
+    "detail": "page.goto: net::ERR_CERT_AUTHORITY_INVALID at https://online.rshb.ru/\nCall log:\n  - navigating to \"https://online.rshb.ru/\", waiting until \"domcontentloaded\"\n"
+  },
+  {
+    "pageId": "www.s7.ru__56e4baba",
+    "domain": "www.s7.ru",
+    "url": "https://www.s7.ru/",
+    "lang": "RU",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:50:52.962Z",
+    "detail": "inputs=0 annotatedForms=0"
+  },
+  {
+    "pageId": "www.signin.service.gov.uk__9fcd45b9",
+    "domain": "www.signin.service.gov.uk",
+    "url": "https://www.gov.uk/sign-in",
+    "lang": "EN",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:50:04.927Z",
+    "detail": "inputs=9 annotatedForms=0"
+  },
+  {
+    "pageId": "www.skyscanner.com__4291065d",
+    "domain": "www.skyscanner.com",
+    "url": "https://www.skyscanner.net/login",
+    "lang": "EN",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:50:56.681Z",
+    "detail": "inputs=0 annotatedForms=0"
+  },
+  {
+    "pageId": "www.sovcombank.ru__65f957e5",
+    "domain": "www.sovcombank.ru",
+    "url": "https://online.sovcombank.ru/",
+    "lang": "RU",
+    "status": "skipped",
+    "httpStatus": "401",
+    "detail": "known bot-block/timeout from corpus notes"
+  },
+  {
+    "pageId": "www.sportmaster.ru__7ed3a89d",
+    "domain": "www.sportmaster.ru",
+    "url": "https://www.sportmaster.ru/",
+    "lang": "RU",
+    "status": "skipped",
+    "httpStatus": "000",
+    "detail": "known bot-block/timeout from corpus notes"
+  },
+  {
+    "pageId": "www.superjob.ru__0d8ec16e",
+    "domain": "www.superjob.ru",
+    "url": "https://www.superjob.ru/user/login/",
+    "lang": "RU",
+    "status": "error",
+    "detail": "page.goto: net::ERR_HTTP2_PROTOCOL_ERROR at https://www.superjob.ru/user/login/\nCall log:\n  - navigating to \"https://www.superjob.ru/user/login/\", waiting until \"domcontentloaded\"\n"
+  },
+  {
+    "pageId": "www.target.com__df9247dd",
+    "domain": "www.target.com",
+    "url": "https://www.target.com/login",
+    "lang": "EN",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:49:40.876Z",
+    "detail": "inputs=5 annotatedForms=1"
+  },
+  {
+    "pageId": "www.tbank.ru__a36a366b",
+    "domain": "www.tbank.ru",
+    "url": "https://www.tbank.ru/auth/login/",
+    "lang": "RU",
+    "status": "error",
+    "detail": "page.goto: net::ERR_CERT_AUTHORITY_INVALID at https://www.tbank.ru/auth/login/\nCall log:\n  - navigating to \"https://www.tbank.ru/auth/login/\", waiting until \"domcontentloaded\"\n"
+  },
+  {
+    "pageId": "www.theguardian.com__748cd8e0",
+    "domain": "www.theguardian.com",
+    "url": "https://www.theguardian.com/signin",
+    "lang": "EN",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:50:48.116Z",
+    "detail": "inputs=7 annotatedForms=1"
+  },
+  {
+    "pageId": "www.tiktok.com__cb5ea64b",
+    "domain": "www.tiktok.com",
+    "url": "https://www.tiktok.com/login",
+    "lang": "EN",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:49:24.501Z",
+    "detail": "inputs=0 annotatedForms=0"
+  },
+  {
+    "pageId": "www.tutu.ru__f4ff0315",
+    "domain": "www.tutu.ru",
+    "url": "https://www.tutu.ru/",
+    "lang": "RU",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:50:51.043Z",
+    "detail": "inputs=9 annotatedForms=0"
+  },
+  {
+    "pageId": "www.twitch.tv__f0a63567",
+    "domain": "www.twitch.tv",
+    "url": "https://www.twitch.tv/login",
+    "lang": "EN",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:49:24.640Z",
+    "detail": "inputs=2 annotatedForms=1"
+  },
+  {
+    "pageId": "www.uber.com__53f1bb15",
+    "domain": "www.uber.com",
+    "url": "https://www.uber.com/login",
+    "lang": "EN",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:51:00.125Z",
+    "detail": "inputs=0 annotatedForms=0"
+  },
+  {
+    "pageId": "www.ucoz.ru__c3d3fb9b",
+    "domain": "www.ucoz.ru",
+    "url": "https://www.ucoz.ru/",
+    "lang": "RU",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:51:24.070Z",
+    "detail": "inputs=0 annotatedForms=0"
+  },
+  {
+    "pageId": "www.udemy.com__780addf7",
+    "domain": "www.udemy.com",
+    "url": "https://www.udemy.com/join/login-popup/",
+    "lang": "EN",
+    "status": "skipped",
+    "httpStatus": "403",
+    "detail": "known bot-block/timeout from corpus notes"
+  },
+  {
+    "pageId": "www.vseinstrumenti.ru__5ca3e5eb",
+    "domain": "www.vseinstrumenti.ru",
+    "url": "https://www.vseinstrumenti.ru/",
+    "lang": "RU",
+    "status": "skipped",
+    "httpStatus": "403",
+    "detail": "known bot-block/timeout from corpus notes"
+  },
+  {
+    "pageId": "www.walmart.com__e7023901",
+    "domain": "www.walmart.com",
+    "url": "https://www.walmart.com/account/login",
+    "lang": "EN",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:49:39.860Z",
+    "detail": "inputs=0 annotatedForms=0"
+  },
+  {
+    "pageId": "www.webasyst.ru__32881051",
+    "domain": "www.webasyst.ru",
+    "url": "https://www.webasyst.ru/login/",
+    "lang": "RU",
+    "status": "blocked",
+    "httpStatus": 200,
+    "detail": "anti-bot interstitial"
+  },
+  {
+    "pageId": "www.wildberries.ru__b50dc492",
+    "domain": "www.wildberries.ru",
+    "url": "https://www.wildberries.ru/",
+    "lang": "RU",
+    "status": "skipped",
+    "httpStatus": "498",
+    "detail": "known bot-block/timeout from corpus notes"
+  },
+  {
+    "pageId": "www.yclients.com__daa60a64",
+    "domain": "www.yclients.com",
+    "url": "https://www.yclients.com/",
+    "lang": "RU",
+    "status": "skipped",
+    "httpStatus": "403",
+    "detail": "known bot-block/timeout from corpus notes"
+  },
+  {
+    "pageId": "www.youla.ru__81a068c7",
+    "domain": "www.youla.ru",
+    "url": "https://www.youla.ru/",
+    "lang": "RU",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:49:36.571Z",
+    "detail": "inputs=1 annotatedForms=0"
+  },
+  {
+    "pageId": "x.com__dcabe2a5",
+    "domain": "x.com",
+    "url": "https://x.com/i/flow/login",
+    "lang": "EN",
+    "status": "blocked",
+    "httpStatus": 403,
+    "detail": "HTTP 403"
+  },
+  {
+    "pageId": "yoomoney.ru__ccf1a983",
+    "domain": "yoomoney.ru",
+    "url": "https://yoomoney.ru/yooid/login",
+    "lang": "RU",
+    "status": "captured",
+    "httpStatus": 200,
+    "cachedAt": "2026-11-19T12:49:51.937Z",
+    "detail": "inputs=1 annotatedForms=1"
+  },
+  {
+    "pageId": "zakupki.gov.ru__a78aea0a",
+    "domain": "zakupki.gov.ru",
+    "url": "https://zakupki.gov.ru/",
+    "lang": "RU",
+    "status": "skipped",
+    "httpStatus": "000",
+    "detail": "known bot-block/timeout from corpus notes"
+  },
+  {
+    "pageId": "zoom.us__033c0179",
+    "domain": "zoom.us",
+    "url": "https://zoom.us/signin",
+    "lang": "EN",
+    "status": "blocked",
+    "httpStatus": 200,
+    "detail": "anti-bot interstitial"
+  }
+]

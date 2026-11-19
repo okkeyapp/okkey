@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "pageId": "demo.opencart.com__c55088f0",
+  "url": "https://www.opencart.com/index.php?route=cms/demo",
+  "lang": "EN",
+  "annotator": "A",
+  "status": "blocked",
+  "pageKind": "login",
+  "forms": [],
+  "notes": "HTTP 403"
+}

@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "pageId": "accounts.shopify.com__3af816c1",
+  "url": "https://www.shopify.com/login",
+  "lang": "EN",
+  "annotator": "A",
+  "status": "uncapturable",
+  "pageKind": "login",
+  "forms": [],
+  "notes": "Captured but no semantic login fields found on first paint (modal/SPA likely)."
+}

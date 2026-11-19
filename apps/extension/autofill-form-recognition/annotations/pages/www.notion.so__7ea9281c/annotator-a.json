@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "pageId": "www.notion.so__7ea9281c",
+  "url": "https://www.notion.so/login",
+  "lang": "EN",
+  "annotator": "A",
+  "status": "annotated",
+  "pageKind": "login",
+  "forms": [
+    {
+      "formId": "form-1",
+      "selector": "form",
+      "fields": [
+        {
+          "selector": "#\\:r5\\:",
+          "role": "username",
+          "hints": {
+            "type": "email",
+            "id": ":r5:",
+            "autocomplete": "username",
+            "placeholder": "Enter your email address...",
+            "labelText": "Email"
+          }
+        },
+        {
+          "selector": "input:nth-of-type(2)",
+          "role": "password",
+          "hints": {
+            "type": "password",
+            "autocomplete": "current-password"
+          }
+        }
+      ]
+    }
+  ],
+  "notes": "Annotator A drafted from HTML5/semantic rules on captured DOM (independent of classifier)."
+}

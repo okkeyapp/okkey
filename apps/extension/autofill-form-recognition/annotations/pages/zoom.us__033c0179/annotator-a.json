@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "pageId": "zoom.us__033c0179",
+  "url": "https://zoom.us/signin",
+  "lang": "EN",
+  "annotator": "A",
+  "status": "blocked",
+  "pageKind": "login",
+  "forms": [],
+  "notes": "anti-bot interstitial"
+}

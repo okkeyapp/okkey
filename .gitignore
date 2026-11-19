@@ -114,6 +114,9 @@ apps/extension/output/
 apps/extension/.wxt/
 apps/extension/*.pem
 apps/extension/*.crx
+# Autofill form-recognition Playwright cache (third-party HTML — never commit)
+apps/extension/autofill-form-recognition/cache/**
+!apps/extension/autofill-form-recognition/cache/.gitignore
 
 # ============================================
 # TypeScript

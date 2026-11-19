@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "pageId": "www.udemy.com__780addf7",
+  "url": "https://www.udemy.com/join/login-popup/",
+  "lang": "EN",
+  "annotator": "A",
+  "status": "blocked",
+  "pageKind": "login",
+  "forms": [],
+  "notes": "known bot-block/timeout from corpus notes"
+}

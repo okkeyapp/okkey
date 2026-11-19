@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "pageId": "www.ikea.com__e36d3834",
+  "url": "https://www.ikea.com/us/en/profile/login/",
+  "lang": "EN",
+  "annotator": "A",
+  "status": "annotated",
+  "pageKind": "login",
+  "forms": [
+    {
+      "formId": "form-1",
+      "selector": "form",
+      "fields": [
+        {
+          "selector": "#passwordless-primary-login-form-username",
+          "role": "username",
+          "hints": {
+            "type": "email",
+            "id": "passwordless-primary-login-form-username",
+            "autocomplete": "username",
+            "labelText": "Email address"
+          }
+        }
+      ]
+    }
+  ],
+  "notes": "Annotator A drafted from HTML5/semantic rules on captured DOM (independent of classifier)."
+}

@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "pageId": "skillbox.ru__2d2b12f2",
+  "url": "https://skillbox.ru/",
+  "lang": "RU",
+  "annotator": "A",
+  "status": "annotated",
+  "pageKind": "login",
+  "forms": [
+    {
+      "formId": "form-1",
+      "selector": "form",
+      "fields": [
+        {
+          "selector": "input[type=\"tel\"][name=\"phone\"]",
+          "role": "username",
+          "hints": {
+            "type": "tel",
+            "name": "phone",
+            "autocomplete": "tel"
+          }
+        },
+        {
+          "selector": "input[type=\"email\"][name=\"email\"]",
+          "role": "username",
+          "hints": {
+            "type": "email",
+            "name": "email",
+            "labelText": "Электронная почта"
+          }
+        }
+      ]
+    }
+  ],
+  "notes": "Annotator A drafted from HTML5/semantic rules on captured DOM (independent of classifier)."
+}

@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "pageId": "wise.com__f35c3504",
+  "url": "https://wise.com/login",
+  "lang": "EN",
+  "annotator": "A",
+  "status": "annotated",
+  "pageKind": "login",
+  "forms": [
+    {
+      "formId": "form-1",
+      "selector": "form",
+      "fields": [
+        {
+          "selector": "#_r_1_",
+          "role": "username",
+          "hints": {
+            "type": "email",
+            "name": "email",
+            "id": "_r_1_",
+            "autocomplete": "email webauthn",
+            "labelText": "Your email address",
+            "inputMode": "email"
+          }
+        },
+        {
+          "selector": "#_r_6_",
+          "role": "password",
+          "hints": {
+            "type": "password",
+            "name": "password",
+            "id": "_r_6_",
+            "autocomplete": "current-password",
+            "labelText": "Your password"
+          }
+        }
+      ]
+    }
+  ],
+  "notes": "Annotator A drafted from HTML5/semantic rules on captured DOM (independent of classifier)."
+}

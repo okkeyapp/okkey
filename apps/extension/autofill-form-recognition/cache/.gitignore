@@ -1,0 +1,3 @@
+# Local Playwright HTML / DOM cache — never commit third-party snapshots.
+*
+!.gitignore

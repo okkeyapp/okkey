@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "pageId": "www.directadmin.com__f0b4fac8",
+  "url": "https://www.directadmin.com/demo.php",
+  "lang": "EN",
+  "annotator": "A",
+  "status": "uncapturable",
+  "pageKind": "login",
+  "forms": [],
+  "notes": "Captured but no semantic login fields found on first paint (modal/SPA likely)."
+}

@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "pageId": "www.tutu.ru__f4ff0315",
+  "url": "https://www.tutu.ru/",
+  "lang": "RU",
+  "annotator": "A",
+  "status": "uncapturable",
+  "pageKind": "login",
+  "forms": [],
+  "notes": "Annotator A drafted from HTML5/semantic rules on captured DOM (independent of classifier)."
+}

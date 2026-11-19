@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "pageId": "vc.ru__17480cb1",
+  "url": "https://vc.ru/",
+  "lang": "RU",
+  "annotator": "A",
+  "status": "uncapturable",
+  "pageKind": "login",
+  "forms": [],
+  "notes": "Captured but no semantic login fields found on first paint (modal/SPA likely)."
+}

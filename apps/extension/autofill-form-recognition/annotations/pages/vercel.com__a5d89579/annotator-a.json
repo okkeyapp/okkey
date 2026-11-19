@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "pageId": "vercel.com__a5d89579",
+  "url": "https://vercel.com/login",
+  "lang": "EN",
+  "annotator": "A",
+  "status": "annotated",
+  "pageKind": "login",
+  "forms": [
+    {
+      "formId": "form-1",
+      "selector": "form",
+      "fields": [
+        {
+          "selector": "#input-_R_mr5fd5ubr5u5dad6lb_",
+          "role": "username",
+          "hints": {
+            "type": "email",
+            "name": "email",
+            "id": "input-_R_mr5fd5ubr5u5dad6lb_",
+            "autocomplete": "email",
+            "placeholder": "Email Address",
+            "ariaLabel": "Email Address"
+          }
+        }
+      ]
+    }
+  ],
+  "notes": "Annotator A drafted from HTML5/semantic rules on captured DOM (independent of classifier)."
+}

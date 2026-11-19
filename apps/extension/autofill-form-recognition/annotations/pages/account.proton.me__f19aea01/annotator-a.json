@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "pageId": "account.proton.me__f19aea01",
+  "url": "https://account.proton.me/login",
+  "lang": "EN",
+  "annotator": "A",
+  "status": "annotated",
+  "pageKind": "login",
+  "forms": [
+    {
+      "formId": "form-1",
+      "selector": "form",
+      "fields": [
+        {
+          "selector": "#username",
+          "role": "username",
+          "hints": {
+            "type": "text",
+            "id": "username",
+            "autocomplete": "username",
+            "labelText": "Email or username Email or username"
+          }
+        }
+      ]
+    }
+  ],
+  "notes": "Annotator A drafted from HTML5/semantic rules on captured DOM (independent of classifier)."
+}

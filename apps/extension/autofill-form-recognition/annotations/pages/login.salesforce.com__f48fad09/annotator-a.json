@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "pageId": "login.salesforce.com__f48fad09",
+  "url": "https://login.salesforce.com/",
+  "lang": "EN",
+  "annotator": "A",
+  "status": "annotated",
+  "pageKind": "login",
+  "forms": [
+    {
+      "formId": "form-1",
+      "selector": "form",
+      "fields": [
+        {
+          "selector": "#identifier-11",
+          "role": "username",
+          "hints": {
+            "type": "email",
+            "name": "identifier",
+            "id": "identifier-11",
+            "autocomplete": "username",
+            "placeholder": "Enter your email address...",
+            "labelText": "Email",
+            "maxLength": 128
+          }
+        }
+      ]
+    }
+  ],
+  "notes": "Annotator A drafted from HTML5/semantic rules on captured DOM (independent of classifier)."
+}

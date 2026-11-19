@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "pageId": "www.fastmail.com__7ebf34a1",
+  "url": "https://www.fastmail.com/login/",
+  "lang": "EN",
+  "annotator": "A",
+  "status": "annotated",
+  "pageKind": "login",
+  "forms": [
+    {
+      "formId": "form-1",
+      "selector": "form#v10",
+      "fields": [
+        {
+          "selector": "#v21-input",
+          "role": "username",
+          "hints": {
+            "type": "text",
+            "name": "username",
+            "id": "v21-input",
+            "autocomplete": "username webauthn",
+            "placeholder": "email@fastmail.com",
+            "labelText": "Username",
+            "inputMode": "email"
+          }
+        },
+        {
+          "selector": "#v16-input",
+          "role": "password",
+          "hints": {
+            "type": "password",
+            "name": "current-password",
+            "id": "v16-input",
+            "autocomplete": "current-password",
+            "labelText": "Password"
+          }
+        }
+      ]
+    }
+  ],
+  "notes": "Annotator A drafted from HTML5/semantic rules on captured DOM (independent of classifier)."
+}

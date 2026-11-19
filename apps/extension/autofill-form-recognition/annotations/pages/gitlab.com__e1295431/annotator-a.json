@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "pageId": "gitlab.com__e1295431",
+  "url": "https://gitlab.com/users/sign_in",
+  "lang": "EN",
+  "annotator": "A",
+  "status": "blocked",
+  "pageKind": "login",
+  "forms": [],
+  "notes": "known bot-block/timeout from corpus notes"
+}

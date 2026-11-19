@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "pageId": "gb.ru__a7a4ac8a",
+  "url": "https://gb.ru/",
+  "lang": "RU",
+  "annotator": "A",
+  "status": "blocked",
+  "pageKind": "login",
+  "forms": [],
+  "notes": "known bot-block/timeout from corpus notes"
+}

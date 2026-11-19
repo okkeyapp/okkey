@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "pageId": "www.bitrix24.ru__42abd52d",
+  "url": "https://www.bitrix24.ru/auth/",
+  "lang": "RU",
+  "annotator": "A",
+  "status": "annotated",
+  "pageKind": "login",
+  "forms": [
+    {
+      "formId": "form-1",
+      "selector": null,
+      "fields": [
+        {
+          "selector": "#login",
+          "role": "username",
+          "hints": {
+            "type": "text",
+            "id": "login",
+            "autocomplete": "username",
+            "placeholder": "name@company.ru",
+            "labelText": "E-mail или телефон"
+          }
+        }
+      ]
+    }
+  ],
+  "notes": "Annotator A drafted from HTML5/semantic rules on captured DOM (independent of classifier)."
+}

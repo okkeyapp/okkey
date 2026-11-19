@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "pageId": "timeweb.com__4a865b4e",
+  "url": "https://timeweb.com/",
+  "lang": "RU",
+  "annotator": "A",
+  "status": "annotated",
+  "pageKind": "login",
+  "forms": [
+    {
+      "formId": "form-1",
+      "selector": "form",
+      "fields": [
+        {
+          "selector": "input[type=\"email\"][name=\"email\"]",
+          "role": "username",
+          "hints": {
+            "type": "email",
+            "name": "email",
+            "placeholder": "E-mail",
+            "ariaLabel": "E-mail"
+          }
+        }
+      ]
+    }
+  ],
+  "notes": "Annotator A drafted from HTML5/semantic rules on captured DOM (independent of classifier)."
+}

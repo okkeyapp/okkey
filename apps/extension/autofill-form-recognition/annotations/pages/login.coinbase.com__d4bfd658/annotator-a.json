@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "pageId": "login.coinbase.com__d4bfd658",
+  "url": "https://login.coinbase.com/",
+  "lang": "EN",
+  "annotator": "A",
+  "status": "blocked",
+  "pageKind": "login",
+  "forms": [],
+  "notes": "known bot-block/timeout from corpus notes"
+}

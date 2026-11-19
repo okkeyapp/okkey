@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "pageId": "www.ucoz.ru__c3d3fb9b",
+  "url": "https://www.ucoz.ru/",
+  "lang": "RU",
+  "annotator": "A",
+  "status": "uncapturable",
+  "pageKind": "login",
+  "forms": [],
+  "notes": "Captured but no semantic login fields found on first paint (modal/SPA likely)."
+}

@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "pageId": "account.ghost.org__8f79f242",
+  "url": "https://account.ghost.org/signin/",
+  "lang": "EN",
+  "annotator": "A",
+  "status": "uncapturable",
+  "pageKind": "login",
+  "forms": [],
+  "notes": "Annotator A drafted from HTML5/semantic rules on captured DOM (independent of classifier)."
+}

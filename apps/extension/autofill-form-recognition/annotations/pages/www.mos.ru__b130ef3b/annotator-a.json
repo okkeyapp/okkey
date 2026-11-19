@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "pageId": "www.mos.ru__b130ef3b",
+  "url": "https://login.mos.ru/",
+  "lang": "RU",
+  "annotator": "A",
+  "status": "uncapturable",
+  "pageKind": "login",
+  "forms": [],
+  "notes": "Annotator A drafted from HTML5/semantic rules on captured DOM (independent of classifier)."
+}

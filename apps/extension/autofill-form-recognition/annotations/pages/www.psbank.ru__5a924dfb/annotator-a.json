@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "pageId": "www.psbank.ru__5a924dfb",
+  "url": "https://ib.psbank.ru/",
+  "lang": "RU",
+  "annotator": "A",
+  "status": "uncapturable",
+  "pageKind": "login",
+  "forms": [],
+  "notes": "page.goto: net::ERR_CERT_AUTHORITY_INVALID at https://ib.psbank.ru/\nCall log:\n  - navigating to \"https://ib.psbank.ru/\", waiting until \"domcontentloaded\"\n"
+}

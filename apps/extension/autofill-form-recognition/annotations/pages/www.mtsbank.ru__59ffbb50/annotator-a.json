@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "pageId": "www.mtsbank.ru__59ffbb50",
+  "url": "https://online.mtsbank.ru/",
+  "lang": "RU",
+  "annotator": "A",
+  "status": "uncapturable",
+  "pageKind": "login",
+  "forms": [],
+  "notes": "page.goto: net::ERR_CERT_AUTHORITY_INVALID at https://online.mtsbank.ru/\nCall log:\n  - navigating to \"https://online.mtsbank.ru/\", waiting until \"domcontentloaded\"\n"
+}

@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "pageId": "id.atlassian.com__9a725e50",
+  "url": "https://id.atlassian.com/login",
+  "lang": "EN",
+  "annotator": "A",
+  "status": "annotated",
+  "pageKind": "login",
+  "forms": [
+    {
+      "formId": "form-1",
+      "selector": "form#form-login",
+      "fields": [
+        {
+          "selector": "#username-_r0_",
+          "role": "username",
+          "hints": {
+            "type": "email",
+            "name": "username",
+            "id": "username-_r0_",
+            "autocomplete": "username",
+            "placeholder": "Enter your email",
+            "labelText": "Email* Email*"
+          }
+        }
+      ]
+    }
+  ],
+  "notes": "Annotator A drafted from HTML5/semantic rules on captured DOM (independent of classifier)."
+}

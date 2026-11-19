@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "pageId": "www.epicgames.com__c5c184bf",
+  "url": "https://www.epicgames.com/id/login",
+  "lang": "EN",
+  "annotator": "A",
+  "status": "blocked",
+  "pageKind": "login",
+  "forms": [],
+  "notes": "known bot-block/timeout from corpus notes"
+}

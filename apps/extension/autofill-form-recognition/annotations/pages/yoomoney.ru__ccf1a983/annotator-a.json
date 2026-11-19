@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "pageId": "yoomoney.ru__ccf1a983",
+  "url": "https://yoomoney.ru/yooid/login",
+  "lang": "RU",
+  "annotator": "A",
+  "status": "annotated",
+  "pageKind": "login",
+  "forms": [
+    {
+      "formId": "form-1",
+      "selector": "form",
+      "fields": [
+        {
+          "selector": "input[type=\"text\"][name=\"login\"]",
+          "role": "username",
+          "hints": {
+            "type": "text",
+            "name": "login",
+            "autocomplete": "tel-national",
+            "placeholder": "Почта или телефон"
+          }
+        }
+      ]
+    }
+  ],
+  "notes": "Annotator A drafted from HTML5/semantic rules on captured DOM (independent of classifier)."
+}

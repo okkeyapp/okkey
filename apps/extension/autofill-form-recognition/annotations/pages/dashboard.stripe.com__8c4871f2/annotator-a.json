@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "pageId": "dashboard.stripe.com__8c4871f2",
+  "url": "https://dashboard.stripe.com/login",
+  "lang": "EN",
+  "annotator": "A",
+  "status": "annotated",
+  "pageKind": "login",
+  "forms": [
+    {
+      "formId": "form-1",
+      "selector": "form",
+      "fields": [
+        {
+          "selector": "#email",
+          "role": "username",
+          "hints": {
+            "type": "email",
+            "name": "email",
+            "id": "email",
+            "autocomplete": "username email",
+            "ariaLabel": "email input",
+            "labelText": "Email email input email input"
+          }
+        },
+        {
+          "selector": "#old-password",
+          "role": "password",
+          "hints": {
+            "type": "password",
+            "name": "password",
+            "id": "old-password",
+            "autocomplete": "current-password",
+            "ariaLabel": "password input",
+            "labelText": "PasswordForgot your password? password input password input"
+          }
+        }
+      ]
+    }
+  ],
+  "notes": "Annotator A drafted from HTML5/semantic rules on captured DOM (independent of classifier)."
+}

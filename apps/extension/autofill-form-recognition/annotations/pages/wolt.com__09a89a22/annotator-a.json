@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "pageId": "wolt.com__09a89a22",
+  "url": "https://wolt.com/en/login",
+  "lang": "EN",
+  "annotator": "A",
+  "status": "annotated",
+  "pageKind": "login",
+  "forms": [
+    {
+      "formId": "form-1",
+      "selector": "form",
+      "fields": [
+        {
+          "selector": "#method-select-email",
+          "role": "username",
+          "hints": {
+            "type": "email",
+            "name": "email",
+            "id": "method-select-email",
+            "autocomplete": "email",
+            "labelText": "Enter your email"
+          }
+        }
+      ]
+    }
+  ],
+  "notes": "Annotator A drafted from HTML5/semantic rules on captured DOM (independent of classifier)."
+}

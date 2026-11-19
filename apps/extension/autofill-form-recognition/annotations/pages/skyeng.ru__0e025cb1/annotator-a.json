@@ -1,0 +1,105 @@
+{
+  "schemaVersion": 1,
+  "pageId": "skyeng.ru__0e025cb1",
+  "url": "https://skyeng.ru/",
+  "lang": "RU",
+  "annotator": "A",
+  "status": "annotated",
+  "pageKind": "login",
+  "forms": [
+    {
+      "formId": "form-1",
+      "selector": "form#cism-home-multilang-top-form-id",
+      "fields": [
+        {
+          "selector": "input[type=\"email\"][name=\"email\"]",
+          "role": "username",
+          "hints": {
+            "type": "email",
+            "name": "email",
+            "autocomplete": "email",
+            "placeholder": "Почта",
+            "ariaLabel": "Email",
+            "inputMode": "email",
+            "maxLength": 76
+          }
+        },
+        {
+          "selector": "input:nth-of-type(3)",
+          "role": "username",
+          "hints": {
+            "type": "text",
+            "autocomplete": "tel",
+            "placeholder": "+7(___)___-__-__",
+            "ariaLabel": "Телефон",
+            "inputMode": "tel",
+            "maxLength": 25
+          }
+        }
+      ]
+    },
+    {
+      "formId": "form-2",
+      "selector": "form#cism-home-multilang-small-form",
+      "fields": [
+        {
+          "selector": "input[type=\"email\"][name=\"email\"]",
+          "role": "username",
+          "hints": {
+            "type": "email",
+            "name": "email",
+            "autocomplete": "email",
+            "placeholder": "Почта",
+            "ariaLabel": "Email",
+            "inputMode": "email",
+            "maxLength": 76
+          }
+        },
+        {
+          "selector": "input:nth-of-type(8)",
+          "role": "username",
+          "hints": {
+            "type": "text",
+            "autocomplete": "tel",
+            "placeholder": "+7(___)___-__-__",
+            "ariaLabel": "Телефон",
+            "inputMode": "tel",
+            "maxLength": 25
+          }
+        }
+      ]
+    },
+    {
+      "formId": "form-3",
+      "selector": "form#cism-bottom-form-adults",
+      "fields": [
+        {
+          "selector": "input[type=\"email\"][name=\"email\"]",
+          "role": "username",
+          "hints": {
+            "type": "email",
+            "name": "email",
+            "autocomplete": "email",
+            "placeholder": "Почта",
+            "ariaLabel": "Email",
+            "inputMode": "email",
+            "maxLength": 76
+          }
+        },
+        {
+          "selector": "input:nth-of-type(13)",
+          "role": "username",
+          "hints": {
+            "type": "text",
+            "autocomplete": "tel",
+            "placeholder": "+7(___)___-__-__",
+            "ariaLabel": "Телефон",
+            "inputMode": "tel",
+            "maxLength": 25
+          }
+        }
+      ]
+    }
+  ],
+  "notes": "Annotator A drafted from HTML5/semantic rules on captured DOM (independent of classifier)."
+}

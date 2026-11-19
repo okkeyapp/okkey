@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "pageId": "account.battle.net__98208fe6",
+  "url": "https://account.battle.net/login",
+  "lang": "EN",
+  "annotator": "A",
+  "status": "annotated",
+  "pageKind": "login",
+  "forms": [
+    {
+      "formId": "form-1",
+      "selector": "form",
+      "fields": [
+        {
+          "selector": "#accountName",
+          "role": "username",
+          "hints": {
+            "type": "text",
+            "name": "accountName",
+            "id": "accountName",
+            "placeholder": "Email or Phone",
+            "ariaLabel": "Email or phone field, enter email address or phone number",
+            "labelText": "Email or Phone",
+            "maxLength": 320
+          }
+        }
+      ]
+    }
+  ],
+  "notes": "Annotator A drafted from HTML5/semantic rules on captured DOM (independent of classifier)."
+}

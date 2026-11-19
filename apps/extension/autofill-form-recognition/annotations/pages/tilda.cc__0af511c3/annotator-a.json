@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "pageId": "tilda.cc__0af511c3",
+  "url": "https://tilda.cc/login/",
+  "lang": "RU",
+  "annotator": "A",
+  "status": "annotated",
+  "pageKind": "login",
+  "forms": [
+    {
+      "formId": "form-1",
+      "selector": "form#form",
+      "fields": [
+        {
+          "selector": "#email",
+          "role": "username",
+          "hints": {
+            "type": "email",
+            "name": "email",
+            "id": "email",
+            "autocomplete": "off",
+            "labelText": "Эл. почта"
+          }
+        },
+        {
+          "selector": "#password",
+          "role": "password",
+          "hints": {
+            "type": "password",
+            "name": "password",
+            "id": "password",
+            "autocomplete": "off",
+            "labelText": "Пароль"
+          }
+        }
+      ]
+    }
+  ],
+  "notes": "Annotator A drafted from HTML5/semantic rules on captured DOM (independent of classifier)."
+}

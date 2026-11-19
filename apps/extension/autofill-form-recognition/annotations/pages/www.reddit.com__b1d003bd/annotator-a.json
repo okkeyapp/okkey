@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "pageId": "www.reddit.com__b1d003bd",
+  "url": "https://www.reddit.com/login/",
+  "lang": "EN",
+  "annotator": "A",
+  "status": "annotated",
+  "pageKind": "login",
+  "forms": [
+    {
+      "formId": "form-1",
+      "selector": null,
+      "fields": [
+        {
+          "selector": "input[type=\"text\"][name=\"username\"]",
+          "role": "username",
+          "hints": {
+            "type": "text",
+            "name": "username",
+            "autocomplete": "username webauthn",
+            "labelText": "*"
+          }
+        },
+        {
+          "selector": "input[type=\"password\"][name=\"password\"]",
+          "role": "password",
+          "hints": {
+            "type": "password",
+            "name": "password",
+            "autocomplete": "current-password",
+            "labelText": "*"
+          }
+        }
+      ]
+    }
+  ],
+  "notes": "Annotator A drafted from HTML5/semantic rules on captured DOM (independent of classifier)."
+}

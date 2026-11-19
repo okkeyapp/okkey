@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "pageId": "pikabu.ru__2a185151",
+  "url": "https://pikabu.ru/",
+  "lang": "RU",
+  "annotator": "A",
+  "status": "annotated",
+  "pageKind": "login",
+  "forms": [
+    {
+      "formId": "form-1",
+      "selector": "form",
+      "fields": [
+        {
+          "selector": "input[type=\"text\"][name=\"email\"]",
+          "role": "username",
+          "hints": {
+            "type": "text",
+            "name": "email",
+            "placeholder": "Укажите E-mail"
+          }
+        }
+      ]
+    }
+  ],
+  "notes": "Annotator A drafted from HTML5/semantic rules on captured DOM (independent of classifier)."
+}

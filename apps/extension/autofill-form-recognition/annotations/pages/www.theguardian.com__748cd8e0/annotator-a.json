@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "pageId": "www.theguardian.com__748cd8e0",
+  "url": "https://www.theguardian.com/signin",
+  "lang": "EN",
+  "annotator": "A",
+  "status": "annotated",
+  "pageKind": "login",
+  "forms": [
+    {
+      "formId": "form-1",
+      "selector": "form",
+      "fields": [
+        {
+          "selector": "#P0-0",
+          "role": "username",
+          "hints": {
+            "type": "email",
+            "name": "email",
+            "id": "P0-0",
+            "autocomplete": "email",
+            "labelText": "Email"
+          }
+        }
+      ]
+    }
+  ],
+  "notes": "Annotator A drafted from HTML5/semantic rules on captured DOM (independent of classifier)."
+}

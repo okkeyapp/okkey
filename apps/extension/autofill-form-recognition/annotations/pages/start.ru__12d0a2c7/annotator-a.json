@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "pageId": "start.ru__12d0a2c7",
+  "url": "https://start.ru/",
+  "lang": "RU",
+  "annotator": "A",
+  "status": "uncapturable",
+  "pageKind": "login",
+  "forms": [],
+  "notes": "Annotator A drafted from HTML5/semantic rules on captured DOM (independent of classifier)."
+}

@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "pageId": "nethouse.ru__e70ca6dd",
+  "url": "https://nethouse.ru/",
+  "lang": "RU",
+  "annotator": "A",
+  "status": "blocked",
+  "pageKind": "login",
+  "forms": [],
+  "notes": "page.goto: Timeout 18000ms exceeded.\nCall log:\n  - navigating to \"https://nethouse.ru/\", waiting until \"domcontentloaded\"\n"
+}

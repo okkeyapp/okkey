@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "pageId": "fixture-register-new-password",
+  "url": "fixture://register-new-password",
+  "lang": "EN",
+  "pageKind": "register",
+  "forms": [
+    {
+      "formId": "form-1",
+      "selector": "form#register",
+      "fields": [
+        {
+          "selector": "#email",
+          "role": "username",
+          "hints": {
+            "type": "email",
+            "name": "email",
+            "id": "email",
+            "autocomplete": "email",
+            "labelText": "Email"
+          }
+        },
+        {
+          "selector": "#new-password",
+          "role": "new-password",
+          "hints": {
+            "type": "password",
+            "name": "new-password",
+            "id": "new-password",
+            "autocomplete": "new-password",
+            "labelText": "New password"
+          }
+        }
+      ]
+    }
+  ],
+  "notes": "Synthetic fixture (not third-party HTML).",
+  "annotator": "A",
+  "status": "annotated"
+}

@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "pageId": "canvas.instructure.com__90f39629",
+  "url": "https://canvas.instructure.com/login/canvas",
+  "lang": "EN",
+  "annotator": "A",
+  "status": "blocked",
+  "pageKind": "login",
+  "forms": [],
+  "notes": "known bot-block/timeout from corpus notes"
+}

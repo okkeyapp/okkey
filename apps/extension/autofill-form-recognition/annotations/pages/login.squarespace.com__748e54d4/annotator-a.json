@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "pageId": "login.squarespace.com__748e54d4",
+  "url": "https://login.squarespace.com/",
+  "lang": "EN",
+  "annotator": "A",
+  "status": "annotated",
+  "pageKind": "login",
+  "forms": [
+    {
+      "formId": "form-1",
+      "selector": "form",
+      "fields": [
+        {
+          "selector": "#\\35 1803e3b-22a5-4ea6-89c8-65e2d021b9db",
+          "role": "username",
+          "hints": {
+            "type": "email",
+            "name": "email",
+            "id": "51803e3b-22a5-4ea6-89c8-65e2d021b9db",
+            "placeholder": "name@example.com",
+            "labelText": "Email address"
+          }
+        },
+        {
+          "selector": "input[type=\"password\"][name=\"password\"]",
+          "role": "password",
+          "hints": {
+            "type": "password",
+            "name": "password",
+            "placeholder": "Password",
+            "labelText": "Password"
+          }
+        }
+      ]
+    }
+  ],
+  "notes": "Annotator A drafted from HTML5/semantic rules on captured DOM (independent of classifier)."
+}
