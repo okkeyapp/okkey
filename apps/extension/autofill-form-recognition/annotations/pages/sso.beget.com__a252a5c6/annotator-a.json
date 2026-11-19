@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "pageId": "sso.beget.com__a252a5c6",
+  "url": "https://cp.beget.com/",
+  "lang": "RU",
+  "annotator": "A",
+  "status": "blocked",
+  "pageKind": "login",
+  "forms": [],
+  "notes": "page.goto: Timeout 18000ms exceeded.\nCall log:\n  - navigating to \"https://cp.beget.com/\", waiting until \"domcontentloaded\"\n"
+}

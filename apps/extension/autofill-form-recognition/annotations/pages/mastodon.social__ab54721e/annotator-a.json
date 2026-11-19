@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "pageId": "mastodon.social__ab54721e",
+  "url": "https://mastodon.social/auth/sign_in",
+  "lang": "EN",
+  "annotator": "A",
+  "status": "annotated",
+  "pageKind": "login",
+  "forms": [
+    {
+      "formId": "form-1",
+      "selector": "form#new_user",
+      "fields": [
+        {
+          "selector": "#user_email",
+          "role": "username",
+          "hints": {
+            "type": "email",
+            "name": "user[email]",
+            "id": "user_email",
+            "ariaLabel": "E-mail address",
+            "labelText": "E-mail address *"
+          }
+        },
+        {
+          "selector": "#user_password",
+          "role": "password",
+          "hints": {
+            "type": "password",
+            "name": "user[password]",
+            "id": "user_password",
+            "autocomplete": "current-password",
+            "ariaLabel": "Password",
+            "labelText": "Password *"
+          }
+        }
+      ]
+    }
+  ],
+  "notes": "Annotator A drafted from HTML5/semantic rules on captured DOM (independent of classifier)."
+}

@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "pageId": "accounts.google.com__0ddfdaac",
+  "url": "https://accounts.google.com/signin",
+  "lang": "EN",
+  "annotator": "A",
+  "status": "annotated",
+  "pageKind": "login",
+  "forms": [
+    {
+      "formId": "form-1",
+      "selector": null,
+      "fields": [
+        {
+          "selector": "#identifierId",
+          "role": "username",
+          "hints": {
+            "type": "text",
+            "name": "identifier",
+            "id": "identifierId",
+            "autocomplete": "username webauthn",
+            "ariaLabel": "Email or phone"
+          }
+        }
+      ]
+    }
+  ],
+  "notes": "Annotator A drafted from HTML5/semantic rules on captured DOM (independent of classifier)."
+}

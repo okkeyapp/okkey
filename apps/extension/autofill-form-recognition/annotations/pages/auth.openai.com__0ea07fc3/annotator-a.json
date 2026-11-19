@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "pageId": "auth.openai.com__0ea07fc3",
+  "url": "https://chatgpt.com/auth/login",
+  "lang": "EN",
+  "annotator": "A",
+  "status": "uncapturable",
+  "pageKind": "login",
+  "forms": [],
+  "notes": "Captured but no semantic login fields found on first paint (modal/SPA likely)."
+}

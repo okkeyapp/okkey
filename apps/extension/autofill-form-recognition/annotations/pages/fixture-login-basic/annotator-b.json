@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "pageId": "fixture-login-basic",
+  "url": "fixture://login-basic",
+  "lang": "EN",
+  "pageKind": "login",
+  "forms": [
+    {
+      "formId": "form-1",
+      "selector": "form#login",
+      "fields": [
+        {
+          "selector": "#username",
+          "role": "username",
+          "hints": {
+            "type": "text",
+            "name": "username",
+            "id": "username",
+            "autocomplete": "username",
+            "labelText": "Username"
+          }
+        },
+        {
+          "selector": "#password",
+          "role": "password",
+          "hints": {
+            "type": "password",
+            "name": "password",
+            "id": "password",
+            "autocomplete": "current-password",
+            "labelText": "Password"
+          }
+        }
+      ]
+    }
+  ],
+  "notes": "Synthetic fixture (not third-party HTML).",
+  "annotator": "B",
+  "status": "annotated"
+}

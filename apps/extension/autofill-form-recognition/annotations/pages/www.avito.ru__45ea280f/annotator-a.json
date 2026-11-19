@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "pageId": "www.avito.ru__45ea280f",
+  "url": "https://www.avito.ru/",
+  "lang": "RU",
+  "annotator": "A",
+  "status": "blocked",
+  "pageKind": "login",
+  "forms": [],
+  "notes": "known bot-block/timeout from corpus notes"
+}

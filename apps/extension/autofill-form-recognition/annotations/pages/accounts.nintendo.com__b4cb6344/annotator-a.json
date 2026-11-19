@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "pageId": "accounts.nintendo.com__b4cb6344",
+  "url": "https://accounts.nintendo.com/",
+  "lang": "EN",
+  "annotator": "A",
+  "status": "blocked",
+  "pageKind": "login",
+  "forms": [],
+  "notes": "known bot-block/timeout from corpus notes"
+}

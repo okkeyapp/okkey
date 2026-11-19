@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "pageId": "id.rambler.ru__eb75fe1a",
+  "url": "https://mail.rambler.ru/",
+  "lang": "RU",
+  "annotator": "A",
+  "status": "annotated",
+  "pageKind": "login",
+  "forms": [
+    {
+      "formId": "form-1",
+      "selector": null,
+      "fields": [
+        {
+          "selector": "input:nth-of-type(2)",
+          "role": "password",
+          "hints": {
+            "type": "password",
+            "placeholder": "Пароль"
+          }
+        }
+      ]
+    }
+  ],
+  "notes": "Annotator A drafted from HTML5/semantic rules on captured DOM (independent of classifier)."
+}

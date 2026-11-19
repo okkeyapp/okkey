@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "pageId": "store.steampowered.com__27e7cdd4",
+  "url": "https://store.steampowered.com/login/",
+  "lang": "EN",
+  "annotator": "A",
+  "status": "annotated",
+  "pageKind": "login",
+  "forms": [
+    {
+      "formId": "form-1",
+      "selector": "form",
+      "fields": [
+        {
+          "selector": "#«R1lm8raqiH1»",
+          "role": "password",
+          "hints": {
+            "type": "password",
+            "id": "«R1lm8raqiH1»",
+            "labelText": "Password"
+          }
+        }
+      ]
+    }
+  ],
+  "notes": "Annotator A drafted from HTML5/semantic rules on captured DOM (independent of classifier)."
+}

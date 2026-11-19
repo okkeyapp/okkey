@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "pageId": "www.khanacademy.org__2c144964",
+  "url": "https://www.khanacademy.org/login",
+  "lang": "EN",
+  "annotator": "A",
+  "status": "annotated",
+  "pageKind": "login",
+  "forms": [
+    {
+      "formId": "form-1",
+      "selector": "form",
+      "fields": [
+        {
+          "selector": "#username-field",
+          "role": "username",
+          "hints": {
+            "type": "text",
+            "name": "username",
+            "id": "username-field",
+            "autocomplete": "username",
+            "placeholder": "email@example.com",
+            "labelText": "Email or username"
+          }
+        },
+        {
+          "selector": "#current-password-field",
+          "role": "password",
+          "hints": {
+            "type": "password",
+            "name": "current-password",
+            "id": "current-password-field",
+            "autocomplete": "current-password",
+            "labelText": "Password"
+          }
+        }
+      ]
+    }
+  ],
+  "notes": "Annotator A drafted from HTML5/semantic rules on captured DOM (independent of classifier)."
+}

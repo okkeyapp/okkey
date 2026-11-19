@@ -1,0 +1,248 @@
+domain,url,lang,category,form_types,notes,http_status
+accounts.google.com,https://accounts.google.com/signin,EN,SSO providers,login;register;password-reset;otp;otp-segmented;multi-step;shadow-dom,password-change-requires-account;shadow-or-web-components-possible,200
+login.live.com,https://login.live.com/,EN,SSO providers,login;register;password-reset;password-change;otp;otp-segmented;multi-step,password-change-requires-account,200
+login.microsoftonline.com,https://login.microsoftonline.com/,EN,SSO providers,login;password-reset;otp;multi-step;sso,captcha-possible,200
+appleid.apple.com,https://appleid.apple.com/sign-in,EN,SSO providers,login;register;password-reset;password-change;otp;multi-step,password-change-requires-account,200
+passport.yandex.ru,https://passport.yandex.ru/auth,RU,SSO providers,login;register;password-reset;password-change;otp;multi-step;sso,password-change-requires-account;captcha-possible,200
+id.vk.ru,https://id.vk.ru/,RU,SSO providers,login;register;password-reset;otp;multi-step;sso,,200
+esia.gosuslugi.ru,https://esia.gosuslugi.ru/login/,RU,SSO providers,login;register;password-reset;otp;multi-step;sso,password-change-requires-account,200
+login.okta.com,https://login.okta.com/,EN,SSO providers,login;password-reset;otp;multi-step;sso,password-change-requires-account,200
+auth0.com,https://manage.auth0.com/,EN,SSO providers,login;register;password-reset;otp;sso;multi-step,,302
+secure.login.gov,https://secure.login.gov/,EN,SSO providers,login;register;password-reset;otp;multi-step,,200
+account.mail.ru,https://account.mail.ru/login,RU,mail and portals,login;register;password-reset;password-change;otp;multi-step;sso,password-change-requires-account;captcha-possible,200
+id.rambler.ru,https://mail.rambler.ru/,RU,mail and portals,login;register;password-reset;password-change;otp;sso,password-change-requires-account;captcha-possible,200
+login.yahoo.com,https://login.yahoo.com/,EN,mail and portals,login;register;password-reset;password-change;otp;multi-step;sso,password-change-requires-account,200
+account.proton.me,https://account.proton.me/login,EN,mail and portals,login;register;password-reset;password-change;otp,password-change-requires-account,200
+app.tuta.com,https://app.tuta.com/login,EN,mail and portals,login;register;password-reset;password-change;otp,password-change-requires-account,200
+www.fastmail.com,https://www.fastmail.com/login/,EN,mail and portals,login;register;password-reset;password-change;otp,password-change-requires-account,200
+accounts.zoho.com,https://accounts.zoho.com/signin,EN,mail and portals,login;register;password-reset;password-change;otp;multi-step;sso,password-change-requires-account,200
+www.livejournal.com,https://www.livejournal.com/,RU,mail and portals,login;register;password-reset;password-change;sso,password-change-requires-account,200
+ru.wikipedia.org,https://ru.wikipedia.org/w/index.php?title=Special:UserLogin,RU,mail and portals,login;register;password-reset;password-change,password-change-requires-account,200
+en.wikipedia.org,https://en.wikipedia.org/wiki/Special:UserLogin,EN,mail and portals,login;register;password-reset;password-change,password-change-requires-account,200
+hh.ru,https://hh.ru/account/login,RU,mail and portals,login;register;password-reset;password-change;otp;sso;modal,password-change-requires-account;modal-likely,200
+www.superjob.ru,https://www.superjob.ru/user/login/,RU,mail and portals,login;register;password-reset;password-change;sso;modal,password-change-requires-account,200
+vk.com,https://vk.com/login,RU,social networks and messengers,login;register;password-reset;password-change;otp;multi-step;sso;modal,password-change-requires-account;captcha-possible,200
+ok.ru,https://ok.ru/,RU,social networks and messengers,login;register;password-reset;password-change;otp;sso;modal,password-change-requires-account;captcha-possible,200
+dzen.ru,https://dzen.ru/,RU,social networks and messengers,login;register;sso;modal,modal-likely,200
+rutube.ru,https://rutube.ru/,RU,social networks and messengers,login;register;sso;modal,modal-likely,200
+pikabu.ru,https://pikabu.ru/,RU,social networks and messengers,login;register;password-reset;password-change;sso;modal,password-change-requires-account,200
+vc.ru,https://vc.ru/,RU,social networks and messengers,login;register;password-reset;password-change;sso;modal,password-change-requires-account;modal-likely,200
+tenchat.ru,https://tenchat.ru/,RU,social networks and messengers,login;register;password-reset;password-change;otp;sso;modal,bot-block;timeout;password-change-requires-account,timeout
+max.ru,https://max.ru/,RU,social networks and messengers,login;register;otp;multi-step,,200
+web.telegram.org,https://web.telegram.org/a/,RU,social networks and messengers,login;otp;otp-segmented;multi-step,password-change-requires-account;captcha-possible,200
+www.drive2.ru,https://www.drive2.ru/,RU,social networks and messengers,login;register;password-reset;password-change;sso;modal,password-change-requires-account,200
+www.facebook.com,https://www.facebook.com/login,EN,social networks and messengers,login;register;password-reset;password-change;otp;sso;modal,bot-block;password-change-requires-account;captcha-possible,400
+www.instagram.com,https://www.instagram.com/accounts/login/,EN,social networks and messengers,login;register;password-reset;password-change;otp;sso;multi-step,password-change-requires-account,200
+x.com,https://x.com/i/flow/login,EN,social networks and messengers,login;register;password-reset;password-change;otp;multi-step;sso;modal,password-change-requires-account;captcha-possible,200
+www.linkedin.com,https://www.linkedin.com/,EN,social networks and messengers,login;register;password-reset;password-change;otp;sso;multi-step,password-change-requires-account;captcha-possible,200
+www.reddit.com,https://www.reddit.com/login/,EN,social networks and messengers,login;register;password-reset;password-change;otp;sso,password-change-requires-account;captcha-possible,200
+discord.com,https://discord.com/login,EN,social networks and messengers,login;register;password-reset;password-change;otp;otp-segmented,password-change-requires-account;captcha-possible,200
+www.tiktok.com,https://www.tiktok.com/login,EN,social networks and messengers,login;register;password-reset;password-change;otp;sso;multi-step;modal,password-change-requires-account,200
+www.twitch.tv,https://www.twitch.tv/login,EN,social networks and messengers,login;register;password-reset;password-change;otp;sso,password-change-requires-account;captcha-possible,200
+bsky.app,https://bsky.app/,EN,social networks and messengers,login;register;password-reset;password-change,password-change-requires-account,200
+mastodon.social,https://mastodon.social/auth/sign_in,EN,social networks and messengers,login;register;password-reset;password-change;otp,password-change-requires-account,200
+web.whatsapp.com,https://web.whatsapp.com/,EN,social networks and messengers,login;otp;otp-segmented;multi-step;iframe,bot-block,400
+www.ozon.ru,https://www.ozon.ru/,RU,marketplaces and e-commerce,login;register;password-reset;password-change;otp;multi-step;sso;modal,password-change-requires-account;modal-likely;captcha-possible,307
+www.wildberries.ru,https://www.wildberries.ru/,RU,marketplaces and e-commerce,login;register;otp;multi-step;modal,bot-block;modal-likely;captcha-possible,498
+www.avito.ru,https://www.avito.ru/,RU,marketplaces and e-commerce,login;register;password-reset;password-change;otp;multi-step;sso;modal,bot-block;password-change-requires-account;modal-likely;captcha-possible,439
+market.yandex.ru,https://market.yandex.ru/,RU,marketplaces and e-commerce,login;register;sso;modal,,200
+www.lamoda.ru,https://www.lamoda.ru/,RU,marketplaces and e-commerce,login;register;password-reset;password-change;otp;sso;modal,password-change-requires-account;modal-likely,200
+www.citilink.ru,https://www.citilink.ru/,RU,marketplaces and e-commerce,login;register;password-reset;password-change;sso;modal,bot-block;password-change-requires-account,429
+www.dns-shop.ru,https://www.dns-shop.ru/,RU,marketplaces and e-commerce,login;register;password-reset;password-change;otp;modal,password-change-requires-account;modal-likely,401
+www.mvideo.ru,https://www.mvideo.ru/,RU,marketplaces and e-commerce,login;register;password-reset;password-change;otp;sso;modal,password-change-requires-account;modal-likely,200
+www.eldorado.ru,https://www.eldorado.ru/,RU,marketplaces and e-commerce,login;register;password-reset;password-change;otp;sso;modal,password-change-requires-account,200
+megamarket.ru,https://megamarket.ru/,RU,marketplaces and e-commerce,login;register;password-reset;password-change;otp;sso;modal,password-change-requires-account,200
+www.youla.ru,https://www.youla.ru/,RU,marketplaces and e-commerce,login;register;otp;sso;modal,,200
+www.drom.ru,https://www.drom.ru/,RU,marketplaces and e-commerce,login;register;password-reset;password-change;sso;modal,password-change-requires-account,200
+www.cian.ru,https://www.cian.ru/,RU,marketplaces and e-commerce,login;register;password-reset;password-change;otp;sso;modal,password-change-requires-account;modal-likely,200
+aliexpress.ru,https://aliexpress.ru/,RU,marketplaces and e-commerce,login;register;password-reset;password-change;otp;sso;modal,password-change-requires-account;captcha-possible,200
+www.sportmaster.ru,https://www.sportmaster.ru/,RU,marketplaces and e-commerce,login;register;password-reset;password-change;otp;sso;modal,bot-block;password-change-requires-account,000
+www.detmir.ru,https://www.detmir.ru/,RU,marketplaces and e-commerce,login;register;password-reset;password-change;otp;sso;modal,bot-block;password-change-requires-account,418
+goldapple.ru,https://goldapple.ru/,RU,marketplaces and e-commerce,login;register;password-reset;password-change;otp;sso;modal,password-change-requires-account,200
+www.letu.ru,https://www.letu.ru/,RU,marketplaces and e-commerce,login;register;password-reset;password-change;otp;sso;modal,password-change-requires-account,200
+www.vseinstrumenti.ru,https://www.vseinstrumenti.ru/,RU,marketplaces and e-commerce,login;register;password-reset;password-change;sso;modal,bot-block;password-change-requires-account,403
+hoff.ru,https://hoff.ru/,RU,marketplaces and e-commerce,login;register;password-reset;password-change;otp;sso;modal,password-change-requires-account,401
+www.leroymerlin.ru,https://www.leroymerlin.ru/,RU,marketplaces and e-commerce,login;register;password-reset;password-change;sso;modal,bot-block;password-change-requires-account,000
+flowwow.com,https://flowwow.com/,RU,marketplaces and e-commerce,login;register;otp;sso;modal,,200
+www.amazon.com,https://www.amazon.com/ap/signin?openid.pape.max_auth_age=0&openid.return_to=https%3A%2F%2Fwww.amazon.com%2F&openid.identity=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0%2Fidentifier_select&openid.assoc_handle=usflex&openid.mode=checkid_setup&openid.claimed_id=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0%2Fidentifier_select&openid.ns=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0,EN,marketplaces and e-commerce,login;register;password-reset;password-change;otp;multi-step;iframe,password-change-requires-account;captcha-possible,200
+signin.ebay.com,https://www.ebay.com/signin/,EN,marketplaces and e-commerce,login;register;password-reset;password-change;otp;sso;multi-step,password-change-requires-account;captcha-possible,200
+www.etsy.com,https://www.etsy.com/signin,EN,marketplaces and e-commerce,login;register;password-reset;password-change;sso;otp;modal,bot-block;password-change-requires-account,403
+www.walmart.com,https://www.walmart.com/account/login,EN,marketplaces and e-commerce,login;register;password-reset;password-change;otp;sso,password-change-requires-account,200
+www.target.com,https://www.target.com/login,EN,marketplaces and e-commerce,login;register;password-reset;password-change;otp;sso,password-change-requires-account,200
+www.alibaba.com,https://login.alibaba.com/,EN,marketplaces and e-commerce,login;register;password-reset;password-change;otp;multi-step,password-change-requires-account;captcha-possible,200
+www.aliexpress.com,https://www.aliexpress.com/,EN,marketplaces and e-commerce,login;register;password-reset;password-change;otp;sso;modal,password-change-requires-account;captcha-possible,200
+www.bestbuy.com,https://www.bestbuy.com/identity/global/signin,EN,marketplaces and e-commerce,login;register;password-reset;password-change;otp,password-change-requires-account,200
+www.ikea.com,https://www.ikea.com/us/en/profile/login/,EN,marketplaces and e-commerce,login;register;password-reset;password-change;otp;sso,password-change-requires-account,200
+www.nike.com,https://www.nike.com/login,EN,marketplaces and e-commerce,login;register;password-reset;password-change;otp;sso;multi-step,password-change-requires-account,200
+online.sberbank.ru,https://online.sberbank.ru/,RU,banks and finance,login;register;password-reset;password-change;otp;otp-segmented;multi-step;sso,bot-block;mincifry-ca;password-change-requires-account;captcha-possible,200
+www.tbank.ru,https://www.tbank.ru/auth/login/,RU,banks and finance,login;register;password-reset;password-change;otp;multi-step;sso,mincifry-ca;password-change-requires-account,200
+web.alfabank.ru,https://web.alfabank.ru/,RU,banks and finance,login;password-reset;password-change;otp;multi-step;sso,mincifry-ca;password-change-requires-account,200
+online.vtb.ru,https://online.vtb.ru/,RU,banks and finance,login;password-reset;password-change;otp;multi-step;sso,mincifry-ca;password-change-requires-account,200
+www.gazprombank.ru,https://www.gazprombank.ru/,RU,banks and finance,login;password-reset;password-change;otp;multi-step,password-change-requires-account,200
+online.raiffeisen.ru,https://online.raiffeisen.ru/,RU,banks and finance,login;password-reset;password-change;otp;multi-step,mincifry-ca;password-change-requires-account,200
+www.rshb.ru,https://online.rshb.ru/,RU,banks and finance,login;password-reset;password-change;otp;multi-step,mincifry-ca;password-change-requires-account,200
+www.psbank.ru,https://ib.psbank.ru/,RU,banks and finance,login;password-reset;password-change;otp;multi-step,mincifry-ca;password-change-requires-account,200
+www.sovcombank.ru,https://online.sovcombank.ru/,RU,banks and finance,login;password-reset;password-change;otp;multi-step,mincifry-ca;password-change-requires-account,401
+www.mtsbank.ru,https://online.mtsbank.ru/,RU,banks and finance,login;password-reset;password-change;otp;multi-step;sso,password-change-requires-account,200
+yoomoney.ru,https://yoomoney.ru/yooid/login,RU,banks and finance,login;register;password-reset;password-change;otp;multi-step;sso,password-change-requires-account,200
+i.tochka.com,https://i.tochka.com/,RU,banks and finance,login;password-reset;password-change;otp;multi-step,mincifry-ca;password-change-requires-account,200
+my.modulbank.ru,https://my.modulbank.ru/,RU,banks and finance,login;password-reset;password-change;otp;multi-step,bot-block;password-change-requires-account,000
+www.rosbank.ru,https://online.rosbank.ru/,RU,banks and finance,login;password-reset;password-change;otp;multi-step,bot-block;password-change-requires-account,000
+mkb.ru,https://online.mkb.ru/,RU,banks and finance,login;password-reset;password-change;otp;multi-step,mincifry-ca;password-change-requires-account,200
+bcs.ru,https://bcs.ru/,RU,banks and finance,login;register;password-reset;password-change;otp;multi-step,password-change-requires-account,200
+www.finam.ru,https://www.finam.ru/,RU,banks and finance,login;register;password-reset;password-change;otp,password-change-requires-account,200
+secure.chase.com,https://secure.chase.com/,EN,banks and finance,login;password-reset;password-change;otp;multi-step;iframe,password-change-requires-account,200
+www.bankofamerica.com,https://www.bankofamerica.com/login/,EN,banks and finance,login;password-reset;password-change;otp;multi-step,password-change-requires-account,200
+www.paypal.com,https://www.paypal.com/,EN,banks and finance,login;register;password-reset;password-change;otp;multi-step;sso,password-change-requires-account;captcha-possible,200
+dashboard.stripe.com,https://dashboard.stripe.com/login,EN,banks and finance,login;register;password-reset;password-change;otp;sso;multi-step,password-change-requires-account,200
+wise.com,https://wise.com/login,EN,banks and finance,login;register;password-reset;password-change;otp;multi-step,password-change-requires-account,200
+www.revolut.com,https://www.revolut.com/login/,EN,banks and finance,login;register;otp;multi-step,bot-block,403
+login.coinbase.com,https://login.coinbase.com/,EN,banks and finance,login;register;password-reset;password-change;otp;otp-segmented;multi-step;sso,bot-block;password-change-requires-account;captcha-possible,403
+accounts.binance.com,https://accounts.binance.com/en/login,EN,banks and finance,login;register;password-reset;password-change;otp;multi-step,password-change-requires-account;captcha-possible,202
+www.kraken.com,https://www.kraken.com/sign-in,EN,banks and finance,login;register;password-reset;password-change;otp;multi-step,password-change-requires-account,200
+www.gosuslugi.ru,https://www.gosuslugi.ru/,RU,government services,login;register;sso;multi-step;otp,,200
+lkfl2.nalog.gov.ru,https://www.nalog.gov.ru/,RU,government services,login;sso;otp;multi-step,mincifry-ca,200
+www.mos.ru,https://login.mos.ru/,RU,government services,login;register;sso;otp;multi-step;password-change,password-change-requires-account,200
+lk.sfr.gov.ru,https://es.pfrf.ru/,RU,government services,login;sso;otp;multi-step,,200
+lk.rosreestr.ru,https://lk.rosreestr.ru/,RU,government services,login;sso;otp;multi-step,bot-block,000
+zakupki.gov.ru,https://zakupki.gov.ru/,RU,government services,login;sso,bot-block;mincifry-ca,000
+www.fssp.gov.ru,https://www.fssp.gov.ru/,RU,government services,login;sso,bot-block,503
+www.gov.spb.ru,https://portal.gov.spb.ru/,RU,government services,login;sso;otp;multi-step,bot-block,000
+www.irs.gov,https://www.irs.gov/,EN,government services,login;sso;otp;multi-step,,200
+www.signin.service.gov.uk,https://www.gov.uk/sign-in,EN,government services,login;register;password-reset;password-change;otp;multi-step;sso,password-change-requires-account,200
+my.gov.au,https://my.gov.au/,EN,government services,login;register;password-reset;password-change;otp;multi-step,password-change-requires-account,200
+login.nhs.uk,https://www.nhs.uk/,EN,government services,login;register;password-reset;password-change;otp;multi-step,password-change-requires-account,200
+habr.com,https://habr.com/ru/auth/login/,RU,SaaS and developer tools,login;register;password-reset;password-change;sso;modal,password-change-requires-account,200
+www.amocrm.ru,https://www.amocrm.ru/account/login/,RU,SaaS and developer tools,login;register;password-reset;password-change;otp;sso,password-change-requires-account,200
+kontur.ru,https://kontur.ru/,RU,SaaS and developer tools,login;register;password-reset;password-change;otp;sso;multi-step,mincifry-ca;password-change-requires-account,200
+sbis.ru,https://sbis.ru/,RU,SaaS and developer tools,login;register;password-reset;password-change;otp;sso;multi-step,bot-block;timeout;mincifry-ca;password-change-requires-account,timeout
+www.1c.ru,https://www.1c.ru/,RU,SaaS and developer tools,login;register;password-reset;password-change;sso,password-change-requires-account,200
+www.moysklad.ru,https://www.moysklad.ru/,RU,SaaS and developer tools,login;register;password-reset;password-change,password-change-requires-account,200
+getcourse.ru,https://getcourse.ru/,RU,SaaS and developer tools,login;register;password-reset;password-change,password-change-requires-account,200
+timepad.ru,https://timepad.ru/,RU,SaaS and developer tools,login;register;password-reset;password-change;sso;modal,password-change-requires-account,307
+planfix.ru,https://planfix.ru/,RU,SaaS and developer tools,login;register;password-reset;password-change,password-change-requires-account,200
+www.yclients.com,https://www.yclients.com/,RU,SaaS and developer tools,login;register;password-reset;password-change;otp,bot-block;password-change-requires-account,403
+github.com,https://github.com/login,EN,SaaS and developer tools,login;register;password-reset;password-change;otp;otp-segmented;sso,password-change-requires-account;captcha-possible,200
+gitlab.com,https://gitlab.com/users/sign_in,EN,SaaS and developer tools,login;register;password-reset;password-change;otp;sso,bot-block;password-change-requires-account,403
+stackoverflow.com,https://stackoverflow.com/users/login,EN,SaaS and developer tools,login;register;password-reset;password-change;sso,password-change-requires-account,200
+id.atlassian.com,https://id.atlassian.com/login,EN,SaaS and developer tools,login;register;password-reset;password-change;otp;sso;multi-step,password-change-requires-account,200
+www.notion.so,https://www.notion.so/login,EN,SaaS and developer tools,login;register;password-reset;password-change;otp;sso;multi-step,password-change-requires-account,200
+www.figma.com,https://www.figma.com/login,EN,SaaS and developer tools,login;register;password-reset;password-change;otp;sso,password-change-requires-account,200
+slack.com,https://slack.com/,EN,SaaS and developer tools,login;register;password-reset;password-change;otp;sso;multi-step,password-change-requires-account,200
+zoom.us,https://zoom.us/signin,EN,SaaS and developer tools,login;register;password-reset;password-change;otp;sso,password-change-requires-account,200
+www.dropbox.com,https://www.dropbox.com/login,EN,SaaS and developer tools,login;register;password-reset;password-change;otp;sso,password-change-requires-account,200
+auth.openai.com,https://chatgpt.com/auth/login,EN,SaaS and developer tools,login;register;password-reset;password-change;otp;sso;multi-step,password-change-requires-account;captcha-possible,200
+claude.ai,https://claude.ai/login,EN,SaaS and developer tools,login;register;password-reset;password-change;otp;sso;multi-step,bot-block;password-change-requires-account;captcha-possible,403
+www.canva.com,https://www.canva.com/login,EN,SaaS and developer tools,login;register;password-reset;password-change;sso;otp;modal,password-change-requires-account,200
+account.adobe.com,https://auth.services.adobe.com/en_US/index.html,EN,SaaS and developer tools,login;register;password-reset;password-change;otp;sso;multi-step;shadow-dom,password-change-requires-account;shadow-or-web-components-possible,200
+login.salesforce.com,https://login.salesforce.com/,EN,SaaS and developer tools,login;register;password-reset;password-change;otp;sso;multi-step;shadow-dom,password-change-requires-account;shadow-or-web-components-possible,200
+sso.beget.com,https://cp.beget.com/,RU,hosting and cloud,login;register;password-reset;password-change;otp,password-change-requires-account,200
+timeweb.com,https://timeweb.com/,RU,hosting and cloud,login;register;password-reset;password-change;otp,password-change-requires-account,200
+www.reg.ru,https://www.reg.ru/user/login,RU,hosting and cloud,login;register;password-reset;password-change;otp,password-change-requires-account;captcha-possible,200
+www.nic.ru,https://www.nic.ru/login/,RU,hosting and cloud,login;register;password-reset;password-change;otp,password-change-requires-account,200
+my.selectel.ru,https://my.selectel.ru/,RU,hosting and cloud,login;register;password-reset;password-change;otp;multi-step,password-change-requires-account,200
+console.yandex.cloud,https://console.yandex.cloud/,RU,hosting and cloud,login;sso;otp;multi-step,,307
+cloud.ru,https://console.cloud.ru/,RU,hosting and cloud,login;register;password-reset;password-change;otp;sso,password-change-requires-account,302
+cloud.vk.com,https://msk.cloud.vk.com/,RU,hosting and cloud,login;register;password-reset;password-change;otp;sso,password-change-requires-account,200
+sprinthost.ru,https://sprinthost.ru/,RU,hosting and cloud,login;register;password-reset;password-change,password-change-requires-account,200
+signin.aws.amazon.com,https://console.aws.amazon.com/,EN,hosting and cloud,login;password-reset;password-change;otp;multi-step;sso,password-change-requires-account;captcha-possible,200
+console.cloud.google.com,https://console.cloud.google.com/,EN,hosting and cloud,login;sso;otp;multi-step,,200
+portal.azure.com,https://portal.azure.com/,EN,hosting and cloud,login;sso;otp;multi-step,,200
+cloud.digitalocean.com,https://cloud.digitalocean.com/login,EN,hosting and cloud,login;register;password-reset;password-change;otp;sso,password-change-requires-account,200
+console.hetzner.cloud,https://console.hetzner.cloud/,EN,hosting and cloud,login;register;password-reset;password-change;otp,password-change-requires-account,200
+dash.cloudflare.com,https://dash.cloudflare.com/login,EN,hosting and cloud,login;register;password-reset;password-change;otp;sso;multi-step,password-change-requires-account;captcha-possible,200
+vercel.com,https://vercel.com/login,EN,hosting and cloud,login;register;password-reset;password-change;otp;sso;multi-step,password-change-requires-account,200
+www.kinopoisk.ru,https://www.kinopoisk.ru/,RU,media and subscriptions,login;register;sso;modal,,200
+www.ivi.ru,https://www.ivi.ru/,RU,media and subscriptions,login;register;password-reset;password-change;otp;sso;modal,password-change-requires-account,302
+okko.tv,https://okko.tv/,RU,media and subscriptions,login;register;password-reset;password-change;otp;sso;modal,password-change-requires-account,200
+start.ru,https://start.ru/,RU,media and subscriptions,login;register;password-reset;password-change;otp;sso;modal,password-change-requires-account,200
+premier.one,https://premier.one/,RU,media and subscriptions,login;register;password-reset;password-change;otp;sso;modal,password-change-requires-account,200
+www.rbc.ru,https://www.rbc.ru/,RU,media and subscriptions,login;register;password-reset;password-change;sso;modal,password-change-requires-account,401
+www.kommersant.ru,https://www.kommersant.ru/,RU,media and subscriptions,login;register;password-reset;password-change;sso;modal,password-change-requires-account,200
+lenta.ru,https://lenta.ru/,RU,media and subscriptions,login;register;password-reset;password-change;sso;modal,password-change-requires-account,200
+meduza.io,https://meduza.io/,RU,media and subscriptions,login;register;password-reset;password-change;sso;modal,password-change-requires-account,200
+www.netflix.com,https://www.netflix.com/login,EN,media and subscriptions,login;register;password-reset;password-change;otp;multi-step,password-change-requires-account;captcha-possible,200
+accounts.spotify.com,https://accounts.spotify.com/login,EN,media and subscriptions,login;register;password-reset;password-change;otp;sso,password-change-requires-account,200
+myaccount.nytimes.com,https://myaccount.nytimes.com/auth/login,EN,media and subscriptions,login;register;password-reset;password-change;sso;otp,bot-block;password-change-requires-account,403
+www.theguardian.com,https://www.theguardian.com/signin,EN,media and subscriptions,login;register;password-reset;password-change;sso,password-change-requires-account,200
+medium.com,https://medium.com/m/signin,EN,media and subscriptions,login;register;sso;otp;multi-step;modal,bot-block,403
+www.patreon.com,https://www.patreon.com/,EN,media and subscriptions,login;register;password-reset;password-change;sso;otp,password-change-requires-account,200
+www.aviasales.ru,https://www.aviasales.ru/,RU,travel,login;register;password-reset;password-change;sso;modal,password-change-requires-account,200
+www.tutu.ru,https://www.tutu.ru/,RU,travel,login;register;password-reset;password-change;sso;modal,password-change-requires-account,200
+pass.rzd.ru,https://pass.rzd.ru/,RU,travel,login;register;password-reset;password-change;otp;sso,bot-block;password-change-requires-account,000
+www.aeroflot.ru,https://www.aeroflot.ru/,RU,travel,login;register;password-reset;password-change;otp;sso,password-change-requires-account;captcha-possible,200
+www.s7.ru,https://www.s7.ru/,RU,travel,login;register;password-reset;password-change;otp;sso,password-change-requires-account,200
+www.ostrovok.ru,https://www.ostrovok.ru/,RU,travel,login;register;password-reset;password-change;sso;modal,password-change-requires-account,200
+travelata.ru,https://travelata.ru/,RU,travel,login;register;password-reset;password-change;sso;modal,password-change-requires-account,401
+sutochno.ru,https://sutochno.ru/,RU,travel,login;register;password-reset;password-change;otp;sso;modal,password-change-requires-account,200
+account.booking.com,https://account.booking.com/sign-in,EN,travel,login;register;password-reset;password-change;otp;sso;multi-step,password-change-requires-account;captcha-possible,200
+www.airbnb.com,https://www.airbnb.com/login,EN,travel,login;register;password-reset;password-change;otp;sso;multi-step;modal,password-change-requires-account;captcha-possible,200
+www.expedia.com,https://www.expedia.com/login,EN,travel,login;register;password-reset;password-change;sso;otp,bot-block;password-change-requires-account,429
+www.skyscanner.com,https://www.skyscanner.net/login,EN,travel,login;register;password-reset;password-change;sso;modal,password-change-requires-account,200
+www.marriott.com,https://www.marriott.com/,EN,travel,login;register;password-reset;password-change;otp,bot-block;password-change-requires-account,403
+www.hilton.com,https://www.hilton.com/en/hilton-honors/login/,EN,travel,login;register;password-reset;password-change;otp,password-change-requires-account,200
+www.agoda.com,https://www.agoda.com/,EN,travel,login;register;password-reset;password-change;sso;modal,password-change-requires-account,200
+eda.yandex.ru,https://eda.yandex.ru/,RU,food delivery and taxi,login;register;otp;sso;modal;multi-step,,200
+kuper.ru,https://kuper.ru/,RU,food delivery and taxi,login;register;otp;sso;modal;multi-step,,200
+samokat.ru,https://samokat.ru/,RU,food delivery and taxi,login;register;otp;sso;modal;multi-step,,200
+vkusvill.ru,https://vkusvill.ru/,RU,food delivery and taxi,login;register;password-reset;password-change;otp;sso;modal,password-change-requires-account,200
+www.perekrestok.ru,https://www.perekrestok.ru/,RU,food delivery and taxi,login;register;password-reset;password-change;otp;sso;modal,password-change-requires-account,200
+taxi.yandex.ru,https://taxi.yandex.ru/,RU,food delivery and taxi,login;register;otp;sso;modal;multi-step,,200
+www.doordash.com,https://www.doordash.com/consumer/login/,EN,food delivery and taxi,login;register;password-reset;password-change;otp;sso;multi-step,bot-block;password-change-requires-account;captcha-possible,403
+www.uber.com,https://www.uber.com/login,EN,food delivery and taxi,login;register;password-reset;password-change;otp;sso;multi-step,password-change-requires-account;captcha-possible,200
+wolt.com,https://wolt.com/en/login,EN,food delivery and taxi,login;register;password-reset;password-change;otp;sso,password-change-requires-account,200
+bolt.eu,https://bolt.eu/,EN,food delivery and taxi,login;register;otp;multi-step,,200
+vkplay.ru,https://vkplay.ru/,RU,games,login;register;password-reset;password-change;otp;sso,password-change-requires-account,200
+lesta.ru,https://lesta.ru/,RU,games,login;register;password-reset;password-change;otp;sso,password-change-requires-account,307
+boosty.to,https://boosty.to/,RU,games,login;register;password-reset;password-change;sso;modal,password-change-requires-account,200
+store.steampowered.com,https://store.steampowered.com/login/,EN,games,login;register;password-reset;password-change;otp;otp-segmented;multi-step;iframe,password-change-requires-account;captcha-possible;iframe-possible,200
+www.epicgames.com,https://www.epicgames.com/id/login,EN,games,login;register;password-reset;password-change;otp;sso;multi-step,bot-block;password-change-requires-account;captcha-possible,403
+account.battle.net,https://account.battle.net/login,EN,games,login;register;password-reset;password-change;otp;multi-step,password-change-requires-account,200
+www.playstation.com,https://id.sonyentertainmentnetwork.com/signin/,EN,games,login;register;password-reset;password-change;otp;multi-step,password-change-requires-account;captcha-possible,200
+accounts.nintendo.com,https://accounts.nintendo.com/,EN,games,login;register;password-reset;password-change;otp;multi-step,bot-block;timeout;password-change-requires-account,timeout
+www.roblox.com,https://www.roblox.com/login,EN,games,login;register;password-reset;password-change;otp,password-change-requires-account;captcha-possible,200
+stepik.org,https://stepik.org/login,RU,education,login;register;password-reset;password-change;sso;modal,password-change-requires-account,200
+practicum.yandex.ru,https://practicum.yandex.ru/,RU,education,login;register;sso;modal,,200
+netology.ru,https://netology.ru/,RU,education,login;register;password-reset;password-change;sso,password-change-requires-account,200
+skillbox.ru,https://skillbox.ru/,RU,education,login;register;password-reset;password-change;sso;modal,password-change-requires-account,200
+gb.ru,https://gb.ru/,RU,education,login;register;password-reset;password-change;sso,password-change-requires-account,401
+skyeng.ru,https://skyeng.ru/,RU,education,login;register;password-reset;password-change;otp;sso,password-change-requires-account,200
+foxford.ru,https://foxford.ru/,RU,education,login;register;password-reset;password-change;sso,password-change-requires-account,401
+uchi.ru,https://uchi.ru/,RU,education,login;register;password-reset;password-change,password-change-requires-account,200
+www.coursera.org,https://www.coursera.org/login,EN,education,login;register;password-reset;password-change;sso;otp,password-change-requires-account,200
+www.udemy.com,https://www.udemy.com/join/login-popup/,EN,education,login;register;password-reset;password-change;sso;modal,bot-block;password-change-requires-account,403
+www.khanacademy.org,https://www.khanacademy.org/login,EN,education,login;register;password-reset;password-change;sso,password-change-requires-account,200
+www.duolingo.com,https://www.duolingo.com/login,EN,education,login;register;password-reset;password-change;sso;modal,password-change-requires-account,200
+school.moodledemo.net,https://school.moodledemo.net/login/index.php,EN,education,login;password-reset,password-change-requires-account,200
+canvas.instructure.com,https://canvas.instructure.com/login/canvas,EN,education,login;register;password-reset;password-change;sso,bot-block;password-change-requires-account,503
+wordpress.com,https://wordpress.com/log-in,EN,CMS engines,login;register;password-reset;password-change;otp;sso;multi-step,bot-block;password-change-requires-account,403
+www.drupal.org,https://www.drupal.org/user/login,EN,CMS engines,login;register;password-reset;password-change,password-change-requires-account,200
+identity.joomla.org,https://identity.joomla.org/,EN,CMS engines,login;register;password-reset;password-change;sso,password-change-requires-account,200
+demo.opencart.com,https://www.opencart.com/index.php?route=cms/demo,EN,CMS engines,login,password-change-requires-account,200
+demo.prestashop.com,https://demo.prestashop.com/,EN,CMS engines,login,,200
+tilda.cc,https://tilda.cc/login/,RU,CMS engines,login;register;password-reset;password-change;sso,password-change-requires-account,200
+users.wix.com,https://users.wix.com/signin,EN,CMS engines,login;register;password-reset;password-change;otp;sso;multi-step,password-change-requires-account,200
+login.squarespace.com,https://login.squarespace.com/,EN,CMS engines,login;register;password-reset;password-change;otp;sso,password-change-requires-account,200
+accounts.shopify.com,https://www.shopify.com/login,EN,CMS engines,login;register;password-reset;password-change;otp;sso;multi-step,password-change-requires-account,200
+account.ghost.org,https://account.ghost.org/signin/,EN,CMS engines,login;register;password-reset;password-change;sso,password-change-requires-account,200
+webflow.com,https://webflow.com/login,EN,CMS engines,login;register;password-reset;password-change;sso;otp,password-change-requires-account,200
+www.bitrix24.ru,https://www.bitrix24.ru/auth/,RU,CMS engines,login;register;password-reset;password-change;otp;sso;multi-step,password-change-requires-account,200
+www.insales.ru,https://www.insales.ru/,RU,CMS engines,login;register;password-reset;password-change,password-change-requires-account,200
+nethouse.ru,https://nethouse.ru/,RU,CMS engines,login;register;password-reset;password-change,password-change-requires-account,200
+www.ucoz.ru,https://www.ucoz.ru/,RU,CMS engines,login;register;password-reset;password-change,password-change-requires-account,200
+demo.cs-cart.com,https://demo.cs-cart.com/admin.php,EN,CMS engines,login,,200
+www.webasyst.ru,https://www.webasyst.ru/login/,RU,CMS engines,login;register;password-reset;password-change,password-change-requires-account,200
+login.typo3.org,https://login.typo3.org/,EN,CMS engines,login;register;password-reset;password-change;sso,password-change-requires-account,200
+demo.synology.com,https://demo.synology.com/,EN,routers and self-hosted admin,login,password-change-requires-account,200
+try.nextcloud.com,https://try.nextcloud.com/,EN,routers and self-hosted admin,login;register;password-reset,,200
+demo.home-assistant.io,https://demo.home-assistant.io/,EN,routers and self-hosted admin,login,,200
+webhost-lin.demo.plesk.com,https://webhost-lin.demo.plesk.com:8443/login_up.php,EN,routers and self-hosted admin,login,bot-block,000
+unifi.ui.com,https://unifi.ui.com/,EN,routers and self-hosted admin,login;register;password-reset;password-change;otp;sso;multi-step,password-change-requires-account,200
+demo.sogo.nu,https://demo.sogo.nu/SOGo/,EN,routers and self-hosted admin,login,password-change-requires-account,200
+demo.phpmyadmin.net,https://demo.phpmyadmin.net/master-config/,EN,routers and self-hosted admin,login,,200
+www.ispmanager.com,https://www.ispmanager.com/demo,RU,routers and self-hosted admin,login,,200
+www.directadmin.com,https://www.directadmin.com/demo.php,EN,routers and self-hosted admin,login,,200
+www.cpanel.net,https://www.cpanel.net/,EN,routers and self-hosted admin,login;register,,200
+gitea.com,https://gitea.com/user/login,EN,routers and self-hosted admin,login;register;password-reset;password-change;otp;sso,password-change-requires-account,200
+play.grafana.org,https://play.grafana.org/login,EN,routers and self-hosted admin,login,,200
+demo.qnap.com,https://demo.qnap.com/,EN,routers and self-hosted admin,login,,200

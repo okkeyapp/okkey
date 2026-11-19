@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "pageId": "www.duolingo.com__78a33d1e",
+  "url": "https://www.duolingo.com/login",
+  "lang": "EN",
+  "annotator": "A",
+  "status": "annotated",
+  "pageKind": "login",
+  "forms": [
+    {
+      "formId": "form-1",
+      "selector": "form",
+      "fields": [
+        {
+          "selector": "#web-ui1",
+          "role": "username",
+          "hints": {
+            "type": "text",
+            "id": "web-ui1",
+            "autocomplete": "email",
+            "placeholder": "Email or username"
+          }
+        },
+        {
+          "selector": "#web-ui2",
+          "role": "password",
+          "hints": {
+            "type": "password",
+            "id": "web-ui2",
+            "autocomplete": "current-password",
+            "placeholder": "Password"
+          }
+        }
+      ]
+    }
+  ],
+  "notes": "Annotator A drafted from HTML5/semantic rules on captured DOM (independent of classifier)."
+}

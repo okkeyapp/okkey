@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "pageId": "passport.yandex.ru__4168feba",
+  "url": "https://passport.yandex.ru/auth",
+  "lang": "RU",
+  "annotator": "A",
+  "status": "annotated",
+  "pageKind": "login",
+  "forms": [
+    {
+      "formId": "form-1",
+      "selector": "form",
+      "fields": [
+        {
+          "selector": "#react-aria-«R16ab»",
+          "role": "username",
+          "hints": {
+            "type": "text",
+            "id": "react-aria-«R16ab»",
+            "autocomplete": "username",
+            "placeholder": "Логин или email",
+            "ariaLabel": "Логин или email"
+          }
+        }
+      ]
+    }
+  ],
+  "notes": "Annotator A drafted from HTML5/semantic rules on captured DOM (independent of classifier)."
+}

@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "pageId": "demo.phpmyadmin.net__30a26dd6",
+  "url": "https://demo.phpmyadmin.net/master-config/",
+  "lang": "EN",
+  "annotator": "A",
+  "status": "uncapturable",
+  "pageKind": "login",
+  "forms": [],
+  "notes": "Annotator A drafted from HTML5/semantic rules on captured DOM (independent of classifier)."
+}

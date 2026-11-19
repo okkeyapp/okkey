@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "pageId": "www.coursera.org__122d40bb",
+  "url": "https://www.coursera.org/login",
+  "lang": "EN",
+  "annotator": "A",
+  "status": "blocked",
+  "pageKind": "login",
+  "forms": [],
+  "notes": "anti-bot interstitial"
+}

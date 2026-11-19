@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "pageId": "meduza.io__5dcb16af",
+  "url": "https://meduza.io/",
+  "lang": "RU",
+  "annotator": "A",
+  "status": "annotated",
+  "pageKind": "login",
+  "forms": [
+    {
+      "formId": "form-1",
+      "selector": "form",
+      "fields": [
+        {
+          "selector": "#footer-email",
+          "role": "username",
+          "hints": {
+            "type": "email",
+            "id": "footer-email",
+            "placeholder": "Ваш имейл",
+            "labelText": "Ваш имейл"
+          }
+        }
+      ]
+    }
+  ],
+  "notes": "Annotator A drafted from HTML5/semantic rules on captured DOM (independent of classifier)."
+}

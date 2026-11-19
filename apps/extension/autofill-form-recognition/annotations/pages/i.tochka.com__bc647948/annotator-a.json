@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "pageId": "i.tochka.com__bc647948",
+  "url": "https://i.tochka.com/",
+  "lang": "RU",
+  "annotator": "A",
+  "status": "uncapturable",
+  "pageKind": "login",
+  "forms": [],
+  "notes": "page.goto: net::ERR_CERT_AUTHORITY_INVALID at https://i.tochka.com/\nCall log:\n  - navigating to \"https://i.tochka.com/\", waiting until \"domcontentloaded\"\n"
+}

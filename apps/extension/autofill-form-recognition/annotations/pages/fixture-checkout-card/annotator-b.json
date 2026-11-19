@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "pageId": "fixture-checkout-card",
+  "url": "fixture://checkout-card",
+  "lang": "EN",
+  "pageKind": "checkout",
+  "forms": [
+    {
+      "formId": "form-1",
+      "selector": "form#pay",
+      "fields": []
+    }
+  ],
+  "notes": "Synthetic checkout: card fields are NOT metric-role FPs by themselves.",
+  "annotator": "B",
+  "status": "annotated"
+}

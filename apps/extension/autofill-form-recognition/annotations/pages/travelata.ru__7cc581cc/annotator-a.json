@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "pageId": "travelata.ru__7cc581cc",
+  "url": "https://travelata.ru/",
+  "lang": "RU",
+  "annotator": "A",
+  "status": "blocked",
+  "pageKind": "login",
+  "forms": [],
+  "notes": "known bot-block/timeout from corpus notes"
+}

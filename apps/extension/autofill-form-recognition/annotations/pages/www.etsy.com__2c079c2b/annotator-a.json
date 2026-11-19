@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "pageId": "www.etsy.com__2c079c2b",
+  "url": "https://www.etsy.com/signin",
+  "lang": "EN",
+  "annotator": "A",
+  "status": "blocked",
+  "pageKind": "login",
+  "forms": [],
+  "notes": "known bot-block/timeout from corpus notes"
+}

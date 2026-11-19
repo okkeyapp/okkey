@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "pageId": "demo.sogo.nu__58bef1da",
+  "url": "https://demo.sogo.nu/SOGo/",
+  "lang": "EN",
+  "annotator": "A",
+  "status": "annotated",
+  "pageKind": "login",
+  "forms": [
+    {
+      "formId": "form-1",
+      "selector": "form",
+      "fields": [
+        {
+          "selector": "#input_1",
+          "role": "username",
+          "hints": {
+            "type": "text",
+            "name": "3.1.1.3.3.1.4.4.1.3.3.1.1.1.1.3.1.5",
+            "id": "input_1",
+            "labelText": "Username"
+          }
+        },
+        {
+          "selector": "#passwordField",
+          "role": "password",
+          "hints": {
+            "type": "password",
+            "name": "3.1.1.3.3.1.4.4.1.3.3.1.1.1.1.3.3.5",
+            "id": "passwordField",
+            "labelText": "Password"
+          }
+        }
+      ]
+    }
+  ],
+  "notes": "Annotator A drafted from HTML5/semantic rules on captured DOM (independent of classifier)."
+}

@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "pageId": "mkb.ru__7a45c2d7",
+  "url": "https://online.mkb.ru/",
+  "lang": "RU",
+  "annotator": "A",
+  "status": "blocked",
+  "pageKind": "login",
+  "forms": [],
+  "notes": "page.goto: Timeout 18000ms exceeded.\nCall log:\n  - navigating to \"https://online.mkb.ru/\", waiting until \"domcontentloaded\"\n"
+}

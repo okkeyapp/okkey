@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "pageId": "my.modulbank.ru__38c6122e",
+  "url": "https://my.modulbank.ru/",
+  "lang": "RU",
+  "annotator": "A",
+  "status": "blocked",
+  "pageKind": "login",
+  "forms": [],
+  "notes": "known bot-block/timeout from corpus notes"
+}

@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "pageId": "vkusvill.ru__1d4b46af",
+  "url": "https://vkusvill.ru/",
+  "lang": "RU",
+  "annotator": "A",
+  "status": "annotated",
+  "pageKind": "login",
+  "forms": [
+    {
+      "formId": "form-1",
+      "selector": "form",
+      "fields": [
+        {
+          "selector": "input[type=\"email\"][name=\"EMAIL\"]",
+          "role": "username",
+          "hints": {
+            "type": "email",
+            "name": "EMAIL",
+            "ariaLabel": "Email"
+          }
+        }
+      ]
+    }
+  ],
+  "notes": "Annotator A drafted from HTML5/semantic rules on captured DOM (independent of classifier)."
+}

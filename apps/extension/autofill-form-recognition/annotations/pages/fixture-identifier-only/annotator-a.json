@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "pageId": "fixture-identifier-only",
+  "url": "fixture://identifier-only",
+  "lang": "RU",
+  "pageKind": "login",
+  "forms": [
+    {
+      "formId": "form-1",
+      "selector": "form#step1",
+      "fields": [
+        {
+          "selector": "#login",
+          "role": "username",
+          "hints": {
+            "type": "text",
+            "name": "login",
+            "id": "login",
+            "autocomplete": "username",
+            "labelText": "Логин или почта"
+          }
+        }
+      ]
+    }
+  ],
+  "notes": "Synthetic fixture (not third-party HTML). Identifier-only step.",
+  "annotator": "A",
+  "status": "annotated"
+}

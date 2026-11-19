@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "pageId": "school.moodledemo.net__86aba515",
+  "url": "https://school.moodledemo.net/login/index.php",
+  "lang": "EN",
+  "annotator": "A",
+  "status": "annotated",
+  "pageKind": "login",
+  "forms": [
+    {
+      "formId": "form-1",
+      "selector": "form#login",
+      "fields": [
+        {
+          "selector": "#username",
+          "role": "username",
+          "hints": {
+            "type": "text",
+            "name": "username",
+            "id": "username",
+            "autocomplete": "username",
+            "placeholder": "Enter your username or email",
+            "labelText": "Username or email"
+          }
+        },
+        {
+          "selector": "#password",
+          "role": "password",
+          "hints": {
+            "type": "password",
+            "name": "password",
+            "id": "password",
+            "autocomplete": "current-password",
+            "placeholder": "Enter your password",
+            "labelText": "Password"
+          }
+        }
+      ]
+    }
+  ],
+  "notes": "Annotator A drafted from HTML5/semantic rules on captured DOM (independent of classifier)."
+}

@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "pageId": "rutube.ru__9aec7ba6",
+  "url": "https://rutube.ru/",
+  "lang": "RU",
+  "annotator": "A",
+  "status": "uncapturable",
+  "pageKind": "login",
+  "forms": [],
+  "notes": "Annotator A drafted from HTML5/semantic rules on captured DOM (independent of classifier)."
+}

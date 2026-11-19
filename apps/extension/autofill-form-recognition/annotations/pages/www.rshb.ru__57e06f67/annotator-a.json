@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "pageId": "www.rshb.ru__57e06f67",
+  "url": "https://online.rshb.ru/",
+  "lang": "RU",
+  "annotator": "A",
+  "status": "uncapturable",
+  "pageKind": "login",
+  "forms": [],
+  "notes": "page.goto: net::ERR_CERT_AUTHORITY_INVALID at https://online.rshb.ru/\nCall log:\n  - navigating to \"https://online.rshb.ru/\", waiting until \"domcontentloaded\"\n"
+}

@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "pageId": "portal.azure.com__2703da9f",
+  "url": "https://portal.azure.com/",
+  "lang": "EN",
+  "annotator": "A",
+  "status": "uncapturable",
+  "pageKind": "login",
+  "forms": [],
+  "notes": "Captured but no semantic login fields found on first paint (modal/SPA likely)."
+}

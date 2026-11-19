@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "pageId": "login.okta.com__ab54d29b",
+  "url": "https://login.okta.com/",
+  "lang": "EN",
+  "annotator": "A",
+  "status": "uncapturable",
+  "pageKind": "login",
+  "forms": [],
+  "notes": "Annotator A drafted from HTML5/semantic rules on captured DOM (independent of classifier)."
+}

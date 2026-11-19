@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "pageId": "www.dns-shop.ru__480b5865",
+  "url": "https://www.dns-shop.ru/",
+  "lang": "RU",
+  "annotator": "A",
+  "status": "blocked",
+  "pageKind": "login",
+  "forms": [],
+  "notes": "known bot-block/timeout from corpus notes"
+}

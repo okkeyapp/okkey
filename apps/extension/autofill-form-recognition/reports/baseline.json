@@ -1,0 +1,194 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-11-19T12:53:06.448Z",
+  "classifierSha": "7cc5c13ced6a0e8f1ccb4322988566fd11683330b3d41be79b459acb1efd1085",
+  "classifierFiles": [
+    "autofillFieldClassify.ts",
+    "autofillFormDetect.ts",
+    "loginFormFields.ts"
+  ],
+  "runComposition": {
+    "corpusSites": 247,
+    "pagesWithAnnotatorA": 76,
+    "pagesWithAnnotatorB": 6,
+    "pagesWithAgreement": 6,
+    "pagesBlockedOrUncapturable": 177,
+    "syntheticFixturePages": 6
+  },
+  "overall": {
+    "formRecognition": {
+      "fullyRecognized": 4,
+      "annotatedForms": 4,
+      "share": 1
+    },
+    "perRole": {
+      "username": {
+        "precision": 1,
+        "recall": 1,
+        "f1": 1,
+        "counts": {
+          "tp": 3,
+          "fp": 0,
+          "fn": 0
+        }
+      },
+      "password": {
+        "precision": 1,
+        "recall": 1,
+        "f1": 1,
+        "counts": {
+          "tp": 1,
+          "fp": 0,
+          "fn": 0
+        }
+      },
+      "new-password": {
+        "precision": 1,
+        "recall": 1,
+        "f1": 1,
+        "counts": {
+          "tp": 1,
+          "fp": 0,
+          "fn": 0
+        }
+      },
+      "otp": {
+        "precision": 1,
+        "recall": 1,
+        "f1": 1,
+        "counts": {
+          "tp": 1,
+          "fp": 0,
+          "fn": 0
+        }
+      }
+    },
+    "falsePositives": {
+      "pagesEvaluated": 2,
+      "pagesWithAnyRole": 0,
+      "share": 0,
+      "fieldCount": 0
+    }
+  },
+  "byLang": {
+    "RU": {
+      "formRecognition": {
+        "fullyRecognized": 1,
+        "annotatedForms": 1,
+        "share": 1
+      },
+      "perRole": {
+        "username": {
+          "precision": 1,
+          "recall": 1,
+          "f1": 1,
+          "counts": {
+            "tp": 1,
+            "fp": 0,
+            "fn": 0
+          }
+        },
+        "password": {
+          "precision": "no data",
+          "recall": "no data",
+          "f1": "no data",
+          "counts": {
+            "tp": 0,
+            "fp": 0,
+            "fn": 0
+          }
+        },
+        "new-password": {
+          "precision": "no data",
+          "recall": "no data",
+          "f1": "no data",
+          "counts": {
+            "tp": 0,
+            "fp": 0,
+            "fn": 0
+          }
+        },
+        "otp": {
+          "precision": "no data",
+          "recall": "no data",
+          "f1": "no data",
+          "counts": {
+            "tp": 0,
+            "fp": 0,
+            "fn": 0
+          }
+        }
+      },
+      "falsePositives": {
+        "pagesEvaluated": 0,
+        "pagesWithAnyRole": 0,
+        "share": "no data",
+        "fieldCount": 0
+      }
+    },
+    "EN": {
+      "formRecognition": {
+        "fullyRecognized": 3,
+        "annotatedForms": 3,
+        "share": 1
+      },
+      "perRole": {
+        "username": {
+          "precision": 1,
+          "recall": 1,
+          "f1": 1,
+          "counts": {
+            "tp": 2,
+            "fp": 0,
+            "fn": 0
+          }
+        },
+        "password": {
+          "precision": 1,
+          "recall": 1,
+          "f1": 1,
+          "counts": {
+            "tp": 1,
+            "fp": 0,
+            "fn": 0
+          }
+        },
+        "new-password": {
+          "precision": 1,
+          "recall": 1,
+          "f1": 1,
+          "counts": {
+            "tp": 1,
+            "fp": 0,
+            "fn": 0
+          }
+        },
+        "otp": {
+          "precision": 1,
+          "recall": 1,
+          "f1": 1,
+          "counts": {
+            "tp": 1,
+            "fp": 0,
+            "fn": 0
+          }
+        }
+      },
+      "falsePositives": {
+        "pagesEvaluated": 2,
+        "pagesWithAnyRole": 0,
+        "share": 0,
+        "fieldCount": 0
+      }
+    }
+  },
+  "disagreements": [],
+  "misses": [],
+  "captureSummary": {
+    "captured": 167,
+    "blocked": 24,
+    "timeout": 5,
+    "error": 8,
+    "skipped": 43
+  }
+}

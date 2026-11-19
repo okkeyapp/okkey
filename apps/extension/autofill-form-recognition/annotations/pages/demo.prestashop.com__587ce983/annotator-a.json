@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "pageId": "demo.prestashop.com__587ce983",
+  "url": "https://demo.prestashop.com/",
+  "lang": "EN",
+  "annotator": "A",
+  "status": "uncapturable",
+  "pageKind": "login",
+  "forms": [],
+  "notes": "Captured but no semantic login fields found on first paint (modal/SPA likely)."
+}

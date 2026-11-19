@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "pageId": "web.alfabank.ru__0d30bbf3",
+  "url": "https://web.alfabank.ru/",
+  "lang": "RU",
+  "annotator": "A",
+  "status": "uncapturable",
+  "pageKind": "login",
+  "forms": [],
+  "notes": "page.goto: net::ERR_CERT_AUTHORITY_INVALID at https://web.alfabank.ru/\nCall log:\n  - navigating to \"https://web.alfabank.ru/\", waiting until \"domcontentloaded\"\n"
+}

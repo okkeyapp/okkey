@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "pageId": "www.reg.ru__a8909a37",
+  "url": "https://www.reg.ru/user/login",
+  "lang": "RU",
+  "annotator": "A",
+  "status": "uncapturable",
+  "pageKind": "login",
+  "forms": [],
+  "notes": "Captured but no semantic login fields found on first paint (modal/SPA likely)."
+}

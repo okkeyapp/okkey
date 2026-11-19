@@ -1,0 +1,562 @@
+[
+  {
+    "domain": "accounts.nintendo.com",
+    "url": "https://accounts.nintendo.com/",
+    "status": "skipped",
+    "detail": "known bot-block/timeout from corpus notes",
+    "httpStatus": "timeout"
+  },
+  {
+    "domain": "accounts.spotify.com",
+    "url": "https://accounts.spotify.com/login",
+    "status": "blocked",
+    "detail": "anti-bot interstitial",
+    "httpStatus": 200
+  },
+  {
+    "domain": "canvas.instructure.com",
+    "url": "https://canvas.instructure.com/login/canvas",
+    "status": "skipped",
+    "detail": "known bot-block/timeout from corpus notes",
+    "httpStatus": "503"
+  },
+  {
+    "domain": "claude.ai",
+    "url": "https://claude.ai/login",
+    "status": "skipped",
+    "detail": "known bot-block/timeout from corpus notes",
+    "httpStatus": "403"
+  },
+  {
+    "domain": "demo.opencart.com",
+    "url": "https://www.opencart.com/index.php?route=cms/demo",
+    "status": "blocked",
+    "detail": "HTTP 403",
+    "httpStatus": 403
+  },
+  {
+    "domain": "eda.yandex.ru",
+    "url": "https://eda.yandex.ru/",
+    "status": "blocked",
+    "detail": "anti-bot interstitial",
+    "httpStatus": 200
+  },
+  {
+    "domain": "foxford.ru",
+    "url": "https://foxford.ru/",
+    "status": "skipped",
+    "detail": "known bot-block/timeout from corpus notes",
+    "httpStatus": "401"
+  },
+  {
+    "domain": "gb.ru",
+    "url": "https://gb.ru/",
+    "status": "skipped",
+    "detail": "known bot-block/timeout from corpus notes",
+    "httpStatus": "401"
+  },
+  {
+    "domain": "gitlab.com",
+    "url": "https://gitlab.com/users/sign_in",
+    "status": "skipped",
+    "detail": "known bot-block/timeout from corpus notes",
+    "httpStatus": "403"
+  },
+  {
+    "domain": "goldapple.ru",
+    "url": "https://goldapple.ru/",
+    "status": "blocked",
+    "detail": "HTTP 403",
+    "httpStatus": 403
+  },
+  {
+    "domain": "hoff.ru",
+    "url": "https://hoff.ru/",
+    "status": "skipped",
+    "detail": "known bot-block/timeout from corpus notes",
+    "httpStatus": "401"
+  },
+  {
+    "domain": "i.tochka.com",
+    "url": "https://i.tochka.com/",
+    "status": "error",
+    "detail": "page.goto: net::ERR_CERT_AUTHORITY_INVALID at https://i.tochka.com/\nCall log:\n  - navigating to \"https://i.tochka.com/\", waiting until \"domcontentloaded\"\n",
+    "httpStatus": null
+  },
+  {
+    "domain": "kuper.ru",
+    "url": "https://kuper.ru/",
+    "status": "blocked",
+    "detail": "HTTP 403",
+    "httpStatus": 403
+  },
+  {
+    "domain": "lk.rosreestr.ru",
+    "url": "https://lk.rosreestr.ru/",
+    "status": "skipped",
+    "detail": "known bot-block/timeout from corpus notes",
+    "httpStatus": "000"
+  },
+  {
+    "domain": "login.coinbase.com",
+    "url": "https://login.coinbase.com/",
+    "status": "skipped",
+    "detail": "known bot-block/timeout from corpus notes",
+    "httpStatus": "403"
+  },
+  {
+    "domain": "market.yandex.ru",
+    "url": "https://market.yandex.ru/",
+    "status": "blocked",
+    "detail": "anti-bot interstitial",
+    "httpStatus": 200
+  },
+  {
+    "domain": "medium.com",
+    "url": "https://medium.com/m/signin",
+    "status": "skipped",
+    "detail": "known bot-block/timeout from corpus notes",
+    "httpStatus": "403"
+  },
+  {
+    "domain": "mkb.ru",
+    "url": "https://online.mkb.ru/",
+    "status": "timeout",
+    "detail": "page.goto: Timeout 18000ms exceeded.\nCall log:\n  - navigating to \"https://online.mkb.ru/\", waiting until \"domcontentloaded\"\n",
+    "httpStatus": null
+  },
+  {
+    "domain": "my.modulbank.ru",
+    "url": "https://my.modulbank.ru/",
+    "status": "skipped",
+    "detail": "known bot-block/timeout from corpus notes",
+    "httpStatus": "000"
+  },
+  {
+    "domain": "myaccount.nytimes.com",
+    "url": "https://myaccount.nytimes.com/auth/login",
+    "status": "skipped",
+    "detail": "known bot-block/timeout from corpus notes",
+    "httpStatus": "403"
+  },
+  {
+    "domain": "nethouse.ru",
+    "url": "https://nethouse.ru/",
+    "status": "timeout",
+    "detail": "page.goto: Timeout 18000ms exceeded.\nCall log:\n  - navigating to \"https://nethouse.ru/\", waiting until \"domcontentloaded\"\n",
+    "httpStatus": null
+  },
+  {
+    "domain": "online.sberbank.ru",
+    "url": "https://online.sberbank.ru/",
+    "status": "skipped",
+    "detail": "known bot-block/timeout from corpus notes",
+    "httpStatus": "200"
+  },
+  {
+    "domain": "online.vtb.ru",
+    "url": "https://online.vtb.ru/",
+    "status": "error",
+    "detail": "page.goto: net::ERR_CERT_AUTHORITY_INVALID at https://online.vtb.ru/\nCall log:\n  - navigating to \"https://online.vtb.ru/\", waiting until \"domcontentloaded\"\n",
+    "httpStatus": null
+  },
+  {
+    "domain": "pass.rzd.ru",
+    "url": "https://pass.rzd.ru/",
+    "status": "skipped",
+    "detail": "known bot-block/timeout from corpus notes",
+    "httpStatus": "000"
+  },
+  {
+    "domain": "premier.one",
+    "url": "https://premier.one/",
+    "status": "timeout",
+    "detail": "page.goto: Timeout 18000ms exceeded.\nCall log:\n  - navigating to \"https://premier.one/\", waiting until \"domcontentloaded\"\n",
+    "httpStatus": null
+  },
+  {
+    "domain": "sbis.ru",
+    "url": "https://sbis.ru/",
+    "status": "skipped",
+    "detail": "known bot-block/timeout from corpus notes",
+    "httpStatus": "timeout"
+  },
+  {
+    "domain": "secure.login.gov",
+    "url": "https://secure.login.gov/",
+    "status": "blocked",
+    "detail": "anti-bot interstitial",
+    "httpStatus": 200
+  },
+  {
+    "domain": "signin.ebay.com",
+    "url": "https://www.ebay.com/signin/",
+    "status": "blocked",
+    "detail": "HTTP 403",
+    "httpStatus": 403
+  },
+  {
+    "domain": "sso.beget.com",
+    "url": "https://cp.beget.com/",
+    "status": "timeout",
+    "detail": "page.goto: Timeout 18000ms exceeded.\nCall log:\n  - navigating to \"https://cp.beget.com/\", waiting until \"domcontentloaded\"\n",
+    "httpStatus": null
+  },
+  {
+    "domain": "tenchat.ru",
+    "url": "https://tenchat.ru/",
+    "status": "skipped",
+    "detail": "known bot-block/timeout from corpus notes",
+    "httpStatus": "timeout"
+  },
+  {
+    "domain": "timepad.ru",
+    "url": "https://timepad.ru/",
+    "status": "blocked",
+    "detail": "anti-bot interstitial",
+    "httpStatus": 200
+  },
+  {
+    "domain": "travelata.ru",
+    "url": "https://travelata.ru/",
+    "status": "skipped",
+    "detail": "known bot-block/timeout from corpus notes",
+    "httpStatus": "401"
+  },
+  {
+    "domain": "users.wix.com",
+    "url": "https://users.wix.com/signin",
+    "status": "blocked",
+    "detail": "anti-bot interstitial",
+    "httpStatus": 200
+  },
+  {
+    "domain": "web.alfabank.ru",
+    "url": "https://web.alfabank.ru/",
+    "status": "error",
+    "detail": "page.goto: net::ERR_CERT_AUTHORITY_INVALID at https://web.alfabank.ru/\nCall log:\n  - navigating to \"https://web.alfabank.ru/\", waiting until \"domcontentloaded\"\n",
+    "httpStatus": null
+  },
+  {
+    "domain": "web.whatsapp.com",
+    "url": "https://web.whatsapp.com/",
+    "status": "skipped",
+    "detail": "known bot-block/timeout from corpus notes",
+    "httpStatus": "400"
+  },
+  {
+    "domain": "webflow.com",
+    "url": "https://webflow.com/login",
+    "status": "blocked",
+    "detail": "HTTP 403",
+    "httpStatus": 403
+  },
+  {
+    "domain": "webhost-lin.demo.plesk.com",
+    "url": "https://webhost-lin.demo.plesk.com:8443/login_up.php",
+    "status": "skipped",
+    "detail": "known bot-block/timeout from corpus notes",
+    "httpStatus": "000"
+  },
+  {
+    "domain": "wordpress.com",
+    "url": "https://wordpress.com/log-in",
+    "status": "skipped",
+    "detail": "known bot-block/timeout from corpus notes",
+    "httpStatus": "403"
+  },
+  {
+    "domain": "www.avito.ru",
+    "url": "https://www.avito.ru/",
+    "status": "skipped",
+    "detail": "known bot-block/timeout from corpus notes",
+    "httpStatus": "439"
+  },
+  {
+    "domain": "www.bankofamerica.com",
+    "url": "https://www.bankofamerica.com/login/",
+    "status": "blocked",
+    "detail": "HTTP 403",
+    "httpStatus": 403
+  },
+  {
+    "domain": "www.bestbuy.com",
+    "url": "https://www.bestbuy.com/identity/global/signin",
+    "status": "timeout",
+    "detail": "page.goto: Timeout 18000ms exceeded.\nCall log:\n  - navigating to \"https://www.bestbuy.com/identity/global/signin\", waiting until \"domcontentloaded\"\n",
+    "httpStatus": null
+  },
+  {
+    "domain": "www.citilink.ru",
+    "url": "https://www.citilink.ru/",
+    "status": "skipped",
+    "detail": "known bot-block/timeout from corpus notes",
+    "httpStatus": "429"
+  },
+  {
+    "domain": "www.coursera.org",
+    "url": "https://www.coursera.org/login",
+    "status": "blocked",
+    "detail": "anti-bot interstitial",
+    "httpStatus": 200
+  },
+  {
+    "domain": "www.detmir.ru",
+    "url": "https://www.detmir.ru/",
+    "status": "skipped",
+    "detail": "known bot-block/timeout from corpus notes",
+    "httpStatus": "418"
+  },
+  {
+    "domain": "www.dns-shop.ru",
+    "url": "https://www.dns-shop.ru/",
+    "status": "skipped",
+    "detail": "known bot-block/timeout from corpus notes",
+    "httpStatus": "401"
+  },
+  {
+    "domain": "www.doordash.com",
+    "url": "https://www.doordash.com/consumer/login/",
+    "status": "skipped",
+    "detail": "known bot-block/timeout from corpus notes",
+    "httpStatus": "403"
+  },
+  {
+    "domain": "www.drupal.org",
+    "url": "https://www.drupal.org/user/login",
+    "status": "blocked",
+    "detail": "anti-bot interstitial",
+    "httpStatus": 200
+  },
+  {
+    "domain": "www.epicgames.com",
+    "url": "https://www.epicgames.com/id/login",
+    "status": "skipped",
+    "detail": "known bot-block/timeout from corpus notes",
+    "httpStatus": "403"
+  },
+  {
+    "domain": "www.etsy.com",
+    "url": "https://www.etsy.com/signin",
+    "status": "skipped",
+    "detail": "known bot-block/timeout from corpus notes",
+    "httpStatus": "403"
+  },
+  {
+    "domain": "www.expedia.com",
+    "url": "https://www.expedia.com/login",
+    "status": "skipped",
+    "detail": "known bot-block/timeout from corpus notes",
+    "httpStatus": "429"
+  },
+  {
+    "domain": "www.facebook.com",
+    "url": "https://www.facebook.com/login",
+    "status": "skipped",
+    "detail": "known bot-block/timeout from corpus notes",
+    "httpStatus": "400"
+  },
+  {
+    "domain": "www.fssp.gov.ru",
+    "url": "https://www.fssp.gov.ru/",
+    "status": "skipped",
+    "detail": "known bot-block/timeout from corpus notes",
+    "httpStatus": "503"
+  },
+  {
+    "domain": "www.gov.spb.ru",
+    "url": "https://portal.gov.spb.ru/",
+    "status": "skipped",
+    "detail": "known bot-block/timeout from corpus notes",
+    "httpStatus": "000"
+  },
+  {
+    "domain": "www.hilton.com",
+    "url": "https://www.hilton.com/en/hilton-honors/login/",
+    "status": "blocked",
+    "detail": "HTTP 403",
+    "httpStatus": 403
+  },
+  {
+    "domain": "www.instagram.com",
+    "url": "https://www.instagram.com/accounts/login/",
+    "status": "blocked",
+    "detail": "HTTP 429",
+    "httpStatus": 429
+  },
+  {
+    "domain": "www.leroymerlin.ru",
+    "url": "https://www.leroymerlin.ru/",
+    "status": "skipped",
+    "detail": "known bot-block/timeout from corpus notes",
+    "httpStatus": "000"
+  },
+  {
+    "domain": "www.marriott.com",
+    "url": "https://www.marriott.com/",
+    "status": "skipped",
+    "detail": "known bot-block/timeout from corpus notes",
+    "httpStatus": "403"
+  },
+  {
+    "domain": "www.mtsbank.ru",
+    "url": "https://online.mtsbank.ru/",
+    "status": "error",
+    "detail": "page.goto: net::ERR_CERT_AUTHORITY_INVALID at https://online.mtsbank.ru/\nCall log:\n  - navigating to \"https://online.mtsbank.ru/\", waiting until \"domcontentloaded\"\n",
+    "httpStatus": null
+  },
+  {
+    "domain": "www.netflix.com",
+    "url": "https://www.netflix.com/login",
+    "status": "blocked",
+    "detail": "anti-bot interstitial",
+    "httpStatus": 200
+  },
+  {
+    "domain": "www.nike.com",
+    "url": "https://www.nike.com/login",
+    "status": "blocked",
+    "detail": "anti-bot interstitial",
+    "httpStatus": 200
+  },
+  {
+    "domain": "www.ozon.ru",
+    "url": "https://www.ozon.ru/",
+    "status": "blocked",
+    "detail": "HTTP 403",
+    "httpStatus": 403
+  },
+  {
+    "domain": "www.paypal.com",
+    "url": "https://www.paypal.com/",
+    "status": "blocked",
+    "detail": "HTTP 403",
+    "httpStatus": 403
+  },
+  {
+    "domain": "www.perekrestok.ru",
+    "url": "https://www.perekrestok.ru/",
+    "status": "blocked",
+    "detail": "HTTP 403",
+    "httpStatus": 403
+  },
+  {
+    "domain": "www.psbank.ru",
+    "url": "https://ib.psbank.ru/",
+    "status": "error",
+    "detail": "page.goto: net::ERR_CERT_AUTHORITY_INVALID at https://ib.psbank.ru/\nCall log:\n  - navigating to \"https://ib.psbank.ru/\", waiting until \"domcontentloaded\"\n",
+    "httpStatus": null
+  },
+  {
+    "domain": "www.rbc.ru",
+    "url": "https://www.rbc.ru/",
+    "status": "skipped",
+    "detail": "known bot-block/timeout from corpus notes",
+    "httpStatus": "401"
+  },
+  {
+    "domain": "www.revolut.com",
+    "url": "https://www.revolut.com/login/",
+    "status": "skipped",
+    "detail": "known bot-block/timeout from corpus notes",
+    "httpStatus": "403"
+  },
+  {
+    "domain": "www.rosbank.ru",
+    "url": "https://online.rosbank.ru/",
+    "status": "skipped",
+    "detail": "known bot-block/timeout from corpus notes",
+    "httpStatus": "000"
+  },
+  {
+    "domain": "www.rshb.ru",
+    "url": "https://online.rshb.ru/",
+    "status": "error",
+    "detail": "page.goto: net::ERR_CERT_AUTHORITY_INVALID at https://online.rshb.ru/\nCall log:\n  - navigating to \"https://online.rshb.ru/\", waiting until \"domcontentloaded\"\n",
+    "httpStatus": null
+  },
+  {
+    "domain": "www.sovcombank.ru",
+    "url": "https://online.sovcombank.ru/",
+    "status": "skipped",
+    "detail": "known bot-block/timeout from corpus notes",
+    "httpStatus": "401"
+  },
+  {
+    "domain": "www.sportmaster.ru",
+    "url": "https://www.sportmaster.ru/",
+    "status": "skipped",
+    "detail": "known bot-block/timeout from corpus notes",
+    "httpStatus": "000"
+  },
+  {
+    "domain": "www.superjob.ru",
+    "url": "https://www.superjob.ru/user/login/",
+    "status": "error",
+    "detail": "page.goto: net::ERR_HTTP2_PROTOCOL_ERROR at https://www.superjob.ru/user/login/\nCall log:\n  - navigating to \"https://www.superjob.ru/user/login/\", waiting until \"domcontentloaded\"\n",
+    "httpStatus": null
+  },
+  {
+    "domain": "www.tbank.ru",
+    "url": "https://www.tbank.ru/auth/login/",
+    "status": "error",
+    "detail": "page.goto: net::ERR_CERT_AUTHORITY_INVALID at https://www.tbank.ru/auth/login/\nCall log:\n  - navigating to \"https://www.tbank.ru/auth/login/\", waiting until \"domcontentloaded\"\n",
+    "httpStatus": null
+  },
+  {
+    "domain": "www.udemy.com",
+    "url": "https://www.udemy.com/join/login-popup/",
+    "status": "skipped",
+    "detail": "known bot-block/timeout from corpus notes",
+    "httpStatus": "403"
+  },
+  {
+    "domain": "www.vseinstrumenti.ru",
+    "url": "https://www.vseinstrumenti.ru/",
+    "status": "skipped",
+    "detail": "known bot-block/timeout from corpus notes",
+    "httpStatus": "403"
+  },
+  {
+    "domain": "www.webasyst.ru",
+    "url": "https://www.webasyst.ru/login/",
+    "status": "blocked",
+    "detail": "anti-bot interstitial",
+    "httpStatus": 200
+  },
+  {
+    "domain": "www.wildberries.ru",
+    "url": "https://www.wildberries.ru/",
+    "status": "skipped",
+    "detail": "known bot-block/timeout from corpus notes",
+    "httpStatus": "498"
+  },
+  {
+    "domain": "www.yclients.com",
+    "url": "https://www.yclients.com/",
+    "status": "skipped",
+    "detail": "known bot-block/timeout from corpus notes",
+    "httpStatus": "403"
+  },
+  {
+    "domain": "x.com",
+    "url": "https://x.com/i/flow/login",
+    "status": "blocked",
+    "detail": "HTTP 403",
+    "httpStatus": 403
+  },
+  {
+    "domain": "zakupki.gov.ru",
+    "url": "https://zakupki.gov.ru/",
+    "status": "skipped",
+    "detail": "known bot-block/timeout from corpus notes",
+    "httpStatus": "000"
+  },
+  {
+    "domain": "zoom.us",
+    "url": "https://zoom.us/signin",
+    "status": "blocked",
+    "detail": "anti-bot interstitial",
+    "httpStatus": 200
+  }
+]

@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "pageId": "www.target.com__df9247dd",
+  "url": "https://www.target.com/login",
+  "lang": "EN",
+  "annotator": "A",
+  "status": "annotated",
+  "pageKind": "login",
+  "forms": [
+    {
+      "formId": "form-1",
+      "selector": "form",
+      "fields": [
+        {
+          "selector": "#email-address",
+          "role": "username",
+          "hints": {
+            "type": "text",
+            "name": "email-address",
+            "id": "email-address",
+            "autocomplete": "on",
+            "placeholder": " ",
+            "labelText": "Email address"
+          }
+        }
+      ]
+    }
+  ],
+  "notes": "Annotator A drafted from HTML5/semantic rules on captured DOM (independent of classifier)."
+}

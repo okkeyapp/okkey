@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "pageId": "www.superjob.ru__0d8ec16e",
+  "url": "https://www.superjob.ru/user/login/",
+  "lang": "RU",
+  "annotator": "A",
+  "status": "uncapturable",
+  "pageKind": "login",
+  "forms": [],
+  "notes": "page.goto: net::ERR_HTTP2_PROTOCOL_ERROR at https://www.superjob.ru/user/login/\nCall log:\n  - navigating to \"https://www.superjob.ru/user/login/\", waiting until \"domcontentloaded\"\n"
+}

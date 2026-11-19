@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "pageId": "accounts.spotify.com__ed007f9c",
+  "url": "https://accounts.spotify.com/login",
+  "lang": "EN",
+  "annotator": "A",
+  "status": "blocked",
+  "pageKind": "login",
+  "forms": [],
+  "notes": "anti-bot interstitial"
+}

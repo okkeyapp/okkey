@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "pageId": "discord.com__d04b102a",
+  "url": "https://discord.com/login",
+  "lang": "EN",
+  "annotator": "A",
+  "status": "annotated",
+  "pageKind": "login",
+  "forms": [
+    {
+      "formId": "form-1",
+      "selector": "form",
+      "fields": [
+        {
+          "selector": "#uid_10",
+          "role": "username",
+          "hints": {
+            "type": "text",
+            "name": "email",
+            "id": "uid_10",
+            "autocomplete": "username webauthn",
+            "ariaLabel": "Email or Phone Number",
+            "labelText": "Email or Phone Number*",
+            "maxLength": 999
+          }
+        },
+        {
+          "selector": "#uid_12",
+          "role": "password",
+          "hints": {
+            "type": "password",
+            "name": "password",
+            "id": "uid_12",
+            "autocomplete": "current-password",
+            "ariaLabel": "Password",
+            "labelText": "Password*"
+          }
+        }
+      ]
+    }
+  ],
+  "notes": "Annotator A drafted from HTML5/semantic rules on captured DOM (independent of classifier)."
+}

@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "pageId": "fixture-otp-step",
+  "url": "fixture://otp-step",
+  "lang": "EN",
+  "pageKind": "login",
+  "forms": [
+    {
+      "formId": "form-1",
+      "selector": "form#otp",
+      "fields": [
+        {
+          "selector": "#code",
+          "role": "otp",
+          "hints": {
+            "type": "text",
+            "name": "otp",
+            "id": "code",
+            "autocomplete": "one-time-code",
+            "labelText": "One-Time Password",
+            "inputMode": "numeric",
+            "maxLength": 6
+          }
+        }
+      ]
+    }
+  ],
+  "notes": "Synthetic fixture (not third-party HTML).",
+  "annotator": "A",
+  "status": "annotated"
+}

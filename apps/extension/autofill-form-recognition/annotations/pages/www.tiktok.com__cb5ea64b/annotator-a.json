@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "pageId": "www.tiktok.com__cb5ea64b",
+  "url": "https://www.tiktok.com/login",
+  "lang": "EN",
+  "annotator": "A",
+  "status": "uncapturable",
+  "pageKind": "login",
+  "forms": [],
+  "notes": "Captured but no semantic login fields found on first paint (modal/SPA likely)."
+}

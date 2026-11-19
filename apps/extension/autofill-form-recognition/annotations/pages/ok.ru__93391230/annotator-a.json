@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "pageId": "ok.ru__93391230",
+  "url": "https://ok.ru/",
+  "lang": "RU",
+  "annotator": "A",
+  "status": "annotated",
+  "pageKind": "login",
+  "forms": [
+    {
+      "formId": "form-1",
+      "selector": "form",
+      "fields": [
+        {
+          "selector": "#field_email",
+          "role": "username",
+          "hints": {
+            "type": "text",
+            "name": "st.email",
+            "id": "field_email",
+            "placeholder": "Телефон или адрес эл. почты"
+          }
+        },
+        {
+          "selector": "#field_password",
+          "role": "password",
+          "hints": {
+            "type": "password",
+            "name": "st.password",
+            "id": "field_password",
+            "placeholder": "Пароль"
+          }
+        }
+      ]
+    }
+  ],
+  "notes": "Annotator A drafted from HTML5/semantic rules on captured DOM (independent of classifier)."
+}

@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "pageId": "en.wikipedia.org__461a7208",
+  "url": "https://en.wikipedia.org/wiki/Special:UserLogin",
+  "lang": "EN",
+  "annotator": "A",
+  "status": "annotated",
+  "pageKind": "login",
+  "forms": [
+    {
+      "formId": "form-1",
+      "selector": "form",
+      "fields": [
+        {
+          "selector": "#wpName1",
+          "role": "username",
+          "hints": {
+            "type": "text",
+            "name": "wpName",
+            "id": "wpName1",
+            "autocomplete": "username webauthn",
+            "placeholder": "Enter your username",
+            "labelText": "Username"
+          }
+        },
+        {
+          "selector": "#wpPassword1",
+          "role": "password",
+          "hints": {
+            "type": "password",
+            "name": "wpPassword",
+            "id": "wpPassword1",
+            "autocomplete": "current-password",
+            "placeholder": "Enter your password",
+            "labelText": "Password"
+          }
+        }
+      ]
+    }
+  ],
+  "notes": "Annotator A drafted from HTML5/semantic rules on captured DOM (independent of classifier)."
+}

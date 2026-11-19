@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "pageId": "lkfl2.nalog.gov.ru__9a2aaea0",
+  "url": "https://www.nalog.gov.ru/",
+  "lang": "RU",
+  "annotator": "A",
+  "status": "uncapturable",
+  "pageKind": "login",
+  "forms": [],
+  "notes": "Annotator A drafted from HTML5/semantic rules on captured DOM (independent of classifier)."
+}

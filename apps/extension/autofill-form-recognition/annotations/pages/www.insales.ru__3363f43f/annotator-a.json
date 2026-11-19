@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "pageId": "www.insales.ru__3363f43f",
+  "url": "https://www.insales.ru/",
+  "lang": "RU",
+  "annotator": "A",
+  "status": "annotated",
+  "pageKind": "login",
+  "forms": [
+    {
+      "formId": "form-1",
+      "selector": "form",
+      "fields": [
+        {
+          "selector": "input[type=\"tel\"][name=\"phone\"]",
+          "role": "username",
+          "hints": {
+            "type": "tel",
+            "name": "phone",
+            "autocomplete": "tel",
+            "placeholder": "+7(___)-___--___",
+            "inputMode": "tel"
+          }
+        }
+      ]
+    }
+  ],
+  "notes": "Annotator A drafted from HTML5/semantic rules on captured DOM (independent of classifier)."
+}

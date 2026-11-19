@@ -1,0 +1,17 @@
+{
+  "sha256": "7cc5c13ced6a0e8f1ccb4322988566fd11683330b3d41be79b459acb1efd1085",
+  "files": [
+    {
+      "path": "/agent/repos/okkey/apps/extension/src/lib/autofillFieldClassify.ts",
+      "sha256": "b4e51e67709ead7e3a6a2a211b6d7efb8a3af568810601e01cf1cb20828bece4"
+    },
+    {
+      "path": "/agent/repos/okkey/apps/extension/src/lib/autofillFormDetect.ts",
+      "sha256": "28d72b1c7fabc147f7111b90f2cb702eff271efe45dffbc090365786a1271508"
+    },
+    {
+      "path": "/agent/repos/okkey/apps/extension/src/lib/loginFormFields.ts",
+      "sha256": "458d9753e75f77295e907f68933bff16e107487a58dc5d122309c5d6b8a42ce8"
+    }
+  ]
+}

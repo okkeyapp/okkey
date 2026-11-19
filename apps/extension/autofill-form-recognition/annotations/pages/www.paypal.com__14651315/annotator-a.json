@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "pageId": "www.paypal.com__14651315",
+  "url": "https://www.paypal.com/",
+  "lang": "EN",
+  "annotator": "A",
+  "status": "blocked",
+  "pageKind": "login",
+  "forms": [],
+  "notes": "HTTP 403"
+}

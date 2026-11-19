@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "pageId": "www.aliexpress.com__7680fd3e",
+  "url": "https://www.aliexpress.com/",
+  "lang": "EN",
+  "annotator": "A",
+  "status": "uncapturable",
+  "pageKind": "login",
+  "forms": [],
+  "notes": "Annotator A drafted from HTML5/semantic rules on captured DOM (independent of classifier)."
+}

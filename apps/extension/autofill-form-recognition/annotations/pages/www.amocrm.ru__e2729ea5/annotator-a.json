@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "pageId": "www.amocrm.ru__e2729ea5",
+  "url": "https://www.amocrm.ru/account/login/",
+  "lang": "RU",
+  "annotator": "A",
+  "status": "uncapturable",
+  "pageKind": "login",
+  "forms": [],
+  "notes": "Captured but no semantic login fields found on first paint (modal/SPA likely)."
+}

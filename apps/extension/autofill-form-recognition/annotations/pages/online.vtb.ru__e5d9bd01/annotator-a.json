@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "pageId": "online.vtb.ru__e5d9bd01",
+  "url": "https://online.vtb.ru/",
+  "lang": "RU",
+  "annotator": "A",
+  "status": "uncapturable",
+  "pageKind": "login",
+  "forms": [],
+  "notes": "page.goto: net::ERR_CERT_AUTHORITY_INVALID at https://online.vtb.ru/\nCall log:\n  - navigating to \"https://online.vtb.ru/\", waiting until \"domcontentloaded\"\n"
+}

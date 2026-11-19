@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "pageId": "practicum.yandex.ru__a6499d23",
+  "url": "https://practicum.yandex.ru/",
+  "lang": "RU",
+  "annotator": "A",
+  "status": "uncapturable",
+  "pageKind": "login",
+  "forms": [],
+  "notes": "Annotator A drafted from HTML5/semantic rules on captured DOM (independent of classifier)."
+}

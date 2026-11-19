@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "pageId": "aliexpress.ru__89f50f42",
+  "url": "https://aliexpress.ru/",
+  "lang": "RU",
+  "annotator": "A",
+  "status": "uncapturable",
+  "pageKind": "login",
+  "forms": [],
+  "notes": "Captured but no semantic login fields found on first paint (modal/SPA likely)."
+}

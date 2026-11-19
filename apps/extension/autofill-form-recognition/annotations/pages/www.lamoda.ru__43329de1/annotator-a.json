@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "pageId": "www.lamoda.ru__43329de1",
+  "url": "https://www.lamoda.ru/",
+  "lang": "RU",
+  "annotator": "A",
+  "status": "uncapturable",
+  "pageKind": "login",
+  "forms": [],
+  "notes": "Captured but no semantic login fields found on first paint (modal/SPA likely)."
+}

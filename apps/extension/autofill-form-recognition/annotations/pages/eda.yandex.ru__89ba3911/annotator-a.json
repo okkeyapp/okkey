@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "pageId": "eda.yandex.ru__89ba3911",
+  "url": "https://eda.yandex.ru/",
+  "lang": "RU",
+  "annotator": "A",
+  "status": "blocked",
+  "pageKind": "login",
+  "forms": [],
+  "notes": "anti-bot interstitial"
+}

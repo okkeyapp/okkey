@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "pageId": "www.yclients.com__daa60a64",
+  "url": "https://www.yclients.com/",
+  "lang": "RU",
+  "annotator": "A",
+  "status": "blocked",
+  "pageKind": "login",
+  "forms": [],
+  "notes": "known bot-block/timeout from corpus notes"
+}

@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "pageId": "accounts.binance.com__592188c5",
+  "url": "https://accounts.binance.com/en/login",
+  "lang": "EN",
+  "annotator": "A",
+  "status": "annotated",
+  "pageKind": "login",
+  "forms": [
+    {
+      "formId": "form-1",
+      "selector": "form",
+      "fields": [
+        {
+          "selector": "#bn-formItem-UrGr104v",
+          "role": "username",
+          "hints": {
+            "type": "text",
+            "name": "username",
+            "id": "bn-formItem-UrGr104v",
+            "autocomplete": "username",
+            "placeholder": "Email/Phone (without country code)",
+            "ariaLabel": "Username field for email or phone number",
+            "labelText": "Email/Phone number",
+            "role": "textbox"
+          }
+        }
+      ]
+    }
+  ],
+  "notes": "Annotator A drafted from HTML5/semantic rules on captured DOM (independent of classifier)."
+}

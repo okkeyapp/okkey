@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "pageId": "unifi.ui.com__8ae64c9c",
+  "url": "https://unifi.ui.com/",
+  "lang": "EN",
+  "annotator": "A",
+  "status": "annotated",
+  "pageKind": "login",
+  "forms": [
+    {
+      "formId": "form-1",
+      "selector": "form",
+      "fields": [
+        {
+          "selector": "#user",
+          "role": "username",
+          "hints": {
+            "type": "text",
+            "id": "user",
+            "autocomplete": "username",
+            "ariaLabel": "user",
+            "labelText": "Email or Username  Email or Username"
+          }
+        }
+      ]
+    }
+  ],
+  "notes": "Annotator A drafted from HTML5/semantic rules on captured DOM (independent of classifier)."
+}

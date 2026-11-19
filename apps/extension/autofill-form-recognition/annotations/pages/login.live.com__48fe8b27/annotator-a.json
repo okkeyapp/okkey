@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "pageId": "login.live.com__48fe8b27",
+  "url": "https://login.live.com/",
+  "lang": "EN",
+  "annotator": "A",
+  "status": "annotated",
+  "pageKind": "login",
+  "forms": [
+    {
+      "formId": "form-1",
+      "selector": "form",
+      "fields": [
+        {
+          "selector": "#usernameEntry",
+          "role": "username",
+          "hints": {
+            "type": "email",
+            "id": "usernameEntry",
+            "autocomplete": "username webauthn",
+            "labelText": "Email or phone number"
+          }
+        }
+      ]
+    }
+  ],
+  "notes": "Annotator A drafted from HTML5/semantic rules on captured DOM (independent of classifier)."
+}

@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "pageId": "github.com__578a1c1d",
+  "url": "https://github.com/login",
+  "lang": "EN",
+  "annotator": "A",
+  "status": "annotated",
+  "pageKind": "login",
+  "forms": [
+    {
+      "formId": "form-1",
+      "selector": "form",
+      "fields": [
+        {
+          "selector": "#login_field",
+          "role": "username",
+          "hints": {
+            "type": "text",
+            "name": "login",
+            "id": "login_field",
+            "autocomplete": "username",
+            "labelText": "Username or email address"
+          }
+        },
+        {
+          "selector": "#password",
+          "role": "password",
+          "hints": {
+            "type": "password",
+            "name": "password",
+            "id": "password",
+            "autocomplete": "current-password",
+            "labelText": "Password"
+          }
+        }
+      ]
+    }
+  ],
+  "notes": "Annotator A drafted from HTML5/semantic rules on captured DOM (independent of classifier)."
+}

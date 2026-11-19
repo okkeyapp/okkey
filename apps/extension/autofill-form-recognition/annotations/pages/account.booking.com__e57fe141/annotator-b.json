@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "pageId": "account.booking.com__e57fe141",
+  "url": "https://account.booking.com/sign-in",
+  "lang": "EN",
+  "annotator": "B",
+  "status": "empty",
+  "pageKind": "login",
+  "forms": [],
+  "notes": "Reserved for independent annotator B."
+}

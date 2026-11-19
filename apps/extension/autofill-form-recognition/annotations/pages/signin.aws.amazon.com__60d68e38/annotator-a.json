@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "pageId": "signin.aws.amazon.com__60d68e38",
+  "url": "https://console.aws.amazon.com/",
+  "lang": "EN",
+  "annotator": "A",
+  "status": "annotated",
+  "pageKind": "login",
+  "forms": [
+    {
+      "formId": "form-1",
+      "selector": "form",
+      "fields": [
+        {
+          "selector": "#username",
+          "role": "username",
+          "hints": {
+            "type": "text",
+            "name": "username",
+            "id": "username",
+            "autocomplete": "on",
+            "labelText": "IAM username IAM username"
+          }
+        },
+        {
+          "selector": "#password",
+          "role": "password",
+          "hints": {
+            "type": "password",
+            "name": "password",
+            "id": "password",
+            "autocomplete": "on",
+            "labelText": "Password Password"
+          }
+        }
+      ]
+    }
+  ],
+  "notes": "Annotator A drafted from HTML5/semantic rules on captured DOM (independent of classifier)."
+}

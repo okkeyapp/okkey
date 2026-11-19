@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "pageId": "esia.gosuslugi.ru__2b389499",
+  "url": "https://esia.gosuslugi.ru/login/",
+  "lang": "RU",
+  "annotator": "A",
+  "status": "uncapturable",
+  "pageKind": "login",
+  "forms": [],
+  "notes": "Captured but no semantic login fields found on first paint (modal/SPA likely)."
+}

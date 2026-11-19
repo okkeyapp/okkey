@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "pageId": "www.uber.com__53f1bb15",
+  "url": "https://www.uber.com/login",
+  "lang": "EN",
+  "annotator": "A",
+  "status": "uncapturable",
+  "pageKind": "login",
+  "forms": [],
+  "notes": "Captured but no semantic login fields found on first paint (modal/SPA likely)."
+}

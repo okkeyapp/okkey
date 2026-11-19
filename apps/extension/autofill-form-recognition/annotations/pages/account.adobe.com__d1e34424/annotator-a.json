@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "pageId": "account.adobe.com__d1e34424",
+  "url": "https://auth.services.adobe.com/en_US/index.html",
+  "lang": "EN",
+  "annotator": "A",
+  "status": "annotated",
+  "pageKind": "login",
+  "forms": [
+    {
+      "formId": "form-1",
+      "selector": "form#EmailForm",
+      "fields": [
+        {
+          "selector": "#EmailPage-EmailField",
+          "role": "username",
+          "hints": {
+            "type": "email",
+            "name": "username",
+            "id": "EmailPage-EmailField",
+            "autocomplete": "email webauthn",
+            "ariaLabel": "Email address"
+          }
+        }
+      ]
+    }
+  ],
+  "notes": "Annotator A drafted from HTML5/semantic rules on captured DOM (independent of classifier)."
+}

@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "pageId": "www.drupal.org__28048acd",
+  "url": "https://www.drupal.org/user/login",
+  "lang": "EN",
+  "annotator": "A",
+  "status": "blocked",
+  "pageKind": "login",
+  "forms": [],
+  "notes": "anti-bot interstitial"
+}

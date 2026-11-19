@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "pageId": "uchi.ru__4ca8efe8",
+  "url": "https://uchi.ru/",
+  "lang": "RU",
+  "annotator": "A",
+  "status": "annotated",
+  "pageKind": "login",
+  "forms": [
+    {
+      "formId": "form-1",
+      "selector": "form#login-block",
+      "fields": [
+        {
+          "selector": "#login",
+          "role": "username",
+          "hints": {
+            "type": "text",
+            "name": "login",
+            "id": "login",
+            "autocomplete": "off"
+          }
+        },
+        {
+          "selector": "#password",
+          "role": "password",
+          "hints": {
+            "type": "password",
+            "name": "password",
+            "id": "password",
+            "autocomplete": "off"
+          }
+        }
+      ]
+    }
+  ],
+  "notes": "Annotator A drafted from HTML5/semantic rules on captured DOM (independent of classifier)."
+}

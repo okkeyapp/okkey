@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "corpusId": "ae770a479b99043b",
+  "corpusSiteCount": 247,
+  "baselineReportPath": "reports/baseline.json",
+  "policy": "not-worse-than-baseline"
+}

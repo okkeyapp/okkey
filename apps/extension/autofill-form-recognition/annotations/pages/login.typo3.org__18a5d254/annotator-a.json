@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "pageId": "login.typo3.org__18a5d254",
+  "url": "https://login.typo3.org/",
+  "lang": "EN",
+  "annotator": "A",
+  "status": "uncapturable",
+  "pageKind": "login",
+  "forms": [],
+  "notes": "Captured but no semantic login fields found on first paint (modal/SPA likely)."
+}

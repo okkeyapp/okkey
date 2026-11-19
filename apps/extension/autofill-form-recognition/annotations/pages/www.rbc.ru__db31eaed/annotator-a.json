@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "pageId": "www.rbc.ru__db31eaed",
+  "url": "https://www.rbc.ru/",
+  "lang": "RU",
+  "annotator": "A",
+  "status": "blocked",
+  "pageKind": "login",
+  "forms": [],
+  "notes": "known bot-block/timeout from corpus notes"
+}

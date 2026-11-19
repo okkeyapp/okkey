@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "pageId": "www.dropbox.com__6695a28a",
+  "url": "https://www.dropbox.com/login",
+  "lang": "EN",
+  "annotator": "A",
+  "status": "annotated",
+  "pageKind": "login",
+  "forms": [
+    {
+      "formId": "form-1",
+      "selector": "form",
+      "fields": [
+        {
+          "selector": "#susi_email8746419773544387",
+          "role": "username",
+          "hints": {
+            "type": "email",
+            "name": "susi_email",
+            "id": "susi_email8746419773544387",
+            "autocomplete": "username webauthn",
+            "placeholder": "name@company.com",
+            "labelText": "Email",
+            "inputMode": "email"
+          }
+        }
+      ]
+    }
+  ],
+  "notes": "Annotator A drafted from HTML5/semantic rules on captured DOM (independent of classifier)."
+}
