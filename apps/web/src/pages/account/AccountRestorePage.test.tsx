@@ -20,6 +20,23 @@ const core = vi.hoisted(() => ({
   post: vi.fn(),
 }));
 
+const cryptoMocks = vi.hoisted(() => ({
+  openStoredSplitKeyShareB: vi.fn(),
+  sealSplitKeyShareB: vi.fn(async () => ({
+    wrapped: new Uint8Array([1, 2, 3]),
+    shareWrap: {
+      ed25519Seed: new Uint8Array(32),
+      mlkemDecapsulationKey: new Uint8Array(32),
+    },
+  })),
+  rebalanceServerShareForNewPassword: vi.fn(async () => ({
+    serverKeyShare: new Uint8Array(32),
+    passwordKdfSalt: new Uint8Array(16),
+    passwordKdfParamsVersion: 2,
+    passwordShareC: new Uint8Array(32),
+  })),
+}));
+
 vi.mock("@okkey/crypto", () => ({
   initCrypto: vi.fn(async () => undefined),
   generateRecoverySecret: vi.fn(async () => "AAAA-BBBB-CCCC-DDDD"),
@@ -32,20 +49,10 @@ vi.mock("@okkey/crypto", () => ({
   })),
   unwrapVaultKeyWithRecoverySecret: vi.fn(async () => new Uint8Array(32)),
   signRecoveryPossessionProof: vi.fn(async () => "c2ln"),
-  sealSplitKeyShareB: vi.fn(async () => ({
-    wrapped: new Uint8Array([1, 2, 3]),
-    shareWrap: {
-      ed25519Seed: new Uint8Array(32),
-      mlkemDecapsulationKey: new Uint8Array(32),
-    },
-  })),
-  openStoredSplitKeyShareB: vi.fn(),
-  rebalanceServerShareForNewPassword: vi.fn(async () => ({
-    serverKeyShare: new Uint8Array(32),
-    passwordKdfSalt: new Uint8Array(16),
-    passwordKdfParamsVersion: 2,
-    passwordShareC: new Uint8Array(32),
-  })),
+  sealSplitKeyShareB: (...args: unknown[]) => cryptoMocks.sealSplitKeyShareB(...args),
+  openStoredSplitKeyShareB: (...args: unknown[]) => cryptoMocks.openStoredSplitKeyShareB(...args),
+  rebalanceServerShareForNewPassword: (...args: unknown[]) =>
+    cryptoMocks.rebalanceServerShareForNewPassword(...args),
   wipeBytes: vi.fn(),
 }));
 
@@ -56,9 +63,24 @@ vi.mock("@okkey/vault", () => ({
   rememberServerKeyShare: vi.fn(),
 }));
 
-vi.mock("../../auth/localVaultBundle", () => ({
-  readVaultBundle: () => null,
+const vaultBundleMocks = vi.hoisted(() => ({
+  readVaultBundle: vi.fn(() => null as null | {
+    device_share_b64: string;
+    password_kdf_salt_b64: string;
+    password_kdf_params_version: number;
+    encrypted_private_key: {
+      crypto_version: number;
+      algorithm: string;
+      payload: string;
+      meta: Record<string, unknown>;
+    };
+  }),
   writeVaultBundle: vi.fn(),
+}));
+
+vi.mock("../../auth/localVaultBundle", () => ({
+  readVaultBundle: (...args: unknown[]) => vaultBundleMocks.readVaultBundle(...args),
+  writeVaultBundle: (...args: unknown[]) => vaultBundleMocks.writeVaultBundle(...args),
 }));
 
 const registerCurrentBrowserDevice = vi.hoisted(() => vi.fn());
@@ -74,15 +96,20 @@ vi.mock("../../api/client", () => ({
   }),
 }));
 
+const authVaultState = vi.hoisted(() => ({
+  deviceTrustStatus: "pending" as "pending" | "trusted" | "blocked" | "rejected" | "checking" | "error",
+  hasVaultBundle: false,
+}));
+
 vi.mock("../../auth/AuthVaultContext", () => ({
   useAuthVault: () => ({
     accessToken: "token",
     userId: "u1",
     vaultUnlocked: false,
-    hasVaultBundle: false,
+    hasVaultBundle: authVaultState.hasVaultBundle,
     applyUnlockedSecrets: vi.fn(),
     currentDeviceId: null,
-    deviceTrustStatus: "pending",
+    deviceTrustStatus: authVaultState.deviceTrustStatus,
     refreshDeviceTrust: vi.fn(async () => undefined),
     markDeviceBlockedForever: vi.fn(),
     profile: { email: "user@okkey.local", firstName: "Test", lastName: "User" },
@@ -237,11 +264,33 @@ async function typePassword(newLabel: string, repeatLabel: string) {
   });
 }
 
+function staleLocalVaultBundle() {
+  return {
+    device_share_b64: "c3RhbGUtc2hhcmUtYg",
+    password_kdf_salt_b64: "c2FsdA",
+    password_kdf_params_version: 2,
+    encrypted_private_key: {
+      crypto_version: 2,
+      algorithm: "xchacha20-poly1305",
+      payload: "local-identity",
+      meta: {},
+    },
+  };
+}
+
 describe("AccountRestorePage approved recovery", () => {
   beforeEach(() => {
     ensureLocalStorage();
     order.length = 0;
     localStorage.setItem(LOCALE_STORAGE_KEY, "en");
+    authVaultState.deviceTrustStatus = "pending";
+    authVaultState.hasVaultBundle = false;
+    vaultBundleMocks.readVaultBundle.mockReset();
+    vaultBundleMocks.writeVaultBundle.mockReset();
+    vaultBundleMocks.readVaultBundle.mockReturnValue(null);
+    cryptoMocks.openStoredSplitKeyShareB.mockReset();
+    cryptoMocks.sealSplitKeyShareB.mockClear();
+    cryptoMocks.rebalanceServerShareForNewPassword.mockClear();
     core.getAccountRecoveryStatus.mockReset();
     core.changeMasterPassword.mockReset();
     core.getAccountRecoveryIdentityEncryptedKey.mockReset();
@@ -369,5 +418,94 @@ describe("AccountRestorePage approved recovery", () => {
       expect(order).toEqual(["pending", "prove", "prove", "change", "identity", "claim"]);
     });
     expect(core.post).not.toHaveBeenCalled();
+  });
+
+  it("mints a fresh device share when a stale local bundle exists on a pending browser", async () => {
+    authVaultState.hasVaultBundle = true;
+    vaultBundleMocks.readVaultBundle.mockReturnValue(staleLocalVaultBundle());
+    cryptoMocks.openStoredSplitKeyShareB.mockRejectedValue(
+      new Error("CryptoSdkError openStoredSplitKeyShareB: aead::Error"),
+    );
+    core.getAccountRecoveryStatus.mockResolvedValue(status({ devices: true }));
+    renderPage();
+
+    await typePassword("device new password", "device repeat password");
+    fireEvent.click(screen.getByRole("button", { name: "finish devices" }));
+
+    await waitFor(() => {
+      expect(order).toEqual([
+        "post /enterprise/account/recovery/devices/requests/device-req/complete",
+        "change",
+        "pending",
+        "claim",
+      ]);
+    });
+    expect(cryptoMocks.openStoredSplitKeyShareB).not.toHaveBeenCalled();
+    expect(cryptoMocks.sealSplitKeyShareB).toHaveBeenCalled();
+    expect(vaultBundleMocks.writeVaultBundle).toHaveBeenCalledWith(
+      expect.objectContaining({
+        device_share_b64: expect.any(String),
+        encrypted_private_key: expect.objectContaining({ payload: "local-identity" }),
+      }),
+      "u1",
+    );
+  });
+
+  it("reuses an openable local share on a trusted browser without claiming", async () => {
+    authVaultState.deviceTrustStatus = "trusted";
+    authVaultState.hasVaultBundle = true;
+    vaultBundleMocks.readVaultBundle.mockReturnValue(staleLocalVaultBundle());
+    cryptoMocks.openStoredSplitKeyShareB.mockResolvedValue(new Uint8Array(32).fill(9));
+    core.getAccountRecoveryStatus.mockResolvedValue(status({ key: true }));
+    renderPage();
+
+    fireEvent.change(await screen.findByLabelText(/^recovery key$/i), {
+      target: { value: "saved-recovery-key" },
+    });
+    fireEvent.change(screen.getByLabelText(/^new master password$/i), {
+      target: { value: "correct horse" },
+    });
+    fireEvent.change(screen.getByLabelText(/^repeat new master password$/i), {
+      target: { value: "correct horse" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Restore access" }));
+
+    await waitFor(() => {
+      expect(order).toEqual(["pending", "prove", "prove", "change"]);
+    });
+    expect(cryptoMocks.openStoredSplitKeyShareB).toHaveBeenCalled();
+    expect(cryptoMocks.sealSplitKeyShareB).not.toHaveBeenCalled();
+    expect(registerCurrentBrowserDevice).toHaveBeenCalledTimes(1);
+    expect(registerCurrentBrowserDevice.mock.calls[0]?.[2]).toMatchObject({
+      recoveryPending: true,
+    });
+  });
+
+  it("mints and claims when a trusted browser cannot open its local share", async () => {
+    authVaultState.deviceTrustStatus = "trusted";
+    authVaultState.hasVaultBundle = true;
+    vaultBundleMocks.readVaultBundle.mockReturnValue(staleLocalVaultBundle());
+    cryptoMocks.openStoredSplitKeyShareB.mockRejectedValue(
+      new Error("CryptoSdkError openStoredSplitKeyShareB: aead::Error"),
+    );
+    core.getAccountRecoveryStatus.mockResolvedValue(status({ key: true }));
+    renderPage();
+
+    fireEvent.change(await screen.findByLabelText(/^recovery key$/i), {
+      target: { value: "saved-recovery-key" },
+    });
+    fireEvent.change(screen.getByLabelText(/^new master password$/i), {
+      target: { value: "correct horse" },
+    });
+    fireEvent.change(screen.getByLabelText(/^repeat new master password$/i), {
+      target: { value: "correct horse" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Restore access" }));
+
+    await waitFor(() => {
+      expect(order).toEqual(["pending", "prove", "prove", "change", "claim"]);
+    });
+    expect(cryptoMocks.openStoredSplitKeyShareB).toHaveBeenCalled();
+    expect(cryptoMocks.sealSplitKeyShareB).toHaveBeenCalled();
   });
 });

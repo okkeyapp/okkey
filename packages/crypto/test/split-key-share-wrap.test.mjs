@@ -63,6 +63,8 @@ test("share B frame can be resealed to another device wrap key", async () => {
     recipientMlkemDecapsulationKey: next.shareWrap.mlkemDecapsulationKey,
   });
   assert.deepEqual(opened, material.deviceShare);
+  // Wrong wrap key must fail closed (aead). Account restore must not reuse a
+  // foreign/stale hybrid share B when the local wrap key cannot open it.
   await assert.rejects(
     () =>
       openStoredSplitKeyShareB({
