@@ -174,8 +174,19 @@ test("3b) same user agent second profile → reject, then block", async () => {
       page2.getByText(/no trusted devices are available yet/i),
     ).toHaveCount(0);
     await expect(notNow).toBeVisible({ timeout: 60_000 });
+    // Block forever revokes the pending device session; the waiting page must learn
+    // "blocked" via the approval-status credential, not a Bearer /devices poll.
+    // Wait for the block API itself so we do not race the dropdown close / toast.
+    const blockResponse = page.waitForResponse(
+      (response) =>
+        response.request().method() === "POST" &&
+        /\/devices\/[^/]+\/block(?:\?|$)/.test(response.url()) &&
+        response.ok(),
+    );
     await page.getByRole("button", { name: /block options/i }).click();
     await page.getByRole("menuitem", { name: /block forever/i }).click();
+    await blockResponse;
+    await expect(page2).toHaveURL(/\/account\/device-pending/, { timeout: 60_000 });
     await expect(page2.getByRole("heading", { name: /this device is blocked/i })).toBeVisible({
       timeout: 60_000,
     });
