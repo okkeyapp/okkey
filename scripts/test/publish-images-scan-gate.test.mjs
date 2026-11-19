@@ -101,9 +101,19 @@ test("shared Trivy action fails on CRITICAL and HIGH and loads generated ignores
   assert.match(jobBlock("scan-arm64"), /platform:\s*linux\/arm64/);
 });
 
+function prJobBlock(name) {
+  const marker = `\n  ${name}:`;
+  const start = prWorkflow.indexOf(marker);
+  assert.ok(start > 0, `PR workflow job ${name} not found`);
+  const rest = prWorkflow.slice(start + 1);
+  const next = rest.search(/\n  [a-z0-9-]+:\n/);
+  return next === -1 ? rest : rest.slice(0, next);
+}
+
 test("PR image scan builds local amd64 tars and reuses the shared Trivy action", () => {
   assert.match(prWorkflow, /name: PR image scan/);
   assert.match(prWorkflow, /pull_request:/);
+  assert.match(prWorkflow, /merge_group:/);
   assert.match(prWorkflow, /branches:\s*\n\s*- dev\n\s*- "release\/\*\*"/);
   // No trigger-level paths filter: required checks must not stay Pending on
   // docs-only PRs. Relevance is detected inside the workflow instead.
@@ -118,15 +128,10 @@ test("PR image scan builds local amd64 tars and reuses the shared Trivy action",
   );
   assert.match(prWorkflow, /name: detect-image-paths/);
   assert.match(prWorkflow, /outputs:\s*\n\s*images:/);
+  assert.match(prWorkflow, /\.dockerignore/);
+  assert.match(prWorkflow, /apps\/extension\/package\.json/);
   assert.match(prWorkflow, /build-and-scan \(\$\{\{ matrix\.image \}\}\)/);
   assert.match(prWorkflow, /needs: changes/);
-  // Job-level skip would report Skipped and break required checks; gate steps.
-  assert.doesNotMatch(
-    prWorkflow,
-    /build-and-scan:[\s\S]*?\n    if: needs\.changes/,
-  );
-  assert.match(prWorkflow, /needs\.changes\.outputs\.images == 'true'/);
-  assert.match(prWorkflow, /needs\.changes\.outputs\.images != 'true'/);
   assert.match(prWorkflow, /platforms: linux\/amd64/);
   assert.match(prWorkflow, /push:\s*false/);
   assert.match(prWorkflow, /type=docker,dest=\/tmp\/okkey-\$\{\{ matrix\.image \}\}\.tar/);
@@ -144,7 +149,7 @@ test("PR image scan builds local amd64 tars and reuses the shared Trivy action",
   assert.match(prWorkflow, /Upload Trivy reports/);
   assert.match(
     prWorkflow,
-    /OKKEY_GIT_SHA=\$\{\{ github\.event\.pull_request\.head\.sha \}\}/,
+    /OKKEY_GIT_SHA=\$\{\{ github\.event\.pull_request\.head\.sha \|\| github\.event\.merge_group\.head_sha \}\}/,
   );
   assert.match(
     prWorkflow,
@@ -154,6 +159,32 @@ test("PR image scan builds local amd64 tars and reuses the shared Trivy action",
   assert.match(prWorkflow, /scope=\$\{\{ matrix\.cache_scope \}\}-linux-amd64/);
   assert.match(prWorkflow, /cache_scope: services-api/);
   assert.match(prWorkflow, /cache_scope: web/);
+});
+
+test("PR image scan is fail-closed and never soft-passes on a failed path filter", () => {
+  const build = prJobBlock("build-and-scan");
+
+  // Skipped dependents of a failed needs job count as passing for required
+  // checks — build-and-scan must still run and then fail explicitly.
+  assert.match(build, /^  build-and-scan:\n(?:    .*\n)*?    if: always\(\)/m);
+  assert.match(build, /name: Require path detection success/);
+  assert.match(build, /if: needs\.changes\.result != 'success'/);
+  assert.match(
+    build,
+    /refusing to soft-pass the image scan gate/,
+  );
+
+  // Skip heavy work only on an explicit images=false; empty/missing must scan.
+  assert.match(
+    build,
+    /needs\.changes\.result == 'success' && needs\.changes\.outputs\.images == 'false'/,
+  );
+  assert.match(
+    build,
+    /needs\.changes\.result == 'success' && needs\.changes\.outputs\.images != 'false'/,
+  );
+  assert.doesNotMatch(build, /outputs\.images == 'true'/);
+  assert.doesNotMatch(build, /outputs\.images != 'true'/);
 });
 
 test("web runtime pins nginx alpine-slim at or above 1.30.7 for Trivy (TSK-293)", () => {

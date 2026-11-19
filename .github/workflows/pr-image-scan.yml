@@ -7,9 +7,12 @@
 # docker tar and scanned with the same Trivy pin / severity / ignore-unfixed /
 # CVE-exception path as publish-images (via .github/actions/trivy-scan-image).
 #
-# Always runs on every PR into the target branches so the check names can be
-# required without hanging Pending. Image-relevant path detection is inside the
-# workflow: unrelated PRs skip the heavy build+Trivy steps with success.
+# Always runs on every PR (and merge_group) into the target branches so the
+# check names can be required without hanging Pending. Image-relevant path
+# detection is inside the workflow: unrelated PRs skip the heavy build+Trivy
+# steps with success only when the filter explicitly reports images=false
+# (fail-closed otherwise). build-and-scan uses if: always() so a failed or
+# cancelled detect-image-paths job cannot soft-pass the required checks.
 # Fork PRs need no secrets.
 name: PR image scan
 
@@ -18,6 +21,7 @@ on:
     branches:
       - dev
       - "release/**"
+  merge_group:
 
 permissions:
   contents: read
@@ -29,9 +33,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Always reports a conclusion. build-and-scan jobs depend on this but do not
-  # use a job-level `if` so their check names stay Success (not Skipped/Pending)
-  # when nothing image-related changed.
+  # Path filter only. build-and-scan always runs afterward (if: always) and
+  # fails closed when this job did not succeed or when images is not exactly
+  # the string "false".
   changes:
     name: detect-image-paths
     runs-on: ubuntu-latest
@@ -39,16 +43,25 @@ jobs:
     outputs:
       images: ${{ steps.filter.outputs.images }}
     steps:
+      - name: Checkout for merge group diff
+        if: github.event_name == 'merge_group'
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+
       - name: Detect image-relevant path changes
         uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36 # v3.0.2
         id: filter
         with:
+          base: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          ref: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
           filters: |
             images:
               - 'services/api/Dockerfile'
               - 'apps/web/Dockerfile'
               - 'services/**'
               - 'apps/web/**'
+              - 'apps/extension/package.json'
               - 'packages/**'
               - 'rust/**'
               - 'rust-toolchain.toml'
@@ -56,6 +69,7 @@ jobs:
               - 'deploy/**'
               - 'package.json'
               - 'yarn.lock'
+              - '.dockerignore'
               - '.github/workflows/pr-image-scan.yml'
               - '.github/workflows/publish-images.yml'
               - '.github/actions/trivy-scan-image/**'
@@ -64,6 +78,9 @@ jobs:
   build-and-scan:
     name: build-and-scan (${{ matrix.image }})
     needs: changes
+    # Do not soft-pass when detect-image-paths fails or is cancelled: skipped
+    # dependents are treated as passing for required checks.
+    if: always()
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     strategy:
@@ -83,27 +100,35 @@ jobs:
             target: runtime
             cache_scope: web
     steps:
+      - name: Require path detection success
+        if: needs.changes.result != 'success'
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "detect-image-paths concluded with '${{ needs.changes.result }}'; refusing to soft-pass the image scan gate." >&2
+          exit 1
+
       - name: Skip heavy work when unrelated
-        if: needs.changes.outputs.images != 'true'
+        if: needs.changes.result == 'success' && needs.changes.outputs.images == 'false'
         shell: bash
         run: |
           set -euo pipefail
           echo "No image-relevant paths changed; skipping build and Trivy (check stays green)."
 
       - name: Checkout
-        if: needs.changes.outputs.images == 'true'
+        if: needs.changes.result == 'success' && needs.changes.outputs.images != 'false'
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          # Match publish-images: scan the PR head, not the ephemeral merge commit.
-          ref: ${{ github.event.pull_request.head.sha }}
+          # Prefer PR / merge-group head so image contents match the change under test.
+          ref: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
 
       - name: Set up Docker Buildx
-        if: needs.changes.outputs.images == 'true'
+        if: needs.changes.result == 'success' && needs.changes.outputs.images != 'false'
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
 
       - name: Build image to local tar
         id: build
-        if: needs.changes.outputs.images == 'true'
+        if: needs.changes.result == 'success' && needs.changes.outputs.images != 'false'
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
           context: .
@@ -123,11 +148,11 @@ jobs:
             NODE_VERSION=25
             RUST_TOOLCHAIN=1.86.0
             WASM_PACK_VERSION=0.13.1
-            OKKEY_GIT_SHA=${{ github.event.pull_request.head.sha }}
+            OKKEY_GIT_SHA=${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
 
       - name: Prepare Trivy report paths
         id: reports
-        if: needs.changes.outputs.images == 'true'
+        if: needs.changes.result == 'success' && needs.changes.outputs.images != 'false'
         shell: bash
         run: |
           set -euo pipefail
@@ -136,7 +161,7 @@ jobs:
           echo "sarif=/tmp/trivy-reports/okkey-${{ matrix.image }}-amd64.sarif" >> "$GITHUB_OUTPUT"
 
       - name: Scan image with Trivy
-        if: needs.changes.outputs.images == 'true'
+        if: needs.changes.result == 'success' && needs.changes.outputs.images != 'false'
         uses: ./.github/actions/trivy-scan-image
         with:
           image: ${{ matrix.image }}
@@ -145,7 +170,7 @@ jobs:
           sarif-output: ${{ steps.reports.outputs.sarif }}
 
       - name: Upload Trivy reports
-        if: ${{ always() && needs.changes.outputs.images == 'true' && steps.build.outcome == 'success' }}
+        if: ${{ always() && needs.changes.result == 'success' && needs.changes.outputs.images != 'false' && steps.build.outcome == 'success' }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: trivy-${{ matrix.image }}-amd64
