@@ -744,6 +744,7 @@ function ProfileAccountDropdownPanel({
         {showSettingsMenuRow ? (
           <DropdownMenuItem
             className="cursor-pointer gap-2"
+            data-tour-anchor="my-settings"
             onSelect={() => {
               onSettings?.();
             }}
@@ -785,6 +786,7 @@ function ProfileAccountDropdownPanel({
         {onDeviceSettings ? (
           <DropdownMenuItem
             className="cursor-pointer gap-2"
+            data-tour-anchor="device-settings"
             onSelect={() => {
               shell.setMobileDrawerOpen(false);
               onDeviceSettings();
@@ -1100,6 +1102,9 @@ export type OkkeyAppSidebarProps = {
   folderEmptyLabel?: string;
   /** Real user row + account dropdown + working logout; omit for gallery / demo footer copy. */
   accountMenu?: OkkeyAppSidebarAccountMenu;
+  /** Optional controlled open state for the account footer dropdown (e.g. product tour). */
+  accountMenuOpen?: boolean;
+  onAccountMenuOpenChange?: (open: boolean) => void;
   /** When set, footer Documentation / Help use these strings (e.g. i18n); otherwise English gallery labels. */
   footerPlainLinkLabels?: { documentation: string; help: string };
   /** Host-rendered block above Documentation / Help. Self-host passes the version button. */
@@ -1310,22 +1315,28 @@ function CollapsedPrimaryNavRow({
   const compact = "h-9 min-h-9 justify-center px-0";
   const srOnly = <span className="sr-only">{item.label}</span>;
   const LinkC = linkComponent;
+  const tourAnchor = item.id === "set" ? ("workspace-settings" as const) : undefined;
   const button =
     item.to && LinkC ? (
       <SidebarMenuButton asChild isActive={item.isActive} className={compact}>
-        <LinkC to={item.to}>
+        <LinkC to={item.to} data-tour-anchor={tourAnchor}>
           {item.icon}
           {srOnly}
         </LinkC>
       </SidebarMenuButton>
     ) : (
-      <SidebarMenuButton type="button" isActive={item.isActive} className={compact}>
+      <SidebarMenuButton
+        type="button"
+        isActive={item.isActive}
+        className={compact}
+        data-tour-anchor={tourAnchor}
+      >
         {item.icon}
         {srOnly}
       </SidebarMenuButton>
     );
   return (
-    <SidebarMenuItem>
+    <SidebarMenuItem data-tour-anchor={tourAnchor}>
       <SidebarCollapsedTooltip label={item.label}>{button}</SidebarCollapsedTooltip>
     </SidebarMenuItem>
   );
@@ -1367,6 +1378,8 @@ function OkkeyAppSidebarInner({
   folderSectionTitle,
   folderEmptyLabel,
   accountMenu,
+  accountMenuOpen,
+  onAccountMenuOpenChange,
   footerPlainLinkLabels,
   beforeFooter,
   afterFooterPlainLinks,
@@ -1397,6 +1410,8 @@ function OkkeyAppSidebarInner({
   | "folderSectionTitle"
   | "folderEmptyLabel"
   | "accountMenu"
+  | "accountMenuOpen"
+  | "onAccountMenuOpenChange"
   | "footerPlainLinkLabels"
   | "beforeFooter"
   | "afterFooterPlainLinks"
@@ -1423,7 +1438,18 @@ function OkkeyAppSidebarInner({
   const [collapsedVaultDropdownOpen, setCollapsedVaultDropdownOpen] = React.useState(false);
   const [collapsedFolderDropdownOpen, setCollapsedFolderDropdownOpen] = React.useState(false);
   const [workspaceSwitcherOpen, setWorkspaceSwitcherOpen] = React.useState(false);
-  const [profileMenuOpen, setProfileMenuOpen] = React.useState(false);
+  const [uncontrolledProfileMenuOpen, setUncontrolledProfileMenuOpen] = React.useState(false);
+  const profileMenuControlled = typeof accountMenuOpen === "boolean";
+  const profileMenuOpen = profileMenuControlled ? accountMenuOpen : uncontrolledProfileMenuOpen;
+  const setProfileMenuOpen = React.useCallback(
+    (open: boolean) => {
+      if (!profileMenuControlled) {
+        setUncontrolledProfileMenuOpen(open);
+      }
+      onAccountMenuOpenChange?.(open);
+    },
+    [onAccountMenuOpenChange, profileMenuControlled],
+  );
   const switcherHref = workspaceSwitcherTo?.trim() ?? "";
   const SwitcherLink =
     switcherHref.length > 0 ? (workspaceSwitcherLink ?? workspaceNavLink ?? null) : null;
@@ -1707,6 +1733,7 @@ function OkkeyAppSidebarInner({
             <DropdownMenuTrigger asChild>
               <button
                 type="button"
+                data-tour-anchor="account-menu"
                 className={cn(
                   "flex items-center rounded-lg text-left outline-none ring-sidebar-ring transition focus-visible:ring-2",
                   sidebarRowHoverClassName,
@@ -1742,6 +1769,7 @@ function OkkeyAppSidebarInner({
               <DropdownMenuTrigger asChild>
                 <button
                   type="button"
+                  data-tour-anchor="account-menu"
                   className={cn(
                     "flex items-center rounded-lg text-left outline-none ring-sidebar-ring transition focus-visible:ring-2",
                     sidebarRowHoverClassName,
@@ -1768,7 +1796,8 @@ function OkkeyAppSidebarInner({
             sideOffset={shell.isMobile ? 4 : 6}
             collisionPadding={shell.isMobile ? 12 : 8}
             className={cn(
-              "p-0",
+              // Above product-tour overlay (`z-floating`) so My settings / Device settings stay visible.
+              "z-tooltip p-0",
               shell.isMobile
                 ? "max-h-[min(24rem,72dvh)] w-[min(16rem,calc(100vw-1.5rem))] overflow-y-auto"
                 : "w-64",
@@ -1824,6 +1853,8 @@ export function OkkeyAppSidebar({
   folderSectionTitle,
   folderEmptyLabel,
   accountMenu,
+  accountMenuOpen,
+  onAccountMenuOpenChange,
   footerPlainLinkLabels,
   beforeFooter,
   afterFooterPlainLinks,
@@ -1900,6 +1931,8 @@ export function OkkeyAppSidebar({
                   folderSectionTitle={folderSectionTitle}
                   folderEmptyLabel={folderEmptyLabel}
                   accountMenu={accountMenu}
+                  accountMenuOpen={accountMenuOpen}
+                  onAccountMenuOpenChange={onAccountMenuOpenChange}
                   footerPlainLinkLabels={footerPlainLinkLabels}
                   beforeFooter={beforeFooter}
                   afterFooterPlainLinks={afterFooterPlainLinks}
@@ -1945,6 +1978,8 @@ export function OkkeyAppSidebar({
                     folderSectionTitle={folderSectionTitle}
                     folderEmptyLabel={folderEmptyLabel}
                     accountMenu={accountMenu}
+                    accountMenuOpen={accountMenuOpen}
+                    onAccountMenuOpenChange={onAccountMenuOpenChange}
                     footerPlainLinkLabels={footerPlainLinkLabels}
                     beforeFooter={beforeFooter}
                     afterFooterPlainLinks={afterFooterPlainLinks}

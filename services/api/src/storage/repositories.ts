@@ -171,6 +171,8 @@ export class UsersRepository {
     billingRegion: string | null;
     vaultIdleLockSeconds: number;
     masterPasswordChangedAt: string;
+    productTourCompleted: boolean;
+    productTourStep: number;
   } | null> {
     const rows = await this.db.query<{
       email: string;
@@ -180,10 +182,12 @@ export class UsersRepository {
       billing_region: string | null;
       vault_idle_lock_seconds: number;
       master_password_changed_at: Date;
+      product_tour_completed: boolean;
+      product_tour_step: number;
     }>(
       `
         SELECT email, first_name, last_name, locale, billing_region, vault_idle_lock_seconds,
-               master_password_changed_at
+               master_password_changed_at, product_tour_completed, product_tour_step
         FROM users
         WHERE id = $1::bigint
       `,
@@ -201,6 +205,8 @@ export class UsersRepository {
       billingRegion: row.billing_region,
       vaultIdleLockSeconds: row.vault_idle_lock_seconds,
       masterPasswordChangedAt: row.master_password_changed_at.toISOString(),
+      productTourCompleted: Boolean(row.product_tour_completed),
+      productTourStep: Number(row.product_tour_step) || 1,
     };
   }
 
@@ -224,6 +230,8 @@ export class UsersRepository {
     locale?: string | null;
     billingRegion?: string | null;
     vaultIdleLockSeconds?: number;
+    productTourCompleted?: boolean;
+    productTourStep?: number;
   }): Promise<{
     email: string;
     firstName: string | null;
@@ -232,6 +240,8 @@ export class UsersRepository {
     billingRegion: string | null;
     vaultIdleLockSeconds: number;
     masterPasswordChangedAt: string;
+    productTourCompleted: boolean;
+    productTourStep: number;
   } | null> {
     const rows = await this.db.query<{
       email: string;
@@ -241,6 +251,8 @@ export class UsersRepository {
       billing_region: string | null;
       vault_idle_lock_seconds: number;
       master_password_changed_at: Date;
+      product_tour_completed: boolean;
+      product_tour_step: number;
     }>(
       `
         UPDATE users
@@ -250,10 +262,12 @@ export class UsersRepository {
           locale = CASE WHEN $6::boolean THEN $7::text ELSE locale END,
           billing_region = CASE WHEN $8::boolean THEN $9::text ELSE billing_region END,
           vault_idle_lock_seconds = CASE WHEN $10::boolean THEN $11::integer ELSE vault_idle_lock_seconds END,
+          product_tour_completed = CASE WHEN $12::boolean THEN $13::boolean ELSE product_tour_completed END,
+          product_tour_step = CASE WHEN $14::boolean THEN $15::smallint ELSE product_tour_step END,
           updated_at = now()
         WHERE id = $1::bigint
         RETURNING email, first_name, last_name, locale, billing_region, vault_idle_lock_seconds,
-                  master_password_changed_at
+                  master_password_changed_at, product_tour_completed, product_tour_step
       `,
       [
         userId,
@@ -267,6 +281,10 @@ export class UsersRepository {
         patch.billingRegion ?? null,
         Object.prototype.hasOwnProperty.call(patch, "vaultIdleLockSeconds"),
         patch.vaultIdleLockSeconds ?? null,
+        Object.prototype.hasOwnProperty.call(patch, "productTourCompleted"),
+        patch.productTourCompleted ?? false,
+        Object.prototype.hasOwnProperty.call(patch, "productTourStep"),
+        patch.productTourStep ?? 1,
       ],
     );
     const row = rows[0];
@@ -281,6 +299,8 @@ export class UsersRepository {
       billingRegion: row.billing_region,
       vaultIdleLockSeconds: row.vault_idle_lock_seconds,
       masterPasswordChangedAt: row.master_password_changed_at.toISOString(),
+      productTourCompleted: Boolean(row.product_tour_completed),
+      productTourStep: Number(row.product_tour_step) || 1,
     };
   }
 

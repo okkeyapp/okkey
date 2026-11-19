@@ -234,6 +234,7 @@ export default function ItemsShellTopBar() {
             shell.isMobile ? "size-9 min-h-9 min-w-9 p-0" : "gap-[4px] px-4",
           )}
           aria-label={createRecordLabel}
+          data-tour-anchor="create-item"
           onClick={openNewItemPopup}
         >
           <PlusIcon />

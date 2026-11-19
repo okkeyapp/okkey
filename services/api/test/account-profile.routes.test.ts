@@ -70,6 +70,8 @@ function createUsersRepositoryStub(): Pick<
     billingRegion: "US" as string | null,
     vaultIdleLockSeconds: 900,
     masterPasswordChangedAt: "2026-01-01T00:00:00.000Z",
+    productTourCompleted: false,
+    productTourStep: 1,
   };
   return {
     async loadAccountProfile(userId: string) {
@@ -93,6 +95,12 @@ function createUsersRepositoryStub(): Pick<
         vaultIdleLockSeconds: Object.prototype.hasOwnProperty.call(patch, "vaultIdleLockSeconds")
           ? patch.vaultIdleLockSeconds ?? state.vaultIdleLockSeconds
           : state.vaultIdleLockSeconds,
+        productTourCompleted: Object.prototype.hasOwnProperty.call(patch, "productTourCompleted")
+          ? Boolean(patch.productTourCompleted)
+          : state.productTourCompleted,
+        productTourStep: Object.prototype.hasOwnProperty.call(patch, "productTourStep")
+          ? Number(patch.productTourStep) || 1
+          : state.productTourStep,
       };
       return state;
     },
@@ -181,6 +189,9 @@ test("GET /account/profile with auth returns profile", async () => {
     locale: string | null;
     billing_region: string | null;
     vault_idle_lock_seconds: number;
+    master_password_changed_at: string;
+    product_tour_completed: boolean;
+    product_tour_step: number;
   };
   assert.equal(payload.email, "user@example.com");
   assert.equal(payload.first_name, "Ann");
@@ -189,6 +200,8 @@ test("GET /account/profile with auth returns profile", async () => {
   assert.equal(payload.billing_region, "US");
   assert.equal(payload.vault_idle_lock_seconds, 900);
   assert.equal(payload.master_password_changed_at, "2026-01-01T00:00:00.000Z");
+  assert.equal(payload.product_tour_completed, false);
+  assert.equal(payload.product_tour_step, 1);
 });
 
 test("GET /account/profile works for an untrusted device session", async () => {
@@ -330,6 +343,63 @@ test("PATCH /account/profile rejects invalid payload", async () => {
       locale: "fr",
       billing_region: "USA",
     },
+  });
+
+  assert.equal(res.statusCode, 400);
+});
+
+test("PATCH /account/profile updates product tour progress", async () => {
+  const res = await dispatch({
+    method: "PATCH",
+    url: "/account/profile",
+    sessionService: createSessionServiceStub(),
+    usersRepository: createUsersRepositoryStub(),
+    headers: { authorization: "Bearer test-access-token" },
+    body: {
+      product_tour_step: 4,
+      product_tour_completed: false,
+    },
+  });
+
+  assert.equal(res.statusCode, 200);
+  const payload = JSON.parse(res.body) as {
+    product_tour_completed: boolean;
+    product_tour_step: number;
+  };
+  assert.equal(payload.product_tour_completed, false);
+  assert.equal(payload.product_tour_step, 4);
+});
+
+test("PATCH /account/profile can complete the product tour", async () => {
+  const res = await dispatch({
+    method: "PATCH",
+    url: "/account/profile",
+    sessionService: createSessionServiceStub(),
+    usersRepository: createUsersRepositoryStub(),
+    headers: { authorization: "Bearer test-access-token" },
+    body: {
+      product_tour_completed: true,
+      product_tour_step: 4,
+    },
+  });
+
+  assert.equal(res.statusCode, 200);
+  const payload = JSON.parse(res.body) as {
+    product_tour_completed: boolean;
+    product_tour_step: number;
+  };
+  assert.equal(payload.product_tour_completed, true);
+  assert.equal(payload.product_tour_step, 4);
+});
+
+test("PATCH /account/profile rejects invalid product tour step", async () => {
+  const res = await dispatch({
+    method: "PATCH",
+    url: "/account/profile",
+    sessionService: createSessionServiceStub(),
+    usersRepository: createUsersRepositoryStub(),
+    headers: { authorization: "Bearer test-access-token" },
+    body: { product_tour_step: 9 },
   });
 
   assert.equal(res.statusCode, 400);

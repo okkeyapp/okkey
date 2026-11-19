@@ -133,6 +133,8 @@ function makeService(overrides?: {
         billingRegion: "RU",
         vaultIdleLockSeconds: 900,
         masterPasswordChangedAt: new Date().toISOString(),
+        productTourCompleted: true,
+        productTourStep: 1,
       }),
     },
     emailTemplates: {
@@ -554,6 +556,8 @@ test("PlanChangeRequestService rate limit is isolated per workspace", async () =
         billingRegion: "US",
         vaultIdleLockSeconds: 900,
         masterPasswordChangedAt: new Date().toISOString(),
+        productTourCompleted: true,
+        productTourStep: 1,
       }),
     },
     emailTemplates: {

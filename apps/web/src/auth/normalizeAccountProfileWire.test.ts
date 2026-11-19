@@ -28,6 +28,8 @@ describe("normalizeAccountProfileWire", () => {
       billing_region: "DE",
       vault_idle_lock_seconds: 1200,
       master_password_changed_at: "2026-03-02T21:59:00.000Z",
+      product_tour_completed: false,
+      product_tour_step: 1,
     });
   });
 
@@ -39,6 +41,8 @@ describe("normalizeAccountProfileWire", () => {
         lastName: "Bar",
         billingRegion: "US",
         vaultIdleLockSeconds: 600,
+        productTourCompleted: true,
+        productTourStep: 3,
       }),
     ).toEqual({
       email: "x@y.z",
@@ -48,6 +52,8 @@ describe("normalizeAccountProfileWire", () => {
       billing_region: "US",
       vault_idle_lock_seconds: 600,
       master_password_changed_at: null,
+      product_tour_completed: true,
+      product_tour_step: 3,
     });
   });
 
@@ -66,6 +72,8 @@ describe("normalizeAccountProfileWire", () => {
       billing_region: null,
       vault_idle_lock_seconds: 900,
       master_password_changed_at: null,
+      product_tour_completed: false,
+      product_tour_step: 1,
     });
   });
 });

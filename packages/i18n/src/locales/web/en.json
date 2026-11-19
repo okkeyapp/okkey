@@ -2018,5 +2018,16 @@
   "web.systemUpdate.error.PACKAGE_INVALID": "The file is not an Okkey offline package. Expect a signed document with payload.component (okkey|enterprise), payload.version, and signature — or a combined .okbundle/.zip archive.",
   "web.systemUpdate.error.PACKAGE_TOO_LARGE": "The offline package is larger than the allowed size.",
   "web.systemUpdate.error.OFFLINE_NOTHING_TO_APPLY": "The package was recognized, but nothing can be applied from it right now.",
-  "web.systemUpdate.error.generic": "Update failed. This instance is still on the previous version."
+  "web.systemUpdate.error.generic": "Update failed. This instance is still on the previous version.",
+  "web.productTour.skip": "Skip tour",
+  "web.productTour.next": "Next",
+  "web.productTour.ok": "OK",
+  "web.productTour.step1.title": "Create items",
+  "web.productTour.step1.body": "Use this button to add passwords, notes, cards, and other vault items.",
+  "web.productTour.step2.title": "Your settings",
+  "web.productTour.step2.body": "Open My settings for account preferences, or Device settings for this browser.",
+  "web.productTour.step3.title": "Workspace settings",
+  "web.productTour.step3.body": "Manage vaults, members, and workspace preferences here.",
+  "web.productTour.step4.title": "Personal data",
+  "web.productTour.step4.body": "We created a Personal data item for autofill. Fill it in, save, or close when you are done."
 }

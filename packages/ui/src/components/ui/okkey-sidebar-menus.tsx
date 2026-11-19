@@ -354,6 +354,7 @@ export type OkkeyWorkspaceNavLinkComponent = React.ForwardRefExoticComponent<
     children: React.ReactNode;
     "aria-current"?: React.ComponentProps<"a">["aria-current"];
     onClick?: React.MouseEventHandler<HTMLAnchorElement>;
+    "data-tour-anchor"?: string;
   }> &
     React.RefAttributes<HTMLAnchorElement>
 >;
@@ -408,14 +409,17 @@ export function OkkeySidebarWorkspaceMenu({ labelText, items, linkComponent }: O
             );
           }
 
+          const tourAnchor = item.id === "set" ? ("workspace-settings" as const) : undefined;
           return (
-            <SidebarMenuItem key={item.id}>
+            <SidebarMenuItem key={item.id} data-tour-anchor={tourAnchor}>
               {LinkC && href ? (
                 <SidebarMenuButton asChild isActive={item.isActive}>
-                  <LinkC to={href}>{rowBody}</LinkC>
+                  <LinkC to={href} data-tour-anchor={tourAnchor}>
+                    {rowBody}
+                  </LinkC>
                 </SidebarMenuButton>
               ) : (
-                <SidebarMenuButton type="button" isActive={item.isActive}>
+                <SidebarMenuButton type="button" isActive={item.isActive} data-tour-anchor={tourAnchor}>
                   {rowBody}
                 </SidebarMenuButton>
               )}

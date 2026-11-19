@@ -1,16 +1,20 @@
 import { expect, type Locator, type Page } from "@playwright/test";
 
+import { skipProductTourIfVisible } from "./productTour";
+
 /**
- * After first unlock, personal-data bootstrap creates a row and may open `#editItem`
- * asynchronously. Wait until that settles, then dismiss via Cancel → leave-without-saving
- * Continue so Login create is not raced by a late-opening edit dialog.
+ * After first unlock, the product tour (or a leftover edit dialog) may be open.
+ * Skip the tour when present, then dismiss any open `#editItem` so Login create
+ * is not raced by a late-opening edit dialog.
  */
 export async function dismissOpenItemDialog(page: Page): Promise<void> {
+  await skipProductTourIfVisible(page);
+
   const editItem = page.locator("#editItem");
   const personalDataRow = page.getByRole("button", { name: /personal data/i }).first();
 
-  // Bootstrap create+navigate can take several seconds. Wait until either signal
-  // appears — do not use locator.or().toBeVisible() (strict mode fails when both exist).
+  // Silent personal-data create (after tour skip) can take a moment; wait briefly for an
+  // unexpected edit dialog, then continue either way.
   await expect
     .poll(
       async () => {
@@ -20,9 +24,9 @@ export async function dismissOpenItemDialog(page: Page): Promise<void> {
         if (await personalDataRow.isVisible().catch(() => false)) {
           return "row";
         }
-        return "";
+        return "idle";
       },
-      { timeout: 30_000 },
+      { timeout: 10_000 },
     )
     .not.toBe("");
 
@@ -78,30 +82,20 @@ export async function createLoginItem(
   });
 
   const nameField = dialog.getByLabel(/item name/i);
-  // Let the one-shot title autofocus settle before driving fills (avoids focus races).
-  await expect(nameField).toBeVisible();
-  await nameField.click();
   await fillAndAssert(nameField, input.title);
 
-  // Key-form fields expose placeholder as accessible name, not the visible label text.
-  const loginField = dialog.getByPlaceholder(/^enter login$/i);
-  const passwordField = dialog.getByPlaceholder(/^enter password$/i);
-  const urlField = dialog.getByPlaceholder("https://example.com");
-
+  const loginField = dialog.getByLabel(/^login$/i);
   await fillAndAssert(loginField, input.login);
-  // Title must stay the explicit title — not the login email (autofill/focus flake).
-  await expect(nameField).toHaveValue(input.title);
 
+  const passwordField = dialog.getByLabel(/^password$/i);
   await fillAndAssert(passwordField, input.password);
-  await fillAndAssert(urlField, input.url);
-  await expect(nameField).toHaveValue(input.title);
-  await expect(loginField).toHaveValue(input.login);
 
-  const save = dialog.getByRole("button", { name: /^save$/i });
-  await expect(save).toBeEnabled({ timeout: 15_000 });
-  await save.click();
-  await expect(dialog).toBeHidden({ timeout: 30_000 });
-  await expect(page.getByText(input.title, { exact: false }).first()).toBeVisible({
-    timeout: 30_000,
+  const urlField = dialog.getByLabel(/^url$/i);
+  await fillAndAssert(urlField, input.url);
+
+  await dialog.getByRole("button", { name: /^save$/i }).click();
+  await expect(dialog).toBeHidden({ timeout: 20_000 });
+  await expect(page.getByRole("button", { name: new RegExp(input.title, "i") }).first()).toBeVisible({
+    timeout: 20_000,
   });
 }

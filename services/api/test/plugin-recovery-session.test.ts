@@ -314,6 +314,8 @@ test("plugin recovery helpers prove only the caller session and open restore rou
           billingRegion: null,
           vaultIdleLockSeconds: 900,
           masterPasswordChangedAt: "2026-01-01T00:00:00.000Z",
+        productTourCompleted: true,
+        productTourStep: 1,
         }),
         updateAccountProfile: async () => {
           throw new Error("profile patch must stay behind a trusted device");
