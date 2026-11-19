@@ -24,14 +24,19 @@ vi.mock("@okkey/crypto", () => ({
   initCrypto: vi.fn(async () => undefined),
   sealPasskeyShareWrap: vi.fn(),
   openPasskeyShareWrap,
-  openStoredSplitKeyShareB: vi.fn(),
+  openStoredSplitKeyShareB: vi.fn(async () => new Uint8Array(32).fill(7)),
   wrapSplitKeyShareB,
   classifySplitKeyShareBWire,
   wipeBytes: vi.fn(),
 }));
 
 vi.mock("@okkey/vault", () => ({
-  loadSplitKeyShareWrapKey: vi.fn(async () => null),
+  loadSplitKeyShareWrapKey: vi.fn(async () => ({
+    ed25519Seed: new Uint8Array(32).fill(1),
+    ed25519PublicKey: new Uint8Array(32).fill(2),
+    mlkemDecapsulationKey: new Uint8Array(64).fill(3),
+    mlkemEncapsulationKey: new Uint8Array(64).fill(4),
+  })),
   mapVaultUnlockBootstrapToStored: vi.fn(),
   envelopeB64ForPlaintextShare: vi.fn(async () =>
     Buffer.from([9, 9, 9, 9]).toString("base64"),

@@ -110,7 +110,12 @@ export type MasterPasswordUnlockResult =
   | { ok: true }
   | {
       ok: false;
-      reason: "no_bundle" | "rejected" | "server_share_unavailable" | "upgrade_required";
+      reason:
+        | "no_bundle"
+        | "rejected"
+        | "server_share_unavailable"
+        | "device_share_unavailable"
+        | "upgrade_required";
     };
 
 function bytesEqual(left: Uint8Array, right: Uint8Array): boolean {
@@ -941,7 +946,13 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
     let salt: Uint8Array | null = null;
     try {
       serverA = base64ToBytes(acquired.shareB64);
-      deviceB = await openBundleDeviceShare(userId, material.device_share_b64);
+      try {
+        deviceB = await openBundleDeviceShare(userId, material.device_share_b64);
+      } catch {
+        // Hybrid envelope that this browser cannot open (missing/mismatched
+        // wrap keys) is not a wrong master password.
+        return { ok: false, reason: "device_share_unavailable" };
+      }
       salt = base64ToBytes(material.password_kdf_salt_b64);
       const shareC = await derivePasswordShareC({
         masterPasswordUtf8: pwd,
@@ -1096,9 +1107,10 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
         }
         const material = readVaultBundle(userId) ?? bundle;
         const serverA = base64ToBytes(acquired.shareB64);
-        const deviceB = base64ToBytes(material.device_share_b64);
+        let deviceB: Uint8Array | null = null;
         const materialSalt = base64ToBytes(material.password_kdf_salt_b64);
         try {
+          deviceB = await openBundleDeviceShare(userId, material.device_share_b64);
           const vaultKey = await reconstructVaultKeyWithMasterPassword({
             masterPasswordUtf8: pwd,
             serverKeyShare: serverA,
@@ -1111,7 +1123,9 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
           return true;
         } finally {
           wipeBytes(serverA);
-          wipeBytes(deviceB);
+          if (deviceB) {
+            wipeBytes(deviceB);
+          }
           wipeBytes(materialSalt);
         }
       } catch (error) {
