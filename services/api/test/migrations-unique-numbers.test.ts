@@ -43,7 +43,7 @@ const INVITE_DELIVERY = "0058_workspace_invitation_delivery_status.sql";
 const APPROVAL_STATUS = "0059_device_approval_status_tokens.sql";
 const INVITE_LINK_DELIVERY = "0060_workspace_invitation_link_delivery.sql";
 const PRODUCT_TOUR = "0061_product_tour.sql";
-const VAULT_EVENT_VERSION = "0062_vault_event_version.sql";
+const VAULT_EVENT_VERSION = "0063_vault_event_version.sql";
 const FAMILY_TIER = "0047_retire_family_plan_tier.sql";
 
 test("duplicateMigrationNumbers reports shared prefixes only", () => {
