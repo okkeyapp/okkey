@@ -103,24 +103,11 @@ RUN --mount=type=cache,target=/usr/local/share/.cache/yarn \
   yarn config set network-timeout 600000 \
   && yarn install --frozen-lockfile --ignore-scripts --production --network-timeout 600000
 
-# Pinned cosign for the update-agent (same api image). Checksums live in
-# scripts/ci/install-cosign.sh — bump version and hashes together.
-FROM node:25-bookworm-slim@sha256:81db02c4b671288a03915da9534dbd54f96d0e7c24d80ccc54f5b36b2e684370 AS cosign-bin
-ARG TARGETARCH
-ARG COSIGN_VERSION=2.5.3
-ENV DEBIAN_FRONTEND=noninteractive
-RUN apt-get update \
-  && apt-get install -y --no-install-recommends ca-certificates curl \
-  && rm -rf /var/lib/apt/lists/*
-COPY scripts/ci/install-cosign.sh /tmp/install-cosign.sh
-RUN chmod +x /tmp/install-cosign.sh \
-  && TARGETARCH="${TARGETARCH}" COSIGN_VERSION="${COSIGN_VERSION}" \
-     COSIGN_INSTALL_DIR=/out/usr/local/bin \
-     bash /tmp/install-cosign.sh \
-  && /out/usr/local/bin/cosign version
-
 # Collect the Node 25 binary plus the OS pieces the runtime still needs after
 # leaving bookworm-slim. TARGETARCH comes from BuildKit (amd64 / arm64).
+# Cosign is not baked into api/worker: the gobinary trips the CRITICAL/HIGH
+# Trivy gate. The update-agent fetches the pinned release (version + SHA-256
+# in scripts/ci/install-cosign.sh / cosign-bootstrap.ts) on first verify.
 FROM node:25-bookworm-slim@sha256:81db02c4b671288a03915da9534dbd54f96d0e7c24d80ccc54f5b36b2e684370 AS node-runtime-bits
 ARG TARGETARCH
 ARG NODE_VERSION
@@ -179,7 +166,6 @@ ENV NODE_ENV=production
 ENV DEPLOY_ENV=prod
 
 COPY --from=node-runtime-bits /export/ /
-COPY --from=cosign-bin /out/usr/local/bin/cosign /usr/local/bin/cosign
 COPY --from=prod-deps --chown=65532:65532 /app/package.json /app/yarn.lock ./
 COPY --from=prod-deps --chown=65532:65532 /app/node_modules ./node_modules
 COPY --from=prod-deps --chown=65532:65532 /app/packages ./packages
@@ -189,8 +175,7 @@ COPY --from=builder --chown=65532:65532 /src/scripts ./scripts
 USER nonroot
 EXPOSE 4000
 # Absolute node path: works as PID 1 for SIGTERM/SIGINT; compose healthchecks
-# still resolve `node` via PATH (/usr/local/bin). Cosign is available for the
-# update-agent command (same image; runs as root in compose).
+# still resolve `node` via PATH (/usr/local/bin).
 CMD ["/usr/local/bin/node", "--experimental-strip-types", "services/api/src/index.ts"]
 
 FROM runtime AS api

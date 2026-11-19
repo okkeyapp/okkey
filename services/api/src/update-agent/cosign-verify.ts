@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 
 import { SystemUpdateError } from "../system-updates/errors.ts";
 import { imageRepository } from "./apply.ts";
+import { ensureCosignBinary } from "./cosign-bootstrap.ts";
 import {
   resolveCosignIdentityRegexp,
   resolveCosignOidcIssuer,
@@ -47,7 +48,22 @@ export async function verifyTargetImageSignatures(input: VerifyTargetImagesInput
     return;
   }
 
-  const cosignPath = input.cosignPath ?? "cosign";
+  let cosignPath = input.cosignPath;
+  if (!cosignPath && !input.runner) {
+    try {
+      cosignPath = await ensureCosignBinary();
+    } catch (error) {
+      if (error instanceof SystemUpdateError) {
+        throw error;
+      }
+      throw new SystemUpdateError(
+        500,
+        "IMAGE_SIGNATURE_UNAVAILABLE",
+        "cosign is not available, so image signatures cannot be verified. The update was not applied",
+      );
+    }
+  }
+  cosignPath = cosignPath ?? "cosign";
   const runner = input.runner ?? defaultCosignRunner(cosignPath);
   if (!(await cosignAvailable(runner, env))) {
     throw new SystemUpdateError(

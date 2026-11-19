@@ -233,6 +233,7 @@ export function newAgentToken(): string {
 
 /** Fake cosign on PATH so e2e local-registry images pass process-boundary verify. */
 export function ensureFakeCosignOnPath(binDir: string): string {
+  mkdirSync(binDir, { recursive: true });
   const cosignPath = path.join(binDir, "cosign");
   writeFileSync(
     cosignPath,
@@ -273,6 +274,10 @@ export async function startUpdateAgent(input: {
     env: {
       ...process.env,
       PATH: pathEnv,
+      // Prefer the fake binary over downloading the real release asset in CI.
+      ...(input.cosignBinDir
+        ? { OKKEY_COSIGN_PATH: path.join(input.cosignBinDir, "cosign") }
+        : {}),
       OKKEY_UPDATE_AGENT_PORT: String(input.port),
       OKKEY_UPDATE_AGENT_TOKEN: input.token,
       OKKEY_UPDATE_TRUSTED_PUBLIC_KEY: input.corePublicKeyPem,
