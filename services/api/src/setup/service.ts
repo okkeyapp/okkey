@@ -513,7 +513,7 @@ export class SetupService {
       tileColor,
     });
 
-    if (input.dismissPersonalDataBootstrap !== false) {
+    if (input.dismissPersonalDataBootstrap === true) {
       await this.dismissPersonalDataBootstrap(cached.workspaceId, cached.userId);
     }
 

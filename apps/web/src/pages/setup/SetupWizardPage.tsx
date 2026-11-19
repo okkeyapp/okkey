@@ -616,7 +616,8 @@ export default function SetupWizardPage() {
         workspace_name: workspaceName.trim(),
         tile_color: tileColor,
         invitations,
-        dismiss_personal_data_bootstrap: true,
+        // Leave personal-data bootstrap for the first-sign-in product tour.
+        dismiss_personal_data_bootstrap: false,
       });
       flushSync(() => {
         applyAccessTokenResponse({
