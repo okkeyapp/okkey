@@ -88,12 +88,17 @@ run_install() {
   fake="${work}/bin"
   install_dir="${work}/install"
   mkdir -p "${fake}" "${install_dir}"
-  {
-    printf 'OKKEY_IMAGE_TAG=%s\nOKKEY_SALES_EMAIL=sales@example.com\nJWT_SECRET=old\n' "${tag}"
-    if [[ -n "${INSTALL_ENV_EXTRA:-}" ]]; then
-      printf '%s\n' "${INSTALL_ENV_EXTRA}"
-    fi
-  } > "${install_dir}/.env"
+  if [[ "${FRESH_INSTALL:-0}" == "1" ]]; then
+    # Fresh install: no .env yet; install.sh copies .env.example from SCRIPT_DIR.
+    :
+  else
+    {
+      printf 'OKKEY_IMAGE_TAG=%s\nOKKEY_SALES_EMAIL=sales@example.com\nJWT_SECRET=old\n' "${tag}"
+      if [[ -n "${INSTALL_ENV_EXTRA:-}" ]]; then
+        printf '%s\n' "${INSTALL_ENV_EXTRA}"
+      fi
+    } > "${install_dir}/.env"
+  fi
 
   cat > "${fake}/docker" <<'EOF'
 #!/usr/bin/env bash
@@ -122,6 +127,10 @@ if [[ "${1:-}" == "compose" ]]; then
         ;;
     esac
   done
+fi
+if [[ "${1:-}" == "volume" && "${2:-}" == "inspect" ]]; then
+  # Fresh install: no existing postgres volume.
+  exit 1
 fi
 if [[ "${1:-}" == "image" && "${2:-}" == "inspect" ]]; then
   ref="${*: -1}"
@@ -180,6 +189,11 @@ EOF
   RUN_DOCKER="$(cat "${work}/docker.log")"
   RUN_COSIGN="$(cat "${work}/cosign.log")"
   RUN_SEQUENCE="$(cat "${work}/sequence")"
+  if [[ -f "${install_dir}/.env" ]]; then
+    RUN_ENV="$(cat "${install_dir}/.env")"
+  else
+    RUN_ENV=""
+  fi
   rm -rf "${work}"
 }
 
@@ -322,5 +336,89 @@ printf '%s\n' "${RUN_COSIGN}" | grep -Fq -- "${EXPECTED_IDENTITY}" || fail ".env
 ${RUN_COSIGN}"
 printf '%s\n' "${RUN_COSIGN}" | grep -Fq 'heads/release' && fail ".env candidate line widened the identity
 ${RUN_COSIGN}"
+
+# --- Image ref resolution: process env > .env > default (same as compose) ---
+
+# Process-env image names (absent from .env) must be what cosign verifies.
+run_install "1.0.0-beta.3" 1 0 \
+  OKKEY_API_IMAGE=registry.example/okkey/api \
+  OKKEY_WORKER_IMAGE=registry.example/okkey/worker \
+  OKKEY_WEB_IMAGE=registry.example/okkey/web --
+[[ "${RUN_RC}" -eq 0 ]] || fail "process-env custom images should succeed
+${RUN_OUT}"
+[[ "${RUN_SEQUENCE}" == $'PULL\nCOSIGN\nCOSIGN\nCOSIGN\nUP' ]] || fail "process-env custom images sequence wrong:
+${RUN_SEQUENCE}"
+for image in api worker web; do
+  printf '%s\n' "${RUN_COSIGN}" | grep -Fq "registry.example/okkey/${image}@sha256:" || fail "cosign must verify process-env ${image}
+${RUN_COSIGN}"
+  printf '%s\n' "${RUN_DOCKER}" | grep -Fq "registry.example/okkey/${image}:1.0.0-beta.3" || fail "inspect must use process-env ${image}
+${RUN_DOCKER}"
+  printf '%s\n' "${RUN_COSIGN}" | grep -Fq "ghcr.io/okkeyapp/${image}@sha256:" && fail "must not verify default ghcr ${image} when process env set
+${RUN_COSIGN}"
+done
+# Existing .env is not silently rewritten; note is logged.
+printf '%s\n' "${RUN_OUT}" | grep -Fq 'OKKEY_API_IMAGE / OKKEY_WORKER_IMAGE / OKKEY_WEB_IMAGE set but .env already exists' || fail "missing existing-.env image note
+${RUN_OUT}"
+printf '%s\n' "${RUN_ENV}" | grep -Eq '^OKKEY_API_IMAGE=' && fail "must not rewrite existing .env with process-env images
+${RUN_ENV}"
+
+# .env-only image overrides still drive verify when process env is unset.
+INSTALL_ENV_EXTRA=$'OKKEY_API_IMAGE=envfile.example/okkey/api\nOKKEY_WORKER_IMAGE=envfile.example/okkey/worker\nOKKEY_WEB_IMAGE=envfile.example/okkey/web'
+run_install "1.0.0-beta.3" 1 0 --
+unset INSTALL_ENV_EXTRA
+[[ "${RUN_RC}" -eq 0 ]] || fail ".env-only custom images should succeed
+${RUN_OUT}"
+for image in api worker web; do
+  printf '%s\n' "${RUN_COSIGN}" | grep -Fq "envfile.example/okkey/${image}@sha256:" || fail "cosign must verify .env-only ${image}
+${RUN_COSIGN}"
+done
+
+# Process env wins over a conflicting .env image name (compose interpolation order).
+INSTALL_ENV_EXTRA='OKKEY_API_IMAGE=envfile.example/okkey/api'
+run_install "1.0.0-beta.3" 1 0 OKKEY_API_IMAGE=process.example/okkey/api --
+unset INSTALL_ENV_EXTRA
+[[ "${RUN_RC}" -eq 0 ]] || fail "process-env over .env should succeed
+${RUN_OUT}"
+printf '%s\n' "${RUN_COSIGN}" | grep -Fq 'process.example/okkey/api@sha256:' || fail "process env must win over .env for api
+${RUN_COSIGN}"
+printf '%s\n' "${RUN_COSIGN}" | grep -Fq 'envfile.example/okkey/api@sha256:' && fail "must not verify .env api when process env wins
+${RUN_COSIGN}"
+# Unset process-env worker/web still fall through to defaults (not in .env here).
+printf '%s\n' "${RUN_COSIGN}" | grep -Fq 'ghcr.io/okkeyapp/worker@sha256:' || fail "worker should fall back to default
+${RUN_COSIGN}"
+printf '%s\n' "${RUN_COSIGN}" | grep -Fq 'ghcr.io/okkeyapp/web@sha256:' || fail "web should fall back to default
+${RUN_COSIGN}"
+
+# Defaults apply when neither process env nor .env sets image names.
+run_install "1.0.0-beta.3" 1 0 --
+[[ "${RUN_RC}" -eq 0 ]] || fail "default images should succeed
+${RUN_OUT}"
+for image in api worker web; do
+  printf '%s\n' "${RUN_COSIGN}" | grep -Fq "ghcr.io/okkeyapp/${image}@sha256:" || fail "default cosign missing ${image}
+${RUN_COSIGN}"
+done
+
+# Fresh install persists exported OKKEY_*_IMAGE into .env.
+FRESH_INSTALL=1
+run_install "1.0.0-beta.3" 1 0 \
+  OKKEY_IMAGE_TAG=1.0.0-beta.3 \
+  OKKEY_API_IMAGE=registry.example/okkey/api \
+  OKKEY_WORKER_IMAGE=registry.example/okkey/worker \
+  OKKEY_WEB_IMAGE=registry.example/okkey/web --
+unset FRESH_INSTALL
+[[ "${RUN_RC}" -eq 0 ]] || fail "fresh install with process-env images should succeed
+${RUN_OUT}"
+printf '%s\n' "${RUN_OUT}" | grep -Fq 'Wrote custom image names into .env' || fail "fresh install missing persist log
+${RUN_OUT}"
+printf '%s\n' "${RUN_ENV}" | grep -Eq '^OKKEY_API_IMAGE=registry.example/okkey/api$' || fail "fresh install must persist OKKEY_API_IMAGE
+${RUN_ENV}"
+printf '%s\n' "${RUN_ENV}" | grep -Eq '^OKKEY_WORKER_IMAGE=registry.example/okkey/worker$' || fail "fresh install must persist OKKEY_WORKER_IMAGE
+${RUN_ENV}"
+printf '%s\n' "${RUN_ENV}" | grep -Eq '^OKKEY_WEB_IMAGE=registry.example/okkey/web$' || fail "fresh install must persist OKKEY_WEB_IMAGE
+${RUN_ENV}"
+for image in api worker web; do
+  printf '%s\n' "${RUN_COSIGN}" | grep -Fq "registry.example/okkey/${image}@sha256:" || fail "fresh install cosign must verify persisted ${image}
+${RUN_COSIGN}"
+done
 
 echo "OK: install.sh cosign verify"

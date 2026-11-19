@@ -191,13 +191,26 @@ OKKEY_COSIGN_DEFAULT_IDENTITY_REGEXP='^https://github\.com/okkeyapp/okkey/\.gith
 OKKEY_COSIGN_CANDIDATE_IDENTITY_REGEXP='^https://github\.com/okkeyapp/okkey/\.github/workflows/publish-images\.yml@refs/(?:heads/dev|tags/v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?|heads/release/[0-9A-Za-z._-]+|heads/hotfix/[0-9A-Za-z._-]+)$'
 OKKEY_COSIGN_CERTIFICATE_OIDC_ISSUER="${OKKEY_COSIGN_CERTIFICATE_OIDC_ISSUER:-https://token.actions.githubusercontent.com}"
 
-# Resolve image ref used by compose for a service (env override → default GHCR).
+# Same precedence as Compose interpolation: process env → install-dir .env → empty.
+# Used for OKKEY_*_IMAGE (and any other key where verify must match compose).
+resolve_env_value() {
+  local key="$1"
+  local value
+  # Indirect expansion: process environment wins over --env-file .env.
+  value="${!key:-}"
+  if [[ -z "${value}" ]]; then
+    value="$(env_file_value "${key}")"
+  fi
+  printf '%s\n' "${value}"
+}
+
+# Resolve image ref compose will run (process env → .env → default GHCR).
 compose_image_ref() {
   local env_key="$1"
   local default_image="$2"
   local tag="$3"
   local image
-  image="$(env_file_value "${env_key}")"
+  image="$(resolve_env_value "${env_key}")"
   image="${image:-${default_image}}"
   printf '%s:%s\n' "${image}" "${tag}"
 }
@@ -577,11 +590,30 @@ if [[ ! -f .env ]]; then
     log "==> Wrote custom ports/URLs into .env (WEB_PORT=${WEB_PORT:-}, API_PORT=${API_PORT:-})"
   fi
 
+  # Persist custom image names so later `compose --env-file .env` and the update
+  # agent keep the same refs the installer verified (process env wins at runtime;
+  # .env.example leaves OKKEY_*_IMAGE commented out).
+  if [[ -n "${OKKEY_API_IMAGE:-}" ]]; then
+    replace_env OKKEY_API_IMAGE "${OKKEY_API_IMAGE}"
+  fi
+  if [[ -n "${OKKEY_WORKER_IMAGE:-}" ]]; then
+    replace_env OKKEY_WORKER_IMAGE "${OKKEY_WORKER_IMAGE}"
+  fi
+  if [[ -n "${OKKEY_WEB_IMAGE:-}" ]]; then
+    replace_env OKKEY_WEB_IMAGE "${OKKEY_WEB_IMAGE}"
+  fi
+  if [[ -n "${OKKEY_API_IMAGE:-}" || -n "${OKKEY_WORKER_IMAGE:-}" || -n "${OKKEY_WEB_IMAGE:-}" ]]; then
+    log "==> Wrote custom image names into .env (OKKEY_API_IMAGE=${OKKEY_API_IMAGE:-}, OKKEY_WORKER_IMAGE=${OKKEY_WORKER_IMAGE:-}, OKKEY_WEB_IMAGE=${OKKEY_WEB_IMAGE:-})"
+  fi
+
   log "==> Generated JWT_SECRET, SESSION_SECRET, EMAIL_DEAD_LETTER_SEAL_KEY, POSTGRES_PASSWORD, MINIO_ROOT_PASSWORD"
 else
   log "==> Reusing existing .env"
   if [[ -n "${OKKEY_IMAGE_TAG:-}" ]] || [[ -n "${OKKEY_CHANNEL:-}" ]]; then
     log "==> Note: OKKEY_IMAGE_TAG / OKKEY_CHANNEL set but .env already exists — edit OKKEY_IMAGE_TAG in .env or remove .env to apply"
+  fi
+  if [[ -n "${OKKEY_API_IMAGE:-}" || -n "${OKKEY_WORKER_IMAGE:-}" || -n "${OKKEY_WEB_IMAGE:-}" ]]; then
+    log "==> Note: OKKEY_API_IMAGE / OKKEY_WORKER_IMAGE / OKKEY_WEB_IMAGE set but .env already exists — edit image names in .env or remove .env to apply"
   fi
   if [[ "${OKKEY_RESET_VOLUMES:-}" == "1" ]]; then
     reset_compose_volumes
