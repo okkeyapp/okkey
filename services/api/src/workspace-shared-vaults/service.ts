@@ -97,6 +97,7 @@ export type VaultAccessMemberRecord = {
 export type VaultAccessInvitationRecord = {
   invitationId: string;
   email: string;
+  deliveryMethod?: "email" | "link";
   role: string | null;
   profileId: string | null;
 };
@@ -566,7 +567,8 @@ export class WorkspaceSharedVaultsService {
 
     const invitationRows = await this.db.query<{
       invitation_id: string;
-      email: string;
+      email: string | null;
+      delivery_method: string;
       role: string | null;
       profile_id: string | null;
     }>(
@@ -574,6 +576,7 @@ export class WorkspaceSharedVaultsService {
         SELECT
           wi.id AS invitation_id,
           wi.email,
+          wi.delivery_method,
           r.name AS role,
           iva.profile_id
         FROM workspace_invitations wi
@@ -584,7 +587,7 @@ export class WorkspaceSharedVaultsService {
         WHERE wi.workspace_id = $2
           AND wi.status = 'pending'
           AND wi.expires_at > now()
-        ORDER BY wi.email ASC
+        ORDER BY wi.delivery_method ASC, COALESCE(wi.email, '') ASC
       `,
       [vaultId, vault.workspaceId],
     );
@@ -608,7 +611,8 @@ export class WorkspaceSharedVaultsService {
       })),
       invitations: invitationRows.map((row) => ({
         invitationId: row.invitation_id,
-        email: row.email,
+        email: row.email ?? "",
+        deliveryMethod: row.delivery_method === "link" ? ("link" as const) : ("email" as const),
         role: row.role,
         profileId: row.profile_id,
       })),

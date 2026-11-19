@@ -269,10 +269,14 @@ export type WorkspaceMemberStatus = "active" | "pending" | "pending_delivery";
 /** Whether the invitation email has been handed to outbound mail. */
 export type WorkspaceInvitationDeliveryStatus = "pending" | "sent";
 
+/** How the invitee receives the invitation. */
+export type WorkspaceInvitationDeliveryMethod = "email" | "link";
+
 /** `GET /workspaces/:workspaceId/members` member or pending-invite row. */
 export interface WorkspaceMemberDto {
   /** Null for pending invitations (no user yet). */
   userId: EntityId | null;
+  /** Empty string for link-only pending invitations (no email bound). */
   email: string;
   firstName: string | null;
   lastName: string | null;
@@ -285,6 +289,8 @@ export interface WorkspaceMemberDto {
   roleName: string | null;
   status: WorkspaceMemberStatus;
   invitationId: EntityId | null;
+  /** Present for pending invitations; null for active members. */
+  deliveryMethod?: WorkspaceInvitationDeliveryMethod | null;
   invitedAt: string | null;
   invitedBy: WorkspaceMemberActorRefDto | null;
   roleChangedAt: string | null;
@@ -467,7 +473,9 @@ export function normalizeWorkspacePermissionsMatrix(
 /** `GET /invitations/:token` success body (public). */
 export interface InvitationPreviewDto {
   status: "pending" | "expired" | "revoked" | "accepted";
-  email: string;
+  /** Null for link-only invitations (no email bound). */
+  email: string | null;
+  deliveryMethod: WorkspaceInvitationDeliveryMethod;
   workspaceName: string;
   inviterDisplayName: string;
   expiresAt: string;
@@ -509,8 +517,14 @@ export interface PendingVaultWrapsResponseDto {
 /** `POST /workspaces/:workspaceId/invitations` body. */
 export interface WorkspaceInvitationsCreateRequestDto {
   invitations: Array<{
-    email: string;
+    /**
+     * Required when `deliveryMethod` is `email` (default).
+     * Must be omitted for `deliveryMethod: "link"`.
+     */
+    email?: string;
     roleId: EntityId;
+    /** Defaults to `email`. Link invites return `inviteUrl` once and do not require mail. */
+    deliveryMethod?: WorkspaceInvitationDeliveryMethod;
   }>;
 }
 
@@ -519,10 +533,15 @@ export interface WorkspaceInvitationsCreateResponseDto {
   workspaceId: EntityId;
   created: Array<{
     invitationId: EntityId;
-    email: string;
+    email: string | null;
     roleId: EntityId;
+    deliveryMethod: WorkspaceInvitationDeliveryMethod;
+    /** Present for link invites; returned once (token is stored hashed only). */
+    inviteUrl?: string;
+    /** Present for link invites. */
+    expiresAt?: string;
   }>;
-  /** `pending` when outbound mail is inactive; emails will send after mail is activated. */
+  /** `pending` when outbound mail is inactive for any email invite; otherwise `sent`. */
   deliveryStatus: WorkspaceInvitationDeliveryStatus;
 }
 
@@ -619,7 +638,9 @@ export interface VaultAccessMemberDto {
 /** Staged access for a pending workspace invitation on a vault. */
 export interface VaultAccessInvitationDto {
   invitationId: EntityId;
+  /** Empty string for link-only invitations. */
   email: string;
+  deliveryMethod?: WorkspaceInvitationDeliveryMethod;
   role: string | null;
   profileId: EntityId | null;
 }

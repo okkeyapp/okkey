@@ -46,7 +46,14 @@ describe("InviteMembersPopup", () => {
     coreMock.getServerMailSettings.mockResolvedValue({ smtp_active: false });
     coreMock.createWorkspaceInvitations.mockResolvedValue({
       workspaceId: "w1",
-      created: [{ invitationId: "i1", email: "a@example.com", roleId: roles[0]!.id }],
+      created: [
+        {
+          invitationId: "i1",
+          email: "a@example.com",
+          roleId: roles[0]!.id,
+          deliveryMethod: "email",
+        },
+      ],
       deliveryStatus: "pending",
     });
 
@@ -91,7 +98,14 @@ describe("InviteMembersPopup", () => {
     coreMock.getServerMailSettings.mockResolvedValue({ smtp_active: true });
     coreMock.createWorkspaceInvitations.mockResolvedValue({
       workspaceId: "w1",
-      created: [{ invitationId: "i1", email: "a@example.com", roleId: roles[0]!.id }],
+      created: [
+        {
+          invitationId: "i1",
+          email: "a@example.com",
+          roleId: roles[0]!.id,
+          deliveryMethod: "email",
+        },
+      ],
       deliveryStatus: "sent",
     });
 
@@ -125,5 +139,60 @@ describe("InviteMembersPopup", () => {
     expect((globalThis as { __lastInviteToast?: string }).__lastInviteToast).toBe(
       "web.workspaceSettings.members.invite.sent",
     );
+  });
+
+  it("creates invite links without email and shows copy results", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+
+    coreMock.getServerMailSettings.mockResolvedValue({ smtp_active: false });
+    coreMock.createWorkspaceInvitations.mockResolvedValue({
+      workspaceId: "w1",
+      created: [
+        {
+          invitationId: "1000000000000000400",
+          email: null,
+          roleId: roles[0]!.id,
+          deliveryMethod: "link",
+          inviteUrl: "http://localhost/invite/test-token-abc",
+          expiresAt: new Date(Date.now() + 86_400_000).toISOString(),
+        },
+      ],
+      deliveryStatus: "sent",
+    });
+
+    render(
+      <MemoryRouter>
+        <InviteMembersPopup
+          popupId="invite"
+          workspaceId="1000000000000000100"
+          core={coreMock as never}
+          roles={roles}
+          t={t}
+          onClose={() => {}}
+          onSent={async () => {}}
+        />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(await screen.findByTestId("invite-mode-link"));
+    fireEvent.click(
+      screen.getByRole("button", { name: /web.workspaceSettings.members.invite.submitLinks/ }),
+    );
+
+    await waitFor(() => {
+      expect(coreMock.createWorkspaceInvitations).toHaveBeenCalledWith(
+        "1000000000000000100",
+        {
+          invitations: [{ roleId: roles[0]!.id, deliveryMethod: "link" }],
+        },
+      );
+    });
+    expect(await screen.findByTestId("invite-link-results")).toBeInTheDocument();
+    expect(writeText).toHaveBeenCalledWith("http://localhost/invite/test-token-abc");
+    expect(screen.queryByTestId("invite-mail-inactive-banner")).not.toBeInTheDocument();
   });
 });

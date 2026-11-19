@@ -1237,7 +1237,11 @@ export function createApiApp(
     app.route(
       "POST",
       "/invitations/:token/accept",
-      createInvitationAcceptRoute(deps.workspaceMembersService, resolveUserId),
+      createInvitationAcceptRoute(
+        deps.workspaceMembersService,
+        resolveUserId,
+        invitePreviewRateLimit,
+      ),
     );
   }
   if (deps.syncService) {

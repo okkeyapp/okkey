@@ -89,8 +89,14 @@ export default function MembersListCard({
           const isLast = index === lastIndex;
           const clickable = Boolean(onMemberClick) && Boolean(member.userId || member.invitationId);
           const isFocused = clickable && focusedId === rowKey;
-          const name = memberDisplayName(member);
-          const showName = name.trim().length > 0 && name !== member.email;
+          const isLinkInvite =
+            member.deliveryMethod === "link" ||
+            ((member.status === "pending" || member.status === "pending_delivery") &&
+              !member.email.trim());
+          const name = isLinkInvite
+            ? t("web.workspaceSettings.members.invite.linkMemberLabel")
+            : memberDisplayName(member);
+          const showName = isLinkInvite || (name.trim().length > 0 && name !== member.email);
 
           const rowClassName = cn(
             "relative -mt-px flex h-[78px] w-full items-center gap-4 border border-border px-4 text-left outline-none",
@@ -112,7 +118,7 @@ export default function MembersListCard({
               <MemberFavicon
                 firstName={member.firstName}
                 lastName={member.lastName}
-                email={member.email}
+                email={isLinkInvite ? name : member.email}
                 size={40}
               />
               <div className="flex min-w-0 flex-1 flex-col gap-1 text-left">
@@ -136,7 +142,9 @@ export default function MembersListCard({
                     showName ? "font-normal text-muted-foreground" : "font-bold text-foreground",
                   )}
                 >
-                  {member.email}
+                  {isLinkInvite
+                    ? t("web.workspaceSettings.members.invite.linkMemberHint")
+                    : member.email}
                 </p>
               </div>
               <div className="flex shrink-0 items-center gap-1">

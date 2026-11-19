@@ -5,6 +5,7 @@
  * Occupied seats = active members excluding the owner + live pending invitations.
  */
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { test } from "node:test";
 
 import { getPlanQuotaLimits, type PlanTier } from "@okkey/types";
@@ -101,6 +102,8 @@ function membersService(options: {
               id: "1000000000000000200",
               workspace_id: workspaceId,
               email: "invitee@example.com",
+              delivery_method: "email",
+              token_hash: createHash("sha256").update("raw-token", "utf8").digest("hex"),
               role_id: roleId,
               status: "pending",
               expires_at: new Date(Date.now() + 86_400_000),

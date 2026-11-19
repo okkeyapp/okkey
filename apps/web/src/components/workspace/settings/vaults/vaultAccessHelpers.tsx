@@ -62,8 +62,12 @@ export default function VaultCardActionsMenu({
 export type AccessFilterValue = "all" | "with_access" | "without_access" | `profile:${string}`;
 
 function displayNameFromEmail(email: string): string {
-  const local = email.trim().split("@")[0]?.trim() ?? "";
-  return local.length > 0 ? local : email.trim();
+  const trimmed = email.trim();
+  if (!trimmed) {
+    return "";
+  }
+  const local = trimmed.split("@")[0]?.trim() ?? "";
+  return local.length > 0 ? local : trimmed;
 }
 
 export function memberDisplayName(input: {

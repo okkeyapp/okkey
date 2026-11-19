@@ -75,6 +75,64 @@ export async function signInWithEmailOtp(page: Page, email: string): Promise<voi
   }
 }
 
+/**
+ * Register a user after the catalog already has accounts (OTP path, not bootstrap).
+ * Returns the recovery key shown on the save-recovery screen.
+ */
+export async function registerWithEmailOtpAndUnlock(
+  page: Page,
+  input: {
+    email: string;
+    masterPassword?: string;
+    firstName?: string;
+    lastName?: string;
+  },
+): Promise<{ recoveryKey: string }> {
+  const masterPassword = input.masterPassword ?? E2E_MASTER_PASSWORD;
+  const firstName = input.firstName ?? "E2E";
+  const lastName = input.lastName ?? "User";
+
+  await markE2eSmtpDeliverable();
+  const sinceMs = Date.now();
+  await page.goto("/auth/email");
+  await page.locator("#auth-email").fill(input.email);
+  await page.getByRole("button", { name: /^sign in$/i }).click();
+  await expect(page.getByLabel(/digit 1 of 6/i)).toBeVisible({ timeout: 30_000 });
+
+  const otp = await waitForMailpitOtp(input.email, { sinceMs });
+  for (let i = 0; i < 6; i += 1) {
+    await page.getByLabel(new RegExp(`digit ${i + 1} of 6`, "i")).fill(otp[i]!);
+  }
+
+  await expect(page.getByRole("heading", { name: /register with okkey/i })).toBeVisible({
+    timeout: 30_000,
+  });
+  await page.locator("#auth-reg-first-name").fill(firstName);
+  await page.locator("#auth-reg-last-name").fill(lastName);
+  await page.locator("#auth-reg-master-password").fill(masterPassword);
+  await page.locator("#auth-reg-repeat-master-password").fill(masterPassword);
+  await page.getByRole("button", { name: /^register$/i }).click();
+
+  await expect(page.getByRole("heading", { name: /save your recovery key/i })).toBeVisible({
+    timeout: 90_000,
+  });
+  const next = page.getByRole("button", { name: /^continue$/i });
+  await expect(next).toBeDisabled();
+  const recoveryKey = (await page.locator("p.font-mono").first().innerText()).trim();
+  expect(recoveryKey.length).toBeGreaterThan(16);
+  await page.getByRole("button", { name: /^copy$/i }).click();
+  await expect(next).toBeEnabled({ timeout: 15_000 });
+  await next.click();
+
+  // Registration bootstrap token is not a full session — complete email OTP, then unlock.
+  await expect(page.getByRole("heading", { name: /welcome to okkey/i })).toBeVisible({
+    timeout: 30_000,
+  });
+  await signInWithEmailOtp(page, input.email);
+  await unlockWithMasterPassword(page, masterPassword);
+  return { recoveryKey };
+}
+
 export async function unlockWithMasterPassword(
   page: Page,
   masterPassword = E2E_MASTER_PASSWORD,

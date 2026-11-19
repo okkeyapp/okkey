@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 
 import { DEFAULT_PERSONAL_VAULT_NAME } from "@okkey/types";
 
@@ -52,6 +52,8 @@ export type WorkspaceMemberStatus = "active" | "pending" | "pending_delivery";
 
 export type InvitationDeliveryStatus = "pending" | "sent";
 
+export type InvitationDeliveryMethod = "email" | "link";
+
 export type WorkspaceMemberRecord = {
   userId: string | null;
   email: string;
@@ -64,6 +66,8 @@ export type WorkspaceMemberRecord = {
   roleName: string | null;
   status: WorkspaceMemberStatus;
   invitationId: string | null;
+  /** Present for pending invitations; null for active members. */
+  deliveryMethod: InvitationDeliveryMethod | null;
   invitedAt: string | null;
   invitedBy: MemberActorRef | null;
   roleChangedAt: string | null;
@@ -96,7 +100,8 @@ export type InvitationPreviewStatus = "pending" | "expired" | "revoked" | "accep
 
 export type InvitationPreview = {
   status: InvitationPreviewStatus;
-  email: string;
+  email: string | null;
+  deliveryMethod: InvitationDeliveryMethod;
   workspaceName: string;
   inviterDisplayName: string;
   expiresAt: string;
@@ -178,6 +183,24 @@ function normalizeEmail(email: string): string {
 
 function hashInviteToken(token: string): string {
   return createHash("sha256").update(token, "utf8").digest("hex");
+}
+
+/** Constant-time compare of SHA-256 hex digests (invite tokens are never stored raw). */
+function inviteTokenHashesEqual(leftHex: string, rightHex: string): boolean {
+  try {
+    const left = Buffer.from(leftHex, "hex");
+    const right = Buffer.from(rightHex, "hex");
+    return left.length === 32 && right.length === 32 && timingSafeEqual(left, right);
+  } catch {
+    return false;
+  }
+}
+
+function parseDeliveryMethod(value: unknown): InvitationDeliveryMethod {
+  if (value === "link") {
+    return "link";
+  }
+  return "email";
 }
 
 function actorFromRow(row: {
@@ -297,10 +320,21 @@ export class WorkspaceMembersService {
   async createInvitations(
     workspaceId: string,
     actorId: string,
-    invitations: Array<{ email: string; roleId: string }>,
+    invitations: Array<{
+      email?: string;
+      roleId: string;
+      deliveryMethod?: InvitationDeliveryMethod;
+    }>,
     localeHints: { acceptLanguage?: string | null } = {},
   ): Promise<{
-    created: Array<{ invitationId: string; email: string; roleId: string }>;
+    created: Array<{
+      invitationId: string;
+      email: string | null;
+      roleId: string;
+      deliveryMethod: InvitationDeliveryMethod;
+      inviteUrl?: string;
+      expiresAt?: string;
+    }>;
     deliveryStatus: InvitationDeliveryStatus;
   }> {
     // Align with Core HttpApp entity-id path checks (okkey#197): never hit Postgres with
@@ -337,7 +371,21 @@ export class WorkspaceMembersService {
       this.publicAppBaseUrl,
       this.resolvePublicAppBaseUrl,
     );
-    if (!this.emailTemplates || !publicAppBaseUrl) {
+    if (!publicAppBaseUrl) {
+      throw new WorkspaceMembersServiceError(
+        "EMAIL_NOT_CONFIGURED",
+        503,
+        "PUBLIC_APP_URL is required to build invitation links",
+      );
+    }
+
+    const normalizedItems = invitations.map((item) => ({
+      roleId: item.roleId,
+      deliveryMethod: parseDeliveryMethod(item.deliveryMethod),
+      email: item.email,
+    }));
+    const hasEmailInvite = normalizedItems.some((item) => item.deliveryMethod === "email");
+    if (hasEmailInvite && !this.emailTemplates) {
       throw new WorkspaceMembersServiceError(
         "EMAIL_NOT_CONFIGURED",
         503,
@@ -345,15 +393,18 @@ export class WorkspaceMembersService {
       );
     }
 
-    const mailActive = await this.isOutboundMailActive();
-    const deliveryStatus: InvitationDeliveryStatus = mailActive ? "sent" : "pending";
-    const created: Array<{ invitationId: string; email: string; roleId: string }> = [];
+    const mailActive = hasEmailInvite ? await this.isOutboundMailActive() : false;
+    const emailDeliveryStatus: InvitationDeliveryStatus = mailActive ? "sent" : "pending";
+    const created: Array<{
+      invitationId: string;
+      email: string | null;
+      roleId: string;
+      deliveryMethod: InvitationDeliveryMethod;
+      inviteUrl?: string;
+      expiresAt?: string;
+    }> = [];
 
-    for (const item of invitations) {
-      const email = normalizeEmail(item.email ?? "");
-      if (!email || !email.includes("@") || email.length > 254) {
-        throw new WorkspaceMembersServiceError("BAD_REQUEST", 400, "invalid email");
-      }
+    for (const item of normalizedItems) {
       if (!isEntityId(item.roleId)) {
         throw new WorkspaceMembersServiceError("BAD_REQUEST", 400, "invalid roleId");
       }
@@ -366,6 +417,46 @@ export class WorkspaceMembersService {
         throw new WorkspaceMembersServiceError("BAD_REQUEST", 400, "cannot invite as owner");
       }
       this.assertAssignableWorkspaceRole(workspace, role);
+
+      const invitationId = generateEntityId();
+      const rawToken = randomBytes(32).toString("base64url");
+      const tokenHash = hashInviteToken(rawToken);
+      const expiresAt = new Date(Date.now() + INVITE_TTL_MS).toISOString();
+
+      if (item.deliveryMethod === "link") {
+        if (item.email != null && String(item.email).trim() !== "") {
+          throw new WorkspaceMembersServiceError(
+            "BAD_REQUEST",
+            400,
+            "link invitations must not include an email",
+          );
+        }
+
+        await this.db.query(
+          `
+            INSERT INTO workspace_invitations (
+              id, workspace_id, email, role_id, invited_by_user_id, token_hash, status,
+              expires_at, delivery_status, delivery_method
+            ) VALUES ($1, $2, NULL, $3, $4, $5, 'pending', $6::timestamptz, 'sent', 'link')
+          `,
+          [invitationId, workspaceId, item.roleId, actorId, tokenHash, expiresAt],
+        );
+
+        created.push({
+          invitationId,
+          email: null,
+          roleId: item.roleId,
+          deliveryMethod: "link",
+          inviteUrl: `${publicAppBaseUrl}/invite/${rawToken}`,
+          expiresAt,
+        });
+        continue;
+      }
+
+      const email = normalizeEmail(item.email ?? "");
+      if (!email || !email.includes("@") || email.length > 254) {
+        throw new WorkspaceMembersServiceError("BAD_REQUEST", 400, "invalid email");
+      }
 
       const alreadyMember = await this.db.query<{ ok: boolean }>(
         `
@@ -407,17 +498,12 @@ export class WorkspaceMembersService {
         );
       }
 
-      const invitationId = generateEntityId();
-      const rawToken = randomBytes(32).toString("base64url");
-      const tokenHash = hashInviteToken(rawToken);
-      const expiresAt = new Date(Date.now() + INVITE_TTL_MS).toISOString();
-
       await this.db.query(
         `
           INSERT INTO workspace_invitations (
             id, workspace_id, email, role_id, invited_by_user_id, token_hash, status,
-            expires_at, delivery_status
-          ) VALUES ($1, $2, $3, $4, $5, $6, 'pending', $7::timestamptz, $8)
+            expires_at, delivery_status, delivery_method
+          ) VALUES ($1, $2, $3, $4, $5, $6, 'pending', $7::timestamptz, $8, 'email')
         `,
         [
           invitationId,
@@ -427,7 +513,7 @@ export class WorkspaceMembersService {
           actorId,
           tokenHash,
           expiresAt,
-          deliveryStatus,
+          emailDeliveryStatus,
         ],
       );
 
@@ -437,7 +523,7 @@ export class WorkspaceMembersService {
         // for unknown recipients / null profile locale (see resolveEmailLocaleForRecipient).
         const recipientLocale = await this.loadUserLocaleByEmail(email);
         try {
-          await this.emailTemplates.sendWorkspaceInvite({
+          await this.emailTemplates!.sendWorkspaceInvite({
             to: email,
             localeHints: {
               userLocale: recipientLocale,
@@ -471,9 +557,17 @@ export class WorkspaceMembersService {
         }
       }
 
-      created.push({ invitationId, email, roleId: item.roleId });
+      created.push({
+        invitationId,
+        email,
+        roleId: item.roleId,
+        deliveryMethod: "email",
+      });
     }
 
+    const deliveryStatus: InvitationDeliveryStatus = hasEmailInvite
+      ? emailDeliveryStatus
+      : "sent";
     return { created, deliveryStatus };
   }
 
@@ -529,6 +623,8 @@ export class WorkspaceMembersService {
         JOIN users u ON u.id = wi.invited_by_user_id
         WHERE wi.status = 'pending'
           AND wi.delivery_status = 'pending'
+          AND wi.delivery_method = 'email'
+          AND wi.email IS NOT NULL
           AND wi.expires_at > now()
         ORDER BY wi.created_at ASC
       `,
@@ -645,7 +741,8 @@ export class WorkspaceMembersService {
 
     const rows = await this.db.query<{
       id: string;
-      email: string;
+      email: string | null;
+      delivery_method: string;
       status: string;
       expires_at: string | Date;
       role_id: string;
@@ -656,6 +753,7 @@ export class WorkspaceMembersService {
         SELECT
           wi.id,
           wi.email,
+          wi.delivery_method,
           wi.status,
           wi.expires_at,
           wi.role_id,
@@ -674,6 +772,13 @@ export class WorkspaceMembersService {
     }
     if (row.status !== "pending") {
       throw new WorkspaceMembersServiceError("BAD_REQUEST", 400, "invitation is not pending");
+    }
+    if (row.delivery_method === "link" || !row.email) {
+      throw new WorkspaceMembersServiceError(
+        "BAD_REQUEST",
+        400,
+        "link invitations cannot be resent by email",
+      );
     }
     const expiresAt = toIso(row.expires_at) ?? new Date(0).toISOString();
     if (Date.parse(expiresAt) <= Date.now()) {
@@ -1472,8 +1577,11 @@ export class WorkspaceMembersService {
     if (!token) {
       throw new WorkspaceMembersServiceError("NOT_FOUND", 404, "invitation not found");
     }
+    const tokenHash = hashInviteToken(token);
     const rows = await this.db.query<{
-      email: string;
+      email: string | null;
+      delivery_method: string;
+      token_hash: string;
       status: string;
       expires_at: string | Date;
       workspace_name: string;
@@ -1484,6 +1592,8 @@ export class WorkspaceMembersService {
       `
         SELECT
           wi.email,
+          wi.delivery_method,
+          wi.token_hash,
           wi.status,
           wi.expires_at,
           w.name AS workspace_name,
@@ -1496,10 +1606,10 @@ export class WorkspaceMembersService {
         WHERE wi.token_hash = $1
         LIMIT 1
       `,
-      [hashInviteToken(token)],
+      [tokenHash],
     );
     const row = rows[0];
-    if (!row) {
+    if (!row || !inviteTokenHashesEqual(row.token_hash, tokenHash)) {
       throw new WorkspaceMembersServiceError("NOT_FOUND", 404, "invitation not found");
     }
     const expiresAt = toIso(row.expires_at) ?? new Date(0).toISOString();
@@ -1513,9 +1623,12 @@ export class WorkspaceMembersService {
       firstName: row.inviter_first_name,
       lastName: row.inviter_last_name,
     };
+    const deliveryMethod: InvitationDeliveryMethod =
+      row.delivery_method === "link" ? "link" : "email";
     return {
       status,
       email: row.email,
+      deliveryMethod,
       workspaceName: row.workspace_name,
       inviterDisplayName: row.inviter_email ? displayName(inviter) : "",
       expiresAt,
@@ -1535,7 +1648,9 @@ export class WorkspaceMembersService {
       const invitationRows = await tx.query<{
         id: string;
         workspace_id: string;
-        email: string;
+        email: string | null;
+        delivery_method: string;
+        token_hash: string;
         role_id: string;
         invited_by_user_id: string;
         status: string;
@@ -1543,7 +1658,9 @@ export class WorkspaceMembersService {
         accepted_user_id: string | null;
       }>(
         `
-          SELECT id, workspace_id, email, role_id, invited_by_user_id, status, expires_at, accepted_user_id
+          SELECT
+            id, workspace_id, email, delivery_method, token_hash, role_id,
+            invited_by_user_id, status, expires_at, accepted_user_id
           FROM workspace_invitations
           WHERE token_hash = $1
           LIMIT 1
@@ -1552,7 +1669,7 @@ export class WorkspaceMembersService {
         [tokenHash],
       );
       const invitation = invitationRows[0];
-      if (!invitation) {
+      if (!invitation || !inviteTokenHashesEqual(invitation.token_hash, tokenHash)) {
         throw new WorkspaceMembersServiceError("NOT_FOUND", 404, "invitation not found");
       }
 
@@ -1564,7 +1681,11 @@ export class WorkspaceMembersService {
       if (!actorEmail) {
         throw new WorkspaceMembersServiceError("ACCESS_DENIED", 403, "access denied");
       }
-      if (normalizeEmail(actorEmail) !== normalizeEmail(invitation.email)) {
+      const isLinkInvite = invitation.delivery_method === "link" || invitation.email == null;
+      if (
+        !isLinkInvite &&
+        normalizeEmail(actorEmail) !== normalizeEmail(invitation.email ?? "")
+      ) {
         throw new WorkspaceMembersServiceError(
           "INVITE_EMAIL_MISMATCH",
           403,
@@ -2160,6 +2281,7 @@ export class WorkspaceMembersService {
         roleName: row.role_name,
         status: "active",
         invitationId: null,
+        deliveryMethod: null,
         invitedAt: toIso(row.invited_at),
         invitedBy: actorFromRow({
           user_id: row.invited_by_user_id,
@@ -2184,7 +2306,8 @@ export class WorkspaceMembersService {
   private async loadPendingInvitations(workspaceId: string): Promise<WorkspaceMemberRecord[]> {
     const rows = await this.db.query<{
       invitation_id: string;
-      email: string;
+      email: string | null;
+      delivery_method: string;
       role_id: string;
       role_builtin_key: string | null;
       role_name: string | null;
@@ -2204,6 +2327,7 @@ export class WorkspaceMembersService {
         SELECT
           wi.id AS invitation_id,
           wi.email,
+          wi.delivery_method,
           wi.role_id,
           r.builtin_key AS role_builtin_key,
           r.name AS role_name,
@@ -2232,7 +2356,7 @@ export class WorkspaceMembersService {
 
     return rows.map((row) => ({
       userId: null,
-      email: row.email,
+      email: row.email ?? "",
       firstName: null,
       lastName: null,
       publicKey: "",
@@ -2242,6 +2366,7 @@ export class WorkspaceMembersService {
       roleName: row.role_name,
       status: (row.delivery_status === "pending" ? "pending_delivery" : "pending") as WorkspaceMemberStatus,
       invitationId: row.invitation_id,
+      deliveryMethod: row.delivery_method === "link" ? "link" : "email",
       invitedAt: toIso(row.invited_at),
       invitedBy: {
         userId: row.invited_by_user_id,
