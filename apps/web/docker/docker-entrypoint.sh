@@ -2,7 +2,9 @@
 set -eu
 
 # Write runtime config for the SPA (overrides build-time VITE_API_BASE_URL).
-API_URL="${OKKEY_API_PUBLIC_URL:-${VITE_API_BASE_URL:-http://localhost:4000}}"
+# Unset/empty OKKEY_API_PUBLIC_URL → same-origin (empty apiBaseUrl). Never default to localhost.
+# Explicit OKKEY_API_PUBLIC_URL is the supported runtime override (not baked at image build).
+API_URL="${OKKEY_API_PUBLIC_URL:-}"
 # Trim trailing slash
 API_URL=$(printf '%s' "$API_URL" | sed 's:/*$::')
 
@@ -18,4 +20,8 @@ cat > /usr/share/nginx/html/config.js <<EOF
 window.__OKKEY_RUNTIME__ = { apiBaseUrl: "${API_URL}" };
 EOF
 
-echo "okkey web runtime: apiBaseUrl=${API_URL}"
+if [ -n "$API_URL" ]; then
+  echo "okkey web runtime: apiBaseUrl=${API_URL}"
+else
+  echo "okkey web runtime: apiBaseUrl=(same-origin)"
+fi

@@ -33,7 +33,9 @@ RUN --mount=type=cache,target=/root/.cargo/registry \
 ENV PATH="/root/.cargo/bin:${PATH}"
 
 # Build-time placeholders; runtime config.js overrides API URL for self-host.
-ARG VITE_API_BASE_URL=http://localhost:4000
+# Production image must not bake localhost — empty means same-origin until
+# OKKEY_API_PUBLIC_URL is set at container start (see docker-entrypoint.sh).
+ARG VITE_API_BASE_URL=
 ARG VITE_APP_ENV=production
 ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
 ENV VITE_APP_ENV=${VITE_APP_ENV}
