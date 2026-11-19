@@ -13,8 +13,8 @@ export async function dismissOpenItemDialog(page: Page): Promise<void> {
   const editItem = page.locator("#editItem");
   const personalDataRow = page.getByRole("button", { name: /personal data/i }).first();
 
-  // Silent personal-data create (after tour skip) can take a moment; wait briefly for an
-  // unexpected edit dialog, then continue either way.
+  // Silent personal-data create (after tour skip) or a leftover edit dialog can take a
+  // moment. Prefer an edit/row signal; fall back to idle once the shell is settled.
   await expect
     .poll(
       async () => {
@@ -24,9 +24,12 @@ export async function dismissOpenItemDialog(page: Page): Promise<void> {
         if (await personalDataRow.isVisible().catch(() => false)) {
           return "row";
         }
-        return "idle";
+        if (await page.getByTestId("items-shell-topbar").isVisible().catch(() => false)) {
+          return "idle";
+        }
+        return "";
       },
-      { timeout: 10_000 },
+      { timeout: 30_000 },
     )
     .not.toBe("");
 
@@ -82,20 +85,30 @@ export async function createLoginItem(
   });
 
   const nameField = dialog.getByLabel(/item name/i);
+  // Let the one-shot title autofocus settle before driving fills (avoids focus races).
+  await expect(nameField).toBeVisible();
+  await nameField.click();
   await fillAndAssert(nameField, input.title);
 
-  const loginField = dialog.getByLabel(/^login$/i);
+  // Key-form fields expose placeholder as accessible name, not the visible label text.
+  const loginField = dialog.getByPlaceholder(/^enter login$/i);
+  const passwordField = dialog.getByPlaceholder(/^enter password$/i);
+  const urlField = dialog.getByPlaceholder("https://example.com");
+
   await fillAndAssert(loginField, input.login);
+  // Title must stay the explicit title — not the login email (autofill/focus flake).
+  await expect(nameField).toHaveValue(input.title);
 
-  const passwordField = dialog.getByLabel(/^password$/i);
   await fillAndAssert(passwordField, input.password);
-
-  const urlField = dialog.getByLabel(/^url$/i);
   await fillAndAssert(urlField, input.url);
+  await expect(nameField).toHaveValue(input.title);
+  await expect(loginField).toHaveValue(input.login);
 
-  await dialog.getByRole("button", { name: /^save$/i }).click();
-  await expect(dialog).toBeHidden({ timeout: 20_000 });
-  await expect(page.getByRole("button", { name: new RegExp(input.title, "i") }).first()).toBeVisible({
-    timeout: 20_000,
+  const save = dialog.getByRole("button", { name: /^save$/i });
+  await expect(save).toBeEnabled({ timeout: 15_000 });
+  await save.click();
+  await expect(dialog).toBeHidden({ timeout: 30_000 });
+  await expect(page.getByText(input.title, { exact: false }).first()).toBeVisible({
+    timeout: 30_000,
   });
 }
