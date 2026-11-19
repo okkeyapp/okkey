@@ -88,6 +88,21 @@ test("Trivy fails the job on CRITICAL and HIGH and loads generated ignores", () 
   assert.match(jobBlock("scan-arm64"), /TRIVY_PLATFORM:\s*linux\/arm64/);
 });
 
+test("web runtime pins nginx alpine-slim at or above 1.30.7 for Trivy (TSK-293)", () => {
+  const text = readFileSync(join(root, "apps/web/Dockerfile"), "utf8");
+  const runtimeFrom = [...text.matchAll(/^FROM\s+(\S+)\s+AS\s+runtime\s*$/gm)].map(
+    (match) => match[1],
+  );
+  assert.equal(runtimeFrom.length, 1, "expected one runtime FROM");
+  // Official nginx:<ver>-alpine-slim channel; reject older 1.30.6 pins that
+  // ship nginx < 1.30.7-r0 (CRITICAL/HIGH CVEs on the publish gate).
+  assert.match(
+    runtimeFrom[0],
+    /^nginx:1\.30\.(?:[7-9]|[1-9][0-9]+)-alpine-slim@sha256:[a-f0-9]{64}$/,
+  );
+  assert.doesNotMatch(text, /^\s*RUN\s+.*\bapk\s+upgrade\b/m);
+});
+
 test("third-party Dockerfile and compose images are digest pinned", () => {
   const dockerfiles = [
     "services/api/Dockerfile",
