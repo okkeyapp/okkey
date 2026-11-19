@@ -9,7 +9,8 @@
  * 3) compares to reports/baseline.json with zero tolerance
  * 4) verifies classifier fingerprint is recorded (regression detection hook)
  *
- * Full Playwright capture remains a reproducible local flow (see README).
+ * Local capture: yarn --cwd apps/extension corpus:capture
+ * (HTML lands in gitignored autofill-form-recognition/cache/).
  */
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 
@@ -31,7 +32,20 @@ function fail(message: string): never {
   process.exit(1);
 }
 
+function printHelp(): void {
+  console.log(`Usage: yarn --cwd apps/extension corpus:check
+
+CI gate: validate annotations, recompute metrics from hints, fail if any of
+(a)/(b) P·R·F1/(c)/RU·EN slices is worse than reports/baseline.json (equal OK).
+Also fails when sites.csv composition no longer matches reports/threshold.json.
+`);
+}
+
 function main(): void {
+  if (process.argv.includes("--help") || process.argv.includes("-h")) {
+    printHelp();
+    return;
+  }
   const validation = validateAllAnnotations();
   if (!validation.ok) {
     console.error("Annotation validation failed:");

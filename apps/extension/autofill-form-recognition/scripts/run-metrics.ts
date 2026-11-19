@@ -1,9 +1,6 @@
 #!/usr/bin/env node
 /**
  * Build metrics report from committed annotations (hints path; no HTML required).
- * Usage:
- *   yarn --cwd apps/extension corpus:metrics
- *   yarn --cwd apps/extension corpus:metrics --write-baseline
  */
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -21,7 +18,25 @@ import {
 import { corpusIdFromSites, loadCorpusSites } from "../src/sites.ts";
 import type { ThresholdDocument } from "../src/types.ts";
 
+function printHelp(): void {
+  console.log(`Usage: yarn --cwd apps/extension corpus:metrics [--write-baseline]
+
+Recompute (a)(b)(c)(d) from dual annotations (embedded field hints; no HTML cache).
+Writes reports/latest.json. With --write-baseline also refreshes baseline.json,
+threshold.json, and classifier-fingerprint.json.
+
+Other scripts:
+  yarn --cwd apps/extension corpus:test    Vitest + jsdom runner tests
+  yarn --cwd apps/extension corpus:check   CI gate vs baseline
+  yarn --cwd apps/extension corpus:capture Playwright → gitignored cache/
+`);
+}
+
 async function main(): Promise<void> {
+  if (process.argv.includes("--help") || process.argv.includes("-h")) {
+    printHelp();
+    return;
+  }
   const writeBaseline = process.argv.includes("--write-baseline");
   const validation = validateAllAnnotations();
   if (!validation.ok) {

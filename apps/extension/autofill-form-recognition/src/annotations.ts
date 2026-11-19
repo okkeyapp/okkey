@@ -1,3 +1,9 @@
+/**
+ * Dual-annotator page files under annotations/pages/<pageId>/:
+ *   annotator-a.json / annotator-b.json
+ * A field/form enters metric denominators only when both agree (same formId,
+ * selectors, roles). status: annotated | empty | blocked | uncapturable.
+ */
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
