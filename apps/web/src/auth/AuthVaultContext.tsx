@@ -53,6 +53,7 @@ import { getOrCreateDeviceFingerprint } from "./deviceFingerprint";
 import { clearDeviceSigningKey } from "./deviceSigningKey";
 import {
   clearDeviceApprovalStatus,
+  clearDeviceApprovalStatusIfCurrent,
   fetchDeviceApprovalStatus,
   readDeviceApprovalStatus,
   rememberDeviceApprovalStatus,
@@ -1321,9 +1322,13 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       return readDeviceApprovalStatus() !== null;
     } catch (error: unknown) {
       if (error instanceof ApiRequestError && error.status === 401) {
-        clearDeviceApprovalStatus();
-        setDeviceApprovalWatch(false);
-        return false;
+        // Retry/register may have rotated the token while this request was in flight.
+        // Only drop storage when the failed token is still the current one.
+        if (clearDeviceApprovalStatusIfCurrent(credential.token)) {
+          setDeviceApprovalWatch(false);
+          return false;
+        }
+        return readDeviceApprovalStatus() !== null;
       }
       return true;
     }
@@ -1364,7 +1369,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
           }
         } catch (error: unknown) {
           if (error instanceof ApiRequestError && error.status === 401) {
-            clearDeviceApprovalStatus();
+            clearDeviceApprovalStatusIfCurrent(credential.token);
           }
         }
       }

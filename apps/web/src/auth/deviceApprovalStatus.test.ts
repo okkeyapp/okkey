@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   clearDeviceApprovalStatus,
+  clearDeviceApprovalStatusIfCurrent,
   readDeviceApprovalStatus,
   rememberDeviceApprovalStatus,
   trustFromApprovalStatus,
@@ -54,6 +55,24 @@ describe("device approval status credential", () => {
 
     expect(readDeviceApprovalStatus()).toBeNull();
     expect(sessionStorage.getItem("okkey.deviceApprovalStatus")).toBeNull();
+  });
+
+  it("clears only when the failed token is still current", () => {
+    rememberDeviceApprovalStatus({
+      token: "old-token",
+      deviceId: "device-1",
+      expiresAt: "2099-01-01T00:00:00.000Z",
+    });
+    rememberDeviceApprovalStatus({
+      token: "new-token",
+      deviceId: "device-1",
+      expiresAt: "2099-01-01T00:00:00.000Z",
+    });
+
+    expect(clearDeviceApprovalStatusIfCurrent("old-token")).toBe(false);
+    expect(readDeviceApprovalStatus()?.token).toBe("new-token");
+    expect(clearDeviceApprovalStatusIfCurrent("new-token")).toBe(true);
+    expect(readDeviceApprovalStatus()).toBeNull();
   });
 
   it("maps approval status onto the pending-device screen", () => {

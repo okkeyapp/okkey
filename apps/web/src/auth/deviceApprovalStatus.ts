@@ -74,6 +74,21 @@ export function clearDeviceApprovalStatus(): void {
   }
 }
 
+/**
+ * Drop the stored approval credential only when it still matches `token`.
+ * In-flight polls can 401 after retry/register rotates the token; clearing
+ * unconditionally would wipe the replacement and force a full sign-out when
+ * block later revokes the Bearer session.
+ */
+export function clearDeviceApprovalStatusIfCurrent(token: string): boolean {
+  const current = readDeviceApprovalStatus();
+  if (!current || current.token !== token) {
+    return false;
+  }
+  clearDeviceApprovalStatus();
+  return true;
+}
+
 export function rememberApprovalFromRegister(registered: DeviceRegisterResponseDto): void {
   if (
     registered.status === "pending_approval" &&
