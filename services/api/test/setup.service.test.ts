@@ -181,3 +181,24 @@ test("getStatus is required only for empty self-host with a code", async () => {
   await populated.ensureBootstrapCode();
   assert.deepEqual(await populated.getStatus(), { required: false, deploymentMode: "self_hosted" });
 });
+
+test("requireSession stays valid after owner user exists until setup is marked complete", async () => {
+  // Verify while catalog is empty, then simulate post-register (users exist) with the same Redis.
+  const empty = createService({ setupCodePlaintext: "aaaa-bbbb-cccc-dddd" });
+  await empty.service.ensureBootstrapCode();
+  const verified = await empty.service.verifyCode("aaaa-bbbb-cccc-dddd");
+
+  const midWizard = createService({
+    redis: empty.redis,
+    hasAnyUsers: true,
+    setupCodePlaintext: "aaaa-bbbb-cccc-dddd",
+  });
+  const session = await midWizard.service.requireSession(verified.setupToken);
+  assert.equal(session.id, verified.setupToken);
+
+  await midWizard.instanceSettings.markSetupCompleted(new Date().toISOString());
+  await assert.rejects(
+    () => midWizard.service.requireSession(verified.setupToken),
+    (error: unknown) => error instanceof SetupError && error.code === "SETUP_NOT_REQUIRED",
+  );
+});
