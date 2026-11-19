@@ -972,7 +972,16 @@ export default function SetupWizardPage() {
               disabled={busy}
             />
           </div>
-          <Button type="submit" disabled={busy || !masterPassword || !repeatMasterPassword}>
+          <Button
+            type="submit"
+            disabled={
+              busy ||
+              !masterPassword ||
+              !repeatMasterPassword ||
+              !masterPasswordMeetsNewPasswordPolicy(masterPassword) ||
+              masterPassword !== repeatMasterPassword
+            }
+          >
             {t("auth.registration.submit")}
           </Button>
         </form>
