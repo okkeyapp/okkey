@@ -202,6 +202,11 @@ export class WebAuthnService {
       },
       preferredAuthenticatorType:
         attachment === "platform" ? "localDevice" : "securityKey",
+      // Ask for PRF at create so hmac-secret is provisioned. Without this,
+      // Chromium (and some platform authenticators) enroll a credential that
+      // can sign in but never returns prf.results on later assertions — which
+      // blocks passkey device-approval share wrap.
+      extensions: attachment === "platform" ? { prf: {} } : undefined,
     });
 
     const challengeId = this.generateId();

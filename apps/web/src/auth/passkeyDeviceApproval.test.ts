@@ -4,8 +4,16 @@ const startAuthentication = vi.hoisted(() => vi.fn());
 const sealPasskeyShareWrap = vi.hoisted(() => vi.fn(async () => new Uint8Array([1, 2, 3])));
 const openPasskeyShareWrap = vi.hoisted(() => vi.fn(async () => new Uint8Array(32).fill(7)));
 const openStoredSplitKeyShareB = vi.hoisted(() =>
-  vi.fn(async ({ stored }: { stored: Uint8Array }) => stored.slice()),
+  vi.fn(async ({ stored }: { stored: Uint8Array }) =>
+    stored.length === 32 ? stored.slice() : new Uint8Array(32).fill(7),
+  ),
 );
+const wrapKeyFixture = vi.hoisted(() => ({
+  ed25519Seed: new Uint8Array(32).fill(1),
+  ed25519PublicKey: new Uint8Array(32).fill(2),
+  mlkemDecapsulationKey: new Uint8Array(64).fill(3),
+  mlkemEncapsulationKey: new Uint8Array(64).fill(4),
+}));
 const wrapSplitKeyShareB = vi.hoisted(() =>
   vi.fn(async () => new Uint8Array([9, 9, 9, 9])),
 );
@@ -203,6 +211,7 @@ describe("passkey device approval client", () => {
     envelopeB64ForPlaintextShare.mockResolvedValueOnce(
       Buffer.from([8, 8, 8, 8]).toString("base64"),
     );
+    loadSplitKeyShareWrapKey.mockResolvedValueOnce(wrapKeyFixture);
     const client = core();
     const result = await approvePendingDeviceWithPasskey(client as never, "42", {
       userId: "user-1",
@@ -230,6 +239,7 @@ describe("passkey device approval client", () => {
         meta: {},
       },
     });
+    loadSplitKeyShareWrapKey.mockResolvedValueOnce(wrapKeyFixture);
     const client = core();
     const result = await approvePendingDeviceWithPasskey(client as never, "42", {
       userId: "user-1",
