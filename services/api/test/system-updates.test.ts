@@ -17,6 +17,7 @@ import {
 } from "../src/system-updates/package-format.ts";
 import { createHttpUpdateAgentClient } from "../src/system-updates/agent-client.ts";
 import {
+  buildFeedRequestHeaders,
   createSystemUpdateService,
   visibleUpdates,
   type UpdateAgentClient,
@@ -371,6 +372,193 @@ test("one feed can fail while the other component still reports an update", asyn
   assert.deepEqual(
     member.components.map((row) => row.component),
     ["okkey"],
+  );
+});
+
+test("status and apply build identical feed request headers", () => {
+  const options = {
+    enterpriseFeedUrl: "http://license.internal/enterprise.json",
+    enterpriseLicenseKey: "license-key-for-headers",
+  };
+  const feedUrl = "http://license.internal/enterprise.json";
+  const statusHeaders = buildFeedRequestHeaders(feedUrl, options);
+  const applyHeaders = buildFeedRequestHeaders(feedUrl, options);
+  assert.deepEqual(statusHeaders, applyHeaders);
+  assert.deepEqual(statusHeaders, { "X-Okkey-License-Key": "license-key-for-headers" });
+  assert.equal(buildFeedRequestHeaders(feedUrl, { ...options, enterpriseLicenseKey: "" }), undefined);
+  assert.equal(buildFeedRequestHeaders(feedUrl, { ...options, enterpriseLicenseKey: "   " }), undefined);
+  assert.equal(
+    buildFeedRequestHeaders("http://cdn.example/package.okpkg", options),
+    undefined,
+  );
+  assert.deepEqual(
+    buildFeedRequestHeaders("http://license.internal/packages/enterprise.okpkg", options),
+    { "X-Okkey-License-Key": "license-key-for-headers" },
+  );
+});
+
+test("apply sends the license header to the license host and omits it for other origins", async () => {
+  const licenseKey = "apply-license-key-do-not-log";
+  const keys = generateUpdateKeyPair();
+  const signed = signOfflinePackage(
+    payload({
+      component: "enterprise",
+      version: "3.0.0",
+      fromVersion: "1.0.0",
+      summary: "Enterprise module",
+      images: { enterprise: "ghcr.io/okkeyapp/enterprise:3.0.0" },
+    }),
+    keys.privateKeyPem,
+  );
+  const raw = JSON.stringify(signed);
+  const licenseFeed = {
+    schema: "okkey.update-feed.v1",
+    packages: [
+      feedPackage(
+        "enterprise",
+        "3.0.0",
+        "http://license.internal/enterprise-3.0.0.okpkg",
+        raw,
+        { minCoreVersion: "1.0.0" },
+      ),
+    ],
+  };
+  const thirdPartyFeed = {
+    schema: "okkey.update-feed.v1",
+    packages: [
+      feedPackage(
+        "enterprise",
+        "3.0.0",
+        "http://cdn.example/enterprise-3.0.0.okpkg",
+        raw,
+        { minCoreVersion: "1.0.0" },
+      ),
+    ],
+  };
+  const requests: Array<{ url: string; licenseHeader: string | null }> = [];
+  const agent: UpdateAgentClient = {
+    async start() {
+      return {
+        id: "11111111-1111-4111-8111-111111111111",
+        status: "verifying",
+        progress: 0,
+        component: "enterprise",
+        fromVersion: "1.0.0",
+        toVersion: "3.0.0",
+      };
+    },
+    async get() {
+      return null;
+    },
+  };
+
+  const withKey = createSystemUpdateService({
+    deploymentMode: "self_hosted",
+    currentVersion: "1.0.0",
+    enterpriseInstalled: true,
+    enterpriseVersion: "1.0.0",
+    coreFeedUrl: "http://updates.internal/feed.json",
+    enterpriseFeedUrl: "http://license.internal/enterprise.json",
+    enterpriseLicenseKey: licenseKey,
+    isolated: false,
+    feedCacheTtlMs: 0,
+    fetchImpl: async (url, init) => {
+      const headers = new Headers(init?.headers);
+      requests.push({ url: String(url), licenseHeader: headers.get("X-Okkey-License-Key") });
+      if (String(url).endsWith("/enterprise.json")) {
+        return new Response(JSON.stringify(licenseFeed), { status: 200 });
+      }
+      if (String(url).endsWith("/enterprise-3.0.0.okpkg")) {
+        return new Response(raw, { status: 200 });
+      }
+      return new Response(JSON.stringify({ schema: "okkey.update-feed.v1", packages: [] }), {
+        status: 200,
+      });
+    },
+    agent,
+    isAdmin: async () => true,
+  });
+  await withKey.statusFor("owner");
+  await withKey.apply("owner", { source: "feed", component: "enterprise" });
+  const statusFeed = requests.find((entry) => entry.url.endsWith("/enterprise.json"));
+  const applyFeed = requests.filter((entry) => entry.url.endsWith("/enterprise.json"));
+  const applyPackage = requests.find((entry) => entry.url.endsWith("/enterprise-3.0.0.okpkg"));
+  assert.equal(statusFeed?.licenseHeader, licenseKey);
+  assert.equal(applyFeed[1]?.licenseHeader, licenseKey);
+  assert.equal(applyPackage?.licenseHeader, licenseKey);
+  assert.equal(applyFeed[0]?.licenseHeader, applyFeed[1]?.licenseHeader);
+  const statusJson = JSON.stringify(await withKey.statusFor("owner"));
+  assert.equal(statusJson.includes(licenseKey), false);
+
+  requests.length = 0;
+  const withoutKey = createSystemUpdateService({
+    deploymentMode: "self_hosted",
+    currentVersion: "1.0.0",
+    enterpriseInstalled: true,
+    enterpriseVersion: "1.0.0",
+    coreFeedUrl: "http://updates.internal/feed.json",
+    enterpriseFeedUrl: "http://license.internal/enterprise.json",
+    isolated: false,
+    feedCacheTtlMs: 0,
+    fetchImpl: async (url, init) => {
+      const headers = new Headers(init?.headers);
+      requests.push({ url: String(url), licenseHeader: headers.get("X-Okkey-License-Key") });
+      if (String(url).endsWith("/enterprise.json")) {
+        return new Response(JSON.stringify(licenseFeed), { status: 200 });
+      }
+      if (String(url).endsWith("/enterprise-3.0.0.okpkg")) {
+        return new Response(raw, { status: 200 });
+      }
+      return new Response(JSON.stringify({ schema: "okkey.update-feed.v1", packages: [] }), {
+        status: 200,
+      });
+    },
+    agent,
+    isAdmin: async () => true,
+  });
+  await withoutKey.apply("owner", { source: "feed", component: "enterprise" });
+  assert.deepEqual(
+    requests.map((entry) => entry.licenseHeader),
+    [null, null],
+  );
+
+  requests.length = 0;
+  const thirdPartyPackage = createSystemUpdateService({
+    deploymentMode: "self_hosted",
+    currentVersion: "1.0.0",
+    enterpriseInstalled: true,
+    enterpriseVersion: "1.0.0",
+    coreFeedUrl: "http://updates.internal/feed.json",
+    enterpriseFeedUrl: "http://license.internal/enterprise.json",
+    enterpriseLicenseKey: licenseKey,
+    isolated: false,
+    feedCacheTtlMs: 0,
+    fetchImpl: async (url, init) => {
+      const headers = new Headers(init?.headers);
+      requests.push({ url: String(url), licenseHeader: headers.get("X-Okkey-License-Key") });
+      if (String(url).endsWith("/enterprise.json")) {
+        return new Response(JSON.stringify(thirdPartyFeed), { status: 200 });
+      }
+      if (String(url).endsWith("/enterprise-3.0.0.okpkg")) {
+        return new Response(raw, { status: 200 });
+      }
+      return new Response(JSON.stringify({ schema: "okkey.update-feed.v1", packages: [] }), {
+        status: 200,
+      });
+    },
+    agent,
+    isAdmin: async () => true,
+  });
+  await thirdPartyPackage.apply("owner", { source: "feed", component: "enterprise" });
+  assert.deepEqual(
+    requests.map((entry) => ({
+      host: new URL(entry.url).host,
+      licenseHeader: entry.licenseHeader,
+    })),
+    [
+      { host: "license.internal", licenseHeader: licenseKey },
+      { host: "cdn.example", licenseHeader: null },
+    ],
   );
 });
 

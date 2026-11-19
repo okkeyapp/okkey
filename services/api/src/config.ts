@@ -64,7 +64,7 @@ export interface ApiConfig {
    * Contacted only when enterprise modules are installed.
    */
   updateEnterpriseFeedUrl: string;
-  /** Enterprise feed credential (`OKKEY_LICENSE_KEY`). Sent only on that feed. */
+  /** Enterprise feed credential (`OKKEY_LICENSE_KEY`). Sent only to that feed host origin. */
   enterpriseLicenseKey: string;
   /** When true, update checks and feed downloads do not call the network. */
   updateIsolated: boolean;

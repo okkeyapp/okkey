@@ -125,7 +125,7 @@ export type SystemUpdateServiceOptions = {
   coreFeedUrl: string;
   /** Separate enterprise feed. Empty keeps enterprise packages on the core feed. */
   enterpriseFeedUrl?: string;
-  /** Sent only on the enterprise feed request. Never logged. */
+  /** License host credential (`OKKEY_LICENSE_KEY`). Sent only to that feed origin. Never logged. */
   enterpriseLicenseKey?: string;
   /** Current lapse flag. A feed check updates it through `setEnterpriseLicenseLapsed`. */
   enterpriseLicenseLapsed?: boolean;
@@ -253,6 +253,47 @@ type FeedLoad = {
   error: ComponentCheckError | null;
 };
 
+/**
+ * Build request headers for a feed or package URL on the license host.
+ * Sends `X-Okkey-License-Key` only when `OKKEY_LICENSE_KEY` is set and the
+ * request origin matches the configured enterprise feed host. Never log the key.
+ */
+export function buildFeedRequestHeaders(
+  requestUrl: string,
+  options: Pick<SystemUpdateServiceOptions, "enterpriseFeedUrl" | "enterpriseLicenseKey">,
+): Record<string, string> | undefined {
+  const licenseKey = (options.enterpriseLicenseKey ?? "").trim();
+  if (licenseKey === "") {
+    return undefined;
+  }
+  const licenseOrigin = licenseHostOrigin(options.enterpriseFeedUrl ?? "");
+  if (!licenseOrigin) {
+    return undefined;
+  }
+  let requestOrigin: string;
+  try {
+    requestOrigin = new URL(requestUrl.trim()).origin;
+  } catch {
+    return undefined;
+  }
+  if (requestOrigin !== licenseOrigin) {
+    return undefined;
+  }
+  return { "X-Okkey-License-Key": licenseKey };
+}
+
+function licenseHostOrigin(enterpriseFeedUrl: string): string | null {
+  const trimmed = enterpriseFeedUrl.trim();
+  if (trimmed === "") {
+    return null;
+  }
+  try {
+    return new URL(trimmed).origin;
+  } catch {
+    return null;
+  }
+}
+
 async function loadComponentFeeds(
   options: SystemUpdateServiceOptions,
   enterpriseFeedUrl: string,
@@ -261,12 +302,9 @@ async function loadComponentFeeds(
     headers?: Record<string, string>,
   ) => Promise<{ packages: readonly UpdateFeedPackage[] } | null>,
 ): Promise<FeedLoad[]> {
-  const loads: FeedLoad[] = [await readFeed("okkey", options.coreFeedUrl, options.isolated, load)];
+  const loads: FeedLoad[] = [await readFeed("okkey", options.coreFeedUrl, options, load)];
   if (options.enterpriseInstalled) {
-    const licenseKey = (options.enterpriseLicenseKey ?? "").trim();
-    const headers =
-      licenseKey === "" ? undefined : { "X-Okkey-License-Key": licenseKey };
-    loads.push(await readFeed("enterprise", enterpriseFeedUrl, options.isolated, load, headers));
+    loads.push(await readFeed("enterprise", enterpriseFeedUrl, options, load));
   }
   return loads;
 }
@@ -294,18 +332,18 @@ function syncEnterpriseLicense(
 async function readFeed(
   component: UpdateComponent,
   feedUrl: string,
-  isolated: boolean,
+  options: SystemUpdateServiceOptions,
   load: (
     url: string,
     headers?: Record<string, string>,
   ) => Promise<{ packages: readonly UpdateFeedPackage[] } | null>,
-  headers?: Record<string, string>,
 ): Promise<FeedLoad> {
   const configured = feedUrl.trim() !== "";
-  if (!configured || isolated) {
+  if (!configured || options.isolated) {
     return { component, configured, document: null, error: null };
   }
   try {
+    const headers = buildFeedRequestHeaders(feedUrl, options);
     const document = await load(feedUrl, headers);
     return { component, configured: true, document, error: null };
   } catch (error) {
@@ -473,14 +511,21 @@ async function resolveApplyDocument(
       "No update feed is configured. Select an offline package file.",
     );
   }
-  const feed = await fetchUpdateFeed(feedUrl, options.isolated, fetchImpl);
+  const feedHeaders = buildFeedRequestHeaders(feedUrl, options);
+  const feed = await fetchUpdateFeed(feedUrl, options.isolated, fetchImpl, feedHeaders);
   const match = feed?.packages
     .filter((entry) => entry.component === input.component)
     .sort((left, right) => (isNewerVersion(left.version, right.version) ? -1 : 1))[0];
   if (!feed || !match) {
     throw new SystemUpdateError(404, "FEED_UNAVAILABLE", "The feed has no package for that component");
   }
-  const document = await downloadSignedPackage(match.packageUrl, match.packageSha256, fetchImpl);
+  const packageHeaders = buildFeedRequestHeaders(match.packageUrl, options);
+  const document = await downloadSignedPackage(
+    match.packageUrl,
+    match.packageSha256,
+    fetchImpl,
+    packageHeaders,
+  );
   const registryCredentials =
     input.component === "enterprise" ? (match.registryCredentials ?? feed.registryCredentials) : undefined;
   return { document, registryCredentials };
