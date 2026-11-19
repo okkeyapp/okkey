@@ -194,6 +194,8 @@ export default function MemberCardPopup({
   const displayName = memberDisplayName(member);
   const canConfigure = !readOnly && canPut;
   const canManageInviteLink = !readOnly && canInvite && isPending && Boolean(member.invitationId);
+  const isLinkInvite = member.deliveryMethod === "link" || (isPending && !member.email.trim());
+  const canResendInvite = canManageInviteLink && !isLinkInvite;
 
   const assignableRoles = useMemo(
     () => roles.filter((role) => role.builtinId !== "owner"),
@@ -525,7 +527,7 @@ export default function MemberCardPopup({
   }
 
   async function handleResendInvite() {
-    if (!canManageInviteLink || !member.invitationId || inviteActionBusy) {
+    if (!canResendInvite || !member.invitationId || inviteActionBusy) {
       return;
     }
     setInviteActionBusy(true);
@@ -716,21 +718,31 @@ export default function MemberCardPopup({
               size={48}
             />
             <div className="min-w-0">
-              <p className="truncate text-base font-semibold text-foreground">{displayName}</p>
-              <p className="truncate text-sm text-muted-foreground">{member.email}</p>
+              <p className="truncate text-base font-semibold text-foreground">
+                {isLinkInvite
+                  ? t("web.workspaceSettings.members.invite.linkMemberLabel")
+                  : displayName}
+              </p>
+              <p className="truncate text-sm text-muted-foreground">
+                {isLinkInvite
+                  ? t("web.workspaceSettings.members.invite.linkMemberHint")
+                  : member.email}
+              </p>
             </div>
           </div>
 
           {canManageInviteLink ? (
             <div className="flex flex-wrap gap-2" data-testid="invite-pending-actions">
-              <Button
-                type="button"
-                variant="secondary"
-                disabled={inviteActionBusy || saving || removing}
-                onClick={() => void handleResendInvite()}
-              >
-                {t("web.workspaceSettings.members.invite.resend")}
-              </Button>
+              {canResendInvite ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={inviteActionBusy || saving || removing}
+                  onClick={() => void handleResendInvite()}
+                >
+                  {t("web.workspaceSettings.members.invite.resend")}
+                </Button>
+              ) : null}
               <Button
                 type="button"
                 variant="outline"

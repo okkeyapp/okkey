@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { test } from "node:test";
 
 import {
@@ -702,12 +703,19 @@ test("WorkspaceMembersService.createInvitations prefers recipient users.locale o
   assert.equal(acceptLanguage, "en");
 });
 
+function inviteTokenHash(token: string): string {
+  return createHash("sha256").update(token, "utf8").digest("hex");
+}
+
 test("WorkspaceMembersService.previewInvitation maps expired pending to expired", async () => {
+  const token = "raw-token";
   const service = paidMembersService({
     db: {
       query: async () => [
         {
           email: "invitee@example.com",
+          delivery_method: "email",
+          token_hash: inviteTokenHash(token),
           status: "pending",
           expires_at: new Date("2020-01-01T00:00:00.000Z"),
           workspace_name: "Acme",
@@ -719,14 +727,16 @@ test("WorkspaceMembersService.previewInvitation maps expired pending to expired"
     } as never,
   });
 
-  const preview = await service.previewInvitation("raw-token");
+  const preview = await service.previewInvitation(token);
   assert.equal(preview.status, "expired");
   assert.equal(preview.email, "invitee@example.com");
+  assert.equal(preview.deliveryMethod, "email");
   assert.equal(preview.workspaceName, "Acme");
   assert.equal(preview.inviterDisplayName, "Ada");
 });
 
 test("WorkspaceMembersService.acceptInvitation rejects email mismatch", async () => {
+  const token = "raw-token";
   const service = paidMembersService({
     db: {
       query: async (sql: string) => {
@@ -736,6 +746,8 @@ test("WorkspaceMembersService.acceptInvitation rejects email mismatch", async ()
               id: "inv1",
               workspace_id: "w1",
               email: "invitee@example.com",
+              delivery_method: "email",
+              token_hash: inviteTokenHash(token),
               role_id: "r1",
               status: "pending",
               expires_at: new Date(Date.now() + 86_400_000),
@@ -753,7 +765,7 @@ test("WorkspaceMembersService.acceptInvitation rejects email mismatch", async ()
   });
 
   await assert.rejects(
-    () => service.acceptInvitation("raw-token", "other-user"),
+    () => service.acceptInvitation(token, "other-user"),
     (error: unknown) => {
       assert.ok(error instanceof WorkspaceMembersServiceError);
       assert.equal(error.code, "INVITE_EMAIL_MISMATCH");
@@ -764,6 +776,7 @@ test("WorkspaceMembersService.acceptInvitation rejects email mismatch", async ()
 });
 
 test("WorkspaceMembersService.acceptInvitation rejects expired invites", async () => {
+  const token = "raw-token";
   const service = paidMembersService({
     db: {
       query: async (sql: string) => {
@@ -773,6 +786,8 @@ test("WorkspaceMembersService.acceptInvitation rejects expired invites", async (
               id: "inv1",
               workspace_id: "w1",
               email: "invitee@example.com",
+              delivery_method: "email",
+              token_hash: inviteTokenHash(token),
               role_id: "r1",
               status: "pending",
               expires_at: new Date("2020-01-01T00:00:00.000Z"),
@@ -790,7 +805,7 @@ test("WorkspaceMembersService.acceptInvitation rejects expired invites", async (
   });
 
   await assert.rejects(
-    () => service.acceptInvitation("raw-token", "u2"),
+    () => service.acceptInvitation(token, "u2"),
     (error: unknown) => {
       assert.ok(error instanceof WorkspaceMembersServiceError);
       assert.equal(error.code, "INVITE_EXPIRED");
@@ -801,6 +816,7 @@ test("WorkspaceMembersService.acceptInvitation rejects expired invites", async (
 });
 
 test("WorkspaceMembersService.acceptInvitation creates member and personal vault", async () => {
+  const token = "raw-token";
   const inserts: string[] = [];
   const service = paidMembersService({
     db: {
@@ -814,6 +830,8 @@ test("WorkspaceMembersService.acceptInvitation creates member and personal vault
               id: "inv1",
               workspace_id: "w1",
               email: "invitee@example.com",
+              delivery_method: "email",
+              token_hash: inviteTokenHash(token),
               role_id: "1000000000000000001",
               status: "pending",
               expires_at: new Date(Date.now() + 86_400_000),
@@ -836,7 +854,7 @@ test("WorkspaceMembersService.acceptInvitation creates member and personal vault
     } as never,
   });
 
-  const result = await service.acceptInvitation("raw-token", "u2");
+  const result = await service.acceptInvitation(token, "u2");
   assert.equal(result.workspaceId, "w1");
   assert.ok(result.vaultId);
   assert.equal(inserts.filter((sql) => sql.includes("workspace_members")).length, 1);

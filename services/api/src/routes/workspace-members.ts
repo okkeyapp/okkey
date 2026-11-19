@@ -151,9 +151,12 @@ export function createWorkspaceInvitationsCreateRoute(
       const raw = Array.isArray(record.invitations) ? record.invitations : [];
       const invitations = raw.map((entry) => {
         const row = (entry ?? {}) as Record<string, unknown>;
+        const deliveryMethod =
+          row.deliveryMethod === "link" ? ("link" as const) : ("email" as const);
         return {
-          email: String(row.email ?? ""),
+          email: row.email == null ? undefined : String(row.email),
           roleId: String(row.roleId ?? ""),
+          deliveryMethod,
         };
       });
       const result = await membersService.createInvitations(workspaceId, userId, invitations, {
@@ -604,6 +607,7 @@ export function createInvitationPreviewRoute(
 export function createInvitationAcceptRoute(
   membersService: WorkspaceMembersService,
   resolveUserId: ResolveUserId,
+  rateLimit?: InvitePreviewRateLimit,
 ): RouteHandler {
   return async (ctx) => {
     const token = ctx.params.token;
@@ -612,6 +616,19 @@ export function createInvitationAcceptRoute(
       return;
     }
     try {
+      if (rateLimit) {
+        const result = await enforceInvitePreviewRateLimit(ctx.req, rateLimit);
+        if (result.status === "limited") {
+          json(
+            ctx.res,
+            429,
+            errorPayload("AUTH_RATE_LIMITED", "rate limited", ctx.requestId, {
+              retryAfterSeconds: result.retryAfterSeconds,
+            }),
+          );
+          return;
+        }
+      }
       const userId = await resolveUserId(ctx.req);
       if (!userId) {
         json(ctx.res, 401, errorPayload("AUTH_REQUIRED", "auth required", ctx.requestId));

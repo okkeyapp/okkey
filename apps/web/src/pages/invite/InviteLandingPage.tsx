@@ -161,8 +161,13 @@ export default function InviteLandingPage() {
     if (!preview || preview.status !== "pending" || !accessToken || !vaultUnlocked) {
       return;
     }
+    if (preview.deliveryMethod === "link" || preview.email == null) {
+      void accept();
+      return;
+    }
+    const inviteEmail = preview.email.trim().toLowerCase();
     const sessionEmail = profile?.email?.trim().toLowerCase() ?? "";
-    if (!sessionEmail || sessionEmail !== preview.email.trim().toLowerCase()) {
+    if (!sessionEmail || sessionEmail !== inviteEmail) {
       return;
     }
     void accept();
@@ -173,8 +178,12 @@ export default function InviteLandingPage() {
       return;
     }
     writePendingInviteToken(token);
-    const q = new URLSearchParams({ email: preview.email });
-    navigate(`${AUTH_EMAIL_PATH}?${q.toString()}`, { replace: true });
+    if (preview.email) {
+      const q = new URLSearchParams({ email: preview.email });
+      navigate(`${AUTH_EMAIL_PATH}?${q.toString()}`, { replace: true });
+      return;
+    }
+    navigate(AUTH_EMAIL_PATH, { replace: true });
   }
 
   function continueLocked() {
@@ -187,8 +196,13 @@ export default function InviteLandingPage() {
 
   const status = preview?.status;
   const sessionEmail = profile?.email?.trim().toLowerCase() ?? "";
+  const isLinkInvite = Boolean(
+    preview && (preview.deliveryMethod === "link" || preview.email == null),
+  );
   const emailMatches = Boolean(
-    sessionEmail && preview && sessionEmail === preview.email.trim().toLowerCase(),
+    isLinkInvite
+      ? accessToken
+      : sessionEmail && preview?.email && sessionEmail === preview.email.trim().toLowerCase(),
   );
 
   let body: ReactNode;
@@ -225,10 +239,15 @@ export default function InviteLandingPage() {
       body = (
         <div className="flex w-full flex-col gap-4">
           <p className="okkey-body text-copy-secondary">
-            {t("web.invite.intro", {
-              workspace: preview.workspaceName,
-              inviter: preview.inviterDisplayName || preview.email,
-            })}
+            {isLinkInvite
+              ? t("web.invite.introLink", {
+                  workspace: preview.workspaceName,
+                  inviter: preview.inviterDisplayName,
+                })
+              : t("web.invite.intro", {
+                  workspace: preview.workspaceName,
+                  inviter: preview.inviterDisplayName || preview.email || "",
+                })}
           </p>
           <Button type="button" onClick={continueAsGuest}>
             {t("web.invite.continue")}
@@ -248,8 +267,12 @@ export default function InviteLandingPage() {
             onClick={() => {
               logout();
               writePendingInviteToken(token);
-              const q = new URLSearchParams({ email: preview.email });
-              navigate(`${AUTH_EMAIL_PATH}?${q.toString()}`, { replace: true });
+              if (preview.email) {
+                const q = new URLSearchParams({ email: preview.email });
+                navigate(`${AUTH_EMAIL_PATH}?${q.toString()}`, { replace: true });
+                return;
+              }
+              navigate(AUTH_EMAIL_PATH, { replace: true });
             }}
           >
             {t("web.invite.switchAccount")}
