@@ -1192,6 +1192,10 @@ function WorkspaceShellWithItems({
               ),
             )}
             itemsListRecordsLoaded={workspaceItemsState.bootstrapped}
+            tipsWorkspaceId={resolvedWorkspaceId}
+            tipsIsWorkspaceOwner={Boolean(
+              currentWorkspace && userId && currentWorkspace.ownerId === userId,
+            )}
           >
             {core ? (
               <WorkspaceKeyNoticeBoundary>
