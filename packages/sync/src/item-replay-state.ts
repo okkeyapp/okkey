@@ -42,12 +42,17 @@ export function isUnmarkedItemSoftDelete(
   );
 }
 
-/** Apply decrypted item plaintext to materialized replay map (soft-delete aware). */
+/** Apply decrypted item plaintext to materialized replay map (soft-delete / purge aware). */
 export function applyItemPlaintextToReplayMap(
   items: Map<string, ItemPlaintextV2>,
   parsed: ItemPlaintextV2,
   event: Pick<SyncEventWireDto, "eventType" | "createdAt" | "itemSoftDeleted">,
 ): void {
+  if (event.eventType === "ITEM_PURGE") {
+    items.delete(parsed.itemId);
+    return;
+  }
+
   const isDeleted = shouldApplyItemSoftDelete(parsed, event);
   if (!isDeleted) {
     items.set(parsed.itemId, {

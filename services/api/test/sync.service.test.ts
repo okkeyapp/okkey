@@ -301,6 +301,7 @@ test("appendEvent rejects ITEM_UPDATE when ITEM_CREATE is missing", async () => 
         throw new Error("not used");
       },
       deleteByVaultAndReferencedItemId: async () => {},
+      deleteByVaultAndReferencedItemIdExcept: async () => {},
     },
   });
 
@@ -370,6 +371,7 @@ test("appendEvent allows ITEM_UPDATE in shared vault without sharedVaults plan",
         createdAt: "2026-01-01T00:00:00.000Z",
       }),
       deleteByVaultAndReferencedItemId: async () => {},
+      deleteByVaultAndReferencedItemIdExcept: async () => {},
     },
   });
 
@@ -422,12 +424,14 @@ test("appendEvent persists itemSoftDeleted=true for ITEM_DELETE", async () => {
         };
       },
       deleteByVaultAndReferencedItemId: async () => 0,
+      deleteByVaultAndReferencedItemIdExcept: async () => 0,
     },
     softDeletes: {
       upsert: async () => {
         softDeleteUpserts += 1;
       },
       remove: async () => {},
+      exists: async () => false,
     },
   });
 
@@ -481,12 +485,14 @@ test("appendEvent persists itemSoftDeleted=true for soft-delete ITEM_UPDATE on s
         };
       },
       deleteByVaultAndReferencedItemId: async () => 0,
+      deleteByVaultAndReferencedItemIdExcept: async () => 0,
     },
     softDeletes: {
       upsert: async () => {
         softDeleteUpserts += 1;
       },
       remove: async () => {},
+      exists: async () => false,
     },
   });
 
@@ -539,12 +545,14 @@ test("appendEvent does not upsert softDeletes when idempotent row lacks soft-del
       findByIdempotencyKey: async () => existing,
       append: async () => existing,
       deleteByVaultAndReferencedItemId: async () => 0,
+      deleteByVaultAndReferencedItemIdExcept: async () => 0,
     },
     softDeletes: {
       upsert: async () => {
         softDeleteUpserts += 1;
       },
       remove: async () => {},
+      exists: async () => false,
     },
   });
 
@@ -599,6 +607,7 @@ test("appendEvent persists itemSoftDeleted=false when omitted on ITEM_UPDATE", a
         };
       },
       deleteByVaultAndReferencedItemId: async () => 0,
+      deleteByVaultAndReferencedItemIdExcept: async () => 0,
     },
   });
 
@@ -1488,5 +1497,164 @@ test("appendEvents maps a batch version conflict to 409", async () => {
       error instanceof SyncServiceError &&
       error.code === "VERSION_MISMATCH" &&
       error.statusCode === 409,
+  );
+});
+
+test("appendEvent ITEM_PURGE rejects when item is not in trash", async () => {
+  const service = new SyncService({
+    vaults: {
+      findById: async () => ({
+        id: "1000000000000000004",
+        workspaceId: "1000000000000000001",
+        name: "Shared",
+        isPersonal: false,
+        ownerId: "1000000000000000003",
+        cryptoVersion: 2,
+        createdAt: "",
+        updatedAt: "",
+      }),
+      canReadVault: async () => true,
+    },
+    events: {
+      listAfterVersion: async () => [],
+      hasItemCreateEvent: async () => true,
+      findByIdempotencyKey: async () => null,
+      append: async () => {
+        throw new Error("should not append");
+      },
+      deleteByVaultAndReferencedItemId: async () => 0,
+      deleteByVaultAndReferencedItemIdExcept: async () => 0,
+    },
+    softDeletes: {
+      upsert: async () => {},
+      remove: async () => {},
+      exists: async () => false,
+    },
+  });
+
+  await assert.rejects(
+    () =>
+      service.appendEvent("1000000000000000004", "1000000000000000003", {
+        eventType: "ITEM_PURGE",
+        encryptedBlob: mkBlob("x"),
+        baseVersion: 1,
+        referencedItemId: TEST_ITEM_ID,
+      }),
+    (error: unknown) =>
+      error instanceof SyncServiceError &&
+      error.code === "SYNC_ITEM_NOT_IN_TRASH" &&
+      error.statusCode === 409,
+  );
+});
+
+test("appendEvent ITEM_PURGE keeps tombstone and purges prior history", async () => {
+  let exceptCalls = 0;
+  let softDeleteRemoves = 0;
+  let purgedKeepId = "";
+  const service = new SyncService({
+    vaults: {
+      findById: async () => ({
+        id: "1000000000000000004",
+        workspaceId: "1000000000000000001",
+        name: "Shared",
+        isPersonal: false,
+        ownerId: "1000000000000000003",
+        cryptoVersion: 2,
+        createdAt: "",
+        updatedAt: "",
+      }),
+      canReadVault: async () => true,
+    },
+    events: {
+      listAfterVersion: async () => [],
+      hasItemCreateEvent: async () => true,
+      findByIdempotencyKey: async () => null,
+      append: async (input) => ({
+        id: "e-purge",
+        vaultId: "1000000000000000004",
+        actorId: "1000000000000000003",
+        eventType: "ITEM_PURGE",
+        encryptedPayload: input.encryptedPayload,
+        payloadSchemaVersion: input.payloadSchemaVersion ?? 2,
+        idempotencyKey: null,
+        clientCreatedAt: null,
+        referencedItemId: input.referencedItemId ?? null,
+        itemSoftDeleted: input.itemSoftDeleted ?? null,
+        version: 3,
+        createdAt: "2026-01-01T00:00:00.000Z",
+      }),
+      deleteByVaultAndReferencedItemId: async () => 0,
+      deleteByVaultAndReferencedItemIdExcept: async (_vaultId, _itemId, keepEventId) => {
+        exceptCalls += 1;
+        purgedKeepId = keepEventId;
+        return 2;
+      },
+    },
+    softDeletes: {
+      upsert: async () => {},
+      remove: async () => {
+        softDeleteRemoves += 1;
+      },
+      exists: async () => true,
+    },
+  });
+
+  const event = await service.appendEvent("1000000000000000004", "1000000000000000003", {
+    eventType: "ITEM_PURGE",
+    encryptedBlob: mkBlob("x"),
+    baseVersion: 2,
+    referencedItemId: TEST_ITEM_ID,
+  });
+  assert.equal(event.eventType, "ITEM_PURGE");
+  assert.equal(event.itemSoftDeleted, false);
+  assert.equal(exceptCalls, 1);
+  assert.equal(purgedKeepId, "e-purge");
+  assert.equal(softDeleteRemoves, 1);
+});
+
+test("appendEvent ITEM_PURGE rejects when ITEM_CREATE is missing", async () => {
+  const service = new SyncService({
+    vaults: {
+      findById: async () => ({
+        id: "1000000000000000004",
+        workspaceId: "1000000000000000001",
+        name: "Shared",
+        isPersonal: false,
+        ownerId: "1000000000000000003",
+        cryptoVersion: 2,
+        createdAt: "",
+        updatedAt: "",
+      }),
+      canReadVault: async () => true,
+    },
+    events: {
+      listAfterVersion: async () => [],
+      hasItemCreateEvent: async () => false,
+      findByIdempotencyKey: async () => null,
+      append: async () => {
+        throw new Error("should not append");
+      },
+      deleteByVaultAndReferencedItemId: async () => 0,
+      deleteByVaultAndReferencedItemIdExcept: async () => 0,
+    },
+    softDeletes: {
+      upsert: async () => {},
+      remove: async () => {},
+      exists: async () => true,
+    },
+  });
+
+  await assert.rejects(
+    () =>
+      service.appendEvent("1000000000000000004", "1000000000000000003", {
+        eventType: "ITEM_PURGE",
+        encryptedBlob: mkBlob("x"),
+        baseVersion: 1,
+        referencedItemId: TEST_ITEM_ID,
+      }),
+    (error: unknown) =>
+      error instanceof SyncServiceError &&
+      error.code === "SYNC_ITEM_NOT_FOUND" &&
+      error.statusCode === 404,
   );
 });

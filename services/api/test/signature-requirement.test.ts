@@ -264,6 +264,7 @@ function syncService(mode: CryptoRolloutMode, signer: Signer): SyncService {
       hasItemCreateEvent: async () => true,
       findByIdempotencyKey: async () => null,
       deleteByVaultAndReferencedItemId: async () => {},
+      deleteByVaultAndReferencedItemIdExcept: async () => {},
       append: async (input) => ({
         id: "e1",
         vaultId: input.vaultId,

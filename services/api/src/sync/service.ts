@@ -55,12 +55,15 @@ const SYNC_EVENT_TYPES = new Set([
   "ITEM_CREATE",
   "ITEM_UPDATE",
   "ITEM_DELETE",
+  "ITEM_PURGE",
   "VAULT_CREATE",
   "VAULT_SHARE",
   "VAULT_KEY_ROTATION",
   "DEVICE_ADD",
   "DEVICE_REMOVE",
 ]);
+
+const ITEM_EVENT_TYPES = new Set(["ITEM_CREATE", "ITEM_UPDATE", "ITEM_DELETE", "ITEM_PURGE"]);
 
 const EVENT_TYPES_REQUIRING_IDEMPOTENCY = new Set(["ITEM_CREATE"]);
 
@@ -120,12 +123,18 @@ export interface SyncServiceDeps {
     | "listAfterVersion"
     | "append"
     | "deleteByVaultAndReferencedItemId"
+    | "deleteByVaultAndReferencedItemIdExcept"
     | "hasItemCreateEvent"
     | "findByIdempotencyKey"
   > & {
     appendBatch?: EventsRepository["appendBatch"];
   };
-  softDeletes?: Pick<VaultItemSoftDeletesRepository, "upsert" | "remove">;
+  softDeletes?: Pick<VaultItemSoftDeletesRepository, "upsert" | "remove" | "exists">;
+  /** Hard-purge attachments + prior event history after an ITEM_PURGE tombstone. */
+  itemPurge?: Pick<
+    import("../item-purge/service.ts").ItemPurgeService,
+    "purgeItem"
+  >;
   users?: Pick<UsersRepository, "findById">;
   /** Required in production to gate ITEM_CREATE on shared vaults after EE→FREE. */
   workspaces?: Pick<WorkspacesRepository, "findById">;
@@ -178,6 +187,7 @@ export class SyncService {
   private readonly vaults: SyncServiceDeps["vaults"];
   private readonly events: SyncServiceDeps["events"];
   private readonly softDeletes: SyncServiceDeps["softDeletes"];
+  private readonly itemPurge: SyncServiceDeps["itemPurge"];
   private readonly users: SyncServiceDeps["users"];
   private readonly workspaces: SyncServiceDeps["workspaces"];
   private readonly storageQuota: SyncServiceDeps["storageQuota"];
@@ -198,6 +208,7 @@ export class SyncService {
     this.vaults = deps.vaults;
     this.events = deps.events;
     this.softDeletes = deps.softDeletes;
+    this.itemPurge = deps.itemPurge;
     this.users = deps.users;
     this.workspaces = deps.workspaces;
     this.storageQuota = deps.storageQuota;
@@ -283,6 +294,7 @@ export class SyncService {
       }
       const created = await this.events.append(prepared.storage);
       await this.applySoftDeleteIndex(vaultId, created, prepared.itemDeletedAtMs);
+      await this.applyItemPurgeCleanup(vaultId, created);
       recordCryptoOperationOutcome(this.log, {
         operation,
         deployEnv: this.config.deployEnv,
@@ -397,6 +409,7 @@ export class SyncService {
         const row = insertedRows[insertCursor]!;
         insertCursor += 1;
         await this.applySoftDeleteIndex(vaultId, row, prepared.itemDeletedAtMs);
+        await this.applyItemPurgeCleanup(vaultId, row);
         out[i] = mapEventToResponse(row);
       }
       recordCryptoOperationOutcome(this.log, {
@@ -478,6 +491,10 @@ export class SyncService {
       return;
     }
     const referencedItemId = created.referencedItemId;
+    if (created.eventType === "ITEM_PURGE") {
+      // Soft-delete index + prior history are cleared in applyItemPurgeCleanup.
+      return;
+    }
     const persistedSoftDelete =
       created.eventType === "ITEM_DELETE" || created.itemSoftDeleted === true;
     if (persistedSoftDelete) {
@@ -491,6 +508,26 @@ export class SyncService {
     if (created.eventType === "ITEM_UPDATE" && created.itemSoftDeleted === false) {
       await this.softDeletes.remove(vaultId, referencedItemId);
     }
+  }
+
+  /** After ITEM_PURGE tombstone is appended, drop prior history and attachments. */
+  private async applyItemPurgeCleanup(vaultId: string, created: EventRecord): Promise<void> {
+    if (created.eventType !== "ITEM_PURGE" || !created.referencedItemId) {
+      return;
+    }
+    if (this.itemPurge) {
+      await this.itemPurge.purgeItem(vaultId, created.referencedItemId, {
+        keepEventId: created.id,
+      });
+      return;
+    }
+    // Fallback when ItemPurgeService is not wired (unit tests without attachments).
+    await this.events.deleteByVaultAndReferencedItemIdExcept(
+      vaultId,
+      created.referencedItemId,
+      created.id,
+    );
+    await this.softDeletes?.remove(vaultId, created.referencedItemId);
   }
 
   private async prepareAppend(
@@ -610,7 +647,6 @@ export class SyncService {
       }
     }
 
-    const itemEventTypes = new Set(["ITEM_CREATE", "ITEM_UPDATE", "ITEM_DELETE"]);
     let referencedItemId: string | null = null;
     if (input.referencedItemId !== undefined && input.referencedItemId !== "") {
       if (!isEntityId(input.referencedItemId)) {
@@ -621,7 +657,7 @@ export class SyncService {
         );
       }
       referencedItemId = input.referencedItemId;
-    } else if (itemEventTypes.has(input.eventType)) {
+    } else if (ITEM_EVENT_TYPES.has(input.eventType)) {
       throw new SyncServiceError(
         "SYNC_BAD_REQUEST",
         400,
@@ -662,7 +698,9 @@ export class SyncService {
     }
 
     if (
-      (input.eventType === "ITEM_UPDATE" || input.eventType === "ITEM_DELETE") &&
+      (input.eventType === "ITEM_UPDATE" ||
+        input.eventType === "ITEM_DELETE" ||
+        input.eventType === "ITEM_PURGE") &&
       referencedItemId
     ) {
       const hasCreate =
@@ -672,7 +710,26 @@ export class SyncService {
         throw new SyncServiceError(
           "SYNC_ITEM_NOT_FOUND",
           404,
-          "ITEM_UPDATE/ITEM_DELETE require an existing ITEM_CREATE for this item id",
+          "ITEM_UPDATE/ITEM_DELETE/ITEM_PURGE require an existing ITEM_CREATE for this item id",
+          { referencedItemId },
+        );
+      }
+    }
+
+    if (input.eventType === "ITEM_PURGE" && referencedItemId) {
+      if (!this.softDeletes) {
+        throw new SyncServiceError(
+          "INTERNAL_SERVER_ERROR",
+          500,
+          "soft-delete index is unavailable",
+        );
+      }
+      const inTrash = await this.softDeletes.exists(vaultId, referencedItemId);
+      if (!inTrash) {
+        throw new SyncServiceError(
+          "SYNC_ITEM_NOT_IN_TRASH",
+          409,
+          "ITEM_PURGE requires an item that is already in Recently deleted",
           { referencedItemId },
         );
       }
@@ -706,9 +763,14 @@ export class SyncService {
     }
 
     let itemSoftDeleted: boolean | null = null;
-    if (itemEventTypes.has(input.eventType)) {
-      itemSoftDeleted =
-        input.eventType === "ITEM_DELETE" ? true : input.itemSoftDeleted === true;
+    if (ITEM_EVENT_TYPES.has(input.eventType)) {
+      if (input.eventType === "ITEM_PURGE") {
+        // Purge tombstone is not a soft-delete; retention index is cleared separately.
+        itemSoftDeleted = false;
+      } else {
+        itemSoftDeleted =
+          input.eventType === "ITEM_DELETE" ? true : input.itemSoftDeleted === true;
+      }
     }
 
     if (

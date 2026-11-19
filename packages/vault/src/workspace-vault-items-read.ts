@@ -9,6 +9,7 @@ import {
 } from "@okkey/sync";
 import {
   buildItemCreateAppendRequest,
+  buildItemPurgeAppendRequest,
   buildItemSyncMetadataFromPlaintext,
   buildItemUpdateAppendRequest,
 } from "@okkey/sync/item-sync";
@@ -20,7 +21,7 @@ import { resolveVaultItemEncryptionKey } from "./resolve-vault-item-key.js";
 
 const CACHE_DB = "okkey-workspace-vault-items-sync";
 const CACHE_STORE = "materialized_state";
-const ITEM_EVENT_TYPES = new Set(["ITEM_CREATE", "ITEM_UPDATE", "ITEM_DELETE"]);
+const ITEM_EVENT_TYPES = new Set(["ITEM_CREATE", "ITEM_UPDATE", "ITEM_DELETE", "ITEM_PURGE"]);
 /** Plaintext item schema versions. Not the crypto profile (vault items require qday v2). */
 const SUPPORTED_PAYLOAD_SCHEMA_VERSIONS = new Set([1, 2]);
 
@@ -284,6 +285,9 @@ async function applyVaultItemEvents(
       );
     } else if (event.eventType === "ITEM_DELETE") {
       appendItemActivity(itemActivity, parsed.itemId, event, "deleted");
+    } else if (event.eventType === "ITEM_PURGE") {
+      itemActivity.delete(parsed.itemId);
+      itemCreatedByUserId.delete(parsed.itemId);
     }
 
     applyItemPlaintextToReplayMap(items, parsed, event);
@@ -304,6 +308,8 @@ export type WorkspaceVaultItemsReadController = {
   updateItem: (item: ItemPlaintextV2) => Promise<string>;
   /** Create login (and other) items via ITEM_CREATE append. */
   createItem: (item: ItemPlaintextV2) => Promise<string>;
+  /** Permanently delete a soft-deleted item (ITEM_PURGE). */
+  purgeItem: (itemId: string) => Promise<void>;
   dispose: () => void;
 };
 
@@ -532,6 +538,33 @@ export function createWorkspaceVaultItemsReadController(input: {
       );
       await enqueue(request, item.vaultId);
       return item.itemId;
+    },
+    purgeItem: async (itemId) => {
+      const item = (() => {
+        for (const state of vaultStates.values()) {
+          const found = state.items.get(itemId);
+          if (found) {
+            return found;
+          }
+        }
+        return null;
+      })();
+      if (!item) {
+        throw new Error("ITEM_NOT_FOUND");
+      }
+      if (!item.deleted) {
+        throw new Error("ITEM_NOT_IN_TRASH");
+      }
+      const state = ensureVaultState(item.vaultId);
+      const vaultKey = await resolveVaultKey(item.vaultId);
+      const request = await buildItemPurgeAppendRequest(
+        vaultKey,
+        item.vaultId,
+        item.itemId,
+        state.lastAppliedVersion,
+        generateEntityId(),
+      );
+      await enqueue(request, item.vaultId);
     },
     dispose: () => {
       vaultKeyCache.clear();

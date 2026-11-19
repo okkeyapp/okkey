@@ -74,6 +74,7 @@ function createSyncService(
         };
       },
       deleteByVaultAndReferencedItemId: async () => 0,
+      deleteByVaultAndReferencedItemIdExcept: async () => 0,
     },
     config: {
       allowedCryptoProfileVersions,

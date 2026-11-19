@@ -230,6 +230,7 @@ type ItemDetailTopBarProps = {
   onToggleFavorite: () => void;
   onToggleArchive: () => void;
   onToggleDelete: () => void;
+  onPurge?: () => void;
   canEdit?: boolean;
   canFavorite?: boolean;
   canArchive?: boolean;
@@ -257,6 +258,7 @@ export default function ItemDetailTopBar({
   onToggleFavorite,
   onToggleArchive,
   onToggleDelete,
+  onPurge,
   canEdit = true,
   canFavorite = true,
   canArchive = true,
@@ -425,6 +427,15 @@ export default function ItemDetailTopBar({
                 )}
                 <span>{deleted ? t("web.items.menu.restore") : t("web.items.menu.delete")}</span>
               </DropdownMenuItem>
+              ) : null}
+              {canDelete && deleted && onPurge ? (
+                <DropdownMenuItem
+                  className="gap-2 text-destructive data-[highlighted]:bg-destructive/15 data-[highlighted]:text-destructive"
+                  onSelect={onPurge}
+                >
+                  <IconDelete16 />
+                  <span>{t("web.items.menu.deletePermanently")}</span>
+                </DropdownMenuItem>
               ) : null}
             </DropdownMenuContent>
           </DropdownMenu>

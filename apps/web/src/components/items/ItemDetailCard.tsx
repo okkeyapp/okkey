@@ -44,6 +44,7 @@ import ItemActivitySection from "./ItemActivitySection";
 import ItemDetailBreadcrumbs from "./ItemDetailBreadcrumbs";
 import ItemDetailTopBar from "./ItemDetailTopBar";
 import DeleteItemsConfirmPopup from "./DeleteItemsConfirmPopup";
+import PurgeItemsConfirmPopup from "./PurgeItemsConfirmPopup";
 import { ItemsDetailPanelEmptyStateFill } from "./ItemsDetailPanelEmptyState";
 import ItemTagsReadonly from "./ItemTagsReadonly";
 import { downloadKeyFieldFileAttachment } from "../../api/key-field-files";
@@ -77,7 +78,7 @@ export default function ItemDetailCard({ itemId, vaults, workspaceId: workspaceI
   const outletContext = useOutletContext<WorkspaceShellOutletContext | undefined>();
   const workspaceId = workspaceIdProp ?? outletContext?.workspaceId;
   const { resolveMemberDisplayName } = useWorkspaceMemberDisplayNames(workspaceId);
-  const { getItemById, getItemActivityById, getItemCreatedByUserId, bootstrapped, loading, records, syncVersion, setItemArchived, setItemDeleted, updateItemQuiet, deletedItemsRetentionDays, fileUploadConstraints, filesInItemsEnabled, resolveVaultEncryptionKey } =
+  const { getItemById, getItemActivityById, getItemCreatedByUserId, bootstrapped, loading, records, syncVersion, setItemArchived, setItemDeleted, purgeItem, updateItemQuiet, deletedItemsRetentionDays, fileUploadConstraints, filesInItemsEnabled, resolveVaultEncryptionKey } =
     useWorkspaceItems();
   const {
     canPutItem,
@@ -89,6 +90,7 @@ export default function ItemDetailCard({ itemId, vaults, workspaceId: workspaceI
   const { folderTree, setItemFavorite } = useWorkspaceFolders();
   const cardRootRef = useRef<HTMLDivElement>(null);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [purgeConfirmOpen, setPurgeConfirmOpen] = useState(false);
   const headerScrolled = useScrollAncestorScrolled(
     cardRootRef,
     0,
@@ -246,6 +248,24 @@ export default function ItemDetailCard({ itemId, vaults, workspaceId: workspaceI
     setDeleteConfirmOpen(true);
   }, [canDelete, itemId, listRecord?.deleted, setItemDeleted]);
 
+  const handlePurgeItem = useCallback(() => {
+    if (!canDelete || !(listRecord?.deleted ?? false)) {
+      return;
+    }
+    setPurgeConfirmOpen(true);
+  }, [canDelete, listRecord?.deleted]);
+
+  const confirmPurgeItem = useCallback(() => {
+    void (async () => {
+      if (!(await requestZoneUnlock("deletion", { persist: false }))) {
+        return;
+      }
+      await purgeItem(itemId);
+      setSearchParams((prev) => withoutOpenItemQueryParam(prev, [itemId]), { replace: true });
+      setPurgeConfirmOpen(false);
+    })();
+  }, [itemId, purgeItem, requestZoneUnlock, setSearchParams]);
+
   const confirmDeleteItem = useCallback(() => {
     void (async () => {
       if (!(await requestZoneUnlock("deletion", { persist: false }))) {
@@ -400,6 +420,7 @@ export default function ItemDetailCard({ itemId, vaults, workspaceId: workspaceI
           })();
         }}
         onToggleDelete={handleToggleDelete}
+        onPurge={handlePurgeItem}
       />
 
       <DeleteItemsConfirmPopup
@@ -409,6 +430,13 @@ export default function ItemDetailCard({ itemId, vaults, workspaceId: workspaceI
         t={t}
         onClose={() => setDeleteConfirmOpen(false)}
         onConfirm={confirmDeleteItem}
+      />
+      <PurgeItemsConfirmPopup
+        open={purgeConfirmOpen}
+        mode="single"
+        t={t}
+        onClose={() => setPurgeConfirmOpen(false)}
+        onConfirm={confirmPurgeItem}
       />
 
       <div className="mx-auto w-full max-w-[600px] flex-1 px-4 py-6 md:py-[36px]">

@@ -7,7 +7,7 @@ import {
 import { itemPlaintextMatchesReferencedId } from "./item-id-binding.js";
 import { applyItemPlaintextToReplayMap } from "./item-replay-state.js";
 
-const ITEM_TYPES = new Set(["ITEM_CREATE", "ITEM_UPDATE", "ITEM_DELETE"]);
+const ITEM_TYPES = new Set(["ITEM_CREATE", "ITEM_UPDATE", "ITEM_DELETE", "ITEM_PURGE"]);
 
 /** Plaintext item schema versions. Not the crypto profile (vault items require qday v2). */
 const SUPPORTED_PAYLOAD_SCHEMA_VERSIONS = new Set<number>([

@@ -304,16 +304,6 @@ async function main(): Promise<void> {
     users: storage.repositories.users,
     devices: storage.repositories.devices,
   });
-  const syncService = new SyncService({
-    vaults: storage.repositories.vaults,
-    events: storage.repositories.events,
-    softDeletes: storage.repositories.vaultItemSoftDeletes,
-    users: storage.repositories.users,
-    workspaces: storage.repositories.workspaces,
-    storageQuota,
-    config,
-    log: logger,
-  });
   const workspacePersonalSyncService = new WorkspacePersonalSyncService({
     workspaces: storage.repositories.workspaces,
     events: storage.repositories.workspacePersonalEvents,
@@ -409,6 +399,17 @@ async function main(): Promise<void> {
     events: storage.repositories.events,
     softDeletes: storage.repositories.vaultItemSoftDeletes,
     attachments: attachmentService,
+  });
+  const syncService = new SyncService({
+    vaults: storage.repositories.vaults,
+    events: storage.repositories.events,
+    softDeletes: storage.repositories.vaultItemSoftDeletes,
+    itemPurge: itemPurgeService,
+    users: storage.repositories.users,
+    workspaces: storage.repositories.workspaces,
+    storageQuota,
+    config,
+    log: logger,
   });
   if (enterprisePlugins.length > 0) {
     logger.info("enterprise modules loaded", {

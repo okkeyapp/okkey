@@ -277,4 +277,5 @@ export {
 
 export { SetupPinPopup } from "./settings/SetupPinPopup.js";
 export { DeleteItemsConfirmPopup } from "./settings/DeleteItemsConfirmPopup.js";
+export { PurgeItemsConfirmPopup } from "./settings/PurgeItemsConfirmPopup.js";
 export { CopyGuardConfirmPopup } from "./settings/CopyGuardConfirmPopup.js";

@@ -316,7 +316,7 @@ export class SyncOutboxClient {
   }
 
   private remoteEventsTouchItem(events: SyncEventWireDto[], itemId: string): boolean {
-    const itemTypes = new Set(["ITEM_CREATE", "ITEM_UPDATE", "ITEM_DELETE"]);
+    const itemTypes = new Set(["ITEM_CREATE", "ITEM_UPDATE", "ITEM_DELETE", "ITEM_PURGE"]);
     return events.some(
       (event) => itemTypes.has(event.eventType) && event.referencedItemId === itemId,
     );
@@ -338,7 +338,9 @@ export class SyncOutboxClient {
 
     const referencedItemId = entry.request.referencedItemId;
     const isSameItemMutation =
-      (entry.request.eventType === "ITEM_UPDATE" || entry.request.eventType === "ITEM_DELETE") &&
+      (entry.request.eventType === "ITEM_UPDATE" ||
+        entry.request.eventType === "ITEM_DELETE" ||
+        entry.request.eventType === "ITEM_PURGE") &&
       typeof referencedItemId === "string" &&
       referencedItemId.length > 0;
     // Peer already wrote this item since our baseVersion — do not last-writer-wins overwrite.

@@ -4309,6 +4309,25 @@ export class EventsRepository {
     return rows.length;
   }
 
+  /** Hard-purge item history while keeping one tombstone event (ITEM_PURGE) for sync. */
+  async deleteByVaultAndReferencedItemIdExcept(
+    vaultId: string,
+    referencedItemId: string,
+    keepEventId: string,
+  ): Promise<number> {
+    const rows = await this.db.query<{ id: string }>(
+      `
+        DELETE FROM events
+        WHERE vault_id = $1
+          AND referenced_item_id = $2::bigint
+          AND id <> $3::bigint
+        RETURNING id
+      `,
+      [vaultId, referencedItemId, keepEventId],
+    );
+    return rows.length;
+  }
+
   /** True when the vault event log has referenced this client item id (create/update/delete). */
   async hasReferencedItemId(vaultId: string, referencedItemId: string): Promise<boolean> {
     const rows = await this.db.query<{ exists: boolean }>(

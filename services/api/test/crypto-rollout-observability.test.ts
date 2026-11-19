@@ -72,6 +72,7 @@ function createSyncServiceWithLogger(config: {
         createdAt: "2026-01-01T00:00:00.000Z",
       }),
       deleteByVaultAndReferencedItemId: async () => 0,
+      deleteByVaultAndReferencedItemIdExcept: async () => 0,
     },
     config: {
       deployEnv: "dev",
