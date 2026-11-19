@@ -435,6 +435,8 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
 
   const userIdRef = useRef<string | null>(readStoredSession()?.user_id ?? null);
   userIdRef.current = userId;
+  const accessTokenRef = useRef<string | null>(readStoredSession()?.access_token ?? null);
+  accessTokenRef.current = accessToken;
 
   const [vaultUnlockBootstrapLoading, setVaultUnlockBootstrapLoading] = useState(false);
   const [deviceTrustStatus, setDeviceTrustStatus] = useState<DeviceTrustStatus | "idle">("idle");
@@ -753,6 +755,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
 
   const applyAccessTokenResponse = useCallback((dto: AccessTokenResponseDto) => {
     userIdRef.current = dto.user_id;
+    accessTokenRef.current = dto.access_token;
     writeStoredSession({
       access_token: dto.access_token,
       user_id: dto.user_id,
@@ -783,6 +786,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       clearStoredCurrentWorkspaceId(workspaceUserId);
     }
     userIdRef.current = null;
+    accessTokenRef.current = null;
     clearRememberedServerKeyShares();
     clearVaultUnlockSession();
     clearStoredSession();
@@ -929,19 +933,23 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
   );
 
   const tryUnlockWithMasterPassword = useCallback(async (masterPassword: string): Promise<MasterPasswordUnlockResult> => {
-    const bundle = readVaultBundle(userId);
-    if (!bundle || !userId) {
+    // Prefer refs so callers that applyAccessTokenResponse then unlock in the same turn
+    // (setup wizard finish) see the new session immediately.
+    const unlockUserId = userIdRef.current;
+    const unlockAccessToken = accessTokenRef.current;
+    const bundle = readVaultBundle(unlockUserId);
+    if (!bundle || !unlockUserId) {
       return { ok: false, reason: "no_bundle" };
     }
     const acquired = await resolveUnlockServerShare({
-      userId,
-      accessToken,
+      userId: unlockUserId,
+      accessToken: unlockAccessToken,
       bundle,
     });
     if (!acquired) {
       return { ok: false, reason: "server_share_unavailable" };
     }
-    const material = readVaultBundle(userId) ?? bundle;
+    const material = readVaultBundle(unlockUserId) ?? bundle;
     const pwd = new TextEncoder().encode(masterPassword);
     let serverA: Uint8Array | null = null;
     let deviceB: Uint8Array | null = null;
@@ -949,7 +957,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
     try {
       serverA = base64ToBytes(acquired.shareB64);
       try {
-        deviceB = await openBundleDeviceShare(userId, material.device_share_b64);
+        deviceB = await openBundleDeviceShare(unlockUserId, material.device_share_b64);
       } catch {
         // Hybrid envelope that this browser cannot open (missing/mismatched
         // wrap keys) is not a wrong master password.
@@ -982,20 +990,20 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       vaultUnlockedRef.current = true;
       setVaultUnlocked(true);
       lastActivityRef.current = Date.now();
-      persistVaultUnlockSession(userId, vaultKey, shareC);
+      persistVaultUnlockSession(unlockUserId, vaultKey, shareC);
       setSuggestLongerMasterPassword(
         shouldSuggestLongerMasterPassword({
           passwordLength: masterPassword.length,
-          dismissed: readShortMasterPasswordHintDismissed(localStorage, userId),
+          dismissed: readShortMasterPasswordHintDismissed(localStorage, unlockUserId),
         }),
       );
       await upgradeMlDsaIdentity(vaultKey);
-      const token = accessToken;
+      const token = unlockAccessToken;
       if (token) {
         const enrollPassword = pwd.slice();
         void enrollLoginVerifierIfMissing({
           accessToken: token,
-          userId,
+          userId: unlockUserId,
           masterPasswordUtf8: enrollPassword,
         })
           .catch(() => {
@@ -1005,7 +1013,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
             wipeBytes(enrollPassword);
           });
         void buildVaultUnlockAttestation({
-          userId,
+          userId: unlockUserId,
           vaultKey,
           encryptedPrivateKeyPayloadB64: material.encrypted_private_key.payload,
         })
@@ -1029,7 +1037,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       if (deviceB) wipeBytes(deviceB);
       if (salt) wipeBytes(salt);
     }
-  }, [userId, accessToken, upgradeMlDsaIdentity]);
+  }, [upgradeMlDsaIdentity]);
 
   const applyUnlockedSecrets = useCallback(
     (nextVaultKey: Uint8Array, nextShareC: Uint8Array) => {
