@@ -8,6 +8,8 @@ export const E2E_API_BASE_URL = process.env.E2E_API_BASE_URL ?? "http://127.0.0.
 /** Mailpit HTTP API (SMTP 1025 in CI). OTP is read from here — never injected into API createCode(). */
 export const E2E_MAILPIT_URL = process.env.E2E_MAILPIT_URL ?? "http://127.0.0.1:8025";
 export const E2E_MASTER_PASSWORD = process.env.E2E_MASTER_PASSWORD ?? "e2e-master-pass";
+/** One-time setup code for empty-catalog first-run wizard (must match API env). */
+export const E2E_SETUP_CODE = process.env.OKKEY_SETUP_CODE ?? "e2e0-setu-pcode-test1";
 export const E2E_DATABASE_URL =
   process.env.E2E_DATABASE_URL ??
   process.env.DATABASE_URL ??
