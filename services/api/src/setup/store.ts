@@ -16,7 +16,11 @@ function toIso(value: string | Date | null | undefined): string | null {
 }
 
 export class PostgresServerInstanceSettingsStore implements ServerInstanceSettingsStore {
-  constructor(private readonly db: QueryExecutor) {}
+  private readonly db: QueryExecutor;
+
+  constructor(db: QueryExecutor) {
+    this.db = db;
+  }
 
   async read(): Promise<ServerInstanceSettingsRow> {
     const rows = await this.db.query<{
