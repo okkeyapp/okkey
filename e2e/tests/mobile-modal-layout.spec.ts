@@ -8,7 +8,10 @@ import {
 import { resetE2eCatalog } from "../helpers/db";
 import { E2E_MASTER_PASSWORD, uniqueEmail } from "../helpers/env";
 import { dismissOpenItemDialog } from "../helpers/items";
-import { assertDialogButtonsInViewport, assertNoHorizontalOverflow } from "../helpers/modalLayout";
+import {
+  assertDialogActionButtonsInViewport,
+  assertNoHorizontalOverflow,
+} from "../helpers/modalLayout";
 
 /**
  * Narrow-viewport layout checks for popup footers (device approval + another modal).
@@ -61,7 +64,7 @@ test("register on iPhone viewport", async () => {
   await assertNoHorizontalOverflow(page);
 });
 
-test("new-item picker modal buttons stay in viewport", async () => {
+test("new-item picker modal footer stays in viewport", async () => {
   test.skip(!email, "registration did not run");
   await gotoItemsUnlocked(page, E2E_MASTER_PASSWORD);
   await dismissOpenItemDialog(page);
@@ -69,11 +72,12 @@ test("new-item picker modal buttons stay in viewport", async () => {
   await page.getByTestId("items-shell-topbar").getByRole("button", { name: /^create item$/i }).click();
   const dialog = page.locator("#newItem");
   await expect(dialog).toBeVisible({ timeout: 15_000 });
-  await assertDialogButtonsInViewport(page, dialog);
+  const cancel = dialog.getByRole("button", { name: /^cancel$/i });
+  await assertDialogActionButtonsInViewport(page, dialog, [cancel]);
 
   // Also cover a 320px-wide phone edge case used in acceptance.
   await page.setViewportSize({ width: 320, height: 568 });
-  await assertDialogButtonsInViewport(page, dialog);
+  await assertDialogActionButtonsInViewport(page, dialog, [cancel]);
   await page.setViewportSize(iphone.viewport ?? { width: 390, height: 844 });
 
   await page.keyboard.press("Escape");
@@ -101,20 +105,18 @@ test("device-approval popup fits narrow screens", async () => {
     });
 
     const approval = page.getByRole("dialog");
-    await expect(approval.getByRole("button", { name: /^trust device$/i })).toBeVisible({
-      timeout: 60_000,
-    });
-    await expect(approval.getByRole("button", { name: /^not now$/i })).toBeVisible();
+    const trust = approval.getByRole("button", { name: /^trust device$/i });
+    const notNow = approval.getByRole("button", { name: /^not now$/i });
+    await expect(trust).toBeVisible({ timeout: 60_000 });
+    await expect(notNow).toBeVisible();
 
-    await assertDialogButtonsInViewport(page, approval);
-    await assertNoHorizontalOverflow(page, approval);
+    await assertDialogActionButtonsInViewport(page, approval, [trust, notNow]);
 
     await page.setViewportSize({ width: 320, height: 568 });
-    await assertDialogButtonsInViewport(page, approval);
-    await assertNoHorizontalOverflow(page, approval);
+    await assertDialogActionButtonsInViewport(page, approval, [trust, notNow]);
 
     // Keep the pending session tidy for later suites sharing the DB.
-    await approval.getByRole("button", { name: /^not now$/i }).click();
+    await notNow.click();
     await expect(page2.getByRole("heading", { name: /this device was denied/i })).toBeVisible({
       timeout: 60_000,
     });

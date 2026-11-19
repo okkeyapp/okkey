@@ -690,8 +690,10 @@ export const Popup = React.forwardRef<HTMLDivElement, PopupProps>(
                 "okkey-popup-panel relative flex min-h-0 w-full max-h-[calc(100dvh-2rem-env(safe-area-inset-top,0px)-env(safe-area-inset-bottom,0px))] max-w-full flex-col overflow-hidden rounded-2xl bg-background",
                 menu && (isDesktopLayout ? "flex-row" : "md:flex-row"),
                 !isDesktopLayout &&
-                  "max-md:w-full max-md:min-h-0 max-md:flex-1 max-md:max-h-none max-md:flex-col max-md:rounded-b-none max-md:rounded-t-2xl",
+                  "max-md:w-full max-md:flex-1 max-md:max-h-full max-md:flex-col max-md:rounded-b-none max-md:rounded-t-2xl",
                 panelClassName,
+                // Callers often set desktop min-heights; never let those push the mobile sheet past the viewport.
+                !isDesktopLayout && "max-md:min-h-0",
               )}
               onClick={(event) => event.stopPropagation()}
             >

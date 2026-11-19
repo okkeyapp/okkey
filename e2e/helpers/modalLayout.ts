@@ -25,32 +25,41 @@ export async function assertNoHorizontalOverflow(
   }
 }
 
-/** Assert every visible dialog button stays fully inside the viewport. */
-export async function assertDialogButtonsInViewport(
+function assertBoxInViewport(
+  box: { x: number; y: number; width: number; height: number },
+  viewport: { width: number; height: number },
+  label: string,
+): void {
+  expect(box.x, `${label} left`).toBeGreaterThanOrEqual(-1);
+  expect(box.x + box.width, `${label} right`).toBeLessThanOrEqual(viewport.width + 1);
+  expect(box.y, `${label} top`).toBeGreaterThanOrEqual(-1);
+  expect(box.y + box.height, `${label} bottom`).toBeLessThanOrEqual(viewport.height + 1);
+}
+
+/**
+ * Assert a dialog fits the viewport horizontally and that specific footer/action
+ * buttons stay fully on-screen. Scrollable content buttons are intentionally ignored.
+ */
+export async function assertDialogActionButtonsInViewport(
   page: Page,
-  dialog: Locator = page.getByRole("dialog"),
+  dialog: Locator,
+  actionButtons: Locator[],
 ): Promise<void> {
   const viewport = page.viewportSize();
   expect(viewport).toBeTruthy();
-  const { width, height } = viewport!;
 
   await expect(dialog).toBeVisible();
   await assertNoHorizontalOverflow(page, dialog);
 
-  const buttons = dialog.getByRole("button");
-  const count = await buttons.count();
-  expect(count).toBeGreaterThan(0);
+  const dialogBox = await dialog.boundingBox();
+  expect(dialogBox, "dialog should have a bounding box").toBeTruthy();
+  assertBoxInViewport(dialogBox!, viewport!, "dialog");
 
-  for (let i = 0; i < count; i += 1) {
-    const button = buttons.nth(i);
-    if (!(await button.isVisible().catch(() => false))) {
-      continue;
-    }
+  expect(actionButtons.length).toBeGreaterThan(0);
+  for (const button of actionButtons) {
+    await expect(button).toBeVisible();
     const box = await button.boundingBox();
-    expect(box, `button #${i} should have a bounding box`).toBeTruthy();
-    expect(box!.x).toBeGreaterThanOrEqual(-1);
-    expect(box!.x + box!.width).toBeLessThanOrEqual(width + 1);
-    expect(box!.y).toBeGreaterThanOrEqual(-1);
-    expect(box!.y + box!.height).toBeLessThanOrEqual(height + 1);
+    expect(box, "action button should have a bounding box").toBeTruthy();
+    assertBoxInViewport(box!, viewport!, "action button");
   }
 }
