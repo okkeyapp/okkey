@@ -240,6 +240,7 @@ jobs:
 
       # TSK-313 temporary stability proof: remove the loop after CI shows 15/15 green.
       - name: Run browser e2e smoke (xvfb for extension)
+        shell: bash
         run: |
           set -euo pipefail
           for i in $(seq 1 15); do
