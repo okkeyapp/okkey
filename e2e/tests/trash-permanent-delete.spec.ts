@@ -22,8 +22,8 @@ async function openRowActions(page: Page, title: string): Promise<void> {
   const row = page.getByRole("button", { name: new RegExp(title, "i") }).first();
   await expect(row).toBeVisible({ timeout: 30_000 });
   await row.hover();
-  const more = row.locator("xpath=ancestor::li[1]").getByRole("button").last();
-  await more.click();
+  const listItem = row.locator("xpath=ancestor::li[1]");
+  await listItem.locator('button[aria-haspopup="menu"]').last().click();
 }
 
 async function softDeleteItem(page: Page, title: string): Promise<void> {
@@ -37,9 +37,18 @@ async function softDeleteItem(page: Page, title: string): Promise<void> {
 }
 
 async function goToRecentlyDeleted(page: Page): Promise<void> {
-  await page.getByRole("button", { name: /filter/i }).first().click();
+  // Trigger aria-label is "Filter item list"; visible label is inside the control.
+  await page.getByRole("button", { name: /filter item list/i }).click();
   await page.getByRole("menuitem", { name: /recently deleted/i }).click();
-  await expect(page.getByRole("button", { name: /recently deleted/i }).first()).toBeVisible({
+  await expect(page.getByText("Recently deleted", { exact: true }).first()).toBeVisible({
+    timeout: 15_000,
+  });
+}
+
+async function goToAllItems(page: Page): Promise<void> {
+  await page.getByRole("button", { name: /filter item list/i }).click();
+  await page.getByRole("menuitem", { name: /^all items$/i }).click();
+  await expect(page.getByText("All items", { exact: true }).first()).toBeVisible({
     timeout: 15_000,
   });
 }
@@ -95,10 +104,8 @@ test("2) empty trash removes all soft-deleted items the user may delete", async 
   test.skip(!email, "registration did not run");
   await gotoItemsUnlocked(page, E2E_MASTER_PASSWORD);
   await dismissOpenItemDialog(page);
-
-  // Leave Recently deleted filter for create flow.
-  await page.getByRole("button", { name: /filter/i }).first().click();
-  await page.getByRole("menuitem", { name: /^all items$|^all$/i }).click();
+  await goToAllItems(page);
+  await dismissOpenItemDialog(page);
 
   await createLoginItem(page, {
     title: ITEM_B,
