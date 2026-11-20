@@ -53,6 +53,18 @@ export type RegistryPullCredentials = {
   password: string;
 };
 
+/**
+ * Optional air-gap cosign material declared inside a signed package (TSK-317).
+ * Paths are relative to the air-gap material root (OKKEY_COSIGN_OFFLINE_DIR or
+ * an extracted offline-bundle cosign tree). Format version stays 1.
+ */
+export type OfflinePackageCosignOffline = {
+  /** Relative path inside the air-gap material root (usually "trusted_root.json"). */
+  trustedRootPath: string;
+  /** Image key → relative cosign-save directory path. */
+  localImageDirs: Record<string, string>;
+};
+
 export type OfflinePackagePayload = {
   format: typeof OFFLINE_PACKAGE_FORMAT;
   formatVersion: typeof OFFLINE_PACKAGE_FORMAT_VERSION;
@@ -65,6 +77,14 @@ export type OfflinePackagePayload = {
   images: Record<string, string>;
   /** Required on enterprise packages. Compared with the running core before any change. */
   minCoreVersion?: string;
+  /**
+   * Optional offline cosign layout for isolated/air-gap applies (TSK-317).
+   * When absent, the update agent may still use the conventional layout under
+   * OKKEY_COSIGN_OFFLINE_DIR (`trusted_root.json` + `cosign/<image-key>/`).
+   * Enterprise air-gap package builders live outside this repository; they should
+   * ship the same conventional layout (or set this field) beside the signed package.
+   */
+  cosignOffline?: OfflinePackageCosignOffline;
 };
 
 export type SignedOfflinePackage = {
@@ -279,6 +299,7 @@ export function parsePayload(value: unknown): OfflinePackagePayload {
   if (Object.keys(images).length === 0) {
     throw new SystemUpdateError(400, "PACKAGE_INVALID", "Package does not list any images");
   }
+  const cosignOffline = parseCosignOffline(record.cosignOffline, images);
   return {
     format: OFFLINE_PACKAGE_FORMAT,
     formatVersion: OFFLINE_PACKAGE_FORMAT_VERSION,
@@ -290,6 +311,7 @@ export function parsePayload(value: unknown): OfflinePackagePayload {
     imageTag,
     images,
     ...(minCoreVersion ? { minCoreVersion } : {}),
+    ...(cosignOffline ? { cosignOffline } : {}),
   };
 }
 
@@ -463,6 +485,66 @@ function parseMinCoreVersion(value: unknown): string | undefined {
     throw new SystemUpdateError(400, "PACKAGE_INVALID", "minCoreVersion must be a semantic version");
   }
   return value.trim();
+}
+
+/**
+ * Validate optional cosignOffline metadata. Paths must be non-empty relative
+ * paths (no absolute / `..` segments). localImageDirs keys must be a subset of
+ * package image keys.
+ */
+function parseCosignOffline(
+  value: unknown,
+  images: Record<string, string>,
+): OfflinePackageCosignOffline | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  const record = asRecord(value);
+  if (!record) {
+    throw new SystemUpdateError(400, "PACKAGE_INVALID", "cosignOffline must be an object");
+  }
+  const trustedRootPath = requiredRelativePath(record.trustedRootPath, "cosignOffline.trustedRootPath");
+  const dirsRecord = asRecord(record.localImageDirs);
+  if (!dirsRecord) {
+    throw new SystemUpdateError(400, "PACKAGE_INVALID", "cosignOffline.localImageDirs must be an object");
+  }
+  const localImageDirs: Record<string, string> = {};
+  for (const [key, dir] of Object.entries(dirsRecord)) {
+    if (!Object.prototype.hasOwnProperty.call(images, key)) {
+      throw new SystemUpdateError(
+        400,
+        "PACKAGE_INVALID",
+        `cosignOffline.localImageDirs key ${key} is not a package image`,
+      );
+    }
+    localImageDirs[key] = requiredRelativePath(dir, `cosignOffline.localImageDirs.${key}`);
+  }
+  if (Object.keys(localImageDirs).length === 0) {
+    throw new SystemUpdateError(
+      400,
+      "PACKAGE_INVALID",
+      "cosignOffline.localImageDirs must list at least one image directory",
+    );
+  }
+  return { trustedRootPath, localImageDirs };
+}
+
+function requiredRelativePath(value: unknown, field: string): string {
+  if (typeof value !== "string" || value.trim() === "") {
+    throw new SystemUpdateError(400, "PACKAGE_INVALID", `${field} is required`);
+  }
+  const trimmed = value.trim().replace(/\\/g, "/");
+  if (trimmed.startsWith("/") || /^[A-Za-z]:/.test(trimmed) || trimmed.includes("\0")) {
+    throw new SystemUpdateError(400, "PACKAGE_INVALID", `${field} must be a relative path`);
+  }
+  const parts = trimmed.split("/");
+  if (parts.some((part) => part === "" || part === "." || part === "..")) {
+    throw new SystemUpdateError(400, "PACKAGE_INVALID", `${field} must be a relative path`);
+  }
+  if (trimmed.length > 300) {
+    throw new SystemUpdateError(400, "PACKAGE_INVALID", `${field} is too long`);
+  }
+  return trimmed;
 }
 
 function normalizeRegistryServer(value: unknown): string {

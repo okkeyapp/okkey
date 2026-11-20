@@ -148,6 +148,9 @@ RUN set -eux; \
 
 # gcr.io/distroless/cc-debian12:nonroot — no shell, package managers, or OS
 # utilities (perl/gzip/util-linux/ncurses/pam/acl/udev). Runs as uid 65532.
+# Cosign is not baked in: the update-agent runs a pinned cosign image via the
+# Docker socket (see createDockerCosignRunner) so api/worker stay free of
+# cosign gobinary CVEs in the Trivy gate.
 FROM gcr.io/distroless/cc-debian12:nonroot@sha256:9dac0a79194e45a7da0158a9c6da57b217585af0786db3845d1f0ec1a0dd182f AS runtime
 ARG NODE_VERSION
 # Distroless has no shell; keep the version pin documented for readers/CI.

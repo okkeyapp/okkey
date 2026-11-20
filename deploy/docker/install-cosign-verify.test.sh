@@ -613,4 +613,16 @@ for image in api worker web; do
 ${RUN_DOCKER}"
 done
 
+# OKKEY_COSIGN_CERTIFICATE_IDENTITY_REGEXP in .env overrides the default (process env still wins).
+OVERRIDE_IDENTITY='^https://github\.com/okkeyapp/okkey/\.github/workflows/publish-images\.yml@refs/heads/dev$'
+INSTALL_ENV_EXTRA="OKKEY_COSIGN_CERTIFICATE_IDENTITY_REGEXP=${OVERRIDE_IDENTITY}"
+run_install "dev" 1 0 --
+unset INSTALL_ENV_EXTRA
+[[ "${RUN_RC}" -eq 0 ]] || fail ".env identity override should succeed
+${RUN_OUT}"
+printf '%s\n' "${RUN_COSIGN}" | grep -Fq -- "${OVERRIDE_IDENTITY}" || fail ".env identity override missing
+${RUN_COSIGN}"
+printf '%s\n' "${RUN_COSIGN}" | grep -Fq -- "${EXPECTED_IDENTITY}" && fail ".env identity override did not replace default
+${RUN_COSIGN}"
+
 echo "OK: install.sh cosign verify"

@@ -13,6 +13,15 @@ import {
   type ServiceContainer,
   type UpdateApplyEngine,
 } from "./apply.ts";
+import {
+  resolveApplyCosignOfflineMaterial,
+  type CosignOfflineMaterial,
+} from "./cosign-offline.ts";
+import {
+  verifyPackageImageSignatures,
+  type CosignRunner,
+  type VerifiedImageDigests,
+} from "./cosign-verify.ts";
 import { credentialSecrets, scrubSecrets } from "./registry-auth.ts";
 
 type EnterpriseTarget = {
@@ -24,12 +33,19 @@ type EnterpriseTarget = {
 
 /**
  * Apply a verified enterprise package.
- * Callers must verify the signature with the enterprise trusted key first.
+ * Callers must verify the package signature with the enterprise trusted key first.
+ * Before replacing containers, each image is cosign-verified (enterprise
+ * publish identity) and pinned by digest.
  * `minCoreVersion` is checked before any tag, pull, or container change.
  * Registry credentials are passed only to the image pull.
  *
  * Package image keys stay `enterprise-api|web|worker`. Runtime replaces the
  * production compose services `api|web|worker` and writes `OKKEY_*_IMAGE`.
+ */
+/**
+ * Enterprise air-gap cosign material uses the same conventional layout as core
+ * (`OKKEY_COSIGN_OFFLINE_DIR/trusted_root.json` + `cosign/enterprise-*`).
+ * Enterprise package builders live outside this repository (TSK-317).
  */
 export async function applyVerifiedEnterprisePackage(input: {
   payload: OfflinePackagePayload;
@@ -39,6 +55,15 @@ export async function applyVerifiedEnterprisePackage(input: {
   isolated: boolean;
   coreVersionHint: string;
   registryCredentials?: RegistryPullCredentials;
+  /** Test hook: override cosign CLI. */
+  runCosign?: CosignRunner;
+  /** Test hook: supply already-verified digest refs (skips cosign). */
+  verifiedDigests?: VerifiedImageDigests;
+  /** Test hook: absolute offline cosign material (TSK-317). */
+  offlineMaterial?: CosignOfflineMaterial;
+  /** Override material root; defaults to OKKEY_COSIGN_OFFLINE_DIR. */
+  cosignOfflineRoot?: string;
+  processEnv?: NodeJS.ProcessEnv;
 }): Promise<void> {
   if (input.payload.component !== "enterprise") {
     throw new SystemUpdateError(400, "PACKAGE_INVALID", "Package is not an enterprise update");
@@ -84,6 +109,45 @@ export async function applyVerifiedEnterprisePackage(input: {
 
   const secrets = credentialSecrets(input.registryCredentials);
   const previousEnv = await input.engine.readEnvFile(input.envFilePath);
+
+  for (const target of targets) {
+    if (input.isolated) {
+      if (!(await input.engine.imageExists(target.image))) {
+        throw new SystemUpdateError(
+          400,
+          "APPLY_FAILED",
+          `Image ${target.image} is not present locally, and isolated mode will not download it`,
+        );
+      }
+    } else {
+      await input.engine.pullImage(target.image, input.registryCredentials);
+    }
+  }
+
+  const offlineMaterial =
+    input.verifiedDigests === undefined
+      ? await resolveApplyCosignOfflineMaterial({
+          payload: input.payload,
+          isolated: input.isolated,
+          offlineMaterial: input.offlineMaterial,
+          cosignOfflineRoot: input.cosignOfflineRoot,
+          processEnv: input.processEnv,
+        })
+      : undefined;
+  const digests =
+    input.verifiedDigests ??
+    (await verifyPackageImageSignatures({
+      images: Object.fromEntries(targets.map((target) => [target.packageService, target.image])),
+      component: "enterprise",
+      envFileContents: previousEnv,
+      engine: input.engine,
+      runCosign: input.runCosign,
+      registryCredentials: input.registryCredentials,
+      isolated: input.isolated,
+      offlineMaterial,
+      processEnv: input.processEnv,
+    }));
+
   let envWritten = false;
   const replaced: Array<{ rollback: () => Promise<void>; commit: () => Promise<void> }> = [];
   try {
@@ -100,24 +164,11 @@ export async function applyVerifiedEnterprisePackage(input: {
     envWritten = true;
 
     for (const target of targets) {
-      if (input.isolated) {
-        if (!(await input.engine.imageExists(target.image))) {
-          throw new SystemUpdateError(
-            400,
-            "APPLY_FAILED",
-            `Image ${target.image} is not present locally, and isolated mode will not download it`,
-          );
-        }
-      } else {
-        await input.engine.pullImage(target.image, input.registryCredentials);
-      }
-    }
-
-    for (const target of targets) {
+      const pinned = digests[target.packageService] ?? target.image;
       replaced.push(
         await input.engine.replaceContainer(
           target.container,
-          target.image,
+          pinned,
           {
             OKKEY_ENTERPRISE_VERSION: input.payload.version,
             OKKEY_ENTERPRISE_IMAGE_TAG: input.payload.imageTag,

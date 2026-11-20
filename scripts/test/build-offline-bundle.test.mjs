@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -40,6 +40,66 @@ test("the bundle tool packs a core package and an enterprise package", () => {
   assert.equal(zipped.status, 0, zipped.stderr);
   assert.equal(readFileSync(zip).subarray(0, 2).toString("utf8"), "PK");
   assert.equal(readFileSync(zip).equals(Buffer.from(document.archiveBase64, "base64")), true);
+});
+
+test("the bundle tool packs cosign offline material into a zip (TSK-317)", () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "okkey-bundle-cosign-"));
+  writeFileSync(
+    path.join(dir, "core.okpkg"),
+    JSON.stringify({ payload: { component: "okkey", version: "1.2.0" }, signature: "core" }),
+  );
+  writeFileSync(
+    path.join(dir, "enterprise.okpkg"),
+    JSON.stringify({ payload: { component: "enterprise", version: "2.0.0" }, signature: "enterprise" }),
+  );
+  writeFileSync(path.join(dir, "trusted_root.json"), '{"trusted":true}\n');
+  const apiDir = path.join(dir, "save-api");
+  mkdirSync(apiDir, { recursive: true });
+  writeFileSync(path.join(apiDir, "sig.json"), "{}\n");
+  const zip = path.join(dir, "airgap.zip");
+  const script = path.join(root, "scripts/build-offline-bundle.mjs");
+  const packed = spawnSync(
+    process.execPath,
+    [
+      "--experimental-strip-types",
+      script,
+      "--core",
+      path.join(dir, "core.okpkg"),
+      "--enterprise",
+      path.join(dir, "enterprise.okpkg"),
+      "--out",
+      zip,
+      "--trusted-root",
+      path.join(dir, "trusted_root.json"),
+      "--cosign",
+      `api=${apiDir}`,
+    ],
+    { encoding: "utf8" },
+  );
+  assert.equal(packed.status, 0, packed.stderr);
+  assert.match(packed.stdout, /cosign offline material/i);
+  assert.equal(readFileSync(zip).subarray(0, 2).toString("utf8"), "PK");
+
+  const rejected = spawnSync(
+    process.execPath,
+    [
+      "--experimental-strip-types",
+      script,
+      "--core",
+      path.join(dir, "core.okpkg"),
+      "--enterprise",
+      path.join(dir, "enterprise.okpkg"),
+      "--out",
+      path.join(dir, "bad.okbundle"),
+      "--trusted-root",
+      path.join(dir, "trusted_root.json"),
+      "--cosign",
+      `api=${apiDir}`,
+    ],
+    { encoding: "utf8" },
+  );
+  assert.notEqual(rejected.status, 0);
+  assert.match(rejected.stderr, /\.zip/);
 });
 
 test("release publish packs an archive only when an enterprise package is supplied", () => {

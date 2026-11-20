@@ -264,6 +264,13 @@ services:
       OKKEY_INSTALL_DIR: /okkey
       DOCKER_SOCKET: /var/run/docker.sock
       OKKEY_UPDATE_AGENT_PORT: "8090"
+      # Cosign identity overrides (process env wins over /okkey/.env inside the agent).
+      # Core and Enterprise use distinct vars so an Enterprise-wrapper override does not
+      # reject Core / Core+Enterprise bundle updates. Do not pass OKKEY_ALLOW_CANDIDATE
+      # here: compose would interpolate it from .env and widen identity unintentionally.
+      OKKEY_COSIGN_CERTIFICATE_IDENTITY_REGEXP: ${OKKEY_COSIGN_CERTIFICATE_IDENTITY_REGEXP:-}
+      OKKEY_ENTERPRISE_COSIGN_CERTIFICATE_IDENTITY_REGEXP: ${OKKEY_ENTERPRISE_COSIGN_CERTIFICATE_IDENTITY_REGEXP:-}
+      OKKEY_COSIGN_CERTIFICATE_OIDC_ISSUER: ${OKKEY_COSIGN_CERTIFICATE_OIDC_ISSUER:-}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ${OKKEY_HOST_INSTALL_DIR:-.}:/okkey

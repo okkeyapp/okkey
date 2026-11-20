@@ -28,6 +28,18 @@ export function createRecordingDockerEngine(socketPath = "/var/run/docker.sock")
   };
 }
 
+/** Local e2e registries are unsigned; mock cosign so apply still exercises digest pinning. */
+async function e2eCosignPass() {
+  return {
+    ok: true as const,
+    exitCode: 0,
+    stdout: "e2e-cosign-mock",
+    stderr: "",
+    timedOut: false,
+    missingBinary: false,
+  };
+}
+
 export async function startAgent(input: {
   corePublicKeyPem: string;
   enterprisePublicKeyPem: string;
@@ -46,6 +58,7 @@ export async function startAgent(input: {
     project: input.project,
     envFilePath: input.envFilePath,
     engine: input.engine,
+    runCosign: e2eCosignPass,
   });
   await new Promise<void>((resolve, reject) => {
     server.once("listening", () => resolve());

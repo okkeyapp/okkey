@@ -31,7 +31,29 @@ import {
   type OfflinePackagePayload,
 } from "../src/system-updates/package-format.ts";
 import { createSystemUpdateService, type UpdateJob } from "../src/system-updates/service.ts";
+import { imageRepository } from "../src/update-agent/apply.ts";
+import type { VerifiedImageDigests } from "../src/update-agent/cosign-verify.ts";
 import { createUpdateAgent } from "../src/update-agent/server.ts";
+
+function stubVerifiedDigests(images: Record<string, string>): VerifiedImageDigests {
+  const out: VerifiedImageDigests = {};
+  let index = 0;
+  for (const [key, image] of Object.entries(images)) {
+    const hex = (index + 1).toString(16).padStart(2, "0").repeat(32);
+    out[key] = `${imageRepository(image)}@sha256:${hex}`;
+    index += 1;
+  }
+  return out;
+}
+
+const STUB_BUNDLE_DIGESTS = stubVerifiedDigests({
+  api: "ghcr.io/okkeyapp/api:1.2.0",
+  web: "ghcr.io/okkeyapp/web:1.2.0",
+  worker: "ghcr.io/okkeyapp/worker:1.2.0",
+  "enterprise-api": "ghcr.io/example/enterprise-api:2.0.0",
+  "enterprise-web": "ghcr.io/example/enterprise-web:2.0.0",
+  "enterprise-worker": "ghcr.io/example/enterprise-worker:2.0.0",
+});
 
 const corePayload = (overrides: Partial<OfflinePackagePayload> = {}): OfflinePackagePayload => ({
   format: "okkey-offline-package",
@@ -73,7 +95,9 @@ function signedBytes(payload: OfflinePackagePayload, privateKeyPem: string): Buf
 }
 
 function bundleDocument(core: Buffer, enterprise: Buffer) {
-  return buildOfflineBundle(core, enterprise).document;
+  const document = buildOfflineBundle(core, enterprise).document;
+  assert.ok(document, "UI offline bundle must include archiveBase64 document");
+  return document;
 }
 
 test("archive and body limits stay aligned with the shared UI/server constants", () => {
@@ -134,6 +158,8 @@ test("building an archive records core then enterprise and verifies with each ke
   const built = buildOfflineBundle(core, enterprise);
 
   assert.equal(built.zip.subarray(0, 2).toString("utf8"), "PK");
+  assert.equal(built.includesCosignOffline, false);
+  assert.ok(built.document);
   assert.equal(built.document.format, "okkey-offline-bundle");
   assert.equal(built.document.formatVersion, 1);
   const verified = verifyOfflineBundle(built.document, {
@@ -164,6 +190,7 @@ test("a valid archive applies core before enterprise", async () => {
     project: "okkey",
     envFilePath: envFile,
     engine: recordingEngine(calls),
+    verifiedDigests: STUB_BUNDLE_DIGESTS,
   });
   const finished = await postJob(agent, document);
   assert.equal(finished.job.status, "succeeded");
@@ -347,6 +374,7 @@ test("enterprise failure after core succeeded keeps core and rolls enterprise ba
         }
       },
     },
+    verifiedDigests: STUB_BUNDLE_DIGESTS,
   });
   const finished = await postJob(agent, document);
   assert.equal(finished.job.status, "failed");
@@ -358,7 +386,7 @@ test("enterprise failure after core succeeded keeps core and rolls enterprise ba
   });
   assert.match(finished.job.errorMessage ?? "", /Okkey 1\.2\.0 was applied/);
   assert.match(finished.job.errorMessage ?? "", /Enterprise 2\.0\.0 was not applied/);
-  assert.match(finished.job.errorMessage ?? "", /rolled back/);
+  assert.match(finished.job.errorMessage ?? "", /registry unreachable/);
   assert.deepEqual(finished.job.components, [
     { component: "okkey", version: "1.2.0", applied: true },
     { component: "enterprise", version: "2.0.0", applied: false },
@@ -554,6 +582,7 @@ async function applyUploadedZip(
     project: "okkey",
     envFilePath: envFile,
     engine: recordingEngine(calls),
+    verifiedDigests: STUB_BUNDLE_DIGESTS,
   });
   const service = createSystemUpdateService({
     deploymentMode: "self_hosted",
@@ -591,6 +620,7 @@ async function runBundle(
     project: "okkey",
     envFilePath: envFile,
     engine: recordingEngine(calls),
+    verifiedDigests: STUB_BUNDLE_DIGESTS,
   });
   return postJob(agent, wrap(zip));
 }

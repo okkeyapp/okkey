@@ -1,4 +1,6 @@
 import { createHash, timingSafeEqual } from "node:crypto";
+import { mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import path from "node:path";
 import { inflateRawSync, deflateRawSync } from "node:zlib";
 
 import { SystemUpdateError } from "./errors.ts";
@@ -16,15 +18,25 @@ export const OFFLINE_BUNDLE_FORMAT_VERSION = 1;
 export const BUNDLE_MANIFEST_PATH = "manifest.json";
 export const BUNDLE_CORE_PATH = "packages/okkey.okpkg";
 export const BUNDLE_ENTERPRISE_PATH = "packages/enterprise.okpkg";
+/** Conventional trusted-root path inside an air-gap zip that includes cosign material (TSK-317). */
+export const BUNDLE_TRUSTED_ROOT_PATH = "trusted_root.json";
+/** Conventional cosign-save directory prefix inside an air-gap zip (TSK-317). */
+export const BUNDLE_COSIGN_DIR_PREFIX = "cosign/";
 
 const APPLY_ORDER = ["okkey", "enterprise"] as const;
 
 /**
- * Compressed zip stays under this size.
+ * Compressed zip stays under this size for the small web-UI bundle (signed JSON
+ * packages only — no container layers or cosign-save trees).
  * Keep in lockstep with `OFFLINE_BUNDLE_MAX_ARCHIVE_BYTES` in `@okkey/types`
  * (update-agent and the offline-bundle CLI load this module without a built types package).
  */
 export const BUNDLE_MAX_ARCHIVE_BYTES = 1_000_000;
+/**
+ * Air-gap zip ceiling when cosign offline material is included (TSK-317).
+ * Not used for the web UI upload path.
+ */
+export const BUNDLE_MAX_AIRGAP_ARCHIVE_BYTES = 512_000_000;
 /**
  * JSON body that carries a max-size archive as base64.
  * Base64 expands by 4/3, plus a small envelope around `archiveBase64`.
@@ -33,9 +45,14 @@ export const BUNDLE_MAX_DOCUMENT_BYTES = 4 * Math.ceil(BUNDLE_MAX_ARCHIVE_BYTES 
 /** HTTP body ceiling for `POST /system/updates/apply` with an offline file. */
 export const BUNDLE_MAX_APPLY_BODY_BYTES = BUNDLE_MAX_DOCUMENT_BYTES + 512;
 export const BUNDLE_MAX_ENTRIES = 8;
+/** Entry budget for air-gap zips that walk cosign-save directories (TSK-317). */
+export const BUNDLE_MAX_AIRGAP_ENTRIES = 50_000;
 export const BUNDLE_MAX_UNCOMPRESSED_ENTRY = BUNDLE_MAX_ARCHIVE_BYTES;
 export const BUNDLE_MAX_UNCOMPRESSED_TOTAL = BUNDLE_MAX_ARCHIVE_BYTES * 2;
+export const BUNDLE_MAX_AIRGAP_UNCOMPRESSED_ENTRY = BUNDLE_MAX_AIRGAP_ARCHIVE_BYTES;
+export const BUNDLE_MAX_AIRGAP_UNCOMPRESSED_TOTAL = BUNDLE_MAX_AIRGAP_ARCHIVE_BYTES;
 const BUNDLE_MAX_NAME_BYTES = 128;
+const BUNDLE_MAX_AIRGAP_NAME_BYTES = 255;
 const BUNDLE_RATIO_FLOOR = 64 * 1024;
 const BUNDLE_MAX_RATIO = 100;
 
@@ -47,7 +64,13 @@ export type OfflineBundleDocument = {
 
 export type BuiltOfflineBundle = {
   zip: Buffer;
-  document: OfflineBundleDocument;
+  /**
+   * Web-UI JSON document with archiveBase64. Null when the zip includes cosign
+   * air-gap material (too large for the upload path) — write the `.zip` instead.
+   */
+  document: OfflineBundleDocument | null;
+  /** True when trusted_root / cosign-save trees were packed (TSK-317). */
+  includesCosignOffline: boolean;
 };
 
 export type VerifiedOfflineBundle = {
@@ -55,16 +78,64 @@ export type VerifiedOfflineBundle = {
   enterprise: OfflinePackagePayload;
 };
 
+export type BuildOfflineBundleOptions = {
+  /** trusted_root.json bytes or UTF-8 string (TSK-317). */
+  trustedRoot?: Buffer | string;
+  /** Image key → absolute path to a `cosign save` directory. */
+  cosignDirs?: Record<string, string>;
+};
+
+export type ExtractedCosignOffline = {
+  trustedRootPath: string;
+  localImageDirs: Record<string, string>;
+};
+
 type ZipEntry = {
   name: string;
   data: Buffer;
 };
 
+type ZipLimits = {
+  maxArchiveBytes: number;
+  maxEntries: number;
+  maxUncompressedEntry: number;
+  maxUncompressedTotal: number;
+  maxNameBytes: number;
+};
+
+const UI_ZIP_LIMITS: ZipLimits = {
+  maxArchiveBytes: BUNDLE_MAX_ARCHIVE_BYTES,
+  maxEntries: BUNDLE_MAX_ENTRIES,
+  maxUncompressedEntry: BUNDLE_MAX_UNCOMPRESSED_ENTRY,
+  maxUncompressedTotal: BUNDLE_MAX_UNCOMPRESSED_TOTAL,
+  maxNameBytes: BUNDLE_MAX_NAME_BYTES,
+};
+
+const AIRGAP_ZIP_LIMITS: ZipLimits = {
+  maxArchiveBytes: BUNDLE_MAX_AIRGAP_ARCHIVE_BYTES,
+  maxEntries: BUNDLE_MAX_AIRGAP_ENTRIES,
+  maxUncompressedEntry: BUNDLE_MAX_AIRGAP_UNCOMPRESSED_ENTRY,
+  maxUncompressedTotal: BUNDLE_MAX_AIRGAP_UNCOMPRESSED_TOTAL,
+  maxNameBytes: BUNDLE_MAX_AIRGAP_NAME_BYTES,
+};
+
 /**
  * Pack the raw signed package files. Hashes cover those bytes, not a re-encoding.
  * `okkey` is the core component and is listed first.
+ *
+ * Optional cosign offline material (TSK-317): when `trustedRoot` / `cosignDirs`
+ * are provided, the zip also includes `trusted_root.json` and `cosign/<key>/…`
+ * and uses the air-gap size limit. The web-UI `document` is omitted in that case
+ * (air-gap installs use the `.zip` plus `OKKEY_COSIGN_OFFLINE_DIR`).
  */
-export function buildOfflineBundle(corePackage: Buffer, enterprisePackage: Buffer): BuiltOfflineBundle {
+export function buildOfflineBundle(
+  corePackage: Buffer,
+  enterprisePackage: Buffer,
+  options?: BuildOfflineBundleOptions,
+): BuiltOfflineBundle {
+  const cosignEntries = collectCosignZipEntries(options);
+  const includesCosignOffline = cosignEntries.length > 0;
+  const limits = includesCosignOffline ? AIRGAP_ZIP_LIMITS : UI_ZIP_LIMITS;
   const manifest = {
     format: OFFLINE_BUNDLE_FORMAT,
     formatVersion: OFFLINE_BUNDLE_FORMAT_VERSION,
@@ -74,22 +145,138 @@ export function buildOfflineBundle(corePackage: Buffer, enterprisePackage: Buffe
       { component: "enterprise", path: BUNDLE_ENTERPRISE_PATH, sha256: sha256Hex(enterprisePackage) },
     ],
   };
-  const zip = writeZip([
-    { name: BUNDLE_MANIFEST_PATH, data: Buffer.from(JSON.stringify(manifest), "utf8") },
-    { name: BUNDLE_CORE_PATH, data: corePackage },
-    { name: BUNDLE_ENTERPRISE_PATH, data: enterprisePackage },
-  ]);
-  if (zip.length > BUNDLE_MAX_ARCHIVE_BYTES) {
+  const zip = writeZip(
+    [
+      { name: BUNDLE_MANIFEST_PATH, data: Buffer.from(JSON.stringify(manifest), "utf8") },
+      { name: BUNDLE_CORE_PATH, data: corePackage },
+      { name: BUNDLE_ENTERPRISE_PATH, data: enterprisePackage },
+      ...cosignEntries,
+    ],
+    limits,
+  );
+  if (zip.length > limits.maxArchiveBytes) {
     throw new SystemUpdateError(400, "PACKAGE_TOO_LARGE", "Offline bundle exceeds the size limit");
   }
   return {
     zip,
-    document: {
-      format: OFFLINE_BUNDLE_FORMAT,
-      formatVersion: OFFLINE_BUNDLE_FORMAT_VERSION,
-      archiveBase64: zip.toString("base64"),
-    },
+    includesCosignOffline,
+    document: includesCosignOffline
+      ? null
+      : {
+          format: OFFLINE_BUNDLE_FORMAT,
+          formatVersion: OFFLINE_BUNDLE_FORMAT_VERSION,
+          archiveBase64: zip.toString("base64"),
+        },
   };
+}
+
+function collectCosignZipEntries(options?: BuildOfflineBundleOptions): ZipEntry[] {
+  if (!options?.trustedRoot && (!options?.cosignDirs || Object.keys(options.cosignDirs).length === 0)) {
+    return [];
+  }
+  if (!options.trustedRoot) {
+    throw new SystemUpdateError(
+      400,
+      "PACKAGE_INVALID",
+      "Air-gap cosign material requires trustedRoot together with cosignDirs",
+    );
+  }
+  if (!options.cosignDirs || Object.keys(options.cosignDirs).length === 0) {
+    throw new SystemUpdateError(
+      400,
+      "PACKAGE_INVALID",
+      "Air-gap cosign material requires cosignDirs together with trustedRoot",
+    );
+  }
+  const trustedRoot =
+    typeof options.trustedRoot === "string"
+      ? Buffer.from(options.trustedRoot, "utf8")
+      : options.trustedRoot;
+  const entries: ZipEntry[] = [{ name: BUNDLE_TRUSTED_ROOT_PATH, data: trustedRoot }];
+  for (const [key, dir] of Object.entries(options.cosignDirs)) {
+    if (!/^[a-z0-9][a-z0-9-]{0,40}$/.test(key)) {
+      throw new SystemUpdateError(400, "PACKAGE_INVALID", `Invalid cosign image key ${key}`);
+    }
+    const abs = path.resolve(dir);
+    walkDirToZipEntries(abs, `${BUNDLE_COSIGN_DIR_PREFIX}${key}`, entries);
+  }
+  return entries;
+}
+
+function walkDirToZipEntries(absDir: string, zipPrefix: string, entries: ZipEntry[]): void {
+  let names: string[];
+  try {
+    names = readdirSync(absDir);
+  } catch {
+    throw new SystemUpdateError(
+      400,
+      "PACKAGE_INVALID",
+      `Cosign save directory is missing: ${zipPrefix}`,
+    );
+  }
+  // Ensure empty dirs still create a marker file so the layout is recoverable.
+  if (names.length === 0) {
+    entries.push({ name: `${zipPrefix}/.okkey-cosign-dir`, data: Buffer.from("okkey\n", "utf8") });
+    return;
+  }
+  for (const name of names.sort()) {
+    const abs = path.join(absDir, name);
+    const info = statSync(abs);
+    const zipName = `${zipPrefix}/${name}`;
+    if (info.isDirectory()) {
+      walkDirToZipEntries(abs, zipName, entries);
+    } else if (info.isFile()) {
+      entries.push({ name: zipName, data: readFileSync(abs) });
+    }
+  }
+}
+
+/**
+ * Extract `trusted_root.json` and `cosign/<key>/…` from an air-gap bundle zip
+ * into `destDir` (TSK-317). Returns absolute paths suitable for offline verify.
+ * Does not apply packages — callers verify/apply separately.
+ */
+export function extractCosignOfflineFromBundleZip(
+  zip: Buffer,
+  destDir: string,
+): ExtractedCosignOffline {
+  const entries = readZip(zip, AIRGAP_ZIP_LIMITS);
+  const trusted = entries.get(BUNDLE_TRUSTED_ROOT_PATH);
+  if (!trusted) {
+    throw new SystemUpdateError(
+      400,
+      "PACKAGE_INVALID",
+      "Offline bundle is missing trusted_root.json cosign material",
+    );
+  }
+  mkdirSync(destDir, { recursive: true });
+  const trustedRootPath = path.join(destDir, BUNDLE_TRUSTED_ROOT_PATH);
+  writeFileSync(trustedRootPath, trusted);
+
+  const localImageDirs: Record<string, string> = {};
+  for (const [name, data] of entries) {
+    if (!name.startsWith(BUNDLE_COSIGN_DIR_PREFIX) || name.endsWith("/")) {
+      continue;
+    }
+    const relative = name.slice(BUNDLE_COSIGN_DIR_PREFIX.length);
+    const slash = relative.indexOf("/");
+    if (slash <= 0) {
+      continue;
+    }
+    const key = relative.slice(0, slash);
+    const target = path.join(destDir, BUNDLE_COSIGN_DIR_PREFIX, relative);
+    mkdirSync(path.dirname(target), { recursive: true });
+    writeFileSync(target, data);
+    localImageDirs[key] = path.join(destDir, BUNDLE_COSIGN_DIR_PREFIX, key);
+  }
+  if (Object.keys(localImageDirs).length === 0) {
+    throw new SystemUpdateError(
+      400,
+      "PACKAGE_INVALID",
+      "Offline bundle is missing cosign/<image-key>/ material",
+    );
+  }
+  return { trustedRootPath, localImageDirs };
 }
 
 export function isOfflineBundleDocument(document: unknown): boolean {
@@ -237,19 +424,24 @@ function assertManifestPackage(
 
 function readBundleEntries(document: unknown): Map<string, Buffer> {
   const zip = zipBytesFromDocument(document);
-  const entries = readZip(zip);
-  const allowed = new Set<string>([BUNDLE_MANIFEST_PATH, BUNDLE_CORE_PATH, BUNDLE_ENTERPRISE_PATH]);
+  const entries = readZip(zip, UI_ZIP_LIMITS);
+  const required = new Set<string>([BUNDLE_MANIFEST_PATH, BUNDLE_CORE_PATH, BUNDLE_ENTERPRISE_PATH]);
   for (const name of entries.keys()) {
-    if (!allowed.has(name)) {
-      throw new SystemUpdateError(400, "PACKAGE_INVALID", "Offline bundle contains an unknown entry");
+    if (required.has(name) || isAllowedCosignBundleEntry(name)) {
+      continue;
     }
+    throw new SystemUpdateError(400, "PACKAGE_INVALID", "Offline bundle contains an unknown entry");
   }
   return entries;
 }
 
+function isAllowedCosignBundleEntry(name: string): boolean {
+  return name === BUNDLE_TRUSTED_ROOT_PATH || name.startsWith(BUNDLE_COSIGN_DIR_PREFIX);
+}
+
 function zipBytesFromDocument(document: unknown): Buffer {
   if (Buffer.isBuffer(document)) {
-    return assertZipSize(document);
+    return assertZipSize(document, UI_ZIP_LIMITS.maxArchiveBytes);
   }
   const record = asRecord(document);
   if (!record || record.format !== OFFLINE_BUNDLE_FORMAT) {
@@ -266,18 +458,18 @@ function zipBytesFromDocument(document: unknown): Buffer {
   if (!/^[A-Za-z0-9+/]+={0,2}$/.test(compact) || compact.length % 4 !== 0) {
     throw new SystemUpdateError(400, "PACKAGE_INVALID", "Offline bundle archive is not valid base64");
   }
-  return assertZipSize(Buffer.from(compact, "base64"));
+  return assertZipSize(Buffer.from(compact, "base64"), UI_ZIP_LIMITS.maxArchiveBytes);
 }
 
-function assertZipSize(zip: Buffer): Buffer {
-  if (zip.length === 0 || zip.length > BUNDLE_MAX_ARCHIVE_BYTES) {
+function assertZipSize(zip: Buffer, maxArchiveBytes: number): Buffer {
+  if (zip.length === 0 || zip.length > maxArchiveBytes) {
     throw new SystemUpdateError(400, "PACKAGE_TOO_LARGE", "Offline bundle exceeds the size limit");
   }
   return zip;
 }
 
-export function writeZip(entries: readonly ZipEntry[]): Buffer {
-  if (entries.length === 0 || entries.length > BUNDLE_MAX_ENTRIES) {
+export function writeZip(entries: readonly ZipEntry[], limits: ZipLimits = UI_ZIP_LIMITS): Buffer {
+  if (entries.length === 0 || entries.length > limits.maxEntries) {
     throw new SystemUpdateError(400, "PACKAGE_INVALID", "Offline bundle entry count is not allowed");
   }
   const locals: Buffer[] = [];
@@ -285,7 +477,7 @@ export function writeZip(entries: readonly ZipEntry[]): Buffer {
   let offset = 0;
   for (const entry of entries) {
     const name = Buffer.from(entry.name, "utf8");
-    if (name.length === 0 || name.length > BUNDLE_MAX_NAME_BYTES) {
+    if (name.length === 0 || name.length > limits.maxNameBytes) {
       throw new SystemUpdateError(400, "PACKAGE_INVALID", "Offline bundle entry name is invalid");
     }
     const compressed = deflateRawSync(entry.data);
@@ -338,7 +530,10 @@ export function writeZip(entries: readonly ZipEntry[]): Buffer {
   return Buffer.concat([...locals, centralDir, eocd]);
 }
 
-function readZip(zip: Buffer): Map<string, Buffer> {
+function readZip(zip: Buffer, limits: ZipLimits = UI_ZIP_LIMITS): Map<string, Buffer> {
+  if (zip.length === 0 || zip.length > limits.maxArchiveBytes) {
+    throw new SystemUpdateError(400, "PACKAGE_TOO_LARGE", "Offline bundle exceeds the size limit");
+  }
   const eocd = findEocd(zip);
   const entryCount = zip.readUInt16LE(eocd + 10);
   const centralSize = zip.readUInt32LE(eocd + 12);
@@ -346,7 +541,7 @@ function readZip(zip: Buffer): Map<string, Buffer> {
   if (zip.readUInt16LE(eocd + 4) !== 0 || zip.readUInt16LE(eocd + 6) !== 0) {
     throw new SystemUpdateError(400, "PACKAGE_INVALID", "Offline bundle spans more than one archive");
   }
-  if (entryCount > BUNDLE_MAX_ENTRIES) {
+  if (entryCount > limits.maxEntries) {
     throw new SystemUpdateError(400, "PACKAGE_INVALID", "Offline bundle contains too many entries");
   }
   if (centralOffset + centralSize > eocd) {
@@ -378,7 +573,7 @@ function readZip(zip: Buffer): Map<string, Buffer> {
     if (nameEnd + extraLength + commentLength > centralOffset + centralSize) {
       throw new SystemUpdateError(400, "PACKAGE_INVALID", "Offline bundle directory is truncated");
     }
-    const name = assertEntryName(zip.subarray(nameStart, nameEnd).toString("utf8"));
+    const name = assertEntryName(zip.subarray(nameStart, nameEnd).toString("utf8"), limits.maxNameBytes);
     if (names.has(name)) {
       throw new SystemUpdateError(400, "PACKAGE_INVALID", "Offline bundle contains a duplicate entry");
     }
@@ -389,8 +584,8 @@ function readZip(zip: Buffer): Map<string, Buffer> {
       throw new SystemUpdateError(400, "PACKAGE_INVALID", "Offline bundle entry compression is not supported");
     }
     if (
-      compressedSize > BUNDLE_MAX_ARCHIVE_BYTES ||
-      uncompressedSize > BUNDLE_MAX_UNCOMPRESSED_ENTRY ||
+      compressedSize > limits.maxArchiveBytes ||
+      uncompressedSize > limits.maxUncompressedEntry ||
       compressedSize === 0xffffffff ||
       uncompressedSize === 0xffffffff
     ) {
@@ -403,7 +598,7 @@ function readZip(zip: Buffer): Map<string, Buffer> {
       throw new SystemUpdateError(400, "PACKAGE_INVALID", "Offline bundle entry expands too far for its compressed size");
     }
     uncompressedTotal += uncompressedSize;
-    if (uncompressedTotal > BUNDLE_MAX_UNCOMPRESSED_TOTAL) {
+    if (uncompressedTotal > limits.maxUncompressedTotal) {
       throw new SystemUpdateError(400, "PACKAGE_INVALID", "Offline bundle expands past the size limit");
     }
 
@@ -486,8 +681,8 @@ function findEocd(zip: Buffer): number {
  * Reject names that would escape an extract directory.
  * The reader never writes entries to disk; the name is still checked first.
  */
-export function assertEntryName(name: string): string {
-  if (name.length === 0 || name.length > BUNDLE_MAX_NAME_BYTES) {
+export function assertEntryName(name: string, maxNameBytes: number = BUNDLE_MAX_NAME_BYTES): string {
+  if (name.length === 0 || Buffer.byteLength(name, "utf8") > maxNameBytes) {
     throw new SystemUpdateError(400, "PACKAGE_INVALID", "Offline bundle entry name is invalid");
   }
   if (name.includes("\0") || name.includes("\\") || name.startsWith("/") || /^[A-Za-z]:/.test(name)) {

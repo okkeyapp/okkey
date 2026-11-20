@@ -62,9 +62,11 @@ This will:
 
 ### Image signature verify (cosign)
 
-After pull, `install.sh` verifies Sigstore **cosign keyless** signatures produced by `.github/workflows/publish-images.yml` (GitHub OIDC issuer `token.actions.githubusercontent.com`). Verification is **on by default** for both floating `:dev` and pinned SemVer tags.
+After pull, `install.sh` verifies Sigstore **cosign keyless** signatures produced by `.github/workflows/publish-images.yml` (GitHub OIDC issuer `token.actions.githubusercontent.com`). Default identity trusts `refs/tags/v*`, `refs/heads/release/*`, and `refs/heads/hotfix/*`. Tracking `:dev` needs `--allow-dev` / process env `OKKEY_COSIGN_ALLOW_DEV=1` (not read from `.env`).
 
 Requirements: [`cosign`](https://docs.sigstore.dev/cosign/system_config/installation/) on `PATH`, and images pulled from GHCR (so `RepoDigests` resolve).
+
+**Air-gap / isolated updates (TSK-317):** online verify still needs registry digests. For isolated mode, ship `trusted_root.json` plus per-image `cosign save` directories and point the update agent at them with `OKKEY_COSIGN_OFFLINE_DIR` (conventional layout: `trusted_root.json`, `cosign/api/`, `cosign/web/`, `cosign/worker/`). Pack those into an air-gap zip via `scripts/build-offline-bundle.mjs --trusted-root … --cosign <key>=<dir>`. Enterprise image keys use the same layout (`cosign/enterprise-api/`, …); enterprise package builders live outside this repository.
 
 Emergency bypass: `OKKEY_SKIP_COSIGN_VERIFY=1` - installer prints a warning and continues. Do **not** use for production. Local builds with `OKKEY_SKIP_PULL=1` skip verify unless `OKKEY_FORCE_COSIGN_VERIFY=1`.
 

@@ -7,6 +7,15 @@ import {
   type OfflinePackagePayload,
   type RegistryPullCredentials,
 } from "../system-updates/package-format.ts";
+import {
+  resolveApplyCosignOfflineMaterial,
+  type CosignOfflineMaterial,
+} from "./cosign-offline.ts";
+import {
+  verifyPackageImageSignatures,
+  type CosignRunner,
+  type VerifiedImageDigests,
+} from "./cosign-verify.ts";
 
 export type ServiceContainer = {
   id: string;
@@ -18,6 +27,16 @@ export type ServiceContainer = {
 export type UpdateApplyEngine = {
   pullImage(image: string, credentials?: RegistryPullCredentials): Promise<void>;
   imageExists(image: string): Promise<boolean>;
+  /**
+   * Resolve a local image to `repository@sha256:…` after pull (or for an
+   * already-present isolated image). Used to pin the verified digest.
+   */
+  resolveImageDigest?(image: string): Promise<string>;
+  /**
+   * Local image Id digest (hex, with or without `sha256:` prefix) when
+   * RepoDigests are empty after `docker load` (TSK-317 isolated/offline).
+   */
+  resolveLocalImageId?(image: string): Promise<string>;
   findServiceContainer(project: string, service: string): Promise<ServiceContainer | null>;
   /** Running core version from the api container, when the engine can see it. */
   readRunningCoreVersion?(project: string): Promise<string | null>;
@@ -81,7 +100,8 @@ export function imageRepository(image: string): string {
 }
 
 /**
- * Apply a verified core package. Callers must verify the signature first.
+ * Apply a verified core package. Callers must verify the package signature first.
+ * Before replacing containers, each image is cosign-verified and pinned by digest.
  * A failure rolls back containers that were already replaced and leaves the env file unchanged.
  *
  * On success, writes `OKKEY_*_IMAGE` from the package and clears
@@ -95,6 +115,15 @@ export async function applyVerifiedCorePackage(input: {
   envFilePath: string;
   isolated: boolean;
   registryCredentials?: RegistryPullCredentials;
+  /** Test hook: override cosign CLI. */
+  runCosign?: CosignRunner;
+  /** Test hook: supply already-verified digest refs (skips cosign). */
+  verifiedDigests?: VerifiedImageDigests;
+  /** Test hook: absolute offline cosign material (TSK-317). */
+  offlineMaterial?: CosignOfflineMaterial;
+  /** Override material root; defaults to OKKEY_COSIGN_OFFLINE_DIR. */
+  cosignOfflineRoot?: string;
+  processEnv?: NodeJS.ProcessEnv;
 }): Promise<void> {
   if (input.payload.component !== "okkey") {
     throw new SystemUpdateError(
@@ -122,6 +151,31 @@ export async function applyVerifiedCorePackage(input: {
     }
   }
 
+  const previousEnv = await input.engine.readEnvFile(input.envFilePath);
+  const offlineMaterial =
+    input.verifiedDigests === undefined
+      ? await resolveApplyCosignOfflineMaterial({
+          payload: input.payload,
+          isolated: input.isolated,
+          offlineMaterial: input.offlineMaterial,
+          cosignOfflineRoot: input.cosignOfflineRoot,
+          processEnv: input.processEnv,
+        })
+      : undefined;
+  const digests =
+    input.verifiedDigests ??
+    (await verifyPackageImageSignatures({
+      images,
+      component: "okkey",
+      envFileContents: previousEnv,
+      engine: input.engine,
+      runCosign: input.runCosign,
+      registryCredentials: input.registryCredentials,
+      isolated: input.isolated,
+      offlineMaterial,
+      processEnv: input.processEnv,
+    }));
+
   const containers: ServiceContainer[] = [];
   for (const service of CORE_IMAGE_SERVICES) {
     const container = await input.engine.findServiceContainer(input.project, service);
@@ -135,11 +189,10 @@ export async function applyVerifiedCorePackage(input: {
     containers.push(container);
   }
 
-  const previousEnv = await input.engine.readEnvFile(input.envFilePath);
   const replaced: Array<{ rollback: () => Promise<void>; commit: () => Promise<void> }> = [];
   try {
     for (const container of containers) {
-      const image = images[container.service];
+      const image = digests[container.service] ?? images[container.service];
       if (!image) {
         throw new SystemUpdateError(400, "PACKAGE_INVALID", "Package image disappeared");
       }

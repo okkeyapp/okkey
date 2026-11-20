@@ -1,6 +1,7 @@
 import { SystemUpdateError } from "../system-updates/errors.ts";
 import type { VerifiedOfflineBundle } from "../system-updates/offline-bundle.ts";
 import { applyVerifiedCorePackage, type UpdateApplyEngine } from "./apply.ts";
+import type { CosignRunner, VerifiedImageDigests } from "./cosign-verify.ts";
 import { applyVerifiedEnterprisePackage } from "./enterprise-apply.ts";
 
 /**
@@ -14,6 +15,8 @@ export async function applyVerifiedOfflineBundle(input: {
   envFilePath: string;
   isolated: boolean;
   coreVersionHint: string;
+  runCosign?: CosignRunner;
+  verifiedDigests?: VerifiedImageDigests;
 }): Promise<void> {
   await applyVerifiedCorePackage({
     payload: input.bundle.core,
@@ -21,6 +24,8 @@ export async function applyVerifiedOfflineBundle(input: {
     project: input.project,
     envFilePath: input.envFilePath,
     isolated: input.isolated,
+    runCosign: input.runCosign,
+    verifiedDigests: input.verifiedDigests,
   });
   try {
     await applyVerifiedEnterprisePackage({
@@ -30,6 +35,8 @@ export async function applyVerifiedOfflineBundle(input: {
       envFilePath: input.envFilePath,
       isolated: input.isolated,
       coreVersionHint: input.coreVersionHint,
+      runCosign: input.runCosign,
+      verifiedDigests: input.verifiedDigests,
     });
   } catch (error) {
     throw partialBundleFailure(input.bundle.core.version, input.bundle.enterprise.version, error);
