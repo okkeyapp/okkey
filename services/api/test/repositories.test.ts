@@ -520,6 +520,7 @@ test("DevicesRepository.storeShareDelivery clears device_share when approval exp
       status: "pending",
       created_at: "2020-01-01T00:00:00.000Z",
       has_one_time_key: true,
+      has_share_delivery: false,
     },
   ]);
   db.enqueueResult([]);
@@ -536,6 +537,59 @@ test("DevicesRepository.storeShareDelivery clears device_share when approval exp
   assert.equal(result.kind, "expired");
   const expireSql = db.queries.find((query) => /approval expired/.test(query.sql));
   assert.match(expireSql?.sql ?? "", /device_share = NULL/);
+});
+
+test("DevicesRepository.storeShareDelivery is idempotent when envelope already stored", async () => {
+  const db = new FakeDb();
+  db.enqueueResult([
+    {
+      id: "d1",
+      status: "pending",
+      created_at: "2026-01-01T00:00:00.000Z",
+      has_one_time_key: true,
+      has_share_delivery: true,
+    },
+  ]);
+  const repo = new DevicesRepository(db);
+  const result = await repo.storeShareDelivery({
+    userId: "u1",
+    deviceId: "d1",
+    approverUserId: "u1",
+    envelope: new Uint8Array([1, 2, 3]),
+    now: "2026-01-01T00:01:00.000Z",
+    pendingCreatedBefore: "2025-12-01T00:00:00.000Z",
+    expiresAt: "2026-01-02T00:00:00.000Z",
+  });
+  assert.equal(result.kind, "stored");
+  assert.equal(
+    db.queries.some((query) => /share_delivery_envelope = \$3/.test(query.sql)),
+    false,
+    "must not rewrite an existing share delivery envelope",
+  );
+});
+
+test("DevicesRepository.storeShareDelivery returns already_trusted for trusted devices", async () => {
+  const db = new FakeDb();
+  db.enqueueResult([
+    {
+      id: "d1",
+      status: "trusted",
+      created_at: "2026-01-01T00:00:00.000Z",
+      has_one_time_key: false,
+      has_share_delivery: false,
+    },
+  ]);
+  const repo = new DevicesRepository(db);
+  const result = await repo.storeShareDelivery({
+    userId: "u1",
+    deviceId: "d1",
+    approverUserId: "u1",
+    envelope: new Uint8Array([1, 2, 3]),
+    now: "2026-01-01T00:01:00.000Z",
+    pendingCreatedBefore: "2025-12-01T00:00:00.000Z",
+    expiresAt: "2026-01-02T00:00:00.000Z",
+  });
+  assert.equal(result.kind, "already_trusted");
 });
 
 test("DevicesRepository.registerOrUpdate does not replace trusted device keys", async () => {

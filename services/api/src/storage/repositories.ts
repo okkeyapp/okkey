@@ -3652,6 +3652,7 @@ export class DevicesRepository {
     | { kind: "not_found" }
     | { kind: "expired" }
     | { kind: "not_pending" }
+    | { kind: "already_trusted" }
     | { kind: "missing_one_time_key" }
   > {
     return this.db.transaction(async (tx) => {
@@ -3660,6 +3661,7 @@ export class DevicesRepository {
         status: string;
         created_at: string | Date;
         has_one_time_key: boolean;
+        has_share_delivery: boolean;
       }>(
         `
           SELECT
@@ -3669,7 +3671,8 @@ export class DevicesRepository {
             (
               one_time_x25519_public IS NOT NULL
               AND one_time_mlkem_public IS NOT NULL
-            ) AS has_one_time_key
+            ) AS has_one_time_key,
+            (share_delivery_envelope IS NOT NULL) AS has_share_delivery
           FROM devices
           WHERE id = $1::bigint
             AND user_id = $2::bigint
@@ -3680,6 +3683,9 @@ export class DevicesRepository {
       const row = rows[0];
       if (!row) {
         return { kind: "not_found" };
+      }
+      if (row.status === "trusted") {
+        return { kind: "already_trusted" };
       }
       if (row.status !== "pending") {
         return { kind: "not_pending" };
@@ -3706,6 +3712,10 @@ export class DevicesRepository {
         await deleteSessionsForDevices(tx, [input.deviceId]);
         return { kind: "expired" };
       }
+      // Idempotent re-approve: envelope already waiting for the pending device to claim.
+      if (row.has_share_delivery) {
+        return { kind: "stored" };
+      }
       if (!row.has_one_time_key) {
         return { kind: "missing_one_time_key" };
       }
@@ -3720,6 +3730,7 @@ export class DevicesRepository {
           WHERE id = $1::bigint
             AND user_id = $2::bigint
             AND status = 'pending'
+            AND share_delivery_envelope IS NULL
         `,
         [
           input.deviceId,

@@ -889,6 +889,10 @@ export class DeviceService {
     if (stored.kind === "stored") {
       return { deviceId: pendingDeviceId, status: "pending_approval" };
     }
+    if (stored.kind === "already_trusted") {
+      // Idempotent: approving an already-trusted device is a no-op success.
+      return { deviceId: pendingDeviceId, status: "trusted" };
+    }
     if (stored.kind === "expired") {
       throw new DeviceServiceError(
         "DEVICE_APPROVAL_EXPIRED",
@@ -998,11 +1002,11 @@ export class DeviceService {
     }
 
     if (action === "approve" && result.kind === "already_trusted") {
-      throw new DeviceServiceError(
-        "DEVICE_APPROVAL_ALREADY_RESOLVED",
-        409,
-        "device approval already resolved",
-      );
+      // Idempotent: re-approving a trusted device does not create new records.
+      return {
+        deviceId: result.device.id,
+        status: "trusted",
+      };
     }
     if (action === "reject" && result.kind === "already_revoked") {
       return {

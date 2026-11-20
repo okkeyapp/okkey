@@ -540,7 +540,7 @@ test("integration: expired unclaimed share delivery envelope is deleted", async 
   assert.equal(row?.status, "pending");
 });
 
-test("integration: empty approve of an already-trusted device is 409", async (t) => {
+test("integration: approve of an already-trusted device is idempotent", async (t) => {
   const config = loadConfig();
   const storage = await createIntegrationStorage(t, config);
   if (!storage) {
@@ -589,8 +589,9 @@ test("integration: empty approve of an already-trusted device is 409", async (t)
     { device_share: Buffer.from(framedShare(3, 4)).toString("base64") },
     { "x-device-id": trusted.id },
   );
-  assert.equal(again.statusCode, 409);
-  assert.equal(again.json.error, "DEVICE_APPROVAL_ALREADY_RESOLVED");
+  assert.equal(again.statusCode, 200);
+  assert.equal(again.json.status, "trusted");
+  assert.equal(again.json.device_id, trusted.id);
 });
 
 test("integration: replacing one-time keys drops an unclaimed envelope", async (t) => {
