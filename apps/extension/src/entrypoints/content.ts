@@ -72,6 +72,7 @@ import {
 } from "../lib/autofillSaveUrls";
 import {
   applyPageLocaleAddressFormat,
+  assertSameOriginFillAllowed,
   captureLoginCredentials,
   classifyAutofillInput,
   suggestionFieldKindsForFocus,
@@ -3393,6 +3394,10 @@ export default defineContentScript({
       itemId: string,
       fillOverrides?: Record<string, string>,
     ): Promise<void> {
+      // allFrames content script: never write into a foreign-origin iframe.
+      if (!assertSameOriginFillAllowed(window)) {
+        return;
+      }
       const result = await fillItem(itemId, fillOverrides);
       if (result.status !== "ok") {
         if (result.status === "locked") {
