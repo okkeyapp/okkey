@@ -962,6 +962,11 @@ export interface EmailAuthStartResponse {
    * another first-run claim is already held (normal email OTP).
    */
   bootstrapRequired?: boolean;
+  /**
+   * When true, a valid one-time workspace invite authorized registration without
+   * an emailed code. The invite is consumed during `register/complete`.
+   */
+  inviteRegistration?: boolean;
   authStateId?: string;
   nextStep?: "registration";
   /**
@@ -970,6 +975,14 @@ export interface EmailAuthStartResponse {
    * SaaS and whenever mail can be delivered. No other mail configuration is exposed.
    */
   emailDeliverable?: boolean;
+}
+
+/** Optional fields on `POST /auth/email/start` for invite-link registration. */
+export interface EmailAuthStartRequestDto {
+  email: string;
+  locale?: string;
+  /** Raw workspace invite token from `/invite/:token`. Never log this value. */
+  inviteToken?: string;
 }
 
 /** `POST /auth/login/master-password` request. The master password is not sent. */

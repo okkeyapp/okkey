@@ -227,7 +227,12 @@ export default function InviteLandingPage() {
     body = (
       <div className="flex w-full flex-col gap-4">
         <p className="okkey-body text-copy-secondary">{t("web.invite.alreadyAccepted")}</p>
-        {accessToken && emailMatches ? (
+        {accessToken && emailMatches && !vaultUnlocked ? (
+          <Button type="button" onClick={continueLocked}>
+            {t("web.invite.unlock")}
+          </Button>
+        ) : null}
+        {accessToken && emailMatches && vaultUnlocked ? (
           <Button type="button" onClick={() => void accept()}>
             {t("web.invite.openWorkspace")}
           </Button>

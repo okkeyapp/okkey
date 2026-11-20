@@ -183,7 +183,10 @@ export default function AuthWebAuthnPage() {
     try {
       const start = await authClient.startEmailLogin(pending.email, locale);
       updateLocalProfile({ email: pending.email });
-      if (start.bootstrapRequired && start.authStateId) {
+      if (
+        start.authStateId &&
+        (start.bootstrapRequired || start.inviteRegistration)
+      ) {
         setRegistrationAuthStateId(start.authStateId);
         navigate(ACCOUNT_NEW_PATH, { replace: true });
         return;

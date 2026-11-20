@@ -292,6 +292,12 @@ test("acceptInvitation allows any signed-in user for link invites", async () => 
           if (sql.includes("SELECT owner_id FROM workspaces")) {
             return [{ owner_id: ACTOR_ID }];
           }
+          if (sql.includes("UPDATE workspace_invitations") && sql.includes("RETURNING id")) {
+            return [{ id: INVITE_ID }];
+          }
+          if (sql.includes("COUNT(*)")) {
+            return [{ count: "0" }];
+          }
           return baseQuery()(sql, params);
         } } as never),
     } as never,
