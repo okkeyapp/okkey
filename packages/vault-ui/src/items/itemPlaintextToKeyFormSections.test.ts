@@ -883,6 +883,290 @@ describe("itemPlaintextToKeyFormSections passport", () => {
   });
 });
 
+describe("itemPlaintextToKeyFormSections loyalty_card", () => {
+  it("includes flexible loyalty presets", () => {
+    const defaults = getDefaultSectionsForCategory("loyalty_card", messages);
+
+    expect(defaults).toHaveLength(1);
+    expect(defaults[0]?.id).toBe("loyalty-card");
+    expect(defaults[0]?.fields.map((field) => field.id)).toEqual([
+      "provider",
+      "card-number",
+      "barcode",
+      "expiry-date",
+      "notes",
+    ]);
+    expect(defaults[0]?.fields.find((field) => field.id === "card-number")?.type).toBe("text");
+    expect(defaults[0]?.fields.find((field) => field.id === "card-number")?.label).toBe("номер карты");
+    expect(defaults[0]?.fields.find((field) => field.id === "notes")?.type).toBe("multiline-text");
+  });
+
+  it("round-trips loyalty fields and keeps card-number as plain text", () => {
+    const sections = getDefaultSectionsForCategory("loyalty_card", messages).map((section) => ({
+      ...section,
+      fields: section.fields.map((field) => {
+        if (field.id === "provider") {
+          return { ...field, value: "Aeroflot Bonus" };
+        }
+        if (field.id === "card-number") {
+          return { ...field, value: "1234567890" };
+        }
+        if (field.id === "barcode") {
+          return { ...field, value: "QR-ABC" };
+        }
+        return field;
+      }),
+    }));
+
+    const item = keyFormSectionsToItemPlaintext({
+      sections,
+      itemId: "item-loyalty-1",
+      vaultId: "vault-1",
+      title: "Aeroflot",
+      categoryId: "loyalty_card",
+      nowMs: 1,
+    });
+
+    expect(item.fields.find((field) => field.id === "card-number")?.type).toBe("text");
+
+    const restoredForEdit = itemPlaintextToKeyFormSections(item, messages, { includeEmptyFields: true });
+    const primary = restoredForEdit.find((section) => section.id === "loyalty-card");
+
+    expect(primary?.fields.find((field) => field.id === "card-number")).toMatchObject({
+      type: "text",
+      value: "1234567890",
+      deletable: true,
+      editableLabel: true,
+    });
+    expect(primary?.fields.find((field) => field.id === "provider")?.value).toBe("Aeroflot Bonus");
+    expect(primary?.fields.find((field) => field.id === "barcode")?.value).toBe("QR-ABC");
+
+    const restoredForCard = itemPlaintextToKeyFormSections(item, messages);
+    expect(restoredForCard[0]?.fields.map((field) => field.id)).toEqual([
+      "provider",
+      "card-number",
+      "barcode",
+    ]);
+  });
+});
+
+describe("itemPlaintextToKeyFormSections vehicle", () => {
+  it("includes vehicle and insurance sections", () => {
+    const defaults = getDefaultSectionsForCategory("vehicle", messages);
+
+    expect(defaults.map((section) => section.id)).toEqual(["vehicle", "vehicle-insurance"]);
+    expect(defaults[0]?.fields.map((field) => field.id)).toEqual([
+      "make-model",
+      "plate",
+      "vin",
+      "inspection-due",
+      "notes",
+    ]);
+    expect(defaults[1]?.fields.map((field) => field.id)).toEqual([
+      "insurance-policy-number",
+      "insurer",
+      "insurance-valid-until",
+    ]);
+    expect(defaults[1]?.title).toBe("Страховка");
+  });
+
+  it("round-trips vehicle fields across primary and insurance sections", () => {
+    const sections = getDefaultSectionsForCategory("vehicle", messages).map((section) => ({
+      ...section,
+      fields: section.fields.map((field) => {
+        if (field.id === "make-model") {
+          return { ...field, value: "Toyota Camry" };
+        }
+        if (field.id === "plate") {
+          return { ...field, value: "A123BC77" };
+        }
+        if (field.id === "vin") {
+          return { ...field, value: "JTDBR32E720012345" };
+        }
+        if (field.id === "insurance-policy-number") {
+          return { ...field, value: "POL-42" };
+        }
+        if (field.id === "insurer") {
+          return { ...field, value: "Ingosstrakh" };
+        }
+        return field;
+      }),
+    }));
+
+    const item = keyFormSectionsToItemPlaintext({
+      sections,
+      itemId: "item-vehicle-1",
+      vaultId: "vault-1",
+      title: "Family car",
+      categoryId: "vehicle",
+      nowMs: 1,
+    });
+
+    const restoredForEdit = itemPlaintextToKeyFormSections(item, messages, { includeEmptyFields: true });
+    expect(restoredForEdit.map((section) => section.id)).toEqual(["vehicle", "vehicle-insurance"]);
+    expect(restoredForEdit[0]?.fields.find((field) => field.id === "plate")?.value).toBe("A123BC77");
+    expect(restoredForEdit[0]?.fields.find((field) => field.id === "vin")?.value).toBe("JTDBR32E720012345");
+    expect(restoredForEdit[1]?.fields.find((field) => field.id === "insurance-policy-number")?.value).toBe(
+      "POL-42",
+    );
+
+    const restoredForCard = itemPlaintextToKeyFormSections(item, messages);
+    expect(restoredForCard.map((section) => section.id)).toEqual(["vehicle", "vehicle-insurance"]);
+    expect(restoredForCard[0]?.fields.map((field) => field.id)).toEqual(["make-model", "plate", "vin"]);
+    expect(restoredForCard[1]?.fields.map((field) => field.id)).toEqual([
+      "insurance-policy-number",
+      "insurer",
+    ]);
+  });
+});
+
+describe("itemPlaintextToKeyFormSections travel_booking", () => {
+  it("includes travel presets with transport type options", () => {
+    const defaults = getDefaultSectionsForCategory("travel_booking", messages);
+
+    expect(defaults).toHaveLength(1);
+    expect(defaults[0]?.id).toBe("travel-booking");
+    expect(defaults[0]?.fields.map((field) => field.id)).toEqual([
+      "transport-type",
+      "carrier",
+      "trip-number",
+      "departure-at",
+      "from",
+      "to",
+      "booking-reference",
+      "passengers",
+      "seats",
+      "notes",
+    ]);
+    expect(defaults[0]?.fields.find((field) => field.id === "transport-type")?.selectOptions).toEqual([
+      { value: "flight", label: "Самолёт" },
+      { value: "train", label: "Поезд" },
+      { value: "bus", label: "Автобус" },
+      { value: "ferry", label: "Паром" },
+      { value: "other", label: "Другое" },
+    ]);
+  });
+
+  it("round-trips travel booking fields including transport type select", () => {
+    const sections = getDefaultSectionsForCategory("travel_booking", messages).map((section) => ({
+      ...section,
+      fields: section.fields.map((field) => {
+        if (field.id === "transport-type") {
+          return { ...field, value: "flight" };
+        }
+        if (field.id === "carrier") {
+          return { ...field, value: "Aeroflot" };
+        }
+        if (field.id === "trip-number") {
+          return { ...field, value: "SU100" };
+        }
+        if (field.id === "departure-at") {
+          return { ...field, value: "2026-12-01 09:40" };
+        }
+        if (field.id === "from") {
+          return { ...field, value: "SVO" };
+        }
+        if (field.id === "to") {
+          return { ...field, value: "LED" };
+        }
+        if (field.id === "booking-reference") {
+          return { ...field, value: "ABC123" };
+        }
+        return field;
+      }),
+    }));
+
+    const item = keyFormSectionsToItemPlaintext({
+      sections,
+      itemId: "item-travel-1",
+      vaultId: "vault-1",
+      title: "Moscow → SPb",
+      categoryId: "travel_booking",
+      nowMs: 1,
+    });
+
+    const restoredForEdit = itemPlaintextToKeyFormSections(item, messages, { includeEmptyFields: true });
+    const primary = restoredForEdit.find((section) => section.id === "travel-booking");
+
+    expect(primary?.fields.find((field) => field.id === "transport-type")).toMatchObject({
+      type: "select",
+      value: "flight",
+    });
+    expect(primary?.fields.find((field) => field.id === "booking-reference")?.value).toBe("ABC123");
+    expect(primary?.fields.find((field) => field.id === "departure-at")?.value).toBe("2026-12-01 09:40");
+
+    const restoredForCard = itemPlaintextToKeyFormSections(item, messages);
+    expect(restoredForCard[0]?.fields.map((field) => field.id)).toEqual([
+      "transport-type",
+      "carrier",
+      "trip-number",
+      "departure-at",
+      "from",
+      "to",
+      "booking-reference",
+    ]);
+  });
+});
+
+describe("itemPlaintextToKeyFormSections create and reopen each TSK-140 type", () => {
+  it("creates, saves, and re-opens one item of each new category", () => {
+    const cases = [
+      {
+        categoryId: "loyalty_card" as const,
+        fill: { provider: "Miles&Smiles", "card-number": "998877" },
+        expectIds: ["provider", "card-number"],
+      },
+      {
+        categoryId: "vehicle" as const,
+        fill: { plate: "B456CD99", vin: "WVWZZZ1JZYW000001" },
+        expectIds: ["plate", "vin"],
+      },
+      {
+        categoryId: "travel_booking" as const,
+        fill: { carrier: "S7", "booking-reference": "PNR777", "departure-at": "2026-06-15 14:00" },
+        expectIds: ["carrier", "departure-at", "booking-reference"],
+      },
+    ];
+
+    for (const testCase of cases) {
+      const sections = getDefaultSectionsForCategory(testCase.categoryId, messages).map((section) => ({
+        ...section,
+        fields: section.fields.map((field) =>
+          field.id in testCase.fill
+            ? { ...field, value: testCase.fill[field.id as keyof typeof testCase.fill] }
+            : field,
+        ),
+      }));
+
+      const item = keyFormSectionsToItemPlaintext({
+        sections,
+        itemId: `item-${testCase.categoryId}`,
+        vaultId: "vault-1",
+        title: `Title ${testCase.categoryId}`,
+        categoryId: testCase.categoryId,
+        nowMs: 42,
+      });
+
+      expect(item.categoryId).toBe(testCase.categoryId);
+      expect(item.schemaVersion).toBe(2);
+
+      const reopened = itemPlaintextToKeyFormSections(item, messages);
+      const filledIds = reopened.flatMap((section) => section.fields.map((field) => field.id));
+      for (const fieldId of testCase.expectIds) {
+        expect(filledIds).toContain(fieldId);
+      }
+
+      const reopenedEdit = itemPlaintextToKeyFormSections(item, messages, { includeEmptyFields: true });
+      expect(reopenedEdit.length).toBeGreaterThan(0);
+      expect(
+        reopenedEdit
+          .flatMap((section) => section.fields)
+          .find((field) => field.id === testCase.expectIds[0])?.value,
+      ).toBe(testCase.fill[testCase.expectIds[0] as keyof typeof testCase.fill]);
+    }
+  });
+});
+
 describe("itemPlaintextToKeyFormSections secure_note", () => {
   it("includes note preset with editable label", () => {
     const defaults = getDefaultSectionsForCategory("secure_note", messages);

@@ -24,16 +24,22 @@ import {
   WIFI_ROUTER_SECTION_ID,
   CREDIT_CARD_SECTION_ID,
   PASSPORT_SECTION_ID,
+  LOYALTY_CARD_SECTION_ID,
+  VEHICLE_SECTION_ID,
+  VEHICLE_INSURANCE_SECTION_ID,
+  TRAVEL_BOOKING_SECTION_ID,
   SECURE_FILES_SECTION_ID,
   SECURE_NOTE_SECTION_ID,
   enrichCategoryPresetSelectField,
   getAllApiAccessPresetFields,
   getAllCreditCardPresetFields,
   getAllDatabasePresetFields,
+  getAllLoyaltyCardPresetFields,
   getAllPassportPresetFields,
   getAllPersonalDataPrimaryPresetFields,
   getAllSecureFilesPresetFields,
   getAllSecureNotePresetFields,
+  getAllTravelBookingPresetFields,
   getAllWifiRouterPresetFields,
   getDefaultSectionsForCategory,
   isCreditCardRequiredFieldId,
@@ -44,8 +50,9 @@ import { isItemCategoryId } from "./itemCategoryCatalog.js";
 import { filterFilledKeyFormSections, isItemFieldFilled } from "./keyFormFilledFields.js";
 import { parseSelectFieldValueFromItem, selectFieldValueFromRaw } from "./keyFormSelectField.js";
 
-function formFieldType(field: ItemFieldV2): string {
-  if (field.id === "card-number") {
+function formFieldType(field: ItemFieldV2, sectionId?: string): string {
+  // Credit-card presets use the dedicated card input; loyalty_card keeps plain text.
+  if (field.id === "card-number" && sectionId !== LOYALTY_CARD_SECTION_ID) {
     return "card";
   }
   if (field.id === "card-expiry") {
@@ -134,6 +141,10 @@ const DEFAULT_SECTION_TITLES: Record<string, string> = {
   [PERSONAL_DATA_SECTION_ID]: "Personal data",
   [PERSONAL_DATA_WORK_SECTION_ID]: "Work",
   [PASSPORT_SECTION_ID]: "Passport",
+  [LOYALTY_CARD_SECTION_ID]: "Loyalty card",
+  [VEHICLE_SECTION_ID]: "Vehicle",
+  [VEHICLE_INSURANCE_SECTION_ID]: "Insurance",
+  [TRAVEL_BOOKING_SECTION_ID]: "Travel booking",
   [SERVER_ADMIN_CONSOLE_SECTION_ID]: "Admin console",
   [BANK_DETAILS_SECTION_ID]: "Bank details",
   [CRYPTO_WALLET_WALLET_SECTION_ID]: "Wallet",
@@ -206,11 +217,24 @@ function isFieldDeletable(
     return sectionFields.length > 1;
   }
 
-  if (sectionId === SERVER_SECTION_ID || sectionId === BANK_ACCOUNT_SECTION_ID || sectionId === CRYPTO_WALLET_SECTION_ID) {
+  if (
+    sectionId === SERVER_SECTION_ID ||
+    sectionId === BANK_ACCOUNT_SECTION_ID ||
+    sectionId === CRYPTO_WALLET_SECTION_ID ||
+    sectionId === LOYALTY_CARD_SECTION_ID ||
+    sectionId === VEHICLE_SECTION_ID ||
+    sectionId === TRAVEL_BOOKING_SECTION_ID
+  ) {
     return sectionFields.length > 1;
   }
 
-  if (sectionId === SERVER_ADMIN_CONSOLE_SECTION_ID || sectionId === BANK_DETAILS_SECTION_ID || sectionId === CRYPTO_WALLET_WALLET_SECTION_ID || sectionId === PERSONAL_DATA_WORK_SECTION_ID) {
+  if (
+    sectionId === SERVER_ADMIN_CONSOLE_SECTION_ID ||
+    sectionId === BANK_DETAILS_SECTION_ID ||
+    sectionId === CRYPTO_WALLET_WALLET_SECTION_ID ||
+    sectionId === PERSONAL_DATA_WORK_SECTION_ID ||
+    sectionId === VEHICLE_INSURANCE_SECTION_ID
+  ) {
     return true;
   }
 
@@ -262,7 +286,19 @@ function isFieldLabelEditable(
     return true;
   }
 
-  if (sectionId === SERVER_SECTION_ID || sectionId === SERVER_ADMIN_CONSOLE_SECTION_ID || sectionId === BANK_ACCOUNT_SECTION_ID || sectionId === BANK_DETAILS_SECTION_ID || sectionId === CRYPTO_WALLET_SECTION_ID || sectionId === CRYPTO_WALLET_WALLET_SECTION_ID || sectionId === PERSONAL_DATA_WORK_SECTION_ID) {
+  if (
+    sectionId === SERVER_SECTION_ID ||
+    sectionId === SERVER_ADMIN_CONSOLE_SECTION_ID ||
+    sectionId === BANK_ACCOUNT_SECTION_ID ||
+    sectionId === BANK_DETAILS_SECTION_ID ||
+    sectionId === CRYPTO_WALLET_SECTION_ID ||
+    sectionId === CRYPTO_WALLET_WALLET_SECTION_ID ||
+    sectionId === PERSONAL_DATA_WORK_SECTION_ID ||
+    sectionId === LOYALTY_CARD_SECTION_ID ||
+    sectionId === VEHICLE_SECTION_ID ||
+    sectionId === VEHICLE_INSURANCE_SECTION_ID ||
+    sectionId === TRAVEL_BOOKING_SECTION_ID
+  ) {
     return true;
   }
 
@@ -958,6 +994,107 @@ function mergePassportPresetSections(
   });
 }
 
+function mergeFlexiblePersonalPresetField(
+  presetField: KeyFormEditorField,
+  loadedField: KeyFormEditorField,
+  messages: KeyFormEditorMessages,
+): KeyFormEditorField {
+  return enrichCategoryPresetSelectField(
+    {
+      ...presetField,
+      ...loadedField,
+      deletable: true,
+      editableLabel: true,
+      required: false,
+    },
+    messages,
+  );
+}
+
+function mergeLoyaltyCardPresetSections(
+  loaded: KeyFormEditorSection[],
+  messages: KeyFormEditorMessages,
+  includeEmptyFields: boolean,
+): KeyFormEditorSection[] {
+  const defaults = getDefaultSectionsForCategory("loyalty_card", messages);
+
+  return mergePresetSectionsPreservingOrder({
+    loadedSections: loaded,
+    defaultSections: defaults,
+    includeMissingSections: includeEmptyFields,
+    mergeSection: (defaultSection, loadedSection) => ({
+      ...defaultSection,
+      ...loadedSection,
+      fields: mergePresetFieldsPreservingOrder({
+        loadedFields: loadedSection.fields,
+        presetFieldsById: new Map(defaultSection.fields.map((field) => [field.id, field])),
+        presetFieldOrder: getAllLoyaltyCardPresetFields(messages),
+        includeMissingPresets: false,
+        mergeField: (presetField, loadedField) =>
+          mergeFlexiblePersonalPresetField(presetField, loadedField, messages),
+        enrichCustomField: (field) => enrichCategoryPresetSelectField(field, messages),
+      }),
+    }),
+  });
+}
+
+function mergeVehiclePresetSections(
+  loaded: KeyFormEditorSection[],
+  messages: KeyFormEditorMessages,
+  includeEmptyFields: boolean,
+): KeyFormEditorSection[] {
+  const defaults = getDefaultSectionsForCategory("vehicle", messages);
+
+  return mergePresetSectionsPreservingOrder({
+    loadedSections: loaded,
+    defaultSections: defaults,
+    includeMissingSections: includeEmptyFields,
+    mergeSection: (defaultSection, loadedSection) => ({
+      ...defaultSection,
+      ...loadedSection,
+      title: defaultSection.title ?? loadedSection.title,
+      fields: mergePresetFieldsPreservingOrder({
+        loadedFields: loadedSection.fields,
+        presetFieldsById: new Map(defaultSection.fields.map((field) => [field.id, field])),
+        presetFieldOrder: defaultSection.fields,
+        includeMissingPresets: false,
+        mergeField: (presetField, loadedField) =>
+          mergeFlexiblePersonalPresetField(presetField, loadedField, messages),
+        enrichCustomField: (field) => enrichCategoryPresetSelectField(field, messages),
+      }),
+    }),
+  });
+}
+
+function mergeTravelBookingPresetSections(
+  loaded: KeyFormEditorSection[],
+  messages: KeyFormEditorMessages,
+  includeEmptyFields: boolean,
+): KeyFormEditorSection[] {
+  const defaults = getDefaultSectionsForCategory("travel_booking", messages);
+  const allPresetFields = getAllTravelBookingPresetFields(messages);
+  const presetFieldsById = new Map(allPresetFields.map((field) => [field.id, field]));
+
+  return mergePresetSectionsPreservingOrder({
+    loadedSections: loaded,
+    defaultSections: defaults,
+    includeMissingSections: includeEmptyFields,
+    mergeSection: (defaultSection, loadedSection) => ({
+      ...defaultSection,
+      ...loadedSection,
+      fields: mergePresetFieldsPreservingOrder({
+        loadedFields: loadedSection.fields,
+        presetFieldsById,
+        presetFieldOrder: allPresetFields,
+        includeMissingPresets: false,
+        mergeField: (presetField, loadedField) =>
+          mergeFlexiblePersonalPresetField(presetField, loadedField, messages),
+        enrichCustomField: (field) => enrichCategoryPresetSelectField(field, messages),
+      }),
+    }),
+  });
+}
+
 function mergeSecureFilesPresetField(
   presetField: KeyFormEditorField,
   loadedField: KeyFormEditorField,
@@ -1097,7 +1234,7 @@ function toFormField(
   messages?: KeyFormEditorMessages,
 ): KeyFormEditorField {
   const value = stringValueFromField(field);
-  const type = formFieldType(field);
+  const type = formFieldType(field, sectionId);
   const deletable = isFieldDeletable(sectionId, field, sectionFields, isPresetSection);
   const secretKind = type === "secret" ? getSecretKindFromRaw(field.value.kind === "unknown" ? field.value.raw : null) : undefined;
   const selectField = type === "select" ? parseSelectFieldValueFromItem(field) : undefined;
@@ -1221,6 +1358,12 @@ export function itemPlaintextToKeyFormSections(
     sections = mergePersonalDataPresetSections(sections, messages, includeEmptyFields);
   } else if (messages && isItemCategoryId(item.categoryId) && item.categoryId === "passport") {
     sections = mergePassportPresetSections(sections, messages, includeEmptyFields);
+  } else if (messages && isItemCategoryId(item.categoryId) && item.categoryId === "loyalty_card") {
+    sections = mergeLoyaltyCardPresetSections(sections, messages, includeEmptyFields);
+  } else if (messages && isItemCategoryId(item.categoryId) && item.categoryId === "vehicle") {
+    sections = mergeVehiclePresetSections(sections, messages, includeEmptyFields);
+  } else if (messages && isItemCategoryId(item.categoryId) && item.categoryId === "travel_booking") {
+    sections = mergeTravelBookingPresetSections(sections, messages, includeEmptyFields);
   } else if (messages && isItemCategoryId(item.categoryId) && item.categoryId === "secure_files") {
     sections = mergeSecureFilesPresetSections(sections, messages, includeEmptyFields);
   } else if (messages && isItemCategoryId(item.categoryId) && item.categoryId === "secure_note") {

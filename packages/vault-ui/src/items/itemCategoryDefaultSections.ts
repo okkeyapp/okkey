@@ -15,6 +15,10 @@ export const CRYPTO_WALLET_WALLET_SECTION_ID = "wallet";
 export const PERSONAL_DATA_SECTION_ID = "personal-data";
 export const PERSONAL_DATA_WORK_SECTION_ID = "personal-data-work";
 export const PASSPORT_SECTION_ID = "passport";
+export const LOYALTY_CARD_SECTION_ID = "loyalty-card";
+export const VEHICLE_SECTION_ID = "vehicle";
+export const VEHICLE_INSURANCE_SECTION_ID = "vehicle-insurance";
+export const TRAVEL_BOOKING_SECTION_ID = "travel-booking";
 export const SECURE_FILES_SECTION_ID = "secure-files";
 export const SECURE_NOTE_SECTION_ID = "secure-note";
 
@@ -101,6 +105,9 @@ const FLEXIBLE_PRESET_PRIMARY_SECTION_IDS = [
   WIFI_ROUTER_SECTION_ID,
   BANK_ACCOUNT_SECTION_ID,
   CRYPTO_WALLET_SECTION_ID,
+  LOYALTY_CARD_SECTION_ID,
+  VEHICLE_SECTION_ID,
+  TRAVEL_BOOKING_SECTION_ID,
 ] as const;
 
 export function isFlexiblePresetPrimarySection(sectionId: string): boolean {
@@ -976,6 +983,255 @@ export function getAllPassportPresetFields(messages: KeyFormEditorMessages): Key
   return getPassportDefaultSections(messages)[0]?.fields ?? [];
 }
 
+function getLoyaltyCardDefaultSections(messages: KeyFormEditorMessages): KeyFormEditorSection[] {
+  return [
+    {
+      id: LOYALTY_CARD_SECTION_ID,
+      variant: "primary",
+      fields: [
+        {
+          id: "provider",
+          type: "text",
+          label: messages.fieldLabels.loyaltyProvider,
+          value: "",
+          editableLabel: true,
+          deletable: true,
+        },
+        {
+          id: "card-number",
+          type: "text",
+          label: messages.fieldLabels.loyaltyCardNumber,
+          value: "",
+          editableLabel: true,
+          deletable: true,
+        },
+        {
+          id: "barcode",
+          type: "text",
+          label: messages.fieldLabels.loyaltyBarcode,
+          value: "",
+          editableLabel: true,
+          deletable: true,
+        },
+        {
+          id: "expiry-date",
+          type: "date",
+          label: messages.fieldLabels.loyaltyExpiryDate,
+          value: "",
+          editableLabel: true,
+          deletable: true,
+        },
+        {
+          id: "notes",
+          type: "multiline-text",
+          label: messages.fieldLabels.notes,
+          value: "",
+          editableLabel: true,
+          deletable: true,
+        },
+      ],
+    },
+  ];
+}
+
+export function getAllLoyaltyCardPresetFields(messages: KeyFormEditorMessages): KeyFormEditorField[] {
+  return getLoyaltyCardDefaultSections(messages)[0]?.fields ?? [];
+}
+
+function getVehicleDefaultSections(messages: KeyFormEditorMessages): KeyFormEditorSection[] {
+  return [
+    {
+      id: VEHICLE_SECTION_ID,
+      variant: "primary",
+      fields: [
+        {
+          id: "make-model",
+          type: "text",
+          label: messages.fieldLabels.vehicleMakeModel,
+          value: "",
+          editableLabel: true,
+          deletable: true,
+        },
+        {
+          id: "plate",
+          type: "text",
+          label: messages.fieldLabels.vehiclePlate,
+          value: "",
+          editableLabel: true,
+          deletable: true,
+        },
+        {
+          id: "vin",
+          type: "text",
+          label: messages.fieldLabels.vehicleVin,
+          value: "",
+          editableLabel: true,
+          deletable: true,
+        },
+        {
+          id: "inspection-due",
+          type: "date",
+          label: messages.fieldLabels.vehicleInspectionDue,
+          value: "",
+          editableLabel: true,
+          deletable: true,
+        },
+        {
+          id: "notes",
+          type: "multiline-text",
+          label: messages.fieldLabels.notes,
+          value: "",
+          editableLabel: true,
+          deletable: true,
+        },
+      ],
+    },
+    {
+      id: VEHICLE_INSURANCE_SECTION_ID,
+      variant: "additional",
+      title: messages.sectionTitles.vehicleInsurance,
+      fields: [
+        {
+          id: "insurance-policy-number",
+          type: "text",
+          label: messages.fieldLabels.vehicleInsurancePolicyNumber,
+          value: "",
+          editableLabel: true,
+          deletable: true,
+        },
+        {
+          id: "insurer",
+          type: "text",
+          label: messages.fieldLabels.vehicleInsurer,
+          value: "",
+          editableLabel: true,
+          deletable: true,
+        },
+        {
+          id: "insurance-valid-until",
+          type: "date",
+          label: messages.fieldLabels.vehicleInsuranceValidUntil,
+          value: "",
+          editableLabel: true,
+          deletable: true,
+        },
+      ],
+    },
+  ];
+}
+
+export function getAllVehiclePresetFields(messages: KeyFormEditorMessages): KeyFormEditorField[] {
+  return getVehicleDefaultSections(messages).flatMap((section) => section.fields);
+}
+
+export function getTravelTransportTypeSelectOptions(messages: KeyFormEditorMessages): KeyFormSelectOption[] {
+  return [
+    { value: "flight", label: messages.travelTransportTypeOptions.flight },
+    { value: "train", label: messages.travelTransportTypeOptions.train },
+    { value: "bus", label: messages.travelTransportTypeOptions.bus },
+    { value: "ferry", label: messages.travelTransportTypeOptions.ferry },
+    { value: "other", label: messages.travelTransportTypeOptions.other },
+  ];
+}
+
+function getTravelBookingDefaultSections(messages: KeyFormEditorMessages): KeyFormEditorSection[] {
+  const transportTypeOptions = getTravelTransportTypeSelectOptions(messages);
+
+  return [
+    {
+      id: TRAVEL_BOOKING_SECTION_ID,
+      variant: "primary",
+      fields: [
+        {
+          id: "transport-type",
+          type: "select",
+          label: messages.fieldLabels.travelTransportType,
+          value: "",
+          selectOptions: transportTypeOptions,
+          editableLabel: true,
+          deletable: true,
+        },
+        {
+          id: "carrier",
+          type: "text",
+          label: messages.fieldLabels.travelCarrier,
+          value: "",
+          editableLabel: true,
+          deletable: true,
+        },
+        {
+          id: "trip-number",
+          type: "text",
+          label: messages.fieldLabels.travelTripNumber,
+          value: "",
+          editableLabel: true,
+          deletable: true,
+        },
+        {
+          id: "departure-at",
+          type: "text",
+          label: messages.fieldLabels.travelDepartureAt,
+          value: "",
+          editableLabel: true,
+          deletable: true,
+        },
+        {
+          id: "from",
+          type: "text",
+          label: messages.fieldLabels.travelFrom,
+          value: "",
+          editableLabel: true,
+          deletable: true,
+        },
+        {
+          id: "to",
+          type: "text",
+          label: messages.fieldLabels.travelTo,
+          value: "",
+          editableLabel: true,
+          deletable: true,
+        },
+        {
+          id: "booking-reference",
+          type: "text",
+          label: messages.fieldLabels.travelBookingReference,
+          value: "",
+          editableLabel: true,
+          deletable: true,
+        },
+        {
+          id: "passengers",
+          type: "text",
+          label: messages.fieldLabels.travelPassengers,
+          value: "",
+          editableLabel: true,
+          deletable: true,
+        },
+        {
+          id: "seats",
+          type: "text",
+          label: messages.fieldLabels.travelSeats,
+          value: "",
+          editableLabel: true,
+          deletable: true,
+        },
+        {
+          id: "notes",
+          type: "multiline-text",
+          label: messages.fieldLabels.notes,
+          value: "",
+          editableLabel: true,
+          deletable: true,
+        },
+      ],
+    },
+  ];
+}
+
+export function getAllTravelBookingPresetFields(messages: KeyFormEditorMessages): KeyFormEditorField[] {
+  return getTravelBookingDefaultSections(messages)[0]?.fields ?? [];
+}
+
 function getSecureFilesDefaultSections(messages: KeyFormEditorMessages): KeyFormEditorSection[] {
   return [
     {
@@ -1066,6 +1322,18 @@ export function getDefaultSectionsForCategory(
     return getPassportDefaultSections(messages);
   }
 
+  if (categoryId === "loyalty_card") {
+    return getLoyaltyCardDefaultSections(messages);
+  }
+
+  if (categoryId === "vehicle") {
+    return getVehicleDefaultSections(messages);
+  }
+
+  if (categoryId === "travel_booking") {
+    return getTravelBookingDefaultSections(messages);
+  }
+
   if (categoryId === "secure_files") {
     return getSecureFilesDefaultSections(messages);
   }
@@ -1149,13 +1417,34 @@ export function enrichPersonalDataSelectField(
   };
 }
 
+export function enrichTravelBookingSelectField(
+  field: KeyFormEditorField,
+  messages: KeyFormEditorMessages,
+): KeyFormEditorField {
+  if (field.type !== "select" || field.id !== "transport-type") {
+    return field;
+  }
+
+  if (field.selectOptions && field.selectOptions.length > 0) {
+    return field;
+  }
+
+  return {
+    ...field,
+    selectOptions: getTravelTransportTypeSelectOptions(messages),
+  };
+}
+
 export function enrichCategoryPresetSelectField(
   field: KeyFormEditorField,
   messages: KeyFormEditorMessages,
 ): KeyFormEditorField {
-  return enrichPersonalDataSelectField(
-    enrichWifiRouterSelectField(
-      enrichDatabaseSelectField(enrichApiAccessSelectField(field, messages), messages),
+  return enrichTravelBookingSelectField(
+    enrichPersonalDataSelectField(
+      enrichWifiRouterSelectField(
+        enrichDatabaseSelectField(enrichApiAccessSelectField(field, messages), messages),
+        messages,
+      ),
       messages,
     ),
     messages,

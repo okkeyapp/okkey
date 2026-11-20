@@ -66,6 +66,7 @@ export type KeyFormEditorMessages = {
     bankDetails: string;
     cryptoWallet: string;
     personalWork: string;
+    vehicleInsurance: string;
   };
   cardExpiryExpired: string;
   apiTypeOptions: {
@@ -100,6 +101,13 @@ export type KeyFormEditorMessages = {
   personalDataGenderOptions: {
     male: string;
     female: string;
+  };
+  travelTransportTypeOptions: {
+    flight: string;
+    train: string;
+    bus: string;
+    ferry: string;
+    other: string;
   };
   urlAutofillScope: Record<KeyFormUrlAutofillScope, string>;
   address: {
@@ -225,6 +233,27 @@ const KEY_FORM_EXTRA_FIELD_LABEL_ONLY_KEYS = [
   "passportBirthPlace",
   "passportIssueDate",
   "passportExpiryDate",
+  "loyaltyProvider",
+  "loyaltyCardNumber",
+  "loyaltyBarcode",
+  "loyaltyExpiryDate",
+  "vehicleMakeModel",
+  "vehiclePlate",
+  "vehicleVin",
+  "vehicleInspectionDue",
+  "vehicleInsurancePolicyNumber",
+  "vehicleInsurer",
+  "vehicleInsuranceValidUntil",
+  "travelTransportType",
+  "travelCarrier",
+  "travelTripNumber",
+  "travelDepartureAt",
+  "travelFrom",
+  "travelTo",
+  "travelBookingReference",
+  "travelPassengers",
+  "travelSeats",
+  "notes",
   "secureNote",
 ] as const;
 
@@ -327,6 +356,7 @@ export function createKeyFormEditorMessages(locale: WebLocale): KeyFormEditorMes
       bankDetails: t("web.keyForm.sectionTitles.bankDetails"),
       cryptoWallet: t("web.keyForm.sectionTitles.cryptoWallet"),
       personalWork: t("web.keyForm.sectionTitles.personalWork"),
+      vehicleInsurance: t("web.keyForm.sectionTitles.vehicleInsurance"),
     },
     cardExpiryExpired: t("web.keyForm.cardExpiryExpired"),
     apiTypeOptions: {
@@ -361,6 +391,13 @@ export function createKeyFormEditorMessages(locale: WebLocale): KeyFormEditorMes
     personalDataGenderOptions: {
       male: t("web.keyForm.personalDataGender.male"),
       female: t("web.keyForm.personalDataGender.female"),
+    },
+    travelTransportTypeOptions: {
+      flight: t("web.keyForm.travelTransportType.flight"),
+      train: t("web.keyForm.travelTransportType.train"),
+      bus: t("web.keyForm.travelTransportType.bus"),
+      ferry: t("web.keyForm.travelTransportType.ferry"),
+      other: t("web.keyForm.travelTransportType.other"),
     },
     urlAutofillScope: {
       "entire-site": t("web.keyForm.urlAutofill.entireSite"),
