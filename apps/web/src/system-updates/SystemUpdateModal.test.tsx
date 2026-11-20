@@ -228,7 +228,7 @@ describe("system update popup", () => {
     renderModal(value);
     expect(screen.getByTestId("system-update-row-okkey")).toHaveTextContent("New version 2.0.0");
     expect(screen.getByTestId("system-update-check-error-enterprise")).toHaveTextContent(
-      "Enterprise could not be checked.",
+      "The update feed could not be read. Nothing was applied.",
     );
     fireEvent.click(screen.getByTestId("system-update-apply-all"));
     await waitFor(() => {
@@ -535,6 +535,52 @@ describe("system update popup", () => {
     );
     expect(screen.queryByText("Enterprise could not be checked.")).toBeNull();
     expect(screen.getByRole("heading", { name: "Online update" })).toBeInTheDocument();
+  });
+
+  it("maps specific feed check and apply error codes to EN and RU messages", () => {
+    const codes = [
+      "FEED_UNAUTHORIZED",
+      "FEED_REDIRECT_FORBIDDEN",
+      "FEED_TOO_MANY_REDIRECTS",
+      "PACKAGE_REDIRECT_FORBIDDEN",
+      "PACKAGE_TOO_MANY_REDIRECTS",
+      "PACKAGE_DOWNLOAD_FAILED",
+    ] as const;
+    for (const code of codes) {
+      expect(formatWebMessage("en", `web.systemUpdate.error.${code}`).length).toBeGreaterThan(10);
+      expect(formatWebMessage("ru", `web.systemUpdate.error.${code}`).length).toBeGreaterThan(10);
+      expect(formatWebMessage("en", `web.systemUpdate.error.${code}`)).not.toMatch(/X-Okkey-License-Key|license-key/i);
+      expect(formatWebMessage("ru", `web.systemUpdate.error.${code}`)).not.toMatch(/X-Okkey-License-Key|license-key/i);
+    }
+
+    const value = status({ updates: [] });
+    value.components = [
+      {
+        component: "okkey",
+        installedVersion: "1.0.0",
+        update: null,
+        checkError: "FEED_REDIRECT_FORBIDDEN",
+        feedConfigured: true,
+        minCoreVersion: null,
+        releaseNotesUrl: null,
+      },
+      {
+        component: "enterprise",
+        installedVersion: "1.0.0",
+        update: null,
+        checkError: "FEED_UNAUTHORIZED",
+        feedConfigured: true,
+        minCoreVersion: null,
+        releaseNotesUrl: null,
+      },
+    ];
+    renderModal(value);
+    expect(screen.getByTestId("system-update-check-error-okkey")).toHaveTextContent(
+      "The update feed redirected to a different host, so the request was stopped. Nothing was applied.",
+    );
+    expect(screen.getByTestId("system-update-check-error-enterprise")).toHaveTextContent(
+      "The update feed rejected this installation's credentials. Nothing was applied.",
+    );
   });
 
   it("auto-applies valid offline packages after upload", async () => {
