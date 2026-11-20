@@ -105,6 +105,14 @@ strip_env_quotes() {
   printf '%s\n' "${value}"
 }
 
+# True when an identity override includes an exact heads/dev path-segment token
+# (not a prefix of heads/develop). Kept in sync with overrideAllowsHeadsDev in
+# services/api/src/update-agent/cosign-identity.ts.
+override_allows_heads_dev() {
+  local re="$1"
+  [[ "${re}" =~ (^|[^A-Za-z0-9])heads/dev(\||\)|/|\$|$) ]]
+}
+
 # Read KEY=value from the install-dir .env (no export). Empty if missing.
 env_file_value() {
   local key="$1"
@@ -207,20 +215,24 @@ need_cmd() {
   command -v "$1" >/dev/null 2>&1 || die "missing required command: $1"
 }
 
-# Cosign keyless OIDC identity for Core publish workflow
-# (.github/workflows/publish-images.yml on okkeyapp/okkey).
-# Default (same shape as Enterprise cosign-identity.sh): refs/tags/v<semver>,
-# refs/heads/release/<name>, refs/heads/hotfix/<name>. Not refs/heads/dev.
-# --allow-candidate is a compatibility alias of the default (no-op).
-# --allow-dev / OKKEY_COSIGN_ALLOW_DEV=1 adds refs/heads/dev only.
-# Anchored with ^...$ because cosign matches the regexp as a substring.
-# An exported OKKEY_COSIGN_CERTIFICATE_IDENTITY_REGEXP replaces all of these.
+# Cosign identity defaults. Prefer deploy/docker/cosign-identity.sh (shared with
+# the update agent) when this script runs from a checkout; otherwise use the
+# same literals so `curl … | bash` still works. Keep in sync via
+# scripts/test/cosign-identity-regexp.test.mjs.
+# Default: refs/tags/v*, refs/heads/release/*, refs/heads/hotfix/* (not heads/dev).
+# --allow-dev / OKKEY_COSIGN_ALLOW_DEV=1 adds refs/heads/dev (process env only).
+# --allow-candidate is a compatibility no-op. Explicit
+# OKKEY_COSIGN_CERTIFICATE_IDENTITY_REGEXP replaces the built-in sets.
 OKKEY_COSIGN_DEFAULT_IDENTITY_REGEXP='^https://github\.com/okkeyapp/okkey/\.github/workflows/publish-images\.yml@refs/(?:heads/release/[0-9A-Za-z._-]+|heads/hotfix/[0-9A-Za-z._-]+|tags/v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?)$'
 OKKEY_COSIGN_DEFAULT_DEV_IDENTITY_REGEXP='^https://github\.com/okkeyapp/okkey/\.github/workflows/publish-images\.yml@refs/(?:heads/dev|heads/release/[0-9A-Za-z._-]+|heads/hotfix/[0-9A-Za-z._-]+|tags/v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?)$'
 # Alias kept for callers / tests that still ask for "candidate"; same as default (TSK-302).
 OKKEY_COSIGN_CANDIDATE_IDENTITY_REGEXP='^https://github\.com/okkeyapp/okkey/\.github/workflows/publish-images\.yml@refs/(?:heads/release/[0-9A-Za-z._-]+|heads/hotfix/[0-9A-Za-z._-]+|tags/v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?)$'
 OKKEY_COSIGN_CANDIDATE_DEV_IDENTITY_REGEXP='^https://github\.com/okkeyapp/okkey/\.github/workflows/publish-images\.yml@refs/(?:heads/dev|heads/release/[0-9A-Za-z._-]+|heads/hotfix/[0-9A-Za-z._-]+|tags/v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?)$'
-OKKEY_COSIGN_CERTIFICATE_OIDC_ISSUER="${OKKEY_COSIGN_CERTIFICATE_OIDC_ISSUER:-https://token.actions.githubusercontent.com}"
+OKKEY_COSIGN_ENTERPRISE_DEFAULT_IDENTITY_REGEXP='^https://github\.com/okkeyapp/okkey-enterprise/\.github/workflows/publish-images\.yml@refs/(?:heads/release/[0-9A-Za-z._-]+|heads/hotfix/[0-9A-Za-z._-]+|tags/v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?)$'
+OKKEY_COSIGN_ENTERPRISE_DEFAULT_DEV_IDENTITY_REGEXP='^https://github\.com/okkeyapp/okkey-enterprise/\.github/workflows/publish-images\.yml@refs/(?:heads/dev|heads/release/[0-9A-Za-z._-]+|heads/hotfix/[0-9A-Za-z._-]+|tags/v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?)$'
+OKKEY_COSIGN_ENTERPRISE_CANDIDATE_IDENTITY_REGEXP='^https://github\.com/okkeyapp/okkey-enterprise/\.github/workflows/publish-images\.yml@refs/(?:heads/release/[0-9A-Za-z._-]+|heads/hotfix/[0-9A-Za-z._-]+|tags/v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?)$'
+OKKEY_COSIGN_ENTERPRISE_CANDIDATE_DEV_IDENTITY_REGEXP='^https://github\.com/okkeyapp/okkey-enterprise/\.github/workflows/publish-images\.yml@refs/(?:heads/dev|heads/release/[0-9A-Za-z._-]+|heads/hotfix/[0-9A-Za-z._-]+|tags/v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?)$'
+OKKEY_COSIGN_CERTIFICATE_OIDC_ISSUER_DEFAULT='https://token.actions.githubusercontent.com'
 
 # Same precedence as Compose: process env (even when empty) wins over --env-file
 # .env. Empty values are returned as empty so callers can apply `:-` defaults
@@ -363,12 +375,16 @@ Emergency bypass (prints a warning; not for production):
   fi
   need_cmd docker
 
-  # Explicit override replaces the built-in sets. When --allow-dev is also set,
-  # the override must already include heads/dev (Enterprise wrapper expands its
-  # identity before export); otherwise fail loudly instead of silently ignoring.
+  # Precedence: process env, then install .env, then shared default / allow-dev.
+  # When --allow-dev is also set with an explicit override, the override must
+  # already include heads/dev (Enterprise wrapper expands its identity before
+  # export); otherwise fail loudly instead of silently ignoring.
   local identity_regexp="${OKKEY_COSIGN_CERTIFICATE_IDENTITY_REGEXP:-}"
+  if [[ -z "${identity_regexp}" ]]; then
+    identity_regexp="$(env_file_value OKKEY_COSIGN_CERTIFICATE_IDENTITY_REGEXP)"
+  fi
   if [[ -n "${identity_regexp}" ]]; then
-    if [[ "${allow_dev}" == "1" && "${identity_regexp}" != *heads/dev* ]]; then
+    if [[ "${allow_dev}" == "1" ]] && ! override_allows_heads_dev "${identity_regexp}"; then
       die "--allow-dev / OKKEY_COSIGN_ALLOW_DEV=1 has no effect while OKKEY_COSIGN_CERTIFICATE_IDENTITY_REGEXP is set without heads/dev.
 Include heads/dev in that regexp, or unset the override so the built-in allow-dev set applies."
     fi
@@ -376,6 +392,36 @@ Include heads/dev in that regexp, or unset the override so the built-in allow-de
     identity_regexp="${OKKEY_COSIGN_DEFAULT_DEV_IDENTITY_REGEXP}"
   else
     identity_regexp="${OKKEY_COSIGN_DEFAULT_IDENTITY_REGEXP}"
+  fi
+
+  # Enterprise identity (independent of Core). Used when compose pins
+  # OKKEY_ENTERPRISE_IMAGE_TAG — those api/worker/web images are Enterprise-signed.
+  # Core-only installs keep the Core identity even if the Enterprise override is
+  # present in .env for the update agent.
+  local enterprise_identity_regexp="${OKKEY_ENTERPRISE_COSIGN_CERTIFICATE_IDENTITY_REGEXP:-}"
+  if [[ -z "${enterprise_identity_regexp}" ]]; then
+    enterprise_identity_regexp="$(env_file_value OKKEY_ENTERPRISE_COSIGN_CERTIFICATE_IDENTITY_REGEXP)"
+  fi
+  if [[ -n "${enterprise_identity_regexp}" ]]; then
+    if [[ "${allow_dev}" == "1" ]] && ! override_allows_heads_dev "${enterprise_identity_regexp}"; then
+      die "--allow-dev / OKKEY_COSIGN_ALLOW_DEV=1 has no effect while OKKEY_ENTERPRISE_COSIGN_CERTIFICATE_IDENTITY_REGEXP is set without heads/dev.
+Include heads/dev in that regexp, or unset the override so the built-in allow-dev set applies."
+    fi
+  fi
+  local enterprise_tag
+  enterprise_tag="$(resolve_env_value OKKEY_ENTERPRISE_IMAGE_TAG)"
+  local verify_identity_regexp="${identity_regexp}"
+  if [[ -n "${enterprise_identity_regexp}" && -n "${enterprise_tag}" ]]; then
+    verify_identity_regexp="${enterprise_identity_regexp}"
+  fi
+
+  # Precedence: process env, then install .env, then shared default.
+  local oidc_issuer="${OKKEY_COSIGN_CERTIFICATE_OIDC_ISSUER:-}"
+  if [[ -z "${oidc_issuer}" ]]; then
+    oidc_issuer="$(env_file_value OKKEY_COSIGN_CERTIFICATE_OIDC_ISSUER)"
+  fi
+  if [[ -z "${oidc_issuer}" ]]; then
+    oidc_issuer="${OKKEY_COSIGN_CERTIFICATE_OIDC_ISSUER_DEFAULT}"
   fi
 
   if [[ "${allow_candidate}" == "1" ]]; then
@@ -386,10 +432,16 @@ Include heads/dev in that regexp, or unset the override so the built-in allow-de
     fi
   fi
   if [[ "${allow_dev}" == "1" && -z "${OKKEY_COSIGN_CERTIFICATE_IDENTITY_REGEXP:-}" ]]; then
-    if [[ "${ALLOW_DEV_FLAG}" == "1" ]]; then
-      warn_allow_dev "--allow-dev"
-    else
-      warn_allow_dev "OKKEY_COSIGN_ALLOW_DEV=1"
+    # Only warn when the built-in allow-dev set is actually used (no process-env
+    # or .env override).
+    local env_override
+    env_override="$(env_file_value OKKEY_COSIGN_CERTIFICATE_IDENTITY_REGEXP)"
+    if [[ -z "${env_override}" ]]; then
+      if [[ "${ALLOW_DEV_FLAG}" == "1" ]]; then
+        warn_allow_dev "--allow-dev"
+      else
+        warn_allow_dev "OKKEY_COSIGN_ALLOW_DEV=1"
+      fi
     fi
   fi
 
@@ -405,13 +457,14 @@ Include heads/dev in that regexp, or unset the override so the built-in allow-de
     digest_ref="$(image_digest_ref "${ref}")"
     log "==> Verifying cosign signature: ${digest_ref}"
     if ! cosign verify \
-      --certificate-identity-regexp "${identity_regexp}" \
-      --certificate-oidc-issuer "${OKKEY_COSIGN_CERTIFICATE_OIDC_ISSUER}" \
+      --certificate-identity-regexp "${verify_identity_regexp}" \
+      --certificate-oidc-issuer "${oidc_issuer}" \
       "${digest_ref}"; then
       die "cosign verify failed for ${digest_ref}.
-The image is unsigned or was not signed by this repo's publish-images workflow
+The image is unsigned or was not signed by the expected publish-images workflow
 (GitHub Actions OIDC). Refusing to start the stack.
-hint: Core images must be signed keyless by .github/workflows/publish-images.yml.
+hint: Core images use OKKEY_COSIGN_CERTIFICATE_IDENTITY_REGEXP; Enterprise-tagged
+  images (OKKEY_ENTERPRISE_IMAGE_TAG) use OKKEY_ENTERPRISE_COSIGN_CERTIFICATE_IDENTITY_REGEXP.
   For OKKEY_IMAGE_TAG=dev / refs/heads/dev signatures: pass --allow-dev or set OKKEY_COSIGN_ALLOW_DEV=1 (process env, not .env).
   Install cosign: https://docs.sigstore.dev/cosign/system_config/installation/
   Emergency bypass only: install.sh --skip-cosign-verify (prints a warning; not for prod)."
@@ -570,6 +623,13 @@ To force the pin ${OKKEY_PROD_IMAGE_TAG} anyway (pull will fail if missing):
 SCRIPT_DIR=""
 if [[ ${BASH_SOURCE+x} ]] && [[ ${#BASH_SOURCE[@]} -gt 0 ]] && [[ -n "${BASH_SOURCE[0]}" ]] && [[ -f "${BASH_SOURCE[0]}" ]]; then
   SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+fi
+
+# Overlay shared constants when running from a checkout (keeps install.sh and
+# the update agent on the same identity regexps).
+if [[ -n "${SCRIPT_DIR}" && -f "${SCRIPT_DIR}/cosign-identity.sh" ]]; then
+  # shellcheck source=cosign-identity.sh
+  source "${SCRIPT_DIR}/cosign-identity.sh"
 fi
 
 fetch_file() {

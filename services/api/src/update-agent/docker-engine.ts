@@ -2,7 +2,7 @@ import http from "node:http";
 
 import { isSystemUpdateError, SystemUpdateError } from "../system-updates/errors.ts";
 import type { RegistryPullCredentials } from "../system-updates/package-format.ts";
-import type { ServiceContainer, UpdateApplyEngine } from "./apply.ts";
+import { imageRepository, type ServiceContainer, type UpdateApplyEngine } from "./apply.ts";
 import { encodeRegistryAuth, imageRegistryHost } from "./registry-auth.ts";
 
 /** Highest Docker Engine API version this agent intentionally speaks. */
@@ -17,7 +17,7 @@ export type DockerTransportResult = {
 export type DockerTransport = (
   method: string,
   path: string,
-  body?: string,
+  body?: string | Buffer,
   headers?: Record<string, string>,
 ) => Promise<DockerTransportResult>;
 
@@ -30,6 +30,12 @@ type ImageConfig = {
   Labels?: Record<string, string>;
   ExposedPorts?: Record<string, unknown> | null;
   Healthcheck?: Record<string, unknown>;
+};
+
+type ImageInspectJson = ImageConfig & {
+  Id?: string;
+  RepoDigests?: string[];
+  Config?: ImageConfig;
 };
 
 type Inspect = {
@@ -164,6 +170,38 @@ export function createDockerApplyEngine(
       const response = await api.request("GET", `/images/${encodeURIComponent(image)}/json`);
       return response.status === 200;
     },
+    async resolveImageDigest(image: string) {
+      const inspect = await inspectImageJson(api, image);
+      const repo = imageRepository(image);
+      const digests = Array.isArray(inspect.RepoDigests) ? inspect.RepoDigests : [];
+      const matched =
+        digests.find((entry) => typeof entry === "string" && entry.startsWith(`${repo}@sha256:`)) ??
+        digests.find((entry) => typeof entry === "string" && entry.includes("@sha256:"));
+      if (!matched || typeof matched !== "string") {
+        throw new SystemUpdateError(
+          502,
+          "APPLY_FAILED",
+          `cannot resolve digest for ${image} after pull (RepoDigests empty)`,
+        );
+      }
+      return matched;
+    },
+    /**
+     * Image Id for isolated/offline pin when RepoDigests are empty after
+     * `docker load` (TSK-317). Returns the Id with or without a `sha256:` prefix.
+     */
+    async resolveLocalImageId(image: string) {
+      const inspect = await inspectImageJson(api, image);
+      const id = typeof inspect.Id === "string" ? inspect.Id.trim() : "";
+      if (!id) {
+        throw new SystemUpdateError(
+          502,
+          "APPLY_FAILED",
+          `Docker image ${image} has no Id for local pin`,
+        );
+      }
+      return id;
+    },
     async findServiceContainer(project, service) {
       const filters = encodeURIComponent(
         JSON.stringify({
@@ -287,12 +325,14 @@ export function createDockerApplyEngine(
 export function unixSocketTransport(socketPath: string): DockerTransport {
   return (method, path, body, headers) =>
     new Promise((resolve, reject) => {
+      const contentType =
+        headers?.["Content-Type"] ?? headers?.["content-type"] ?? "application/json";
       const requestHeaders = {
         ...(headers ?? {}),
         ...(body
           ? {
-              "Content-Type": "application/json",
-              "Content-Length": Buffer.byteLength(body),
+              "Content-Type": contentType,
+              "Content-Length": Buffer.isBuffer(body) ? body.length : Buffer.byteLength(body),
             }
           : {}),
       };
@@ -573,6 +613,26 @@ async function inspectImage(
       502,
       "APPLY_FAILED",
       `Docker returned an invalid image inspect for ${service}`,
+    );
+  }
+}
+
+async function inspectImageJson(api: DockerApiClient, image: string): Promise<ImageInspectJson> {
+  const response = await api.request("GET", `/images/${encodeURIComponent(image)}/json`);
+  if (response.status !== 200) {
+    throw new SystemUpdateError(
+      502,
+      "APPLY_FAILED",
+      `Docker could not inspect image ${image} to resolve its digest`,
+    );
+  }
+  try {
+    return JSON.parse(response.body) as ImageInspectJson;
+  } catch {
+    throw new SystemUpdateError(
+      502,
+      "APPLY_FAILED",
+      `Docker returned an invalid image inspect for ${image}`,
     );
   }
 }

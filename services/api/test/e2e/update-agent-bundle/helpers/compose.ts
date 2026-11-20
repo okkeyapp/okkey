@@ -93,6 +93,29 @@ export async function serviceImage(service: string): Promise<string> {
   return image;
 }
 
+/**
+ * After cosign verify the agent pins containers by digest. Docker may report
+ * `repo:tag`, `repo@sha256:…`, or bare `repo` — all are accepted for the same repository.
+ */
+export function imageRefMatches(actual: string, expectedTagged: string): boolean {
+  if (actual === expectedTagged) {
+    return true;
+  }
+  const at = expectedTagged.lastIndexOf("@");
+  const colon = expectedTagged.lastIndexOf(":");
+  const slash = expectedTagged.lastIndexOf("/");
+  const repo =
+    at > 0
+      ? expectedTagged.slice(0, at)
+      : colon > slash
+        ? expectedTagged.slice(0, colon)
+        : expectedTagged;
+  if (actual === repo) {
+    return true;
+  }
+  return actual.startsWith(`${repo}@sha256:`);
+}
+
 export async function serviceConfig(service: string): Promise<{
   workingDir: string;
   user: string;

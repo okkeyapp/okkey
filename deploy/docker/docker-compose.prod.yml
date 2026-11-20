@@ -264,6 +264,18 @@ services:
       OKKEY_INSTALL_DIR: /okkey
       DOCKER_SOCKET: /var/run/docker.sock
       OKKEY_UPDATE_AGENT_PORT: "8090"
+      # Air-gap cosign material (TSK-317). Conventional layout under the install
+      # mount: trusted_root.json + cosign/<image-key>/ (from `cosign save`).
+      # Operator-populated or extracted from an air-gap zip at apply time.
+      OKKEY_COSIGN_OFFLINE_DIR: ${OKKEY_COSIGN_OFFLINE_DIR:-/okkey/cosign-offline}
+      # Cosign identity overrides (process env wins over /okkey/.env inside the agent).
+      # Core and Enterprise use distinct vars so an Enterprise-wrapper override does not
+      # reject Core / Core+Enterprise bundle updates. Do not pass OKKEY_ALLOW_CANDIDATE
+      # here: compose would interpolate it from .env and widen identity unintentionally.
+      # Do not pass OKKEY_COSIGN_ALLOW_DEV here (owner decision pending).
+      OKKEY_COSIGN_CERTIFICATE_IDENTITY_REGEXP: ${OKKEY_COSIGN_CERTIFICATE_IDENTITY_REGEXP:-}
+      OKKEY_ENTERPRISE_COSIGN_CERTIFICATE_IDENTITY_REGEXP: ${OKKEY_ENTERPRISE_COSIGN_CERTIFICATE_IDENTITY_REGEXP:-}
+      OKKEY_COSIGN_CERTIFICATE_OIDC_ISSUER: ${OKKEY_COSIGN_CERTIFICATE_OIDC_ISSUER:-}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ${OKKEY_HOST_INSTALL_DIR:-.}:/okkey

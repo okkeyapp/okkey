@@ -9,6 +9,17 @@
  *     --version 1.2.3 \
  *     --package-url https://github.com/okkeyapp/okkey/releases/download/v1.2.3/okkey-1.2.3.okpkg \
  *     --out /tmp/core-update
+ *
+ * Air-gap / isolated installs (TSK-317): after images are published, run
+ * `cosign save` per image and ship `trusted_root.json` beside the package under
+ * the conventional layout used by OKKEY_COSIGN_OFFLINE_DIR:
+ *   trusted_root.json
+ *   cosign/api/
+ *   cosign/web/
+ *   cosign/worker/
+ * Pack those into an air-gap zip with scripts/build-offline-bundle.mjs
+ * (`--trusted-root` + `--cosign <key>=<dir>`). Enterprise builders live outside
+ * this repository and should use the same layout for enterprise-* keys.
  */
 import { createHash } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";

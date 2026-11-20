@@ -7,6 +7,15 @@ import {
   type OfflinePackagePayload,
   type RegistryPullCredentials,
 } from "../system-updates/package-format.ts";
+import {
+  prepareApplyCosignOfflineMaterial,
+  type CosignOfflineMaterial,
+} from "./cosign-offline.ts";
+import {
+  verifyPackageImageSignatures,
+  type CosignRunner,
+  type VerifiedImageDigests,
+} from "./cosign-verify.ts";
 
 export type ServiceContainer = {
   id: string;
@@ -18,6 +27,16 @@ export type ServiceContainer = {
 export type UpdateApplyEngine = {
   pullImage(image: string, credentials?: RegistryPullCredentials): Promise<void>;
   imageExists(image: string): Promise<boolean>;
+  /**
+   * Resolve a local image to `repository@sha256:…` after pull (or for an
+   * already-present isolated image). Used to pin the verified digest.
+   */
+  resolveImageDigest?(image: string): Promise<string>;
+  /**
+   * Local image Id digest (hex, with or without `sha256:` prefix) when
+   * RepoDigests are empty after `docker load` (TSK-317 isolated/offline).
+   */
+  resolveLocalImageId?(image: string): Promise<string>;
   findServiceContainer(project: string, service: string): Promise<ServiceContainer | null>;
   /** Running core version from the api container, when the engine can see it. */
   readRunningCoreVersion?(project: string): Promise<string | null>;
@@ -81,7 +100,8 @@ export function imageRepository(image: string): string {
 }
 
 /**
- * Apply a verified core package. Callers must verify the signature first.
+ * Apply a verified core package. Callers must verify the package signature first.
+ * Before replacing containers, each image is cosign-verified and pinned by digest.
  * A failure rolls back containers that were already replaced and leaves the env file unchanged.
  *
  * On success, writes `OKKEY_*_IMAGE` from the package and clears
@@ -95,6 +115,17 @@ export async function applyVerifiedCorePackage(input: {
   envFilePath: string;
   isolated: boolean;
   registryCredentials?: RegistryPullCredentials;
+  /** Test hook: override cosign CLI. */
+  runCosign?: CosignRunner;
+  /** Test hook: supply already-verified digest refs (skips cosign). */
+  verifiedDigests?: VerifiedImageDigests;
+  /** Test hook: absolute offline cosign material (TSK-317). */
+  offlineMaterial?: CosignOfflineMaterial;
+  /** Override material root; defaults to OKKEY_COSIGN_OFFLINE_DIR. */
+  cosignOfflineRoot?: string;
+  /** Optional air-gap zip bytes to stage cosign material from (TSK-317). */
+  bundleZip?: Buffer;
+  processEnv?: NodeJS.ProcessEnv;
 }): Promise<void> {
   if (input.payload.component !== "okkey") {
     throw new SystemUpdateError(
@@ -122,73 +153,102 @@ export async function applyVerifiedCorePackage(input: {
     }
   }
 
-  const containers: ServiceContainer[] = [];
-  for (const service of CORE_IMAGE_SERVICES) {
-    const container = await input.engine.findServiceContainer(input.project, service);
-    if (!container) {
-      throw new SystemUpdateError(
-        409,
-        "APPLY_FAILED",
-        `Compose service ${service} is not running in project ${input.project}. Nothing was changed`,
-      );
-    }
-    containers.push(container);
-  }
-
   const previousEnv = await input.engine.readEnvFile(input.envFilePath);
-  const replaced: Array<{ rollback: () => Promise<void>; commit: () => Promise<void> }> = [];
+  const prepared =
+    input.verifiedDigests === undefined
+      ? await prepareApplyCosignOfflineMaterial({
+          payload: input.payload,
+          isolated: input.isolated,
+          offlineMaterial: input.offlineMaterial,
+          cosignOfflineRoot: input.cosignOfflineRoot,
+          bundleZip: input.bundleZip,
+          processEnv: input.processEnv,
+        })
+      : { material: undefined, cleanup: async () => {} };
   try {
-    for (const container of containers) {
-      const image = images[container.service];
-      if (!image) {
-        throw new SystemUpdateError(400, "PACKAGE_INVALID", "Package image disappeared");
+    const digests =
+      input.verifiedDigests ??
+      (await verifyPackageImageSignatures({
+        images,
+        component: "okkey",
+        envFileContents: previousEnv,
+        engine: input.engine,
+        runCosign: input.runCosign,
+        registryCredentials: input.registryCredentials,
+        isolated: input.isolated,
+        offlineMaterial: prepared.material,
+        processEnv: input.processEnv,
+      }));
+
+    const containers: ServiceContainer[] = [];
+    for (const service of CORE_IMAGE_SERVICES) {
+      const container = await input.engine.findServiceContainer(input.project, service);
+      if (!container) {
+        throw new SystemUpdateError(
+          409,
+          "APPLY_FAILED",
+          `Compose service ${service} is not running in project ${input.project}. Nothing was changed`,
+        );
       }
-      replaced.push(
-        await input.engine.replaceContainer(container, image, {
-          OKKEY_VERSION: input.payload.version,
-          OKKEY_IMAGE_TAG: input.payload.imageTag,
-          // Clear leftover enterprise pins from a previous enterprise apply.
-          OKKEY_ENTERPRISE_VERSION: "",
-          OKKEY_ENTERPRISE_IMAGE_TAG: "",
-        }),
+      containers.push(container);
+    }
+
+    const replaced: Array<{ rollback: () => Promise<void>; commit: () => Promise<void> }> = [];
+    try {
+      for (const container of containers) {
+        const image = digests[container.service] ?? images[container.service];
+        if (!image) {
+          throw new SystemUpdateError(400, "PACKAGE_INVALID", "Package image disappeared");
+        }
+        replaced.push(
+          await input.engine.replaceContainer(container, image, {
+            OKKEY_VERSION: input.payload.version,
+            OKKEY_IMAGE_TAG: input.payload.imageTag,
+            // Clear leftover enterprise pins from a previous enterprise apply.
+            OKKEY_ENTERPRISE_VERSION: "",
+            OKKEY_ENTERPRISE_IMAGE_TAG: "",
+          }),
+        );
+      }
+      let next = setEnvValue(previousEnv, "OKKEY_IMAGE_TAG", input.payload.imageTag);
+      for (const service of CORE_IMAGE_SERVICES) {
+        const image = images[service];
+        if (!image) {
+          throw new SystemUpdateError(400, "PACKAGE_INVALID", "Package image disappeared");
+        }
+        next = setEnvValue(next, COMPOSE_IMAGE_ENV_KEYS[service], imageRepository(image));
+      }
+      // Core images must not keep an enterprise tag pin from a previous enterprise apply.
+      next = removeEnvValue(next, "OKKEY_ENTERPRISE_IMAGE_TAG");
+      next = removeEnvValue(next, "OKKEY_ENTERPRISE_VERSION");
+      await input.engine.writeEnvFile(input.envFilePath, next);
+      for (const item of replaced) {
+        try {
+          await item.commit();
+        } catch {
+          // The new containers are already running. A parked container can be removed later.
+        }
+      }
+    } catch (error) {
+      for (const item of [...replaced].reverse()) {
+        try {
+          await item.rollback();
+        } catch {
+          // Keep going so a later service can still return to the previous image.
+        }
+      }
+      if (error instanceof SystemUpdateError) {
+        throw error;
+      }
+      const message = error instanceof Error ? error.message : "apply failed";
+      throw new SystemUpdateError(
+        500,
+        "APPLY_FAILED",
+        `Apply failed (${message}). The previous version was restored`,
       );
     }
-    let next = setEnvValue(previousEnv, "OKKEY_IMAGE_TAG", input.payload.imageTag);
-    for (const service of CORE_IMAGE_SERVICES) {
-      const image = images[service];
-      if (!image) {
-        throw new SystemUpdateError(400, "PACKAGE_INVALID", "Package image disappeared");
-      }
-      next = setEnvValue(next, COMPOSE_IMAGE_ENV_KEYS[service], imageRepository(image));
-    }
-    // Core images must not keep an enterprise tag pin from a previous enterprise apply.
-    next = removeEnvValue(next, "OKKEY_ENTERPRISE_IMAGE_TAG");
-    next = removeEnvValue(next, "OKKEY_ENTERPRISE_VERSION");
-    await input.engine.writeEnvFile(input.envFilePath, next);
-    for (const item of replaced) {
-      try {
-        await item.commit();
-      } catch {
-        // The new containers are already running. A parked container can be removed later.
-      }
-    }
-  } catch (error) {
-    for (const item of replaced.reverse()) {
-      try {
-        await item.rollback();
-      } catch {
-        // Keep going so a later service can still return to the previous image.
-      }
-    }
-    if (error instanceof SystemUpdateError) {
-      throw error;
-    }
-    const message = error instanceof Error ? error.message : "apply failed";
-    throw new SystemUpdateError(
-      500,
-      "APPLY_FAILED",
-      `Apply failed (${message}). The previous version was restored`,
-    );
+  } finally {
+    await prepared.cleanup();
   }
 }
 

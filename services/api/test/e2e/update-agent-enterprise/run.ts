@@ -193,7 +193,10 @@ async function main(): Promise<void> {
     assert(!afterSuccessEnv.includes(REGISTRY_PASS), "registry password leaked into env file");
     for (const service of SERVICES) {
       const image = runningImage(service);
-      assert(image.includes(`:${TAG_V2}`), `${service} is not on ${TAG_V2}: ${image}`);
+      assert(
+        imageRefMatches(image, `${REGISTRY}/okkey-e2e/enterprise-${service}:${TAG_V2}`),
+        `${service} is not on ${TAG_V2}: ${image}`,
+      );
       assert(containerRunning(service), `${service} is not running after success`);
       assertImageConfig(service, {
         workingDir: "/okkey",
@@ -230,7 +233,10 @@ async function main(): Promise<void> {
     assert(!afterCoreEnv.includes("OKKEY_ENTERPRISE_IMAGE_TAG="), "enterprise tag pin should be cleared");
     for (const service of SERVICES) {
       const image = runningImage(service);
-      assert(image.includes(`:${TAG_CORE_RETURN}`), `${service} is not on ${TAG_CORE_RETURN}: ${image}`);
+      assert(
+        imageRefMatches(image, `${REGISTRY}/okkey-e2e/${service}:${TAG_CORE_RETURN}`),
+        `${service} is not on ${TAG_CORE_RETURN}: ${image}`,
+      );
       assert(containerRunning(service), `${service} is not running after core apply`);
       assertImageConfig(service, {
         workingDir: "/app",
@@ -289,7 +295,10 @@ async function main(): Promise<void> {
     assert(!afterRollbackEnv.includes(REGISTRY_PASS), "registry password leaked after rollback");
     for (const service of SERVICES) {
       const image = runningImage(service);
-      assert(image.includes(`:${TAG_V2}`), `${service} did not stay on ${TAG_V2} after rollback: ${image}`);
+      assert(
+        imageRefMatches(image, `${REGISTRY}/okkey-e2e/enterprise-${service}:${TAG_V2}`),
+        `${service} did not stay on ${TAG_V2} after rollback: ${image}`,
+      );
       assert(containerRunning(service), `${service} is not running after rollback`);
     }
 
@@ -456,6 +465,26 @@ function containerId(service: string): string {
 function runningImage(service: string): string {
   const id = containerId(service);
   return run("docker", ["inspect", "--format", "{{.Config.Image}}", id]).trim();
+}
+
+/** Accept tag refs or digest pins of the same repository after cosign verify. */
+function imageRefMatches(actual: string, expectedTagged: string): boolean {
+  if (actual === expectedTagged) {
+    return true;
+  }
+  const at = expectedTagged.lastIndexOf("@");
+  const colon = expectedTagged.lastIndexOf(":");
+  const slash = expectedTagged.lastIndexOf("/");
+  const repo =
+    at > 0
+      ? expectedTagged.slice(0, at)
+      : colon > slash
+        ? expectedTagged.slice(0, colon)
+        : expectedTagged;
+  if (actual === repo) {
+    return true;
+  }
+  return actual.startsWith(`${repo}@sha256:`);
 }
 
 function containerRunning(service: string): boolean {

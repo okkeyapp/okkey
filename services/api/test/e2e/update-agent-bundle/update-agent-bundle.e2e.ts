@@ -19,6 +19,7 @@ import {
   composeDown,
   composeUp,
   createComposeHarness,
+  imageRefMatches,
   readEnvFile,
   serviceConfig,
   serviceImage,
@@ -98,7 +99,11 @@ test("a valid offline bundle applies core first, then enterprise", async () => {
     assert.deepEqual(replaceOrder, [...CORE_SERVICES, ...CORE_SERVICES]);
 
     for (const service of CORE_SERVICES) {
-      assert.equal(await serviceImage(service), ENTERPRISE_IMAGE);
+      const image = await serviceImage(service);
+      assert.ok(
+        imageRefMatches(image, ENTERPRISE_IMAGE),
+        `expected ${ENTERPRISE_IMAGE} (or digest pin), got ${image}`,
+      );
       const config = await serviceConfig(service);
       assert.equal(config.workingDir, "/okkey");
       assert.equal(config.user, "nonroot");
@@ -152,7 +157,11 @@ test("enterprise health failure keeps core and rolls enterprise back", async () 
     assert.equal(replaceOrder[3], "api");
 
     for (const service of CORE_SERVICES) {
-      assert.equal(await serviceImage(service), CORE_IMAGE);
+      const image = await serviceImage(service);
+      assert.ok(
+        imageRefMatches(image, CORE_IMAGE),
+        `expected ${CORE_IMAGE} (or digest pin), got ${image}`,
+      );
       const config = await serviceConfig(service);
       assert.equal(config.workingDir, "/app");
       assert.equal(config.user, "root");

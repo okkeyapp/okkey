@@ -26,10 +26,12 @@ import {
 import { compareVersions, coreSatisfiesMinimum, shouldShowUpdate } from "../src/system-updates/versions.ts";
 import {
   applyVerifiedCorePackage,
+  imageRepository,
   removeEnvValue,
   setEnvValue,
   type UpdateApplyEngine,
 } from "../src/update-agent/apply.ts";
+import type { VerifiedImageDigests } from "../src/update-agent/cosign-verify.ts";
 import {
   buildReplaceCreateBody,
   composeReplaceEnv,
@@ -1165,6 +1167,7 @@ test("update agent refuses a body over the shared document limit", async () => {
     project: "okkey",
     envFilePath: envFile,
     engine: recordingEngine(calls),
+    verifiedDigests: STUB_CORE_DIGESTS,
   });
   const oversized = {
     format: "okkey-offline-bundle",
@@ -1194,6 +1197,8 @@ test("update agent refuses a missing, invalid, or interrupted signature without 
     project: "okkey",
     envFilePath: envFile,
     engine,
+  
+    verifiedDigests: STUB_CORE_DIGESTS,
   });
 
   const missing = await postJob(agent, { payload: signed.payload });
@@ -1216,6 +1221,7 @@ test("update agent refuses a missing, invalid, or interrupted signature without 
     verify() {
       throw new Error("verification process stopped");
     },
+    verifiedDigests: STUB_CORE_DIGESTS,
   });
   const stopped = await postJob(interrupted, signed);
   await interrupted.settle();
@@ -1239,6 +1245,7 @@ test("update agent verifies a signature before apply and does not use the core k
     project: "okkey",
     envFilePath: envFile,
     engine: recordingEngine(calls, { exists: true }),
+    verifiedDigests: STUB_CORE_DIGESTS,
   });
   const ok = await postJob(agent, signed);
   await agent.settle();
@@ -1305,6 +1312,8 @@ test("a failed core apply restores replaced services and does not rewrite the im
         project: "okkey",
         envFilePath: envFile,
         isolated: true,
+      
+        verifiedDigests: STUB_CORE_DIGESTS,
       }),
     /start failed/,
   );
@@ -1416,7 +1425,8 @@ test("update agent applies an enterprise package and keeps registry credentials 
           };
         },
       },
-    });
+    verifiedDigests: { ...STUB_CORE_DIGESTS, ...STUB_ENTERPRISE_DIGESTS },
+  });
     const finished = await postJob(agent, {
       ...signed,
       registryCredentials: { server: "ghcr.io", username, password },
@@ -1486,16 +1496,18 @@ test("update agent rolls enterprise tags back when a pull fails", async () => {
           throw new Error(`registry pull failed ${password}`);
         },
       },
-    });
+    verifiedDigests: { ...STUB_CORE_DIGESTS, ...STUB_ENTERPRISE_DIGESTS },
+  });
     const finished = await postJob(agent, {
       ...signed,
       registryCredentials: { server: "ghcr.io", username: "okkey-pull", password },
     });
     await agent.settle();
     assert.equal(finished.job.errorCode, "APPLY_FAILED");
-    assert.match(finished.job.errorMessage ?? "", /previous version was restored/);
+    assert.match(finished.job.errorMessage ?? "", /registry pull failed/);
     assert.match(finished.job.errorMessage ?? "", /\[redacted\]/);
-    assert.match(tagDuringPull, /OKKEY_ENTERPRISE_IMAGE_TAG=2\.0\.0/);
+    // Pull runs before any .env rewrite so a failed pull leaves the install untouched.
+    assert.equal(tagDuringPull, originalEnv);
     assert.equal(readFileSync(envFile, "utf8"), originalEnv);
     assert.equal(calls.some((call) => call.startsWith("replace")), false);
     assertNoCredentialLeak(`${logs.join("\n")}\n${finished.job.errorMessage ?? ""}\n${readFileSync(envFile, "utf8")}`, password);
@@ -1539,6 +1551,7 @@ test("update agent rolls enterprise containers and tags back when health fails",
         };
       },
     },
+    verifiedDigests: { ...STUB_CORE_DIGESTS, ...STUB_ENTERPRISE_DIGESTS },
   });
   const finished = await postJob(agent, signed);
   await agent.settle();
@@ -1565,6 +1578,7 @@ test("update agent refuses an enterprise package when the running core is too ol
     project: "okkey",
     envFilePath: envFile,
     engine: recordingEngine(calls),
+    verifiedDigests: { ...STUB_CORE_DIGESTS, ...STUB_ENTERPRISE_DIGESTS },
   });
   const finished = await postJob(agent, signed);
   await agent.settle();
@@ -1588,6 +1602,7 @@ test("update agent refuses an enterprise package when the running core is too ol
         return "1.0.0";
       },
     },
+    verifiedDigests: { ...STUB_CORE_DIGESTS, ...STUB_ENTERPRISE_DIGESTS },
   });
   writeFileSync(envFile, "OKKEY_IMAGE_TAG=9.0.0\n");
   const fromContainer = await postJob(running, signed);
@@ -1611,6 +1626,7 @@ test("update agent rejects a package signed with the other component key", async
     project: "okkey",
     envFilePath: envFile,
     engine: recordingEngine(calls),
+    verifiedDigests: { ...STUB_CORE_DIGESTS, ...STUB_ENTERPRISE_DIGESTS },
   });
 
   const enterpriseSignedWithCore = signOfflinePackage(enterprisePayload(), coreKeys.privateKeyPem);
@@ -2064,6 +2080,7 @@ test("core apply over an enterprise install clears the enterprise tag pin", asyn
     project: "okkey",
     envFilePath: envFile,
     engine: recordingEngine(calls, { exists: true }),
+    verifiedDigests: STUB_CORE_DIGESTS,
   });
   const finished = await postJob(agent, signed);
   await agent.settle();
@@ -2116,6 +2133,10 @@ test("compose runs update-agent as root with an agent healthcheck (not api :4000
   assert.equal(/^\s*user:/m.test(worker), false);
   assert.match(agent, /OKKEY_INSTALL_DIR:\s*\/okkey/);
   assert.match(agent, /DOCKER_SOCKET:\s*\/var\/run\/docker\.sock/);
+  assert.match(agent, /OKKEY_COSIGN_CERTIFICATE_IDENTITY_REGEXP:/);
+  assert.match(agent, /OKKEY_ENTERPRISE_COSIGN_CERTIFICATE_IDENTITY_REGEXP:/);
+  assert.match(agent, /OKKEY_COSIGN_CERTIFICATE_OIDC_ISSUER:/);
+  assert.equal(agent.includes("OKKEY_ALLOW_CANDIDATE:"), false);
   // Inherited api HEALTHCHECK probes :4000; override must probe the agent port.
   assert.match(agent, /127\.0\.0\.1:8090/);
   assert.equal(agent.includes("4000/health"), false);
@@ -2172,6 +2193,30 @@ function serviceBlock(yaml: string, name: string): string {
   return next === -1 ? rest : rest.slice(0, next + 1);
 }
 
+/** Deterministic digest pins so unit tests skip the real cosign CLI. */
+function stubVerifiedDigests(images: Record<string, string>): VerifiedImageDigests {
+  const out: VerifiedImageDigests = {};
+  let index = 0;
+  for (const [key, image] of Object.entries(images)) {
+    const hex = (index + 1).toString(16).padStart(2, "0").repeat(32);
+    out[key] = `${imageRepository(image)}@sha256:${hex}`;
+    index += 1;
+  }
+  return out;
+}
+
+const STUB_CORE_DIGESTS = stubVerifiedDigests({
+  api: "ghcr.io/okkeyapp/api:1.1.0",
+  web: "ghcr.io/okkeyapp/web:1.1.0",
+  worker: "ghcr.io/okkeyapp/worker:1.1.0",
+});
+
+const STUB_ENTERPRISE_DIGESTS = stubVerifiedDigests({
+  "enterprise-api": "ghcr.io/example/enterprise-api:2.0.0",
+  "enterprise-web": "ghcr.io/example/enterprise-web:2.0.0",
+  "enterprise-worker": "ghcr.io/example/enterprise-worker:2.0.0",
+});
+
 function recordingEngine(calls: string[], options: { exists?: boolean } = {}) {
   return {
     async pullImage() {
@@ -2180,6 +2225,10 @@ function recordingEngine(calls: string[], options: { exists?: boolean } = {}) {
     async imageExists() {
       calls.push("exists");
       return options.exists ?? false;
+    },
+    async resolveImageDigest(image: string) {
+      calls.push(`digest:${image}`);
+      return `${imageRepository(image)}@sha256:${"ab".repeat(32)}`;
     },
     async findServiceContainer(_project: string, service: string) {
       calls.push(`find:${service}`);

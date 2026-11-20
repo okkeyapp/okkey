@@ -1,3 +1,4 @@
+import { createDockerCosignRunner, createPreferPathCosignRunner } from "./docker-cosign.ts";
 import { createDockerApplyEngine, unixSocketTransport } from "./docker-engine.ts";
 import { startUpdateAgentServer } from "./server.ts";
 
@@ -13,6 +14,9 @@ const project = (process.env.OKKEY_COMPOSE_PROJECT ?? "okkey").trim() || "okkey"
 const installDir = (process.env.OKKEY_INSTALL_DIR ?? "/okkey").replace(/\/$/, "");
 const socketPath = process.env.DOCKER_SOCKET ?? "/var/run/docker.sock";
 
+const transport = unixSocketTransport(socketPath);
+const runCosign = createPreferPathCosignRunner(createDockerCosignRunner(transport));
+
 const server = startUpdateAgentServer({
   port,
   token,
@@ -22,7 +26,8 @@ const server = startUpdateAgentServer({
   isolated,
   project,
   envFilePath: `${installDir}/.env`,
-  engine: createDockerApplyEngine(unixSocketTransport(socketPath)),
+  engine: createDockerApplyEngine(transport),
+  runCosign,
 });
 
 server.on("listening", () => {

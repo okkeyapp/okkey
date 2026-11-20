@@ -231,6 +231,24 @@ export function newAgentToken(): string {
   return createHash("sha256").update(randomBytes(32)).digest("hex");
 }
 
+/** Local e2e registries are unsigned; put a mock cosign on PATH for the agent process. */
+function writeMockCosign(binDir: string): void {
+  mkdirSync(binDir, { recursive: true });
+  const cosignPath = path.join(binDir, "cosign");
+  writeFileSync(
+    cosignPath,
+    `#!/usr/bin/env bash
+set -euo pipefail
+if [[ "\${1:-}" == "version" ]]; then
+  echo "cosign e2e-mock"
+  exit 0
+fi
+exit 0
+`,
+    { mode: 0o755 },
+  );
+}
+
 export async function startUpdateAgent(input: {
   root: string;
   repoRoot: string;
@@ -242,10 +260,13 @@ export async function startUpdateAgent(input: {
   port: number;
 }): Promise<ChildProcess> {
   const main = path.join(input.root, "../../../src/update-agent/main.ts");
+  const mockBin = path.join(input.installDir, "mock-bin");
+  writeMockCosign(mockBin);
   const child = spawn(process.execPath, ["--experimental-strip-types", main], {
     cwd: input.repoRoot,
     env: {
       ...process.env,
+      PATH: `${mockBin}:${process.env.PATH ?? ""}`,
       OKKEY_UPDATE_AGENT_PORT: String(input.port),
       OKKEY_UPDATE_AGENT_TOKEN: input.token,
       OKKEY_UPDATE_TRUSTED_PUBLIC_KEY: input.corePublicKeyPem,
@@ -255,6 +276,8 @@ export async function startUpdateAgent(input: {
       OKKEY_INSTALL_DIR: input.installDir,
       OKKEY_VERSION: "1.4.0",
       DOCKER_SOCKET: "/var/run/docker.sock",
+      // Override is unused by the mock binary; kept to document the :dev stand knob.
+      OKKEY_COSIGN_CERTIFICATE_IDENTITY_REGEXP: "^e2e-mock$",
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
