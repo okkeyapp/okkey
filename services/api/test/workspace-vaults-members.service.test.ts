@@ -849,6 +849,12 @@ test("WorkspaceMembersService.acceptInvitation creates member and personal vault
         if (sql.includes("SELECT id FROM vaults")) {
           return [];
         }
+        if (sql.includes("UPDATE workspace_invitations") && sql.includes("RETURNING id")) {
+          return [{ id: "inv1" }];
+        }
+        if (sql.includes("COUNT(*)")) {
+          return [{ count: "0" }];
+        }
         return [];
       },
     } as never,

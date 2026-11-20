@@ -7,6 +7,8 @@ import { requestClientIp } from "../request-ip.ts";
 interface StartBody {
   email?: string;
   locale?: string;
+  /** Raw workspace invite token; never logged. */
+  inviteToken?: string;
 }
 
 interface ConfirmBody {
@@ -39,11 +41,13 @@ export function createAuthEmailStartRoute(
     }
 
     try {
+      const inviteToken = body.inviteToken?.trim() || undefined;
       const result = await authService.startEmailLogin({
         email,
         locale: body.locale,
         acceptLanguage: getHeader(ctx.req, "accept-language"),
         requestIp: requestClientIp(ctx.req, trustedProxyHops),
+        ...(inviteToken ? { inviteToken } : {}),
       });
       json(ctx.res, 200, result);
     } catch (error) {
