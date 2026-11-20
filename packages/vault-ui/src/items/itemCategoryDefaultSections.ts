@@ -160,7 +160,7 @@ function getLoginDefaultSections(messages: KeyFormEditorMessages): KeyFormEditor
           copyValue: "",
           editableLabel: true,
           deletable: false,
-          required: true,
+          required: false,
           urlAutofillScope: "entire-site",
         },
       ],

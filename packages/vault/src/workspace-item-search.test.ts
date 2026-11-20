@@ -96,6 +96,16 @@ describe("itemUrlMatch", () => {
     assert.equal(itemUrlsMatchTab("https://a.com", []), true);
   });
 
+  it("blank item URLs never match a tab and do not throw", () => {
+    assert.equal(itemUrlMatchesTab("https://example.com", ""), false);
+    assert.equal(itemUrlMatchesTab("https://example.com", "   "), false);
+    assert.equal(itemHasUrlMatchingTab("https://example.com", []), false);
+    assert.equal(
+      itemUrlFieldsMatchTab("https://example.com", [{ url: "", urlAutofillScope: "entire-site" }]),
+      false,
+    );
+  });
+
   it("itemHasUrlMatchingTab is strict and accepts bare hosts", () => {
     assert.equal(itemHasUrlMatchingTab(null, ["https://a.com"]), false);
     assert.equal(itemHasUrlMatchingTab("https://a.com", []), false);

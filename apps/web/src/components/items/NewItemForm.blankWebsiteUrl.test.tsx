@@ -80,7 +80,41 @@ const t = (key: string) =>
     } as Record<string, string>
   )[key] ?? key;
 
-function loginSections(extraUrl: string, extraRequired = true) {
+function loginSections(options: {
+  primaryUrl?: string;
+  extraUrl?: string;
+  extraRequired?: boolean;
+} = {}) {
+  const primaryUrl = options.primaryUrl ?? "https://qa13.example.com";
+  const websiteFields: Array<{
+    id: string;
+    type: "url";
+    label: string;
+    value: string;
+    required: boolean;
+    editableLabel: boolean;
+    deletable?: boolean;
+  }> = [
+    {
+      id: "website-1",
+      type: "url",
+      label: "website URL",
+      value: primaryUrl,
+      required: false,
+      editableLabel: true,
+    },
+  ];
+  if (options.extraUrl !== undefined) {
+    websiteFields.push({
+      id: "website-2",
+      type: "url",
+      label: "website URL",
+      value: options.extraUrl,
+      required: options.extraRequired ?? true,
+      editableLabel: true,
+      deletable: true,
+    });
+  }
   return [
     {
       id: "credentials",
@@ -101,25 +135,7 @@ function loginSections(extraUrl: string, extraRequired = true) {
     {
       id: "websites",
       variant: "primary" as const,
-      fields: [
-        {
-          id: "website-1",
-          type: "url" as const,
-          label: "website URL",
-          value: "https://qa13.example.com",
-          required: true,
-          editableLabel: true,
-        },
-        {
-          id: "website-2",
-          type: "url" as const,
-          label: "website URL",
-          value: extraUrl,
-          required: extraRequired,
-          editableLabel: true,
-          deletable: true,
-        },
-      ],
+      fields: websiteFields,
     },
   ];
 }
@@ -169,25 +185,29 @@ function SaveHarness({
   );
 }
 
-describe("NewItemForm blank extra website URL", () => {
-  it("enables Save and omits the empty extra URL", async () => {
-    const store = new Map<string, string>();
-    Object.defineProperty(window, "localStorage", {
-      configurable: true,
-      value: {
-        getItem: (key: string) => store.get(key) ?? null,
-        setItem: (key: string, value: string) => {
-          store.set(key, value);
-        },
-        removeItem: (key: string) => {
-          store.delete(key);
-        },
-        clear: () => {
-          store.clear();
-        },
+function mockLocalStorage(): void {
+  const store = new Map<string, string>();
+  Object.defineProperty(window, "localStorage", {
+    configurable: true,
+    value: {
+      getItem: (key: string) => store.get(key) ?? null,
+      setItem: (key: string, value: string) => {
+        store.set(key, value);
       },
-    });
-    reportedSections.current = loginSections("   ", true);
+      removeItem: (key: string) => {
+        store.delete(key);
+      },
+      clear: () => {
+        store.clear();
+      },
+    },
+  });
+}
+
+describe("NewItemForm blank website URL", () => {
+  it("enables Save and omits the empty extra URL", async () => {
+    mockLocalStorage();
+    reportedSections.current = loginSections({ extraUrl: "   ", extraRequired: true });
     const saved: string[][] = [];
 
     render(<SaveHarness onSaved={(urls) => saved.push(urls)} />);
@@ -203,5 +223,25 @@ describe("NewItemForm blank extra website URL", () => {
 
     fireEvent.click(save);
     expect(saved).toEqual([["https://qa13.example.com"]]);
+  });
+
+  it("enables Save for a login with credentials and no website URL", async () => {
+    mockLocalStorage();
+    reportedSections.current = loginSections({ primaryUrl: "" });
+    const saved: string[][] = [];
+
+    render(<SaveHarness onSaved={(urls) => saved.push(urls)} />);
+
+    const name = screen.getByRole("textbox", { name: "Item name" });
+    fireEvent.change(name, { target: { value: "QA login without URL" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add URL" }));
+
+    const save = screen.getByRole("button", { name: "Save" });
+    await waitFor(() => {
+      expect(save).toBeEnabled();
+    });
+
+    fireEvent.click(save);
+    expect(saved).toEqual([[]]);
   });
 });

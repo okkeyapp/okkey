@@ -272,7 +272,6 @@ function isFieldLabelEditable(
 function isFieldRequired(
   sectionId: string,
   field: ItemFieldV2,
-  sectionFields: ItemFieldV2[],
   isPresetSection: boolean,
 ): boolean {
   if (!isPresetSection) {
@@ -289,19 +288,6 @@ function isFieldRequired(
 
   if (sectionId === CREDIT_CARD_SECTION_ID) {
     return isCreditCardRequiredFieldId(field.id);
-  }
-
-  if (sectionId === DATABASE_SECTION_ID || sectionId === WIFI_ROUTER_SECTION_ID) {
-    return false;
-  }
-
-  if (sectionId === SERVER_SECTION_ID || sectionId === SERVER_ADMIN_CONSOLE_SECTION_ID || sectionId === BANK_ACCOUNT_SECTION_ID || sectionId === BANK_DETAILS_SECTION_ID || sectionId === CRYPTO_WALLET_SECTION_ID || sectionId === CRYPTO_WALLET_WALLET_SECTION_ID) {
-    return false;
-  }
-
-  if (sectionId === "websites" && formFieldType(field) === "url") {
-    const urlFields = sectionFields.filter((candidate) => formFieldType(candidate) === "url");
-    return urlFields[0]?.id === field.id;
   }
 
   return false;
@@ -431,9 +417,9 @@ function mergeLoginPresetSections(
         return {
           ...defaultSection,
           ...loadedSection,
-          fields: urlFields.map((field, index) => ({
+          fields: urlFields.map((field) => ({
             ...field,
-            required: index === 0,
+            required: false,
             deletable: urlFields.length > 1,
             editableLabel: true,
           })),
@@ -1131,7 +1117,7 @@ function toFormField(
     secret: type === "password" || type === "secret",
     editableLabel,
     deletable,
-    required: isFieldRequired(sectionId, field, sectionFields, isPresetSection),
+    required: isFieldRequired(sectionId, field, isPresetSection),
     ...(secretKind ? { secretKind } : {}),
     ...(type === "url"
       ? {
