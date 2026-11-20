@@ -23,6 +23,41 @@
       "docsPathPrefix": "",
       "yearMonthOrder": "year-month",
       "ready": true
+    },
+    "de": {
+      "intl": "de-DE",
+      "dir": "ltr",
+      "dateFns": "de",
+      "docsPathPrefix": "/en",
+      "yearMonthOrder": "month-year"
+    },
+    "fr": {
+      "intl": "fr-FR",
+      "dir": "ltr",
+      "dateFns": "fr",
+      "docsPathPrefix": "/en",
+      "yearMonthOrder": "month-year"
+    },
+    "es": {
+      "intl": "es-ES",
+      "dir": "ltr",
+      "dateFns": "es",
+      "docsPathPrefix": "/en",
+      "yearMonthOrder": "month-year"
+    },
+    "pt-BR": {
+      "intl": "pt-BR",
+      "dir": "ltr",
+      "dateFns": "ptBR",
+      "docsPathPrefix": "/en",
+      "yearMonthOrder": "month-year"
+    },
+    "nl": {
+      "intl": "nl-NL",
+      "dir": "ltr",
+      "dateFns": "nl",
+      "docsPathPrefix": "/en",
+      "yearMonthOrder": "month-year"
     }
   }
 }

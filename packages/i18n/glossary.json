@@ -1,0 +1,252 @@
+{
+  "brand": "Okkey",
+  "notes": "Keep brand Okkey untranslated. Use formal address (de: Sie, fr: vous, es: usted, pt-BR: você, nl: u). Translate from English source; preserve ICU placeholders and HTML tags.",
+  "terms": {
+    "vault": {
+      "en": "vault",
+      "de": "Tresor",
+      "fr": "coffre",
+      "es": "bóveda",
+      "pt-BR": "cofre",
+      "nl": "kluis"
+    },
+    "vaults": {
+      "en": "vaults",
+      "de": "Tresore",
+      "fr": "coffres",
+      "es": "bóvedas",
+      "pt-BR": "cofres",
+      "nl": "kluizen"
+    },
+    "item": {
+      "en": "item",
+      "de": "Eintrag",
+      "fr": "élément",
+      "es": "elemento",
+      "pt-BR": "item",
+      "nl": "item"
+    },
+    "items": {
+      "en": "items",
+      "de": "Einträge",
+      "fr": "éléments",
+      "es": "elementos",
+      "pt-BR": "itens",
+      "nl": "items"
+    },
+    "record": {
+      "en": "record",
+      "de": "Eintrag",
+      "fr": "enregistrement",
+      "es": "registro",
+      "pt-BR": "registro",
+      "nl": "record"
+    },
+    "records": {
+      "en": "records",
+      "de": "Einträge",
+      "fr": "enregistrements",
+      "es": "registros",
+      "pt-BR": "registros",
+      "nl": "records"
+    },
+    "master password": {
+      "en": "master password",
+      "de": "Master-Passwort",
+      "fr": "mot de passe principal",
+      "es": "contraseña maestra",
+      "pt-BR": "senha mestra",
+      "nl": "hoofdwachtwoord"
+    },
+    "passkey": {
+      "en": "passkey",
+      "de": "Passkey",
+      "fr": "passkey",
+      "es": "passkey",
+      "pt-BR": "passkey",
+      "nl": "passkey"
+    },
+    "passkeys": {
+      "en": "passkeys",
+      "de": "Passkeys",
+      "fr": "passkeys",
+      "es": "passkeys",
+      "pt-BR": "passkeys",
+      "nl": "passkeys"
+    },
+    "recovery key": {
+      "en": "recovery key",
+      "de": "Wiederherstellungsschlüssel",
+      "fr": "clé de récupération",
+      "es": "clave de recuperación",
+      "pt-BR": "chave de recuperação",
+      "nl": "herstelsleutel"
+    },
+    "organization": {
+      "en": "organization",
+      "de": "Organisation",
+      "fr": "organisation",
+      "es": "organización",
+      "pt-BR": "organização",
+      "nl": "organisatie"
+    },
+    "workspace": {
+      "en": "workspace",
+      "de": "Arbeitsbereich",
+      "fr": "espace de travail",
+      "es": "espacio de trabajo",
+      "pt-BR": "espaço de trabalho",
+      "nl": "werkruimte"
+    },
+    "capsule": {
+      "en": "capsule",
+      "de": "Kapsel",
+      "fr": "capsule",
+      "es": "cápsula",
+      "pt-BR": "cápsula",
+      "nl": "capsule"
+    },
+    "capsules": {
+      "en": "capsules",
+      "de": "Kapseln",
+      "fr": "capsules",
+      "es": "cápsulas",
+      "pt-BR": "cápsulas",
+      "nl": "capsules"
+    },
+    "folder": {
+      "en": "folder",
+      "de": "Ordner",
+      "fr": "dossier",
+      "es": "carpeta",
+      "pt-BR": "pasta",
+      "nl": "map"
+    },
+    "folders": {
+      "en": "folders",
+      "de": "Ordner",
+      "fr": "dossiers",
+      "es": "carpetas",
+      "pt-BR": "pastas",
+      "nl": "mappen"
+    },
+    "unlock": {
+      "en": "unlock",
+      "de": "entsperren",
+      "fr": "déverrouiller",
+      "es": "desbloquear",
+      "pt-BR": "desbloquear",
+      "nl": "ontgrendelen"
+    },
+    "autofill": {
+      "en": "autofill",
+      "de": "Autofill",
+      "fr": "remplissage automatique",
+      "es": "autocompletar",
+      "pt-BR": "preenchimento automático",
+      "nl": "automatisch invullen"
+    },
+    "two-factor authentication": {
+      "en": "two-factor authentication",
+      "de": "Zwei-Faktor-Authentifizierung",
+      "fr": "authentification à deux facteurs",
+      "es": "autenticación de dos factores",
+      "pt-BR": "autenticação de dois fatores",
+      "nl": "tweefactorauthenticatie"
+    },
+    "PIN": {
+      "en": "PIN",
+      "de": "PIN",
+      "fr": "PIN",
+      "es": "PIN",
+      "pt-BR": "PIN",
+      "nl": "pincode"
+    },
+    "member": {
+      "en": "member",
+      "de": "Mitglied",
+      "fr": "membre",
+      "es": "miembro",
+      "pt-BR": "membro",
+      "nl": "lid"
+    },
+    "members": {
+      "en": "members",
+      "de": "Mitglieder",
+      "fr": "membres",
+      "es": "miembros",
+      "pt-BR": "membros",
+      "nl": "leden"
+    },
+    "role": {
+      "en": "role",
+      "de": "Rolle",
+      "fr": "rôle",
+      "es": "rol",
+      "pt-BR": "função",
+      "nl": "rol"
+    },
+    "profile": {
+      "en": "profile",
+      "de": "Profil",
+      "fr": "profil",
+      "es": "perfil",
+      "pt-BR": "perfil",
+      "nl": "profiel"
+    },
+    "device": {
+      "en": "device",
+      "de": "Gerät",
+      "fr": "appareil",
+      "es": "dispositivo",
+      "pt-BR": "dispositivo",
+      "nl": "apparaat"
+    },
+    "devices": {
+      "en": "devices",
+      "de": "Geräte",
+      "fr": "appareils",
+      "es": "dispositivos",
+      "pt-BR": "dispositivos",
+      "nl": "apparaten"
+    },
+    "secure note": {
+      "en": "secure note",
+      "de": "sichere Notiz",
+      "fr": "note sécurisée",
+      "es": "nota segura",
+      "pt-BR": "nota segura",
+      "nl": "beveiligde notitie"
+    },
+    "TOTP": {
+      "en": "TOTP",
+      "de": "TOTP",
+      "fr": "TOTP",
+      "es": "TOTP",
+      "pt-BR": "TOTP",
+      "nl": "TOTP"
+    },
+    "Recently deleted": {
+      "en": "Recently deleted",
+      "de": "Kürzlich gelöscht",
+      "fr": "Récemment supprimés",
+      "es": "Eliminados recientemente",
+      "pt-BR": "Excluídos recentemente",
+      "nl": "Onlangs verwijderd"
+    }
+  },
+  "nativeNames": {
+    "de": "Deutsch",
+    "fr": "Français",
+    "es": "Español",
+    "pt-BR": "Português (Brasil)",
+    "nl": "Nederlands"
+  },
+  "formalAddress": {
+    "de": "Sie",
+    "fr": "vous",
+    "es": "usted",
+    "pt-BR": "você",
+    "nl": "u"
+  }
+}

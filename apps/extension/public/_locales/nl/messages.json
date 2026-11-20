@@ -1,0 +1,14 @@
+{
+  "extName": {
+    "message": "Okkey",
+    "description": "Extensienaam in de browser en de winkelvermelding."
+  },
+  "extDescription": {
+    "message": "Self-hosted wachtwoordmanager: kluis op de client, Q-day-klare crypto, veilig automatisch invullen.",
+    "description": "Korte winkel-/installatiebeschrijving (≤132 tekens)."
+  },
+  "actionTitle": {
+    "message": "Okkey",
+    "description": "Tooltip van de knop op de werkbalk."
+  }
+}

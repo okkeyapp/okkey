@@ -1,4 +1,12 @@
 {
   "defaultLocale": "en",
-  "locales": ["en", "ru"]
+  "locales": [
+    "en",
+    "ru",
+    "de",
+    "fr",
+    "es",
+    "pt_BR",
+    "nl"
+  ]
 }

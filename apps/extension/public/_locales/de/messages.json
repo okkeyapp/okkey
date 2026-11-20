@@ -1,0 +1,14 @@
+{
+  "extName": {
+    "message": "Okkey",
+    "description": "Erweiterungsname in Browser und Store."
+  },
+  "extDescription": {
+    "message": "Self-gehosteter Passwortmanager: clientseitiger Tresor, Q-Day-bereite Krypto, sicheres Autofill.",
+    "description": "Kurze Store-/Installationsbeschreibung (≤132 Zeichen)."
+  },
+  "actionTitle": {
+    "message": "Okkey",
+    "description": "Tooltip der Symbolleisten-Schaltfläche."
+  }
+}

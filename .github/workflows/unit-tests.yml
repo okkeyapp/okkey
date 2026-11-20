@@ -162,6 +162,9 @@ jobs:
           yarn --cwd packages/vault build
           yarn --cwd packages/vault-ui build
 
+      - name: Run i18n coverage check and package tests
+        run: yarn check:i18n
+
       - name: Run web tests
         run: yarn test:web
 

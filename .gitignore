@@ -290,3 +290,6 @@ docs/architecture/*.jpg
 *.msi
 *.dmg
 *.pkg
+
+# i18n MT bootstrap cache
+packages/i18n/.translate-cache.json
