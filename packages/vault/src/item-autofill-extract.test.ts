@@ -31,6 +31,9 @@ describe("categoriesForFieldKinds", () => {
     assert.ok(categoriesForFieldKinds(["street-address"]).includes("personal_data"));
     assert.deepEqual(categoriesForFieldKinds(["iban"]), ["bank_account"]);
     assert.ok(categoriesForFieldKinds(["passport-number"]).includes("passport"));
+    assert.deepEqual(categoriesForFieldKinds(["loyalty-card-number"]), ["loyalty_card"]);
+    assert.deepEqual(categoriesForFieldKinds(["vehicle-plate"]), ["vehicle"]);
+    assert.deepEqual(categoriesForFieldKinds(["travel-booking-reference"]), ["travel_booking"]);
     assert.deepEqual(categoriesForFieldKinds(["db-server"]), ["database"]);
     assert.deepEqual(categoriesForFieldKinds(["crypto-address"]), ["crypto_wallet"]);
   });
@@ -48,6 +51,17 @@ describe("categoriesForFieldKinds", () => {
 
     assert.deepEqual(categoriesForFieldKinds(["cc-number", "email", "cc-exp"]), ["credit_card"]);
     assert.deepEqual(categoriesForFieldKinds(["iban", "email"]), ["bank_account"]);
+  });
+
+  it("loyalty / vehicle / travel kinds never mix login or payment categories", () => {
+    assert.deepEqual(categoriesForFieldKinds(["loyalty-card-number", "username", "password"]), [
+      "loyalty_card",
+    ]);
+    assert.deepEqual(categoriesForFieldKinds(["vehicle-vin", "email"]), ["vehicle"]);
+    assert.deepEqual(categoriesForFieldKinds(["travel-from", "password"]), ["travel_booking"]);
+    assert.ok(!categoriesForFieldKinds(["username"]).includes("loyalty_card"));
+    assert.ok(!categoriesForFieldKinds(["password"]).includes("vehicle"));
+    assert.ok(!categoriesForFieldKinds(["cc-number"]).includes("loyalty_card"));
   });
 });
 
@@ -278,5 +292,159 @@ describe("extractAutofillValues", () => {
       }),
     );
     assert.equal(bank.iban, "DE89370400440532013000");
+  });
+
+  it("extracts loyalty_card without mapping card-number to cc-number", () => {
+    const values = extractAutofillValues(
+      item({
+        categoryId: "loyalty_card",
+        fields: [
+          {
+            id: "provider",
+            type: "text",
+            sectionId: "loyalty-card",
+            order: 0,
+            value: { kind: "text", text: "Aeroflot Bonus" },
+          },
+          {
+            id: "card-number",
+            type: "text",
+            sectionId: "loyalty-card",
+            order: 1,
+            value: { kind: "text", text: "1234567890" },
+          },
+          {
+            id: "barcode",
+            type: "text",
+            sectionId: "loyalty-card",
+            order: 2,
+            value: { kind: "text", text: "998877" },
+          },
+          {
+            id: "expiry-date",
+            type: "date",
+            sectionId: "loyalty-card",
+            order: 3,
+            value: { kind: "text", text: "2030-12-31" },
+          },
+        ],
+      }),
+    );
+    assert.equal(values["loyalty-provider"], "Aeroflot Bonus");
+    assert.equal(values["loyalty-card-number"], "1234567890");
+    assert.equal(values["loyalty-barcode"], "998877");
+    assert.equal(values["loyalty-expiry"], "2030-12-31");
+    assert.equal(values["cc-number"], undefined);
+    assert.equal(values["passport-expiry"], undefined);
+    assert.equal(values.password, undefined);
+    assert.equal(suggestionSubtitleFromValues("loyalty_card", values), "1234567890");
+  });
+
+  it("extracts vehicle and travel_booking field ids", () => {
+    const vehicle = extractAutofillValues(
+      item({
+        categoryId: "vehicle",
+        fields: [
+          {
+            id: "make-model",
+            type: "text",
+            sectionId: "vehicle",
+            order: 0,
+            value: { kind: "text", text: "Toyota Camry" },
+          },
+          {
+            id: "plate",
+            type: "text",
+            sectionId: "vehicle",
+            order: 1,
+            value: { kind: "text", text: "A123BC77" },
+          },
+          {
+            id: "vin",
+            type: "text",
+            sectionId: "vehicle",
+            order: 2,
+            value: { kind: "text", text: "JTDBR32E720123456" },
+          },
+          {
+            id: "insurance-policy-number",
+            type: "text",
+            sectionId: "vehicle-insurance",
+            order: 3,
+            value: { kind: "text", text: "XXX-001" },
+          },
+          {
+            id: "insurer",
+            type: "text",
+            sectionId: "vehicle-insurance",
+            order: 4,
+            value: { kind: "text", text: "Ingospakh" },
+          },
+          {
+            id: "insurance-valid-until",
+            type: "date",
+            sectionId: "vehicle-insurance",
+            order: 5,
+            value: { kind: "text", text: "2027-06-01" },
+          },
+        ],
+      }),
+    );
+    assert.equal(vehicle["vehicle-make-model"], "Toyota Camry");
+    assert.equal(vehicle["vehicle-plate"], "A123BC77");
+    assert.equal(vehicle["vehicle-vin"], "JTDBR32E720123456");
+    assert.equal(vehicle["vehicle-insurance-policy-number"], "XXX-001");
+    assert.equal(vehicle["vehicle-insurer"], "Ingospakh");
+    assert.equal(vehicle["vehicle-insurance-valid-until"], "2027-06-01");
+    assert.equal(suggestionSubtitleFromValues("vehicle", vehicle), "A123BC77");
+
+    const travel = extractAutofillValues(
+      item({
+        categoryId: "travel_booking",
+        fields: [
+          {
+            id: "carrier",
+            type: "text",
+            sectionId: "travel-booking",
+            order: 0,
+            value: { kind: "text", text: "SU" },
+          },
+          {
+            id: "trip-number",
+            type: "text",
+            sectionId: "travel-booking",
+            order: 1,
+            value: { kind: "text", text: "SU100" },
+          },
+          {
+            id: "from",
+            type: "text",
+            sectionId: "travel-booking",
+            order: 2,
+            value: { kind: "text", text: "SVO" },
+          },
+          {
+            id: "to",
+            type: "text",
+            sectionId: "travel-booking",
+            order: 3,
+            value: { kind: "text", text: "LED" },
+          },
+          {
+            id: "booking-reference",
+            type: "text",
+            sectionId: "travel-booking",
+            order: 4,
+            value: { kind: "text", text: "ABC123" },
+          },
+        ],
+      }),
+    );
+    assert.equal(travel["travel-carrier"], "SU");
+    assert.equal(travel["travel-trip-number"], "SU100");
+    assert.equal(travel["travel-from"], "SVO");
+    assert.equal(travel["travel-to"], "LED");
+    assert.equal(travel["travel-booking-reference"], "ABC123");
+    assert.equal(suggestionSubtitleFromValues("travel_booking", travel), "ABC123");
   });
 });

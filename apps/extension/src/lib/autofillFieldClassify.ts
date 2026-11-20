@@ -45,7 +45,27 @@ export type AutofillFieldKind =
   | "db-sid"
   | "crypto-address"
   | "crypto-pin"
-  | "crypto-passphrase";
+  | "crypto-passphrase"
+  | "loyalty-provider"
+  | "loyalty-card-number"
+  | "loyalty-barcode"
+  | "loyalty-expiry"
+  | "vehicle-make-model"
+  | "vehicle-plate"
+  | "vehicle-vin"
+  | "vehicle-inspection-due"
+  | "vehicle-insurance-policy-number"
+  | "vehicle-insurer"
+  | "vehicle-insurance-valid-until"
+  | "travel-transport-type"
+  | "travel-carrier"
+  | "travel-trip-number"
+  | "travel-departure-at"
+  | "travel-from"
+  | "travel-to"
+  | "travel-booking-reference"
+  | "travel-passengers"
+  | "travel-seats";
 
 export type AutofillInputHints = {
   type: string;
@@ -156,6 +176,43 @@ const DB_SID = /\bsid\b|service[-_]?name/i;
 const CRYPTO_ADDR = /wallet[-_]?address|crypto[-_]?address|btc|eth[-_]?address|адрес\s*кошель/i;
 const CRYPTO_PIN = /crypto[-_]?pin|access[-_]?pin|wallet[-_]?pin/i;
 const CRYPTO_PHRASE = /passphrase|seed[-_]?phrase|mnemonic|сид[-_]?фраз|мнемоник/i;
+
+/** Loyalty — specific cues so bare «card number» stays payment (cc-number). */
+const LOYALTY_PROVIDER =
+  /loyalty[-_]?(?:program|provider|club)|membership[-_]?program|frequent[-_]?flyer|программа\s*лояльност|бонусн\w*\s*програм|клуб\s*лояльност/i;
+const LOYALTY_CARD_NUMBER =
+  /loyalty[-_]?card[-_]?number|member(?:ship)?[-_]?(?:card|number|id|no)|frequent[-_]?flyer[-_]?(?:number|no|id)|номер\s*участник|карта\s*лояльност|номер\s*карты\s*лояльност|членск\w*\s*(?:карт|номер)/i;
+const LOYALTY_BARCODE = /\bbarcode\b|qr[-_]?code|qr[-_]?value|штрих[-_]?код|qr[-_]?код/i;
+const LOYALTY_EXPIRY =
+  /loyalty[-_]?expir|membership[-_]?expir|срок\s*действ\w*\s*(?:карты\s*)?лояльност|годен\s*до.*лояльност/i;
+
+const VEHICLE_MAKE_MODEL =
+  /make[-_]?model|vehicle[-_]?(?:make|model)|car[-_]?(?:make|model)|марка|модель\s*авто|make\b.*model|model\b.*make/i;
+const VEHICLE_PLATE =
+  /licence[-_]?plate|license[-_]?plate|\breg(?:istration)?[-_]?plate\b|\bplate[-_]?number\b|\bnumber[-_]?plate\b|госномер|гос\.?\s*номер|регистрационн\w*\s*знак|номерн\w*\s*знак/i;
+const VEHICLE_VIN = /\bvin\b|vehicle[-_]?identification|идентификационн\w*\s*номер\s*транспорт|вин[-_]?код/i;
+const VEHICLE_INSPECTION =
+  /inspection[-_]?due|mot[-_]?due|mot[-_]?expiry|tech[-_]?inspection|техосмотр|техосмотр\w*\s*до|срок\s*техосмотр|мот\b/i;
+const VEHICLE_POLICY =
+  /insurance[-_]?policy|policy[-_]?number|полис|номер\s*полис|страховой\s*полис/i;
+const VEHICLE_INSURER = /\binsurer\b|insurance[-_]?company|страховщик|страховая\s*компани/i;
+const VEHICLE_INSURANCE_UNTIL =
+  /insurance[-_]?(?:valid|expir)|policy[-_]?expir|страховк\w*\s*до|полис\s*действ|действует\s*до.*страхов/i;
+
+const TRAVEL_TRANSPORT =
+  /transport[-_]?type|travel[-_]?mode|mode[-_]?of[-_]?transport|тип\s*транспорт|вид\s*транспорт/i;
+const TRAVEL_CARRIER = /\bcarrier\b|airline|railway|operator|перевозчик|авиакомпани/i;
+const TRAVEL_TRIP =
+  /flight[-_]?number|trip[-_]?number|train[-_]?number|voyage[-_]?number|рейс|номер\s*рейс|номер\s*поезд/i;
+const TRAVEL_DEPARTURE =
+  /departure[-_]?(?:at|date|time)|depart(?:ure)?[-_]?datetime|дата\s*(?:и\s*время\s*)?отправлен|время\s*отправлен|отправлен/i;
+const TRAVEL_FROM = /(?:^|[^a-z])from(?:[^a-z]|$)|origin|departure[-_]?(?:city|airport|station)|откуда|пункт\s*отправлен|город\s*отправлен/i;
+const TRAVEL_TO =
+  /(?:^|[^a-z])to(?:[^a-z]|$)|destination|arrival[-_]?(?:city|airport|station)|куда|пункт\s*назначен|город\s*прибыт/i;
+const TRAVEL_BOOKING_REF =
+  /\bpnr\b|booking[-_]?(?:ref(?:erence)?|code|number)|reservation[-_]?(?:code|number)|confirmation[-_]?code|код\s*бронирован|номер\s*брони|бронь/i;
+const TRAVEL_PASSENGERS = /passengers?|travellers?|пассажир/i;
+const TRAVEL_SEATS = /\bseats?\b|\bseat[-_]?number\b|места|место\b|номер\s*места/i;
 
 export function attrBlob(el: AutofillInputHints): string {
   return [el.name, el.id, el.autocomplete, el.placeholder, el.ariaLabel, el.labelText]
@@ -355,6 +412,45 @@ export function classifyAutofillInput(input: AutofillInputHints): AutofillFieldK
   // Birthday before card-expiry: placeholders like `dd/mm/yyyy` used to match CC_EXP's mm/yy.
   if (acToken(ac, "bday") || ac.includes("bday") || BDAY_HINT.test(blob)) {
     return "bday";
+  }
+
+  // Loyalty before payment card — «loyalty card number» must not become cc-number.
+  const loyalty = firstMatch(blob, ac, [
+    { key: "loyalty-card-number", ac: undefined, re: LOYALTY_CARD_NUMBER },
+    { key: "loyalty-provider", ac: undefined, re: LOYALTY_PROVIDER },
+    { key: "loyalty-barcode", ac: undefined, re: LOYALTY_BARCODE },
+    { key: "loyalty-expiry", ac: undefined, re: LOYALTY_EXPIRY },
+  ]);
+  if (loyalty) {
+    return loyalty;
+  }
+
+  const vehicle = firstMatch(blob, ac, [
+    { key: "vehicle-vin", ac: undefined, re: VEHICLE_VIN },
+    { key: "vehicle-plate", ac: undefined, re: VEHICLE_PLATE },
+    { key: "vehicle-make-model", ac: undefined, re: VEHICLE_MAKE_MODEL },
+    { key: "vehicle-inspection-due", ac: undefined, re: VEHICLE_INSPECTION },
+    { key: "vehicle-insurance-policy-number", ac: undefined, re: VEHICLE_POLICY },
+    { key: "vehicle-insurer", ac: undefined, re: VEHICLE_INSURER },
+    { key: "vehicle-insurance-valid-until", ac: undefined, re: VEHICLE_INSURANCE_UNTIL },
+  ]);
+  if (vehicle) {
+    return vehicle;
+  }
+
+  const travel = firstMatch(blob, ac, [
+    { key: "travel-booking-reference", ac: undefined, re: TRAVEL_BOOKING_REF },
+    { key: "travel-trip-number", ac: undefined, re: TRAVEL_TRIP },
+    { key: "travel-departure-at", ac: undefined, re: TRAVEL_DEPARTURE },
+    { key: "travel-transport-type", ac: undefined, re: TRAVEL_TRANSPORT },
+    { key: "travel-carrier", ac: undefined, re: TRAVEL_CARRIER },
+    { key: "travel-from", ac: undefined, re: TRAVEL_FROM },
+    { key: "travel-to", ac: undefined, re: TRAVEL_TO },
+    { key: "travel-passengers", ac: undefined, re: TRAVEL_PASSENGERS },
+    { key: "travel-seats", ac: undefined, re: TRAVEL_SEATS },
+  ]);
+  if (travel) {
+    return travel;
   }
 
   const cc = firstMatch(blob, ac, [

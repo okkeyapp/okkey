@@ -228,6 +228,48 @@ function PassportIcon({ pixelSize, ...props }: CategoryIconProps) {
   );
 }
 
+function LoyaltyCardIcon({ pixelSize, ...props }: CategoryIconProps) {
+  return categorySvg(
+    pixelSize,
+    16,
+    props,
+    <>
+      <path
+        d="M1.77778 2C0.797222 2 0 2.76875 0 3.71429V4.57143H16V3.71429C16 2.76875 15.2028 2 14.2222 2H1.77778ZM16 7.14286H0V12.2857C0 13.2312 0.797222 14 1.77778 14H14.2222C15.2028 14 16 13.2312 16 12.2857V7.14286Z"
+        fill="currentColor"
+      />
+      <path
+        d="M8 9.25L8.618 10.5H10L8.691 11.25L9.309 12.5L8 11.75L6.691 12.5L7.309 11.25L6 10.5H7.382L8 9.25Z"
+        fill="currentColor"
+      />
+    </>,
+  );
+}
+
+function VehicleIcon({ pixelSize, ...props }: CategoryIconProps) {
+  return categorySvg(
+    pixelSize,
+    16,
+    props,
+    <path
+      d="M12.6667 5.33333H11.7267L10.6667 2.66667C10.44 2.10667 9.89333 1.73333 9.28 1.73333H6.72C6.10667 1.73333 5.56 2.10667 5.33333 2.66667L4.27333 5.33333H3.33333C2.22667 5.33333 1.33333 6.22667 1.33333 7.33333V11.3333C1.33333 11.7 1.63333 12 2 12H2.66667C3.03333 12 3.33333 11.7 3.33333 11.3333V10.6667H12.6667V11.3333C12.6667 11.7 12.9667 12 13.3333 12H14C14.3667 12 14.6667 11.7 14.6667 11.3333V7.33333C14.6667 6.22667 13.7733 5.33333 12.6667 5.33333ZM6.72 3.06667H9.28L9.94667 4.8H6.05333L6.72 3.06667ZM3.66667 8.33333C3.29848 8.33333 3 8.03485 3 7.66667C3 7.29848 3.29848 7 3.66667 7C4.03485 7 4.33333 7.29848 4.33333 7.66667C4.33333 8.03485 4.03485 8.33333 3.66667 8.33333ZM12.3333 8.33333C11.9651 8.33333 11.6667 8.03485 11.6667 7.66667C11.6667 7.29848 11.9651 7 12.3333 7C12.7015 7 13 7.29848 13 7.66667C13 8.03485 12.7015 8.33333 12.3333 8.33333Z"
+      fill="currentColor"
+    />,
+  );
+}
+
+function TravelBookingIcon({ pixelSize, ...props }: CategoryIconProps) {
+  return categorySvg(
+    pixelSize,
+    16,
+    props,
+    <path
+      d="M14.6667 8.66667L10.6667 6.66667V4C10.6667 3.26362 10.0697 2.66667 9.33333 2.66667C8.59695 2.66667 8 3.26362 8 4V6.66667L4 8.66667V10L8 8.66667V11.3333L6.66667 12.3333V13.3333L9.33333 12.6667L12 13.3333V12.3333L10.6667 11.3333V8.66667L14.6667 10V8.66667Z"
+      fill="currentColor"
+    />,
+  );
+}
+
 function SecureFilesIcon({ pixelSize, ...props }: CategoryIconProps) {
   return categorySvg(
     pixelSize,
@@ -273,6 +315,9 @@ const iconsByCategoryId: Record<ItemCategoryId, (props: CategoryIconProps) => JS
   credit_card: CreditCardIcon,
   personal_data: PersonalDataIcon,
   passport: PassportIcon,
+  loyalty_card: LoyaltyCardIcon,
+  vehicle: VehicleIcon,
+  travel_booking: TravelBookingIcon,
   secure_files: SecureFilesIcon,
   api_access: ApiAccessIcon,
   ssh_key: SshKeyIcon,

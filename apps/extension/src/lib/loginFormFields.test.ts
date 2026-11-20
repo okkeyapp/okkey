@@ -293,6 +293,146 @@ describe("classifyAutofillInput non-login types", () => {
     assert.equal(classifyAutofillInput({ type: "text", autocomplete: "nickname" }), "username");
     assert.equal(classifyAutofillInput({ type: "text", name: "nickname", labelText: "Nickname" }), "username");
   });
+
+  it("detects loyalty_card fields (EN + RU) without stealing payment card number", () => {
+    assert.equal(
+      classifyAutofillInput({
+        type: "text",
+        name: "memberNumber",
+        labelText: "Membership number",
+      }),
+      "loyalty-card-number",
+    );
+    assert.equal(
+      classifyAutofillInput({
+        type: "text",
+        name: "loyaltyProgram",
+        labelText: "Loyalty program",
+      }),
+      "loyalty-provider",
+    );
+    assert.equal(
+      classifyAutofillInput({
+        type: "text",
+        name: "barcode",
+        labelText: "Barcode",
+      }),
+      "loyalty-barcode",
+    );
+    assert.equal(
+      classifyAutofillInput({
+        type: "text",
+        name: "uchastnik",
+        labelText: "Номер участника",
+      }),
+      "loyalty-card-number",
+    );
+    assert.equal(
+      classifyAutofillInput({
+        type: "text",
+        name: "programma",
+        labelText: "Программа лояльности",
+      }),
+      "loyalty-provider",
+    );
+    assert.equal(
+      classifyAutofillInput({
+        type: "text",
+        name: "shtrihkod",
+        labelText: "Штрихкод",
+      }),
+      "loyalty-barcode",
+    );
+    // Bare payment card stays credit_card.
+    assert.equal(
+      classifyAutofillInput({
+        type: "text",
+        autocomplete: "cc-number",
+        labelText: "Card number",
+      }),
+      "cc-number",
+    );
+  });
+
+  it("detects vehicle fields (EN + RU)", () => {
+    assert.equal(
+      classifyAutofillInput({ type: "text", name: "licensePlate", labelText: "License plate" }),
+      "vehicle-plate",
+    );
+    assert.equal(
+      classifyAutofillInput({ type: "text", name: "vin", labelText: "VIN" }),
+      "vehicle-vin",
+    );
+    assert.equal(
+      classifyAutofillInput({ type: "text", name: "makeModel", labelText: "Make / model" }),
+      "vehicle-make-model",
+    );
+    assert.equal(
+      classifyAutofillInput({ type: "text", name: "policyNumber", labelText: "Insurance policy" }),
+      "vehicle-insurance-policy-number",
+    );
+    assert.equal(
+      classifyAutofillInput({ type: "text", name: "gosnomer", labelText: "Госномер" }),
+      "vehicle-plate",
+    );
+    assert.equal(
+      classifyAutofillInput({ type: "text", name: "vinRu", labelText: "VIN-код" }),
+      "vehicle-vin",
+    );
+    assert.equal(
+      classifyAutofillInput({ type: "text", name: "tehOsmotr", labelText: "Техосмотр до" }),
+      "vehicle-inspection-due",
+    );
+  });
+
+  it("detects travel_booking fields (EN + RU)", () => {
+    assert.equal(
+      classifyAutofillInput({ type: "text", name: "pnr", labelText: "Booking reference" }),
+      "travel-booking-reference",
+    );
+    assert.equal(
+      classifyAutofillInput({ type: "text", name: "flightNumber", labelText: "Flight number" }),
+      "travel-trip-number",
+    );
+    assert.equal(
+      classifyAutofillInput({ type: "text", name: "from", labelText: "From" }),
+      "travel-from",
+    );
+    assert.equal(
+      classifyAutofillInput({ type: "text", name: "to", labelText: "To" }),
+      "travel-to",
+    );
+    assert.equal(
+      classifyAutofillInput({ type: "text", name: "bron", labelText: "Код бронирования" }),
+      "travel-booking-reference",
+    );
+    assert.equal(
+      classifyAutofillInput({ type: "text", name: "reys", labelText: "Номер рейса" }),
+      "travel-trip-number",
+    );
+    assert.equal(
+      classifyAutofillInput({ type: "text", name: "otkuda", labelText: "Откуда" }),
+      "travel-from",
+    );
+    assert.equal(
+      classifyAutofillInput({ type: "text", name: "kuda", labelText: "Куда" }),
+      "travel-to",
+    );
+  });
+
+  it("never classifies login fields as loyalty / vehicle / travel", () => {
+    assert.equal(classifyAutofillInput({ type: "password", name: "password" }), "password");
+    assert.equal(classifyAutofillInput({ type: "text", autocomplete: "username" }), "username");
+    assert.equal(classifyAutofillInput({ type: "email", autocomplete: "email" }), "email");
+    assert.notEqual(
+      classifyAutofillInput({ type: "password", name: "password", labelText: "Password" }),
+      "loyalty-card-number",
+    );
+    assert.notEqual(
+      classifyAutofillInput({ type: "text", autocomplete: "username", labelText: "Username" }),
+      "vehicle-plate",
+    );
+  });
 });
 
 describe("login identifier priority", () => {
