@@ -273,7 +273,7 @@ export function registerSetupRoutes(
       const email = typeof body.email === "string" ? body.email : "";
       const result = await setup.beginRegistration(setupTokenFromRequest(ctx.req) ?? "", email);
       json(ctx.res, 200, {
-        auth_state_id: result.authStateId,
+        ...(result.authStateId ? { auth_state_id: result.authStateId } : {}),
         email: result.email,
         expires_at: result.expiresAt,
         already_registered: Boolean(result.alreadyRegistered),
@@ -322,7 +322,19 @@ export function registerSetupRoutes(
         invitations,
         dismissPersonalDataBootstrap: body.dismiss_personal_data_bootstrap === true,
       });
+      if (result.signInRequired) {
+        json(ctx.res, 200, {
+          sign_in_required: true,
+          user_id: result.userId,
+          workspace_id: result.workspaceId,
+          vault_id: result.vaultId,
+          device_id: result.deviceId,
+          requestId: ctx.requestId,
+        });
+        return;
+      }
       json(ctx.res, 200, {
+        sign_in_required: false,
         access_token: result.accessToken,
         expires_at: result.expiresAt,
         user_id: result.userId,

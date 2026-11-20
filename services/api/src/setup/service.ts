@@ -25,6 +25,7 @@ import type {
   SetupBeginRegistrationResult,
   SetupFinishInput,
   SetupFinishResult,
+  SetupResumeOwnerIds,
   SetupSessionPayload,
   SetupStatusResponse,
   SetupVerifyResponse,
@@ -499,6 +500,7 @@ export class SetupService {
     const authStateId = await this.authService.createRegistrationAuthStateForTrustedEmail(email);
     session.ownerEmail = email;
     session.authStateId = authStateId;
+    delete session.resumeOwner;
     await this.saveSession(session);
 
     const expiresAt = new Date(
@@ -507,7 +509,11 @@ export class SetupService {
     return { authStateId, email, expiresAt };
   }
 
-  /** Bind setup session to an existing sole owner when recovery is already exported. */
+  /**
+   * Bind setup session to an existing sole owner when recovery is already exported.
+   * Resume state lives only on the setup session — never writes `registration:result:*`
+   * and never mints a session on finish.
+   */
   private async rebindIncompleteOwner(
     session: SetupSessionPayload,
     userId: string,
@@ -534,18 +540,13 @@ export class SetupService {
       return null;
     }
 
-    const authStateId = `setup-resume:${userId}`;
     const ttl = this.config.registrationAuthStateTtlSeconds;
-    await this.redis.setWithTtl(
-      `registration:result:${authStateId}`,
-      JSON.stringify(ids),
-      ttl,
-    );
     session.ownerEmail = email;
-    session.authStateId = authStateId;
+    session.resumeOwner = ids;
+    delete session.authStateId;
     await this.saveSession(session);
     const expiresAt = new Date(this.now().getTime() + ttl * 1000).toISOString();
-    return { authStateId, email, expiresAt, alreadyRegistered: true };
+    return { email, expiresAt, alreadyRegistered: true };
   }
 
   private async resolveOwnerRegistrationIds(
@@ -597,38 +598,22 @@ export class SetupService {
   }
 
   /**
-   * After register/complete + recovery enroll/ack: mint a full device-bound session,
-   * apply workspace branding + invites, consume the setup code, and mark setup complete.
+   * Apply workspace branding + invites, mark setup complete, consume the setup code.
+   * First-owner path: also mints a full device-bound session (registration just completed
+   * in this setup session). Resume path: never mints a session — client must sign in normally.
    * Durable finish writes run in one Postgres transaction so a failure never marks setup
    * complete while leaving half-applied branding/invites.
-   * Uses the registration result cache (auth state id on the setup session) — the
-   * short-lived registration_recovery bearer may already be revoked by export ack.
    */
   async finish(token: string, input: SetupFinishInput): Promise<SetupFinishResult> {
     const session = await this.requireSession(token);
-    if (!session.authStateId || !session.ownerEmail) {
+    if (!session.ownerEmail) {
       throw new SetupError("SETUP_REGISTRATION_INCOMPLETE", 409, "owner registration is incomplete");
     }
 
-    // Same key as registration/service.ts registrationResultRedisKey (avoid importing that module).
-    const cachedRaw = await this.redis.get(`registration:result:${session.authStateId}`);
-    if (!cachedRaw) {
-      throw new SetupError("SETUP_REGISTRATION_INCOMPLETE", 409, "owner registration is incomplete");
-    }
-    let cached: {
-      userId: string;
-      workspaceId: string;
-      vaultId: string;
-      deviceId: string;
-    };
-    try {
-      cached = JSON.parse(cachedRaw) as typeof cached;
-    } catch {
-      throw new SetupError("SETUP_REGISTRATION_INCOMPLETE", 409, "owner registration is incomplete");
-    }
-    if (!cached.userId || !cached.workspaceId || !cached.vaultId || !cached.deviceId) {
-      throw new SetupError("SETUP_REGISTRATION_INCOMPLETE", 409, "owner registration is incomplete");
-    }
+    const resume = Boolean(session.resumeOwner);
+    const ownerIds = resume
+      ? this.requireResumeOwnerIds(session)
+      : await this.requireRegistrationResultIds(session);
 
     const recoveryRows = await this.postgres.query<{ exported_at: string | Date | null }>(
       `
@@ -637,7 +622,7 @@ export class SetupService {
         WHERE user_id = $1
         LIMIT 1
       `,
-      [cached.userId],
+      [ownerIds.userId],
     );
     if (!recoveryRows[0]?.exported_at) {
       throw new SetupError(
@@ -659,7 +644,7 @@ export class SetupService {
           SET name = $1, tile_color = $2, updated_at = now()
           WHERE id = $3
         `,
-        [workspaceName, tileColor, cached.workspaceId],
+        [workspaceName, tileColor, ownerIds.workspaceId],
       );
 
       if (input.dismissPersonalDataBootstrap === true) {
@@ -688,7 +673,7 @@ export class SetupService {
               personal_data_bootstrap_dismissed = TRUE,
               updated_at = now()
           `,
-          [generateEntityId(), cached.workspaceId, cached.userId],
+          [generateEntityId(), ownerIds.workspaceId, ownerIds.userId],
         );
       }
 
@@ -700,7 +685,7 @@ export class SetupService {
             FROM roles
             WHERE workspace_id = $1 AND builtin_key IN ('admin', 'user')
           `,
-          [cached.workspaceId],
+          [ownerIds.workspaceId],
         );
         const roleByBuiltin = new Map(
           roleRows.map((r) => [String(r.builtin_key), String(r.id)] as const),
@@ -740,10 +725,10 @@ export class SetupService {
             `,
             [
               invitationId,
-              cached.workspaceId,
+              ownerIds.workspaceId,
               item.email,
               item.roleId,
-              cached.userId,
+              ownerIds.userId,
               tokenHash,
               expiresAt,
             ],
@@ -777,40 +762,89 @@ export class SetupService {
         this.logger?.info("setup invitation emails delivered", {
           event: "setup_invites_delivered",
           delivered: delivery.delivered,
-          workspace_id: cached.workspaceId,
+          workspace_id: ownerIds.workspaceId,
         });
       }
     } catch (error) {
       this.logger?.warn("setup invitation delivery failed", {
-        workspace_id: cached.workspaceId,
+        workspace_id: ownerIds.workspaceId,
         cause: error instanceof Error ? error.message : String(error),
       });
     }
-
-    const full = await this.sessionService.createSession(cached.userId, {
-      ttlSeconds: this.config.sessionTtlSeconds,
-      scope: null,
-      deviceId: cached.deviceId,
-    });
 
     await this.consumeSetupCode();
     await this.redis.del(this.sessionKey(session.id));
 
     this.logger?.info("self-host setup completed", {
       event: "setup_completed",
-      user_id: cached.userId,
-      workspace_id: cached.workspaceId,
+      user_id: ownerIds.userId,
+      workspace_id: ownerIds.workspaceId,
+      resume,
+      sign_in_required: resume,
+    });
+
+    // Resume must never mint a session — only the first-owner path (registration in this
+    // setup session) issues a full device-bound token.
+    if (resume) {
+      return {
+        signInRequired: true,
+        accessToken: null,
+        expiresAt: null,
+        userId: ownerIds.userId,
+        workspaceId: ownerIds.workspaceId,
+        vaultId: ownerIds.vaultId,
+        deviceId: ownerIds.deviceId,
+        tokenType: null,
+      };
+    }
+
+    const full = await this.sessionService.createSession(ownerIds.userId, {
+      ttlSeconds: this.config.sessionTtlSeconds,
+      scope: null,
+      deviceId: ownerIds.deviceId,
     });
 
     return {
+      signInRequired: false,
       accessToken: full.accessToken,
       expiresAt: full.expiresAt,
-      userId: cached.userId,
-      workspaceId: cached.workspaceId,
-      vaultId: cached.vaultId,
-      deviceId: cached.deviceId,
+      userId: ownerIds.userId,
+      workspaceId: ownerIds.workspaceId,
+      vaultId: ownerIds.vaultId,
+      deviceId: ownerIds.deviceId,
       tokenType: "Bearer",
     };
+  }
+
+  private requireResumeOwnerIds(session: SetupSessionPayload): SetupResumeOwnerIds {
+    const ids = session.resumeOwner;
+    if (!ids?.userId || !ids.workspaceId || !ids.vaultId || !ids.deviceId) {
+      throw new SetupError("SETUP_REGISTRATION_INCOMPLETE", 409, "owner registration is incomplete");
+    }
+    return ids;
+  }
+
+  private async requireRegistrationResultIds(
+    session: SetupSessionPayload,
+  ): Promise<SetupResumeOwnerIds> {
+    if (!session.authStateId) {
+      throw new SetupError("SETUP_REGISTRATION_INCOMPLETE", 409, "owner registration is incomplete");
+    }
+    // Same key as registration/service.ts registrationResultRedisKey (avoid importing that module).
+    const cachedRaw = await this.redis.get(`registration:result:${session.authStateId}`);
+    if (!cachedRaw) {
+      throw new SetupError("SETUP_REGISTRATION_INCOMPLETE", 409, "owner registration is incomplete");
+    }
+    let cached: SetupResumeOwnerIds;
+    try {
+      cached = JSON.parse(cachedRaw) as SetupResumeOwnerIds;
+    } catch {
+      throw new SetupError("SETUP_REGISTRATION_INCOMPLETE", 409, "owner registration is incomplete");
+    }
+    if (!cached.userId || !cached.workspaceId || !cached.vaultId || !cached.deviceId) {
+      throw new SetupError("SETUP_REGISTRATION_INCOMPLETE", 409, "owner registration is incomplete");
+    }
+    return cached;
   }
 
   /** Used by AuthService to enforce invite-only after setup. */

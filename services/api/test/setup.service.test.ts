@@ -87,6 +87,9 @@ class MemoryPostgres {
   workspaceUpdates: Array<{ name: string; tile_color: string; workspace_id: string }> = [];
   setupCompletedAt: string | null = null;
   failOnInviteInsert = false;
+  ownerWorkspaceId = "ws-1";
+  ownerVaultId = "vault-1";
+  ownerDeviceId = "device-1";
 
   private async handleQuery<T extends Record<string, unknown>>(
     sql: string,
@@ -100,6 +103,18 @@ class MemoryPostgres {
           ? [{ exported_at: new Date().toISOString() }]
           : [{ exported_at: null }]
       ) as T[];
+    }
+
+    if (normalized.includes("from workspaces") && normalized.includes("owner_id")) {
+      return [{ id: this.ownerWorkspaceId }] as T[];
+    }
+
+    if (normalized.includes("from vaults") && normalized.includes("is_personal")) {
+      return [{ id: this.ownerVaultId }] as T[];
+    }
+
+    if (normalized.includes("from devices") && normalized.includes("user_id")) {
+      return [{ id: this.ownerDeviceId }] as T[];
     }
 
     if (normalized.includes("update workspaces") && normalized.includes("tile_color")) {
@@ -177,6 +192,7 @@ class MemoryPostgres {
 function createService(overrides: {
   redis?: InMemoryRedis;
   hasAnyUsers?: boolean;
+  findByEmail?: () => Promise<{ id: string; email: string } | null>;
   setupCodePlaintext?: string;
   postgres?: MemoryPostgres;
   smtpActive?: boolean;
@@ -188,6 +204,7 @@ function createService(overrides: {
   const instanceSettings = new MemoryInstanceStore();
   const postgres = overrides.postgres ?? new MemoryPostgres();
   const deliverCalls: Array<{ delivered: number }> = [];
+  const sessionCreates: Array<{ userId: string; deviceId: string | null | undefined }> = [];
   const deliverPendingInvitationEmails =
     overrides.deliverPendingInvitationEmails ??
     (async () => {
@@ -199,7 +216,7 @@ function createService(overrides: {
     redis,
     users: {
       hasAnyUsers: async () => overrides.hasAnyUsers ?? false,
-      findByEmail: async () => null,
+      findByEmail: overrides.findByEmail ?? (async () => null),
     },
     instanceSettings,
     mailSettings: {
@@ -233,11 +250,14 @@ function createService(overrides: {
       createRegistrationAuthStateForTrustedEmail: async () => "auth-state-1",
     },
     sessionService: {
-      createSession: async () => ({
-        accessToken: "full-token",
-        expiresAt: new Date().toISOString(),
-        scope: null,
-      }),
+      createSession: async (userId, opts) => {
+        sessionCreates.push({ userId, deviceId: opts?.deviceId });
+        return {
+          accessToken: "full-token",
+          expiresAt: new Date().toISOString(),
+          scope: null,
+        };
+      },
     },
     workspaceSettings: {
       updateSettings: async () => {
@@ -262,7 +282,7 @@ function createService(overrides: {
     generateSetupCode: overrides.generateSetupCode,
     generateSessionId: () => "setup-session-1",
   });
-  return { service, redis, instanceSettings, postgres, deliverCalls };
+  return { service, redis, instanceSettings, postgres, deliverCalls, sessionCreates };
 }
 
 async function seedReadyToFinish(
@@ -440,8 +460,11 @@ test("finish with invites creates pending invitations for the requested builtin 
     ],
   });
 
+  assert.equal(result.signInRequired, false);
   assert.equal(result.accessToken, "full-token");
   assert.equal(result.workspaceId, "ws-1");
+  assert.equal(fixture.sessionCreates.length, 1);
+  assert.equal(fixture.sessionCreates[0]?.userId, "user-1");
   assert.equal(fixture.postgres.workspaceUpdates.length, 1);
   assert.equal(fixture.postgres.workspaceUpdates[0]?.name, "Acme");
   assert.equal(fixture.postgres.invitations.length, 2);
@@ -453,6 +476,57 @@ test("finish with invites creates pending invitations for the requested builtin 
   // Mail inactive: invitations stay pending and delivery is not attempted.
   assert.equal(fixture.deliverCalls.length, 0);
   // Unit fixture keeps hasAnyUsers=false; after consume the setup code hash is gone.
+  assert.deepEqual(await fixture.service.getStatus(), {
+    required: false,
+    deploymentMode: "self_hosted",
+  });
+});
+
+test("resume finish completes setup without minting a session or registration:result cache", async () => {
+  const postgres = new MemoryPostgres();
+  const fixture = createService({
+    hasAnyUsers: true,
+    setupCodePlaintext: "aaaa-bbbb-cccc-dddd",
+    postgres,
+    findByEmail: async () => ({ id: "user-1", email: "owner@example.com" }),
+  });
+  await fixture.service.ensureBootstrapCode();
+  const verified = await fixture.service.verifyCode("aaaa-bbbb-cccc-dddd");
+  const begun = await fixture.service.beginRegistration(verified.setupToken, "owner@example.com");
+  assert.equal(begun.alreadyRegistered, true);
+  assert.equal(begun.authStateId, undefined);
+
+  const sessionRaw = await fixture.redis.get(`setup:session:${verified.setupToken}`);
+  assert.ok(sessionRaw);
+  const session = JSON.parse(sessionRaw) as {
+    resumeOwner?: { userId: string };
+    authStateId?: string;
+  };
+  assert.equal(session.resumeOwner?.userId, "user-1");
+  assert.equal(session.authStateId, undefined);
+  // Must not write a registration result cache for resume.
+  const keys = ["registration:result:setup-resume:user-1", "registration:result:auth-state-1"];
+  for (const key of keys) {
+    assert.equal(await fixture.redis.get(key), null);
+  }
+  assert.equal(await fixture.redis.get(`registration:result:${begun.authStateId ?? ""}`), null);
+
+  const result = await fixture.service.finish(verified.setupToken, {
+    workspaceName: "Resumed",
+    tileColor: "#abcdef",
+    invitations: [{ email: "member@example.com", roleBuiltinId: "user" }],
+  });
+
+  assert.equal(result.signInRequired, true);
+  assert.equal(result.accessToken, null);
+  assert.equal(result.tokenType, null);
+  assert.equal(result.expiresAt, null);
+  assert.equal(fixture.sessionCreates.length, 0);
+  assert.equal(fixture.postgres.invitations.length, 1);
+  assert.equal(fixture.postgres.workspaceUpdates[0]?.name, "Resumed");
+  assert.ok(fixture.instanceSettings.row.setupCompletedAt);
+  assert.equal(await fixture.redis.get("setup:code:hash"), null);
+  assert.equal(await fixture.redis.get(`setup:session:${verified.setupToken}`), null);
   assert.deepEqual(await fixture.service.getStatus(), {
     required: false,
     deploymentMode: "self_hosted",

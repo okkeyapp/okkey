@@ -156,6 +156,8 @@ export default function SetupWizardPage() {
   const logoVaultKeyRef = useRef<Uint8Array | null>(null);
   const logoFileInputRef = useRef<HTMLInputElement | null>(null);
   const [authStateId, setAuthStateId] = useState<string | null>(null);
+  /** Incomplete-setup resume: skip password/recovery; finish does not mint a session. */
+  const [resumeMode, setResumeMode] = useState(false);
 
   const [masterPassword, setMasterPassword] = useState("");
   const [repeatMasterPassword, setRepeatMasterPassword] = useState("");
@@ -455,8 +457,6 @@ export default function SetupWizardPage() {
     setError(null);
     try {
       const begun = await setupApi.beginRegistration(setupToken, email);
-      setAuthStateId(begun.auth_state_id);
-      setRegistrationAuthStateId(begun.auth_state_id);
       updateLocalProfile({
         email: begun.email,
         firstName: firstName.trim(),
@@ -466,12 +466,21 @@ export default function SetupWizardPage() {
         setTestRecipient(begun.email);
       }
       if (begun.already_registered) {
-        // Incomplete setup rebound: recovery already exported — jump to finish.
+        // Incomplete setup rebound: finish only; client must sign in normally (no session).
+        setAuthStateId(null);
+        setRegistrationAuthStateId(null);
+        setResumeMode(true);
         setRecoveryExported(true);
         setRecoverySecret(null);
         setStep("recovery");
         return;
       }
+      if (!begun.auth_state_id) {
+        throw new Error("auth_state_id missing");
+      }
+      setAuthStateId(begun.auth_state_id);
+      setRegistrationAuthStateId(begun.auth_state_id);
+      setResumeMode(false);
       setStep("password");
     } catch {
       setError(t("auth.setup.errorGeneric"));
@@ -693,6 +702,26 @@ export default function SetupWizardPage() {
         // Leave personal-data bootstrap for the first-sign-in product tour.
         dismiss_personal_data_bootstrap: false,
       });
+
+      // Resume: complete setup only — never apply a session; go to normal sign-in.
+      if (resumeMode || finished.sign_in_required || !finished.access_token || !finished.expires_at) {
+        const hadPendingLogo = Boolean(logoPlaintextRef.current);
+        wipeLogoVaultKey();
+        clearPendingLogo();
+        masterPasswordRef.current = "";
+        setMasterPassword("");
+        setRepeatMasterPassword("");
+        setRegistrationAuthStateId(null);
+        setPostRegAccessToken(null);
+        setSetupToken(null);
+        if (hadPendingLogo) {
+          toast.error(t("web.setupWizard.resumeLogoSkipped"));
+        }
+        toast.success(t("web.setupWizard.resumeSignInRequired"));
+        navigate(AUTH_EMAIL_PATH, { replace: true });
+        return;
+      }
+
       flushSync(() => {
         applyAccessTokenResponse({
           access_token: finished.access_token,
@@ -721,7 +750,7 @@ export default function SetupWizardPage() {
         plaintext: logoPlaintextRef.current,
         upload: async (vaultKey, plaintext) => {
           const { encryptWorkspaceLogo } = await import("../../workspace/workspaceKeyClient");
-          const core = createAuthenticatedCoreClient(finished.access_token);
+          const core = createAuthenticatedCoreClient(finished.access_token as string);
           const ciphertext = await encryptWorkspaceLogo({
             core,
             workspaceId: finished.workspace_id,
@@ -742,12 +771,6 @@ export default function SetupWizardPage() {
       clearPendingLogo();
       if (logoOutcome === "failed") {
         toast.error(t("web.setupWizard.logoUploadFailed"));
-      }
-      if (!unlock.ok) {
-        navigate(`${ITEMS_PATH}?${WORKSPACE_QUERY_PARAM}=${encodeURIComponent(finished.workspace_id)}`, {
-          replace: true,
-        });
-        return;
       }
       navigate(`${ITEMS_PATH}?${WORKSPACE_QUERY_PARAM}=${encodeURIComponent(finished.workspace_id)}`, {
         replace: true,
