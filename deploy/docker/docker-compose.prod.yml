@@ -264,6 +264,10 @@ services:
       OKKEY_INSTALL_DIR: /okkey
       DOCKER_SOCKET: /var/run/docker.sock
       OKKEY_UPDATE_AGENT_PORT: "8090"
+      # Cosign keyless verify (same env names as deploy/docker/install.sh).
+      OKKEY_COSIGN_CERTIFICATE_IDENTITY_REGEXP: ${OKKEY_COSIGN_CERTIFICATE_IDENTITY_REGEXP:-}
+      OKKEY_COSIGN_CERTIFICATE_OIDC_ISSUER: ${OKKEY_COSIGN_CERTIFICATE_OIDC_ISSUER:-}
+      OKKEY_ALLOW_CANDIDATE: ${OKKEY_ALLOW_CANDIDATE:-}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ${OKKEY_HOST_INSTALL_DIR:-.}:/okkey

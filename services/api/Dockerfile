@@ -105,6 +105,9 @@ RUN --mount=type=cache,target=/usr/local/share/.cache/yarn \
 
 # Collect the Node 25 binary plus the OS pieces the runtime still needs after
 # leaving bookworm-slim. TARGETARCH comes from BuildKit (amd64 / arm64).
+# Cosign is not baked into api/worker: the gobinary trips the CRITICAL/HIGH
+# Trivy gate. The update-agent fetches the pinned release (version + SHA-256
+# in scripts/ci/install-cosign.sh / cosign-bootstrap.ts) on first verify.
 FROM node:25-bookworm-slim@sha256:81db02c4b671288a03915da9534dbd54f96d0e7c24d80ccc54f5b36b2e684370 AS node-runtime-bits
 ARG TARGETARCH
 ARG NODE_VERSION

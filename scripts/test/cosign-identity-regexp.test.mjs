@@ -6,11 +6,24 @@ import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("../..", import.meta.url));
 const installSh = readFileSync(join(root, "deploy/docker/install.sh"), "utf8");
+const updateAgentIdentityTs = readFileSync(
+  join(root, "services/api/src/update-agent/cosign-identity.ts"),
+  "utf8",
+);
 
 function bashSingleQuoted(name) {
   const match = installSh.match(new RegExp(`${name}='([^']*)'`));
   assert.ok(match, `missing ${name}`);
   return match[1];
+}
+
+function tsStringConst(name) {
+  const match = updateAgentIdentityTs.match(
+    new RegExp(`export const ${name}\\s*=\\s*\\n?\\s*"([^"]+)"`),
+  );
+  assert.ok(match, `missing ${name} in cosign-identity.ts`);
+  // Decode TS/JS string escapes so the value matches install.sh / runtime.
+  return JSON.parse(`"${match[1]}"`);
 }
 
 const DEFAULT_RE = bashSingleQuoted("OKKEY_COSIGN_DEFAULT_IDENTITY_REGEXP");
@@ -36,6 +49,23 @@ test("identity regexps are anchored full workflow URLs", () => {
   }
   assert.equal(DEFAULT_RE.includes("heads/release"), false);
   assert.equal(DEFAULT_RE.includes("heads/hotfix"), false);
+});
+
+test("update-agent cosign-identity.ts stays in sync with install.sh", () => {
+  assert.equal(tsStringConst("OKKEY_COSIGN_DEFAULT_IDENTITY_REGEXP"), DEFAULT_RE);
+  assert.equal(tsStringConst("OKKEY_COSIGN_CANDIDATE_IDENTITY_REGEXP"), CANDIDATE_RE);
+  assert.equal(
+    tsStringConst("OKKEY_COSIGN_DEFAULT_OIDC_ISSUER"),
+    "https://token.actions.githubusercontent.com",
+  );
+  const enterprise = tsStringConst("OKKEY_ENTERPRISE_COSIGN_DEFAULT_IDENTITY_REGEXP");
+  assert.equal(enterprise.startsWith("^"), true);
+  assert.equal(enterprise.endsWith("$"), true);
+  assert.match(enterprise, /okkey-enterprise/);
+  assert.match(enterprise, /publish-images/);
+  assert.equal(enterprise.includes("heads/dev"), false);
+  assert.equal(enterprise.includes("heads/release"), true);
+  assert.equal(enterprise.includes("heads/hotfix"), true);
 });
 
 test("default identity accepts dev and semver tags only", () => {

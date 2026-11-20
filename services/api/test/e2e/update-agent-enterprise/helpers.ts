@@ -231,6 +231,28 @@ export function newAgentToken(): string {
   return createHash("sha256").update(randomBytes(32)).digest("hex");
 }
 
+/** Fake cosign on PATH so e2e local-registry images pass process-boundary verify. */
+export function ensureFakeCosignOnPath(binDir: string): string {
+  mkdirSync(binDir, { recursive: true });
+  const cosignPath = path.join(binDir, "cosign");
+  writeFileSync(
+    cosignPath,
+    `#!/usr/bin/env bash
+set -euo pipefail
+if [[ "\${1:-}" == "version" ]]; then
+  echo "v2.5.3"
+  exit 0
+fi
+if [[ "\${1:-}" == "verify" ]]; then
+  exit 0
+fi
+exit 1
+`,
+    { mode: 0o755 },
+  );
+  return binDir;
+}
+
 export async function startUpdateAgent(input: {
   root: string;
   repoRoot: string;
@@ -240,12 +262,22 @@ export async function startUpdateAgent(input: {
   project: string;
   installDir: string;
   port: number;
+  /** Directory that contains a fake `cosign` binary (prepended to PATH). */
+  cosignBinDir?: string;
 }): Promise<ChildProcess> {
   const main = path.join(input.root, "../../../src/update-agent/main.ts");
+  const pathEnv = input.cosignBinDir
+    ? `${input.cosignBinDir}${path.delimiter}${process.env.PATH ?? ""}`
+    : process.env.PATH;
   const child = spawn(process.execPath, ["--experimental-strip-types", main], {
     cwd: input.repoRoot,
     env: {
       ...process.env,
+      PATH: pathEnv,
+      // Prefer the fake binary over downloading the real release asset in CI.
+      ...(input.cosignBinDir
+        ? { OKKEY_COSIGN_PATH: path.join(input.cosignBinDir, "cosign") }
+        : {}),
       OKKEY_UPDATE_AGENT_PORT: String(input.port),
       OKKEY_UPDATE_AGENT_TOKEN: input.token,
       OKKEY_UPDATE_TRUSTED_PUBLIC_KEY: input.corePublicKeyPem,

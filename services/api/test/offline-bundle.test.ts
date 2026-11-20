@@ -358,14 +358,14 @@ test("enterprise failure after core succeeded keeps core and rolls enterprise ba
   });
   assert.match(finished.job.errorMessage ?? "", /Okkey 1\.2\.0 was applied/);
   assert.match(finished.job.errorMessage ?? "", /Enterprise 2\.0\.0 was not applied/);
-  assert.match(finished.job.errorMessage ?? "", /rolled back/);
+  assert.match(finished.job.errorMessage ?? "", /registry unreachable/);
   assert.deepEqual(finished.job.components, [
     { component: "okkey", version: "1.2.0", applied: true },
     { component: "enterprise", version: "2.0.0", applied: false },
   ]);
   assert.ok(calls.includes("commit:api"));
   assert.equal(calls.some((call) => call.startsWith("rollback:api")), false);
-  // Enterprise never reached replace (pull failed). Core already cleared the enterprise tag pin.
+  // Enterprise never reached replace (pull failed before env write). Core already cleared the enterprise tag pin.
   assert.equal(calls.filter((call) => call.startsWith("replace:")).length, 3);
   const env = readFileSync(envFile, "utf8");
   assert.match(env, /OKKEY_IMAGE_TAG=1\.2\.0/);
@@ -603,6 +603,10 @@ function recordingEngine(calls: string[]) {
     async imageExists() {
       calls.push("exists");
       return true;
+    },
+    async resolveImageDigestRef(image: string) {
+      calls.push(`digest:${image}`);
+      return image.includes("@sha256:") ? image : `${image}@sha256:${"a".repeat(64)}`;
     },
     async findServiceContainer(_project: string, service: string) {
       calls.push(`find:${service}`);

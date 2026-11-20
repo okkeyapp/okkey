@@ -7,6 +7,11 @@ import {
   type OfflinePackagePayload,
   type RegistryPullCredentials,
 } from "../system-updates/package-format.ts";
+import {
+  verifyTargetImageSignatures,
+  type CosignProcessRunner,
+  type CosignVerifyEnv,
+} from "./cosign-verify.ts";
 
 export type ServiceContainer = {
   id: string;
@@ -18,6 +23,8 @@ export type ServiceContainer = {
 export type UpdateApplyEngine = {
   pullImage(image: string, credentials?: RegistryPullCredentials): Promise<void>;
   imageExists(image: string): Promise<boolean>;
+  /** Resolve a pulled/local image to name@sha256:… for cosign verify. */
+  resolveImageDigestRef(image: string): Promise<string>;
   findServiceContainer(project: string, service: string): Promise<ServiceContainer | null>;
   /** Running core version from the api container, when the engine can see it. */
   readRunningCoreVersion?(project: string): Promise<string | null>;
@@ -81,8 +88,11 @@ export function imageRepository(image: string): string {
 }
 
 /**
- * Apply a verified core package. Callers must verify the signature first.
- * A failure rolls back containers that were already replaced and leaves the env file unchanged.
+ * Apply a verified core package. Callers must verify the package signature first.
+ * After pull (or local image check), cosign keyless signatures are verified before
+ * any container replace or `.env` write. Fail-closed: verify errors leave the
+ * running stack unchanged. A later failure rolls back containers that were already
+ * replaced and leaves the env file unchanged.
  *
  * On success, writes `OKKEY_*_IMAGE` from the package and clears
  * `OKKEY_ENTERPRISE_IMAGE_TAG` / `OKKEY_ENTERPRISE_VERSION` so a later
@@ -95,6 +105,9 @@ export async function applyVerifiedCorePackage(input: {
   envFilePath: string;
   isolated: boolean;
   registryCredentials?: RegistryPullCredentials;
+  /** Test hook: mock cosign at the process boundary. */
+  cosignRunner?: CosignProcessRunner;
+  cosignEnv?: CosignVerifyEnv;
 }): Promise<void> {
   if (input.payload.component !== "okkey") {
     throw new SystemUpdateError(
@@ -104,11 +117,13 @@ export async function applyVerifiedCorePackage(input: {
     );
   }
   const images = input.payload.images;
+  const targetImages: string[] = [];
   for (const service of CORE_IMAGE_SERVICES) {
     const image = images[service];
     if (!image) {
       throw new SystemUpdateError(400, "PACKAGE_INVALID", `Core package is missing the ${service} image`);
     }
+    targetImages.push(image);
     if (input.isolated) {
       if (!(await input.engine.imageExists(image))) {
         throw new SystemUpdateError(
@@ -121,6 +136,14 @@ export async function applyVerifiedCorePackage(input: {
       await input.engine.pullImage(image, input.registryCredentials);
     }
   }
+
+  await verifyTargetImageSignatures({
+    images: targetImages,
+    kind: "core",
+    resolveDigestRef: (image) => input.engine.resolveImageDigestRef(image),
+    runner: input.cosignRunner,
+    env: input.cosignEnv,
+  });
 
   const containers: ServiceContainer[] = [];
   for (const service of CORE_IMAGE_SERVICES) {

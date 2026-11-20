@@ -1,11 +1,13 @@
 import { SystemUpdateError } from "../system-updates/errors.ts";
 import type { VerifiedOfflineBundle } from "../system-updates/offline-bundle.ts";
 import { applyVerifiedCorePackage, type UpdateApplyEngine } from "./apply.ts";
+import type { CosignProcessRunner, CosignVerifyEnv } from "./cosign-verify.ts";
 import { applyVerifiedEnterprisePackage } from "./enterprise-apply.ts";
 
 /**
  * Apply a bundle that has already been verified.
  * Core runs first. If enterprise fails, enterprise rolls back and core stays.
+ * Each package path verifies cosign signatures of the images it is about to switch to.
  */
 export async function applyVerifiedOfflineBundle(input: {
   bundle: VerifiedOfflineBundle;
@@ -14,6 +16,8 @@ export async function applyVerifiedOfflineBundle(input: {
   envFilePath: string;
   isolated: boolean;
   coreVersionHint: string;
+  cosignRunner?: CosignProcessRunner;
+  cosignEnv?: CosignVerifyEnv;
 }): Promise<void> {
   await applyVerifiedCorePackage({
     payload: input.bundle.core,
@@ -21,6 +25,8 @@ export async function applyVerifiedOfflineBundle(input: {
     project: input.project,
     envFilePath: input.envFilePath,
     isolated: input.isolated,
+    cosignRunner: input.cosignRunner,
+    cosignEnv: input.cosignEnv,
   });
   try {
     await applyVerifiedEnterprisePackage({
@@ -30,6 +36,8 @@ export async function applyVerifiedOfflineBundle(input: {
       envFilePath: input.envFilePath,
       isolated: input.isolated,
       coreVersionHint: input.coreVersionHint,
+      cosignRunner: input.cosignRunner,
+      cosignEnv: input.cosignEnv,
     });
   } catch (error) {
     throw partialBundleFailure(input.bundle.core.version, input.bundle.enterprise.version, error);

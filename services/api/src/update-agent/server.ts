@@ -19,6 +19,7 @@ import {
 import type { UpdateComponentResult, UpdateJob } from "../system-updates/service.ts";
 import { applyVerifiedCorePackage, nodeEnvFileEngine, type UpdateApplyEngine } from "./apply.ts";
 import { applyVerifiedOfflineBundle } from "./bundle-apply.ts";
+import type { CosignProcessRunner, CosignVerifyEnv } from "./cosign-verify.ts";
 import { applyVerifiedEnterprisePackage } from "./enterprise-apply.ts";
 import { credentialSecrets, scrubSecrets } from "./registry-auth.ts";
 
@@ -38,6 +39,9 @@ export type UpdateAgentOptions = {
    * Test hook. When it throws, verification is treated as interrupted and apply is not called.
    */
   verify?: typeof verifyOfflinePackage;
+  /** Test hook: mock cosign at the process boundary. */
+  cosignRunner?: CosignProcessRunner;
+  cosignEnv?: CosignVerifyEnv;
 };
 
 type StoredJob = UpdateJob & { rollbackStarted?: boolean };
@@ -121,6 +125,8 @@ export function createUpdateAgent(options: UpdateAgentOptions) {
           isolated: options.isolated,
           coreVersionHint: options.coreVersion ?? "",
           registryCredentials,
+          cosignRunner: options.cosignRunner,
+          cosignEnv: options.cosignEnv,
         });
       } else {
         await applyVerifiedCorePackage({
@@ -130,6 +136,8 @@ export function createUpdateAgent(options: UpdateAgentOptions) {
           envFilePath: options.envFilePath,
           isolated: options.isolated,
           registryCredentials,
+          cosignRunner: options.cosignRunner,
+          cosignEnv: options.cosignEnv,
         });
       }
       job.status = "succeeded";
@@ -190,6 +198,8 @@ export function createUpdateAgent(options: UpdateAgentOptions) {
         envFilePath: options.envFilePath,
         isolated: options.isolated,
         coreVersionHint: options.coreVersion ?? "",
+        cosignRunner: options.cosignRunner,
+        cosignEnv: options.cosignEnv,
       });
       report[0] = { component: "okkey", version: bundle.core.version, applied: true };
       report[1] = { component: "enterprise", version: bundle.enterprise.version, applied: true };

@@ -13,6 +13,11 @@ import {
   type ServiceContainer,
   type UpdateApplyEngine,
 } from "./apply.ts";
+import {
+  verifyTargetImageSignatures,
+  type CosignProcessRunner,
+  type CosignVerifyEnv,
+} from "./cosign-verify.ts";
 import { credentialSecrets, scrubSecrets } from "./registry-auth.ts";
 
 type EnterpriseTarget = {
@@ -24,9 +29,11 @@ type EnterpriseTarget = {
 
 /**
  * Apply a verified enterprise package.
- * Callers must verify the signature with the enterprise trusted key first.
+ * Callers must verify the package signature with the enterprise trusted key first.
  * `minCoreVersion` is checked before any tag, pull, or container change.
- * Registry credentials are passed only to the image pull.
+ * Images are pulled (unless isolated), then cosign keyless signatures are verified
+ * before any `.env` write or container replace. Fail-closed: verify errors leave
+ * the running stack unchanged. Registry credentials are passed only to the image pull.
  *
  * Package image keys stay `enterprise-api|web|worker`. Runtime replaces the
  * production compose services `api|web|worker` and writes `OKKEY_*_IMAGE`.
@@ -39,6 +46,9 @@ export async function applyVerifiedEnterprisePackage(input: {
   isolated: boolean;
   coreVersionHint: string;
   registryCredentials?: RegistryPullCredentials;
+  /** Test hook: mock cosign at the process boundary. */
+  cosignRunner?: CosignProcessRunner;
+  cosignEnv?: CosignVerifyEnv;
 }): Promise<void> {
   if (input.payload.component !== "enterprise") {
     throw new SystemUpdateError(400, "PACKAGE_INVALID", "Package is not an enterprise update");
@@ -82,6 +92,28 @@ export async function applyVerifiedEnterprisePackage(input: {
     targets.push({ packageService, composeService, container, image });
   }
 
+  // Pull (or require local) and verify signatures before any env or container mutation.
+  for (const target of targets) {
+    if (input.isolated) {
+      if (!(await input.engine.imageExists(target.image))) {
+        throw new SystemUpdateError(
+          400,
+          "APPLY_FAILED",
+          `Image ${target.image} is not present locally, and isolated mode will not download it`,
+        );
+      }
+    } else {
+      await input.engine.pullImage(target.image, input.registryCredentials);
+    }
+  }
+  await verifyTargetImageSignatures({
+    images: targets.map((target) => target.image),
+    kind: "enterprise",
+    resolveDigestRef: (image) => input.engine.resolveImageDigestRef(image),
+    runner: input.cosignRunner,
+    env: input.cosignEnv,
+  });
+
   const secrets = credentialSecrets(input.registryCredentials);
   const previousEnv = await input.engine.readEnvFile(input.envFilePath);
   let envWritten = false;
@@ -98,20 +130,6 @@ export async function applyVerifiedEnterprisePackage(input: {
     }
     await input.engine.writeEnvFile(input.envFilePath, next);
     envWritten = true;
-
-    for (const target of targets) {
-      if (input.isolated) {
-        if (!(await input.engine.imageExists(target.image))) {
-          throw new SystemUpdateError(
-            400,
-            "APPLY_FAILED",
-            `Image ${target.image} is not present locally, and isolated mode will not download it`,
-          );
-        }
-      } else {
-        await input.engine.pullImage(target.image, input.registryCredentials);
-      }
-    }
 
     for (const target of targets) {
       replaced.push(

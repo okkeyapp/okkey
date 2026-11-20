@@ -5,6 +5,7 @@ import type { UpdateJob } from "../../../../src/system-updates/service.ts";
 import type { UpdateApplyEngine } from "../../../../src/update-agent/apply.ts";
 import { createDockerApplyEngine, unixSocketTransport } from "../../../../src/update-agent/docker-engine.ts";
 import { startUpdateAgentServer } from "../../../../src/update-agent/server.ts";
+import { TEST_COSIGN_OK } from "../../../test-cosign-default.ts";
 import { AGENT_TOKEN } from "./constants.ts";
 
 export function createRecordingDockerEngine(socketPath = "/var/run/docker.sock"): {
@@ -46,6 +47,8 @@ export async function startAgent(input: {
     project: input.project,
     envFilePath: input.envFilePath,
     engine: input.engine,
+    // Local e2e registry images are unsigned; mock cosign at the process boundary.
+    cosignRunner: TEST_COSIGN_OK,
   });
   await new Promise<void>((resolve, reject) => {
     server.once("listening", () => resolve());
