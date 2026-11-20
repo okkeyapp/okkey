@@ -13,8 +13,12 @@
 # Emergency bypass (not for production; prints a loud warning):
 #   ./deploy/docker/install.sh --skip-cosign-verify
 #
-# QA candidate images (release/* and hotfix/*). Signature verification stays on:
-#   ./deploy/docker/install.sh --allow-candidate
+# Default trust: refs/tags/v*, refs/heads/release/*, refs/heads/hotfix/*.
+# --allow-candidate is accepted for compatibility (no-op; same as default).
+#
+# Tracking :dev images (signed from refs/heads/dev). Opt-in; verification stays on:
+#   curl -fsSL …/install.sh | OKKEY_COSIGN_ALLOW_DEV=1 OKKEY_IMAGE_TAG=dev bash
+#   ./deploy/docker/install.sh --allow-dev
 set -euo pipefail
 
 OKKEY_INSTALL_DIR="${OKKEY_INSTALL_DIR:-$HOME/okkey}"
@@ -39,17 +43,21 @@ die() { printf 'error: %s\n' "$*" >&2; exit 1; }
 
 usage() {
   cat <<'EOF'
-Usage: install.sh [--skip-cosign-verify] [--allow-candidate]
+Usage: install.sh [--skip-cosign-verify] [--allow-candidate] [--allow-dev]
 
   --skip-cosign-verify   Emergency bypass: do not verify GHCR cosign signatures
                          before docker compose up. Prints a loud warning.
                          Off by default. Not for production.
-  --allow-candidate      Also accept publish-images.yml signatures from
-                         refs/heads/release/* and refs/heads/hotfix/*.
-                         Verification stays on. Prints a warning that a
-                         pre-release candidate is being installed.
-                         Off by default. Process env: OKKEY_ALLOW_CANDIDATE=1
-                         (not read from .env).
+  --allow-candidate      Compatibility no-op. Default trust already includes
+                         refs/tags/v*, refs/heads/release/*, and
+                         refs/heads/hotfix/*. Verification stays on.
+                         Process env: OKKEY_ALLOW_CANDIDATE=1 (not read from .env).
+  --allow-dev            Also accept publish-images.yml signatures from
+                         refs/heads/dev (tracking :dev images).
+                         Verification stays on. Does not trust other branches.
+                         Off by default. Process env: OKKEY_COSIGN_ALLOW_DEV=1
+                         (not read from .env). Required for staging/dev servers
+                         that install OKKEY_IMAGE_TAG=dev.
   -h, --help             Show this help
 EOF
 }
@@ -57,6 +65,7 @@ EOF
 # Set by parse_args. Not read from .env.
 SKIP_COSIGN_VERIFY_FLAG=0
 ALLOW_CANDIDATE_FLAG=0
+ALLOW_DEV_FLAG=0
 
 parse_args() {
   while [[ $# -gt 0 ]]; do
@@ -67,6 +76,10 @@ parse_args() {
         ;;
       --allow-candidate)
         ALLOW_CANDIDATE_FLAG=1
+        shift
+        ;;
+      --allow-dev)
+        ALLOW_DEV_FLAG=1
         shift
         ;;
       -h|--help)
@@ -81,10 +94,23 @@ Run: install.sh --help"
   done
 }
 
+# Strip one layer of matching surrounding quotes (Compose env-file behavior).
+strip_env_quotes() {
+  local value="$1"
+  if [[ "${value}" =~ ^\"(.*)\"$ ]]; then
+    value="${BASH_REMATCH[1]}"
+  elif [[ "${value}" =~ ^\'(.*)\'$ ]]; then
+    value="${BASH_REMATCH[1]}"
+  fi
+  printf '%s\n' "${value}"
+}
+
 # Read KEY=value from the install-dir .env (no export). Empty if missing.
 env_file_value() {
   local key="$1"
-  grep -E "^${key}=" .env 2>/dev/null | cut -d= -f2- || true
+  local value
+  value="$(grep -E "^${key}=" .env 2>/dev/null | cut -d= -f2- || true)"
+  strip_env_quotes "${value}"
 }
 
 # Rewrite KEY=value in ./.env without sed (sed treats `&` `\` in the replacement).
@@ -183,41 +209,90 @@ need_cmd() {
 
 # Cosign keyless OIDC identity for Core publish workflow
 # (.github/workflows/publish-images.yml on okkeyapp/okkey).
-# Default: refs/heads/dev and refs/tags/v<semver> only. --allow-candidate adds
-# refs/heads/release/<name> and refs/heads/hotfix/<name>. Anchored with ^...$
-# because cosign matches the regexp as a substring. An exported
-# OKKEY_COSIGN_CERTIFICATE_IDENTITY_REGEXP replaces both.
-OKKEY_COSIGN_DEFAULT_IDENTITY_REGEXP='^https://github\.com/okkeyapp/okkey/\.github/workflows/publish-images\.yml@refs/(?:heads/dev|tags/v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?)$'
-OKKEY_COSIGN_CANDIDATE_IDENTITY_REGEXP='^https://github\.com/okkeyapp/okkey/\.github/workflows/publish-images\.yml@refs/(?:heads/dev|tags/v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?|heads/release/[0-9A-Za-z._-]+|heads/hotfix/[0-9A-Za-z._-]+)$'
+# Default (same shape as Enterprise cosign-identity.sh): refs/tags/v<semver>,
+# refs/heads/release/<name>, refs/heads/hotfix/<name>. Not refs/heads/dev.
+# --allow-candidate is a compatibility alias of the default (no-op).
+# --allow-dev / OKKEY_COSIGN_ALLOW_DEV=1 adds refs/heads/dev only.
+# Anchored with ^...$ because cosign matches the regexp as a substring.
+# An exported OKKEY_COSIGN_CERTIFICATE_IDENTITY_REGEXP replaces all of these.
+OKKEY_COSIGN_DEFAULT_IDENTITY_REGEXP='^https://github\.com/okkeyapp/okkey/\.github/workflows/publish-images\.yml@refs/(?:heads/release/[0-9A-Za-z._-]+|heads/hotfix/[0-9A-Za-z._-]+|tags/v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?)$'
+OKKEY_COSIGN_DEFAULT_DEV_IDENTITY_REGEXP='^https://github\.com/okkeyapp/okkey/\.github/workflows/publish-images\.yml@refs/(?:heads/dev|heads/release/[0-9A-Za-z._-]+|heads/hotfix/[0-9A-Za-z._-]+|tags/v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?)$'
+# Alias kept for callers / tests that still ask for "candidate"; same as default (TSK-302).
+OKKEY_COSIGN_CANDIDATE_IDENTITY_REGEXP='^https://github\.com/okkeyapp/okkey/\.github/workflows/publish-images\.yml@refs/(?:heads/release/[0-9A-Za-z._-]+|heads/hotfix/[0-9A-Za-z._-]+|tags/v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?)$'
+OKKEY_COSIGN_CANDIDATE_DEV_IDENTITY_REGEXP='^https://github\.com/okkeyapp/okkey/\.github/workflows/publish-images\.yml@refs/(?:heads/dev|heads/release/[0-9A-Za-z._-]+|heads/hotfix/[0-9A-Za-z._-]+|tags/v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?)$'
 OKKEY_COSIGN_CERTIFICATE_OIDC_ISSUER="${OKKEY_COSIGN_CERTIFICATE_OIDC_ISSUER:-https://token.actions.githubusercontent.com}"
 
-# Resolve image ref used by compose for a service (env override → default GHCR).
+# Same precedence as Compose: process env (even when empty) wins over --env-file
+# .env. Empty values are returned as empty so callers can apply `:-` defaults
+# without falling through to .env (Compose `${VAR:-default}` semantics).
+resolve_env_value() {
+  local key="$1"
+  local value=""
+  if [[ -v "${key}" ]]; then
+    value="${!key}"
+  else
+    value="$(env_file_value "${key}")"
+  fi
+  printf '%s\n' "${value}"
+}
+
+# Image tag compose interpolates for api/worker/web:
+# ${OKKEY_ENTERPRISE_IMAGE_TAG:-${OKKEY_IMAGE_TAG:-1.0.0-beta.2}}
+compose_image_tag() {
+  local enterprise_tag image_tag
+  enterprise_tag="$(resolve_env_value OKKEY_ENTERPRISE_IMAGE_TAG)"
+  if [[ -n "${enterprise_tag}" ]]; then
+    printf '%s\n' "${enterprise_tag}"
+    return 0
+  fi
+  image_tag="$(resolve_env_value OKKEY_IMAGE_TAG)"
+  printf '%s\n' "${image_tag:-1.0.0-beta.2}"
+}
+
+# Resolve image ref compose will run (name + tag, matching compose interpolation).
 compose_image_ref() {
   local env_key="$1"
   local default_image="$2"
-  local tag="$3"
-  local image
-  image="$(env_file_value "${env_key}")"
+  local image tag
+  image="$(resolve_env_value "${env_key}")"
   image="${image:-${default_image}}"
+  tag="$(compose_image_tag)"
   printf '%s:%s\n' "${image}" "${tag}"
 }
 
-# Resolve a pulled image to a registry digest ref (name@sha256:…).
-image_digest_ref() {
+# Repository name for a name:tag (or name) ref. Handles registry:port/name:tag.
+image_ref_repository() {
   local ref="$1"
-  local digest_line digest
-  digest_line="$(docker image inspect --format '{{index .RepoDigests 0}}' "${ref}" 2>/dev/null || true)"
-  if [[ -z "${digest_line}" || "${digest_line}" == "<no value>" ]]; then
-    die "cannot resolve digest for ${ref} after pull (RepoDigests empty).
-hint: re-pull from GHCR, or re-run with --skip-cosign-verify only for local/unsigned images."
-  fi
-  # RepoDigests is already name@sha256:…
-  if [[ "${digest_line}" == *@sha256:* ]]; then
-    printf '%s\n' "${digest_line}"
+  if [[ "${ref}" == *@* ]]; then
+    printf '%s\n' "${ref%@*}"
     return 0
   fi
+  # Tag is the final :<segment> when that segment has no '/'.
+  if [[ "${ref}" == *:* && "${ref##*:}" != */* ]]; then
+    printf '%s\n' "${ref%:*}"
+    return 0
+  fi
+  printf '%s\n' "${ref}"
+}
+
+# Resolve a pulled image to a registry digest ref (name@sha256:…).
+# Prefer the RepoDigest whose repository matches the verified ref — never
+# blindly take index 0 when the image has multiple remotes.
+image_digest_ref() {
+  local ref="$1"
+  local repo digests digest_line digest
+  repo="$(image_ref_repository "${ref}")"
+  digests="$(docker image inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' "${ref}" 2>/dev/null || true)"
+  while IFS= read -r digest_line || [[ -n "${digest_line}" ]]; do
+    [[ -z "${digest_line}" || "${digest_line}" == "<no value>" ]] && continue
+    if [[ "${digest_line}" == "${repo}@sha256:"* ]]; then
+      printf '%s\n' "${digest_line}"
+      return 0
+    fi
+  done <<< "${digests}"
   digest="$(docker image inspect --format '{{.Id}}' "${ref}" 2>/dev/null || true)"
-  die "unexpected RepoDigests format for ${ref}: ${digest_line} (id=${digest})"
+  die "cannot resolve matching digest for ${ref} after pull (no RepoDigest for ${repo}; id=${digest}).
+hint: re-pull from the registry, or re-run with --skip-cosign-verify only for local/unsigned images."
 }
 
 # Loud stderr warning for the emergency signature bypass.
@@ -229,28 +304,40 @@ warn_skip_cosign() {
     "==> WARNING: Emergency bypass only. Do not use this for production." >&2
 }
 
-# Opt-in for release/* and hotfix/* candidate signatures. Verification stays on.
-warn_allow_candidate() {
+# Opt-in for refs/heads/dev signatures (tracking :dev). Verification stays on.
+warn_allow_dev() {
   local why="$1"
   printf '%s\n' \
-    "==> WARNING: pre-release candidate install (${why})." \
-    "==> WARNING: also accepting publish-images signatures from refs/heads/release/* and refs/heads/hotfix/*." \
+    "==> WARNING: trusting refs/heads/dev signatures (${why})." \
+    "==> WARNING: also accepting publish-images signatures from refs/heads/dev." \
     "==> WARNING: Signature verification stays on. This is not a bypass." >&2
 }
 
+# Compatibility: --allow-candidate no longer widens trust (already in default).
+warn_allow_candidate() {
+  local why="$1"
+  printf '%s\n' \
+    "==> NOTE: ${why} is a no-op; default trust already includes refs/tags/v*, refs/heads/release/*, and refs/heads/hotfix/*." \
+    "==> NOTE: Signature verification stays on. This is not a bypass." >&2
+}
+
 # Verify cosign keyless signatures for api/web/worker before compose up.
-# Default is verify on for every GHCR tag, including full SemVer and :dev.
+# Default trusts refs/tags/v*, refs/heads/release/*, refs/heads/hotfix/*.
+# :dev needs --allow-dev / OKKEY_COSIGN_ALLOW_DEV=1.
 # Emergency bypass is the CLI flag --skip-cosign-verify (or the equivalent
 # process env OKKEY_SKIP_COSIGN_VERIFY=1). Local installs that skip pull also
 # skip verify unless OKKEY_FORCE_COSIGN_VERIFY=1.
 verify_pulled_image_signatures() {
-  local tag="$1"
-  local skip_pull="${2:-0}"
+  local skip_pull="${1:-0}"
   local allow_candidate=0
+  local allow_dev=0
 
-  # Process env only. A line in the install .env does not enable this.
+  # Process env only. A line in the install .env does not enable these.
   if [[ "${ALLOW_CANDIDATE_FLAG}" == "1" || "${OKKEY_ALLOW_CANDIDATE:-}" == "1" ]]; then
     allow_candidate=1
+  fi
+  if [[ "${ALLOW_DEV_FLAG}" == "1" || "${OKKEY_COSIGN_ALLOW_DEV:-}" == "1" ]]; then
+    allow_dev=1
   fi
 
   if [[ "${SKIP_COSIGN_VERIFY_FLAG}" == "1" ]]; then
@@ -276,13 +363,19 @@ Emergency bypass (prints a warning; not for production):
   fi
   need_cmd docker
 
+  # Explicit override replaces the built-in sets. When --allow-dev is also set,
+  # the override must already include heads/dev (Enterprise wrapper expands its
+  # identity before export); otherwise fail loudly instead of silently ignoring.
   local identity_regexp="${OKKEY_COSIGN_CERTIFICATE_IDENTITY_REGEXP:-}"
-  if [[ -z "${identity_regexp}" ]]; then
-    if [[ "${allow_candidate}" == "1" ]]; then
-      identity_regexp="${OKKEY_COSIGN_CANDIDATE_IDENTITY_REGEXP}"
-    else
-      identity_regexp="${OKKEY_COSIGN_DEFAULT_IDENTITY_REGEXP}"
+  if [[ -n "${identity_regexp}" ]]; then
+    if [[ "${allow_dev}" == "1" && "${identity_regexp}" != *heads/dev* ]]; then
+      die "--allow-dev / OKKEY_COSIGN_ALLOW_DEV=1 has no effect while OKKEY_COSIGN_CERTIFICATE_IDENTITY_REGEXP is set without heads/dev.
+Include heads/dev in that regexp, or unset the override so the built-in allow-dev set applies."
     fi
+  elif [[ "${allow_dev}" == "1" ]]; then
+    identity_regexp="${OKKEY_COSIGN_DEFAULT_DEV_IDENTITY_REGEXP}"
+  else
+    identity_regexp="${OKKEY_COSIGN_DEFAULT_IDENTITY_REGEXP}"
   fi
 
   if [[ "${allow_candidate}" == "1" ]]; then
@@ -292,11 +385,20 @@ Emergency bypass (prints a warning; not for production):
       warn_allow_candidate "OKKEY_ALLOW_CANDIDATE=1"
     fi
   fi
+  if [[ "${allow_dev}" == "1" && -z "${OKKEY_COSIGN_CERTIFICATE_IDENTITY_REGEXP:-}" ]]; then
+    if [[ "${ALLOW_DEV_FLAG}" == "1" ]]; then
+      warn_allow_dev "--allow-dev"
+    else
+      warn_allow_dev "OKKEY_COSIGN_ALLOW_DEV=1"
+    fi
+  fi
 
+  # compose_image_ref resolves name+tag the same way compose does
+  # (ENTERPRISE_IMAGE_TAG → IMAGE_TAG → 1.0.0-beta.2).
   local refs=()
-  refs+=("$(compose_image_ref OKKEY_API_IMAGE ghcr.io/okkeyapp/api "${tag}")")
-  refs+=("$(compose_image_ref OKKEY_WORKER_IMAGE ghcr.io/okkeyapp/worker "${tag}")")
-  refs+=("$(compose_image_ref OKKEY_WEB_IMAGE ghcr.io/okkeyapp/web "${tag}")")
+  refs+=("$(compose_image_ref OKKEY_API_IMAGE ghcr.io/okkeyapp/api)")
+  refs+=("$(compose_image_ref OKKEY_WORKER_IMAGE ghcr.io/okkeyapp/worker)")
+  refs+=("$(compose_image_ref OKKEY_WEB_IMAGE ghcr.io/okkeyapp/web)")
 
   local ref digest_ref
   for ref in "${refs[@]}"; do
@@ -310,6 +412,7 @@ Emergency bypass (prints a warning; not for production):
 The image is unsigned or was not signed by this repo's publish-images workflow
 (GitHub Actions OIDC). Refusing to start the stack.
 hint: Core images must be signed keyless by .github/workflows/publish-images.yml.
+  For OKKEY_IMAGE_TAG=dev / refs/heads/dev signatures: pass --allow-dev or set OKKEY_COSIGN_ALLOW_DEV=1 (process env, not .env).
   Install cosign: https://docs.sigstore.dev/cosign/system_config/installation/
   Emergency bypass only: install.sh --skip-cosign-verify (prints a warning; not for prod)."
     fi
@@ -577,11 +680,33 @@ if [[ ! -f .env ]]; then
     log "==> Wrote custom ports/URLs into .env (WEB_PORT=${WEB_PORT:-}, API_PORT=${API_PORT:-})"
   fi
 
+  # Persist custom image names so later `compose --env-file .env` and the update
+  # agent keep the same refs the installer verified (process env wins at runtime;
+  # .env.example leaves OKKEY_*_IMAGE commented out).
+  if [[ -n "${OKKEY_API_IMAGE:-}" ]]; then
+    replace_env OKKEY_API_IMAGE "${OKKEY_API_IMAGE}"
+  fi
+  if [[ -n "${OKKEY_WORKER_IMAGE:-}" ]]; then
+    replace_env OKKEY_WORKER_IMAGE "${OKKEY_WORKER_IMAGE}"
+  fi
+  if [[ -n "${OKKEY_WEB_IMAGE:-}" ]]; then
+    replace_env OKKEY_WEB_IMAGE "${OKKEY_WEB_IMAGE}"
+  fi
+  if [[ -n "${OKKEY_API_IMAGE:-}" || -n "${OKKEY_WORKER_IMAGE:-}" || -n "${OKKEY_WEB_IMAGE:-}" ]]; then
+    log "==> Wrote custom image names into .env (OKKEY_API_IMAGE=${OKKEY_API_IMAGE:-}, OKKEY_WORKER_IMAGE=${OKKEY_WORKER_IMAGE:-}, OKKEY_WEB_IMAGE=${OKKEY_WEB_IMAGE:-})"
+  fi
+
   log "==> Generated JWT_SECRET, SESSION_SECRET, EMAIL_DEAD_LETTER_SEAL_KEY, POSTGRES_PASSWORD, MINIO_ROOT_PASSWORD"
 else
   log "==> Reusing existing .env"
-  if [[ -n "${OKKEY_IMAGE_TAG:-}" ]] || [[ -n "${OKKEY_CHANNEL:-}" ]]; then
-    log "==> Note: OKKEY_IMAGE_TAG / OKKEY_CHANNEL set but .env already exists — edit OKKEY_IMAGE_TAG in .env or remove .env to apply"
+  # Process env still wins for this run (same as compose), but is not written into .env.
+  if [[ -n "${OKKEY_IMAGE_TAG:-}" ]]; then
+    log "==> Note: OKKEY_IMAGE_TAG=${OKKEY_IMAGE_TAG} is set in the process environment — this run uses it for pull/verify, but it is not written to the existing .env"
+  elif [[ -n "${OKKEY_CHANNEL:-}" ]]; then
+    log "==> Note: OKKEY_CHANNEL set but .env already exists — OKKEY_CHANNEL only applies on a fresh install; edit OKKEY_IMAGE_TAG in .env to change the persisted tag"
+  fi
+  if [[ -n "${OKKEY_API_IMAGE:-}" || -n "${OKKEY_WORKER_IMAGE:-}" || -n "${OKKEY_WEB_IMAGE:-}" ]]; then
+    log "==> Note: OKKEY_API_IMAGE / OKKEY_WORKER_IMAGE / OKKEY_WEB_IMAGE set in the process environment — this run uses them for pull/verify, but they are not written to the existing .env"
   fi
   if [[ "${OKKEY_RESET_VOLUMES:-}" == "1" ]]; then
     reset_compose_volumes
@@ -600,9 +725,9 @@ fi
 replace_env OKKEY_COMPOSE_PROJECT "$(compose_project_name)"
 replace_env OKKEY_HOST_INSTALL_DIR "${OKKEY_INSTALL_DIR}"
 
-image_tag="$(env_file_value OKKEY_IMAGE_TAG)"
-image_tag="${image_tag:-dev}"
-log "==> Pulling images and starting stack (compose project=$(compose_project_name), OKKEY_IMAGE_TAG=${image_tag})"
+# Same tag compose uses for api/worker/web image refs.
+image_tag="$(compose_image_tag)"
+log "==> Pulling images and starting stack (compose project=$(compose_project_name), image tag=${image_tag})"
 # OKKEY_SKIP_PULL=1: use images already present locally (e.g. :local / pre-loaded tags).
 skip_pull=0
 if [[ "${OKKEY_SKIP_PULL:-}" == "1" ]]; then
@@ -613,12 +738,13 @@ else
     die "docker compose pull failed (OKKEY_IMAGE_TAG=${image_tag}).
 hint: the tag must exist in GHCR (ghcr.io/okkeyapp/{api,web,worker}).
   Tracking channel: OKKEY_IMAGE_TAG=dev (published only by a manual workflow_dispatch of .github/workflows/publish-images.yml on refs/heads/dev; a push to the dev branch does not publish :dev).
+  Cosign identity for :dev: pass --allow-dev or set OKKEY_COSIGN_ALLOW_DEV=1 (process env, not .env).
   Production: pin a published SemVer with OKKEY_IMAGE_TAG=<semver> (OKKEY_CHANNEL=prod is gated until SemVer exists).
   Or set OKKEY_SKIP_PULL=1 with local images."
   fi
 fi
 # Signature check before compose up — unsigned / mismatched digest stops install.
-verify_pulled_image_signatures "${image_tag}" "${skip_pull}"
+verify_pulled_image_signatures "${skip_pull}"
 run_compose .env up -d
 wait_for_api_healthy
 
