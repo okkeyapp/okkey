@@ -387,17 +387,14 @@ test("apply pins containers to verified digests and does not apply when cosign f
   const trustedRootPath = path.join(offlineRoot, "trusted_root.json");
   writeFileSync(trustedRootPath, "{}\n");
   const localImageDirs: Record<string, string> = {};
-  const configByKey: Record<string, string> = {
-    api: DIGEST_A,
-    web: DIGEST_B,
-    worker: DIGEST_C,
-  };
+  const configByKey: Record<string, string> = {};
   const manifestByKey: Record<string, string> = {};
   for (const key of ["api", "web", "worker"] as const) {
     const dir = path.join(offlineRoot, "cosign", key);
     mkdirSync(dir, { recursive: true });
-    const written = await writeMinimalOciLayout(dir, { configDigest: configByKey[key]! });
+    const written = await writeMinimalOciLayout(dir, { seed: key });
     localImageDirs[key] = dir;
+    configByKey[key] = written.configDigest;
     manifestByKey[key] = written.manifestDigest;
   }
   const offlineMaterial = { trustedRootPath, localImageDirs };
@@ -410,9 +407,9 @@ test("apply pins containers to verified digests and does not apply when cosign f
         [coreImages.worker]: manifestByKey.worker!,
       },
       {
-        [coreImages.api]: DIGEST_A,
-        [coreImages.web]: DIGEST_B,
-        [coreImages.worker]: DIGEST_C,
+        [coreImages.api]: configByKey.api!,
+        [coreImages.web]: configByKey.web!,
+        [coreImages.worker]: configByKey.worker!,
       },
     ),
     async readEnvFile() {

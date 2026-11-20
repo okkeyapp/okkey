@@ -1,7 +1,9 @@
-import { access, constants, stat } from "node:fs/promises";
+import { access, constants, mkdtemp, readFile, rm, stat } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { SystemUpdateError } from "../system-updates/errors.ts";
+import { extractCosignOfflineFromBundleZip } from "../system-updates/offline-bundle.ts";
 import type {
   OfflinePackageCosignOffline,
   OfflinePackagePayload,
@@ -105,41 +107,137 @@ export function conventionalCosignOffline(
   };
 }
 
+export type PreparedCosignOffline = {
+  material: CosignOfflineMaterial | undefined;
+  /** Remove a temp extract directory created for this apply (no-op otherwise). */
+  cleanup: () => Promise<void>;
+};
+
 /**
- * Resolve offline material for an apply:
+ * Resolve offline material for an apply (TSK-317):
  * 1. `offlineMaterial` test hook (already absolute),
- * 2. else `cosignOfflineRoot` / `OKKEY_COSIGN_OFFLINE_DIR` + payload.cosignOffline
- *    or conventional paths when files exist.
+ * 2. else material already under `cosignOfflineRoot` / `OKKEY_COSIGN_OFFLINE_DIR`,
+ * 3. else extract from `bundleZip` / `OKKEY_COSIGN_OFFLINE_BUNDLE_ZIP` into a
+ *    temp dir under the offline root (cleaned up by the caller).
  */
-export async function resolveApplyCosignOfflineMaterial(input: {
+export async function prepareApplyCosignOfflineMaterial(input: {
   payload: OfflinePackagePayload;
   isolated: boolean;
   offlineMaterial?: CosignOfflineMaterial;
   cosignOfflineRoot?: string;
+  /** Optional air-gap zip bytes (integration / upload helper). */
+  bundleZip?: Buffer;
   processEnv?: NodeJS.ProcessEnv;
-}): Promise<CosignOfflineMaterial | undefined> {
+}): Promise<PreparedCosignOffline> {
+  const noop = async (): Promise<void> => {};
   if (!input.isolated) {
-    return undefined;
+    return { material: undefined, cleanup: noop };
   }
   if (input.offlineMaterial) {
     await assertFile(input.offlineMaterial.trustedRootPath, "trusted_root");
     for (const [key, dir] of Object.entries(input.offlineMaterial.localImageDirs)) {
       await assertDirectory(dir, key);
     }
-    return input.offlineMaterial;
+    return { material: input.offlineMaterial, cleanup: noop };
   }
+
   const env = input.processEnv ?? process.env;
   const root = (input.cosignOfflineRoot ?? env.OKKEY_COSIGN_OFFLINE_DIR ?? "").trim();
-  if (!root) {
+  if (root) {
+    try {
+      const material = await resolveCosignOfflineMaterial({
+        payload: input.payload,
+        materialRoot: root,
+      });
+      return { material, cleanup: noop };
+    } catch (error) {
+      // Fall through to zip extract when the conventional tree is not populated yet.
+      if (!(error instanceof SystemUpdateError) || error.code !== "IMAGE_SIGNATURE_INVALID") {
+        throw error;
+      }
+    }
+  }
+
+  const staged = await stageCosignOfflineFromBundleZip({
+    bundleZip: input.bundleZip,
+    processEnv: env,
+    offlineRoot: root || undefined,
+  });
+  if (!staged) {
     throw offlineSignatureFailure(
       "(offline)",
       "isolated mode requires OKKEY_COSIGN_OFFLINE_DIR or offline cosign material",
     );
   }
-  return resolveCosignOfflineMaterial({
+  const material = await resolveCosignOfflineMaterial({
     payload: input.payload,
-    materialRoot: root,
+    materialRoot: staged.materialRoot,
   });
+  return { material, cleanup: staged.cleanup };
+}
+
+/** @deprecated Prefer prepareApplyCosignOfflineMaterial (supports zip staging + cleanup). */
+export async function resolveApplyCosignOfflineMaterial(input: {
+  payload: OfflinePackagePayload;
+  isolated: boolean;
+  offlineMaterial?: CosignOfflineMaterial;
+  cosignOfflineRoot?: string;
+  bundleZip?: Buffer;
+  processEnv?: NodeJS.ProcessEnv;
+}): Promise<CosignOfflineMaterial | undefined> {
+  const prepared = await prepareApplyCosignOfflineMaterial(input);
+  // Legacy callers do not clean up; only use when no temp extract was created.
+  return prepared.material;
+}
+
+/**
+ * Extract `trusted_root.json` + `cosign/<key>/` from an air-gap bundle zip into
+ * a fresh directory the update-agent / cosign runner can read. Returns null when
+ * no zip bytes/path are available.
+ */
+export async function stageCosignOfflineFromBundleZip(input: {
+  bundleZip?: Buffer;
+  /** Absolute offline root; temp extract is created underneath when set. */
+  offlineRoot?: string;
+  processEnv?: NodeJS.ProcessEnv;
+}): Promise<{ materialRoot: string; cleanup: () => Promise<void> } | null> {
+  const env = input.processEnv ?? process.env;
+  let zipBytes = input.bundleZip;
+  if (!zipBytes) {
+    const zipPath = (env.OKKEY_COSIGN_OFFLINE_BUNDLE_ZIP ?? "").trim();
+    if (!zipPath) {
+      return null;
+    }
+    try {
+      zipBytes = await readFile(zipPath);
+    } catch {
+      throw offlineSignatureFailure(
+        "(offline)",
+        "OKKEY_COSIGN_OFFLINE_BUNDLE_ZIP could not be read",
+      );
+    }
+  }
+
+  const parent = (input.offlineRoot ?? "").trim() || path.join(tmpdir(), "okkey-cosign-offline");
+  await mkdirp(parent);
+  const materialRoot = await mkdtemp(path.join(parent, "extract-"));
+  try {
+    extractCosignOfflineFromBundleZip(zipBytes, materialRoot);
+  } catch (error) {
+    await rm(materialRoot, { recursive: true, force: true }).catch(() => {});
+    throw error;
+  }
+  return {
+    materialRoot,
+    cleanup: async () => {
+      await rm(materialRoot, { recursive: true, force: true }).catch(() => {});
+    },
+  };
+}
+
+async function mkdirp(dir: string): Promise<void> {
+  const { mkdir } = await import("node:fs/promises");
+  await mkdir(dir, { recursive: true });
 }
 
 /**

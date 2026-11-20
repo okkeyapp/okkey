@@ -4,14 +4,21 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
+import { access, constants as fsConstants } from "node:fs/promises";
+import { createHash } from "node:crypto";
+
 import {
   OKKEY_COSIGN_DEFAULT_DEV_IDENTITY_REGEXP,
   OKKEY_COSIGN_DEFAULT_IDENTITY_REGEXP,
+  overrideAllowsHeadsDev,
+  readEnvFileValue,
   resolveCosignIdentity,
+  stripEnvQuotes,
 } from "../src/update-agent/cosign-identity.ts";
 import {
   buildCosignVerifyArgs,
   conventionalCosignOffline,
+  prepareApplyCosignOfflineMaterial,
   resolveCosignOfflineMaterial,
 } from "../src/update-agent/cosign-offline.ts";
 import {
@@ -19,7 +26,11 @@ import {
   verifyPackageImageSignatures,
   type CosignRunner,
 } from "../src/update-agent/cosign-verify.ts";
-import { writeMinimalOciLayout } from "../src/update-agent/oci-layout.ts";
+import {
+  readOciLayoutImageDigests,
+  writeCosignSaveStyleOciLayout,
+  writeMinimalOciLayout,
+} from "../src/update-agent/oci-layout.ts";
 import {
   applyVerifiedCorePackage,
   imageRepository,
@@ -36,11 +47,13 @@ import {
   type OfflinePackagePayload,
 } from "../src/system-updates/package-format.ts";
 import { SystemUpdateError } from "../src/system-updates/errors.ts";
-import { planOfflinePathStaging } from "../src/update-agent/docker-cosign.ts";
+import {
+  buildOfflineMaterialArchive,
+  COSIGN_DOCKER_OFFLINE_TAR_DIR,
+  planOfflinePathStaging,
+  splitUstarName,
+} from "../src/update-agent/docker-cosign.ts";
 
-const CONFIG_A = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
-const CONFIG_B = "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
-const CONFIG_C = "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
 const CONFIG_TAMPERED =
   "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
 
@@ -48,12 +61,6 @@ const coreImages = {
   api: "ghcr.io/okkeyapp/api:1.1.0",
   web: "ghcr.io/okkeyapp/web:1.1.0",
   worker: "ghcr.io/okkeyapp/worker:1.1.0",
-};
-
-const defaultConfigByKey: Record<string, string> = {
-  api: CONFIG_A,
-  web: CONFIG_B,
-  worker: CONFIG_C,
 };
 
 function payload(overrides: Partial<OfflinePackagePayload> = {}): OfflinePackagePayload {
@@ -126,7 +133,7 @@ type OfflineRoot = {
 
 async function offlineMaterialRoot(
   keys: string[] = ["api", "web", "worker"],
-  options?: { configByKey?: Record<string, string>; emptyLayout?: boolean },
+  options?: { emptyLayout?: boolean; cosignSaveStyle?: boolean },
 ): Promise<OfflineRoot> {
   const root = mkdtempSync(path.join(tmpdir(), "okkey-cosign-offline-"));
   const trustedRootPath = path.join(root, "trusted_root.json");
@@ -143,8 +150,9 @@ async function offlineMaterialRoot(
     if (options?.emptyLayout) {
       writeFileSync(path.join(dir, "signature.json"), `{"image":"${key}"}\n`);
     } else {
-      const configDigest = options?.configByKey?.[key] ?? defaultConfigByKey[key] ?? CONFIG_A;
-      const written = await writeMinimalOciLayout(dir, { configDigest });
+      const written = options?.cosignSaveStyle
+        ? await writeCosignSaveStyleOciLayout(dir, { seed: key })
+        : await writeMinimalOciLayout(dir, { seed: key });
       configDigests[key] = written.configDigest;
       manifestDigests[key] = written.manifestDigest;
     }
@@ -255,7 +263,12 @@ test("missing trusted_root is rejected", async () => {
         images: { api: coreImages.api },
         component: "okkey",
         envFileContents: "",
-        engine: engineStub({ localIds: { [coreImages.api]: CONFIG_A } }),
+        engine: engineStub({
+          localIds: {
+            [coreImages.api]:
+              "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          },
+        }),
         isolated: true,
         runCosign: async () => {
           throw new Error("cosign should not run");
@@ -376,16 +389,17 @@ test("empty RepoDigests with matching local Id pins by verified image Id", async
     runCosign: okRunner(),
   });
   assert.equal(verified.api, configDigests.api);
-  assert.equal(normalizeImageIdDigest(CONFIG_A), CONFIG_A);
-  assert.equal(normalizeImageIdDigest(CONFIG_A.slice("sha256:".length)), CONFIG_A);
+  assert.equal(normalizeImageIdDigest(configDigests.api!), configDigests.api);
+  assert.equal(
+    normalizeImageIdDigest(configDigests.api!.slice("sha256:".length)),
+    configDigests.api,
+  );
 });
 
 test("tampered bundle (signatures for A, loaded image B) is rejected", async () => {
   // Cosign verifies layout A; docker load left image B tagged as the package ref.
-  const { material, configDigests } = await offlineMaterialRoot(["api"], {
-    configByKey: { api: CONFIG_A },
-  });
-  assert.equal(configDigests.api, CONFIG_A);
+  const { material, configDigests } = await offlineMaterialRoot(["api"]);
+  assert.ok(configDigests.api);
   await assert.rejects(
     () =>
       verifyPackageImageSignatures({
@@ -420,7 +434,12 @@ test("missing or unreadable OCI config digest is rejected", async () => {
         images: { api: coreImages.api },
         component: "okkey",
         envFileContents: "",
-        engine: engineStub({ localIds: { [coreImages.api]: CONFIG_A } }),
+        engine: engineStub({
+          localIds: {
+            [coreImages.api]:
+              "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          },
+        }),
         isolated: true,
         offlineMaterial: {
           trustedRootPath: material.trustedRootPath,
@@ -492,7 +511,8 @@ test("RepoDigest mismatch against verified OCI manifest is rejected", async () =
 
 test("online mode still requires digest and does not pass --offline", async () => {
   const calls: string[][] = [];
-  const DIGEST_A = CONFIG_A;
+  const DIGEST_A =
+    "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
   const verified = await verifyPackageImageSignatures({
     images: { api: coreImages.api },
     component: "okkey",
@@ -540,18 +560,7 @@ test("apply isolated mode fails closed without offline material and pins with ma
   const envDir = mkdtempSync(path.join(tmpdir(), "okkey-cosign-offline-apply-"));
   const envFile = path.join(envDir, ".env");
   writeFileSync(envFile, "OKKEY_IMAGE_TAG=1.0.0\n");
-  const engine = engineStub({
-    digests: {
-      [coreImages.api]: CONFIG_A,
-      [coreImages.web]: CONFIG_B,
-      [coreImages.worker]: CONFIG_C,
-    },
-    localIds: {
-      [coreImages.api]: CONFIG_A,
-      [coreImages.web]: CONFIG_B,
-      [coreImages.worker]: CONFIG_C,
-    },
-  });
+  const engine = engineStub({});
 
   await assert.rejects(
     () =>
@@ -750,4 +759,169 @@ test("planOfflinePathStaging rewrites host paths for docker cosign copy", () => 
   assert.ok(bound.bind);
   assert.equal(bound.bind?.hostRoot, path.resolve("/install"));
   assert.equal(bound.copy, undefined);
+});
+
+test("offline material archive accepts real-length cosign-save blob paths", async () => {
+  const root = mkdtempSync(path.join(tmpdir(), "okkey-cosign-tar-"));
+  const trustedRootPath = path.join(root, "trusted_root.json");
+  writeFileSync(trustedRootPath, "{}\n");
+  const localImageDir = path.join(root, "local-image");
+  const hex = "a".repeat(64);
+  mkdirSync(path.join(localImageDir, "blobs", "sha256"), { recursive: true });
+  writeFileSync(path.join(localImageDir, "blobs", "sha256", hex), "blob\n");
+  writeFileSync(path.join(localImageDir, "index.json"), "{}\n");
+
+  const longName = `${COSIGN_DOCKER_OFFLINE_TAR_DIR}local-image/blobs/sha256/${hex}`;
+  assert.ok(Buffer.byteLength(longName, "utf8") > 100);
+  const split = splitUstarName(longName);
+  assert.ok(split);
+  assert.ok(Buffer.byteLength(split!.prefix, "utf8") <= 155);
+  assert.ok(Buffer.byteLength(split!.name, "utf8") <= 100);
+
+  const archive = await buildOfflineMaterialArchive({
+    trustedRootHost: trustedRootPath,
+    localImageHost: localImageDir,
+  });
+  assert.ok(archive.length > 512);
+  // Archive must contain the long path (ustar prefix or PAX record).
+  assert.ok(
+    archive.includes(Buffer.from("blobs/sha256/", "utf8")) ||
+      archive.includes(Buffer.from(`path=${longName}`, "utf8")),
+  );
+});
+
+test("cosign-save-style OCI index (nested index + sigs) resolves platform digests", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "okkey-cosign-save-style-"));
+  const written = await writeCosignSaveStyleOciLayout(dir, {
+    seed: "save-style",
+    architecture: "amd64",
+  });
+  const digests = await readOciLayoutImageDigests(dir, { architecture: "amd64", os: "linux" });
+  assert.equal(digests.configDigest, written.configDigest);
+  assert.equal(digests.manifestDigest, written.manifestDigest);
+});
+
+test("OCI blob content tamper keeping filename is rejected", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "okkey-oci-tamper-"));
+  const written = await writeMinimalOciLayout(dir, { seed: "tamper-victim" });
+  const manifestHex = written.manifestDigest.slice("sha256:".length);
+  const manifestPath = path.join(dir, "blobs", "sha256", manifestHex);
+  // QA attack: replace manifest bytes (config → foreign image) but keep the digest filename.
+  const foreignConfig = await writeMinimalOciLayout(
+    mkdtempSync(path.join(tmpdir(), "okkey-oci-foreign-")),
+    { seed: "foreign-image" },
+  );
+  const tamperedManifest = `${JSON.stringify({
+    schemaVersion: 2,
+    mediaType: "application/vnd.oci.image.manifest.v1+json",
+    config: {
+      mediaType: "application/vnd.oci.image.config.v1+json",
+      digest: foreignConfig.configDigest,
+      size: 32,
+    },
+    layers: [],
+  })}\n`;
+  assert.notEqual(
+    `sha256:${createHash("sha256").update(tamperedManifest).digest("hex")}`,
+    written.manifestDigest,
+  );
+  writeFileSync(manifestPath, tamperedManifest);
+  await assert.rejects(
+    () => readOciLayoutImageDigests(dir),
+    /digest mismatch|OCI blob digest mismatch/i,
+  );
+});
+
+test("prepareApplyCosignOfflineMaterial extracts bundle zip and cleans up", async () => {
+  const { root, material } = await offlineMaterialRoot();
+  const keys = generateUpdateKeyPair();
+  const core = Buffer.from(
+    JSON.stringify(signOfflinePackage(payload(), keys.privateKeyPem)),
+    "utf8",
+  );
+  const enterprisePayload: OfflinePackagePayload = {
+    format: "okkey-offline-package",
+    formatVersion: 1,
+    component: "enterprise",
+    version: "2.0.0",
+    fromVersion: "1.0.0",
+    summary: "Enterprise",
+    releasedAt: "2026-11-01T00:00:00.000Z",
+    imageTag: "2.0.0",
+    minCoreVersion: "1.1.0",
+    images: {
+      "enterprise-api": "ghcr.io/example/enterprise-api:2.0.0",
+      "enterprise-web": "ghcr.io/example/enterprise-web:2.0.0",
+      "enterprise-worker": "ghcr.io/example/enterprise-worker:2.0.0",
+    },
+  };
+  const enterprise = Buffer.from(
+    JSON.stringify(signOfflinePackage(enterprisePayload, keys.privateKeyPem)),
+    "utf8",
+  );
+  const built = buildOfflineBundle(core, enterprise, {
+    trustedRoot: Buffer.from('{"trusted":true}\n', "utf8"),
+    cosignDirs: material.localImageDirs,
+  });
+  assert.equal(built.includesCosignOffline, true);
+
+  const offlineRoot = mkdtempSync(path.join(tmpdir(), "okkey-cosign-stage-"));
+  const prepared = await prepareApplyCosignOfflineMaterial({
+    payload: payload(),
+    isolated: true,
+    cosignOfflineRoot: offlineRoot,
+    bundleZip: built.zip,
+    processEnv: {},
+  });
+  assert.ok(prepared.material);
+  await access(prepared.material!.trustedRootPath, fsConstants.R_OK);
+  await access(prepared.material!.localImageDirs.api!, fsConstants.R_OK);
+  const stagedRoot = path.dirname(prepared.material!.trustedRootPath);
+  await prepared.cleanup();
+  await assert.rejects(() => access(stagedRoot, fsConstants.R_OK), /ENOENT/);
+  assert.ok(root.length > 0);
+});
+
+test("readEnvFileValue strips matching quotes like install.sh", () => {
+  assert.equal(stripEnvQuotes('"hello"'), "hello");
+  assert.equal(stripEnvQuotes("'hello'"), "hello");
+  assert.equal(stripEnvQuotes("hello"), "hello");
+  assert.equal(
+    readEnvFileValue('OKKEY_COSIGN_CERTIFICATE_IDENTITY_REGEXP="^dev$"\n', "OKKEY_COSIGN_CERTIFICATE_IDENTITY_REGEXP"),
+    "^dev$",
+  );
+  assert.equal(
+    readEnvFileValue("OKKEY_COSIGN_CERTIFICATE_IDENTITY_REGEXP='^dev$'\n", "OKKEY_COSIGN_CERTIFICATE_IDENTITY_REGEXP"),
+    "^dev$",
+  );
+  const identity = resolveCosignIdentity({
+    component: "okkey",
+    processEnv: {},
+    envFileContents: 'OKKEY_COSIGN_CERTIFICATE_IDENTITY_REGEXP="^quoted-override$"\n',
+  });
+  assert.equal(identity.identityRegexp, "^quoted-override$");
+});
+
+test("overrideAllowsHeadsDev requires a precise heads/dev token or match", () => {
+  assert.equal(overrideAllowsHeadsDev(OKKEY_COSIGN_DEFAULT_DEV_IDENTITY_REGEXP), true);
+  assert.equal(overrideAllowsHeadsDev(OKKEY_COSIGN_DEFAULT_IDENTITY_REGEXP), false);
+  assert.equal(overrideAllowsHeadsDev("heads/develop"), false);
+  assert.equal(overrideAllowsHeadsDev("heads/device"), false);
+  assert.equal(
+    overrideAllowsHeadsDev(
+      "^https://github\\.com/okkeyapp/okkey/\\.github/workflows/publish-images\\.yml@refs/heads/dev$",
+    ),
+    true,
+  );
+  assert.throws(
+    () =>
+      resolveCosignIdentity({
+        component: "okkey",
+        processEnv: {
+          OKKEY_COSIGN_ALLOW_DEV: "1",
+          OKKEY_COSIGN_CERTIFICATE_IDENTITY_REGEXP: "heads/develop",
+        },
+      }),
+    /without heads\/dev/,
+  );
 });

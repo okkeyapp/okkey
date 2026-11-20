@@ -402,15 +402,12 @@ export function tarEntries(entries: readonly TarEntry[]): Buffer {
   for (const entry of entries) {
     if (entry.type === "directory") {
       const name = entry.name.endsWith("/") ? entry.name : `${entry.name}/`;
-      parts.push(tarHeader(name, 0, entry.mode, "5"));
+      parts.push(...tarEntryBlocks(name, 0, entry.mode, "5"));
     } else {
       const data = Buffer.isBuffer(entry.contents)
         ? entry.contents
         : Buffer.from(entry.contents, "utf8");
-      if (Buffer.byteLength(entry.name, "utf8") > 100) {
-        throw new Error("tar entry name too long");
-      }
-      parts.push(tarHeader(entry.name, data.length, entry.mode, "0"));
+      parts.push(...tarEntryBlocks(entry.name, data.length, entry.mode, "0"));
       const paddedSize = Math.ceil(data.length / 512) * 512;
       const body = Buffer.alloc(paddedSize, 0);
       data.copy(body);
@@ -422,23 +419,110 @@ export function tarEntries(entries: readonly TarEntry[]): Buffer {
   return Buffer.concat(parts);
 }
 
-function tarHeader(name: string, size: number, mode: number, typeflag: string): Buffer {
-  const header = Buffer.alloc(512, 0);
+/**
+ * Emit ustar header(s) for a path. Paths longer than 100 bytes use the ustar
+ * prefix field (up to 255) or a PAX `path=` extended header when still longer
+ * (real `cosign save` blob paths under okkey-cosign-offline/local-image/…).
+ */
+function tarEntryBlocks(
+  name: string,
+  size: number,
+  mode: number,
+  typeflag: string,
+): Buffer[] {
   const nameBytes = Buffer.from(name, "utf8");
+  if (nameBytes.length <= 100) {
+    return [tarHeader({ name, size, mode, typeflag })];
+  }
+  const split = splitUstarName(name);
+  if (split) {
+    return [tarHeader({ name: split.name, prefix: split.prefix, size, mode, typeflag })];
+  }
+  // PAX extended header carries the full path; the following ustar name is a stub.
+  const paxRecord = paxPathRecord(name);
+  const paxName = "././@PaxHeader";
+  return [
+    tarHeader({ name: paxName, size: paxRecord.length, mode: 0o644, typeflag: "x" }),
+    padToBlock(paxRecord),
+    tarHeader({ name: name.slice(0, 100), size, mode, typeflag }),
+  ];
+}
+
+/** Split `dir/…/file` into ustar prefix (≤155) + name (≤100) when possible. */
+export function splitUstarName(fullPath: string): { prefix: string; name: string } | null {
+  const bytes = Buffer.from(fullPath, "utf8");
+  if (bytes.length <= 100) {
+    return { prefix: "", name: fullPath };
+  }
+  // Prefer splitting on `/` so both sides stay within ustar limits.
+  for (let i = Math.min(bytes.length - 1, 155 + 1); i >= 1; i -= 1) {
+    if (fullPath[i] !== "/") {
+      continue;
+    }
+    const prefix = fullPath.slice(0, i);
+    const name = fullPath.slice(i + 1);
+    if (
+      Buffer.byteLength(prefix, "utf8") <= 155 &&
+      Buffer.byteLength(name, "utf8") <= 100 &&
+      name.length > 0
+    ) {
+      return { prefix, name };
+    }
+  }
+  return null;
+}
+
+function paxPathRecord(fullPath: string): Buffer {
+  // PAX record: `<length> path=<value>\n` where length includes its own digits.
+  const body = ` path=${fullPath}\n`;
+  let lengthDigits = String(body.length + 1).length;
+  for (;;) {
+    const total = body.length + lengthDigits;
+    const next = String(total).length;
+    if (next === lengthDigits) {
+      return Buffer.from(`${total}${body}`, "utf8");
+    }
+    lengthDigits = next;
+  }
+}
+
+function padToBlock(data: Buffer): Buffer {
+  const paddedSize = Math.ceil(data.length / 512) * 512;
+  const body = Buffer.alloc(paddedSize, 0);
+  data.copy(body);
+  return body;
+}
+
+function tarHeader(input: {
+  name: string;
+  prefix?: string;
+  size: number;
+  mode: number;
+  typeflag: string;
+}): Buffer {
+  const header = Buffer.alloc(512, 0);
+  const nameBytes = Buffer.from(input.name, "utf8");
   if (nameBytes.length > 100) {
-    throw new Error("tar entry name too long");
+    throw new Error("tar entry name field too long");
   }
   nameBytes.copy(header, 0);
-  header.write(`${mode.toString(8).padStart(7, "0")}\0`, 100, 8, "utf8");
+  header.write(`${input.mode.toString(8).padStart(7, "0")}\0`, 100, 8, "utf8");
   header.write("0000000\0", 108, 8, "utf8"); // uid
   header.write("0000000\0", 116, 8, "utf8"); // gid
-  header.write(`${size.toString(8).padStart(11, "0")}\0`, 124, 12, "utf8");
+  header.write(`${input.size.toString(8).padStart(11, "0")}\0`, 124, 12, "utf8");
   // Fixed mtime keeps archives deterministic for unit tests.
   header.write(`${(0).toString(8).padStart(11, "0")}\0`, 136, 12, "utf8");
   header.write("        ", 148, 8, "utf8"); // checksum placeholder
-  header.write(typeflag, 156, 1, "utf8");
+  header.write(input.typeflag, 156, 1, "utf8");
   header.write("ustar\0", 257, 6, "utf8");
   header.write("00", 263, 2, "utf8");
+  if (input.prefix) {
+    const prefixBytes = Buffer.from(input.prefix, "utf8");
+    if (prefixBytes.length > 155) {
+      throw new Error("tar entry prefix too long");
+    }
+    prefixBytes.copy(header, 345);
+  }
   let sum = 0;
   for (let i = 0; i < 512; i += 1) {
     sum += header[i]!;

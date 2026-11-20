@@ -105,6 +105,14 @@ strip_env_quotes() {
   printf '%s\n' "${value}"
 }
 
+# True when an identity override includes an exact heads/dev path-segment token
+# (not a prefix of heads/develop). Kept in sync with overrideAllowsHeadsDev in
+# services/api/src/update-agent/cosign-identity.ts.
+override_allows_heads_dev() {
+  local re="$1"
+  [[ "${re}" =~ (^|[^A-Za-z0-9])heads/dev(\||\)|/|\$|$) ]]
+}
+
 # Read KEY=value from the install-dir .env (no export). Empty if missing.
 env_file_value() {
   local key="$1"
@@ -376,7 +384,7 @@ Emergency bypass (prints a warning; not for production):
     identity_regexp="$(env_file_value OKKEY_COSIGN_CERTIFICATE_IDENTITY_REGEXP)"
   fi
   if [[ -n "${identity_regexp}" ]]; then
-    if [[ "${allow_dev}" == "1" && "${identity_regexp}" != *heads/dev* ]]; then
+    if [[ "${allow_dev}" == "1" ]] && ! override_allows_heads_dev "${identity_regexp}"; then
       die "--allow-dev / OKKEY_COSIGN_ALLOW_DEV=1 has no effect while OKKEY_COSIGN_CERTIFICATE_IDENTITY_REGEXP is set without heads/dev.
 Include heads/dev in that regexp, or unset the override so the built-in allow-dev set applies."
     fi

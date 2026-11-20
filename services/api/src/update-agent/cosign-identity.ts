@@ -106,7 +106,7 @@ export function resolveCosignIdentity(input: {
 }
 
 function assertAllowDevCompatible(override: string, allowDev: boolean, varName: string): void {
-  if (allowDev && !override.includes("heads/dev")) {
+  if (allowDev && !overrideAllowsHeadsDev(override)) {
     throw new Error(
       `OKKEY_COSIGN_ALLOW_DEV=1 has no effect while ${varName} is set without heads/dev. ` +
         `Include heads/dev in that regexp, or unset the override so the built-in allow-dev set applies.`,
@@ -114,13 +114,54 @@ function assertAllowDevCompatible(override: string, allowDev: boolean, varName: 
   }
 }
 
+/**
+ * True when the override regexp actually matches a refs/heads/dev workflow
+ * identity (Core or Enterprise), or carries an exact `heads/dev` path-segment
+ * token (not a prefix of `heads/develop`).
+ */
+export function overrideAllowsHeadsDev(override: string): boolean {
+  const trimmed = override.trim();
+  if (!trimmed) {
+    return false;
+  }
+  const identities = [
+    "https://github.com/okkeyapp/okkey/.github/workflows/publish-images.yml@refs/heads/dev",
+    "https://github.com/okkeyapp/okkey-enterprise/.github/workflows/publish-images.yml@refs/heads/dev",
+  ];
+  try {
+    const re = new RegExp(trimmed);
+    if (identities.some((identity) => re.test(identity))) {
+      return true;
+    }
+  } catch {
+    // Fall through to the exact-token check when the override is not a valid RegExp.
+  }
+  // Exact path-segment token: heads/dev not followed by more name characters.
+  return /(^|[^A-Za-z0-9])heads\/dev(\||\)|\/|\$|$)/.test(trimmed);
+}
+
+/**
+ * Read KEY=value from .env contents. Strips one layer of matching surrounding
+ * quotes (same behavior as install.sh `strip_env_quotes`).
+ */
 export function readEnvFileValue(contents: string, key: string): string {
   for (const line of contents.split(/\r?\n/)) {
     if (line.startsWith(`${key}=`)) {
-      return line.slice(key.length + 1).trim();
+      return stripEnvQuotes(line.slice(key.length + 1).trim());
     }
   }
   return "";
+}
+
+/** Strip one layer of matching surrounding quotes (Compose / install.sh behavior). */
+export function stripEnvQuotes(value: string): string {
+  if (
+    (value.startsWith('"') && value.endsWith('"') && value.length >= 2) ||
+    (value.startsWith("'") && value.endsWith("'") && value.length >= 2)
+  ) {
+    return value.slice(1, -1);
+  }
+  return value;
 }
 
 function firstNonEmpty(...values: Array<string | undefined>): string {

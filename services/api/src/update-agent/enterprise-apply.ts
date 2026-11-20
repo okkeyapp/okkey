@@ -14,7 +14,7 @@ import {
   type UpdateApplyEngine,
 } from "./apply.ts";
 import {
-  resolveApplyCosignOfflineMaterial,
+  prepareApplyCosignOfflineMaterial,
   type CosignOfflineMaterial,
 } from "./cosign-offline.ts";
 import {
@@ -63,6 +63,8 @@ export async function applyVerifiedEnterprisePackage(input: {
   offlineMaterial?: CosignOfflineMaterial;
   /** Override material root; defaults to OKKEY_COSIGN_OFFLINE_DIR. */
   cosignOfflineRoot?: string;
+  /** Optional air-gap zip bytes to stage cosign material from (TSK-317). */
+  bundleZip?: Buffer;
   processEnv?: NodeJS.ProcessEnv;
 }): Promise<void> {
   if (input.payload.component !== "enterprise") {
@@ -124,99 +126,104 @@ export async function applyVerifiedEnterprisePackage(input: {
     }
   }
 
-  const offlineMaterial =
+  const prepared =
     input.verifiedDigests === undefined
-      ? await resolveApplyCosignOfflineMaterial({
+      ? await prepareApplyCosignOfflineMaterial({
           payload: input.payload,
           isolated: input.isolated,
           offlineMaterial: input.offlineMaterial,
           cosignOfflineRoot: input.cosignOfflineRoot,
+          bundleZip: input.bundleZip,
           processEnv: input.processEnv,
         })
-      : undefined;
-  const digests =
-    input.verifiedDigests ??
-    (await verifyPackageImageSignatures({
-      images: Object.fromEntries(targets.map((target) => [target.packageService, target.image])),
-      component: "enterprise",
-      envFileContents: previousEnv,
-      engine: input.engine,
-      runCosign: input.runCosign,
-      registryCredentials: input.registryCredentials,
-      isolated: input.isolated,
-      offlineMaterial,
-      processEnv: input.processEnv,
-    }));
-
-  let envWritten = false;
-  const replaced: Array<{ rollback: () => Promise<void>; commit: () => Promise<void> }> = [];
+      : { material: undefined, cleanup: async () => {} };
   try {
-    let next = previousEnv;
-    next = setEnvValue(next, "OKKEY_ENTERPRISE_IMAGE_TAG", input.payload.imageTag);
-    next = setEnvValue(next, "OKKEY_ENTERPRISE_VERSION", input.payload.version);
-    for (const target of targets) {
-      next = setEnvValue(next, COMPOSE_IMAGE_ENV_KEYS[target.composeService], imageRepository(target.image));
-    }
-    if (secrets.some((secret) => secret.length >= 6 && next.includes(secret))) {
-      throw new SystemUpdateError(500, "APPLY_FAILED", "Refusing to store registry credentials");
-    }
-    await input.engine.writeEnvFile(input.envFilePath, next);
-    envWritten = true;
+    const digests =
+      input.verifiedDigests ??
+      (await verifyPackageImageSignatures({
+        images: Object.fromEntries(targets.map((target) => [target.packageService, target.image])),
+        component: "enterprise",
+        envFileContents: previousEnv,
+        engine: input.engine,
+        runCosign: input.runCosign,
+        registryCredentials: input.registryCredentials,
+        isolated: input.isolated,
+        offlineMaterial: prepared.material,
+        processEnv: input.processEnv,
+      }));
 
-    for (const target of targets) {
-      const pinned = digests[target.packageService] ?? target.image;
-      replaced.push(
-        await input.engine.replaceContainer(
-          target.container,
-          pinned,
-          {
-            OKKEY_ENTERPRISE_VERSION: input.payload.version,
-            OKKEY_ENTERPRISE_IMAGE_TAG: input.payload.imageTag,
-          },
-          { requireHealthy: true },
-        ),
-      );
-    }
-    for (const item of replaced) {
-      try {
-        await item.commit();
-      } catch {
-        // The new containers are already running. A parked container can be removed later.
+    let envWritten = false;
+    const replaced: Array<{ rollback: () => Promise<void>; commit: () => Promise<void> }> = [];
+    try {
+      let next = previousEnv;
+      next = setEnvValue(next, "OKKEY_ENTERPRISE_IMAGE_TAG", input.payload.imageTag);
+      next = setEnvValue(next, "OKKEY_ENTERPRISE_VERSION", input.payload.version);
+      for (const target of targets) {
+        next = setEnvValue(next, COMPOSE_IMAGE_ENV_KEYS[target.composeService], imageRepository(target.image));
       }
-    }
-  } catch (error) {
-    for (const item of replaced.reverse()) {
-      try {
-        await item.rollback();
-      } catch {
-        // Keep going so a later service can still return to the previous image.
+      if (secrets.some((secret) => secret.length >= 6 && next.includes(secret))) {
+        throw new SystemUpdateError(500, "APPLY_FAILED", "Refusing to store registry credentials");
       }
-    }
-    if (envWritten) {
-      try {
-        await input.engine.writeEnvFile(input.envFilePath, previousEnv);
-      } catch {
-        throw new SystemUpdateError(
-          500,
-          "APPLY_FAILED",
-          "Apply failed and the previous enterprise image tags could not be restored",
+      await input.engine.writeEnvFile(input.envFilePath, next);
+      envWritten = true;
+
+      for (const target of targets) {
+        const pinned = digests[target.packageService] ?? target.image;
+        replaced.push(
+          await input.engine.replaceContainer(
+            target.container,
+            pinned,
+            {
+              OKKEY_ENTERPRISE_VERSION: input.payload.version,
+              OKKEY_ENTERPRISE_IMAGE_TAG: input.payload.imageTag,
+            },
+            { requireHealthy: true },
+          ),
         );
       }
+      for (const item of replaced) {
+        try {
+          await item.commit();
+        } catch {
+          // The new containers are already running. A parked container can be removed later.
+        }
+      }
+    } catch (error) {
+      for (const item of [...replaced].reverse()) {
+        try {
+          await item.rollback();
+        } catch {
+          // Keep going so a later service can still return to the previous image.
+        }
+      }
+      if (envWritten) {
+        try {
+          await input.engine.writeEnvFile(input.envFilePath, previousEnv);
+        } catch {
+          throw new SystemUpdateError(
+            500,
+            "APPLY_FAILED",
+            "Apply failed and the previous enterprise image tags could not be restored",
+          );
+        }
+      }
+      if (error instanceof SystemUpdateError) {
+        const restored =
+          error.message.includes("restored") || error.message.includes("Nothing was changed")
+            ? error.message
+            : envWritten
+              ? `${error.message}. The previous version was restored`
+              : error.message;
+        throw new SystemUpdateError(error.statusCode, error.code, scrubSecrets(restored, secrets));
+      }
+      const message = error instanceof Error ? error.message : "apply failed";
+      const restored = envWritten
+        ? `Apply failed (${message}). The previous version was restored`
+        : `Apply failed (${message})`;
+      throw new SystemUpdateError(500, "APPLY_FAILED", scrubSecrets(restored, secrets));
     }
-    if (error instanceof SystemUpdateError) {
-      const restored =
-        error.message.includes("restored") || error.message.includes("Nothing was changed")
-          ? error.message
-          : envWritten
-            ? `${error.message}. The previous version was restored`
-            : error.message;
-      throw new SystemUpdateError(error.statusCode, error.code, scrubSecrets(restored, secrets));
-    }
-    const message = error instanceof Error ? error.message : "apply failed";
-    const restored = envWritten
-      ? `Apply failed (${message}). The previous version was restored`
-      : `Apply failed (${message})`;
-    throw new SystemUpdateError(500, "APPLY_FAILED", scrubSecrets(restored, secrets));
+  } finally {
+    await prepared.cleanup();
   }
 }
 
