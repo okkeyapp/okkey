@@ -160,6 +160,7 @@ jobs:
           yarn --cwd packages/import build
           yarn --cwd packages/api build
           yarn --cwd packages/vault build
+          yarn --cwd packages/vault-ui build
 
       - name: Run web tests
         run: yarn test:web

@@ -5,6 +5,7 @@ import {
   clearPendingSaveOffer,
   getPendingSaveOffer,
   handleAutofillFill,
+  handleAutofillLoginLinkTargets,
   handleAutofillOpenAndFill,
   handleAutofillQuery,
   handleAutofillSave,
@@ -221,6 +222,8 @@ export default defineBackground(() => {
         password: message.password,
         vaultId: message.vaultId,
         itemId: message.itemId,
+        linkedAccountItemId: message.linkedAccountItemId,
+        oauthDetected: message.oauthDetected,
       });
     }
     if (message.type === AUTOFILL_MSG.saveOffer) {
@@ -229,6 +232,7 @@ export default defineBackground(() => {
         websiteUrl: message.websiteUrl || message.pageUrl,
         username: message.username,
         password: message.password,
+        oauthDetected: message.oauthDetected,
       });
     }
     if (message.type === AUTOFILL_MSG.saveContext) {
@@ -243,12 +247,18 @@ export default defineBackground(() => {
         websiteUrl: message.websiteUrl,
         vaultId: message.vaultId,
         itemId: message.itemId,
+        linkedAccountItemId: message.linkedAccountItemId,
       });
     }
     if (message.type === AUTOFILL_MSG.saveFormCommit) {
       return handleAutofillSaveFormCommit({
         kind: message.kind,
         item: message.item,
+      });
+    }
+    if (message.type === AUTOFILL_MSG.loginLinkTargets) {
+      return handleAutofillLoginLinkTargets({
+        excludeItemId: message.excludeItemId,
       });
     }
     if (message.type === AUTOFILL_MSG.siteIcon) {
@@ -272,6 +282,9 @@ export default defineBackground(() => {
         captureUrl: message.captureUrl,
         websiteUrl: message.websiteUrl || message.captureUrl,
         formType: message.formType,
+        oauthDetected: message.oauthDetected,
+        oauthProviderHint: message.oauthProviderHint,
+        linkedAccountItemId: message.linkedAccountItemId,
       }).then(() => ({ ok: true }));
     }
     if (message.type === AUTOFILL_MSG.pendingSaveGet) {

@@ -4,6 +4,7 @@ import { formatWebMessage, type WebLocale } from "@okkey/i18n";
 import {
   AUTOFILL_MSG,
   type AutofillFillResponse,
+  type AutofillLoginLinkTarget,
   type AutofillPendingSaveGetResponse,
   type AutofillQueryResponse,
   type AutofillSaveContextResponse,
@@ -14,6 +15,16 @@ import {
   type AutofillSuggestion,
   type AutofillUpdateFieldKey,
 } from "../lib/autofillMessages";
+import {
+  detectOauthFromControl,
+  detectOauthSignInCues,
+  isOauthIdpHost,
+  isOauthSignInControl,
+} from "../lib/oauthLoginDetect";
+import {
+  preselectLinkedAccountItemId,
+  shouldLoadLoginLinkTargets,
+} from "../lib/linkedAccountSave";
 import {
   getSavePromptKeyFormHandle,
   mountSavePromptKeyForm,
@@ -126,6 +137,12 @@ type PendingSaveCreds = {
   /** Website to store on the item (login form URL, or origin/ for register). */
   websiteUrl: string;
   formType: AutofillFormType;
+  /** Best-effort OAuth / “Continue with …” detection at capture time. */
+  oauthDetected?: boolean;
+  /** Best-effort IdP label from the OAuth CTA (e.g. "Google") for picker preselection. */
+  oauthProviderHint?: string;
+  /** Optional "Sign in with" target chosen in the save UI. */
+  linkedAccountItemId?: string;
 };
 
 function msg(
@@ -153,6 +170,13 @@ function overlayStrings(locale: WebLocale) {
       "extension.autofill.saveBody",
       "Okkey can save the username and password for this site.",
     ),
+    saveBodyOauth: msg(
+      locale,
+      "extension.autofill.saveBodyOauth",
+      "This looks like a social sign-in. Link an existing login or save username and password.",
+    ),
+    signInWithLabel: msg(locale, "extension.autofill.signInWith.label", "Sign in with"),
+    signInWithNone: msg(locale, "extension.autofill.signInWith.none", "No linked account"),
     saveUnlockBody: msg(
       locale,
       "extension.autofill.saveUnlockBody",
@@ -235,7 +259,7 @@ function domainTitle(): string {
 }
 
 function pendingOfferKey(creds: PendingSaveCreds): string {
-  return `${creds.username}\n${creds.password}\n${creds.captureUrl}\n${creds.websiteUrl}`;
+  return `${creds.username}\n${creds.password}\n${creds.captureUrl}\n${creds.websiteUrl}\n${creds.oauthDetected ? "1" : "0"}\n${creds.oauthProviderHint ?? ""}\n${creds.linkedAccountItemId ?? ""}`;
 }
 
 async function queryMatches(
@@ -311,6 +335,8 @@ export default defineContentScript({
      */
     let savePromptDismissAfterBusy = false;
     let saveFormMounted = false;
+    /** Login items for the compact-card "Sign in with" picker (OAuth save). */
+    let saveLoginLinkTargets: AutofillLoginLinkTarget[] = [];
     let pendingTotpItemId: string | null = null;
     let otpObserver: MutationObserver | null = null;
     let stopCreditCardFillWatch: (() => void) | null = null;
@@ -1030,6 +1056,30 @@ export default defineContentScript({
             background: hsl(var(--ok-row-muted));
             border-radius: 8px;
             overflow: visible;
+          }
+          .save-sign-in-with {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            padding: 10px 12px 12px;
+            border-top: 1px solid hsl(var(--ok-border) / 0.6);
+          }
+          .save-sign-in-with-label {
+            font-size: 12px;
+            font-weight: 500;
+            line-height: 16px;
+            color: hsl(var(--ok-muted));
+          }
+          .save-sign-in-with select {
+            width: 100%;
+            height: 36px;
+            border-radius: 8px;
+            border: 1px solid hsl(var(--ok-border));
+            background: hsl(var(--ok-bg));
+            color: hsl(var(--ok-fg));
+            font: inherit;
+            font-size: 14px;
+            padding: 0 10px;
           }
           .panel-save-form {
             max-height: min(720px, calc(100vh - 32px));
@@ -1877,9 +1927,15 @@ export default defineContentScript({
         iconUrl: saveIconUrl,
         iconPending: saveIconLoading && !saveIconUrl,
       });
+      const oauthSave = Boolean(pendingSave?.oauthDetected);
+      const bodyText = oauthSave ? strings.saveBodyOauth : strings.saveBody;
       const bodyMarkup = isUpdate
         ? ""
-        : `<div class="save-body">${escapeHtml(strings.saveBody)}</div>`;
+        : `<div class="save-body">${escapeHtml(bodyText)}</div>`;
+      const signInWithBlock =
+        oauthSave || pendingSave?.linkedAccountItemId
+          ? signInWithPickerHtml()
+          : "";
       return `<div class="panel panel-save">
         <div class="save-header">
           <img class="logo" src="${escapeHtml(overlayIconUrl("okkey-logo"))}" alt="" />
@@ -1892,12 +1948,30 @@ export default defineContentScript({
         ${bodyMarkup}
         <div class="save-card">
           ${preview}
+          ${signInWithBlock}
           <div data-save-path>${secondaryBlock}</div>
         </div>
         <div class="save-actions">
           ${saveCancelCtaHtml()}
           ${saveConfirmCtaHtml(confirmText)}
         </div>
+      </div>`;
+    }
+
+    function signInWithPickerHtml(): string {
+      const selected = pendingSave?.linkedAccountItemId ?? "";
+      const options = [
+        `<option value="">${escapeHtml(strings.signInWithNone)}</option>`,
+        ...saveLoginLinkTargets.map(
+          (target) =>
+            `<option value="${escapeHtml(target.itemId)}"${
+              target.itemId === selected ? " selected" : ""
+            }>${escapeHtml(target.title)}</option>`,
+        ),
+      ];
+      return `<div class="save-sign-in-with">
+        <label class="save-sign-in-with-label" for="okkey-sign-in-with">${escapeHtml(strings.signInWithLabel)}</label>
+        <select id="okkey-sign-in-with" data-sign-in-with="1">${options.join("")}</select>
       </div>`;
     }
 
@@ -2013,6 +2087,19 @@ export default defineContentScript({
             keepPageFieldFocused();
           }
         }
+      });
+      root.addEventListener("change", (event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLSelectElement) || !target.matches("[data-sign-in-with]")) {
+          return;
+        }
+        if (!pendingSave) {
+          return;
+        }
+        const next = target.value.trim();
+        const { linkedAccountItemId: _prev, ...rest } = pendingSave;
+        pendingSave = next ? { ...rest, linkedAccountItemId: next } : rest;
+        void persistPendingSaveOffer(pendingSave);
       });
       root.addEventListener("click", (event) => {
         const target = event.target;
@@ -2339,7 +2426,51 @@ export default defineContentScript({
         ...(savePromptKind === "update" && pendingUpdateItemId
           ? { itemId: pendingUpdateItemId }
           : {}),
+        ...(pendingSave.linkedAccountItemId
+          ? { linkedAccountItemId: pendingSave.linkedAccountItemId }
+          : {}),
+        ...(pendingSave.oauthDetected ? { oauthDetected: true } : {}),
+        ...(pendingSave.oauthProviderHint
+          ? { oauthProviderHint: pendingSave.oauthProviderHint }
+          : {}),
       };
+    }
+
+    async function hydrateSaveLoginLinkTargets(): Promise<void> {
+      if (
+        !shouldLoadLoginLinkTargets({
+          locked: false,
+          oauthDetected: pendingSave?.oauthDetected,
+          linkedAccountItemId: pendingSave?.linkedAccountItemId,
+        })
+      ) {
+        saveLoginLinkTargets = [];
+        return;
+      }
+      try {
+        const response = await browser.runtime.sendMessage({
+          type: AUTOFILL_MSG.loginLinkTargets,
+          excludeItemId: pendingUpdateItemId || undefined,
+        });
+        if (response?.status === "ok" && Array.isArray(response.targets)) {
+          saveLoginLinkTargets = response.targets as AutofillLoginLinkTarget[];
+          if (pendingSave && !pendingSave.linkedAccountItemId) {
+            const preselected = preselectLinkedAccountItemId({
+              providerHint: pendingSave.oauthProviderHint,
+              candidates: saveLoginLinkTargets,
+              identifiedAccountHint: pendingSave.username,
+            });
+            if (preselected) {
+              pendingSave = { ...pendingSave, linkedAccountItemId: preselected };
+              void persistPendingSaveOffer(pendingSave);
+            }
+          }
+        } else {
+          saveLoginLinkTargets = [];
+        }
+      } catch {
+        saveLoginLinkTargets = [];
+      }
     }
 
     function onSaveFormSaved(): void {
@@ -2987,6 +3118,17 @@ export default defineContentScript({
       if (!locked && savePromptKind === "create") {
         void hydrateSaveContext();
       }
+      if (
+        shouldLoadLoginLinkTargets({
+          locked,
+          oauthDetected: creds.oauthDetected,
+          linkedAccountItemId: creds.linkedAccountItemId,
+        })
+      ) {
+        void hydrateSaveLoginLinkTargets().then(() => paintOverlay());
+      } else {
+        saveLoginLinkTargets = [];
+      }
       if (!opts?.iconUrl) {
         void hydrateSavePromptIcon(creds);
       }
@@ -3018,6 +3160,11 @@ export default defineContentScript({
           captureUrl: creds.captureUrl,
           websiteUrl: creds.websiteUrl,
           formType: creds.formType,
+          ...(creds.oauthDetected ? { oauthDetected: true } : {}),
+          ...(creds.oauthProviderHint ? { oauthProviderHint: creds.oauthProviderHint } : {}),
+          ...(creds.linkedAccountItemId
+            ? { linkedAccountItemId: creds.linkedAccountItemId }
+            : {}),
         });
       } catch {
         /* ignore */
@@ -3033,16 +3180,28 @@ export default defineContentScript({
      */
     function stagePendingSaveFromSnapshot(
       form: HTMLFormElement | null,
-      snapshot: { username: string; password: string; captureUrl: string },
+      snapshot: {
+        username: string;
+        password: string;
+        captureUrl: string;
+        oauthDetected?: boolean;
+        oauthProviderHint?: string;
+      },
     ): PendingSaveCreds | null {
       // Cheap timestamp gate — do not stage autofilled logins (register handled below).
       const filledByOkkey = wasFilledByOkkey();
+      const cues = detectOauthSignInCues(document);
+      const oauthDetected = Boolean(snapshot.oauthDetected) || cues.detected;
+      const oauthProviderHint =
+        snapshot.oauthProviderHint || (oauthDetected ? cues.providerHint : undefined);
       const early: PendingSaveCreds = {
         username: snapshot.username,
         password: snapshot.password,
         captureUrl: snapshot.captureUrl,
         websiteUrl: snapshot.captureUrl,
         formType: "unknown",
+        ...(oauthDetected ? { oauthDetected: true } : {}),
+        ...(oauthProviderHint ? { oauthProviderHint } : {}),
       };
       if (!filledByOkkey) {
         // Stage immediately with capture URL — refine formType/websiteUrl after heuristics.
@@ -3066,7 +3225,7 @@ export default defineContentScript({
       ) {
         return dropStaged();
       }
-      if (!isSaveOfferFormType(formType) && formType !== "unknown") {
+      if (!isSaveOfferFormType(formType) && formType !== "unknown" && !oauthDetected) {
         return dropStaged();
       }
       const isRegister = formType === "register";
@@ -3079,7 +3238,9 @@ export default defineContentScript({
         password: snapshot.password,
         captureUrl: snapshot.captureUrl,
         websiteUrl: websiteUrlForSaveOffer(snapshot.captureUrl, formType),
-        formType,
+        formType: oauthDetected && formType === "unknown" ? "login" : formType,
+        ...(oauthDetected ? { oauthDetected: true } : {}),
+        ...(oauthProviderHint ? { oauthProviderHint } : {}),
       };
       pendingSave = creds;
       // Refine websiteUrl/formType (register → origin/). Same creds → keeps createdAt.
@@ -3091,6 +3252,14 @@ export default defineContentScript({
     async function restorePendingSaveOffer(): Promise<void> {
       if (window !== window.top) {
         return;
+      }
+      // Never restore a relying-party save offer on a known OAuth IdP host.
+      try {
+        if (isOauthIdpHost(location.hostname)) {
+          return;
+        }
+      } catch {
+        /* ignore */
       }
       // Already showing this offer (SPA) — keep it.
       if (
@@ -3121,6 +3290,13 @@ export default defineContentScript({
         captureUrl: response.pending.captureUrl,
         websiteUrl: response.pending.websiteUrl || response.pending.captureUrl,
         formType: (response.pending.formType as AutofillFormType) || "unknown",
+        ...(response.pending.oauthDetected ? { oauthDetected: true } : {}),
+        ...(response.pending.oauthProviderHint
+          ? { oauthProviderHint: response.pending.oauthProviderHint }
+          : {}),
+        ...(response.pending.linkedAccountItemId
+          ? { linkedAccountItemId: response.pending.linkedAccountItemId }
+          : {}),
       };
       pendingSave = pending;
       await maybeOfferSave(pending, { allowAfterOkkeyFill: true });
@@ -3322,6 +3498,10 @@ export default defineContentScript({
           password: creds.password,
           vaultId: savePromptKind === "create" ? saveVaultId || undefined : undefined,
           itemId: savePromptKind === "update" ? pendingUpdateItemId || undefined : undefined,
+          ...(creds.linkedAccountItemId
+            ? { linkedAccountItemId: creds.linkedAccountItemId }
+            : {}),
+          ...(creds.oauthDetected ? { oauthDetected: true } : {}),
         })) as AutofillSaveResponse;
       } catch (err: unknown) {
         console.error("[okkey] autofill save failed", err);
@@ -3392,6 +3572,7 @@ export default defineContentScript({
           websiteUrl: creds.websiteUrl,
           username: creds.username,
           password: creds.password,
+          ...(creds.oauthDetected ? { oauthDetected: true } : {}),
         })) as AutofillSaveOfferResponse;
       } catch {
         return;
@@ -3486,16 +3667,26 @@ export default defineContentScript({
       const scope: ParentNode = form ?? document;
       let username = snapshot?.username ?? "";
       let password = snapshot?.password ?? "";
+      const snapshotOauth = snapshot as
+        | { oauthDetected?: boolean; oauthProviderHint?: string }
+        | null
+        | undefined;
+      const cues = detectOauthSignInCues(document);
+      const oauthDetected = Boolean(snapshotOauth?.oauthDetected) || cues.detected;
+      const oauthProviderHint =
+        snapshotOauth?.oauthProviderHint || (oauthDetected ? cues.providerHint : undefined);
       if (!password) {
         const raw = captureLoginCredentials(scope) ?? (form ? captureLoginCredentials(document) : null);
-        if (!raw) {
+        if (!raw && !oauthDetected) {
           return;
         }
-        username = raw.username;
-        password = raw.password;
+        if (raw) {
+          username = raw.username;
+          password = raw.password;
+        }
       }
       // Prefer offering on explicit login/register; unknown still offers when creds exist.
-      if (!isSaveOfferFormType(formType) && formType !== "unknown") {
+      if (!isSaveOfferFormType(formType) && formType !== "unknown" && !oauthDetected) {
         return;
       }
       // Prefer capture-phase URL; fall back only if snapshot missing (should be rare).
@@ -3505,7 +3696,9 @@ export default defineContentScript({
         password,
         captureUrl,
         websiteUrl: websiteUrlForSaveOffer(captureUrl, formType),
-        formType,
+        formType: oauthDetected && formType === "unknown" ? "login" : formType,
+        ...(oauthDetected ? { oauthDetected: true } : {}),
+        ...(oauthProviderHint ? { oauthProviderHint } : {}),
       };
       // Hold early so focusout hide (180ms) cannot race past async saveOffer.
       pendingSave = creds;
@@ -3791,9 +3984,33 @@ export default defineContentScript({
           return;
         }
         const control = target.closest(
-          'button, input[type="submit"], input[type="button"], [role="button"]',
+          'a,button,input[type="submit"],input[type="button"],[role="button"]',
         );
-        if (!control || !isAuthCredentialSubmitControl(control)) {
+        if (!control) {
+          return;
+        }
+        // OAuth / “Continue with …” — stage a passwordless save offer for the relying party.
+        if (isOauthSignInControl(control)) {
+          if (isOauthIdpHost(location.hostname)) {
+            return;
+          }
+          const detection = detectOauthFromControl(control);
+          const form =
+            control.closest("form") ??
+            (activeInput?.form && document.contains(activeInput) ? activeInput.form : null);
+          const captureUrl = captureFormPageUrl(location);
+          const snapshot = {
+            username: "",
+            password: "",
+            captureUrl,
+            oauthDetected: true as const,
+            ...(detection.providerHint ? { oauthProviderHint: detection.providerHint } : {}),
+          };
+          stagePendingSaveFromSnapshot(form, snapshot);
+          setTimeout(() => onCredentialsSubmitted(form, snapshot), 0);
+          return;
+        }
+        if (!isAuthCredentialSubmitControl(control)) {
           return;
         }
         const form =

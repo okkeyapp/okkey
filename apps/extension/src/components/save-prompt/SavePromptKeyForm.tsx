@@ -12,11 +12,13 @@ import {
 import {
   ItemRecordFavicon,
   KeyFormEditor,
+  NO_LINKED_ACCOUNT_VALUE,
   createKeyFormEditorMessages,
   createLocalizedKeyFieldTypes,
   filterKeyFieldTypesForFilesEnabled,
   itemPlaintextToKeyFormSections,
   keyFormSectionsToItemPlaintext,
+  normalizeLinkedAccountItemId,
   type KeyFormEditorSection,
 } from "@okkey/vault-ui";
 import {
@@ -30,8 +32,14 @@ import {
   useState,
 } from "react";
 
-import { AUTOFILL_MSG, type AutofillSaveFormDraftItem } from "../../lib/autofillMessages";
+import {
+  AUTOFILL_MSG,
+  type AutofillLoginLinkTarget,
+  type AutofillSaveFormDraftItem,
+} from "../../lib/autofillMessages";
+import { preselectLinkedAccountItemId } from "../../lib/linkedAccountSave";
 import { useRadixScrollAreaScrollEdges } from "../../lib/useRadixScrollAreaScrolled";
+import { SavePromptSignInWithField } from "./SavePromptSignInWithField";
 
 export type SavePromptKeyFormQuery = {
   kind: "create" | "update";
@@ -41,6 +49,9 @@ export type SavePromptKeyFormQuery = {
   websiteUrl: string;
   vaultId?: string;
   itemId?: string;
+  linkedAccountItemId?: string;
+  oauthDetected?: boolean;
+  oauthProviderHint?: string;
 };
 
 export type SavePromptKeyFormHandle = {
@@ -89,6 +100,7 @@ function draftToItem(draft: AutofillSaveFormDraftItem): ItemPlaintextV2 {
     ...(draft.faviconSource
       ? { faviconSource: draft.faviconSource as ItemPlaintextV2["faviconSource"] }
       : {}),
+    ...(draft.linkedAccountItemId ? { linkedAccountItemId: draft.linkedAccountItemId } : {}),
   };
 }
 
@@ -106,6 +118,7 @@ function itemToDraft(item: ItemPlaintextV2): AutofillSaveFormDraftItem {
     ...(item.tags ? { tags: item.tags } : {}),
     ...(item.faviconId ? { faviconId: item.faviconId } : {}),
     ...(item.faviconSource ? { faviconSource: item.faviconSource } : {}),
+    ...(item.linkedAccountItemId ? { linkedAccountItemId: item.linkedAccountItemId } : {}),
   };
 }
 
@@ -169,6 +182,10 @@ export const SavePromptKeyForm = forwardRef<SavePromptKeyFormHandle, SavePromptK
     const [saving, setSaving] = useState(false);
     const [previewIconUrl, setPreviewIconUrl] = useState<string | undefined>(iconUrl);
     const [iconLoading, setIconLoading] = useState(false);
+    const [linkedAccountItemId, setLinkedAccountItemId] = useState(
+      normalizeLinkedAccountItemId(query.linkedAccountItemId) ?? NO_LINKED_ACCOUNT_VALUE,
+    );
+    const [loginLinkTargets, setLoginLinkTargets] = useState<AutofillLoginLinkTarget[]>([]);
 
     const scrollAreaRef = useRef<HTMLDivElement>(null);
     const pathHostRef = useRef<HTMLDivElement>(null);
@@ -194,6 +211,7 @@ export const SavePromptKeyForm = forwardRef<SavePromptKeyFormHandle, SavePromptK
             websiteUrl: query.websiteUrl,
             vaultId: query.vaultId,
             itemId: query.itemId,
+            linkedAccountItemId: query.linkedAccountItemId,
           });
           if (cancelled) {
             return;
@@ -211,10 +229,25 @@ export const SavePromptKeyForm = forwardRef<SavePromptKeyFormHandle, SavePromptK
             return;
           }
           const item = draftToItem(response.item);
+          const targets = Array.isArray(response.loginLinkTargets)
+            ? response.loginLinkTargets
+            : [];
+          const existingLink =
+            normalizeLinkedAccountItemId(item.linkedAccountItemId) ??
+            normalizeLinkedAccountItemId(query.linkedAccountItemId);
+          const preselected =
+            existingLink ??
+            preselectLinkedAccountItemId({
+              providerHint: query.oauthProviderHint,
+              candidates: targets,
+              identifiedAccountHint: query.username,
+            });
           setKind(response.kind);
           setBaseItem(item);
           setRecordName(item.title);
           setSections(itemPlaintextToKeyFormSections(item, keyFormMessages, { includeEmptyFields: true }));
+          setLinkedAccountItemId(preselected ?? NO_LINKED_ACCOUNT_VALUE);
+          setLoginLinkTargets(targets);
           setLoading(false);
         } catch {
           if (!cancelled) {
@@ -292,6 +325,7 @@ export const SavePromptKeyForm = forwardRef<SavePromptKeyFormHandle, SavePromptK
       setSaving(true);
       setError(null);
       try {
+        const normalizedLink = normalizeLinkedAccountItemId(linkedAccountItemId);
         const built = keyFormSectionsToItemPlaintext({
           sections,
           itemId: baseItem.itemId,
@@ -303,6 +337,7 @@ export const SavePromptKeyForm = forwardRef<SavePromptKeyFormHandle, SavePromptK
           categoryId: ITEM_CATEGORY_LOGIN,
           nowMs: Date.now(),
           tags: baseItem.tags,
+          linkedAccountItemId: normalizedLink,
         });
         const item: ItemPlaintextV2 = {
           ...built,
@@ -333,7 +368,18 @@ export const SavePromptKeyForm = forwardRef<SavePromptKeyFormHandle, SavePromptK
       } finally {
         setSaving(false);
       }
-    }, [baseItem, getVaultId, kind, locale, onLocked, onSaved, query.vaultId, recordName, sections]);
+    }, [
+      baseItem,
+      getVaultId,
+      kind,
+      linkedAccountItemId,
+      locale,
+      onLocked,
+      onSaved,
+      query.vaultId,
+      recordName,
+      sections,
+    ]);
 
     useImperativeHandle(ref, () => ({ submit }), [submit]);
 
@@ -437,6 +483,14 @@ export const SavePromptKeyForm = forwardRef<SavePromptKeyFormHandle, SavePromptK
                       disabled={saving}
                     />
                   </div>
+
+                  <SavePromptSignInWithField
+                    locale={locale}
+                    value={linkedAccountItemId}
+                    onValueChange={setLinkedAccountItemId}
+                    targets={loginLinkTargets}
+                    disabled={saving}
+                  />
 
                   {sections ? (
                     <KeyFormEditor
