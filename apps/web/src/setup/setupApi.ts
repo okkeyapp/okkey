@@ -29,6 +29,7 @@ export type SetupBeginRegistrationDto = {
   auth_state_id: string;
   email: string;
   expires_at: string;
+  already_registered?: boolean;
 };
 
 export type SetupFinishRequest = {

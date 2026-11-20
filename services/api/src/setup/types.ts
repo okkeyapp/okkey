@@ -36,6 +36,11 @@ export type SetupBeginRegistrationResult = {
   authStateId: string;
   email: string;
   expiresAt: string;
+  /**
+   * True when the email already owns this incomplete self-host instance
+   * (recovery exported). Client may skip password/recovery and call finish.
+   */
+  alreadyRegistered?: boolean;
 };
 
 export type SetupFinishInput = {
