@@ -2,9 +2,12 @@ import type { KeyFormEditorField, KeyFormEditorSection } from "../components/key
 import {
   BANK_ACCOUNT_SECTION_ID,
   CRYPTO_WALLET_SECTION_ID,
+  LOYALTY_CARD_SECTION_ID,
   PASSPORT_SECTION_ID,
   SECURE_FILES_SECTION_ID,
   SECURE_NOTE_SECTION_ID,
+  TRAVEL_BOOKING_SECTION_ID,
+  VEHICLE_SECTION_ID,
   WIFI_ROUTER_SECTION_ID,
   isCreditCardRequiredFieldId,
 } from "../components/items/itemCategoryDefaultSections";
@@ -35,7 +38,21 @@ export function isConfiguredNewItemForm(
   sections: readonly KeyFormEditorSection[] | null,
   options?: { linkedAccountItemId?: string },
 ): boolean {
-  if (categoryId === "database" || categoryId === "server" || categoryId === "wifi_router" || categoryId === "credit_card" || categoryId === "bank_account" || categoryId === "crypto_wallet" || categoryId === "personal_data" || categoryId === "passport" || categoryId === "secure_files" || categoryId === "secure_note") {
+  if (
+    categoryId === "database" ||
+    categoryId === "server" ||
+    categoryId === "wifi_router" ||
+    categoryId === "credit_card" ||
+    categoryId === "bank_account" ||
+    categoryId === "crypto_wallet" ||
+    categoryId === "personal_data" ||
+    categoryId === "passport" ||
+    categoryId === "loyalty_card" ||
+    categoryId === "vehicle" ||
+    categoryId === "travel_booking" ||
+    categoryId === "secure_files" ||
+    categoryId === "secure_note"
+  ) {
     return true;
   }
 
@@ -152,6 +169,12 @@ export function validateNewItemForm(input: {
     appendPersonalDataNameIssues(input.sections ?? [], (issue) => issues.push(issue));
   } else if (input.categoryId === "passport") {
     appendFlexiblePresetSectionIssues(PASSPORT_SECTION_ID, input.sections ?? [], issues);
+  } else if (input.categoryId === "loyalty_card") {
+    appendFlexiblePresetSectionIssues(LOYALTY_CARD_SECTION_ID, input.sections ?? [], issues);
+  } else if (input.categoryId === "vehicle") {
+    appendFlexiblePresetSectionIssues(VEHICLE_SECTION_ID, input.sections ?? [], issues);
+  } else if (input.categoryId === "travel_booking") {
+    appendFlexiblePresetSectionIssues(TRAVEL_BOOKING_SECTION_ID, input.sections ?? [], issues);
   } else if (input.categoryId === "secure_files") {
     appendFlexiblePresetSectionIssues(SECURE_FILES_SECTION_ID, input.sections ?? [], issues, isKeyFormFieldFilled);
   } else if (input.categoryId === "secure_note") {

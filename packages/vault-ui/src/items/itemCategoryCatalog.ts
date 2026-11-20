@@ -13,6 +13,9 @@ export type ItemCategoryId =
   | "credit_card"
   | "personal_data"
   | "passport"
+  | "loyalty_card"
+  | "vehicle"
+  | "travel_booking"
   | "secure_files"
   | "api_access"
   | "ssh_key"
@@ -44,6 +47,9 @@ export const ITEM_CATEGORY_DEFINITIONS: readonly ItemCategoryDefinition[] = [
   { id: "credit_card", labelKey: "web.newItemPopup.categories.creditCard", iconColor: "#0d9488", groupId: ITEM_CATEGORY_GROUP_FINANCE },
   { id: "personal_data", labelKey: "web.newItemPopup.categories.personalData", iconColor: "#22c55e", groupId: ITEM_CATEGORY_GROUP_PERSONAL },
   { id: "passport", labelKey: "web.newItemPopup.categories.passport", iconColor: "#9f1239", groupId: ITEM_CATEGORY_GROUP_PERSONAL },
+  { id: "loyalty_card", labelKey: "web.newItemPopup.categories.loyaltyCard", iconColor: "#db2777", groupId: ITEM_CATEGORY_GROUP_PERSONAL },
+  { id: "vehicle", labelKey: "web.newItemPopup.categories.vehicle", iconColor: "#475569", groupId: ITEM_CATEGORY_GROUP_PERSONAL },
+  { id: "travel_booking", labelKey: "web.newItemPopup.categories.travelBooking", iconColor: "#0284c8", groupId: ITEM_CATEGORY_GROUP_PERSONAL },
   { id: "secure_files", labelKey: "web.newItemPopup.categories.secureFiles", iconColor: "#ef4444", groupId: ITEM_CATEGORY_GROUP_PERSONAL },
   { id: "api_access", labelKey: "web.newItemPopup.categories.apiAccess", iconColor: "#f472b6", groupId: ITEM_CATEGORY_GROUP_AUTHORIZATION },
   // { id: "ssh_key", labelKey: "web.newItemPopup.categories.sshKey", iconColor: "#f97316", groupId: ITEM_CATEGORY_GROUP_AUTHORIZATION },
@@ -76,6 +82,9 @@ export const ITEM_CATEGORY_GROUPS: readonly {
 const PERSONAL_GROUP_CATEGORY_ORDER: readonly ItemCategoryId[] = [
   "personal_data",
   "passport",
+  "loyalty_card",
+  "vehicle",
+  "travel_booking",
   "secure_files",
   "secure_note",
 ];
