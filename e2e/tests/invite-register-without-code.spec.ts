@@ -1,10 +1,6 @@
 import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
 
-import {
-  registerBootstrapAndUnlock,
-  signInWithEmailOtp,
-  unlockWithMasterPassword,
-} from "../helpers/auth";
+import { registerBootstrapAndUnlock, signInWithEmailOtp } from "../helpers/auth";
 import { resetE2eCatalog } from "../helpers/db";
 import { E2E_MASTER_PASSWORD, uniqueEmail } from "../helpers/env";
 import { dismissOpenItemDialog } from "../helpers/items";
@@ -116,9 +112,18 @@ test("2) invitee registers from the link without entering an email code", async 
       timeout: 30_000,
     });
     await signInWithEmailOtp(page, inviteeEmail);
-    await unlockWithMasterPassword(page, E2E_MASTER_PASSWORD);
 
-    // Invite was consumed during registration; open the workspace from the landing page.
+    // Pending invite redirects here; invite was already consumed at registration.
+    const unlockInvite = page.getByRole("button", { name: /unlock vault|^unlock$/i });
+    await expect(unlockInvite).toBeVisible({ timeout: 60_000 });
+    await unlockInvite.click();
+
+    await expect(page.getByRole("heading", { name: /vault is locked/i })).toBeVisible({
+      timeout: 30_000,
+    });
+    await page.locator("#unlock-master-password").fill(E2E_MASTER_PASSWORD);
+    await page.getByRole("button", { name: /^unlock$/i }).click();
+    // Unlock returns to the invite landing (redirect), not /items.
     await expect(page.getByRole("button", { name: /open workspace/i })).toBeVisible({
       timeout: 60_000,
     });

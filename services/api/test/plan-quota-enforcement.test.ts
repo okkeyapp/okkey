@@ -112,6 +112,9 @@ function membersService(options: {
             },
           ];
         }
+        if (sql.includes("UPDATE workspace_invitations") && sql.includes("RETURNING id")) {
+          return [{ id: "1000000000000000200" }];
+        }
         if (sql.includes("SELECT EXISTS")) {
           return [{ ok: false }];
         }
