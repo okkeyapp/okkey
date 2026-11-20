@@ -844,20 +844,15 @@ test("approveDevice and rejectDevice are idempotent for resolved same action", a
       device: createDeviceRecord({ status: "trusted" }),
     }),
   });
-  await assert.rejects(
-    () =>
-      approveService.approveDevice(
-        "u1",
-        "trusted1",
-        "pending1",
-        undefined,
-        Uint8Array.from(Buffer.from(hybridDeviceShareB64(4), "base64")),
-      ),
-    (error: unknown) =>
-      error instanceof DeviceServiceError &&
-      error.code === "DEVICE_APPROVAL_ALREADY_RESOLVED" &&
-      error.statusCode === 409,
+  const approvedAgain = await approveService.approveDevice(
+    "u1",
+    "trusted1",
+    "pending1",
+    undefined,
+    Uint8Array.from(Buffer.from(hybridDeviceShareB64(4), "base64")),
   );
+  assert.equal(approvedAgain.status, "trusted");
+  assert.equal(approvedAgain.deviceId, "d1");
 
   const rejectService = createService({
     resolveApproval: async () => ({
@@ -867,6 +862,82 @@ test("approveDevice and rejectDevice are idempotent for resolved same action", a
   });
   const rejected = await rejectService.rejectDevice("u1", "trusted1", "pending1");
   assert.equal(rejected.status, "revoked");
+});
+
+test("approveDevice share-delivery is idempotent for already-stored and already-trusted", async () => {
+  const envelope = new Uint8Array(1148 + 16);
+  envelope[0] = 1;
+  envelope[1] = 1;
+  envelope[2] = 1;
+
+  let storeCalls = 0;
+  const pendingService = new DeviceService({
+    devices: {
+      registerOrUpdate: async () => createDeviceRecord(),
+      reclaimSoleTrusted: async () => null,
+      claimTrustedAfterRecovery: async () => createDeviceRecord({ status: "trusted" }),
+      findOwnedDeviceAuth: async () => null,
+      listDeviceShares: async () => [],
+      isTrustedDevice: async () => true,
+      resolveApproval: async () => ({
+        kind: "approved",
+        device: createDeviceRecord({ status: "trusted" }),
+      }),
+      listByUser: async () => [],
+      renameDevice: async () => null,
+      revokeOwned: async () => null,
+      blockPending: async () => null,
+      unblockDevice: async () => null,
+      clearExpiredBlocks: async () => undefined,
+      storeShareDelivery: async () => {
+        storeCalls += 1;
+        return { kind: "stored" as const };
+      },
+    },
+    config: {
+      deviceApprovalTtlSeconds: 60,
+      publicAppBaseUrl: "https://app.test",
+    },
+  });
+  const first = await pendingService.approveDevice("u1", "trusted1", "pending1", envelope);
+  const second = await pendingService.approveDevice("u1", "trusted1", "pending1", envelope);
+  assert.equal(first.status, "pending_approval");
+  assert.equal(second.status, "pending_approval");
+  assert.equal(storeCalls, 2);
+
+  const trustedService = new DeviceService({
+    devices: {
+      registerOrUpdate: async () => createDeviceRecord(),
+      reclaimSoleTrusted: async () => null,
+      claimTrustedAfterRecovery: async () => createDeviceRecord({ status: "trusted" }),
+      findOwnedDeviceAuth: async () => null,
+      listDeviceShares: async () => [],
+      isTrustedDevice: async () => true,
+      resolveApproval: async () => ({
+        kind: "already_trusted",
+        device: createDeviceRecord({ status: "trusted", id: "pending1" }),
+      }),
+      listByUser: async () => [],
+      renameDevice: async () => null,
+      revokeOwned: async () => null,
+      blockPending: async () => null,
+      unblockDevice: async () => null,
+      clearExpiredBlocks: async () => undefined,
+      storeShareDelivery: async () => ({ kind: "already_trusted" as const }),
+    },
+    config: {
+      deviceApprovalTtlSeconds: 60,
+      publicAppBaseUrl: "https://app.test",
+    },
+  });
+  const trustedAgain = await trustedService.approveDevice(
+    "u1",
+    "trusted1",
+    "pending1",
+    envelope,
+  );
+  assert.equal(trustedAgain.status, "trusted");
+  assert.equal(trustedAgain.deviceId, "pending1");
 });
 
 test("approval flow rejects invalid transitions and expired challenge", async () => {

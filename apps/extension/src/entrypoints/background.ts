@@ -43,6 +43,10 @@ import {
   type PasskeyHandoffPollStatus,
   type PasskeyHandoffStored,
 } from "../lib/passkeyHandoffPoll";
+import {
+  PENDING_APPROVAL_PICKUP_ALARM,
+  runBackgroundPendingApprovalPickup,
+} from "../lib/pendingApprovalPickupRuntime";
 
 /** Probe device trust while unlocked so web Revoke clears session without opening the popup. */
 const DEVICE_TRUST_ALARM = "okkey.deviceTrustProbe";
@@ -156,10 +160,17 @@ export default defineBackground(() => {
   browser.alarms.onAlarm.addListener((alarm) => {
     if (alarm.name === DEVICE_TRUST_ALARM) {
       void runBackgroundDeviceTrustProbe();
+      // Trust probe wakes the SW periodically; also try share-delivery claim.
+      void runBackgroundPendingApprovalPickup();
+    }
+    if (alarm.name === PENDING_APPROVAL_PICKUP_ALARM) {
+      void runBackgroundPendingApprovalPickup();
     }
   });
   // Immediate probe on SW wake (MV3) when unlock session may still be present.
   void runBackgroundDeviceTrustProbe();
+  // Claim share delivery in the background while a pending approval exists.
+  void runBackgroundPendingApprovalPickup();
   void resumePasskeyHandoffPoll();
 
   browser.runtime.onMessage.addListener((message, sender) => {

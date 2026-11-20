@@ -8,6 +8,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
   Popup,
+  Spinner,
   buttonVariants,
   cn,
   controlGroupItemFixedClassName,
@@ -36,6 +37,7 @@ import {
 } from "../settings/settingsPopupCache";
 import { emitDevicesChanged, DEVICES_CHANGED_EVENT } from "./devicesEvents";
 import {
+  approvalResponseCompletesApproverAction,
   approvalResponseGrantsTrust,
   deviceDecisionToastKey,
   pendingApprovalKey,
@@ -167,15 +169,24 @@ export default function DeviceApprovalController() {
           envelope ?? undefined,
           deviceShareB64,
         );
-        if (!approvalResponseGrantsTrust(approved.status)) {
-          await refreshSettingsDevicesCache(() => core.listDevices(fingerprint));
+        if (!approvalResponseCompletesApproverAction(approved.status)) {
+          toast.error(t("web.settingsPopup.devices.error.generic"));
           return;
         }
-        toast.success(t(deviceDecisionToastKey("approve")));
-      } else {
-        await core.rejectDevice(targetDeviceId, approverId, "dismissed by user");
-        toast.success(t(deviceDecisionToastKey("reject")));
+        dismissDevice(current);
+        await refreshSettingsDevicesCache(() => core.listDevices(fingerprint));
+        emitDevicesChanged();
+        toast.success(
+          t(
+            deviceDecisionToastKey("approve", {
+              waitingForExtension: !approvalResponseGrantsTrust(approved.status),
+            }),
+          ),
+        );
+        return;
       }
+      await core.rejectDevice(targetDeviceId, approverId, "dismissed by user");
+      toast.success(t(deviceDecisionToastKey("reject")));
       dismissDevice(current);
       await refreshSettingsDevicesCache(() => core.listDevices(fingerprint));
       emitDevicesChanged();
@@ -232,10 +243,17 @@ export default function DeviceApprovalController() {
             variant="outline"
             className="gap-2 max-sm:w-full"
             disabled={resolving}
+            aria-busy={resolving}
             onClick={() => void resolve("approve")}
           >
-            <IconCheck16 className="size-4 shrink-0" />
-            {t("web.settingsPopup.devices.pending.trust")}
+            {resolving ? (
+              <Spinner className="size-4 shrink-0" />
+            ) : (
+              <IconCheck16 className="size-4 shrink-0" />
+            )}
+            {resolving
+              ? t("web.settingsPopup.devices.pending.trusting")
+              : t("web.settingsPopup.devices.pending.trust")}
           </Button>
           <ControlGroup
             className="w-auto max-sm:w-full"

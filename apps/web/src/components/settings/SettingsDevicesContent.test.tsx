@@ -333,13 +333,98 @@ describe("SettingsDevicesContent", () => {
     expect(screen.getByText("Web Chrome")).toBeTruthy();
   });
 
-  it("keeps a pending request when approve still returns pending_approval", async () => {
+  it("dismisses pending UI when approve returns pending_approval (waiting for extension)", async () => {
     authState.userId = "user-1";
     shareMocks.readVaultBundle.mockReturnValue({ device_share_b64: "bG9jYWw=" });
-    coreMocks.approveDevice.mockResolvedValue({
-      device_id: "d-pending",
-      status: "pending_approval",
+    let approved = false;
+    coreMocks.approveDevice.mockImplementation(async () => {
+      approved = true;
+      return {
+        device_id: "d-pending",
+        status: "pending_approval",
+      };
     });
+    coreMocks.listDevices.mockImplementation(async () => ({
+      devices: [trustedDevice()],
+      pending: approved
+        ? [
+            pendingDevice({
+              share_wrap_ed25519_public_key: "ZWQ=",
+              share_wrap_pq_public_key: "cHE=",
+              approved_at: "2026-01-01T00:01:00.000Z",
+            }),
+          ]
+        : [
+            pendingDevice({
+              share_wrap_ed25519_public_key: "ZWQ=",
+              share_wrap_pq_public_key: "cHE=",
+            }),
+          ],
+      blocked: [],
+    }));
+
+    render(<SettingsDevicesContent t={t} />);
+    await screen.findByText("Desktop Windows 11");
+    fireEvent.click(screen.getByText("web.settingsPopup.devices.pending.trust"));
+
+    await waitFor(() => {
+      expect(coreMocks.approveDevice).toHaveBeenCalledTimes(1);
+    });
+    await waitFor(() => {
+      expect(toast.success).toHaveBeenCalledWith(
+        "web.settingsPopup.devices.toast.approvedWaiting",
+      );
+    });
+    await waitFor(() => {
+      expect(screen.queryByText("web.settingsPopup.devices.pending.title")).toBeNull();
+    });
+    expect(screen.queryByText("Desktop Windows 11")).toBeNull();
+  });
+
+  it("disables Trust after click and ignores a second click until the request finishes", async () => {
+    authState.userId = "user-1";
+    shareMocks.readVaultBundle.mockReturnValue({ device_share_b64: "bG9jYWw=" });
+    let resolveApprove: ((value: { device_id: string; status: string }) => void) | undefined;
+    coreMocks.approveDevice.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveApprove = resolve;
+        }),
+    );
+    coreMocks.listDevices.mockResolvedValue({
+      devices: [trustedDevice()],
+      pending: [
+        pendingDevice({
+          share_wrap_ed25519_public_key: "ZWQ=",
+          share_wrap_pq_public_key: "cHE=",
+        }),
+      ],
+      blocked: [],
+    });
+
+    render(<SettingsDevicesContent t={t} />);
+    await screen.findByText("Desktop Windows 11");
+
+    const trustButton = screen.getByRole("button", {
+      name: "web.settingsPopup.devices.pending.trust",
+    });
+    fireEvent.click(trustButton);
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "web.settingsPopup.devices.pending.trusting" })).toBeDisabled();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "web.settingsPopup.devices.pending.trusting" }));
+    expect(coreMocks.approveDevice).toHaveBeenCalledTimes(1);
+
+    resolveApprove?.({ device_id: "d-pending", status: "pending_approval" });
+    await waitFor(() => {
+      expect(toast.success).toHaveBeenCalled();
+    });
+  });
+
+  it("re-enables Trust and shows an error when approve fails", async () => {
+    authState.userId = "user-1";
+    shareMocks.readVaultBundle.mockReturnValue({ device_share_b64: "bG9jYWw=" });
+    coreMocks.approveDevice.mockRejectedValue(new Error("network down"));
     coreMocks.listDevices.mockResolvedValue({
       devices: [trustedDevice()],
       pending: [
@@ -356,14 +441,11 @@ describe("SettingsDevicesContent", () => {
     fireEvent.click(screen.getByText("web.settingsPopup.devices.pending.trust"));
 
     await waitFor(() => {
-      expect(coreMocks.approveDevice).toHaveBeenCalled();
+      expect(toast.error).toHaveBeenCalled();
     });
-    await waitFor(() => {
-      expect(coreMocks.listDevices.mock.calls.length).toBeGreaterThan(1);
-    });
-    expect(screen.getByText("web.settingsPopup.devices.pending.title")).toBeTruthy();
-    expect(screen.getByText("Desktop Windows 11")).toBeTruthy();
-    expect(toast.success).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole("button", { name: "web.settingsPopup.devices.pending.trust" }),
+    ).not.toBeDisabled();
   });
 
   it("dismisses pending device via rejectDevice", async () => {

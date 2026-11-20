@@ -13,6 +13,7 @@ import {
   Input,
   Popup,
   Skeleton,
+  Spinner,
   buttonVariants,
   controlGroupItemFixedClassName,
   cn,
@@ -41,7 +42,12 @@ import {
 } from "../items/itemCategoryIcons";
 import { calendarDaysBetween } from "../../lib/calendarDaysBetween";
 import { useLocale } from "../../locale/LocaleContext";
-import { approvalResponseGrantsTrust } from "../devices/deviceApprovalPopup";
+import {
+  approvalResponseCompletesApproverAction,
+  approvalResponseGrantsTrust,
+  deviceDecisionToastKey,
+  pendingDeviceNeedsApproverAction,
+} from "../devices/deviceApprovalPopup";
 import { DEVICES_CHANGED_EVENT, emitDevicesChanged } from "../devices/devicesEvents";
 import {
   DeviceTypeIcon,
@@ -178,7 +184,7 @@ export default function SettingsDevicesContent({ t }: SettingsDevicesContentProp
   } = useSettingsPopupCacheEntry("devices", ensureDevices, mapDevicesError);
 
   const devices = devicesCache?.devices ?? [];
-  const pending = devicesCache?.pending ?? [];
+  const pending = (devicesCache?.pending ?? []).filter(pendingDeviceNeedsApproverAction);
   const blocked = devicesCache?.blocked ?? [];
 
   const [blockedOpen, setBlockedOpen] = useState(false);
@@ -322,6 +328,9 @@ export default function SettingsDevicesContent({ t }: SettingsDevicesContentProp
       toast.error(t("web.settingsPopup.devices.error.accessDenied"));
       return;
     }
+    if (busyId) {
+      return;
+    }
     setBusyId(device.device_id);
     try {
       const bundle = userId ? readVaultBundle(userId) : null;
@@ -350,25 +359,42 @@ export default function SettingsDevicesContent({ t }: SettingsDevicesContentProp
         envelope ?? undefined,
         deviceShareB64,
       );
-      if (!approvalResponseGrantsTrust(approved.status)) {
-        await load({ quiet: true, force: true });
+      if (!approvalResponseCompletesApproverAction(approved.status)) {
+        toast.error(devicesErrorMessage(new Error("unexpected approve status"), t));
         return;
       }
-      patchDevicesCache({
-        pending: pending.filter((item) => item.device_id !== device.device_id),
-        devices: [
-          { ...device, status: "trusted", is_current: false, approval_expires_at: null },
-          ...devices.filter((item) => item.device_id !== device.device_id),
-        ],
-      });
-      toast.success(t("web.settingsPopup.devices.toast.trusted"));
+      const waitingForExtension = !approvalResponseGrantsTrust(approved.status);
+      if (waitingForExtension) {
+        patchDevicesCache({
+          pending: pending.filter((item) => item.device_id !== device.device_id),
+        });
+      } else {
+        patchDevicesCache({
+          pending: pending.filter((item) => item.device_id !== device.device_id),
+          devices: [
+            {
+              ...device,
+              status: "trusted",
+              is_current: false,
+              approval_expires_at: null,
+              approved_at: device.approved_at ?? new Date().toISOString(),
+            },
+            ...devices.filter((item) => item.device_id !== device.device_id),
+          ],
+        });
+      }
+      toast.success(t(deviceDecisionToastKey("approve", { waitingForExtension })));
       emitDevicesChanged();
     } catch (err) {
       if (
         err instanceof ApiRequestError &&
         err.body.error === "DEVICE_APPROVAL_ALREADY_RESOLVED"
       ) {
+        patchDevicesCache({
+          pending: pending.filter((item) => item.device_id !== device.device_id),
+        });
         toast.success(t("web.settingsPopup.devices.toast.trusted"));
+        emitDevicesChanged();
       } else {
         toast.error(devicesErrorMessage(err, t));
       }
@@ -528,10 +554,17 @@ export default function SettingsDevicesContent({ t }: SettingsDevicesContentProp
               variant="secondary"
               className="gap-2 max-sm:w-full"
               disabled={busyId === primaryPending.device_id}
+              aria-busy={busyId === primaryPending.device_id}
               onClick={() => void trustPending(primaryPending)}
             >
-              <IconCheck16 className="size-4 shrink-0" />
-              {t("web.settingsPopup.devices.pending.trust")}
+              {busyId === primaryPending.device_id ? (
+                <Spinner className="size-4 shrink-0" />
+              ) : (
+                <IconCheck16 className="size-4 shrink-0" />
+              )}
+              {busyId === primaryPending.device_id
+                ? t("web.settingsPopup.devices.pending.trusting")
+                : t("web.settingsPopup.devices.pending.trust")}
             </Button>
             <ControlGroup
               className="w-auto max-sm:w-full"
