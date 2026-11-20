@@ -276,6 +276,7 @@ export function registerSetupRoutes(
         auth_state_id: result.authStateId,
         email: result.email,
         expires_at: result.expiresAt,
+        already_registered: Boolean(result.alreadyRegistered),
         requestId: ctx.requestId,
       });
     } catch (error) {

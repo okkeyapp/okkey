@@ -61,6 +61,7 @@ import {
   type SetupSmtpProviderDto,
 } from "../../setup/setupApi";
 import { registrationStepAfterRecoveryEnroll } from "../auth/registrationRecoveryStep";
+import { runSetupLogoUpload, setupLogoUploadDecision } from "./setupLogoUpload";
 
 type WizardStep = "code" | "mail" | "server" | "owner" | "password" | "recovery" | "finishing";
 
@@ -192,6 +193,8 @@ export default function SetupWizardPage() {
     };
   }, [setupApi]);
 
+  // Secrets/refs must not share a cleanup effect with logoPreviewUrl — changing the
+  // preview (or Strict Mode remount) would wipe logoVaultKeyRef before finish upload.
   useEffect(() => {
     return () => {
       if (recoveryCopyResetTimeoutRef.current) {
@@ -205,6 +208,11 @@ export default function SetupWizardPage() {
         wipeBytes(logoVaultKeyRef.current);
         logoVaultKeyRef.current = null;
       }
+    };
+  }, []);
+
+  useEffect(() => {
+    return () => {
       if (logoPreviewUrl) {
         URL.revokeObjectURL(logoPreviewUrl);
       }
@@ -220,6 +228,13 @@ export default function SetupWizardPage() {
       }
       return null;
     });
+  }
+
+  function wipeLogoVaultKey() {
+    if (logoVaultKeyRef.current) {
+      wipeBytes(logoVaultKeyRef.current);
+      logoVaultKeyRef.current = null;
+    }
   }
 
   async function handleLogoFileSelected(file: File) {
@@ -449,6 +464,13 @@ export default function SetupWizardPage() {
       });
       if (!testRecipient.trim()) {
         setTestRecipient(begun.email);
+      }
+      if (begun.already_registered) {
+        // Incomplete setup rebound: recovery already exported — jump to finish.
+        setRecoveryExported(true);
+        setRecoverySecret(null);
+        setStep("recovery");
+        return;
       }
       setStep("password");
     } catch {
@@ -686,16 +708,26 @@ export default function SetupWizardPage() {
       masterPasswordRef.current = "";
       setMasterPassword("");
       setRepeatMasterPassword("");
-      if (unlock.ok && logoPlaintextRef.current && logoVaultKeyRef.current) {
-        try {
+      const hadPendingLogo = Boolean(logoPlaintextRef.current);
+      const logoDecision = setupLogoUploadDecision({
+        hadPendingLogo,
+        unlockOk: unlock.ok,
+        hasVaultKey: Boolean(logoVaultKeyRef.current),
+        hasPlaintext: Boolean(logoPlaintextRef.current),
+      });
+      const logoOutcome = await runSetupLogoUpload({
+        decision: logoDecision,
+        vaultKey: logoVaultKeyRef.current,
+        plaintext: logoPlaintextRef.current,
+        upload: async (vaultKey, plaintext) => {
           const { encryptWorkspaceLogo } = await import("../../workspace/workspaceKeyClient");
           const core = createAuthenticatedCoreClient(finished.access_token);
           const ciphertext = await encryptWorkspaceLogo({
             core,
             workspaceId: finished.workspace_id,
-            vaultKey: logoVaultKeyRef.current,
+            vaultKey,
             userId: finished.user_id,
-            plaintext: logoPlaintextRef.current,
+            plaintext,
           });
           await commitWorkspaceLogoReplacement({
             ciphertext,
@@ -704,18 +736,13 @@ export default function SetupWizardPage() {
             },
             deleteLegacy: null,
           });
-        } catch (logoError) {
-          if (import.meta.env.DEV) {
-            console.error("[setup/logo]", logoError);
-          }
-          // Logo is optional; do not block landing in the app after a successful finish.
-        }
-      }
-      if (logoVaultKeyRef.current) {
-        wipeBytes(logoVaultKeyRef.current);
-        logoVaultKeyRef.current = null;
-      }
+        },
+      });
+      wipeLogoVaultKey();
       clearPendingLogo();
+      if (logoOutcome === "failed") {
+        toast.error(t("web.setupWizard.logoUploadFailed"));
+      }
       if (!unlock.ok) {
         navigate(`${ITEMS_PATH}?${WORKSPACE_QUERY_PARAM}=${encodeURIComponent(finished.workspace_id)}`, {
           replace: true,
@@ -1137,6 +1164,15 @@ export default function SetupWizardPage() {
             </Button>
           </div>
           <Button type="button" disabled={!recoveryExported || busy} onClick={() => void handleFinish()}>
+            {t("web.setupWizard.finish")}
+          </Button>
+        </div>
+      ) : null}
+
+      {step === "recovery" && !recoverySecret && recoveryExported ? (
+        <div className="flex w-full flex-col gap-6">
+          <p className="text-sm text-copy-secondary">{t("web.setupWizard.resumeFinishHint")}</p>
+          <Button type="button" disabled={busy} onClick={() => void handleFinish()}>
             {t("web.setupWizard.finish")}
           </Button>
         </div>

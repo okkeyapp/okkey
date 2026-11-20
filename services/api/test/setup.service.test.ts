@@ -179,10 +179,22 @@ function createService(overrides: {
   hasAnyUsers?: boolean;
   setupCodePlaintext?: string;
   postgres?: MemoryPostgres;
+  smtpActive?: boolean;
+  deliverPendingInvitationEmails?: () => Promise<{ delivered: number }>;
+  logger?: { info: (...args: unknown[]) => void; warn: (...args: unknown[]) => void };
+  generateSetupCode?: () => string;
 } = {}) {
   const redis = overrides.redis ?? new InMemoryRedis();
   const instanceSettings = new MemoryInstanceStore();
   const postgres = overrides.postgres ?? new MemoryPostgres();
+  const deliverCalls: Array<{ delivered: number }> = [];
+  const deliverPendingInvitationEmails =
+    overrides.deliverPendingInvitationEmails ??
+    (async () => {
+      const result = { delivered: 0 };
+      deliverCalls.push(result);
+      return result;
+    });
   const service = new SetupService({
     redis,
     users: {
@@ -200,7 +212,7 @@ function createService(overrides: {
         publicAppUrl: "https://app.example",
         passwordSet: false,
         passwordUnreadable: false,
-        smtpActive: false,
+        smtpActive: overrides.smtpActive ?? false,
         smtpVerifiedAt: null,
       }),
       updateForSetup: async () => {
@@ -235,6 +247,7 @@ function createService(overrides: {
     workspaceMembers: {
       createInvitations: async () => ({ created: [], deliveryStatus: "pending" as const }),
       hasPendingInvitationForEmail: async () => false,
+      deliverPendingInvitationEmails,
     },
     postgres,
     config: {
@@ -245,15 +258,25 @@ function createService(overrides: {
       setupCodeMaxAttempts: 3,
       setupCodePlaintext: overrides.setupCodePlaintext ?? "aaaa-bbbb-cccc-dddd",
     },
+    logger: overrides.logger as never,
+    generateSetupCode: overrides.generateSetupCode,
     generateSessionId: () => "setup-session-1",
   });
-  return { service, redis, instanceSettings, postgres };
+  return { service, redis, instanceSettings, postgres, deliverCalls };
 }
 
-async function seedReadyToFinish(overrides: { postgres?: MemoryPostgres } = {}) {
+async function seedReadyToFinish(
+  overrides: {
+    postgres?: MemoryPostgres;
+    smtpActive?: boolean;
+    deliverPendingInvitationEmails?: () => Promise<{ delivered: number }>;
+  } = {},
+) {
   const seeded = createService({
     setupCodePlaintext: "aaaa-bbbb-cccc-dddd",
     postgres: overrides.postgres,
+    smtpActive: overrides.smtpActive,
+    deliverPendingInvitationEmails: overrides.deliverPendingInvitationEmails,
   });
   await seeded.service.ensureBootstrapCode();
   const verified = await seeded.service.verifyCode("aaaa-bbbb-cccc-dddd");
@@ -315,15 +338,75 @@ test("verifyCode is one-time-session gated with attempt limit", async () => {
   assert.ok(verified.expiresAt);
 });
 
-test("getStatus is required only for empty self-host with a code", async () => {
+test("getStatus stays required until setup_completed_at even when users already exist", async () => {
   const { service } = createService();
   assert.deepEqual(await service.getStatus(), { required: false, deploymentMode: "self_hosted" });
   await service.ensureBootstrapCode();
   assert.deepEqual(await service.getStatus(), { required: true, deploymentMode: "self_hosted" });
 
-  const { service: populated } = createService({ hasAnyUsers: true });
+  // Owner row may exist after a failed finish / closed tab — wizard must stay reachable.
+  const { service: populated, instanceSettings } = createService({ hasAnyUsers: true });
   await populated.ensureBootstrapCode();
+  assert.deepEqual(await populated.getStatus(), { required: true, deploymentMode: "self_hosted" });
+
+  await instanceSettings.markSetupCompleted(new Date().toISOString());
   assert.deepEqual(await populated.getStatus(), { required: false, deploymentMode: "self_hosted" });
+});
+
+test("verifyCode stays available while setup is incomplete even if users exist", async () => {
+  const fixture = createService({
+    hasAnyUsers: true,
+    setupCodePlaintext: "abcd-ef01-2345-6789",
+  });
+  await fixture.service.ensureBootstrapCode();
+  const verified = await fixture.service.verifyCode("abcd-ef01-2345-6789");
+  assert.ok(verified.setupToken);
+  assert.equal(await fixture.redis.get(`setup:session:${verified.setupToken}`) !== null, true);
+
+  await fixture.instanceSettings.markSetupCompleted(new Date().toISOString());
+  await assert.rejects(
+    () => fixture.service.verifyCode("abcd-ef01-2345-6789"),
+    (error: unknown) => error instanceof SetupError && error.code === "SETUP_NOT_REQUIRED",
+  );
+});
+
+test("ensureBootstrapCode remints after attempt lockout and logs operator unlock hint", async () => {
+  const infoLogs: Array<{ message: string; extra?: Record<string, unknown> }> = [];
+  const { service, redis } = createService({
+    // Empty plaintext so ensureBootstrapCode mints via generateSetupCode.
+    setupCodePlaintext: "",
+    generateSetupCode: () => "zzzz-yyyy-xxxx-wwww",
+    logger: {
+      info: (message: string, extra?: Record<string, unknown>) => {
+        infoLogs.push({ message, extra });
+      },
+      warn: () => undefined,
+    },
+  });
+  // Force lockout state with a stale hash present.
+  await redis.setWithTtl("setup:code:hash", hashSetupCode("stale-code-value-here"), 3600);
+  await redis.setWithTtl("setup:code:attempts", "10", 3600);
+
+  await service.ensureBootstrapCode();
+
+  const hash = await redis.get("setup:code:hash");
+  assert.equal(hash, hashSetupCode("zzzz-yyyy-xxxx-wwww"));
+  assert.equal(await redis.get("setup:code:attempts"), "0");
+  assert.ok(
+    infoLogs.some(
+      (entry) =>
+        entry.extra?.event === "setup_code_lockout_cleared" &&
+        String(entry.extra.hint).includes("restart the API"),
+    ),
+  );
+  assert.ok(
+    infoLogs.some(
+      (entry) =>
+        entry.extra?.event === "setup_code_minted" &&
+        entry.extra?.setup_code === "zzzz-yyyy-xxxx-wwww" &&
+        String(entry.extra.unlock_hint).includes("restart the API"),
+    ),
+  );
 });
 
 test("requireSession stays valid after owner user exists until setup is marked complete", async () => {
@@ -367,11 +450,35 @@ test("finish with invites creates pending invitations for the requested builtin 
   assert.equal(fixture.postgres.invitations[1]?.email, "member@example.com");
   assert.equal(fixture.postgres.invitations[1]?.role_id, "role-user");
   assert.ok(fixture.instanceSettings.row.setupCompletedAt);
+  // Mail inactive: invitations stay pending and delivery is not attempted.
+  assert.equal(fixture.deliverCalls.length, 0);
   // Unit fixture keeps hasAnyUsers=false; after consume the setup code hash is gone.
   assert.deepEqual(await fixture.service.getStatus(), {
     required: false,
     deploymentMode: "self_hosted",
   });
+});
+
+test("finish delivers pending invitation emails when SMTP is active", async () => {
+  let deliveredCalls = 0;
+  const fixture = await seedReadyToFinish({
+    smtpActive: true,
+    deliverPendingInvitationEmails: async () => {
+      deliveredCalls += 1;
+      return { delivered: 2 };
+    },
+  });
+  await fixture.service.finish(fixture.setupToken, {
+    workspaceName: "Acme",
+    invitations: [
+      { email: "admin@example.com", roleBuiltinId: "admin" },
+      { email: "member@example.com", roleBuiltinId: "user" },
+    ],
+  });
+
+  assert.equal(fixture.postgres.invitations.length, 2);
+  assert.equal(deliveredCalls, 1);
+  assert.ok(fixture.instanceSettings.row.setupCompletedAt);
 });
 
 test("finish rolls back when invitation insert fails and leaves setup still required", async () => {

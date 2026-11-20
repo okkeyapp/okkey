@@ -2086,6 +2086,8 @@
   "web.setupWizard.logoSelected": "Выбрано: {name}",
   "web.setupWizard.logoRemove": "Удалить",
   "web.setupWizard.logoInvalid": "Логотип должен быть PNG, JPEG или WebP до 1 МиБ.",
+  "web.setupWizard.logoUploadFailed": "Настройка завершена, но логотип пространства не удалось загрузить. Его можно добавить позже в настройках пространства.",
+  "web.setupWizard.resumeFinishHint": "Регистрация владельца на этом сервере уже была завершена. Завершите настройку, чтобы открыть приложение.",
   "web.setupWizard.invitesLabel": "Пригласить участников (необязательно)",
   "web.setupWizard.invitesHint": "По одному email на строку",
   "web.setupWizard.ownerNext": "Продолжить",
