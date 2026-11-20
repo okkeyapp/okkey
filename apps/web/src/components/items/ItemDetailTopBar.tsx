@@ -230,6 +230,7 @@ type ItemDetailTopBarProps = {
   onToggleFavorite: () => void;
   onToggleArchive: () => void;
   onToggleDelete: () => void;
+  onPurge?: () => void;
   canEdit?: boolean;
   canFavorite?: boolean;
   canArchive?: boolean;
@@ -257,6 +258,7 @@ export default function ItemDetailTopBar({
   onToggleFavorite,
   onToggleArchive,
   onToggleDelete,
+  onPurge,
   canEdit = true,
   canFavorite = true,
   canArchive = true,
@@ -358,6 +360,17 @@ export default function ItemDetailTopBar({
             <span>{t("web.items.menu.edit")}</span>
           </Button>
           ) : null}
+          {(() => {
+            const showPrimaryMenu =
+              !archived && !deleted && Boolean(onCopy || canFavorite || canCreateCapsule);
+            const showArchiveMenu = !deleted && canArchive;
+            const showDeleteMenu = canDelete;
+            const showPurgeMenu = Boolean(canDelete && deleted && onPurge);
+            const showMoreMenu = showPrimaryMenu || showArchiveMenu || showDeleteMenu || showPurgeMenu;
+            if (!showMoreMenu) {
+              return null;
+            }
+            return (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
@@ -369,7 +382,7 @@ export default function ItemDetailTopBar({
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-52 p-1">
-              {!archived && !deleted ? (
+              {showPrimaryMenu ? (
                 <>
                   {onCopy ? (
                     <DropdownMenuItem className="gap-2" onSelect={onCopy}>
@@ -400,7 +413,7 @@ export default function ItemDetailTopBar({
                   ) : null}
                 </>
               ) : null}
-              {!deleted && canArchive ? (
+              {showArchiveMenu ? (
                 <DropdownMenuItem className="gap-2" onSelect={onToggleArchive}>
                   {archived ? (
                     <IconUnarchive16 className="text-foreground" />
@@ -410,7 +423,7 @@ export default function ItemDetailTopBar({
                   <span>{archived ? t("web.items.menu.unarchive") : t("web.items.menu.archive")}</span>
                 </DropdownMenuItem>
               ) : null}
-              {canDelete ? (
+              {showDeleteMenu ? (
               <DropdownMenuItem
                 className={cn(
                   "gap-2",
@@ -426,8 +439,19 @@ export default function ItemDetailTopBar({
                 <span>{deleted ? t("web.items.menu.restore") : t("web.items.menu.delete")}</span>
               </DropdownMenuItem>
               ) : null}
+              {showPurgeMenu ? (
+                <DropdownMenuItem
+                  className="gap-2 text-destructive data-[highlighted]:bg-destructive/15 data-[highlighted]:text-destructive"
+                  onSelect={onPurge}
+                >
+                  <IconDelete16 />
+                  <span>{t("web.items.menu.deletePermanently")}</span>
+                </DropdownMenuItem>
+              ) : null}
             </DropdownMenuContent>
           </DropdownMenu>
+            );
+          })()}
         </ControlGroup>
       </div>
     </div>

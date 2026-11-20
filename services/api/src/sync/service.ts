@@ -55,6 +55,7 @@ const SYNC_EVENT_TYPES = new Set([
   "ITEM_CREATE",
   "ITEM_UPDATE",
   "ITEM_DELETE",
+  "ITEM_PURGE",
   "VAULT_CREATE",
   "VAULT_SHARE",
   "VAULT_KEY_ROTATION",
@@ -62,7 +63,9 @@ const SYNC_EVENT_TYPES = new Set([
   "DEVICE_REMOVE",
 ]);
 
-const EVENT_TYPES_REQUIRING_IDEMPOTENCY = new Set(["ITEM_CREATE"]);
+const ITEM_EVENT_TYPES = new Set(["ITEM_CREATE", "ITEM_UPDATE", "ITEM_DELETE", "ITEM_PURGE"]);
+
+const EVENT_TYPES_REQUIRING_IDEMPOTENCY = new Set(["ITEM_CREATE", "ITEM_PURGE"]);
 
 /** Max decoded ciphertext size per event (DoS guard). */
 export const SYNC_MAX_ENCRYPTED_PAYLOAD_BYTES = 512 * 1024;
@@ -93,7 +96,17 @@ type PreparedAppendIdempotent = {
   itemDeletedAtMs?: number;
 };
 
-type PreparedAppend = PreparedAppendInsert | PreparedAppendIdempotent;
+/** Second+ ITEM_PURGE for the same item inside one batch — reuse the first response. */
+type PreparedAppendBatchDuplicatePurge = {
+  kind: "batch_duplicate_purge";
+  referencedItemId: string;
+  itemDeletedAtMs?: number;
+};
+
+type PreparedAppend =
+  | PreparedAppendInsert
+  | PreparedAppendIdempotent
+  | PreparedAppendBatchDuplicatePurge;
 
 export class SyncServiceError extends Error {
   readonly code: string;
@@ -120,12 +133,19 @@ export interface SyncServiceDeps {
     | "listAfterVersion"
     | "append"
     | "deleteByVaultAndReferencedItemId"
+    | "deleteByVaultAndReferencedItemIdExcept"
     | "hasItemCreateEvent"
     | "findByIdempotencyKey"
+    | "findItemPurgeEvent"
   > & {
     appendBatch?: EventsRepository["appendBatch"];
   };
-  softDeletes?: Pick<VaultItemSoftDeletesRepository, "upsert" | "remove">;
+  softDeletes?: Pick<VaultItemSoftDeletesRepository, "upsert" | "remove" | "exists">;
+  /** Hard-purge attachments + prior event history after an ITEM_PURGE tombstone. */
+  itemPurge?: Pick<
+    import("../item-purge/service.ts").ItemPurgeService,
+    "purgeItem"
+  >;
   users?: Pick<UsersRepository, "findById">;
   /** Required in production to gate ITEM_CREATE on shared vaults after EE→FREE. */
   workspaces?: Pick<WorkspacesRepository, "findById">;
@@ -178,6 +198,7 @@ export class SyncService {
   private readonly vaults: SyncServiceDeps["vaults"];
   private readonly events: SyncServiceDeps["events"];
   private readonly softDeletes: SyncServiceDeps["softDeletes"];
+  private readonly itemPurge: SyncServiceDeps["itemPurge"];
   private readonly users: SyncServiceDeps["users"];
   private readonly workspaces: SyncServiceDeps["workspaces"];
   private readonly storageQuota: SyncServiceDeps["storageQuota"];
@@ -198,6 +219,7 @@ export class SyncService {
     this.vaults = deps.vaults;
     this.events = deps.events;
     this.softDeletes = deps.softDeletes;
+    this.itemPurge = deps.itemPurge;
     this.users = deps.users;
     this.workspaces = deps.workspaces;
     this.storageQuota = deps.storageQuota;
@@ -283,6 +305,7 @@ export class SyncService {
       }
       const created = await this.events.append(prepared.storage);
       await this.applySoftDeleteIndex(vaultId, created, prepared.itemDeletedAtMs);
+      await this.applyItemPurgeCleanup(vaultId, created);
       recordCryptoOperationOutcome(this.log, {
         operation,
         deployEnv: this.config.deployEnv,
@@ -354,10 +377,12 @@ export class SyncService {
 
     try {
       const batchCreatedItemIds = new Set<string>();
+      const batchPurgedItemIds = new Set<string>();
       const preparedList: PreparedAppend[] = [];
       for (const input of inputs) {
         const prepared = await this.prepareAppend(vaultId, userId, vault, input, {
           batchCreatedItemIds,
+          batchPurgedItemIds,
         });
         preparedList.push(prepared);
         if (
@@ -366,6 +391,13 @@ export class SyncService {
           prepared.storage.referencedItemId
         ) {
           batchCreatedItemIds.add(prepared.storage.referencedItemId);
+        }
+        if (
+          prepared.kind === "insert" &&
+          prepared.storage.eventType === "ITEM_PURGE" &&
+          prepared.storage.referencedItemId
+        ) {
+          batchPurgedItemIds.add(prepared.storage.referencedItemId);
         }
       }
 
@@ -387,17 +419,37 @@ export class SyncService {
       }
 
       const out: SyncEventResponse[] = new Array(preparedList.length);
+      const firstPurgeByItemId = new Map<string, SyncEventResponse>();
       let insertCursor = 0;
       for (let i = 0; i < preparedList.length; i += 1) {
         const prepared = preparedList[i]!;
         if (prepared.kind === "idempotent") {
           out[i] = mapEventToResponse(prepared.event);
+          if (prepared.event.eventType === "ITEM_PURGE" && prepared.event.referencedItemId) {
+            firstPurgeByItemId.set(prepared.event.referencedItemId, out[i]!);
+          }
+          continue;
+        }
+        if (prepared.kind === "batch_duplicate_purge") {
+          const prior = firstPurgeByItemId.get(prepared.referencedItemId);
+          if (!prior) {
+            throw new SyncServiceError(
+              "INTERNAL_SERVER_ERROR",
+              500,
+              "duplicate ITEM_PURGE in batch without a prior purge response",
+            );
+          }
+          out[i] = prior;
           continue;
         }
         const row = insertedRows[insertCursor]!;
         insertCursor += 1;
         await this.applySoftDeleteIndex(vaultId, row, prepared.itemDeletedAtMs);
+        await this.applyItemPurgeCleanup(vaultId, row);
         out[i] = mapEventToResponse(row);
+        if (row.eventType === "ITEM_PURGE" && row.referencedItemId) {
+          firstPurgeByItemId.set(row.referencedItemId, out[i]!);
+        }
       }
       recordCryptoOperationOutcome(this.log, {
         operation,
@@ -478,6 +530,10 @@ export class SyncService {
       return;
     }
     const referencedItemId = created.referencedItemId;
+    if (created.eventType === "ITEM_PURGE") {
+      // Soft-delete index + prior history are cleared in applyItemPurgeCleanup.
+      return;
+    }
     const persistedSoftDelete =
       created.eventType === "ITEM_DELETE" || created.itemSoftDeleted === true;
     if (persistedSoftDelete) {
@@ -493,12 +549,35 @@ export class SyncService {
     }
   }
 
+  /** After ITEM_PURGE tombstone is appended, drop prior history and attachments. */
+  private async applyItemPurgeCleanup(vaultId: string, created: EventRecord): Promise<void> {
+    if (created.eventType !== "ITEM_PURGE" || !created.referencedItemId) {
+      return;
+    }
+    if (this.itemPurge) {
+      await this.itemPurge.purgeItem(vaultId, created.referencedItemId, {
+        keepEventId: created.id,
+      });
+      return;
+    }
+    // Fallback when ItemPurgeService is not wired (unit tests without attachments).
+    await this.events.deleteByVaultAndReferencedItemIdExcept(
+      vaultId,
+      created.referencedItemId,
+      created.id,
+    );
+    await this.softDeletes?.remove(vaultId, created.referencedItemId);
+  }
+
   private async prepareAppend(
     vaultId: string,
     userId: string,
     vault: VaultRecord,
     input: SyncAppendEventInput,
-    options?: { batchCreatedItemIds?: ReadonlySet<string> },
+    options?: {
+      batchCreatedItemIds?: ReadonlySet<string>;
+      batchPurgedItemIds?: ReadonlySet<string>;
+    },
   ): Promise<PreparedAppend> {
     if (!SYNC_EVENT_TYPES.has(input.eventType)) {
       throw new SyncServiceError("SYNC_INVALID_EVENT_TYPE", 400, "invalid eventType");
@@ -610,7 +689,18 @@ export class SyncService {
       }
     }
 
-    const itemEventTypes = new Set(["ITEM_CREATE", "ITEM_UPDATE", "ITEM_DELETE"]);
+    // Same idempotency key → return the committed row (retry after 502 / drop).
+    if (input.idempotencyKey) {
+      const existingByKey = await this.events.findByIdempotencyKey(vaultId, input.idempotencyKey);
+      if (existingByKey && existingByKey.eventType === input.eventType) {
+        return {
+          kind: "idempotent",
+          event: existingByKey,
+          itemDeletedAtMs: input.itemDeletedAtMs,
+        };
+      }
+    }
+
     let referencedItemId: string | null = null;
     if (input.referencedItemId !== undefined && input.referencedItemId !== "") {
       if (!isEntityId(input.referencedItemId)) {
@@ -621,12 +711,31 @@ export class SyncService {
         );
       }
       referencedItemId = input.referencedItemId;
-    } else if (itemEventTypes.has(input.eventType)) {
+    } else if (ITEM_EVENT_TYPES.has(input.eventType)) {
       throw new SyncServiceError(
         "SYNC_BAD_REQUEST",
         400,
         "referencedItemId is required for item events",
       );
+    }
+
+    // ITEM_PURGE is idempotent per item: a second purge (new key / retry) is a no-op success.
+    if (input.eventType === "ITEM_PURGE" && referencedItemId) {
+      const existingPurge = await this.events.findItemPurgeEvent(vaultId, referencedItemId);
+      if (existingPurge) {
+        return {
+          kind: "idempotent",
+          event: existingPurge,
+          itemDeletedAtMs: input.itemDeletedAtMs,
+        };
+      }
+      if (options?.batchPurgedItemIds?.has(referencedItemId)) {
+        return {
+          kind: "batch_duplicate_purge",
+          referencedItemId,
+          itemDeletedAtMs: input.itemDeletedAtMs,
+        };
+      }
     }
 
     const batchCreated = options?.batchCreatedItemIds;
@@ -662,7 +771,9 @@ export class SyncService {
     }
 
     if (
-      (input.eventType === "ITEM_UPDATE" || input.eventType === "ITEM_DELETE") &&
+      (input.eventType === "ITEM_UPDATE" ||
+        input.eventType === "ITEM_DELETE" ||
+        input.eventType === "ITEM_PURGE") &&
       referencedItemId
     ) {
       const hasCreate =
@@ -672,7 +783,26 @@ export class SyncService {
         throw new SyncServiceError(
           "SYNC_ITEM_NOT_FOUND",
           404,
-          "ITEM_UPDATE/ITEM_DELETE require an existing ITEM_CREATE for this item id",
+          "ITEM_UPDATE/ITEM_DELETE/ITEM_PURGE require an existing ITEM_CREATE for this item id",
+          { referencedItemId },
+        );
+      }
+    }
+
+    if (input.eventType === "ITEM_PURGE" && referencedItemId) {
+      if (!this.softDeletes) {
+        throw new SyncServiceError(
+          "INTERNAL_SERVER_ERROR",
+          500,
+          "soft-delete index is unavailable",
+        );
+      }
+      const inTrash = await this.softDeletes.exists(vaultId, referencedItemId);
+      if (!inTrash) {
+        throw new SyncServiceError(
+          "SYNC_ITEM_NOT_IN_TRASH",
+          409,
+          "ITEM_PURGE requires an item that is already in Recently deleted",
           { referencedItemId },
         );
       }
@@ -706,9 +836,14 @@ export class SyncService {
     }
 
     let itemSoftDeleted: boolean | null = null;
-    if (itemEventTypes.has(input.eventType)) {
-      itemSoftDeleted =
-        input.eventType === "ITEM_DELETE" ? true : input.itemSoftDeleted === true;
+    if (ITEM_EVENT_TYPES.has(input.eventType)) {
+      if (input.eventType === "ITEM_PURGE") {
+        // Purge tombstone is not a soft-delete; retention index is cleared separately.
+        itemSoftDeleted = false;
+      } else {
+        itemSoftDeleted =
+          input.eventType === "ITEM_DELETE" ? true : input.itemSoftDeleted === true;
+      }
     }
 
     if (

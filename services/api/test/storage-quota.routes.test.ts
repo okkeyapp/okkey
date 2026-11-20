@@ -160,6 +160,7 @@ function saasSyncService(usedBytes: number): SyncService {
       listAfterVersion: async () => [],
       hasItemCreateEvent: async () => true,
       findByIdempotencyKey: async () => null,
+      findItemPurgeEvent: async () => null,
       append: async (input) => ({
         id: testEntityId(),
         vaultId: input.vaultId,

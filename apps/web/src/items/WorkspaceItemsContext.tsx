@@ -53,6 +53,10 @@ export type WorkspaceItemsContextValue = {
   setItemsArchived: (itemIds: readonly string[], archived: boolean) => Promise<void>;
   setItemDeleted: (itemId: string, deleted: boolean) => Promise<void>;
   setItemsDeleted: (itemIds: readonly string[], deleted: boolean) => Promise<void>;
+  /** Permanently delete one soft-deleted item (ITEM_PURGE). */
+  purgeItem: (itemId: string) => Promise<void>;
+  /** Permanently delete many soft-deleted items (ITEM_PURGE each). */
+  purgeItems: (itemIds: readonly string[]) => Promise<void>;
   refreshItems: () => Promise<void>;
   deletedItemsRetentionDays: number;
   allowedFileExtensions: readonly string[];
@@ -388,6 +392,34 @@ export function useWorkspaceItemsState(input: {
     [persistPersonalDataBootstrapDismissed, runMutation],
   );
 
+  const purgeItem = useCallback(
+    async (itemId: string) => {
+      await runMutation(async (controller) => {
+        await controller.purgeItem(itemId);
+      });
+    },
+    [runMutation],
+  );
+
+  const purgeItems = useCallback(
+    async (itemIds: readonly string[]) => {
+      const uniqueIds = [...new Set(itemIds)];
+      if (!uniqueIds.length) {
+        return;
+      }
+      await runMutation(async (controller) => {
+        for (const itemId of uniqueIds) {
+          const item = controller.getAllItems().find((candidate) => candidate.itemId === itemId);
+          if (!item?.deleted) {
+            continue;
+          }
+          await controller.purgeItem(itemId);
+        }
+      });
+    },
+    [runMutation],
+  );
+
   const refreshItems = useCallback(async () => {
     await runMutation(async (controller) => {
       await controller.refresh();
@@ -438,6 +470,8 @@ export function useWorkspaceItemsState(input: {
       setItemsArchived,
       setItemDeleted,
       setItemsDeleted,
+      purgeItem,
+      purgeItems,
       refreshItems,
       deletedItemsRetentionDays,
       allowedFileExtensions,
@@ -464,6 +498,8 @@ export function useWorkspaceItemsState(input: {
       setItemsArchived,
       setItemDeleted,
       setItemsDeleted,
+      purgeItem,
+      purgeItems,
       refreshItems,
       deletedItemsRetentionDays,
       allowedFileExtensions,

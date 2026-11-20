@@ -915,10 +915,11 @@ export class VaultSharingService {
       clientCreatedAt?: string;
     },
   ): Promise<void> {
-    const vaultLock = await tx.query<{ id: string; crypto_version: number }>(
-      "SELECT id, crypto_version FROM vaults WHERE id = $1 FOR UPDATE",
-      [vaultId],
-    );
+    const vaultLock = await tx.query<{
+      id: string;
+      crypto_version: number;
+      event_version: number;
+    }>("SELECT id, crypto_version, event_version FROM vaults WHERE id = $1 FOR UPDATE", [vaultId]);
     if (!vaultLock[0]) {
       throw new VaultSharingServiceError("VAULT_NOT_FOUND", 404, "vault not found");
     }
@@ -940,17 +941,14 @@ export class VaultSharingService {
       }
     }
 
-    const versionRows = await tx.query<{ current_version: number }>(
-      "SELECT COALESCE(MAX(version), 0) AS current_version FROM events WHERE vault_id = $1",
-      [vaultId],
-    );
-    const currentVersion = Number(versionRows[0]?.current_version ?? 0);
+    const currentVersion = Number(vaultLock[0].event_version ?? 0);
     if (input.baseVersion !== currentVersion) {
       throw new VaultSharingServiceError("VERSION_MISMATCH", 409, "baseVersion is stale", {
         expectedBaseVersion: input.baseVersion,
         latestVersion: currentVersion,
       });
     }
+    const nextVersion = currentVersion + 1;
 
     const payloadSchemaVersion = encryptedPayload.crypto_version;
     const policyViolation = getCryptoWritePolicyViolation(this.config, payloadSchemaVersion);
@@ -1041,7 +1039,7 @@ export class VaultSharingService {
         actorId,
         eventType,
         Buffer.from(serializeEncryptedBlobToStorage(encryptedPayload)),
-        currentVersion + 1,
+        nextVersion,
         payloadSchemaVersion,
         input.idempotencyKey ?? null,
         input.clientCreatedAt ?? null,
@@ -1052,10 +1050,11 @@ export class VaultSharingService {
       `
         UPDATE vaults
         SET crypto_version = GREATEST(crypto_version, $2),
+            event_version = $3,
             updated_at = now()
         WHERE id = $1
       `,
-      [vaultId, payloadSchemaVersion],
+      [vaultId, payloadSchemaVersion, nextVersion],
     );
   }
 
@@ -1113,11 +1112,11 @@ export class VaultSharingService {
       }
     }
 
-    const versionRows = await tx.query<{ current_version: number }>(
-      "SELECT COALESCE(MAX(version), 0) AS current_version FROM events WHERE vault_id = $1",
+    const tipRows = await tx.query<{ event_version: number }>(
+      "SELECT event_version FROM vaults WHERE id = $1",
       [vaultId],
     );
-    const currentVersion = Number(versionRows[0]?.current_version ?? 0);
+    const currentVersion = Number(tipRows[0]?.event_version ?? 0);
     if (baseVersion !== currentVersion) {
       throw new VaultSharingServiceError("VERSION_MISMATCH", 409, "baseVersion is stale", {
         expectedBaseVersion: baseVersion,

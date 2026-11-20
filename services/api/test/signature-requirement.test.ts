@@ -162,8 +162,11 @@ function answerQuery(sql: string, params: unknown[] | undefined, activeUserIds: 
   if (sql.includes("SELECT public_pq_key FROM users")) {
     return [{ public_pq_key: signerKeys.publicPqKey }];
   }
-  if (sql.includes("crypto_version FROM vaults")) {
-    return [{ id: VAULT_ID, crypto_version: 2 }];
+  if (sql.includes("crypto_version") && sql.includes("FROM vaults")) {
+    return [{ id: VAULT_ID, crypto_version: 2, event_version: 0 }];
+  }
+  if (sql.includes("SELECT event_version FROM vaults")) {
+    return [{ event_version: 0 }];
   }
   if (sql.includes("SELECT id FROM vaults")) {
     return [{ id: VAULT_ID }];
@@ -263,7 +266,9 @@ function syncService(mode: CryptoRolloutMode, signer: Signer): SyncService {
       listAfterVersion: async () => [],
       hasItemCreateEvent: async () => true,
       findByIdempotencyKey: async () => null,
+      findItemPurgeEvent: async () => null,
       deleteByVaultAndReferencedItemId: async () => {},
+      deleteByVaultAndReferencedItemIdExcept: async () => {},
       append: async (input) => ({
         id: "e1",
         vaultId: input.vaultId,
