@@ -1,5 +1,8 @@
 import { getWebLocaleNativeName, READY_WEB_LOCALES, type WebLocale } from "@okkey/i18n";
 import {
+  authShellCenteredCardClassName,
+  authShellScrollClassName,
+  authShellScrollInnerClassName,
   cn,
   minHAppClassName,
   safeAreaPaddingClassName,
@@ -58,12 +61,11 @@ export default function AppShellLayout({
     copyright ?? t("web.shell.copyright", { year: new Date().getFullYear() });
 
   return (
-    // overflow-x-hidden: defensive clip for absolute chrome/gradients; main screens also use
-    // responsive padding + min-w-0 so document scrollWidth stays within the viewport.
-    // minHApp / safe-area: Safari toolbar-safe height (TSK-308).
+    // Flex column + min-h-dvh: children with flex-1 get a real height so the auth
+    // card can center via my-auto. overflow-x-hidden clips absolute chrome/gradients.
     <div
       className={cn(
-        "relative isolate max-w-[100vw] overflow-x-hidden bg-background text-foreground",
+        "relative isolate flex max-w-[100vw] flex-col overflow-x-hidden bg-background text-foreground",
         minHAppClassName,
         safeAreaPaddingClassName,
       )}
@@ -89,49 +91,51 @@ export default function AppShellLayout({
         </div>
       )}
 
-      <div className="relative flex min-h-full min-w-0 flex-col">
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">
-          <div
-            className={cn(
-              "flex min-h-full min-w-0 flex-1 flex-col items-center justify-center",
-              busy ? "px-4 py-10 sm:px-10" : "py-10 pb-20",
-              !busy && (frameClassName ?? "px-4 sm:px-10"),
-            )}
-          >
-            {busy ? (
-              <div
-                className={cn("flex w-full flex-col items-center justify-center", childrenClassName)}
-                role="status"
-                aria-busy="true"
+      <div className={authShellScrollClassName} data-testid="app-shell-scroll">
+        <div
+          className={cn(
+            authShellScrollInnerClassName,
+            busy ? "px-4 py-10 sm:px-10" : "py-10 pb-20",
+            !busy && (frameClassName ?? "px-4 sm:px-10"),
+          )}
+        >
+          {busy ? (
+            <div
+              className={cn(authShellCenteredCardClassName, childrenClassName)}
+              data-testid="app-shell-card"
+              role="status"
+              aria-busy="true"
+            >
+              {children}
+            </div>
+          ) : (
+            <div
+              className={cn(authShellCenteredCardClassName, "gap-6", contentClassName ?? "max-w-sm")}
+              data-testid="app-shell-card"
+            >
+              <header
+                className={cn("flex w-full flex-col items-center gap-2 text-center", headerClassName)}
               >
-                {children}
-              </div>
-            ) : (
-              <div className={cn("flex w-full flex-col items-center gap-6", contentClassName ?? "max-w-sm")}>
-                <header
-                  className={cn("flex w-full flex-col items-center gap-2 text-center", headerClassName)}
-                >
-                  {logo != null ? <div className="mb-2 shrink-0">{logo}</div> : null}
-                  <h1 data-testid="app-shell-title" className="okkey-heading-xl w-full text-center">
-                    {title}
-                  </h1>
-                  {description != null && description !== "" ? (
-                    <p className="okkey-body text-center text-copy-secondary">{description}</p>
-                  ) : null}
-                </header>
+                {logo != null ? <div className="mb-2 shrink-0">{logo}</div> : null}
+                <h1 data-testid="app-shell-title" className="okkey-heading-xl w-full text-center">
+                  {title}
+                </h1>
+                {description != null && description !== "" ? (
+                  <p className="okkey-body text-center text-copy-secondary">{description}</p>
+                ) : null}
+              </header>
 
-                <div className={cn("w-full", childrenClassName)}>{children}</div>
-              </div>
-            )}
-          </div>
+              <div className={cn("w-full", childrenClassName)}>{children}</div>
+            </div>
+          )}
         </div>
-
-        {busy ? null : (
-          <footer className="pointer-events-none absolute inset-x-0 bottom-8 okkey-body px-4 text-center text-copy-secondary sm:px-10">
-            {resolvedCopyright}
-          </footer>
-        )}
       </div>
+
+      {busy ? null : (
+        <footer className="pointer-events-none absolute inset-x-0 bottom-8 okkey-body px-4 text-center text-copy-secondary sm:px-10">
+          {resolvedCopyright}
+        </footer>
+      )}
 
       <div
         className="pointer-events-none absolute inset-0 shadow-[inset_0px_0px_0px_1px_rgba(0,0,0,0.1)] dark:shadow-[inset_0px_0px_0px_1px_rgba(255,255,255,0.08)]"

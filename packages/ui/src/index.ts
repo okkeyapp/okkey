@@ -205,6 +205,9 @@ export {
   mutedSurfaceOpenBgImportantClassName,
 } from "./lib/input-like-control-classes.js";
 export {
+  authShellCenteredCardClassName,
+  authShellScrollClassName,
+  authShellScrollInnerClassName,
   hAppShellClassName,
   minHAppClassName,
   safeAreaPaddingClassName,

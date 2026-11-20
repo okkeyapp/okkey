@@ -25,3 +25,25 @@ export const hAppShellClassName = "h-screen h-svh";
  */
 export const safeAreaPaddingClassName =
   "pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)]";
+
+/**
+ * Scrollport inside a flex `min-h-dvh` shell: fills remaining height and scrolls
+ * when the auth card is taller than the viewport (keyboard / small phones).
+ */
+export const authShellScrollClassName =
+  "relative flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto";
+
+/**
+ * Full-height column inside the scrollport. Horizontal centering only —
+ * vertical centering is via `authShellCenteredCardClassName` (`my-auto`) so
+ * overflowing content stays top-aligned and scrollable (unlike `justify-center`).
+ */
+export const authShellScrollInnerClassName =
+  "flex min-h-full min-w-0 flex-col items-center";
+
+/**
+ * Auth card stack: vertically centered when shorter than the scrollport;
+ * collapses to the top when taller so the start of the form stays reachable.
+ */
+export const authShellCenteredCardClassName =
+  "my-auto flex w-full flex-col items-center";

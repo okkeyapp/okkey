@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  authShellCenteredCardClassName,
+  authShellScrollClassName,
+  authShellScrollInnerClassName,
   hAppShellClassName,
   minHAppClassName,
   safeAreaPaddingClassName,
@@ -24,5 +27,15 @@ describe("viewport-height class tokens (TSK-308)", () => {
     expect(safeAreaPaddingClassName).toContain("env(safe-area-inset-right)");
     expect(safeAreaPaddingClassName).toContain("env(safe-area-inset-bottom)");
     expect(safeAreaPaddingClassName).toContain("env(safe-area-inset-left)");
+  });
+
+  it("auth shell centering uses my-auto (not justify-center) so overflow stays top-reachable", () => {
+    expect(authShellCenteredCardClassName).toContain("my-auto");
+    expect(authShellCenteredCardClassName).not.toContain("justify-center");
+    expect(authShellScrollInnerClassName).toContain("min-h-full");
+    expect(authShellScrollInnerClassName).toContain("items-center");
+    expect(authShellScrollInnerClassName).not.toContain("justify-center");
+    expect(authShellScrollClassName).toContain("overflow-y-auto");
+    expect(authShellScrollClassName).toContain("flex-1");
   });
 });

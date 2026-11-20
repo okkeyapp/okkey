@@ -70,3 +70,86 @@ export async function assertRootUsesDynamicViewportHeight(page: Page): Promise<v
   expect(mins.bodyMin).toBeLessThanOrEqual((viewport?.height ?? mins.innerHeight) + 1);
   expect(mins.rootMin).toBeLessThanOrEqual((viewport?.height ?? mins.innerHeight) + 1);
 }
+
+export type AuthCardGaps = {
+  topGap: number;
+  bottomGap: number;
+  cardHeight: number;
+  viewportHeight: number;
+};
+
+/** Measure viewport gaps around the auth card (`data-testid="app-shell-card"`). */
+export async function measureAuthCardGaps(page: Page): Promise<AuthCardGaps> {
+  const viewport = page.viewportSize();
+  expect(viewport).toBeTruthy();
+
+  const card = page.getByTestId("app-shell-card");
+  await expect(card).toBeVisible({ timeout: 30_000 });
+  const box = await card.boundingBox();
+  expect(box).toBeTruthy();
+
+  const topGap = box!.y;
+  const bottomGap = viewport!.height - (box!.y + box!.height);
+  return {
+    topGap,
+    bottomGap,
+    cardHeight: box!.height,
+    viewportHeight: viewport!.height,
+  };
+}
+
+/**
+ * On a tall viewport the auth card should be roughly vertically centered
+ * (shell uses extra bottom padding for the copyright footer, so allow slack).
+ */
+export async function assertAuthCardVerticallyCentered(
+  page: Page,
+  options?: { maxGapDeltaPx?: number; minSideGapPx?: number },
+): Promise<AuthCardGaps> {
+  const maxGapDeltaPx = options?.maxGapDeltaPx ?? 96;
+  const minSideGapPx = options?.minSideGapPx ?? 48;
+  const gaps = await measureAuthCardGaps(page);
+
+  expect(gaps.topGap).toBeGreaterThan(minSideGapPx);
+  expect(gaps.bottomGap).toBeGreaterThan(minSideGapPx);
+  expect(Math.abs(gaps.topGap - gaps.bottomGap)).toBeLessThanOrEqual(maxGapDeltaPx);
+  // Not stuck under the top padding only (~40px py-10).
+  expect(gaps.topGap).toBeGreaterThan(gaps.viewportHeight * 0.12);
+  return gaps;
+}
+
+/**
+ * Short viewport: shell scrolls internally; scrolling to the start keeps the
+ * title reachable (not clipped by justify-center overflow).
+ */
+export async function assertAuthCardScrollableAndTopReachable(page: Page): Promise<void> {
+  const scroll = page.getByTestId("app-shell-scroll");
+  await expect(scroll).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId("app-shell-card")).toBeVisible();
+
+  const metrics = await scroll.evaluate((el) => ({
+    scrollHeight: el.scrollHeight,
+    clientHeight: el.clientHeight,
+    scrollTop: el.scrollTop,
+  }));
+  expect(metrics.scrollHeight).toBeGreaterThan(metrics.clientHeight + 8);
+
+  await scroll.evaluate((el) => {
+    el.scrollTop = el.scrollHeight;
+  });
+  await expect
+    .poll(async () => scroll.evaluate((el) => el.scrollTop))
+    .toBeGreaterThan(8);
+
+  await scroll.evaluate((el) => {
+    el.scrollTop = 0;
+  });
+  await expect.poll(async () => scroll.evaluate((el) => el.scrollTop)).toBe(0);
+
+  const title = page.getByTestId("app-shell-title");
+  await expect(title).toBeVisible();
+  const titleBox = await title.boundingBox();
+  expect(titleBox).toBeTruthy();
+  // Title near the top of the viewport after scrolling to start.
+  expect(titleBox!.y).toBeLessThan(120);
+}
