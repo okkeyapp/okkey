@@ -1,8 +1,10 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-11-19T13:10:21.097Z",
-  "classifierSha": "7cc5c13ced6a0e8f1ccb4322988566fd11683330b3d41be79b459acb1efd1085",
+  "generatedAt": "2026-11-20T11:18:41.110Z",
+  "classifierSha": "511ba10bb52e489eaba76ba1bfdaa58f2bd44ebb4763d238ccd8a05eb927d37b",
   "classifierFiles": [
+    "autofillDictionaries.ts",
+    "autofillDomLayers.ts",
     "autofillFieldClassify.ts",
     "autofillFormDetect.ts",
     "loginFormFields.ts"
