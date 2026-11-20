@@ -26,7 +26,7 @@ export type SetupInstanceDto = {
 };
 
 export type SetupBeginRegistrationDto = {
-  auth_state_id: string;
+  auth_state_id?: string;
   email: string;
   expires_at: string;
   already_registered?: boolean;
@@ -40,13 +40,14 @@ export type SetupFinishRequest = {
 };
 
 export type SetupFinishDto = {
-  access_token: string;
-  expires_at: string;
+  sign_in_required: boolean;
+  access_token?: string | null;
+  expires_at?: string | null;
   user_id: string;
   workspace_id: string;
   vault_id: string;
   device_id: string;
-  token_type: "Bearer";
+  token_type?: "Bearer" | null;
 };
 
 function setupHeaders(setupToken: string): Record<string, string> {
