@@ -188,6 +188,22 @@ if [[ "${FAIL_COSIGN:-0}" == "1" ]]; then
   echo "stub: signature mismatch" >&2
   exit 1
 fi
+# Optional: require a specific --certificate-identity-regexp value (Enterprise install).
+if [[ -n "${REQUIRE_COSIGN_IDENTITY:-}" ]]; then
+  matched=0
+  prev=""
+  for arg in "$@"; do
+    if [[ "${prev}" == "--certificate-identity-regexp" && "${arg}" == "${REQUIRE_COSIGN_IDENTITY}" ]]; then
+      matched=1
+      break
+    fi
+    prev="${arg}"
+  done
+  if [[ "${matched}" != "1" ]]; then
+    echo "stub: identity mismatch (expected Enterprise identity)" >&2
+    exit 1
+  fi
+fi
 exit 0
 EOF
     chmod +x "${fake}/cosign"
@@ -208,6 +224,7 @@ EOF
       COSIGN_LOG="${work}/cosign.log" \
       SEQUENCE="${work}/sequence" \
       FAIL_COSIGN="${fail_cosign}" \
+      REQUIRE_COSIGN_IDENTITY="${REQUIRE_COSIGN_IDENTITY:-}" \
       OKKEY_INSTALL_DIR="${install_dir}" \
       OKKEY_SALES_EMAIL="sales@example.com" \
       "${env_extra[@]}" \
@@ -612,6 +629,43 @@ for image in api worker web; do
   printf '%s\n' "${RUN_DOCKER}" | grep -Fq "ghcr.io/example/okkey-enterprise/${image}:dev" || fail "signed enterprise override inspect :dev for ${image}
 ${RUN_DOCKER}"
 done
+
+# Enterprise install: both Core + Enterprise identity vars set, ENTERPRISE_IMAGE_TAG
+# pins the compose images → verify must use the Enterprise identity (not Core).
+EXPECTED_ENTERPRISE_IDENTITY='^https://github\.com/okkeyapp/okkey-enterprise/\.github/workflows/publish-images\.yml@refs/(?:heads/release/[0-9A-Za-z._-]+|heads/hotfix/[0-9A-Za-z._-]+|tags/v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?)$'
+CORE_OVERRIDE_IDENTITY='^https://github\.com/okkeyapp/okkey/\.github/workflows/publish-images\.yml@refs/tags/v9\.9\.9$'
+INSTALL_ENV_EXTRA="OKKEY_ENTERPRISE_IMAGE_TAG=1.2.3
+OKKEY_API_IMAGE=ghcr.io/example/okkey-enterprise/api
+OKKEY_WORKER_IMAGE=ghcr.io/example/okkey-enterprise/worker
+OKKEY_WEB_IMAGE=ghcr.io/example/okkey-enterprise/web
+OKKEY_COSIGN_CERTIFICATE_IDENTITY_REGEXP=${CORE_OVERRIDE_IDENTITY}
+OKKEY_ENTERPRISE_COSIGN_CERTIFICATE_IDENTITY_REGEXP=${EXPECTED_ENTERPRISE_IDENTITY}"
+REQUIRE_COSIGN_IDENTITY="${EXPECTED_ENTERPRISE_IDENTITY}" \
+  run_install "1.0.0-beta.3" 1 0 --
+unset INSTALL_ENV_EXTRA REQUIRE_COSIGN_IDENTITY
+[[ "${RUN_RC}" -eq 0 ]] || fail "Enterprise install with both identities must verify with Enterprise identity
+${RUN_OUT}"
+printf '%s\n' "${RUN_COSIGN}" | grep -Fq -- "${EXPECTED_ENTERPRISE_IDENTITY}" || fail "Enterprise install missing Enterprise identity on cosign
+${RUN_COSIGN}"
+printf '%s\n' "${RUN_COSIGN}" | grep -Fq -- "${CORE_OVERRIDE_IDENTITY}" && fail "Enterprise install must not verify compose images with Core identity
+${RUN_COSIGN}"
+for image in api worker web; do
+  printf '%s\n' "${RUN_DOCKER}" | grep -Fq "ghcr.io/example/okkey-enterprise/${image}:1.2.3" || fail "Enterprise install inspect :1.2.3 for ${image}
+${RUN_DOCKER}"
+done
+
+# Both identities set but no ENTERPRISE_IMAGE_TAG → Core compose images keep Core identity.
+INSTALL_ENV_EXTRA="OKKEY_COSIGN_CERTIFICATE_IDENTITY_REGEXP=${CORE_OVERRIDE_IDENTITY}
+OKKEY_ENTERPRISE_COSIGN_CERTIFICATE_IDENTITY_REGEXP=${EXPECTED_ENTERPRISE_IDENTITY}"
+REQUIRE_COSIGN_IDENTITY="${CORE_OVERRIDE_IDENTITY}" \
+  run_install "1.0.0-beta.3" 1 0 --
+unset INSTALL_ENV_EXTRA REQUIRE_COSIGN_IDENTITY
+[[ "${RUN_RC}" -eq 0 ]] || fail "Core install with both identities must keep Core identity
+${RUN_OUT}"
+printf '%s\n' "${RUN_COSIGN}" | grep -Fq -- "${CORE_OVERRIDE_IDENTITY}" || fail "Core install missing Core identity on cosign
+${RUN_COSIGN}"
+printf '%s\n' "${RUN_COSIGN}" | grep -Fq -- "${EXPECTED_ENTERPRISE_IDENTITY}" && fail "Core install must not use Enterprise identity without ENTERPRISE_IMAGE_TAG
+${RUN_COSIGN}"
 
 # OKKEY_COSIGN_CERTIFICATE_IDENTITY_REGEXP in .env overrides the default (process env still wins).
 OVERRIDE_IDENTITY='^https://github\.com/okkeyapp/okkey/\.github/workflows/publish-images\.yml@refs/heads/dev$'

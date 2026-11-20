@@ -394,6 +394,27 @@ Include heads/dev in that regexp, or unset the override so the built-in allow-de
     identity_regexp="${OKKEY_COSIGN_DEFAULT_IDENTITY_REGEXP}"
   fi
 
+  # Enterprise identity (independent of Core). Used when compose pins
+  # OKKEY_ENTERPRISE_IMAGE_TAG — those api/worker/web images are Enterprise-signed.
+  # Core-only installs keep the Core identity even if the Enterprise override is
+  # present in .env for the update agent.
+  local enterprise_identity_regexp="${OKKEY_ENTERPRISE_COSIGN_CERTIFICATE_IDENTITY_REGEXP:-}"
+  if [[ -z "${enterprise_identity_regexp}" ]]; then
+    enterprise_identity_regexp="$(env_file_value OKKEY_ENTERPRISE_COSIGN_CERTIFICATE_IDENTITY_REGEXP)"
+  fi
+  if [[ -n "${enterprise_identity_regexp}" ]]; then
+    if [[ "${allow_dev}" == "1" ]] && ! override_allows_heads_dev "${enterprise_identity_regexp}"; then
+      die "--allow-dev / OKKEY_COSIGN_ALLOW_DEV=1 has no effect while OKKEY_ENTERPRISE_COSIGN_CERTIFICATE_IDENTITY_REGEXP is set without heads/dev.
+Include heads/dev in that regexp, or unset the override so the built-in allow-dev set applies."
+    fi
+  fi
+  local enterprise_tag
+  enterprise_tag="$(resolve_env_value OKKEY_ENTERPRISE_IMAGE_TAG)"
+  local verify_identity_regexp="${identity_regexp}"
+  if [[ -n "${enterprise_identity_regexp}" && -n "${enterprise_tag}" ]]; then
+    verify_identity_regexp="${enterprise_identity_regexp}"
+  fi
+
   # Precedence: process env, then install .env, then shared default.
   local oidc_issuer="${OKKEY_COSIGN_CERTIFICATE_OIDC_ISSUER:-}"
   if [[ -z "${oidc_issuer}" ]]; then
@@ -436,13 +457,14 @@ Include heads/dev in that regexp, or unset the override so the built-in allow-de
     digest_ref="$(image_digest_ref "${ref}")"
     log "==> Verifying cosign signature: ${digest_ref}"
     if ! cosign verify \
-      --certificate-identity-regexp "${identity_regexp}" \
+      --certificate-identity-regexp "${verify_identity_regexp}" \
       --certificate-oidc-issuer "${oidc_issuer}" \
       "${digest_ref}"; then
       die "cosign verify failed for ${digest_ref}.
-The image is unsigned or was not signed by this repo's publish-images workflow
+The image is unsigned or was not signed by the expected publish-images workflow
 (GitHub Actions OIDC). Refusing to start the stack.
-hint: Core images must be signed keyless by .github/workflows/publish-images.yml.
+hint: Core images use OKKEY_COSIGN_CERTIFICATE_IDENTITY_REGEXP; Enterprise-tagged
+  images (OKKEY_ENTERPRISE_IMAGE_TAG) use OKKEY_ENTERPRISE_COSIGN_CERTIFICATE_IDENTITY_REGEXP.
   For OKKEY_IMAGE_TAG=dev / refs/heads/dev signatures: pass --allow-dev or set OKKEY_COSIGN_ALLOW_DEV=1 (process env, not .env).
   Install cosign: https://docs.sigstore.dev/cosign/system_config/installation/
   Emergency bypass only: install.sh --skip-cosign-verify (prints a warning; not for prod)."

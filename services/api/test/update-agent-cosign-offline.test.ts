@@ -799,6 +799,54 @@ test("cosign-save-style OCI index (nested index + sigs) resolves platform digest
   const digests = await readOciLayoutImageDigests(dir, { architecture: "amd64", os: "linux" });
   assert.equal(digests.configDigest, written.configDigest);
   assert.equal(digests.manifestDigest, written.manifestDigest);
+  assert.deepEqual(digests.indexDigests, written.indexDigests);
+  assert.equal(digests.indexDigests.length, 1);
+});
+
+test("RepoDigest accepts platform manifest or linked image-index digest", async () => {
+  const { bindVerifiedLocalImage } = await import("../src/update-agent/cosign-verify.ts");
+  const dir = mkdtempSync(path.join(tmpdir(), "okkey-oci-index-digest-"));
+  const written = await writeCosignSaveStyleOciLayout(dir, {
+    seed: "index-vs-manifest",
+    architecture: "amd64",
+  });
+  const indexDigest = written.indexDigests[0]!;
+  assert.notEqual(indexDigest, written.manifestDigest);
+
+  const pinIndex = await bindVerifiedLocalImage({
+    engine: engineStub({
+      digests: { [coreImages.api]: indexDigest },
+      localIds: { [coreImages.api]: written.configDigest },
+    }),
+    image: coreImages.api,
+    localImageDir: dir,
+  });
+  assert.equal(pinIndex, `ghcr.io/okkeyapp/api@${indexDigest}`);
+
+  const pinManifest = await bindVerifiedLocalImage({
+    engine: engineStub({
+      digests: { [coreImages.api]: written.manifestDigest },
+      localIds: { [coreImages.api]: written.configDigest },
+    }),
+    image: coreImages.api,
+    localImageDir: dir,
+  });
+  assert.equal(pinManifest, `ghcr.io/okkeyapp/api@${written.manifestDigest}`);
+
+  const foreign =
+    "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
+  await assert.rejects(
+    () =>
+      bindVerifiedLocalImage({
+        engine: engineStub({
+          digests: { [coreImages.api]: foreign },
+          localIds: { [coreImages.api]: written.configDigest },
+        }),
+        image: coreImages.api,
+        localImageDir: dir,
+      }),
+    /RepoDigest does not match/i,
+  );
 });
 
 test("OCI blob content tamper keeping filename is rejected", async () => {

@@ -12,7 +12,11 @@ import {
   buildCosignVerifyArgs,
   type CosignOfflineMaterial,
 } from "./cosign-offline.ts";
-import { normalizeDigest, readOciLayoutImageDigests } from "./oci-layout.ts";
+import {
+  normalizeDigest,
+  ociRepoDigestMatchesLayout,
+  readOciLayoutImageDigests,
+} from "./oci-layout.ts";
 
 /** Default budget for one `cosign verify` invocation. */
 export const COSIGN_VERIFY_TIMEOUT_MS = 60_000;
@@ -207,11 +211,12 @@ export function signatureFailure(image: string, detail?: string): SystemUpdateEr
  * After offline cosign verify of a `cosign save` directory, bind the verified
  * OCI layout to the docker-loaded image and return a pin Docker can start.
  *
- * - Reads config + manifest digests from the verified layout.
+ * - Reads config + manifest (+ ancestor index) digests from the verified layout.
  * - Requires docker image Id === OCI config digest (fail closed on mismatch).
- * - When RepoDigests is present, also requires the manifest digest to match.
- * - Pins by verified image Id (`sha256:…`) so compose/engine starts the same
- *   artifact that was verified — never a bare tag, never an unbound digest.
+ * - When RepoDigests is present, accept the platform manifest digest **or** an
+ *   ancestor image-index digest that links to that platform manifest (sha256-
+ *   verified in the layout). Never accept an unbound digest.
+ * - Pins by the matching RepoDigest when present; otherwise by verified image Id.
  */
 export async function bindVerifiedLocalImage(input: {
   engine: UpdateApplyEngine;
@@ -251,22 +256,22 @@ export async function bindVerifiedLocalImage(input: {
     );
   }
 
-  // When RepoDigests exists, also require the manifest digest to match.
+  // When RepoDigests exists, require a digest linked to the verified layout.
   if (input.engine.resolveImageDigest) {
     try {
       const digestRef = (await input.engine.resolveImageDigest(input.image)).trim();
       const at = digestRef.lastIndexOf("@");
       const repoDigest = at > 0 ? normalizeDigest(digestRef.slice(at + 1)) : "";
-      if (repoDigest && repoDigest !== oci.manifestDigest) {
+      if (repoDigest && !ociRepoDigestMatchesLayout(oci, repoDigest)) {
         throw signatureFailure(
           input.image,
           "loaded image RepoDigest does not match the verified cosign-save manifest",
         );
       }
       if (repoDigest) {
-        // Prefer repository@manifestDigest when Docker already has that digest.
+        // Pin to the RepoDigest Docker already has (index or platform manifest).
         const repo = imageRepository(input.image);
-        return `${repo}@${oci.manifestDigest}`;
+        return `${repo}@${repoDigest}`;
       }
     } catch (error) {
       if (error instanceof SystemUpdateError && error.code === "IMAGE_SIGNATURE_INVALID") {

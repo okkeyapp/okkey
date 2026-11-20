@@ -5,11 +5,14 @@ import path from "node:path";
 /**
  * Digests read from a `cosign save` OCI layout directory (TSK-317).
  * `configDigest` is what Docker reports as image Id after load.
- * `manifestDigest` is the OCI/Docker manifest digest (RepoDigests).
+ * `manifestDigest` is the platform image manifest digest.
+ * `indexDigests` are ancestor image-index digests that reference that
+ * platform manifest (Docker RepoDigests often name the multi-arch index).
  */
 export type OciImageDigests = {
   configDigest: string;
   manifestDigest: string;
+  indexDigests: string[];
 };
 
 type OciDescriptor = {
@@ -84,7 +87,7 @@ export async function readOciLayoutImageDigests(
     throw new Error("OCI layout has no suitable platform manifest");
   }
 
-  return readManifestDigests(root, descriptor, wantOs, archAliases);
+  return readManifestDigests(root, descriptor, wantOs, archAliases, []);
 }
 
 async function readManifestDigests(
@@ -92,6 +95,7 @@ async function readManifestDigests(
   descriptor: OciDescriptor,
   wantOs: string,
   archAliases: Set<string>,
+  ancestorIndexDigests: readonly string[],
 ): Promise<OciImageDigests> {
   const mediaType = (descriptor.mediaType ?? "").trim();
   const digest = normalizeDigest(descriptor.digest ?? "");
@@ -111,7 +115,10 @@ async function readManifestDigests(
     if (!child?.digest) {
       throw new Error("OCI image index has no platform manifest");
     }
-    return readManifestDigests(layoutRoot, child, wantOs, archAliases);
+    return readManifestDigests(layoutRoot, child, wantOs, archAliases, [
+      ...ancestorIndexDigests,
+      digest,
+    ]);
   }
 
   if (!IMAGE_MANIFEST_TYPES.has(mediaType) && !parsed.config) {
@@ -128,7 +135,26 @@ async function readManifestDigests(
   return {
     configDigest,
     manifestDigest: digest,
+    indexDigests: [...ancestorIndexDigests],
   };
+}
+
+/**
+ * True when `repoDigest` is the platform manifest or an ancestor image index
+ * that was verified to contain that platform manifest (sha256-linked in layout).
+ */
+export function ociRepoDigestMatchesLayout(
+  oci: OciImageDigests,
+  repoDigest: string,
+): boolean {
+  const normalized = normalizeDigest(repoDigest);
+  if (!normalized) {
+    return false;
+  }
+  if (normalized === oci.manifestDigest) {
+    return true;
+  }
+  return oci.indexDigests.includes(normalized);
 }
 
 /**
@@ -282,7 +308,7 @@ export function normalizeDigest(raw: string): string {
 export async function writeMinimalOciLayout(
   layoutDir: string,
   input?: { seed?: string; architecture?: string },
-): Promise<{ configDigest: string; manifestDigest: string }> {
+): Promise<{ configDigest: string; manifestDigest: string; indexDigests: string[] }> {
   const { mkdir, writeFile } = await import("node:fs/promises");
   const architecture = input?.architecture ?? "amd64";
   const configJson = `${JSON.stringify({
@@ -324,7 +350,7 @@ export async function writeMinimalOciLayout(
   })}\n`;
   await writeFile(path.join(layoutDir, "index.json"), indexJson);
   await writeFile(path.join(layoutDir, "oci-layout"), JSON.stringify({ imageLayoutVersion: "1.0.0" }));
-  return { configDigest, manifestDigest };
+  return { configDigest, manifestDigest, indexDigests: [] };
 }
 
 /**
@@ -335,7 +361,7 @@ export async function writeMinimalOciLayout(
 export async function writeCosignSaveStyleOciLayout(
   layoutDir: string,
   input?: { seed?: string; architecture?: string },
-): Promise<{ configDigest: string; manifestDigest: string }> {
+): Promise<{ configDigest: string; manifestDigest: string; indexDigests: string[] }> {
   const { mkdir, writeFile } = await import("node:fs/promises");
   const architecture = input?.architecture ?? "amd64";
   const blobsDir = path.join(layoutDir, "blobs", "sha256");
@@ -449,5 +475,5 @@ export async function writeCosignSaveStyleOciLayout(
   })}\n`;
   await writeFile(path.join(layoutDir, "index.json"), rootIndexJson);
   await writeFile(path.join(layoutDir, "oci-layout"), JSON.stringify({ imageLayoutVersion: "1.0.0" }));
-  return { configDigest, manifestDigest };
+  return { configDigest, manifestDigest, indexDigests: [nestedIndexDigest] };
 }
