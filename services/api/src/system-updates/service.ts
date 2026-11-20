@@ -24,7 +24,22 @@ export type AvailableUpdate = {
   releaseNotesUrl: string | null;
 };
 
-export type ComponentCheckError = "FEED_FETCH_FAILED" | "FEED_INVALID" | "LICENSE_EXPIRED";
+export type ComponentCheckError =
+  | "FEED_FETCH_FAILED"
+  | "FEED_INVALID"
+  | "FEED_UNAUTHORIZED"
+  | "FEED_REDIRECT_FORBIDDEN"
+  | "FEED_TOO_MANY_REDIRECTS"
+  | "LICENSE_EXPIRED";
+
+const COMPONENT_CHECK_ERRORS = new Set<string>([
+  "FEED_FETCH_FAILED",
+  "FEED_INVALID",
+  "FEED_UNAUTHORIZED",
+  "FEED_REDIRECT_FORBIDDEN",
+  "FEED_TOO_MANY_REDIRECTS",
+  "LICENSE_EXPIRED",
+]);
 
 /** One component in the system-update popup. A check failure stays on this row. */
 export type ComponentUpdateStatus = {
@@ -348,9 +363,8 @@ async function readFeed(
     return { component, configured: true, document, error: null };
   } catch (error) {
     const code =
-      error instanceof SystemUpdateError &&
-      (error.code === "FEED_INVALID" || error.code === "LICENSE_EXPIRED")
-        ? error.code
+      error instanceof SystemUpdateError && COMPONENT_CHECK_ERRORS.has(error.code)
+        ? (error.code as ComponentCheckError)
         : "FEED_FETCH_FAILED";
     return { component, configured: true, document: null, error: code };
   }

@@ -244,7 +244,7 @@ test("GitHub release redirects are followed and other cross-host redirects are r
       }),
     (error: unknown) => {
       assert.ok(error instanceof SystemUpdateError);
-      assert.equal(error.code, "FEED_FETCH_FAILED");
+      assert.equal(error.code, "FEED_REDIRECT_FORBIDDEN");
       return true;
     },
   );
@@ -260,7 +260,7 @@ test("GitHub release redirects are followed and other cross-host redirects are r
       }),
     (error: unknown) => {
       assert.ok(error instanceof SystemUpdateError);
-      assert.equal(error.code, "FEED_FETCH_FAILED");
+      assert.equal(error.code, "FEED_REDIRECT_FORBIDDEN");
       return true;
     },
   );

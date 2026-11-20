@@ -55,6 +55,12 @@ const ERROR_KEYS = new Set([
   "TRUST_KEY_MISSING",
   "FEED_UNAVAILABLE",
   "FEED_FETCH_FAILED",
+  "FEED_UNAUTHORIZED",
+  "FEED_REDIRECT_FORBIDDEN",
+  "FEED_TOO_MANY_REDIRECTS",
+  "PACKAGE_REDIRECT_FORBIDDEN",
+  "PACKAGE_TOO_MANY_REDIRECTS",
+  "PACKAGE_DOWNLOAD_FAILED",
   "UPDATE_AGENT_UNAVAILABLE",
   "ENTERPRISE_APPLY_UNAVAILABLE",
   "CORE_UPDATE_REQUIRED",
@@ -63,6 +69,16 @@ const ERROR_KEYS = new Set([
   "BUNDLE_PARTIAL",
   "PACKAGE_INVALID",
   "PACKAGE_TOO_LARGE",
+]);
+
+/** Status-row check errors that have a dedicated translation. */
+const CHECK_ERROR_KEYS = new Set([
+  "FEED_FETCH_FAILED",
+  "FEED_INVALID",
+  "FEED_UNAUTHORIZED",
+  "FEED_REDIRECT_FORBIDDEN",
+  "FEED_TOO_MANY_REDIRECTS",
+  "LICENSE_EXPIRED",
 ]);
 
 export default function SystemUpdateModal({
@@ -480,19 +496,14 @@ export default function SystemUpdateModal({
                       <p className="mt-1 text-sm text-foreground">
                         {t("web.systemUpdate.newVersion", { version: row.update.toVersion })}
                       </p>
-                    ) : row.checkError === "LICENSE_EXPIRED" ? (
-                      <p
-                        className="mt-1 text-sm text-muted-foreground"
-                        data-testid={`system-update-check-error-${row.component}`}
-                      >
-                        {t("web.systemUpdate.error.LICENSE_EXPIRED")}
-                      </p>
                     ) : row.checkError ? (
                       <p
                         className="mt-1 text-sm text-muted-foreground"
                         data-testid={`system-update-check-error-${row.component}`}
                       >
-                        {t("web.systemUpdate.checkFailed", { component: name })}
+                        {CHECK_ERROR_KEYS.has(row.checkError)
+                          ? t(`web.systemUpdate.error.${row.checkError}`)
+                          : t("web.systemUpdate.checkFailed", { component: name })}
                       </p>
                     ) : (
                       <p className="mt-1 text-sm text-muted-foreground">{t("web.systemUpdate.rowUpToDate")}</p>
@@ -541,7 +552,13 @@ export default function SystemUpdateModal({
           ) : null}
 
           {!status.components && status.feedError ? (
-            <p className="text-sm text-muted-foreground">{t("web.systemUpdate.error.FEED_FETCH_FAILED")}</p>
+            <p className="text-sm text-muted-foreground">
+              {t(
+                ERROR_KEYS.has(status.feedError) || CHECK_ERROR_KEYS.has(status.feedError)
+                  ? `web.systemUpdate.error.${status.feedError}`
+                  : "web.systemUpdate.error.FEED_FETCH_FAILED",
+              )}
+            </p>
           ) : null}
 
           {applySource !== "file" ? renderProgress() : null}
