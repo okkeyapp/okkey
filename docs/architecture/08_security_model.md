@@ -131,7 +131,8 @@ Okkey ensures:
 - confidentiality
 - integrity
 - authentication
-- forward secrecy
+
+Forward secrecy today is provided by TLS only. Application-level forward secrecy is a goal, not a current guarantee.
 
 ---
 
