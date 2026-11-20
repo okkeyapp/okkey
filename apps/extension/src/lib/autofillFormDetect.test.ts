@@ -309,6 +309,16 @@ describe("categoriesAllowedForFormType", () => {
   it("search allows nothing", () => {
     assert.deepEqual(categoriesAllowedForFormType("search", "email"), []);
   });
+
+  it("loyalty / vehicle / travel kinds stay category-scoped even on login forms", () => {
+    assert.deepEqual(categoriesAllowedForFormType("login", "loyalty-card-number"), ["loyalty_card"]);
+    assert.deepEqual(categoriesAllowedForFormType("unknown", "vehicle-plate"), ["vehicle"]);
+    assert.deepEqual(categoriesAllowedForFormType("identity", "travel-booking-reference"), [
+      "travel_booking",
+    ]);
+    assert.deepEqual(categoriesAllowedForFormType("login", "username"), ["login"]);
+    assert.ok(!categoriesAllowedForFormType("login", "username")?.includes("loyalty_card"));
+  });
 });
 
 describe("generator field helpers", () => {
