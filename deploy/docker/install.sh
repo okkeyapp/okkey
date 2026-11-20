@@ -510,6 +510,9 @@ resolve_sales_email
 fetch_file "$COMPOSE_FILE_NAME" "./${COMPOSE_FILE_NAME}"
 fetch_file "$ENV_EXAMPLE_NAME" "./${ENV_EXAMPLE_NAME}"
 
+# Populated only on a fresh .env mint; printed once at the end of install.
+OKKEY_SETUP_CODE_PLAINTEXT=""
+
 if [[ ! -f .env ]]; then
   # Refuse to mint a new POSTGRES_PASSWORD over an existing DB volume unless reset.
   require_fresh_secrets_or_reset
@@ -525,6 +528,13 @@ if [[ ! -f .env ]]; then
   replace_env EMAIL_DEAD_LETTER_SEAL_KEY "$EMAIL_DEAD_SEAL"
   replace_env POSTGRES_PASSWORD "$PG_PASS"
   replace_env MINIO_ROOT_PASSWORD "$MINIO_PASS"
+
+  # One-time first-run setup code (plaintext printed once; API stores/verifies the hash).
+  SETUP_CODE="$(openssl rand -hex 8 | sed 's/\(....\)\(....\)\(....\)\(....\)/\1-\2-\3-\4/')"
+  SETUP_CODE_HASH="$(printf '%s' "${SETUP_CODE}" | openssl dgst -sha256 -hex | awk '{print $NF}')"
+  replace_env OKKEY_SETUP_CODE_HASH "${SETUP_CODE_HASH}"
+  # Shell-only: printed at the end of install; never written as plaintext to .env.
+  OKKEY_SETUP_CODE_PLAINTEXT="${SETUP_CODE}"
 
   resolved_tag="$(resolve_image_tag_for_fresh_install)"
   if [[ -n "${resolved_tag}" ]]; then
@@ -676,5 +686,10 @@ log "Files: ${OKKEY_INSTALL_DIR}/${COMPOSE_FILE_NAME}  ${OKKEY_INSTALL_DIR}/.env
 log "Logs:  docker compose -p $(compose_project_name) -f ${OKKEY_INSTALL_DIR}/${COMPOSE_FILE_NAME} --env-file ${OKKEY_INSTALL_DIR}/.env logs -f"
 log "Docs:  https://github.com/okkeyapp/okkey/blob/${OKKEY_REF}/deploy/docker/README.md"
 log ""
-log "First-run: with an empty database, enter your email and create the first account"
-log "without OTP (no SMTP needed). Later users use normal email verification."
+if [[ -n "${OKKEY_SETUP_CODE_PLAINTEXT:-}" ]]; then
+  log "First-run setup code (one-time): ${OKKEY_SETUP_CODE_PLAINTEXT}"
+  log "Open ${web_url}/setup and enter this code to create the owner account."
+  log "If you lose it, check API logs for a newly minted setup code on first boot."
+else
+  log "First-run: open ${web_url}/setup and enter the one-time setup code from the API logs."
+fi

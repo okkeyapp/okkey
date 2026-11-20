@@ -70,6 +70,7 @@ jobs:
       NODE_ENV: development
       JWT_SECRET: test-jwt-secret
       SESSION_SECRET: test-session-secret
+      OKKEY_SETUP_CODE: e2e0-setu-pcode-test1
       EMAIL_PROVIDER: smtp
       EMAIL_DELIVERY_MODE: sync
       EMAIL_DEFAULT_LOCALE: en

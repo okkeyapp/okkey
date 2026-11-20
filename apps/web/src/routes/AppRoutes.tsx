@@ -19,6 +19,7 @@ import AuthRegistrationPage from "../pages/auth/AuthRegistrationPage";
 import AuthTwoFactorPage from "../pages/auth/AuthTwoFactorPage";
 import AuthWebAuthnPage from "../pages/auth/AuthWebAuthnPage";
 import ExtensionAuthStartPage from "../pages/auth/ExtensionAuthStartPage";
+import SetupWizardPage from "../pages/setup/SetupWizardPage";
 import DevUIAlertPage from "../pages/dev-ui/DevUIAlertPage";
 import DevUIBreadcrumbPage from "../pages/dev-ui/DevUIBreadcrumbPage";
 import DevUITooltipPage from "../pages/dev-ui/DevUITooltipPage";
@@ -71,6 +72,7 @@ import {
   ROOT_PATH,
   SETTINGS_DEVICES_PATH,
   SETTINGS_PATH,
+  SETUP_PATH,
   TOOLS_PATH,
   UNLOCK_PASSWORD_LEGACY_PATH,
   WORKSPACES_PATH,
@@ -148,6 +150,14 @@ export default function AppRoutes() {
         element={
           <GuestAuthOnly>
             <AuthEmailPage />
+          </GuestAuthOnly>
+        }
+      />
+      <Route
+        path={SETUP_PATH}
+        element={
+          <GuestAuthOnly>
+            <SetupWizardPage />
           </GuestAuthOnly>
         }
       />

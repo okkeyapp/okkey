@@ -109,12 +109,28 @@ async function main(): Promise<void> {
     provider: config.emailProvider,
     deliveryMode: config.emailDeliveryMode,
   });
+  // Lazily bound after SetupService is constructed (invite-only + empty-catalog gate).
+  let setupServiceRef: import("./setup/service.ts").SetupService | null = null;
   const authService = new AuthService({
     redis: storage.redis,
     users: storage.repositories.users,
     emailTemplates,
     config,
     resolveEmailDeliverable: () => mailSettings.isOutboundActive(),
+    resolveRegistrationAllowed: async (email) => {
+      if (!(await storage.repositories.users.hasAnyUsers())) {
+        // Empty catalog: first owner must use the setup wizard, not email OTP.
+        return config.deploymentMode !== "self_hosted";
+      }
+      if (!setupServiceRef) {
+        return true;
+      }
+      const mode = await setupServiceRef.getRegistrationMode();
+      if (mode === "open") {
+        return true;
+      }
+      return setupServiceRef.hasPendingInvitation(email);
+    },
   });
   const emailChangeService = new EmailChangeService({
     redis: storage.redis,
@@ -300,6 +316,30 @@ async function main(): Promise<void> {
     const result = await workspaceMembersService.deliverPendingInvitationEmails();
     logger.info("pending invitation emails delivered after SMTP activate", result);
   };
+  const { SetupService } = await import("./setup/service.ts");
+  const { PostgresServerInstanceSettingsStore } = await import("./setup/store.ts");
+  const setupService = new SetupService({
+    redis: storage.redis,
+    users: storage.repositories.users,
+    instanceSettings: new PostgresServerInstanceSettingsStore(storage.postgres),
+    mailSettings,
+    authService,
+    sessionService,
+    workspaceSettings: workspaceSettingsService,
+    workspaceMembers: workspaceMembersService,
+    postgres: storage.postgres,
+    config: {
+      deploymentMode: config.deploymentMode,
+      nodeEnv: config.nodeEnv,
+      registrationAuthStateTtlSeconds: config.registrationAuthStateTtlSeconds,
+      sessionTtlSeconds: config.sessionTtlSeconds,
+      setupCodePlaintext: (process.env.OKKEY_SETUP_CODE ?? "").trim() || undefined,
+      setupCodeHash: (process.env.OKKEY_SETUP_CODE_HASH ?? "").trim() || undefined,
+    },
+    logger,
+  });
+  setupServiceRef = setupService;
+  await setupService.ensureBootstrapCode();
   const vaultUnlockBootstrapService = new VaultUnlockBootstrapService({
     users: storage.repositories.users,
     devices: storage.repositories.devices,
@@ -449,6 +489,7 @@ async function main(): Promise<void> {
     attachmentService,
     itemFaviconService,
     mailSettingsService: mailSettings,
+    setupService,
   }, {
     enterprisePlugins,
     postgres: storage.postgres,

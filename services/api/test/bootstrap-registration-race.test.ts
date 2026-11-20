@@ -41,7 +41,7 @@ class InMemoryRedis {
   }
 }
 
-test("overlapping empty-catalog starts grant bootstrap to only one registrant", async () => {
+test("overlapping empty-catalog claims grant bootstrap to only one registrant", async () => {
   const redis = new InMemoryRedis();
   let entered = 0;
   let releaseSecond: () => void = () => {};
@@ -80,15 +80,43 @@ test("overlapping empty-catalog starts grant bootstrap to only one registrant", 
   });
 
   const [left, right] = await Promise.all([
-    service.startEmailLogin({ email: "left@example.com", requestIp: "203.0.113.8" }),
-    service.startEmailLogin({ email: "right@example.com", requestIp: "203.0.113.8" }),
+    service.claimEmptyCatalogBootstrap("left@example.com"),
+    service.claimEmptyCatalogBootstrap("right@example.com"),
   ]);
-  const bootstrapped = [left, right].filter((result) => result.bootstrapRequired === true);
+  const bootstrapped = [left, right].filter((result) => result === true);
   assert.equal(
     bootstrapped.length,
     1,
-    "only one overlapping empty-catalog start may skip email OTP",
+    "only one overlapping empty-catalog claim may win first registration",
   );
-  const challenged = [left, right].filter((result) => Boolean(result.challengeId));
-  assert.equal(challenged.length, 1);
+  const rejected = [left, right].filter((result) => result === false);
+  assert.equal(rejected.length, 1);
+});
+
+test("startEmailLogin on empty self-host catalog requires setup (no OTP skip)", async () => {
+  const redis = new InMemoryRedis();
+  const service = new AuthService({
+    redis,
+    users: {
+      findByEmail: async () => null,
+      isTwoFactorEnabled: async () => false,
+      hasAnyUsers: async () => false,
+    },
+    emailTemplates: {
+      sendAuthEmailCode: async () => {},
+    },
+    config: createTestApiConfig(),
+    resolveRegistrationAllowed: async () => false,
+    now: () => new Date("2026-01-01T00:00:00.000Z"),
+    generateCode: () => "222222",
+    generateId: () => "id-1",
+  });
+
+  await assert.rejects(
+    () => service.startEmailLogin({ email: "owner@example.com", requestIp: "203.0.113.8" }),
+    (error: unknown) =>
+      error instanceof Error &&
+      "code" in error &&
+      (error as { code: string }).code === "SETUP_REQUIRED",
+  );
 });
