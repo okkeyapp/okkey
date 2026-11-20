@@ -10,6 +10,8 @@ export const AUTOFILL_MSG = {
   saveFormDraft: "okkey.autofill.saveFormDraft",
   /** Persist full key-form item (create or update). */
   saveFormCommit: "okkey.autofill.saveFormCommit",
+  /** Login items eligible as "Sign in with" link targets (picker). */
+  loginLinkTargets: "okkey.autofill.loginLinkTargets",
   siteIcon: "okkey.autofill.siteIcon",
   openAndFill: "okkey.autofill.openAndFill",
   applyFill: "okkey.autofill.applyFill",
@@ -37,6 +39,12 @@ export type AutofillPendingSavePayload = {
   websiteUrl: string;
   /** Form intent at capture time (`login` | `register` | …). */
   formType?: string;
+  /** Best-effort: page used OAuth / “Continue with …” at capture time. */
+  oauthDetected?: boolean;
+  /** Best-effort IdP label from the OAuth CTA (e.g. "Google") for picker preselection. */
+  oauthProviderHint?: string;
+  /** Optional "Sign in with" target chosen in the save UI (encrypted payload). */
+  linkedAccountItemId?: string;
   createdAt: number;
   /**
    * Explicit dismiss (X) before/after redirect — do not restore the offer.
@@ -68,6 +76,8 @@ export type AutofillSuggestion = {
   suggestionKey?: string;
   /** Merge into fill values when this row is chosen (e.g. a specific email). */
   fillOverrides?: Record<string, string>;
+  /** Linked-account ("Sign in with") resolution for login suggestions. */
+  linkStatus?: "none" | "ok" | "lost";
 };
 
 export type AutofillQueryResponse =
@@ -184,6 +194,10 @@ export type AutofillSaveMessage = {
   vaultId?: string;
   /** When set, update this existing login instead of creating a new one. */
   itemId?: string;
+  /** Optional "Sign in with" login item id stored in encrypted plaintext. */
+  linkedAccountItemId?: string;
+  /** Allow create/update without a password when OAuth was detected. */
+  oauthDetected?: boolean;
 };
 
 export type AutofillSaveOfferMessage = {
@@ -194,6 +208,10 @@ export type AutofillSaveOfferMessage = {
   websiteUrl: string;
   username: string;
   password: string;
+  /** Best-effort OAuth / social sign-in detection at capture time. */
+  oauthDetected?: boolean;
+  /** Best-effort IdP label from the OAuth CTA (e.g. "Google"). */
+  oauthProviderHint?: string;
 };
 
 export type AutofillSaveContextMessage = {
@@ -209,6 +227,9 @@ export type AutofillSaveFormDraftMessage = {
   websiteUrl: string;
   vaultId?: string;
   itemId?: string;
+  linkedAccountItemId?: string;
+  oauthDetected?: boolean;
+  oauthProviderHint?: string;
 };
 
 /** JSON-serializable login item draft for the key-form overlay. */
@@ -225,6 +246,17 @@ export type AutofillSaveFormDraftItem = {
   tags?: string[];
   faviconId?: string;
   faviconSource?: string;
+  linkedAccountItemId?: string;
+};
+
+export type AutofillLoginLinkTarget = {
+  itemId: string;
+  title: string;
+  iconUrl?: string;
+  /** Non-secret website URLs for provider matching in the save picker. */
+  websiteUrls?: string[];
+  /** Non-secret username/email for identifying which account was used. */
+  username?: string;
 };
 
 export type AutofillSaveFormDraftResponse =
@@ -237,7 +269,19 @@ export type AutofillSaveFormDraftResponse =
       item: AutofillSaveFormDraftItem;
       workspaceName: string;
       vaults: AutofillSaveVaultOption[];
+      /** Login items for the "Sign in with" picker (excludes the draft item). */
+      loginLinkTargets: AutofillLoginLinkTarget[];
     };
+
+export type AutofillLoginLinkTargetsMessage = {
+  type: typeof AUTOFILL_MSG.loginLinkTargets;
+  excludeItemId?: string;
+};
+
+export type AutofillLoginLinkTargetsResponse =
+  | { status: "signed-out" }
+  | { status: "locked" }
+  | { status: "ok"; targets: AutofillLoginLinkTarget[] };
 
 export type AutofillSaveFormCommitMessage = {
   type: typeof AUTOFILL_MSG.saveFormCommit;
@@ -276,6 +320,9 @@ export type AutofillPendingSaveSetMessage = {
   captureUrl: string;
   websiteUrl: string;
   formType?: string;
+  oauthDetected?: boolean;
+  oauthProviderHint?: string;
+  linkedAccountItemId?: string;
 };
 
 export type AutofillPendingSaveGetMessage = {
@@ -309,6 +356,7 @@ export type AutofillRuntimeMessage =
   | AutofillSaveContextMessage
   | AutofillSaveFormDraftMessage
   | AutofillSaveFormCommitMessage
+  | AutofillLoginLinkTargetsMessage
   | AutofillSiteIconMessage
   | AutofillOpenAndFillMessage
   | AutofillApplyFillMessage

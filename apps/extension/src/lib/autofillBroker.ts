@@ -1,4 +1,5 @@
 import { encryptAttachmentPayload } from "@okkey/crypto";
+import { formatWebMessage } from "@okkey/i18n";
 import {
   ITEM_CATEGORY_LOGIN,
   createPresetItemPlaintextV2,
@@ -21,6 +22,17 @@ import {
   totpCodeFromSecret,
   type AutofillItemCategory,
 } from "@okkey/vault";
+import { normalizeLinkedAccountItemId } from "@okkey/vault-ui/items/linkedAccountItem";
+
+import {
+  linkedAccountSuggestionInfo,
+  resolveLinkedLoginFill,
+} from "./linkedAccountAutofill";
+import {
+  allowPasswordlessLoginSave,
+  applyLinkedAccountItemId,
+  listLoginLinkTargetItems,
+} from "./linkedAccountSave";
 
 import { createCoreClient, isUnauthorizedApiError } from "./api";
 import {
@@ -42,6 +54,8 @@ import { saveUrlsEqual } from "./autofillSaveUrls";
 import {
   AUTOFILL_MSG,
   type AutofillFillResponse,
+  type AutofillLoginLinkTarget,
+  type AutofillLoginLinkTargetsResponse,
   type AutofillOpenAndFillResponse,
   type AutofillQueryResponse,
   type AutofillRuntimeMessage,
@@ -58,6 +72,7 @@ import {
 import { probeExtensionDeviceTrusted } from "./deviceTrust";
 import { readExtensionUnlockSessionIfFresh, touchExtensionUnlockSession } from "./extensionVaultSession";
 import { initExtensionCrypto } from "./initExtensionCrypto";
+import { loadExtensionLocale } from "./locale";
 import { readProfile, readSession, wipeAllExtensionData } from "./storage";
 import { readExtensionVaultBundle, readStoredCurrentWorkspaceId } from "./vaultStorage";
 
@@ -378,6 +393,32 @@ export async function handleAutofillQuery(
   await touchExtensionUnlockSession(auth.userId);
   const focusedKind = fieldKinds?.[0] ?? null;
   const wantsEmailField = (fieldKinds ?? []).some((kind) => kind === "email" || kind === "username");
+  const itemsById = new Map(items.map((item) => [item.itemId, item]));
+  // Linked-account lookup needs the full workspace cache (provider may not match this tab).
+  const workspaceId = await readStoredCurrentWorkspaceId(auth.userId);
+  const allCached =
+    workspaceId != null
+      ? await listCachedWorkspaceVaultItems({ userId: auth.userId, workspaceId })
+      : items;
+  const lookupById = (itemId: string) =>
+    allCached.find((candidate) => candidate.itemId === itemId) ?? itemsById.get(itemId);
+  const locale = await loadExtensionLocale();
+  const signInWithSubtitle = (linkedTitle: string): string => {
+    try {
+      return formatWebMessage(locale, "extension.autofill.signInWith.subtitle", {
+        title: linkedTitle,
+      });
+    } catch {
+      return `Sign in with ${linkedTitle}`;
+    }
+  };
+  let linkLostLabel = "Link lost";
+  try {
+    linkLostLabel = formatWebMessage(locale, "extension.autofill.signInWith.linkLost");
+  } catch {
+    /* keep English fallback */
+  }
+
   const suggestions = (
     await Promise.all(
       items.map(async (item) => {
@@ -432,11 +473,34 @@ export async function handleAutofillQuery(
           }
         }
 
+        const fallbackSubtitle = suggestionSubtitleFromValues(
+          item.categoryId,
+          values,
+          focusedKind,
+        );
+        if (isLogin) {
+          const linked = linkedAccountSuggestionInfo(item, lookupById, {
+            signInWith: signInWithSubtitle,
+            linkLost: linkLostLabel,
+            fallbackSubtitle,
+          });
+          return [
+            {
+              itemId: item.itemId,
+              title,
+              username: linked.subtitle,
+              categoryId: item.categoryId,
+              linkStatus: linked.linkStatus,
+              ...(iconUrl ? { iconUrl } : {}),
+            },
+          ];
+        }
+
         return [
           {
             itemId: item.itemId,
             title,
-            username: suggestionSubtitleFromValues(item.categoryId, values, focusedKind),
+            username: fallbackSubtitle,
             categoryId: item.categoryId,
             ...(iconUrl ? { iconUrl } : {}),
           },
@@ -496,8 +560,36 @@ export async function handleAutofillFill(
       }
     }
   }
+
+  // Linked-account login: never extract or fill the provider item's secrets on this origin.
+  // `extractLoginAutofillSecrets(item)` is always the selected (target-site) item only.
   const secrets =
     item.categoryId === ITEM_CATEGORY_LOGIN ? extractLoginAutofillSecrets(item) : null;
+  let linkedSignIn = false;
+  if (item.categoryId === ITEM_CATEGORY_LOGIN && item.linkedAccountItemId) {
+    const linked = resolveLinkedLoginFill(
+      item,
+      (id) => cached.find((candidate) => candidate.itemId === id),
+      (candidate) => {
+        const extracted = extractLoginAutofillSecrets(candidate);
+        if (!extracted) {
+          return null;
+        }
+        return {
+          username: extracted.username,
+          password: extracted.password,
+          totpSecretBase32: extracted.totpSecretBase32,
+        };
+      },
+    );
+    linkedSignIn = true;
+    if (linked.providerSecretsBlocked) {
+      // Ensure autofill values cannot carry a password copied from a mistaken provider merge.
+      // Local username/password still come from `secrets` (selected item only).
+      delete values.password;
+      delete values["db-password"];
+    }
+  }
 
   // personal_data: nickname maps to username; prefer it over email for username fills.
   let username = values.username || values.email || "";
@@ -527,7 +619,8 @@ export async function handleAutofillFill(
       })) ?? undefined;
   }
 
-  if (!username && !password && !totp && Object.keys(values).length === 0) {
+  // Linked "Sign in with" items may have no local password — still a valid suggestion click.
+  if (!username && !password && !totp && Object.keys(values).length === 0 && !linkedSignIn) {
     return { status: "not-found" };
   }
 
@@ -797,6 +890,7 @@ function toSaveFormDraftItem(item: ItemPlaintextV2): AutofillSaveFormDraftItem {
     ...(item.tags ? { tags: item.tags } : {}),
     ...(item.faviconId ? { faviconId: item.faviconId } : {}),
     ...(item.faviconSource ? { faviconSource: item.faviconSource } : {}),
+    ...(item.linkedAccountItemId ? { linkedAccountItemId: item.linkedAccountItemId } : {}),
   };
 }
 
@@ -816,7 +910,47 @@ function fromSaveFormDraftItem(draft: AutofillSaveFormDraftItem): ItemPlaintextV
     ...(draft.faviconSource
       ? { faviconSource: draft.faviconSource as ItemPlaintextV2["faviconSource"] }
       : {}),
+    ...(draft.linkedAccountItemId ? { linkedAccountItemId: draft.linkedAccountItemId } : {}),
   };
+}
+
+function extractLoginUsernameForLinkTarget(item: ItemPlaintextV2): string {
+  for (const field of item.fields) {
+    if (
+      (field.id === "login" || field.type === "email") &&
+      field.value.kind === "text" &&
+      field.value.text.trim()
+    ) {
+      return field.value.text.trim();
+    }
+  }
+  return "";
+}
+
+async function buildLoginLinkTargets(
+  userId: string,
+  excludeItemId?: string,
+): Promise<AutofillLoginLinkTarget[]> {
+  const workspaceId = await readStoredCurrentWorkspaceId(userId);
+  if (!workspaceId) {
+    return [];
+  }
+  const items = await listCachedWorkspaceVaultItems({ userId, workspaceId });
+  const targets = listLoginLinkTargetItems(items, { excludeItemId });
+  return Promise.all(
+    targets.map(async (item) => {
+      const iconUrl = await storedFaviconDataUrl(item.vaultId, item.itemId, item.faviconId);
+      const websiteUrls = collectItemWebsiteUrls(item);
+      const username = extractLoginUsernameForLinkTarget(item);
+      return {
+        itemId: item.itemId,
+        title: item.title || item.itemId,
+        ...(iconUrl ? { iconUrl } : {}),
+        ...(websiteUrls.length > 0 ? { websiteUrls } : {}),
+        ...(username ? { username } : {}),
+      };
+    }),
+  );
 }
 
 export async function handleAutofillSaveOffer(input: {
@@ -824,6 +958,7 @@ export async function handleAutofillSaveOffer(input: {
   websiteUrl: string;
   username: string;
   password: string;
+  oauthDetected?: boolean;
 }): Promise<AutofillSaveOfferResponse> {
   const auth = await resolveUnlockUserId();
   if (!auth) {
@@ -831,6 +966,14 @@ export async function handleAutofillSaveOffer(input: {
   }
   if (!auth.unlocked) {
     return { status: "locked" };
+  }
+  if (
+    !allowPasswordlessLoginSave({
+      password: input.password,
+      oauthDetected: input.oauthDetected,
+    })
+  ) {
+    return { status: "none" };
   }
   // Match against capture-time URL (and website URL) — not the post-redirect page.
   const matchUrl = input.pageUrl || input.websiteUrl;
@@ -962,6 +1105,8 @@ export async function handleAutofillSave(input: {
   password: string;
   vaultId?: string;
   itemId?: string;
+  linkedAccountItemId?: string;
+  oauthDetected?: boolean;
 }): Promise<AutofillSaveResponse> {
   const trust = await ensureAutofillDeviceTrusted({ force: true });
   if (trust === "signed-out") {
@@ -985,12 +1130,24 @@ export async function handleAutofillSave(input: {
     return { status: "error", message: "VAULT_NOT_READY" };
   }
 
+  if (
+    !allowPasswordlessLoginSave({
+      password: input.password,
+      oauthDetected: input.oauthDetected,
+      linkedAccountItemId: input.linkedAccountItemId,
+    })
+  ) {
+    return { status: "error", message: "PASSWORD_REQUIRED" };
+  }
+
   if (!input.itemId) {
     const existing = await matchingLoginItems(session.user_id, input.pageUrl);
     if (existing.length > 0) {
       return { status: "exists" };
     }
   }
+
+  const linkedAccountItemId = normalizeLinkedAccountItemId(input.linkedAccountItemId);
 
   try {
     await initExtensionCrypto();
@@ -1019,35 +1176,38 @@ export async function handleAutofillSave(input: {
         }
         const title = (input.title || existingItem.title || domainTitleFromUrl(input.websiteUrl)).trim() || "Login";
         let websiteUpdated = false;
-        const updated = {
-          ...existingItem,
-          title,
-          updatedAtMs: Date.now(),
-          fields: existingItem.fields.map((field) => {
-            if (
-              (field.id === "login" || field.type === "email") &&
-              field.value.kind === "text"
-            ) {
-              return { ...field, value: { kind: "text" as const, text: input.username } };
-            }
-            if (field.value.kind === "password") {
-              return { ...field, value: { kind: "password" as const, password: input.password } };
-            }
-            if (field.type === "url" && field.value.kind === "url" && !websiteUpdated) {
-              websiteUpdated = true;
-              const scope = field.value.urlAutofillScope || "entire-site";
-              return {
-                ...field,
-                value: {
-                  kind: "url" as const,
-                  url: input.websiteUrl,
-                  urlAutofillScope: scope,
-                },
-              };
-            }
-            return field;
-          }),
-        };
+        const updated = applyLinkedAccountItemId(
+          {
+            ...existingItem,
+            title,
+            updatedAtMs: Date.now(),
+            fields: existingItem.fields.map((field) => {
+              if (
+                (field.id === "login" || field.type === "email") &&
+                field.value.kind === "text"
+              ) {
+                return { ...field, value: { kind: "text" as const, text: input.username } };
+              }
+              if (field.value.kind === "password") {
+                return { ...field, value: { kind: "password" as const, password: input.password } };
+              }
+              if (field.type === "url" && field.value.kind === "url" && !websiteUpdated) {
+                websiteUpdated = true;
+                const scope = field.value.urlAutofillScope || "entire-site";
+                return {
+                  ...field,
+                  value: {
+                    kind: "url" as const,
+                    url: input.websiteUrl,
+                    urlAutofillScope: scope,
+                  },
+                };
+              }
+              return field;
+            }),
+          },
+          linkedAccountItemId,
+        );
         await controller.updateItem(updated);
         // Refresh website favicon when the URL (or other login fields) change.
         try {
@@ -1093,24 +1253,27 @@ export async function handleAutofillSave(input: {
         vaultId: personal.id,
         title,
       });
-      item = {
-        ...item,
-        fields: item.fields.map((field) => {
-          if (field.id === "login" && field.value.kind === "text") {
-            return { ...field, value: { kind: "text", text: input.username } };
-          }
-          if (field.id === "password" && field.value.kind === "password") {
-            return { ...field, value: { kind: "password", password: input.password } };
-          }
-          if (field.id === "website-1" && field.value.kind === "url") {
-            return {
-              ...field,
-              value: { kind: "url", url: input.websiteUrl, urlAutofillScope: "entire-site" },
-            };
-          }
-          return field;
-        }),
-      };
+      item = applyLinkedAccountItemId(
+        {
+          ...item,
+          fields: item.fields.map((field) => {
+            if (field.id === "login" && field.value.kind === "text") {
+              return { ...field, value: { kind: "text", text: input.username } };
+            }
+            if (field.id === "password" && field.value.kind === "password") {
+              return { ...field, value: { kind: "password", password: input.password } };
+            }
+            if (field.id === "website-1" && field.value.kind === "url") {
+              return {
+                ...field,
+                value: { kind: "url", url: input.websiteUrl, urlAutofillScope: "entire-site" },
+              };
+            }
+            return field;
+          }),
+        },
+        linkedAccountItemId,
+      );
 
       await controller.createItem(item);
 
@@ -1203,6 +1366,7 @@ export async function handleAutofillSaveFormDraft(
         password: input.password,
         websiteUrl: input.websiteUrl,
       };
+      const linkedAccountItemId = normalizeLinkedAccountItemId(input.linkedAccountItemId);
 
       if (input.kind === "update" && input.itemId) {
         const existing = controller.getItemById(input.itemId);
@@ -1214,7 +1378,11 @@ export async function handleAutofillSaveFormDraft(
         ) {
           return { status: "error", message: "ITEM_NOT_FOUND" };
         }
-        const draft = applyLoginCredentialsToItem(existing, creds);
+        let draft = applyLoginCredentialsToItem(existing, creds);
+        if (input.linkedAccountItemId !== undefined) {
+          draft = applyLinkedAccountItemId(draft, linkedAccountItemId);
+        }
+        const loginLinkTargets = await buildLoginLinkTargets(session.user_id, draft.itemId);
         await touchExtensionUnlockSession(session.user_id);
         return {
           status: "ok",
@@ -1222,6 +1390,7 @@ export async function handleAutofillSaveFormDraft(
           item: toSaveFormDraftItem(draft),
           workspaceName: workspace?.name?.trim() || "Workspace",
           vaults: vaultOptions,
+          loginLinkTargets,
         };
       }
 
@@ -1243,6 +1412,8 @@ export async function handleAutofillSaveFormDraft(
         ...creds,
         title: item.title,
       });
+      item = applyLinkedAccountItemId(item, linkedAccountItemId);
+      const loginLinkTargets = await buildLoginLinkTargets(session.user_id, item.itemId);
       await touchExtensionUnlockSession(session.user_id);
       return {
         status: "ok",
@@ -1250,6 +1421,7 @@ export async function handleAutofillSaveFormDraft(
         item: toSaveFormDraftItem(item),
         workspaceName: workspace?.name?.trim() || "Workspace",
         vaults: vaultOptions,
+        loginLinkTargets,
       };
     } finally {
       controller.dispose();
@@ -1503,6 +1675,21 @@ export async function broadcastAutofillUnlocked(): Promise<void> {
   );
 }
 
+export async function handleAutofillLoginLinkTargets(input: {
+  excludeItemId?: string;
+}): Promise<AutofillLoginLinkTargetsResponse> {
+  const auth = await resolveUnlockUserId();
+  if (!auth) {
+    return { status: "signed-out" };
+  }
+  if (!auth.unlocked) {
+    return { status: "locked" };
+  }
+  const targets = await buildLoginLinkTargets(auth.userId, input.excludeItemId);
+  await touchExtensionUnlockSession(auth.userId);
+  return { status: "ok", targets };
+}
+
 export function isAutofillRuntimeMessage(message: unknown): message is AutofillRuntimeMessage {
   if (!message || typeof message !== "object" || !("type" in message)) {
     return false;
@@ -1518,6 +1705,7 @@ export function isAutofillRuntimeMessage(message: unknown): message is AutofillR
     type === AUTOFILL_MSG.saveContext ||
     type === AUTOFILL_MSG.saveFormDraft ||
     type === AUTOFILL_MSG.saveFormCommit ||
+    type === AUTOFILL_MSG.loginLinkTargets ||
     type === AUTOFILL_MSG.siteIcon ||
     type === AUTOFILL_MSG.openAndFill ||
     type === AUTOFILL_MSG.applyFill ||

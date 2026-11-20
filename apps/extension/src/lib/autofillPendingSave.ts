@@ -48,7 +48,18 @@ async function hydratePendingSaveSession(): Promise<void> {
         const now = Date.now();
         for (const [tabKey, pending] of Object.entries(raw)) {
           const tabId = Number(tabKey);
-          if (!Number.isFinite(tabId) || !pending?.username || !pending?.password) {
+          if (!Number.isFinite(tabId) || !pending?.captureUrl) {
+            continue;
+          }
+          if (typeof pending.username !== "string" || typeof pending.password !== "string") {
+            continue;
+          }
+          // Passwordless OAuth / linked-account offers are allowed; bare empty password is not.
+          if (
+            !pending.password &&
+            !pending.oauthDetected &&
+            !pending.linkedAccountItemId
+          ) {
             continue;
           }
           if (now - pending.createdAt > PENDING_SAVE_TTL_MS) {
@@ -101,6 +112,9 @@ export async function setPendingSaveOffer(
     captureUrl: string;
     websiteUrl: string;
     formType?: string;
+    oauthDetected?: boolean;
+    oauthProviderHint?: string;
+    linkedAccountItemId?: string;
   },
 ): Promise<void> {
   await hydratePendingSaveSession();
@@ -109,7 +123,10 @@ export async function setPendingSaveOffer(
     prev &&
     prev.username === input.username &&
     prev.password === input.password &&
-    normalizeSaveUrl(prev.captureUrl) === normalizeSaveUrl(input.captureUrl);
+    normalizeSaveUrl(prev.captureUrl) === normalizeSaveUrl(input.captureUrl) &&
+    Boolean(prev.oauthDetected) === Boolean(input.oauthDetected) &&
+    (prev.oauthProviderHint ?? "") === (input.oauthProviderHint ?? "") &&
+    (prev.linkedAccountItemId ?? "") === (input.linkedAccountItemId ?? "");
   // Fresh stage always clears dismiss — user submitted creds again.
   pendingSaveByTab.set(tabId, {
     username: input.username,
@@ -117,6 +134,9 @@ export async function setPendingSaveOffer(
     captureUrl: input.captureUrl,
     websiteUrl: input.websiteUrl || input.captureUrl,
     formType: input.formType,
+    ...(input.oauthDetected ? { oauthDetected: true } : {}),
+    ...(input.oauthProviderHint ? { oauthProviderHint: input.oauthProviderHint } : {}),
+    ...(input.linkedAccountItemId ? { linkedAccountItemId: input.linkedAccountItemId } : {}),
     createdAt: sameCreds && prev ? prev.createdAt : Date.now(),
     dismissed: false,
     interacted: false,
