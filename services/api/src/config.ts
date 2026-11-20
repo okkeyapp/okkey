@@ -499,8 +499,9 @@ export function loadConfig(): ApiConfig {
     enterpriseGitSha: resolveGitSha(
       process.env.OKKEY_ENTERPRISE_GIT_SHA,
       nodeEnv,
-      // Sibling checkout next to Core: repositories/okkey-enterprise
-      path.resolve(serviceRoot, "../../../okkey-enterprise"),
+      // Prefer ENTERPRISE_MODULES_PATH (same tree that loads plugins); otherwise
+      // the default sibling checkout next to this repository.
+      enterpriseModulesPath,
     ),
     updateCoreFeedUrl: resolveCoreUpdateFeedUrl(
       process.env.OKKEY_UPDATE_CORE_FEED_URL,

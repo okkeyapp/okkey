@@ -23,6 +23,7 @@ const status = {
   deploymentMode: "self_hosted",
   currentVersion: "1.0.0-beta.3",
   commitSha: null as string | null,
+  enterpriseCommitSha: null as string | null,
   releaseTag: "v1.0.0-beta.3" as string | null,
   enterpriseInstalled: true,
   enterpriseVersion: "1.0.0",
@@ -114,6 +115,7 @@ describe("system update version button", () => {
     installMemoryStorage();
     status.currentVersion = "1.0.0-beta.3";
     status.commitSha = null;
+    status.enterpriseCommitSha = null;
     status.releaseTag = "v1.0.0-beta.3";
     status.updates[0].toVersion = "1.1.0";
     status.seen = {};
@@ -221,11 +223,28 @@ describe("system update version button", () => {
   it("shows the short commit SHA in the sidebar button when the API reports one", async () => {
     status.releaseTag = null;
     status.commitSha = FULL_SHA;
+    status.enterpriseCommitSha = null;
     renderButton();
     const button = await screen.findByTestId("system-update-version");
     expect(button).toHaveTextContent(`v1.0.0-beta.3 (${FULL_SHA.slice(0, 8)})`);
     expect(button).toHaveAttribute("data-commit-sha", FULL_SHA);
+    expect(button).toHaveAttribute("data-enterprise-commit-sha", "");
     expect(button).not.toHaveAttribute("title");
+  });
+
+  it("labels core and enterprise short SHAs when both are present", async () => {
+    const enterpriseSha = "abcdef0123456789abcdef0123456789abcdef01";
+    status.releaseTag = null;
+    status.currentVersion = "0.0.0-dev";
+    status.commitSha = FULL_SHA;
+    status.enterpriseCommitSha = enterpriseSha;
+    renderButton();
+    const button = await screen.findByTestId("system-update-version");
+    expect(button).toHaveTextContent(
+      `v0.0.0-dev (core ${FULL_SHA.slice(0, 8)} · enterprise ${enterpriseSha.slice(0, 8)})`,
+    );
+    expect(button).toHaveAttribute("data-commit-sha", FULL_SHA);
+    expect(button).toHaveAttribute("data-enterprise-commit-sha", enterpriseSha);
   });
 
   it("shows an expired enterprise license on the sidebar instead of a generic feed error", async () => {

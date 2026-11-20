@@ -159,6 +159,12 @@ WORKDIR /app
 # — not on prod-deps / builder. ARG/ENV only; no shell required.
 ARG OKKEY_GIT_SHA=
 ENV OKKEY_GIT_SHA=${OKKEY_GIT_SHA}
+# Optional. Set when building an image that also bundles enterprise modules so
+# the System update UI can show a separate enterprise short SHA. Core-only
+# publishes leave this empty; packaging overlays may pass it as a build-arg or
+# set OKKEY_ENTERPRISE_GIT_SHA at runtime (do not assign an empty compose value).
+ARG OKKEY_ENTERPRISE_GIT_SHA=
+ENV OKKEY_ENTERPRISE_GIT_SHA=${OKKEY_ENTERPRISE_GIT_SHA}
 ENV NODE_ENV=production
 ENV DEPLOY_ENV=prod
 

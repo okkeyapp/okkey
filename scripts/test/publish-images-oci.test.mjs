@@ -101,6 +101,10 @@ test("api/worker image build bakes OKKEY_GIT_SHA from the publish revision", () 
   assert.match(runtimeStage, /^ENV OKKEY_GIT_SHA=\$\{OKKEY_GIT_SHA\}$/m);
   assert.equal(count(dockerfile, "ARG OKKEY_GIT_SHA="), 1);
   assert.equal(count(dockerfile, "ENV OKKEY_GIT_SHA=${OKKEY_GIT_SHA}"), 1);
+  assert.match(runtimeStage, /^ARG OKKEY_ENTERPRISE_GIT_SHA=$/m);
+  assert.match(runtimeStage, /^ENV OKKEY_ENTERPRISE_GIT_SHA=\$\{OKKEY_ENTERPRISE_GIT_SHA\}$/m);
+  assert.equal(count(dockerfile, "ARG OKKEY_ENTERPRISE_GIT_SHA="), 1);
+  assert.equal(count(dockerfile, "ENV OKKEY_ENTERPRISE_GIT_SHA=${OKKEY_ENTERPRISE_GIT_SHA}"), 1);
 
   // Both amd64 and arm64 build jobs pass the revision as a build-arg and then
   // inspect Config.Env on the pushed final image (not an intermediate stage).

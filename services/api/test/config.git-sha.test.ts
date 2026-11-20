@@ -163,3 +163,63 @@ test("OKKEY_GIT_SHA from env reaches GET /system/updates as commitSha", async ()
   assert.equal(body.enterpriseCommitSha, enterpriseSha);
   assert.equal(body.currentVersion, "1.0.0-beta.3");
 });
+
+test("GET /system/updates omits enterpriseCommitSha when OKKEY_ENTERPRISE_GIT_SHA is unset", async () => {
+  const coreSha = "6e6ee86fac86b6fb1a6cc05da1f71d7e99d70560";
+
+  let cfg!: ReturnType<typeof loadConfig>;
+  withEnv(
+    configEnv({
+      NODE_ENV: "production",
+      OKKEY_VERSION: "0.0.0-dev",
+      OKKEY_GIT_SHA: coreSha,
+      OKKEY_ENTERPRISE_GIT_SHA: undefined,
+      OKKEY_UPDATE_ISOLATED: "true",
+    }),
+    () => {
+      cfg = loadConfig();
+    },
+  );
+
+  const service = createSystemUpdateService({
+    deploymentMode: cfg.deploymentMode,
+    currentVersion: cfg.systemVersion,
+    commitSha: cfg.gitSha,
+    releaseTag: cfg.releaseTag,
+    enterpriseInstalled: true,
+    enterpriseVersion: "1.0.0",
+    enterpriseCommitSha: cfg.enterpriseGitSha,
+    coreFeedUrl: cfg.updateCoreFeedUrl,
+    enterpriseFeedUrl: cfg.updateEnterpriseFeedUrl,
+    isolated: cfg.updateIsolated,
+    agent: {
+      async start() {
+        throw new Error("no apply");
+      },
+      async get() {
+        return null;
+      },
+    },
+    isAdmin: async () => false,
+  });
+
+  const app = new HttpApp();
+  registerSystemUpdateRoutes(
+    (method, path, handler) => app.route(method, path, handler),
+    cfg,
+    service,
+    async () => "owner",
+  );
+
+  const response = await dispatch(app, {
+    method: "GET",
+    url: "/system/updates",
+  });
+  assert.equal(response.status, 200);
+  const body = response.body as {
+    commitSha: string | null;
+    enterpriseCommitSha: string | null;
+  };
+  assert.equal(body.commitSha, coreSha);
+  assert.equal(body.enterpriseCommitSha, null);
+});
