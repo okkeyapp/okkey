@@ -1,0 +1,14 @@
+{
+  "extName": {
+    "message": "Okkey",
+    "description": "Nombre de la extensión en el navegador y en la ficha de la tienda."
+  },
+  "extDescription": {
+    "message": "Gestor de contraseñas autoalojado: bóveda en el cliente, criptografía lista para el Q-day y autocompletado seguro.",
+    "description": "Descripción corta de la tienda / instalación (≤132 caracteres)."
+  },
+  "actionTitle": {
+    "message": "Okkey",
+    "description": "Descripción emergente del botón de la barra de herramientas."
+  }
+}

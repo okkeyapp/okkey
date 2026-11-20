@@ -1,0 +1,14 @@
+{
+  "extName": {
+    "message": "Okkey",
+    "description": "Nome da extensão no navegador e na listagem da loja."
+  },
+  "extDescription": {
+    "message": "Gerenciador de senhas self-hosted: cofre no cliente, criptografia pronta para o Q-day e preenchimento seguro.",
+    "description": "Descrição curta da loja / instalação (≤132 caracteres)."
+  },
+  "actionTitle": {
+    "message": "Okkey",
+    "description": "Tooltip do botão da barra de ferramentas."
+  }
+}

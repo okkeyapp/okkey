@@ -1,0 +1,14 @@
+{
+  "extName": {
+    "message": "Okkey",
+    "description": "Nom de l'extension affiché dans le navigateur et sur la fiche du magasin."
+  },
+  "extDescription": {
+    "message": "Gestionnaire de mots de passe auto-hébergé : coffre côté client, crypto prête pour le Q-day, remplissage sécurisé.",
+    "description": "Courte description magasin / installation (≤132 caractères)."
+  },
+  "actionTitle": {
+    "message": "Okkey",
+    "description": "Info-bulle du bouton de la barre d'outils."
+  }
+}

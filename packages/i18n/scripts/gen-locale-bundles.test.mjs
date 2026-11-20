@@ -104,12 +104,14 @@ test("gen discovers a dropped-in locale without code changes", () => {
   assert.match(fs.readFileSync(path.join(root, "src", "web-bundles.gen.ts"), "utf8"), /\bxx\b/);
 });
 
-test("production generator keeps en+ru ready", () => {
+test("production generator keeps en+ru ready and coverage gate at 80", () => {
   const result = spawnSync(process.execPath, [scriptPath], {
     cwd: pkgRoot,
     encoding: "utf8",
   });
   assert.equal(result.status, 0, result.stderr || result.stdout);
   const registry = fs.readFileSync(path.join(pkgRoot, "src", "locale-registry.gen.ts"), "utf8");
-  assert.match(registry, /READY_LOCALES = \["en","ru"\]/);
+  assert.match(registry, /LOCALE_READINESS_THRESHOLD_PERCENT = 80/);
+  assert.match(registry, /READY_LOCALES = \[[^\]]*\"en\"[^\]]*\]/);
+  assert.match(registry, /READY_LOCALES = \[[^\]]*\"ru\"[^\]]*\]/);
 });

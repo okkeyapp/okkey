@@ -340,7 +340,7 @@ test("PATCH /account/profile rejects invalid payload", async () => {
     usersRepository: createUsersRepositoryStub(),
     headers: { authorization: "Bearer test-access-token" },
     body: {
-      locale: "fr",
+      locale: "zz",
       billing_region: "USA",
     },
   });
