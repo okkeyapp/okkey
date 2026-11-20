@@ -48,7 +48,10 @@ import { PlanChangeRequestService } from "./plan-change-request/service.ts";
 import { WorkspaceBuiltInRolesService } from "./workspace-roles/list-service.ts";
 import { WorkspaceBuiltInProfilesService } from "./workspace-profiles/list-service.ts";
 import { WorkspaceMeVaultProfilesService } from "./routes/workspace-me-vault-profiles.ts";
-import { WorkspaceMembersService } from "./workspace-members/service.ts";
+import {
+  WorkspaceMembersService,
+  type InviteRegistrationResolve,
+} from "./workspace-members/service.ts";
 import { WorkspaceSharedVaultsService } from "./workspace-shared-vaults/service.ts";
 import { loadEnterprisePlugins } from "./plugins/load-enterprise-plugins.ts";
 import {
@@ -109,12 +112,22 @@ async function main(): Promise<void> {
     provider: config.emailProvider,
     deliveryMode: config.emailDeliveryMode,
   });
+  // Bound after WorkspaceMembersService exists (invite-link registration OTP skip).
+  let resolveInviteRegistration:
+    | ((rawToken: string, email: string) => Promise<InviteRegistrationResolve>)
+    | null = null;
   const authService = new AuthService({
     redis: storage.redis,
     users: storage.repositories.users,
     emailTemplates,
     config,
     resolveEmailDeliverable: () => mailSettings.isOutboundActive(),
+    resolveInviteRegistration: async (rawToken, email) => {
+      if (!resolveInviteRegistration) {
+        return { outcome: "not_found" };
+      }
+      return resolveInviteRegistration(rawToken, email);
+    },
   });
   const emailChangeService = new EmailChangeService({
     redis: storage.redis,
@@ -295,6 +308,11 @@ async function main(): Promise<void> {
     logger,
     config,
     workspaceKeys: workspaceKeyService,
+  });
+  resolveInviteRegistration = (rawToken, email) =>
+    workspaceMembersService.resolveInviteForRegistration(rawToken, email);
+  registrationService.setConsumeInviteDuringRegistration(async (tx, input) => {
+    await workspaceMembersService.acceptInvitationForRegistrationInTx(tx, input);
   });
   deliverPendingInvites = async () => {
     const result = await workspaceMembersService.deliverPendingInvitationEmails();

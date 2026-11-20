@@ -11,6 +11,7 @@ import {
   writePendingLoginDiscover,
 } from "../../auth/loginMethodStorage";
 import { ACCOUNT_LOGIN_METHODS_UI_ENABLED } from "../../auth/accountLoginMethodsFeature";
+import { readPendingInviteToken } from "../../auth/pendingInviteStorage";
 import {
   ACCOUNT_NEW_PATH,
   AUTH_MASTER_PASSWORD_PATH,
@@ -21,6 +22,16 @@ import {
 import { useLocale } from "../../locale/LocaleContext";
 import { emailStartErrorI18nKey } from "./emailStartErrors";
 import { shouldPromptMasterPasswordLogin } from "./masterPasswordLogin";
+
+function shouldSkipEmailCode(start: {
+  authStateId?: string;
+  bootstrapRequired?: boolean;
+  inviteRegistration?: boolean;
+}): boolean {
+  return Boolean(
+    start.authStateId && (start.bootstrapRequired || start.inviteRegistration),
+  );
+}
 
 export default function AuthEmailPage() {
   const { t, locale } = useLocale();
@@ -48,10 +59,13 @@ export default function AuthEmailPage() {
   }, [returnTo]);
 
   async function startEmailOtp(trimmed: string) {
-    const start = await authClient.startEmailLogin(trimmed, locale);
+    const inviteToken = readPendingInviteToken() ?? undefined;
+    const start = await authClient.startEmailLogin(trimmed, locale, {
+      ...(inviteToken ? { inviteToken } : {}),
+    });
     updateLocalProfile({ email: trimmed });
-    // Self-host first-run: empty DB → skip OTP, go straight to registration.
-    if (start.bootstrapRequired && start.authStateId) {
+    // First-run bootstrap or valid invite: skip OTP, go straight to registration.
+    if (shouldSkipEmailCode(start) && start.authStateId) {
       setRegistrationAuthStateId(start.authStateId);
       navigate(ACCOUNT_NEW_PATH, { replace: true });
       return;

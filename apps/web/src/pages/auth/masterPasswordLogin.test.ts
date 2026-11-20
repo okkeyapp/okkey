@@ -20,4 +20,13 @@ describe("shouldPromptMasterPasswordLogin", () => {
       }),
     ).toBe(false);
   });
+
+  it("keeps invite-link registration ahead of the master-password step", () => {
+    expect(
+      shouldPromptMasterPasswordLogin({
+        emailDeliverable: false,
+        inviteRegistration: true,
+      }),
+    ).toBe(false);
+  });
 });
