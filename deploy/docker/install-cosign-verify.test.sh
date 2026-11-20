@@ -51,10 +51,13 @@ for env_file in "${ROOT}/.env.example" "${REPO_ROOT}/.env.example"; do
 done
 
 # --- verify call sits before compose up ---
-verify_line="$(grep -n '^verify_pulled_image_signatures "\${image_tag}"' "${INSTALL_SH}" | head -1 | cut -d: -f1)"
+verify_line="$(grep -n '^verify_pulled_image_signatures "\${skip_pull}"' "${INSTALL_SH}" | head -1 | cut -d: -f1)"
 up_line="$(grep -n '^run_compose \.env up -d$' "${INSTALL_SH}" | head -1 | cut -d: -f1)"
 [[ -n "${verify_line}" && -n "${up_line}" ]] || fail "could not locate verify / compose up"
 [[ "${verify_line}" -lt "${up_line}" ]] || fail "verify (line ${verify_line}) must run before compose up (line ${up_line})"
+# Default image tag must match compose (${OKKEY_IMAGE_TAG:-1.0.0-beta.2}).
+grep -Fq 'image_tag:-1.0.0-beta.2' "${INSTALL_SH}" || fail "compose_image_tag default must be 1.0.0-beta.2"
+grep -Fq 'OKKEY_ENTERPRISE_IMAGE_TAG' "${INSTALL_SH}" || fail "install.sh must honor OKKEY_ENTERPRISE_IMAGE_TAG like compose"
 
 # Expected keyless identity: this repo's publish-images workflow, GitHub Actions OIDC.
 EXPECTED_IDENTITY='^https://github\.com/okkeyapp/okkey/\.github/workflows/publish-images\.yml@refs/(?:heads/dev|tags/v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?)$'
@@ -134,7 +137,12 @@ if [[ "${1:-}" == "volume" && "${2:-}" == "inspect" ]]; then
 fi
 if [[ "${1:-}" == "image" && "${2:-}" == "inspect" ]]; then
   ref="${*: -1}"
-  name="${ref%%:*}"
+  name="${ref}"
+  if [[ "${ref}" == *:* && "${ref##*:}" != */* ]]; then
+    name="${ref%:*}"
+  fi
+  # Wrong digest first — install.sh must pick the matching repository, not index 0.
+  printf 'other.example/unrelated@sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\n'
   printf '%s@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\n' "${name}"
   exit 0
 fi
@@ -434,6 +442,60 @@ ${RUN_ENV}"
 for image in api worker web; do
   printf '%s\n' "${RUN_COSIGN}" | grep -Fq "registry.example/okkey/${image}@sha256:" || fail "fresh install cosign must verify persisted ${image}
 ${RUN_COSIGN}"
+done
+
+# Empty process-env OKKEY_IMAGE_TAG must not fall through to .env (compose :- semantics).
+run_install "1.0.0-beta.3" 1 0 OKKEY_IMAGE_TAG= --
+[[ "${RUN_RC}" -eq 0 ]] || fail "empty process-env tag should still install with compose default
+${RUN_OUT}"
+for image in api worker web; do
+  printf '%s\n' "${RUN_DOCKER}" | grep -Fq "ghcr.io/okkeyapp/${image}:1.0.0-beta.2" || fail "empty process tag must use compose default for ${image}
+${RUN_DOCKER}"
+  printf '%s\n' "${RUN_DOCKER}" | grep -Fq "ghcr.io/okkeyapp/${image}:1.0.0-beta.3" && fail "empty process tag must not use .env tag for ${image}
+${RUN_DOCKER}"
+done
+
+# Quoted .env image names are stripped like compose.
+INSTALL_ENV_EXTRA=$'OKKEY_API_IMAGE="quoted.example/okkey/api"\nOKKEY_WORKER_IMAGE=\'quoted.example/okkey/worker\'\nOKKEY_WEB_IMAGE="quoted.example/okkey/web"'
+run_install "1.0.0-beta.3" 1 0 --
+unset INSTALL_ENV_EXTRA
+[[ "${RUN_RC}" -eq 0 ]] || fail "quoted .env image names should succeed
+${RUN_OUT}"
+for image in api worker web; do
+  printf '%s\n' "${RUN_COSIGN}" | grep -Fq "quoted.example/okkey/${image}@sha256:" || fail "quoted .env must strip quotes for ${image}
+${RUN_COSIGN}"
+done
+
+# OKKEY_ENTERPRISE_IMAGE_TAG in .env wins over OKKEY_IMAGE_TAG (compose order).
+# Unsigned enterprise :dev must fail closed before compose up (stops on first image).
+INSTALL_ENV_EXTRA=$'OKKEY_ENTERPRISE_IMAGE_TAG=dev\nOKKEY_API_IMAGE=ghcr.io/example/okkey-enterprise/api\nOKKEY_WORKER_IMAGE=ghcr.io/example/okkey-enterprise/worker\nOKKEY_WEB_IMAGE=ghcr.io/example/okkey-enterprise/web'
+run_install "1.0.0-beta.3" 1 1 --
+unset INSTALL_ENV_EXTRA
+[[ "${RUN_RC}" -ne 0 ]] || fail "unsigned enterprise tag override must fail"
+printf '%s\n' "${RUN_OUT}" | grep -Fq 'cosign verify failed' || fail "enterprise override missing verify-failed error
+${RUN_OUT}"
+assert_no_up
+printf '%s\n' "${RUN_DOCKER}" | grep -Fq 'ghcr.io/example/okkey-enterprise/api:dev' || fail "enterprise override must inspect api:dev
+${RUN_DOCKER}"
+printf '%s\n' "${RUN_DOCKER}" | grep -Fq 'ghcr.io/example/okkey-enterprise/api:1.0.0-beta.3' && fail "enterprise override must not inspect api with OKKEY_IMAGE_TAG
+${RUN_DOCKER}"
+printf '%s\n' "${RUN_COSIGN}" | grep -Fq 'ghcr.io/example/okkey-enterprise/api@sha256:' || fail "enterprise override cosign must target api:dev digest
+${RUN_COSIGN}"
+# Cosign must not verify the unrelated RepoDigests[0] decoy.
+printf '%s\n' "${RUN_COSIGN}" | grep -Fq 'other.example/unrelated@sha256:' && fail "must not verify unmatched RepoDigests[0]
+${RUN_COSIGN}"
+
+# Matching enterprise override with a good signature still verifies :dev.
+INSTALL_ENV_EXTRA=$'OKKEY_ENTERPRISE_IMAGE_TAG=dev\nOKKEY_API_IMAGE=ghcr.io/example/okkey-enterprise/api\nOKKEY_WORKER_IMAGE=ghcr.io/example/okkey-enterprise/worker\nOKKEY_WEB_IMAGE=ghcr.io/example/okkey-enterprise/web'
+run_install "1.0.0-beta.3" 1 0 --
+unset INSTALL_ENV_EXTRA
+[[ "${RUN_RC}" -eq 0 ]] || fail "signed enterprise override should succeed
+${RUN_OUT}"
+[[ "${RUN_SEQUENCE}" == $'PULL\nCOSIGN\nCOSIGN\nCOSIGN\nUP' ]] || fail "enterprise override sequence wrong:
+${RUN_SEQUENCE}"
+for image in api worker web; do
+  printf '%s\n' "${RUN_DOCKER}" | grep -Fq "ghcr.io/example/okkey-enterprise/${image}:dev" || fail "signed enterprise override inspect :dev for ${image}
+${RUN_DOCKER}"
 done
 
 echo "OK: install.sh cosign verify"

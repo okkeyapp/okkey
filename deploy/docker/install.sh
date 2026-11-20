@@ -81,10 +81,23 @@ Run: install.sh --help"
   done
 }
 
+# Strip one layer of matching surrounding quotes (Compose env-file behavior).
+strip_env_quotes() {
+  local value="$1"
+  if [[ "${value}" =~ ^\"(.*)\"$ ]]; then
+    value="${BASH_REMATCH[1]}"
+  elif [[ "${value}" =~ ^\'(.*)\'$ ]]; then
+    value="${BASH_REMATCH[1]}"
+  fi
+  printf '%s\n' "${value}"
+}
+
 # Read KEY=value from the install-dir .env (no export). Empty if missing.
 env_file_value() {
   local key="$1"
-  grep -E "^${key}=" .env 2>/dev/null | cut -d= -f2- || true
+  local value
+  value="$(grep -E "^${key}=" .env 2>/dev/null | cut -d= -f2- || true)"
+  strip_env_quotes "${value}"
 }
 
 # Rewrite KEY=value in ./.env without sed (sed treats `&` `\` in the replacement).
@@ -191,46 +204,77 @@ OKKEY_COSIGN_DEFAULT_IDENTITY_REGEXP='^https://github\.com/okkeyapp/okkey/\.gith
 OKKEY_COSIGN_CANDIDATE_IDENTITY_REGEXP='^https://github\.com/okkeyapp/okkey/\.github/workflows/publish-images\.yml@refs/(?:heads/dev|tags/v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?|heads/release/[0-9A-Za-z._-]+|heads/hotfix/[0-9A-Za-z._-]+)$'
 OKKEY_COSIGN_CERTIFICATE_OIDC_ISSUER="${OKKEY_COSIGN_CERTIFICATE_OIDC_ISSUER:-https://token.actions.githubusercontent.com}"
 
-# Same precedence as Compose interpolation: process env → install-dir .env → empty.
-# Used for OKKEY_*_IMAGE (and any other key where verify must match compose).
+# Same precedence as Compose: process env (even when empty) wins over --env-file
+# .env. Empty values are returned as empty so callers can apply `:-` defaults
+# without falling through to .env (Compose `${VAR:-default}` semantics).
 resolve_env_value() {
   local key="$1"
-  local value
-  # Indirect expansion: process environment wins over --env-file .env.
-  value="${!key:-}"
-  if [[ -z "${value}" ]]; then
+  local value=""
+  if [[ -v "${key}" ]]; then
+    value="${!key}"
+  else
     value="$(env_file_value "${key}")"
   fi
   printf '%s\n' "${value}"
 }
 
-# Resolve image ref compose will run (process env → .env → default GHCR).
+# Image tag compose interpolates for api/worker/web:
+# ${OKKEY_ENTERPRISE_IMAGE_TAG:-${OKKEY_IMAGE_TAG:-1.0.0-beta.2}}
+compose_image_tag() {
+  local enterprise_tag image_tag
+  enterprise_tag="$(resolve_env_value OKKEY_ENTERPRISE_IMAGE_TAG)"
+  if [[ -n "${enterprise_tag}" ]]; then
+    printf '%s\n' "${enterprise_tag}"
+    return 0
+  fi
+  image_tag="$(resolve_env_value OKKEY_IMAGE_TAG)"
+  printf '%s\n' "${image_tag:-1.0.0-beta.2}"
+}
+
+# Resolve image ref compose will run (name + tag, matching compose interpolation).
 compose_image_ref() {
   local env_key="$1"
   local default_image="$2"
-  local tag="$3"
-  local image
+  local image tag
   image="$(resolve_env_value "${env_key}")"
   image="${image:-${default_image}}"
+  tag="$(compose_image_tag)"
   printf '%s:%s\n' "${image}" "${tag}"
 }
 
-# Resolve a pulled image to a registry digest ref (name@sha256:…).
-image_digest_ref() {
+# Repository name for a name:tag (or name) ref. Handles registry:port/name:tag.
+image_ref_repository() {
   local ref="$1"
-  local digest_line digest
-  digest_line="$(docker image inspect --format '{{index .RepoDigests 0}}' "${ref}" 2>/dev/null || true)"
-  if [[ -z "${digest_line}" || "${digest_line}" == "<no value>" ]]; then
-    die "cannot resolve digest for ${ref} after pull (RepoDigests empty).
-hint: re-pull from GHCR, or re-run with --skip-cosign-verify only for local/unsigned images."
-  fi
-  # RepoDigests is already name@sha256:…
-  if [[ "${digest_line}" == *@sha256:* ]]; then
-    printf '%s\n' "${digest_line}"
+  if [[ "${ref}" == *@* ]]; then
+    printf '%s\n' "${ref%@*}"
     return 0
   fi
+  # Tag is the final :<segment> when that segment has no '/'.
+  if [[ "${ref}" == *:* && "${ref##*:}" != */* ]]; then
+    printf '%s\n' "${ref%:*}"
+    return 0
+  fi
+  printf '%s\n' "${ref}"
+}
+
+# Resolve a pulled image to a registry digest ref (name@sha256:…).
+# Prefer the RepoDigest whose repository matches the verified ref — never
+# blindly take index 0 when the image has multiple remotes.
+image_digest_ref() {
+  local ref="$1"
+  local repo digests digest_line digest
+  repo="$(image_ref_repository "${ref}")"
+  digests="$(docker image inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' "${ref}" 2>/dev/null || true)"
+  while IFS= read -r digest_line || [[ -n "${digest_line}" ]]; do
+    [[ -z "${digest_line}" || "${digest_line}" == "<no value>" ]] && continue
+    if [[ "${digest_line}" == "${repo}@sha256:"* ]]; then
+      printf '%s\n' "${digest_line}"
+      return 0
+    fi
+  done <<< "${digests}"
   digest="$(docker image inspect --format '{{.Id}}' "${ref}" 2>/dev/null || true)"
-  die "unexpected RepoDigests format for ${ref}: ${digest_line} (id=${digest})"
+  die "cannot resolve matching digest for ${ref} after pull (no RepoDigest for ${repo}; id=${digest}).
+hint: re-pull from the registry, or re-run with --skip-cosign-verify only for local/unsigned images."
 }
 
 # Loud stderr warning for the emergency signature bypass.
@@ -257,8 +301,7 @@ warn_allow_candidate() {
 # process env OKKEY_SKIP_COSIGN_VERIFY=1). Local installs that skip pull also
 # skip verify unless OKKEY_FORCE_COSIGN_VERIFY=1.
 verify_pulled_image_signatures() {
-  local tag="$1"
-  local skip_pull="${2:-0}"
+  local skip_pull="${1:-0}"
   local allow_candidate=0
 
   # Process env only. A line in the install .env does not enable this.
@@ -306,10 +349,12 @@ Emergency bypass (prints a warning; not for production):
     fi
   fi
 
+  # compose_image_ref resolves name+tag the same way compose does
+  # (ENTERPRISE_IMAGE_TAG → IMAGE_TAG → 1.0.0-beta.2).
   local refs=()
-  refs+=("$(compose_image_ref OKKEY_API_IMAGE ghcr.io/okkeyapp/api "${tag}")")
-  refs+=("$(compose_image_ref OKKEY_WORKER_IMAGE ghcr.io/okkeyapp/worker "${tag}")")
-  refs+=("$(compose_image_ref OKKEY_WEB_IMAGE ghcr.io/okkeyapp/web "${tag}")")
+  refs+=("$(compose_image_ref OKKEY_API_IMAGE ghcr.io/okkeyapp/api)")
+  refs+=("$(compose_image_ref OKKEY_WORKER_IMAGE ghcr.io/okkeyapp/worker)")
+  refs+=("$(compose_image_ref OKKEY_WEB_IMAGE ghcr.io/okkeyapp/web)")
 
   local ref digest_ref
   for ref in "${refs[@]}"; do
@@ -635,10 +680,9 @@ fi
 replace_env OKKEY_COMPOSE_PROJECT "$(compose_project_name)"
 replace_env OKKEY_HOST_INSTALL_DIR "${OKKEY_INSTALL_DIR}"
 
-# Same precedence as compose interpolation for ${OKKEY_IMAGE_TAG}: process env → .env → default.
-image_tag="$(resolve_env_value OKKEY_IMAGE_TAG)"
-image_tag="${image_tag:-dev}"
-log "==> Pulling images and starting stack (compose project=$(compose_project_name), OKKEY_IMAGE_TAG=${image_tag})"
+# Same tag compose uses for api/worker/web image refs.
+image_tag="$(compose_image_tag)"
+log "==> Pulling images and starting stack (compose project=$(compose_project_name), image tag=${image_tag})"
 # OKKEY_SKIP_PULL=1: use images already present locally (e.g. :local / pre-loaded tags).
 skip_pull=0
 if [[ "${OKKEY_SKIP_PULL:-}" == "1" ]]; then
@@ -654,7 +698,7 @@ hint: the tag must exist in GHCR (ghcr.io/okkeyapp/{api,web,worker}).
   fi
 fi
 # Signature check before compose up — unsigned / mismatched digest stops install.
-verify_pulled_image_signatures "${image_tag}" "${skip_pull}"
+verify_pulled_image_signatures "${skip_pull}"
 run_compose .env up -d
 wait_for_api_healthy
 
