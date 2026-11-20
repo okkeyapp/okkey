@@ -1,4 +1,5 @@
 import type { IncomingMessage } from "node:http";
+import { isAppLocale } from "@okkey/i18n";
 import { json, readJsonBody, type RouteHandler } from "../http.ts";
 import type { UsersRepository } from "../storage/repositories.ts";
 
@@ -79,7 +80,7 @@ function parseLocale(value: unknown): string | null | undefined {
   if (value === null) {
     return null;
   }
-  if (value === "en" || value === "ru") {
+  if (typeof value === "string" && isAppLocale(value)) {
     return value;
   }
   return undefined;
