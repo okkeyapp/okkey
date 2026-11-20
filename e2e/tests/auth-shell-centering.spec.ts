@@ -40,7 +40,8 @@ test.afterAll(async () => {
 test("desktop: auth card is vertically centered without page overflow", async () => {
   await page.setViewportSize(DESKTOP);
   await page.goto("/auth/email");
-  await expect(page.getByRole("heading", { name: /welcome to okkey/i })).toBeVisible({
+  // Empty self-host catalog redirects /auth/email → /setup (first-run wizard).
+  await expect(page.getByRole("heading", { name: /first-run setup|welcome to okkey/i })).toBeVisible({
     timeout: 30_000,
   });
   await assertViewportFitCover(page);
@@ -62,7 +63,7 @@ test("mobile: auth card is vertically centered without page overflow", async () 
   page = await context.newPage();
 
   await page.goto("/auth/email");
-  await expect(page.getByRole("heading", { name: /welcome to okkey/i })).toBeVisible({
+  await expect(page.getByRole("heading", { name: /first-run setup|welcome to okkey/i })).toBeVisible({
     timeout: 30_000,
   });
   await assertViewportFitCover(page);
@@ -73,7 +74,7 @@ test("mobile: auth card is vertically centered without page overflow", async () 
 test("short viewport: auth card scrolls and top stays reachable", async () => {
   await page.setViewportSize(SHORT);
   await page.goto("/auth/email");
-  await expect(page.getByRole("heading", { name: /welcome to okkey/i })).toBeVisible({
+  await expect(page.getByRole("heading", { name: /first-run setup|welcome to okkey/i })).toBeVisible({
     timeout: 30_000,
   });
   // Inflate the card so a short phone viewport must scroll.
