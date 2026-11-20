@@ -23,7 +23,9 @@ printf '%s\n' "${help_out}" | grep -Fq -- '--allow-dev' || fail "help missing --
 ${help_out}"
 printf '%s\n' "${help_out}" | grep -Fq 'OKKEY_COSIGN_ALLOW_DEV=1' || fail "help missing OKKEY_COSIGN_ALLOW_DEV
 ${help_out}"
-printf '%s\n' "${help_out}" | grep -Fq 'Verification stays on' || fail "help must say candidate mode still verifies
+printf '%s\n' "${help_out}" | grep -Fq 'Verification stays on' || fail "help must say verification stays on
+${help_out}"
+printf '%s\n' "${help_out}" | grep -Fq 'Compatibility no-op' || fail "help must document --allow-candidate as no-op
 ${help_out}"
 head -n 30 "${INSTALL_SH}" | grep -Fq -- '--allow-candidate' || fail "script header missing --allow-candidate"
 head -n 30 "${INSTALL_SH}" | grep -Fq -- '--allow-dev' || fail "script header missing --allow-dev"
@@ -35,6 +37,8 @@ if head -n 20 "${INSTALL_SH}" | grep -Fq 'okkey/dev/deploy/docker/install.sh'; t
   fail "header must not download install.sh from the dev branch"
 fi
 grep -Fq 'published only by a manual workflow_dispatch' "${INSTALL_SH}" || fail "pull error must describe manual :dev publishing"
+grep -Fq 'OKKEY_COSIGN_ALLOW_DEV=1' "${INSTALL_SH}" || fail "pull/verify errors must mention OKKEY_COSIGN_ALLOW_DEV"
+grep -Fq -- '--allow-dev' "${INSTALL_SH}" || fail "pull/verify errors must mention --allow-dev"
 if grep -Fq 'published on every push' "${INSTALL_SH}"; then
   fail "pull error must not say :dev is published on every push"
 fi
@@ -65,18 +69,23 @@ grep -Fq 'image_tag:-1.0.0-beta.2' "${INSTALL_SH}" || fail "compose_image_tag de
 grep -Fq 'OKKEY_ENTERPRISE_IMAGE_TAG' "${INSTALL_SH}" || fail "install.sh must honor OKKEY_ENTERPRISE_IMAGE_TAG like compose"
 
 # Expected keyless identity: this repo's publish-images workflow, GitHub Actions OIDC.
-# Default trusts SemVer tags only — refs/heads/dev requires an explicit opt-in.
-EXPECTED_IDENTITY='^https://github\.com/okkeyapp/okkey/\.github/workflows/publish-images\.yml@refs/tags/v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$'
-EXPECTED_DEV_IDENTITY='^https://github\.com/okkeyapp/okkey/\.github/workflows/publish-images\.yml@refs/(?:heads/dev|tags/v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?)$'
-CANDIDATE_IDENTITY='^https://github\.com/okkeyapp/okkey/\.github/workflows/publish-images\.yml@refs/(?:tags/v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?|heads/release/[0-9A-Za-z._-]+|heads/hotfix/[0-9A-Za-z._-]+)$'
-CANDIDATE_DEV_IDENTITY='^https://github\.com/okkeyapp/okkey/\.github/workflows/publish-images\.yml@refs/(?:heads/dev|tags/v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?|heads/release/[0-9A-Za-z._-]+|heads/hotfix/[0-9A-Za-z._-]+)$'
+# Default trusts tags/v* + release/* + hotfix/* — refs/heads/dev requires opt-in.
+EXPECTED_IDENTITY='^https://github\.com/okkeyapp/okkey/\.github/workflows/publish-images\.yml@refs/(?:heads/release/[0-9A-Za-z._-]+|heads/hotfix/[0-9A-Za-z._-]+|tags/v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?)$'
+EXPECTED_DEV_IDENTITY='^https://github\.com/okkeyapp/okkey/\.github/workflows/publish-images\.yml@refs/(?:heads/dev|heads/release/[0-9A-Za-z._-]+|heads/hotfix/[0-9A-Za-z._-]+|tags/v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?)$'
+# --allow-candidate is a no-op alias of the default / default+dev sets.
+CANDIDATE_IDENTITY="${EXPECTED_IDENTITY}"
+CANDIDATE_DEV_IDENTITY="${EXPECTED_DEV_IDENTITY}"
 EXPECTED_ISSUER='https://token.actions.githubusercontent.com'
 
-# Structural: default regexp must not trust refs/heads/dev.
+# Structural: default regexp must not trust refs/heads/dev; must trust release/hotfix/tags.
 default_re="$(grep -E '^OKKEY_COSIGN_DEFAULT_IDENTITY_REGEXP=' "${INSTALL_SH}" | head -1)"
 printf '%s\n' "${default_re}" | grep -Fq 'heads/dev' && fail "default identity must not include heads/dev
 ${default_re}"
 printf '%s\n' "${default_re}" | grep -Fq 'tags/v' || fail "default identity must trust SemVer tags
+${default_re}"
+printf '%s\n' "${default_re}" | grep -Fq 'heads/release' || fail "default identity must trust release/*
+${default_re}"
+printf '%s\n' "${default_re}" | grep -Fq 'heads/hotfix' || fail "default identity must trust hotfix/*
 ${default_re}"
 
 # run_install TAG WITH_COSIGN FAIL_COSIGN [ENV=value...] -- [script args...]
@@ -239,7 +248,9 @@ printf '%s\n' "${RUN_COSIGN}" | grep -Fq -- "${EXPECTED_IDENTITY}" || fail "iden
 ${RUN_COSIGN}"
 printf '%s\n' "${RUN_COSIGN}" | grep -Fq 'heads/dev' && fail "default identity must not accept heads/dev
 ${RUN_COSIGN}"
-printf '%s\n' "${RUN_COSIGN}" | grep -Fq 'heads/release' && fail "default identity must not accept release branches
+printf '%s\n' "${RUN_COSIGN}" | grep -Fq 'heads/release' || fail "default identity must accept release branches
+${RUN_COSIGN}"
+printf '%s\n' "${RUN_COSIGN}" | grep -Fq 'heads/hotfix' || fail "default identity must accept hotfix branches
 ${RUN_COSIGN}"
 printf '%s\n' "${RUN_COSIGN}" | grep -Fq -- "${EXPECTED_ISSUER}" || fail "OIDC issuer missing
 ${RUN_COSIGN}"
@@ -320,15 +331,15 @@ printf '%s\n' "${RUN_OUT}" | grep -Fq 'cosign is not installed' || fail "forced 
 ${RUN_OUT}"
 assert_no_up
 
-# --allow-candidate widens identity and still verifies (still no heads/dev).
+# --allow-candidate is a no-op (same as default) and still verifies (still no heads/dev).
 run_install "1.0.0-beta.2-candidate" 1 0 -- --allow-candidate
 [[ "${RUN_RC}" -eq 0 ]] || fail "allow-candidate should succeed when cosign passes
 ${RUN_OUT}"
 [[ "${RUN_SEQUENCE}" == $'PULL\nCOSIGN\nCOSIGN\nCOSIGN\nUP' ]] || fail "allow-candidate still must verify before up:
 ${RUN_SEQUENCE}"
-printf '%s\n' "${RUN_OUT}" | grep -Fq 'WARNING: pre-release candidate install (--allow-candidate).' || fail "candidate warning missing
+printf '%s\n' "${RUN_OUT}" | grep -Fq 'NOTE: --allow-candidate is a no-op' || fail "candidate no-op note missing
 ${RUN_OUT}"
-printf '%s\n' "${RUN_OUT}" | grep -Fq 'Signature verification stays on. This is not a bypass.' || fail "candidate warning must say verification stays on
+printf '%s\n' "${RUN_OUT}" | grep -Fq 'Signature verification stays on. This is not a bypass.' || fail "candidate note must say verification stays on
 ${RUN_OUT}"
 printf '%s\n' "${RUN_COSIGN}" | grep -Fq -- "${CANDIDATE_IDENTITY}" || fail "candidate identity regexp missing
 ${RUN_COSIGN}"
@@ -337,11 +348,11 @@ ${RUN_COSIGN}"
 printf '%s\n' "${RUN_COSIGN}" | grep -Fq 'heads/dev' && fail "allow-candidate alone must not trust heads/dev
 ${RUN_COSIGN}"
 
-# Process env opt-in, same verify path.
+# Process env opt-in, same verify path / same default identity.
 run_install "1.0.0-beta.2-candidate" 1 0 OKKEY_ALLOW_CANDIDATE=1 --
 [[ "${RUN_RC}" -eq 0 ]] || fail "OKKEY_ALLOW_CANDIDATE should succeed when cosign passes
 ${RUN_OUT}"
-printf '%s\n' "${RUN_OUT}" | grep -Fq 'pre-release candidate install (OKKEY_ALLOW_CANDIDATE=1)' || fail "env candidate warning missing
+printf '%s\n' "${RUN_OUT}" | grep -Fq 'NOTE: OKKEY_ALLOW_CANDIDATE=1 is a no-op' || fail "env candidate no-op note missing
 ${RUN_OUT}"
 printf '%s\n' "${RUN_COSIGN}" | grep -Fq -- "${CANDIDATE_IDENTITY}" || fail "env candidate identity missing
 ${RUN_COSIGN}"
@@ -360,7 +371,9 @@ printf '%s\n' "${RUN_COSIGN}" | grep -Fq -- "${EXPECTED_DEV_IDENTITY}" || fail "
 ${RUN_COSIGN}"
 printf '%s\n' "${RUN_COSIGN}" | grep -Fq 'heads/dev' || fail "allow-dev must include heads/dev
 ${RUN_COSIGN}"
-printf '%s\n' "${RUN_COSIGN}" | grep -Fq 'heads/release' && fail "allow-dev must not widen to release/*
+printf '%s\n' "${RUN_COSIGN}" | grep -Fq 'heads/release' || fail "allow-dev must keep release/* from the default set
+${RUN_COSIGN}"
+printf '%s\n' "${RUN_COSIGN}" | grep -Fq 'heads/hotfix' || fail "allow-dev must keep hotfix/* from the default set
 ${RUN_COSIGN}"
 printf '%s\n' "${RUN_COSIGN}" | grep -Fq 'heads/main' && fail "allow-dev must not accept arbitrary branches
 ${RUN_COSIGN}"
@@ -397,16 +410,36 @@ ${RUN_COSIGN}"
 printf '%s\n' "${RUN_COSIGN}" | grep -Fq 'heads/dev' && fail ".env allow-dev line trusted heads/dev
 ${RUN_COSIGN}"
 
-# Explicit identity override replaces built-ins; allow-dev does not rewrite it.
+# Explicit identity override without heads/dev + allow-dev must fail loudly.
 CUSTOM_IDENTITY='^https://github\.com/okkeyapp/okkey/\.github/workflows/publish-images\.yml@refs/tags/v1\.2\.3$'
 run_install "1.0.0-beta.3" 1 0 \
   OKKEY_COSIGN_CERTIFICATE_IDENTITY_REGEXP="${CUSTOM_IDENTITY}" \
   OKKEY_COSIGN_ALLOW_DEV=1 --
+[[ "${RUN_RC}" -ne 0 ]] || fail "allow-dev + override without heads/dev must fail loudly
+${RUN_OUT}"
+printf '%s\n' "${RUN_OUT}" | grep -Fq 'has no effect while OKKEY_COSIGN_CERTIFICATE_IDENTITY_REGEXP is set without heads/dev' \
+  || fail "missing loud allow-dev/override conflict error
+${RUN_OUT}"
+assert_no_up
+
+# Explicit override that already includes heads/dev wins (allow-dev does not rewrite it).
+CUSTOM_DEV_IDENTITY='^https://github\.com/okkeyapp/okkey/\.github/workflows/publish-images\.yml@refs/(?:heads/dev|tags/v1\.2\.3)$'
+run_install "1.0.0-beta.3" 1 0 \
+  OKKEY_COSIGN_CERTIFICATE_IDENTITY_REGEXP="${CUSTOM_DEV_IDENTITY}" \
+  OKKEY_COSIGN_ALLOW_DEV=1 --
+[[ "${RUN_RC}" -eq 0 ]] || fail "custom identity with heads/dev should succeed
+${RUN_OUT}"
+printf '%s\n' "${RUN_COSIGN}" | grep -Fq -- "${CUSTOM_DEV_IDENTITY}" || fail "custom identity override missing
+${RUN_COSIGN}"
+printf '%s\n' "${RUN_COSIGN}" | grep -Fq -- "${EXPECTED_DEV_IDENTITY}" && fail "allow-dev must not replace an explicit identity override
+${RUN_COSIGN}"
+
+# Explicit override alone (no allow-dev) still replaces built-ins.
+run_install "1.0.0-beta.3" 1 0 \
+  OKKEY_COSIGN_CERTIFICATE_IDENTITY_REGEXP="${CUSTOM_IDENTITY}" --
 [[ "${RUN_RC}" -eq 0 ]] || fail "custom identity override should succeed
 ${RUN_OUT}"
 printf '%s\n' "${RUN_COSIGN}" | grep -Fq -- "${CUSTOM_IDENTITY}" || fail "custom identity override missing
-${RUN_COSIGN}"
-printf '%s\n' "${RUN_COSIGN}" | grep -Fq -- "${EXPECTED_DEV_IDENTITY}" && fail "allow-dev must not replace an explicit identity override
 ${RUN_COSIGN}"
 
 # A bad signature is still fatal with --allow-candidate.
@@ -416,17 +449,15 @@ printf '%s\n' "${RUN_OUT}" | grep -Fq 'cosign verify failed' || fail "allow-cand
 ${RUN_OUT}"
 assert_no_up
 
-# OKKEY_ALLOW_CANDIDATE in the install .env is ignored.
+# OKKEY_ALLOW_CANDIDATE in the install .env is ignored (no no-op note either).
 INSTALL_ENV_EXTRA='OKKEY_ALLOW_CANDIDATE=1'
 run_install "dev" 1 0 --
 unset INSTALL_ENV_EXTRA
 [[ "${RUN_RC}" -eq 0 ]] || fail ".env candidate line should still install with the default identity
 ${RUN_OUT}"
-printf '%s\n' "${RUN_OUT}" | grep -Fq 'pre-release candidate' && fail ".env must not enable candidate mode
+printf '%s\n' "${RUN_OUT}" | grep -Fq 'is a no-op' && fail ".env must not enable candidate mode
 ${RUN_OUT}"
 printf '%s\n' "${RUN_COSIGN}" | grep -Fq -- "${EXPECTED_IDENTITY}" || fail ".env candidate line changed the identity
-${RUN_COSIGN}"
-printf '%s\n' "${RUN_COSIGN}" | grep -Fq 'heads/release' && fail ".env candidate line widened the identity
 ${RUN_COSIGN}"
 
 # --- Image ref resolution: process env > .env > default (same as compose) ---

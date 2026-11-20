@@ -13,8 +13,8 @@
 # Emergency bypass (not for production; prints a loud warning):
 #   ./deploy/docker/install.sh --skip-cosign-verify
 #
-# QA candidate images (release/* and hotfix/*). Signature verification stays on:
-#   ./deploy/docker/install.sh --allow-candidate
+# Default trust: refs/tags/v*, refs/heads/release/*, refs/heads/hotfix/*.
+# --allow-candidate is accepted for compatibility (no-op; same as default).
 #
 # Tracking :dev images (signed from refs/heads/dev). Opt-in; verification stays on:
 #   curl -fsSL …/install.sh | OKKEY_COSIGN_ALLOW_DEV=1 OKKEY_IMAGE_TAG=dev bash
@@ -48,12 +48,10 @@ Usage: install.sh [--skip-cosign-verify] [--allow-candidate] [--allow-dev]
   --skip-cosign-verify   Emergency bypass: do not verify GHCR cosign signatures
                          before docker compose up. Prints a loud warning.
                          Off by default. Not for production.
-  --allow-candidate      Also accept publish-images.yml signatures from
-                         refs/heads/release/* and refs/heads/hotfix/*.
-                         Verification stays on. Prints a warning that a
-                         pre-release candidate is being installed.
-                         Off by default. Process env: OKKEY_ALLOW_CANDIDATE=1
-                         (not read from .env).
+  --allow-candidate      Compatibility no-op. Default trust already includes
+                         refs/tags/v*, refs/heads/release/*, and
+                         refs/heads/hotfix/*. Verification stays on.
+                         Process env: OKKEY_ALLOW_CANDIDATE=1 (not read from .env).
   --allow-dev            Also accept publish-images.yml signatures from
                          refs/heads/dev (tracking :dev images).
                          Verification stays on. Does not trust other branches.
@@ -211,15 +209,17 @@ need_cmd() {
 
 # Cosign keyless OIDC identity for Core publish workflow
 # (.github/workflows/publish-images.yml on okkeyapp/okkey).
-# Default: refs/tags/v<semver> only (not refs/heads/dev).
-# --allow-candidate adds refs/heads/release/<name> and refs/heads/hotfix/<name>.
+# Default (same shape as Enterprise cosign-identity.sh): refs/tags/v<semver>,
+# refs/heads/release/<name>, refs/heads/hotfix/<name>. Not refs/heads/dev.
+# --allow-candidate is a compatibility alias of the default (no-op).
 # --allow-dev / OKKEY_COSIGN_ALLOW_DEV=1 adds refs/heads/dev only.
 # Anchored with ^...$ because cosign matches the regexp as a substring.
 # An exported OKKEY_COSIGN_CERTIFICATE_IDENTITY_REGEXP replaces all of these.
-OKKEY_COSIGN_DEFAULT_IDENTITY_REGEXP='^https://github\.com/okkeyapp/okkey/\.github/workflows/publish-images\.yml@refs/tags/v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$'
-OKKEY_COSIGN_DEFAULT_DEV_IDENTITY_REGEXP='^https://github\.com/okkeyapp/okkey/\.github/workflows/publish-images\.yml@refs/(?:heads/dev|tags/v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?)$'
-OKKEY_COSIGN_CANDIDATE_IDENTITY_REGEXP='^https://github\.com/okkeyapp/okkey/\.github/workflows/publish-images\.yml@refs/(?:tags/v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?|heads/release/[0-9A-Za-z._-]+|heads/hotfix/[0-9A-Za-z._-]+)$'
-OKKEY_COSIGN_CANDIDATE_DEV_IDENTITY_REGEXP='^https://github\.com/okkeyapp/okkey/\.github/workflows/publish-images\.yml@refs/(?:heads/dev|tags/v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?|heads/release/[0-9A-Za-z._-]+|heads/hotfix/[0-9A-Za-z._-]+)$'
+OKKEY_COSIGN_DEFAULT_IDENTITY_REGEXP='^https://github\.com/okkeyapp/okkey/\.github/workflows/publish-images\.yml@refs/(?:heads/release/[0-9A-Za-z._-]+|heads/hotfix/[0-9A-Za-z._-]+|tags/v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?)$'
+OKKEY_COSIGN_DEFAULT_DEV_IDENTITY_REGEXP='^https://github\.com/okkeyapp/okkey/\.github/workflows/publish-images\.yml@refs/(?:heads/dev|heads/release/[0-9A-Za-z._-]+|heads/hotfix/[0-9A-Za-z._-]+|tags/v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?)$'
+# Alias kept for callers / tests that still ask for "candidate"; same as default (TSK-302).
+OKKEY_COSIGN_CANDIDATE_IDENTITY_REGEXP='^https://github\.com/okkeyapp/okkey/\.github/workflows/publish-images\.yml@refs/(?:heads/release/[0-9A-Za-z._-]+|heads/hotfix/[0-9A-Za-z._-]+|tags/v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?)$'
+OKKEY_COSIGN_CANDIDATE_DEV_IDENTITY_REGEXP='^https://github\.com/okkeyapp/okkey/\.github/workflows/publish-images\.yml@refs/(?:heads/dev|heads/release/[0-9A-Za-z._-]+|heads/hotfix/[0-9A-Za-z._-]+|tags/v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?)$'
 OKKEY_COSIGN_CERTIFICATE_OIDC_ISSUER="${OKKEY_COSIGN_CERTIFICATE_OIDC_ISSUER:-https://token.actions.githubusercontent.com}"
 
 # Same precedence as Compose: process env (even when empty) wins over --env-file
@@ -304,15 +304,6 @@ warn_skip_cosign() {
     "==> WARNING: Emergency bypass only. Do not use this for production." >&2
 }
 
-# Opt-in for release/* and hotfix/* candidate signatures. Verification stays on.
-warn_allow_candidate() {
-  local why="$1"
-  printf '%s\n' \
-    "==> WARNING: pre-release candidate install (${why})." \
-    "==> WARNING: also accepting publish-images signatures from refs/heads/release/* and refs/heads/hotfix/*." \
-    "==> WARNING: Signature verification stays on. This is not a bypass." >&2
-}
-
 # Opt-in for refs/heads/dev signatures (tracking :dev). Verification stays on.
 warn_allow_dev() {
   local why="$1"
@@ -322,8 +313,17 @@ warn_allow_dev() {
     "==> WARNING: Signature verification stays on. This is not a bypass." >&2
 }
 
+# Compatibility: --allow-candidate no longer widens trust (already in default).
+warn_allow_candidate() {
+  local why="$1"
+  printf '%s\n' \
+    "==> NOTE: ${why} is a no-op; default trust already includes refs/tags/v*, refs/heads/release/*, and refs/heads/hotfix/*." \
+    "==> NOTE: Signature verification stays on. This is not a bypass." >&2
+}
+
 # Verify cosign keyless signatures for api/web/worker before compose up.
-# Default trusts refs/tags/v* only. :dev needs --allow-dev / OKKEY_COSIGN_ALLOW_DEV=1.
+# Default trusts refs/tags/v*, refs/heads/release/*, refs/heads/hotfix/*.
+# :dev needs --allow-dev / OKKEY_COSIGN_ALLOW_DEV=1.
 # Emergency bypass is the CLI flag --skip-cosign-verify (or the equivalent
 # process env OKKEY_SKIP_COSIGN_VERIFY=1). Local installs that skip pull also
 # skip verify unless OKKEY_FORCE_COSIGN_VERIFY=1.
@@ -363,19 +363,19 @@ Emergency bypass (prints a warning; not for production):
   fi
   need_cmd docker
 
-  # Explicit override replaces the built-in sets (allow-dev / allow-candidate
-  # do not modify a custom OKKEY_COSIGN_CERTIFICATE_IDENTITY_REGEXP).
+  # Explicit override replaces the built-in sets. When --allow-dev is also set,
+  # the override must already include heads/dev (Enterprise wrapper expands its
+  # identity before export); otherwise fail loudly instead of silently ignoring.
   local identity_regexp="${OKKEY_COSIGN_CERTIFICATE_IDENTITY_REGEXP:-}"
-  if [[ -z "${identity_regexp}" ]]; then
-    if [[ "${allow_candidate}" == "1" && "${allow_dev}" == "1" ]]; then
-      identity_regexp="${OKKEY_COSIGN_CANDIDATE_DEV_IDENTITY_REGEXP}"
-    elif [[ "${allow_candidate}" == "1" ]]; then
-      identity_regexp="${OKKEY_COSIGN_CANDIDATE_IDENTITY_REGEXP}"
-    elif [[ "${allow_dev}" == "1" ]]; then
-      identity_regexp="${OKKEY_COSIGN_DEFAULT_DEV_IDENTITY_REGEXP}"
-    else
-      identity_regexp="${OKKEY_COSIGN_DEFAULT_IDENTITY_REGEXP}"
+  if [[ -n "${identity_regexp}" ]]; then
+    if [[ "${allow_dev}" == "1" && "${identity_regexp}" != *heads/dev* ]]; then
+      die "--allow-dev / OKKEY_COSIGN_ALLOW_DEV=1 has no effect while OKKEY_COSIGN_CERTIFICATE_IDENTITY_REGEXP is set without heads/dev.
+Include heads/dev in that regexp, or unset the override so the built-in allow-dev set applies."
     fi
+  elif [[ "${allow_dev}" == "1" ]]; then
+    identity_regexp="${OKKEY_COSIGN_DEFAULT_DEV_IDENTITY_REGEXP}"
+  else
+    identity_regexp="${OKKEY_COSIGN_DEFAULT_IDENTITY_REGEXP}"
   fi
 
   if [[ "${allow_candidate}" == "1" ]]; then
@@ -412,6 +412,7 @@ Emergency bypass (prints a warning; not for production):
 The image is unsigned or was not signed by this repo's publish-images workflow
 (GitHub Actions OIDC). Refusing to start the stack.
 hint: Core images must be signed keyless by .github/workflows/publish-images.yml.
+  For OKKEY_IMAGE_TAG=dev / refs/heads/dev signatures: pass --allow-dev or set OKKEY_COSIGN_ALLOW_DEV=1 (process env, not .env).
   Install cosign: https://docs.sigstore.dev/cosign/system_config/installation/
   Emergency bypass only: install.sh --skip-cosign-verify (prints a warning; not for prod)."
     fi
@@ -737,6 +738,7 @@ else
     die "docker compose pull failed (OKKEY_IMAGE_TAG=${image_tag}).
 hint: the tag must exist in GHCR (ghcr.io/okkeyapp/{api,web,worker}).
   Tracking channel: OKKEY_IMAGE_TAG=dev (published only by a manual workflow_dispatch of .github/workflows/publish-images.yml on refs/heads/dev; a push to the dev branch does not publish :dev).
+  Cosign identity for :dev: pass --allow-dev or set OKKEY_COSIGN_ALLOW_DEV=1 (process env, not .env).
   Production: pin a published SemVer with OKKEY_IMAGE_TAG=<semver> (OKKEY_CHANNEL=prod is gated until SemVer exists).
   Or set OKKEY_SKIP_PULL=1 with local images."
   fi
