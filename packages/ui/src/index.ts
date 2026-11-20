@@ -206,8 +206,8 @@ export {
 } from "./lib/input-like-control-classes.js";
 export {
   authShellCenteredCardClassName,
+  authShellRootClassName,
   authShellScrollClassName,
-  authShellScrollInnerClassName,
   hAppShellClassName,
   minHAppClassName,
   safeAreaPaddingClassName,

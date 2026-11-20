@@ -14,6 +14,13 @@
 export const minHAppClassName = "min-h-screen min-h-dvh";
 
 /**
+ * Auth / centered shells: lock to the dynamic viewport so a flex-1 scrollport
+ * gets a definite height (needed for `my-auto` centering). Keep `min-h-*` as a
+ * fallback when `h-dvh` is unsupported.
+ */
+export const authShellRootClassName = "flex h-screen min-h-screen h-dvh min-h-dvh flex-col";
+
+/**
  * Fixed overflow-hidden app chrome (vault / workspace shell).
  * `svh` never exceeds the visible area while browser chrome is showing.
  */
@@ -27,23 +34,16 @@ export const safeAreaPaddingClassName =
   "pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)]";
 
 /**
- * Scrollport inside a flex `min-h-dvh` shell: fills remaining height and scrolls
- * when the auth card is taller than the viewport (keyboard / small phones).
+ * Flex-1 scrollport inside a column `min-h-dvh` shell. The auth card must be a
+ * direct flex child (see `authShellCenteredCardClassName`) — nested `min-h-full`
+ * wrappers often fail to resolve against a flex item and leave content top-stuck.
  */
 export const authShellScrollClassName =
-  "relative flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto";
+  "relative flex min-h-0 min-w-0 flex-1 flex-col items-center overflow-y-auto";
 
 /**
- * Full-height column inside the scrollport. Horizontal centering only —
- * vertical centering is via `authShellCenteredCardClassName` (`my-auto`) so
- * overflowing content stays top-aligned and scrollable (unlike `justify-center`).
- */
-export const authShellScrollInnerClassName =
-  "flex min-h-full min-w-0 flex-col items-center";
-
-/**
- * Auth card stack: vertically centered when shorter than the scrollport;
- * collapses to the top when taller so the start of the form stays reachable.
+ * Auth card stack: `my-auto` centers when shorter than the scrollport and
+ * collapses to the start when taller so the form top stays reachable.
  */
 export const authShellCenteredCardClassName =
   "my-auto flex w-full flex-col items-center";

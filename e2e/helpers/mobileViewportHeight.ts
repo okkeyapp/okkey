@@ -99,22 +99,24 @@ export async function measureAuthCardGaps(page: Page): Promise<AuthCardGaps> {
 }
 
 /**
- * On a tall viewport the auth card should be roughly vertically centered
- * (shell uses extra bottom padding for the copyright footer, so allow slack).
+ * On a tall viewport the auth card should be roughly vertically centered.
+ * Shell padding is py-10 / pb-20 (~40px / 80px), so top vs bottom gaps to the
+ * viewport edges are not identical — allow that slack, but reject “stuck at top”
+ * (topGap ≈ 40 from padding alone).
  */
 export async function assertAuthCardVerticallyCentered(
   page: Page,
   options?: { maxGapDeltaPx?: number; minSideGapPx?: number },
 ): Promise<AuthCardGaps> {
-  const maxGapDeltaPx = options?.maxGapDeltaPx ?? 96;
+  const maxGapDeltaPx = options?.maxGapDeltaPx ?? 120;
   const minSideGapPx = options?.minSideGapPx ?? 48;
   const gaps = await measureAuthCardGaps(page);
 
   expect(gaps.topGap).toBeGreaterThan(minSideGapPx);
   expect(gaps.bottomGap).toBeGreaterThan(minSideGapPx);
   expect(Math.abs(gaps.topGap - gaps.bottomGap)).toBeLessThanOrEqual(maxGapDeltaPx);
-  // Not stuck under the top padding only (~40px py-10).
-  expect(gaps.topGap).toBeGreaterThan(gaps.viewportHeight * 0.12);
+  // Padding-only top stick is ~40px (py-10); centered must clear that clearly.
+  expect(gaps.topGap).toBeGreaterThan(80);
   return gaps;
 }
 

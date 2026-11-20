@@ -3,9 +3,8 @@ import type { ReactNode } from "react";
 import { cn } from "../../lib/utils.js";
 import {
   authShellCenteredCardClassName,
+  authShellRootClassName,
   authShellScrollClassName,
-  authShellScrollInnerClassName,
-  minHAppClassName,
   safeAreaPaddingClassName,
 } from "../../lib/viewport-height.js";
 import { BodyGradient } from "./body-gradient.js";
@@ -92,15 +91,15 @@ export function AuthShell({
   className,
 }: AuthShellProps) {
   // Non-compact (auth-callback tab): fill the viewport and center the column on both axes.
-  // Use flex + my-auto (not justify-center) so overflowing forms stay top-reachable when scrolled.
-  // `minHAppClassName`: 100vh fallback + 100dvh (Safari toolbars); safe-area when edge-to-edge.
+  // Card is a direct flex child of the scrollport with my-auto (not justify-center / min-h-full).
+  // `authShellRootClassName`: h/min-h screen+dvh so flex-1 gets a definite height.
   if (!compact) {
     return (
       <div
         className={cn(
           // overflow-x-hidden: defensive clip for absolute chrome; padding is responsive (px-4 sm:px-10).
-          "relative isolate flex h-full w-full max-w-[100vw] flex-col overflow-x-hidden bg-background text-foreground",
-          minHAppClassName,
+          "relative isolate h-full w-full max-w-[100vw] overflow-x-hidden bg-background text-foreground",
+          authShellRootClassName,
           safeAreaPaddingClassName,
           className,
         )}
@@ -110,24 +109,25 @@ export function AuthShell({
         {topLeft != null ? <div className="absolute left-4 top-10 z-10 sm:left-10">{topLeft}</div> : null}
         {topRight != null ? <div className="absolute right-4 top-10 z-10 sm:right-10">{topRight}</div> : null}
 
-        <div className={authShellScrollClassName} data-testid="app-shell-scroll">
-          <div className={cn(authShellScrollInnerClassName, frameClassName ?? "px-4 py-10 sm:px-10")}>
-            <div
-              className={cn(authShellCenteredCardClassName, "gap-6", contentClassName ?? "max-w-sm")}
-              data-testid="app-shell-card"
-            >
-              <AuthHeader
-                title={title}
-                description={description}
-                logo={logo}
-                hideHeader={hideHeader}
-                headerClassName={headerClassName}
-              />
-              {children != null ? <div className={cn("w-full", childrenClassName)}>{children}</div> : null}
-              {copyright ? (
-                <footer className="okkey-body w-full text-center text-xs text-muted-foreground">{copyright}</footer>
-              ) : null}
-            </div>
+        <div
+          className={cn(authShellScrollClassName, frameClassName ?? "px-4 py-10 sm:px-10")}
+          data-testid="app-shell-scroll"
+        >
+          <div
+            className={cn(authShellCenteredCardClassName, "gap-6", contentClassName ?? "max-w-sm")}
+            data-testid="app-shell-card"
+          >
+            <AuthHeader
+              title={title}
+              description={description}
+              logo={logo}
+              hideHeader={hideHeader}
+              headerClassName={headerClassName}
+            />
+            {children != null ? <div className={cn("w-full", childrenClassName)}>{children}</div> : null}
+            {copyright ? (
+              <footer className="okkey-body w-full text-center text-xs text-muted-foreground">{copyright}</footer>
+            ) : null}
           </div>
         </div>
 
@@ -152,21 +152,19 @@ export function AuthShell({
       {topLeft != null ? <div className="absolute left-4 top-4 z-10">{topLeft}</div> : null}
       {topRight != null ? <div className="absolute right-4 top-4 z-10">{topRight}</div> : null}
 
-      <div className={authShellScrollClassName}>
-        <div className={cn(authShellScrollInnerClassName, frameClassName ?? "px-6 py-6")}>
-          <div className={cn(authShellCenteredCardClassName, "gap-6", contentClassName ?? "max-w-[340px]")}>
-            <AuthHeader
-              title={title}
-              description={description}
-              logo={logo}
-              hideHeader={hideHeader}
-              headerClassName={headerClassName}
-            />
-            {children != null ? <div className={cn("w-full", childrenClassName)}>{children}</div> : null}
-            {copyright ? (
-              <footer className="okkey-body w-full text-center text-xs text-muted-foreground">{copyright}</footer>
-            ) : null}
-          </div>
+      <div className={cn(authShellScrollClassName, frameClassName ?? "px-6 py-6")}>
+        <div className={cn(authShellCenteredCardClassName, "gap-6", contentClassName ?? "max-w-[340px]")}>
+          <AuthHeader
+            title={title}
+            description={description}
+            logo={logo}
+            hideHeader={hideHeader}
+            headerClassName={headerClassName}
+          />
+          {children != null ? <div className={cn("w-full", childrenClassName)}>{children}</div> : null}
+          {copyright ? (
+            <footer className="okkey-body w-full text-center text-xs text-muted-foreground">{copyright}</footer>
+          ) : null}
         </div>
       </div>
 

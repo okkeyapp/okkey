@@ -1,10 +1,9 @@
 import { getWebLocaleNativeName, READY_WEB_LOCALES, type WebLocale } from "@okkey/i18n";
 import {
   authShellCenteredCardClassName,
+  authShellRootClassName,
   authShellScrollClassName,
-  authShellScrollInnerClassName,
   cn,
-  minHAppClassName,
   safeAreaPaddingClassName,
   Select,
   SelectContent,
@@ -61,12 +60,12 @@ export default function AppShellLayout({
     copyright ?? t("web.shell.copyright", { year: new Date().getFullYear() });
 
   return (
-    // Flex column + min-h-dvh: children with flex-1 get a real height so the auth
-    // card can center via my-auto. overflow-x-hidden clips absolute chrome/gradients.
+    // h-dvh flex column: flex-1 scrollport gets a definite height; card uses my-auto
+    // so it centers when short and stays top-reachable when taller than the viewport.
     <div
       className={cn(
-        "relative isolate flex max-w-[100vw] flex-col overflow-x-hidden bg-background text-foreground",
-        minHAppClassName,
+        "relative isolate max-w-[100vw] overflow-x-hidden bg-background text-foreground",
+        authShellRootClassName,
         safeAreaPaddingClassName,
       )}
     >
@@ -91,44 +90,43 @@ export default function AppShellLayout({
         </div>
       )}
 
-      <div className={authShellScrollClassName} data-testid="app-shell-scroll">
-        <div
-          className={cn(
-            authShellScrollInnerClassName,
-            busy ? "px-4 py-10 sm:px-10" : "py-10 pb-20",
-            !busy && (frameClassName ?? "px-4 sm:px-10"),
-          )}
-        >
-          {busy ? (
-            <div
-              className={cn(authShellCenteredCardClassName, childrenClassName)}
-              data-testid="app-shell-card"
-              role="status"
-              aria-busy="true"
+      <div
+        className={cn(
+          authShellScrollClassName,
+          busy ? "px-4 py-10 sm:px-10" : "py-10 pb-20",
+          !busy && (frameClassName ?? "px-4 sm:px-10"),
+        )}
+        data-testid="app-shell-scroll"
+      >
+        {busy ? (
+          <div
+            className={cn(authShellCenteredCardClassName, childrenClassName)}
+            data-testid="app-shell-card"
+            role="status"
+            aria-busy="true"
+          >
+            {children}
+          </div>
+        ) : (
+          <div
+            className={cn(authShellCenteredCardClassName, "gap-6", contentClassName ?? "max-w-sm")}
+            data-testid="app-shell-card"
+          >
+            <header
+              className={cn("flex w-full flex-col items-center gap-2 text-center", headerClassName)}
             >
-              {children}
-            </div>
-          ) : (
-            <div
-              className={cn(authShellCenteredCardClassName, "gap-6", contentClassName ?? "max-w-sm")}
-              data-testid="app-shell-card"
-            >
-              <header
-                className={cn("flex w-full flex-col items-center gap-2 text-center", headerClassName)}
-              >
-                {logo != null ? <div className="mb-2 shrink-0">{logo}</div> : null}
-                <h1 data-testid="app-shell-title" className="okkey-heading-xl w-full text-center">
-                  {title}
-                </h1>
-                {description != null && description !== "" ? (
-                  <p className="okkey-body text-center text-copy-secondary">{description}</p>
-                ) : null}
-              </header>
+              {logo != null ? <div className="mb-2 shrink-0">{logo}</div> : null}
+              <h1 data-testid="app-shell-title" className="okkey-heading-xl w-full text-center">
+                {title}
+              </h1>
+              {description != null && description !== "" ? (
+                <p className="okkey-body text-center text-copy-secondary">{description}</p>
+              ) : null}
+            </header>
 
-              <div className={cn("w-full", childrenClassName)}>{children}</div>
-            </div>
-          )}
-        </div>
+            <div className={cn("w-full", childrenClassName)}>{children}</div>
+          </div>
+        )}
       </div>
 
       {busy ? null : (
