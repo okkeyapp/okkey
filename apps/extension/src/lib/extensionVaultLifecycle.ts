@@ -2,11 +2,11 @@
  * Background vault lifecycle for MV3: idle lock, device lock/sleep, popup-close
  * lock, and clipboard auto-clear that survives popup teardown.
  */
+import { vaultIdleLockMsFromServerSeconds } from "@okkey/vault/vault-idle-lock-ms";
 import {
   VAULT_UNLOCK_SESSION_STORAGE_KEY,
   type VaultUnlockSessionRecord,
-  vaultIdleLockMsFromServerSeconds,
-} from "@okkey/vault";
+} from "@okkey/vault/vault-unlock-session";
 
 import { clearBackgroundClipboardIfMatches } from "./backgroundClipboardClear";
 import { clearExtensionServerKeyShareMemory } from "./extensionVaultBundle";
