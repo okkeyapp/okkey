@@ -31,7 +31,7 @@ function categoryWiggleStyle(wiggleIndex: number): CSSProperties {
 }
 
 const categoryCardInteractiveClassName =
-  "outline-none hover:border-primary focus-visible:border-accent focus-visible:bg-background focus-visible:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)] active:border-accent active:bg-background active:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]";
+  "outline-none hover:border-[color:var(--accent-active)] focus-visible:border-[color:var(--accent-active)] focus-visible:bg-background focus-visible:shadow-[0_0_0_2px_hsl(var(--accent)_/_var(--accent-ring-alpha))] active:border-[color:var(--accent-active)] active:bg-background active:shadow-[0_0_0_2px_hsl(var(--accent)_/_var(--accent-ring-alpha))]";
 
 export default function NewItemCategoryCard({
   category,

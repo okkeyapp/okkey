@@ -19,7 +19,7 @@ export const Slider = React.forwardRef<React.ComponentRef<typeof SliderPrimitive
         className={cn(
           "block size-4 rounded-full border border-primary bg-background shadow-[0_1px_2px_hsl(var(--shadow)/0.08)]",
           "transition-[color,background-color,box-shadow,border-color]",
-          "focus:outline-none focus:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]",
+          "focus:outline-none focus:shadow-[0_0_0_2px_hsl(var(--accent)_/_var(--accent-ring-alpha))]",
           "disabled:pointer-events-none disabled:opacity-50",
         )}
       />

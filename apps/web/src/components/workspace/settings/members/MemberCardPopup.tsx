@@ -842,8 +842,8 @@ export default function MemberCardPopup({
                   "flex items-center gap-1 rounded-t-lg bg-secondary px-1 py-1 pe-2",
                   "border border-transparent",
                   "transition-[color,box-shadow,border-color]",
-                  "focus-within:z-10 focus-within:border-accent focus-within:rounded-t-lg",
-                  "focus-within:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]",
+                  "focus-within:z-10 focus-within:border-[color:var(--accent-active)] focus-within:rounded-t-lg",
+                  "focus-within:shadow-[0_0_0_2px_hsl(var(--accent)_/_var(--accent-ring-alpha))]",
                 )}
               >
                 <div className="flex min-h-9 min-w-0 flex-1 items-center gap-2 px-3">

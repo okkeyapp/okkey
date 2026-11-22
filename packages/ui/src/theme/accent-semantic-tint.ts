@@ -56,7 +56,7 @@ type SemanticBaseKey =
 /** --accent / --primary source per theme (same numbers as `index.css`). */
 export const ACCENT_HSL: Record<"light" | "dark", Record<string, Hsl>> = {
   light: {
-    a1: [215, 5.0, 9.0],
+    a1: [0, 0, 9.0],
     a2: [217.2, 93.2, 59.8],
     a3: [188.7, 96.2, 42.7],
     a4: [159.8, 83.5, 41.0],
@@ -65,7 +65,7 @@ export const ACCENT_HSL: Record<"light" | "dark", Record<string, Hsl>> = {
     a7: [258.6, 90.5, 67.1],
   },
   dark: {
-    a1: [215, 4.0, 98.0],
+    a1: [0, 0, 98.0],
     a2: [217.2, 93.2, 59.8],
     a3: [188.7, 96.2, 42.7],
     a4: [159.8, 83.5, 41.0],
@@ -90,37 +90,43 @@ const BASE_LIGHT: Record<SemanticBaseKey, Hsl> = {
   sidebarAccent: [240, 4.8, 95.9],
 };
 
+/** True neutral charcoal — keep in sync with `.dark` in web/extension CSS. */
 const BASE_DARK: Record<SemanticBaseKey, Hsl> = {
-  background: [240, 10, 3.9],
-  card: [240, 10, 3.9],
-  popover: [240, 10, 3.9],
-  secondary: [240, 3.7, 15.9],
-  muted: [240, 3.7, 15.9],
-  mutedForeground: [240, 5, 64.9],
-  border: [240, 3.7, 15.9],
-  input: [240, 3.7, 15.9],
+  background: [0, 0, 7],
+  card: [0, 0, 7],
+  popover: [0, 0, 7],
+  secondary: [0, 0, 10],
+  muted: [0, 0, 10],
+  mutedForeground: [0, 0, 64.9],
+  border: [0, 0, 15.9],
+  input: [0, 0, 15.9],
   foreground: [0, 0, 98],
-  sidebarBackground: [240, 5.9, 6],
-  sidebarAccent: [240, 3.7, 18],
+  sidebarBackground: [0, 0, 7],
+  sidebarAccent: [0, 0, 18],
 };
 
 /**
- * Mix weights — strong enough that accent tint is clearly visible on surfaces,
- * while lightness is preserved (see `mixHslPreserveLightness`).
+ * Mix weights per theme. Light keeps a clear tint; dark stays a soft whisper
+ * (high-chroma accents at L≈7–10% otherwise read as neon surfaces).
  */
-const TINT_ROWS: readonly { cssVar: string; baseKey: SemanticBaseKey; weight: number }[] = [
-  { cssVar: "--background", baseKey: "background", weight: 0.28 },
-  { cssVar: "--card", baseKey: "card", weight: 0.28 },
-  { cssVar: "--popover", baseKey: "popover", weight: 0.28 },
-  { cssVar: "--secondary", baseKey: "secondary", weight: 0.42 },
-  { cssVar: "--muted", baseKey: "muted", weight: 0.42 },
-  // Secondary copy / borders stay mostly gray — only a light accent whisper.
-  { cssVar: "--muted-foreground", baseKey: "mutedForeground", weight: 0.1 },
-  { cssVar: "--border", baseKey: "border", weight: 0.1 },
-  { cssVar: "--input", baseKey: "input", weight: 0.1 },
-  { cssVar: "--foreground", baseKey: "foreground", weight: 0.18 },
-  { cssVar: "--sidebar-background", baseKey: "sidebarBackground", weight: 0.32 },
-  { cssVar: "--sidebar-accent", baseKey: "sidebarAccent", weight: 0.42 },
+const TINT_ROWS: readonly {
+  cssVar: string;
+  baseKey: SemanticBaseKey;
+  light: number;
+  dark: number;
+}[] = [
+  { cssVar: "--background", baseKey: "background", light: 0.28, dark: 0.1 },
+  { cssVar: "--card", baseKey: "card", light: 0.28, dark: 0.1 },
+  { cssVar: "--popover", baseKey: "popover", light: 0.28, dark: 0.1 },
+  { cssVar: "--secondary", baseKey: "secondary", light: 0.42, dark: 0.14 },
+  { cssVar: "--muted", baseKey: "muted", light: 0.42, dark: 0.14 },
+  // Secondary copy / borders — light accent whisper in both themes.
+  { cssVar: "--muted-foreground", baseKey: "mutedForeground", light: 0.1, dark: 0.06 },
+  { cssVar: "--border", baseKey: "border", light: 0.1, dark: 0.06 },
+  { cssVar: "--input", baseKey: "input", light: 0.1, dark: 0.06 },
+  { cssVar: "--foreground", baseKey: "foreground", light: 0.18, dark: 0.08 },
+  { cssVar: "--sidebar-background", baseKey: "sidebarBackground", light: 0.32, dark: 0.11 },
+  { cssVar: "--sidebar-accent", baseKey: "sidebarAccent", light: 0.42, dark: 0.14 },
 ];
 
 function lerp(a: number, b: number, t: number): number {
@@ -214,7 +220,8 @@ export function applySemanticAccentTint(
 
   root.dataset.accentTint = "on";
 
-  for (const { cssVar, baseKey, weight } of TINT_ROWS) {
+  for (const { cssVar, baseKey, light, dark } of TINT_ROWS) {
+    const weight = mode === "dark" ? dark : light;
     root.style.setProperty(cssVar, mixHslPreserveLightness(baseMap[baseKey], accent, weight));
   }
 }

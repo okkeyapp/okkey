@@ -20,6 +20,7 @@ import {
   Skeleton,
   buttonVariants,
   cn,
+  segmentedControlTabClassName,
 } from "@okkey/ui";
 import { PlusIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -474,7 +475,7 @@ export default function CapsulesPage({ workspaceId, workspaceName, canCreate }: 
             </DropdownMenu>
           </div>
 
-          <div className="overflow-x-auto rounded-xl border">
+          <div className="overflow-x-auto rounded-xl border border-border">
             <table
               className={cn(
                 "w-full border-collapse text-left text-sm",
@@ -520,7 +521,7 @@ export default function CapsulesPage({ workspaceId, workspaceName, canCreate }: 
               <tbody>
                 {loading ? (
                   Array.from({ length: skeletonRowCount }, (_, index) => (
-                    <tr key={index} className={cn(ROW_CLASS_NAME, "border-t")}>
+                    <tr key={index} className={cn(ROW_CLASS_NAME, "border-t border-border")}>
                       <td className={cn(CELL_CLASS_NAME, "w-10")}>
                         <Skeleton className="size-4 rounded" />
                       </td>
@@ -568,7 +569,7 @@ export default function CapsulesPage({ workspaceId, workspaceName, canCreate }: 
                   capsules.map((capsule) => (
                     <tr
                       key={capsule.capsuleId}
-                      className={cn(ROW_CLASS_NAME, "relative border-t hover:bg-muted/60")}
+                      className={cn(ROW_CLASS_NAME, "relative border-t border-border hover:bg-muted/60")}
                     >
                       <td
                         className={cn(ROW_CONTROL_CELL_CLASS_NAME, "w-10")}
@@ -645,7 +646,7 @@ export default function CapsulesPage({ workspaceId, workspaceName, canCreate }: 
                     </tr>
                   ))
                 ) : (
-                  <tr className="border-t">
+                  <tr className="border-t border-border">
                     <td colSpan={tableColSpan} className="px-3 py-10 text-center">
                       {error ? (
                         <p className="text-sm text-muted-foreground">{error}</p>
@@ -721,22 +722,9 @@ export default function CapsulesPage({ workspaceId, workspaceName, canCreate }: 
                       aria-current={item === page ? "page" : undefined}
                       tabIndex={item === page ? -1 : undefined}
                       className={cn(
-                        "relative min-w-8 border",
-                        item === page
-                          ? cn(
-                              "z-10 pointer-events-none",
-                              "!bg-background hover:!bg-background active:!bg-background",
-                              "hover:!border-input focus:!border-input focus-visible:!border-input",
-                              "!shadow-[0_1px_2px_rgba(0,0,0,0.05)] hover:!shadow-[0_1px_2px_rgba(0,0,0,0.05)]",
-                              "dark:!shadow-[0_1px_2px_rgba(255,255,255,0.05)] dark:hover:!shadow-[0_1px_2px_rgba(255,255,255,0.05)]",
-                            )
-                          : cn(
-                              "z-0 border-transparent shadow-none",
-                              "hover:border-transparent hover:bg-foreground/5",
-                              "focus:shadow-none focus-visible:shadow-none",
-                              "focus:bg-foreground/10 focus-visible:bg-foreground/10",
-                              "active:bg-foreground/10",
-                            ),
+                        segmentedControlTabClassName(item === page),
+                        "min-w-8",
+                        item === page && "pointer-events-none",
                       )}
                       onClick={() => setPage(item)}
                     >

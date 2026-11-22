@@ -28,11 +28,14 @@
     --input: 240 5.9% 90%;
     /* Focus ring follows accent (also set inline by applyAccentRing) */
     --ring: var(--accent);
+    /* Active/focus chrome: full accent border + ring alpha (dark softens both) */
+    --accent-active: hsl(var(--accent));
+    --accent-ring-alpha: 0.4;
     /* Soft elevation shadow ink (gray + light accent whisper) */
     --shadow: 240 5% 8%;
     /* Backdrop washes — set by applyPageBackgroundGradients (a2 default until JS runs) */
     --page-gradient-light: linear-gradient(136.85deg, rgba(255, 248, 239, 0) 8.44%, rgb(255, 248, 239) 91.56%), linear-gradient(180deg, rgb(234, 240, 250) 0%, rgb(242, 255, 252) 100%);
-    --page-gradient-dark: linear-gradient(136.85deg, rgba(42, 50, 66, 0.16), rgba(255, 214, 180, 0.12) 91.56%);
+    --page-gradient-dark: linear-gradient(hsl(var(--secondary)), hsl(var(--secondary)));
 
     /* Sidebar neutrals follow zinc; chrome accents follow --primary / --accent */
     --sidebar-background: 240 4.8% 98%;
@@ -57,35 +60,39 @@
   }
 
   .dark {
-    --background: 240 10% 3.9%;
+    /* True neutral charcoal (Cursor-like) — no zinc/blue hue cast */
+    --background: 0 0% 7%;
     --foreground: 0 0% 98%;
-    --card: 240 10% 3.9%;
+    --card: 0 0% 7%;
     --card-foreground: 0 0% 98%;
-    --popover: 240 10% 3.9%;
+    --popover: 0 0% 7%;
     --popover-foreground: 0 0% 98%;
 
     --primary: 217.2 91.2% 59.8%; /* default accent id2 (#3B82F6) */
     --primary-foreground: 0 0% 100%;
-    --secondary: 240 3.7% 15.9%;
+    --secondary: 0 0% 10%;
     --secondary-foreground: 0 0% 98%;
-    --muted: 240 3.7% 15.9%;
-    --muted-foreground: 240 5% 64.9%;
+    --muted: 0 0% 10%;
+    --muted-foreground: 0 0% 64.9%;
     --accent: 217.2 91.2% 59.8%;
     --accent-foreground: 0 0% 100%;
     --destructive: 0 72.2% 50.6%;
     --destructive-foreground: 0 0% 98%;
-    --border: 240 3.7% 15.9%;
-    --input: 240 3.7% 15.9%;
+    --border: 0 0% 15.9%;
+    --input: 0 0% 15.9%;
     --ring: var(--accent);
+    /* Soften active chrome (esp. mono white): border 50% toward black, ring 25% more transparent */
+    --accent-active: color-mix(in srgb, hsl(var(--accent)) 50%, black);
+    --accent-ring-alpha: 0.2;
     --shadow: 0 0% 100%;
     --page-gradient-light: linear-gradient(136.85deg, rgba(255, 248, 239, 0) 8.44%, rgb(255, 248, 239) 91.56%), linear-gradient(180deg, rgb(234, 240, 250) 0%, rgb(242, 255, 252) 100%);
-    --page-gradient-dark: linear-gradient(136.85deg, rgba(42, 50, 66, 0.16), rgba(255, 214, 180, 0.12) 91.56%);
+    --page-gradient-dark: linear-gradient(hsl(var(--secondary)), hsl(var(--secondary)));
 
-    --sidebar-background: 240 5.9% 6%;
+    --sidebar-background: 0 0% 7%;
     --sidebar-foreground: 0 0% 98%;
     --sidebar-primary: var(--primary);
     --sidebar-primary-foreground: var(--primary-foreground);
-    --sidebar-accent: 240 3.7% 18%;
+    --sidebar-accent: 0 0% 18%;
     --sidebar-accent-foreground: 0 0% 98%;
     --sidebar-border: var(--border);
     --sidebar-ring: var(--accent);
@@ -93,9 +100,9 @@
 
   /* Accent overrides (7 variants) */
   :root[data-accent="a1"] {
-    /* Near-neutral: one cool hue, low chroma (not pure gray) */
-    --primary: 215 5.0% 9.0%;
-    --accent: 215 5.0% 9.0%;
+    /* True monochrome — no cool/blue whisper */
+    --primary: 0 0% 9%;
+    --accent: 0 0% 9%;
     --page-gradient-light: linear-gradient(hsl(var(--secondary)), hsl(var(--secondary)));
     --page-gradient-dark: linear-gradient(hsl(var(--secondary)), hsl(var(--secondary)));
   }
@@ -128,11 +135,11 @@
   }
 
   .dark[data-accent="a1"] {
-    /* Light “ink” surface on dark UI — need dark text, not default white primary-foreground */
-    --primary: 215 4.0% 98%;
-    --primary-foreground: 215 5.0% 9%;
-    --accent: 215 4.0% 98%;
-    --accent-foreground: 215 5.0% 9%;
+    /* Light ink on dark UI — dark text on primary; pure gray, no blue cast */
+    --primary: 0 0% 98%;
+    --primary-foreground: 0 0% 9%;
+    --accent: 0 0% 98%;
+    --accent-foreground: 0 0% 9%;
   }
   .dark[data-accent="a2"] {
     --primary: 217.2 93.2% 59.8%;
@@ -157,6 +164,11 @@
   .dark[data-accent="a7"] {
     --primary: 258.6 90.5% 67.1%;
     --accent: 258.6 90.5% 67.1%;
+  }
+
+  /* Default `border` / `border-t` utilities → theme token (not Tailwind gray-200). */
+  * {
+    @apply border-border;
   }
 
   /* Native <button> chrome (esp. WebKit) can ignore border-radius until appearance is reset */
@@ -234,7 +246,7 @@
   }
 
   .dark .okkey-popup-panel {
-    box-shadow: 0 0 0 1px hsl(var(--shadow) / 0.12);
+    box-shadow: 0 0 0 3px hsl(var(--shadow) / 0.12);
   }
 
   @media (max-width: 767px) {

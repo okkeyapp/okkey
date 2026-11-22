@@ -20,8 +20,8 @@ export const Checkbox = React.forwardRef<React.ComponentRef<typeof CheckboxPrimi
       className={cn(
         "peer size-4 shrink-0 rounded-sm border border-input bg-background text-primary shadow-[0_1px_2px_hsl(var(--shadow)/0.05)]",
         "transition-[color,background-color,box-shadow,border-color]",
-        "focus:outline-none focus:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]",
-        "focus-visible:outline-none focus-visible:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]",
+        "focus:outline-none focus:shadow-[0_0_0_2px_hsl(var(--accent)_/_var(--accent-ring-alpha))]",
+        "focus-visible:outline-none focus-visible:shadow-[0_0_0_2px_hsl(var(--accent)_/_var(--accent-ring-alpha))]",
         "disabled:cursor-not-allowed disabled:opacity-50",
         "data-[state=checked]:border-primary data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground",
         className,

@@ -1,7 +1,7 @@
 /**
  * Full-viewport decorative backdrop (light + dark). Parent should be `relative`.
  * Gradients come from `--page-gradient-*` (set by `applyPageBackgroundGradients` /
- * `applyStoredTheme`). Monochrome accent or accent-tint-off uses solid `--secondary`.
+ * `applyStoredTheme`). Dark theme, monochrome accent, or accent-tint-off use solid `--secondary`.
  */
 export function BodyGradient() {
   return (

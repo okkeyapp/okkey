@@ -122,9 +122,7 @@ export default function FileExtensionTagsInput({
         "!h-auto min-h-9 py-[3px]",
         localExtensions.length === 0 ? "px-3" : "px-[3px]",
         "flex w-full cursor-text items-center text-left normal-case",
-        "focus-within:border-accent focus-within:bg-background focus-within:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]",
-        "focus-within:hover:border-accent focus-within:hover:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]",
-        "dark:focus-within:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)] dark:focus-within:hover:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]",
+        /* Focus chrome comes from inputLikeControlClassName (focus-within + ! important). */
         disabled && "cursor-not-allowed opacity-50",
       )}
       onBlur={handleContainerBlur}

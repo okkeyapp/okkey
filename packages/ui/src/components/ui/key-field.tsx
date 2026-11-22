@@ -1054,8 +1054,8 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
           Boolean(floatingActions) && "relative",
           !hasValidationError && [
             "focus-within:relative focus-within:z-10",
-            "focus-within:border-x-accent focus-within:!border-y-accent",
-            "focus-within:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]",
+            "focus-within:border-x-[color:var(--accent-active)] focus-within:!border-y-[color:var(--accent-active)]",
+            "focus-within:shadow-[0_0_0_2px_hsl(var(--accent)_/_var(--accent-ring-alpha))]",
           ],
           hasValidationError && [
             "relative z-[1]",

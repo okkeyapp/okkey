@@ -41,9 +41,9 @@ function isSelectIconButtonSize(size: string): boolean {
 /** Open trigger = same look as Button `:focus` + `:hover` (ring/border + hover surface). */
 function selectButtonOpenMatchesFocusAndHoverClassName(v: SelectButtonVisualVariant): string {
   const accentRing =
-    "data-[state=open]:outline-none data-[state=open]:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)] dark:data-[state=open]:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]";
+    "data-[state=open]:outline-none data-[state=open]:!shadow-[0_0_0_2px_hsl(var(--accent)_/_var(--accent-ring-alpha))] dark:data-[state=open]:!shadow-[0_0_0_2px_hsl(var(--accent)_/_var(--accent-ring-alpha))]";
   const accentRingIfHoveredWhileOpen =
-    "data-[state=open]:hover:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)] dark:data-[state=open]:hover:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]";
+    "data-[state=open]:hover:!shadow-[0_0_0_2px_hsl(var(--accent)_/_var(--accent-ring-alpha))] dark:data-[state=open]:hover:!shadow-[0_0_0_2px_hsl(var(--accent)_/_var(--accent-ring-alpha))]";
 
   switch (v) {
     case "default":
@@ -69,9 +69,9 @@ function selectButtonOpenMatchesFocusAndHoverClassName(v: SelectButtonVisualVari
       return cn(
         accentRing,
         accentRingIfHoveredWhileOpen,
-        "data-[state=open]:outline-none data-[state=open]:border-accent",
+        "data-[state=open]:outline-none data-[state=open]:!border-[color:var(--accent-active)]",
         "data-[state=open]:bg-muted data-[state=open]:text-foreground",
-        "data-[state=open]:hover:border-accent dark:data-[state=open]:hover:border-accent",
+        "data-[state=open]:hover:!border-[color:var(--accent-active)] dark:data-[state=open]:hover:!border-[color:var(--accent-active)]",
       );
     default: {
       const _exhaustive: never = v;
@@ -154,8 +154,11 @@ const SelectTrigger = React.forwardRef<
                 inputLikeControlClassName,
                 "flex items-center justify-between gap-2 text-left",
                 selectTriggerValueSlot,
-                "data-[state=open]:border-accent data-[state=open]:bg-background data-[state=open]:outline-none data-[state=open]:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)] dark:data-[state=open]:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)] " +
-                  "data-[state=open]:hover:border-accent dark:data-[state=open]:hover:border-accent data-[state=open]:hover:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)] dark:data-[state=open]:hover:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]",
+                "data-[state=open]:!border-[color:var(--accent-active)] data-[state=open]:bg-background data-[state=open]:outline-none " +
+                  "data-[state=open]:!shadow-[0_0_0_2px_hsl(var(--accent)_/_var(--accent-ring-alpha))] " +
+                  "data-[state=open]:hover:!border-[color:var(--accent-active)] data-[state=open]:hover:!shadow-[0_0_0_2px_hsl(var(--accent)_/_var(--accent-ring-alpha))] " +
+                  "dark:data-[state=open]:!shadow-[0_0_0_2px_hsl(var(--accent)_/_var(--accent-ring-alpha))] " +
+                  "dark:data-[state=open]:hover:!border-[color:var(--accent-active)] dark:data-[state=open]:hover:!shadow-[0_0_0_2px_hsl(var(--accent)_/_var(--accent-ring-alpha))]",
               ),
         className,
       )}

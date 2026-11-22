@@ -185,7 +185,11 @@ const SearchableSelectTrigger = React.forwardRef<HTMLDivElement, React.HTMLAttri
               : cn(
                   inputLikeControlClassName,
                   "cursor-pointer !px-0 flex w-full items-center justify-between gap-2 text-left normal-case",
-                  "data-[state=open]:border-accent data-[state=open]:bg-background data-[state=open]:outline-none data-[state=open]:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)] dark:data-[state=open]:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]",
+                  "data-[state=open]:!border-[color:var(--accent-active)] data-[state=open]:bg-background data-[state=open]:outline-none " +
+                    "data-[state=open]:!shadow-[0_0_0_2px_hsl(var(--accent)_/_var(--accent-ring-alpha))] " +
+                    "data-[state=open]:hover:!border-[color:var(--accent-active)] data-[state=open]:hover:!shadow-[0_0_0_2px_hsl(var(--accent)_/_var(--accent-ring-alpha))] " +
+                    "dark:data-[state=open]:!shadow-[0_0_0_2px_hsl(var(--accent)_/_var(--accent-ring-alpha))] " +
+                    "dark:data-[state=open]:hover:!border-[color:var(--accent-active)] dark:data-[state=open]:hover:!shadow-[0_0_0_2px_hsl(var(--accent)_/_var(--accent-ring-alpha))]",
                 ),
             className,
           )}

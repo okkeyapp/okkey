@@ -10,6 +10,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
   cn,
+  segmentedControlTabClassName,
 } from "@okkey/ui";
 import { type ReactNode, useEffect, useState } from "react";
 
@@ -71,32 +72,6 @@ const MODE_ICONS: Record<GeneratorMode, typeof GeneratorPasswordTabIcon> = {
   username: GeneratorUsernameTabIcon,
 };
 
-const tabButtonClassName = (active: boolean) =>
-  cn(
-    "relative min-w-0 shrink gap-2 overflow-hidden border",
-    active
-      ? cn(
-          "z-10",
-          "!bg-background hover:!bg-background active:!bg-background",
-          "hover:!border-input focus:!border-input focus-visible:!border-input",
-          "focus:hover:!border-input focus-visible:hover:!border-input",
-          "!shadow-[0_1px_2px_hsl(var(--shadow)/0.05)] hover:!shadow-[0_1px_2px_hsl(var(--shadow)/0.05)]",
-          "focus:!shadow-[0_1px_2px_hsl(var(--shadow)/0.05)] focus-visible:!shadow-[0_1px_2px_hsl(var(--shadow)/0.05)]",
-          "focus:hover:!shadow-[0_1px_2px_hsl(var(--shadow)/0.05)] focus-visible:hover:!shadow-[0_1px_2px_hsl(var(--shadow)/0.05)]",
-          "dark:!shadow-[0_1px_2px_hsl(var(--shadow)/0.05)] dark:hover:!shadow-[0_1px_2px_hsl(var(--shadow)/0.05)]",
-          "dark:focus:!shadow-[0_1px_2px_hsl(var(--shadow)/0.05)] dark:focus-visible:!shadow-[0_1px_2px_hsl(var(--shadow)/0.05)]",
-          "dark:focus:hover:!shadow-[0_1px_2px_hsl(var(--shadow)/0.05)] dark:focus-visible:hover:!shadow-[0_1px_2px_hsl(var(--shadow)/0.05)]",
-        )
-      : cn(
-          "z-0 border-transparent shadow-none",
-          "hover:border-transparent hover:bg-foreground/5",
-          "focus:shadow-none focus-visible:shadow-none",
-          "dark:focus:shadow-none dark:focus-visible:shadow-none",
-          "focus:bg-foreground/10 focus-visible:bg-foreground/10",
-          "active:bg-foreground/10",
-        ),
-  );
-
 function renderColoredPassword(password: string): ReactNode {
   return Array.from(password).map((character, index) => {
     const kind = getGeneratedPasswordCharKind(character);
@@ -145,12 +120,12 @@ function GeneratorOutputCard({
     <div
       className={cn(
         "relative overflow-hidden rounded-xl border border-border transition-[border-color,box-shadow]",
-        "has-[[data-generator-copy]:focus]:border-accent",
-        "has-[[data-generator-copy]:focus]:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]",
-        "has-[[data-generator-copy]:focus-visible]:border-accent",
-        "has-[[data-generator-copy]:focus-visible]:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]",
-        "dark:has-[[data-generator-copy]:focus]:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]",
-        "dark:has-[[data-generator-copy]:focus-visible]:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]",
+        "has-[[data-generator-copy]:focus]:border-[color:var(--accent-active)]",
+        "has-[[data-generator-copy]:focus]:shadow-[0_0_0_2px_hsl(var(--accent)_/_var(--accent-ring-alpha))]",
+        "has-[[data-generator-copy]:focus-visible]:border-[color:var(--accent-active)]",
+        "has-[[data-generator-copy]:focus-visible]:shadow-[0_0_0_2px_hsl(var(--accent)_/_var(--accent-ring-alpha))]",
+        "dark:has-[[data-generator-copy]:focus]:shadow-[0_0_0_2px_hsl(var(--accent)_/_var(--accent-ring-alpha))]",
+        "dark:has-[[data-generator-copy]:focus-visible]:shadow-[0_0_0_2px_hsl(var(--accent)_/_var(--accent-ring-alpha))]",
       )}
     >
       <TooltipProvider delayDuration={300}>
@@ -388,7 +363,7 @@ export function GeneratorSection({
                 aria-selected={active}
                 size="sm"
                 variant={active ? "outline" : "ghost"}
-                className={tabButtonClassName(active)}
+                className={segmentedControlTabClassName(active)}
                 onClick={() => setMode(value)}
               >
                 <Icon className="size-4 shrink-0" />

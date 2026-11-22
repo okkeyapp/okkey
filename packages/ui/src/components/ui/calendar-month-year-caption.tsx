@@ -60,7 +60,7 @@ function CaptionMenu({ value, ariaLabel, triggerClassName, options, onValueChang
           data-state={open ? "open" : "closed"}
           className={cn(
             "flex h-8 items-center justify-between gap-2 rounded-md border border-input bg-background px-2 text-left text-sm text-foreground outline-none",
-            "hover:border-accent data-[state=open]:border-accent data-[state=open]:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]",
+            "hover:border-[color:var(--accent-active)] data-[state=open]:border-[color:var(--accent-active)] data-[state=open]:shadow-[0_0_0_2px_hsl(var(--accent)_/_var(--accent-ring-alpha))]",
             triggerClassName,
           )}
         >

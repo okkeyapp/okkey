@@ -101,8 +101,8 @@ export default function RolesListCard({
             onRoleClick && "cursor-pointer hover:bg-secondary",
             isFocused && [
               "z-10 bg-secondary",
-              "!border-accent",
-              "shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]",
+              "!border-[color:var(--accent-active)]",
+              "shadow-[0_0_0_2px_hsl(var(--accent)_/_var(--accent-ring-alpha))]",
             ],
           );
 

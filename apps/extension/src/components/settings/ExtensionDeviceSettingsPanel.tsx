@@ -60,7 +60,7 @@ import {
 } from "../../lib/extensionVaultSession";
 
 const ACCENT_OPTIONS = [
-  { id: "a1", light: "hsl(215 5% 9%)", dark: "hsl(215 4% 98%)" },
+  { id: "a1", light: "hsl(0 0% 9%)", dark: "hsl(0 0% 98%)" },
   { id: "a2", light: "hsl(217.2 93.2% 59.8%)", dark: "hsl(217.2 93.2% 59.8%)" },
   { id: "a3", light: "hsl(188.7 96.2% 42.7%)", dark: "hsl(188.7 96.2% 42.7%)" },
   { id: "a4", light: "hsl(159.8 83.5% 41%)", dark: "hsl(159.8 83.5% 41%)" },
@@ -459,7 +459,7 @@ export function ExtensionDeviceSettingsPanel(props: ExtensionDeviceSettingsPanel
                           className={cn(
                             "relative flex h-[56px] w-[84px] overflow-hidden rounded-[10px] border border-border bg-background",
                             "items-center justify-center",
-                            active && "border-accent shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]",
+                            active && "border-[color:var(--accent-active)] shadow-[0_0_0_2px_hsl(var(--accent)_/_var(--accent-ring-alpha))]",
                           )}
                         >
                           <span className="absolute inset-0 rounded-[10px]" style={{ backgroundImage: option.gradient }} aria-hidden />

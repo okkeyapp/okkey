@@ -197,6 +197,7 @@ export {
   keyFormAdditionalFieldBorderClassName,
   formControlTextClassName,
   inputLikeControlClassName,
+  segmentedControlTabClassName,
   mutedSurfaceActiveBgClassName,
   mutedSurfaceActiveBgImportantClassName,
   mutedSurfaceHoverBgClassName,

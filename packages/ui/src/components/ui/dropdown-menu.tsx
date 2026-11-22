@@ -38,7 +38,7 @@ const DropdownMenuContent = React.forwardRef<
         className={cn(
           "z-floating min-w-[10rem] overflow-visible rounded-md bg-popover p-0 text-popover-foreground",
           "shadow-[0_4px_16px_hsl(var(--shadow)/0.1),0_0_0_1px_hsl(var(--shadow)/0.05)]",
-          "dark:shadow-[0_8px_28px_rgba(0,0,0,0.45),0_0_0_1px_rgba(255,255,255,0.1)]",
+          "dark:shadow-[0_8px_28px_rgba(0,0,0,0.45),0_0_0_3px_rgba(255,255,255,0.1)]",
           className,
         )}
         {...props}
@@ -117,7 +117,7 @@ const DropdownMenuSubContent = React.forwardRef<
     className={cn(
       "z-floating min-w-[10rem] overflow-hidden rounded-md bg-popover p-0 text-popover-foreground",
       "shadow-[0_4px_16px_hsl(var(--shadow)/0.1),0_0_0_1px_hsl(var(--shadow)/0.05)]",
-      "dark:shadow-[0_8px_28px_rgba(0,0,0,0.45),0_0_0_1px_rgba(255,255,255,0.1)]",
+      "dark:shadow-[0_8px_28px_rgba(0,0,0,0.45),0_0_0_3px_rgba(255,255,255,0.1)]",
       className,
     )}
     {...props}

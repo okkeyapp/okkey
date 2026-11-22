@@ -75,6 +75,20 @@ describe("applySemanticAccentTint", () => {
     expect(root.dataset.accentTint).toBe("off");
     expect(root.style.getPropertyValue("--secondary")).toBe("");
   });
+
+  it("keeps dark-mode tint as a soft accent whisper", () => {
+    const root = document.documentElement;
+    applySemanticAccentTint(root, "dark", "a5", true);
+
+    const secondary = parseTriplet(root.style.getPropertyValue("--secondary"));
+    expect(secondary.h).toBeCloseTo(ACCENT_HSL.dark.a5[0], 1);
+    expect(secondary.l).toBeCloseTo(10, 0);
+    expect(secondary.s).toBeGreaterThan(8);
+    expect(secondary.s).toBeLessThan(20);
+
+    const background = parseTriplet(root.style.getPropertyValue("--background"));
+    expect(background.s).toBeLessThan(16);
+  });
 });
 
 describe("applyAccentRing", () => {

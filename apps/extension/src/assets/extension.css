@@ -26,9 +26,11 @@
     --border: 240 5.9% 90%;
     --input: 240 5.9% 90%;
     --ring: var(--accent);
+    --accent-active: hsl(var(--accent));
+    --accent-ring-alpha: 0.4;
     --shadow: 240 5% 8%;
     --page-gradient-light: linear-gradient(136.85deg, rgba(255, 248, 239, 0) 8.44%, rgb(255, 248, 239) 91.56%), linear-gradient(180deg, rgb(234, 240, 250) 0%, rgb(242, 255, 252) 100%);
-    --page-gradient-dark: linear-gradient(136.85deg, rgba(42, 50, 66, 0.16), rgba(255, 214, 180, 0.12) 91.56%);
+    --page-gradient-dark: linear-gradient(hsl(var(--secondary)), hsl(var(--secondary)));
 
     --sidebar-background: 240 4.8% 98%;
     --sidebar-foreground: 240 10% 3.9%;
@@ -56,34 +58,37 @@
   }
 
   .dark {
-    --background: 240 10% 3.9%;
+    /* True neutral charcoal (Cursor-like) — no zinc/blue hue cast */
+    --background: 0 0% 7%;
     --foreground: 0 0% 98%;
-    --card: 240 10% 3.9%;
+    --card: 0 0% 7%;
     --card-foreground: 0 0% 98%;
-    --popover: 240 10% 3.9%;
+    --popover: 0 0% 7%;
     --popover-foreground: 0 0% 98%;
     --primary: 217.2 91.2% 59.8%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 240 3.7% 15.9%;
+    --secondary: 0 0% 10%;
     --secondary-foreground: 0 0% 98%;
-    --muted: 240 3.7% 15.9%;
-    --muted-foreground: 240 5% 64.9%;
+    --muted: 0 0% 10%;
+    --muted-foreground: 0 0% 64.9%;
     --accent: 217.2 91.2% 59.8%;
     --accent-foreground: 0 0% 100%;
     --destructive: 0 72.2% 50.6%;
     --destructive-foreground: 0 0% 98%;
-    --border: 240 3.7% 15.9%;
-    --input: 240 3.7% 15.9%;
+    --border: 0 0% 15.9%;
+    --input: 0 0% 15.9%;
     --ring: var(--accent);
+    --accent-active: color-mix(in srgb, hsl(var(--accent)) 50%, black);
+    --accent-ring-alpha: 0.2;
     --shadow: 0 0% 100%;
     --page-gradient-light: linear-gradient(136.85deg, rgba(255, 248, 239, 0) 8.44%, rgb(255, 248, 239) 91.56%), linear-gradient(180deg, rgb(234, 240, 250) 0%, rgb(242, 255, 252) 100%);
-    --page-gradient-dark: linear-gradient(136.85deg, rgba(42, 50, 66, 0.16), rgba(255, 214, 180, 0.12) 91.56%);
+    --page-gradient-dark: linear-gradient(hsl(var(--secondary)), hsl(var(--secondary)));
 
-    --sidebar-background: 240 5.9% 6%;
+    --sidebar-background: 0 0% 7%;
     --sidebar-foreground: 0 0% 98%;
     --sidebar-primary: var(--primary);
     --sidebar-primary-foreground: var(--primary-foreground);
-    --sidebar-accent: 240 3.7% 18%;
+    --sidebar-accent: 0 0% 18%;
     --sidebar-accent-foreground: 0 0% 98%;
     --sidebar-border: var(--border);
     --sidebar-ring: var(--accent);
@@ -94,8 +99,8 @@
 
   /* Accent overrides (7 variants) — keep in sync with apps/web/src/index.css */
   :root[data-accent="a1"] {
-    --primary: 215 5.0% 9.0%;
-    --accent: 215 5.0% 9.0%;
+    --primary: 0 0% 9%;
+    --accent: 0 0% 9%;
     --page-gradient-light: linear-gradient(hsl(var(--secondary)), hsl(var(--secondary)));
     --page-gradient-dark: linear-gradient(hsl(var(--secondary)), hsl(var(--secondary)));
   }
@@ -125,10 +130,10 @@
   }
 
   .dark[data-accent="a1"] {
-    --primary: 215 4.0% 98%;
-    --primary-foreground: 215 5.0% 9%;
-    --accent: 215 4.0% 98%;
-    --accent-foreground: 215 5.0% 9%;
+    --primary: 0 0% 98%;
+    --primary-foreground: 0 0% 9%;
+    --accent: 0 0% 98%;
+    --accent-foreground: 0 0% 9%;
   }
   .dark[data-accent="a2"] {
     --primary: 217.2 93.2% 59.8%;
@@ -222,7 +227,7 @@
   }
 
   .dark .okkey-popup-panel {
-    box-shadow: 0 0 0 1px hsl(var(--shadow) / 0.12);
+    box-shadow: 0 0 0 3px hsl(var(--shadow) / 0.12);
   }
 
   @media (max-width: 767px) {

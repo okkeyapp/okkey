@@ -337,7 +337,7 @@ export default function InviteMembersPopup({
                 className={cn(
                   "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
                   deliveryMethod === mode
-                    ? "bg-background text-foreground shadow-sm"
+                    ? "bg-background text-foreground shadow-sm dark:border dark:border-[color:var(--accent-active)] dark:shadow-none dark:hover:bg-background"
                     : "text-muted-foreground hover:text-foreground",
                 )}
                 onClick={() => {
