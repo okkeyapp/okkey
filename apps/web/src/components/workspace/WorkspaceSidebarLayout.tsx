@@ -220,14 +220,16 @@ export default function WorkspaceSidebarLayout({
           accountMenuOpen={accountMenuOpen}
           onAccountMenuOpenChange={onAccountMenuOpenChange}
           footerPlainLinkLabels={footerPlainLinkLabels}
-          beforeFooter={<SystemUpdateSidebarButton />}
-          afterFooterPlainLinks={
-            tipsWorkspaceId ? (
-              <SidebarTipsBanner
-                workspaceId={tipsWorkspaceId}
-                isWorkspaceOwner={tipsIsWorkspaceOwner}
-              />
-            ) : null
+          beforeFooter={
+            <>
+              {tipsWorkspaceId ? (
+                <SidebarTipsBanner
+                  workspaceId={tipsWorkspaceId}
+                  isWorkspaceOwner={tipsIsWorkspaceOwner}
+                />
+              ) : null}
+              <SystemUpdateSidebarButton />
+            </>
           }
           docsLocale={locale}
           vaultHeaderPlusAriaLabel={vaultHeaderPlusAriaLabel}
