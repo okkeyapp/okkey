@@ -4,7 +4,7 @@ import { cn } from "../../lib/utils.js";
 
 /** Elevation only (no fill) — reuse for panels that use a different `background`. */
 export const workspaceTileElevatedShadowClassName =
-  "shadow-[0px_0px_0px_1px_rgba(0,0,0,0.05),0px_1px_2px_0px_rgba(0,0,0,0.15)] dark:shadow-[0px_0px_0px_1px_rgba(255,255,255,0.22),0px_2px_16px_0px_rgba(255,255,255,0.08),0px_1px_2px_0px_rgba(255,255,255,0.05)]";
+  "shadow-[0px_0px_0px_1px_hsl(var(--shadow)/0.05),0px_1px_2px_0px_hsl(var(--shadow)/0.15)] dark:shadow-[0px_0px_0px_1px_hsl(var(--shadow)/0.22),0px_2px_16px_0px_hsl(var(--shadow)/0.08),0px_1px_2px_0px_hsl(var(--shadow)/0.05)]";
 
 const filledTileShadow = cn("bg-card", workspaceTileElevatedShadowClassName);
 

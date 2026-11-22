@@ -125,7 +125,7 @@ function ExtensionListRowFavicon(props: {
 const listHeaderShadowClassName = (scrolled: boolean) =>
   cn(
     "relative z-10 shrink-0 border-b border-border bg-background p-2 transition-shadow",
-    scrolled && "shadow-[0_1px_3px_rgba(0,0,0,0.1)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.35)]",
+    scrolled && "shadow-[0_1px_3px_hsl(var(--shadow)/0.1)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.35)]",
   );
 
 async function openAndFillItem(itemId: string, url: string): Promise<void> {

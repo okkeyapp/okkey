@@ -27,9 +27,9 @@ const buttonVariants = cva(
         danger:
           "bg-destructive/15 text-destructive hover:bg-destructive/85 hover:text-destructive-foreground active:bg-destructive active:text-destructive-foreground focus:shadow-[0_0_0_2px_hsl(var(--destructive)_/_0.4)] focus-visible:shadow-[0_0_0_2px_hsl(var(--destructive)_/_0.4)] dark:focus:shadow-[0_0_0_2px_hsl(var(--destructive)_/_0.4)] dark:focus-visible:shadow-[0_0_0_2px_hsl(var(--destructive)_/_0.4)] focus:hover:shadow-[0_0_0_2px_hsl(var(--destructive)_/_0.4)] focus-visible:hover:shadow-[0_0_0_2px_hsl(var(--destructive)_/_0.4)] dark:focus:hover:shadow-[0_0_0_2px_hsl(var(--destructive)_/_0.4)] dark:focus-visible:hover:shadow-[0_0_0_2px_hsl(var(--destructive)_/_0.4)]",
         outline:
-          "border border-input bg-background text-foreground shadow-[0_1px_2px_rgba(0,0,0,0.05)] dark:shadow-[0_1px_2px_rgba(255,255,255,0.05)] " +
-          "hover:border-[color-mix(in_hsl,hsl(var(--input))_82%,hsl(var(--accent))_18%)] hover:bg-muted hover:shadow-none " +
-          "dark:hover:border-[color-mix(in_hsl,hsl(var(--input))_76%,hsl(var(--accent))_24%)] " +
+          "border border-input bg-background text-foreground shadow-[0_1px_2px_hsl(var(--shadow)/0.05)] dark:shadow-[0_1px_2px_hsl(var(--shadow)/0.05)] " +
+          "hover:border-[color-mix(in_hsl,hsl(var(--input))_90%,hsl(var(--accent))_10%)] hover:bg-muted hover:shadow-none " +
+          "dark:hover:border-[color-mix(in_hsl,hsl(var(--input))_88%,hsl(var(--accent))_12%)] " +
           "focus:border-accent focus-visible:border-accent focus:hover:border-accent focus-visible:hover:border-accent dark:focus:hover:border-accent dark:focus-visible:hover:border-accent focus:hover:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)] focus-visible:hover:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)] dark:focus:hover:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)] dark:focus-visible:hover:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)] " +
           "data-[state=open]:outline-none data-[state=open]:border-accent data-[state=open]:bg-muted data-[state=open]:text-foreground " +
           "data-[state=open]:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)] dark:data-[state=open]:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)] " +

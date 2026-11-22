@@ -6,33 +6,36 @@
   :root {
     --radius: 0.5rem;
 
+    /* Zinc-like neutrals (keep in sync with apps/web/src/index.css) */
     --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    --foreground: 240 10% 3.9%;
     --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card-foreground: 240 10% 3.9%;
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
+    --popover-foreground: 240 10% 3.9%;
     --primary: 217.2 91.2% 59.8%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
+    --secondary: 240 4.8% 95.9%;
+    --secondary-foreground: 240 5.9% 10%;
+    --muted: 240 4.8% 95.9%;
+    --muted-foreground: 240 3.8% 46.1%;
     --accent: 217.2 91.2% 59.8%;
     --accent-foreground: 0 0% 100%;
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 0 0% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
+    --border: 240 5.9% 90%;
+    --input: 240 5.9% 90%;
+    --ring: var(--accent);
+    --shadow: 240 5% 8%;
+    --page-gradient-light: linear-gradient(136.85deg, rgba(255, 248, 239, 0) 8.44%, rgb(255, 248, 239) 91.56%), linear-gradient(180deg, rgb(234, 240, 250) 0%, rgb(242, 255, 252) 100%);
+    --page-gradient-dark: linear-gradient(136.85deg, rgba(42, 50, 66, 0.16), rgba(255, 214, 180, 0.12) 91.56%);
 
-    /* shadcn-style sidebar (matches web) */
-    --sidebar-background: 210 40% 98%;
-    --sidebar-foreground: 222.2 84% 4.9%;
+    --sidebar-background: 240 4.8% 98%;
+    --sidebar-foreground: 240 10% 3.9%;
     --sidebar-primary: var(--primary);
     --sidebar-primary-foreground: var(--primary-foreground);
-    --sidebar-accent: 210 38% 96%;
-    --sidebar-accent-foreground: 222.2 47.4% 11.2%;
+    --sidebar-accent: 240 4.8% 95.9%;
+    --sidebar-accent-foreground: 240 5.9% 10%;
     --sidebar-border: var(--border);
     --sidebar-ring: var(--accent);
 
@@ -47,50 +50,54 @@
     --okkey-z-tooltip: 110;
     --okkey-z-lightbox: 120;
 
-    /* Extension vault shell header gradient (to-right) */
-    --extension-shell-header-from: #eaf0fa;
-    --extension-shell-header-to: #f5f4f4;
+    /* Extension vault shell header gradient (to-right) — follows semantic tokens */
+    --extension-shell-header-from: hsl(var(--muted));
+    --extension-shell-header-to: hsl(var(--background));
   }
 
   .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
+    --background: 240 10% 3.9%;
+    --foreground: 0 0% 98%;
+    --card: 240 10% 3.9%;
+    --card-foreground: 0 0% 98%;
+    --popover: 240 10% 3.9%;
+    --popover-foreground: 0 0% 98%;
     --primary: 217.2 91.2% 59.8%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 217.2 32.6% 13.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
+    --secondary: 240 3.7% 15.9%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 240 3.7% 15.9%;
+    --muted-foreground: 240 5% 64.9%;
     --accent: 217.2 91.2% 59.8%;
     --accent-foreground: 0 0% 100%;
     --destructive: 0 72.2% 50.6%;
     --destructive-foreground: 0 0% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 212.7 26.8% 83.9%;
+    --border: 240 3.7% 15.9%;
+    --input: 240 3.7% 15.9%;
+    --ring: var(--accent);
+    --shadow: 0 0% 100%;
+    --page-gradient-light: linear-gradient(136.85deg, rgba(255, 248, 239, 0) 8.44%, rgb(255, 248, 239) 91.56%), linear-gradient(180deg, rgb(234, 240, 250) 0%, rgb(242, 255, 252) 100%);
+    --page-gradient-dark: linear-gradient(136.85deg, rgba(42, 50, 66, 0.16), rgba(255, 214, 180, 0.12) 91.56%);
 
-    --sidebar-background: 222.2 84% 6%;
-    --sidebar-foreground: 210 40% 98%;
+    --sidebar-background: 240 5.9% 6%;
+    --sidebar-foreground: 0 0% 98%;
     --sidebar-primary: var(--primary);
     --sidebar-primary-foreground: var(--primary-foreground);
-    --sidebar-accent: 217.2 32.6% 20%;
-    --sidebar-accent-foreground: 210 40% 98%;
+    --sidebar-accent: 240 3.7% 18%;
+    --sidebar-accent-foreground: 0 0% 98%;
     --sidebar-border: var(--border);
     --sidebar-ring: var(--accent);
 
-    /* Extension vault shell header gradient (to-right) */
-    --extension-shell-header-from: #090f1e;
-    --extension-shell-header-to: #161a26;
+    --extension-shell-header-from: hsl(var(--muted));
+    --extension-shell-header-to: hsl(var(--background));
   }
 
   /* Accent overrides (7 variants) — keep in sync with apps/web/src/index.css */
   :root[data-accent="a1"] {
     --primary: 215 5.0% 9.0%;
     --accent: 215 5.0% 9.0%;
+    --page-gradient-light: linear-gradient(hsl(var(--secondary)), hsl(var(--secondary)));
+    --page-gradient-dark: linear-gradient(hsl(var(--secondary)), hsl(var(--secondary)));
   }
   :root[data-accent="a2"] {
     --primary: 217.2 93.2% 59.8%;
@@ -206,8 +213,8 @@
     animation: okkey-popup-panel-in 240ms cubic-bezier(0.16, 1, 0.3, 1);
     max-height: calc(100dvh - 32px);
     box-shadow:
-      0 10px 15px -3px rgb(0 0 0 / 0.1),
-      0 4px 6px -4px rgb(0 0 0 / 0.1);
+      0 10px 15px -3px hsl(var(--shadow) / 0.1),
+      0 4px 6px -4px hsl(var(--shadow) / 0.1);
   }
 
   .okkey-popup-panel[data-state="closing"] {
@@ -215,7 +222,7 @@
   }
 
   .dark .okkey-popup-panel {
-    box-shadow: 0 0 0 1px rgb(255 255 255 / 0.12);
+    box-shadow: 0 0 0 1px hsl(var(--shadow) / 0.12);
   }
 
   @media (max-width: 767px) {

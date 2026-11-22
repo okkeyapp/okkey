@@ -209,7 +209,7 @@ const sidebarMenuButtonVariants = cva(
         default:
           "bg-transparent text-sidebar-foreground hover:bg-[rgba(0,0,0,0.05)] hover:text-sidebar-foreground dark:hover:bg-[rgba(255,255,255,0.08)] dark:hover:text-sidebar-foreground",
         outline:
-          "bg-background shadow-[0_1px_2px_rgba(0,0,0,0.05)] hover:bg-[rgba(0,0,0,0.05)] hover:text-sidebar-foreground dark:shadow-[0_1px_2px_rgba(255,255,255,0.05)] dark:hover:bg-[rgba(255,255,255,0.08)]",
+          "bg-background shadow-[0_1px_2px_hsl(var(--shadow)/0.05)] hover:bg-[rgba(0,0,0,0.05)] hover:text-sidebar-foreground dark:shadow-[0_1px_2px_hsl(var(--shadow)/0.05)] dark:hover:bg-[rgba(255,255,255,0.08)]",
       },
       size: {
         default: "h-8 min-h-8 py-0",

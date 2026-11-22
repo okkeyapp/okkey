@@ -24,6 +24,7 @@ import {
   Switch,
   cn,
   normalizeThemePreference,
+  parseAccentTintEnabled,
   type ThemePreference,
 } from "@okkey/ui";
 import { GeneratorExternalLinkIcon, SetupPinPopup } from "@okkey/vault-ui";
@@ -200,7 +201,7 @@ export function ExtensionDeviceSettingsPanel(props: ExtensionDeviceSettingsPanel
   const [idleSeconds, setIdleSeconds] = useState(() => Math.round(idleLockMs / 1000));
   const [themePreference, setThemePreference] = useState<ThemePreference>("auto");
   const [accent, setAccent] = useState<AccentId>("a2");
-  const [accentTintEnabled, setAccentTintEnabled] = useState(false);
+  const [accentTintEnabled, setAccentTintEnabled] = useState(true);
   const [pinSetupOpen, setPinSetupOpen] = useState(false);
   const [bioError, setBioError] = useState<string | null>(null);
   const [bioBusy, setBioBusy] = useState(false);
@@ -221,7 +222,7 @@ export function ExtensionDeviceSettingsPanel(props: ExtensionDeviceSettingsPanel
       setThemePreference(normalizeThemePreference(theme.theme));
       const accentIds = new Set(ACCENT_OPTIONS.map((o) => o.id));
       setAccent(theme.accent && accentIds.has(theme.accent as AccentId) ? (theme.accent as AccentId) : "a2");
-      setAccentTintEnabled(theme.accentTint === "1" || theme.accentTint === "true");
+      setAccentTintEnabled(parseAccentTintEnabled(theme.accentTint));
       if (typeof nextPrefs.idleLockSeconds === "number") {
         setIdleSeconds(nextPrefs.idleLockSeconds);
       }

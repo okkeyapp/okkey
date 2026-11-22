@@ -168,14 +168,7 @@ export async function writeExtensionThemePreference(input: {
     await store.setItem(ACCENT_KEY, input.accent);
   }
   if (input.accentTint !== undefined) {
-    if (input.accentTint) {
-      await store.setItem(ACCENT_TINT_KEY, "1");
-    } else {
-      const area = extensionLocalStorage();
-      if (area) {
-        await area.remove(ACCENT_TINT_KEY);
-      }
-    }
+    await store.setItem(ACCENT_TINT_KEY, input.accentTint ? "1" : "0");
   }
 }
 

@@ -1,4 +1,9 @@
-import { applySemanticAccentTint, readAccentTintEnabled } from "./accent-semantic-tint.js";
+import { applyPageBackgroundGradients } from "../lib/page-background-gradients.js";
+import {
+  applyAccentRing,
+  applySemanticAccentTint,
+  readAccentTintEnabled,
+} from "./accent-semantic-tint.js";
 
 /** Resolved appearance: class `dark` on or off. */
 export type ThemeMode = "light" | "dark";
@@ -107,7 +112,10 @@ export function applyStoredTheme() {
   root.dataset.accent = accentId;
   root.dataset.themePreference = themePreference;
 
-  applySemanticAccentTint(root, resolved, accentId, readAccentTintEnabled());
+  const accentTintEnabled = readAccentTintEnabled();
+  applyAccentRing(root, resolved, accentId);
+  applyPageBackgroundGradients(root, accentId, accentTintEnabled);
+  applySemanticAccentTint(root, resolved, accentId, accentTintEnabled);
 
   bindSystemThemeListenerOnce();
 }
