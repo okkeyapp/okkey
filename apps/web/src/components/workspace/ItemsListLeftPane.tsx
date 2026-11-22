@@ -1250,12 +1250,12 @@ export default function ItemsListLeftPane({
                 variant="ghost"
                 aria-label={t("web.items.list.sortAria")}
                 className={cn(
-                  "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border-0 bg-slate-100 p-0 text-foreground shadow-none dark:bg-muted",
+                  "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border-0 bg-muted p-0 text-foreground shadow-none dark:bg-muted",
                   mutedSurfaceHoverBgClassName,
                   "hover:text-foreground",
-                  "focus-visible:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.35)]",
+                  "focus-visible:shadow-[0_0_0_2px_hsl(var(--accent)_/_var(--accent-ring-alpha))]",
                   mutedSurfaceOpenBgClassName,
-                  "data-[state=open]:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.35)]",
+                  "data-[state=open]:shadow-[0_0_0_2px_hsl(var(--accent)_/_var(--accent-ring-alpha))]",
                 )}
               >
                 {sortIconForValue(sort)}
@@ -1335,7 +1335,7 @@ export default function ItemsListLeftPane({
                           className={cn(
                             "group relative z-0 flex h-[60px] w-full items-center gap-0 rounded-lg transition-colors",
                             "hover:bg-muted/60",
-                            rowActive && "z-[1] bg-muted/80 shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]",
+                            rowActive && "z-[1] bg-muted/80 shadow-[0_0_0_2px_hsl(var(--accent)_/_var(--accent-ring-alpha))]",
                           )}
                         >
                           <button

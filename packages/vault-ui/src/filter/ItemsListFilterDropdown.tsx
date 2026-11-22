@@ -55,12 +55,12 @@ export type ItemsListMonitoringFilter =
 export type ItemsListFilterValue = ItemsListCoreFilter | ItemsListMonitoringFilter;
 
 const itemsPanelSelectTriggerClassName = cn(
-  "h-9 min-h-9 rounded-lg border-0 bg-slate-100 shadow-none dark:bg-muted",
+  "h-9 min-h-9 rounded-lg border-0 bg-muted shadow-none dark:bg-muted",
   "px-2 text-sm text-foreground",
   mutedSurfaceHoverBgClassName,
-  "focus:border-transparent focus:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.35)] focus-visible:border-transparent",
+  "focus:border-transparent focus:shadow-[0_0_0_2px_hsl(var(--accent)_/_var(--accent-ring-alpha))] focus-visible:border-transparent",
   mutedSurfaceOpenBgClassName,
-  "data-[state=open]:border-transparent data-[state=open]:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.35)]",
+  "data-[state=open]:border-transparent data-[state=open]:shadow-[0_0_0_2px_hsl(var(--accent)_/_var(--accent-ring-alpha))]",
 );
 
 const CORE_FILTERS: readonly ItemsListCoreFilter[] = [

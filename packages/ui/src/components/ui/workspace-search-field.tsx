@@ -37,12 +37,12 @@ const searchWrapClassName = cn(
   "flex h-9 w-full min-w-0 max-w-[420px] items-stretch rounded-md border border-transparent",
   "bg-[rgba(0,0,0,0.05)] text-base text-foreground shadow-none transition-[color,box-shadow,border-color,background-color] md:text-sm",
   "dark:bg-white/[0.06]",
-  "hover:border-[color-mix(in_hsl,hsl(var(--input))_82%,hsl(var(--accent))_18%)]",
-  "dark:hover:border-[color-mix(in_hsl,hsl(var(--input))_76%,hsl(var(--accent))_24%)]",
-  "focus-within:border-accent focus-within:bg-background focus-within:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]",
-  "dark:focus-within:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]",
-  "focus-within:hover:border-accent dark:focus-within:hover:border-accent",
-  "focus-within:hover:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)] dark:focus-within:hover:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]",
+  "hover:border-[color-mix(in_hsl,hsl(var(--input))_90%,hsl(var(--accent))_10%)]",
+  "dark:hover:border-[color-mix(in_hsl,hsl(var(--input))_88%,hsl(var(--accent))_12%)]",
+  "focus-within:!border-[color:var(--accent-active)] focus-within:bg-background focus-within:!shadow-[0_0_0_2px_hsl(var(--accent)_/_var(--accent-ring-alpha))]",
+  "dark:focus-within:!shadow-[0_0_0_2px_hsl(var(--accent)_/_var(--accent-ring-alpha))]",
+  "focus-within:hover:!border-[color:var(--accent-active)] dark:focus-within:hover:!border-[color:var(--accent-active)]",
+  "focus-within:hover:!shadow-[0_0_0_2px_hsl(var(--accent)_/_var(--accent-ring-alpha))] dark:focus-within:hover:!shadow-[0_0_0_2px_hsl(var(--accent)_/_var(--accent-ring-alpha))]",
 );
 
 const kbdClassName = cn(
@@ -155,7 +155,7 @@ export function WorkspaceSearchField({
               className={cn(
                 "inline-flex size-6 items-center justify-center rounded-[4px] text-muted-foreground",
                 "hover:bg-muted hover:text-foreground",
-                "focus-visible:outline-none focus-visible:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]",
+                "focus-visible:outline-none focus-visible:shadow-[0_0_0_2px_hsl(var(--accent)_/_var(--accent-ring-alpha))]",
               )}
               aria-label={clearAriaLabel}
               data-testid={`${testIdPrefix}-search-clear`}

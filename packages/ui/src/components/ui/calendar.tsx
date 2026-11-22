@@ -146,7 +146,7 @@ const calendarBaseClassNames = {
     defaultCalendarClassNames.dropdowns,
   ),
   dropdown_root: cn(
-    "relative rounded-md border border-input bg-background shadow-[0_1px_2px_rgba(0,0,0,0.05)] has-[:focus]:border-accent has-[:focus]:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)] dark:shadow-[0_1px_2px_rgba(255,255,255,0.05)]",
+    "relative rounded-md border border-input bg-background shadow-[0_1px_2px_hsl(var(--shadow)/0.05)] has-[:focus]:border-[color:var(--accent-active)] has-[:focus]:shadow-[0_0_0_2px_hsl(var(--accent)_/_var(--accent-ring-alpha))] dark:shadow-[0_1px_2px_hsl(var(--shadow)/0.05)]",
     defaultCalendarClassNames.dropdown_root,
   ),
   dropdown: cn(

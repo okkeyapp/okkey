@@ -406,7 +406,7 @@ export default function ServerMailSettingsBlock({
         <div className="flex flex-col">
           {passwordUnreadable ? (
             <div
-              className="mb-4 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive"
+              className="mb-4 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive dark:border-destructive/20"
               role="status"
               data-testid="server-mail-password-unreadable"
             >

@@ -183,7 +183,7 @@ function folderDropdownLeafLinkClassName(isActive?: boolean) {
 }
 
 const folderTreeChevronHoverClassName =
-  "border border-transparent hover:border-input hover:bg-background hover:shadow-[0_1px_2px_rgba(0,0,0,0.05)] dark:hover:bg-background dark:hover:shadow-[0_1px_2px_rgba(255,255,255,0.05)]";
+  "border border-transparent hover:border-input hover:bg-background hover:shadow-[0_1px_2px_hsl(var(--shadow)/0.05)] dark:hover:bg-background dark:hover:shadow-[0_1px_2px_hsl(var(--shadow)/0.05)]";
 
 const folderTreeChevronButtonClassName = cn(
   "group inline-flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-lg bg-transparent text-sidebar-foreground outline-none ring-sidebar-ring transition-[background-color,color,box-shadow,border-color] focus-visible:ring-2",

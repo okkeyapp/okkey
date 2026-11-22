@@ -432,9 +432,9 @@ export function KeyFieldFileControl({
         onDrop={handleDrop}
         className={cn(
           "flex h-20 w-full flex-col items-center justify-center gap-1 rounded-sm border-2 border-dashed border-input bg-transparent px-4 text-foreground transition-colors",
-          "hover:border-accent hover:bg-muted/40",
-          "focus-visible:border-accent focus-visible:bg-muted/40 focus-visible:outline-none",
-          isDragging && "border-accent bg-muted/40",
+          "hover:border-[color:var(--accent-active)] hover:bg-muted/40",
+          "focus-visible:border-[color:var(--accent-active)] focus-visible:bg-muted/40 focus-visible:outline-none",
+          isDragging && "border-[color:var(--accent-active)] bg-muted/40",
           isUploading && "pointer-events-none",
         )}
       >

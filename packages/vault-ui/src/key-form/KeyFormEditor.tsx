@@ -1008,7 +1008,7 @@ function KeyFieldMetaBadge({
     <span
       className={cn(
         "inline-flex h-5 items-center justify-center rounded-full px-2 text-xs leading-5",
-        tone === "danger" && "bg-destructive/10 text-destructive",
+        tone === "danger" && "bg-destructive/10 text-destructive dark:bg-destructive/8",
         className,
       )}
     >

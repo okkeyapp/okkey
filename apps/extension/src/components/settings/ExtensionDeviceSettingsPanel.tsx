@@ -24,6 +24,7 @@ import {
   Switch,
   cn,
   normalizeThemePreference,
+  parseAccentTintEnabled,
   type ThemePreference,
 } from "@okkey/ui";
 import { GeneratorExternalLinkIcon, SetupPinPopup } from "@okkey/vault-ui";
@@ -59,7 +60,7 @@ import {
 } from "../../lib/extensionVaultSession";
 
 const ACCENT_OPTIONS = [
-  { id: "a1", light: "hsl(215 5% 9%)", dark: "hsl(215 4% 98%)" },
+  { id: "a1", light: "hsl(0 0% 9%)", dark: "hsl(0 0% 98%)" },
   { id: "a2", light: "hsl(217.2 93.2% 59.8%)", dark: "hsl(217.2 93.2% 59.8%)" },
   { id: "a3", light: "hsl(188.7 96.2% 42.7%)", dark: "hsl(188.7 96.2% 42.7%)" },
   { id: "a4", light: "hsl(159.8 83.5% 41%)", dark: "hsl(159.8 83.5% 41%)" },
@@ -200,7 +201,7 @@ export function ExtensionDeviceSettingsPanel(props: ExtensionDeviceSettingsPanel
   const [idleSeconds, setIdleSeconds] = useState(() => Math.round(idleLockMs / 1000));
   const [themePreference, setThemePreference] = useState<ThemePreference>("auto");
   const [accent, setAccent] = useState<AccentId>("a2");
-  const [accentTintEnabled, setAccentTintEnabled] = useState(false);
+  const [accentTintEnabled, setAccentTintEnabled] = useState(true);
   const [pinSetupOpen, setPinSetupOpen] = useState(false);
   const [bioError, setBioError] = useState<string | null>(null);
   const [bioBusy, setBioBusy] = useState(false);
@@ -221,7 +222,7 @@ export function ExtensionDeviceSettingsPanel(props: ExtensionDeviceSettingsPanel
       setThemePreference(normalizeThemePreference(theme.theme));
       const accentIds = new Set(ACCENT_OPTIONS.map((o) => o.id));
       setAccent(theme.accent && accentIds.has(theme.accent as AccentId) ? (theme.accent as AccentId) : "a2");
-      setAccentTintEnabled(theme.accentTint === "1" || theme.accentTint === "true");
+      setAccentTintEnabled(parseAccentTintEnabled(theme.accentTint));
       if (typeof nextPrefs.idleLockSeconds === "number") {
         setIdleSeconds(nextPrefs.idleLockSeconds);
       }
@@ -458,7 +459,7 @@ export function ExtensionDeviceSettingsPanel(props: ExtensionDeviceSettingsPanel
                           className={cn(
                             "relative flex h-[56px] w-[84px] overflow-hidden rounded-[10px] border border-border bg-background",
                             "items-center justify-center",
-                            active && "border-accent shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]",
+                            active && "border-[color:var(--accent-active)] shadow-[0_0_0_2px_hsl(var(--accent)_/_var(--accent-ring-alpha))]",
                           )}
                         >
                           <span className="absolute inset-0 rounded-[10px]" style={{ backgroundImage: option.gradient }} aria-hidden />

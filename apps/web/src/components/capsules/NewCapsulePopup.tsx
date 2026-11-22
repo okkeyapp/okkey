@@ -51,6 +51,7 @@ import {
   cn,
   controlGroupItemFixedClassName,
   getKeyFieldSurfaceRounding,
+  segmentedControlTabClassName,
   serializeKeyFieldFileValue,
   type KeyFieldFileValue,
 } from "@okkey/ui";
@@ -1085,30 +1086,7 @@ export default function NewCapsulePopup({
                 variant={active ? "outline" : "ghost"}
                 disabled={planLocked}
                 title={planLocked ? t("web.capsules.popup.planUnavailable") : undefined}
-                className={cn(
-                  "relative border",
-                  active
-                    ? cn(
-                        "z-10",
-                        "!bg-background hover:!bg-background active:!bg-background",
-                        "hover:!border-input focus:!border-input focus-visible:!border-input",
-                        "focus:hover:!border-input focus-visible:hover:!border-input",
-                        "!shadow-[0_1px_2px_rgba(0,0,0,0.05)] hover:!shadow-[0_1px_2px_rgba(0,0,0,0.05)]",
-                        "focus:!shadow-[0_1px_2px_rgba(0,0,0,0.05)] focus-visible:!shadow-[0_1px_2px_rgba(0,0,0,0.05)]",
-                        "focus:hover:!shadow-[0_1px_2px_rgba(0,0,0,0.05)] focus-visible:hover:!shadow-[0_1px_2px_rgba(0,0,0,0.05)]",
-                        "dark:!shadow-[0_1px_2px_rgba(255,255,255,0.05)] dark:hover:!shadow-[0_1px_2px_rgba(255,255,255,0.05)]",
-                        "dark:focus:!shadow-[0_1px_2px_rgba(255,255,255,0.05)] dark:focus-visible:!shadow-[0_1px_2px_rgba(255,255,255,0.05)]",
-                        "dark:focus:hover:!shadow-[0_1px_2px_rgba(255,255,255,0.05)] dark:focus-visible:hover:!shadow-[0_1px_2px_rgba(255,255,255,0.05)]",
-                      )
-                    : cn(
-                        "z-0 border-transparent shadow-none",
-                        "hover:border-transparent hover:bg-foreground/5",
-                        "focus:shadow-none focus-visible:shadow-none",
-                        "dark:focus:shadow-none dark:focus-visible:shadow-none",
-                        "focus:bg-foreground/10 focus-visible:bg-foreground/10",
-                        "active:bg-foreground/10",
-                      ),
-                )}
+                className={segmentedControlTabClassName(active)}
                 onClick={() => {
                   if (!planLocked) setType(value);
                 }}

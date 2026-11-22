@@ -8,7 +8,7 @@ type ItemTagsReadonlyProps = {
 };
 
 const tagPillClassName = cn(
-  "inline-flex h-[26px] shrink-0 items-center rounded-full bg-slate-100 px-2.5 text-sm text-foreground",
+  "inline-flex h-[26px] shrink-0 items-center rounded-full bg-muted px-2.5 text-sm text-foreground",
   "dark:bg-muted",
 );
 

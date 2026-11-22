@@ -5,7 +5,7 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "../../lib/utils.js";
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm font-medium transition-[color,background-color,box-shadow,border-color] focus:outline-none focus:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)] focus-visible:outline-none focus-visible:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)] dark:focus:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)] dark:focus-visible:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)] disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm font-medium transition-[color,background-color,box-shadow,border-color] focus:outline-none focus:shadow-[0_0_0_2px_hsl(var(--accent)_/_var(--accent-ring-alpha))] focus-visible:outline-none focus-visible:shadow-[0_0_0_2px_hsl(var(--accent)_/_var(--accent-ring-alpha))] dark:focus:shadow-[0_0_0_2px_hsl(var(--accent)_/_var(--accent-ring-alpha))] dark:focus-visible:shadow-[0_0_0_2px_hsl(var(--accent)_/_var(--accent-ring-alpha))] disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
   {
     variants: {
       size: {
@@ -25,16 +25,22 @@ const buttonVariants = cva(
         destructive:
           "bg-destructive text-destructive-foreground hover:bg-destructive/85 active:bg-destructive active:text-destructive-foreground focus:shadow-[0_0_0_2px_hsl(var(--destructive)_/_0.4)] focus-visible:shadow-[0_0_0_2px_hsl(var(--destructive)_/_0.4)] dark:focus:shadow-[0_0_0_2px_hsl(var(--destructive)_/_0.4)] dark:focus-visible:shadow-[0_0_0_2px_hsl(var(--destructive)_/_0.4)] focus:hover:shadow-[0_0_0_2px_hsl(var(--destructive)_/_0.4)] focus-visible:hover:shadow-[0_0_0_2px_hsl(var(--destructive)_/_0.4)] dark:focus:hover:shadow-[0_0_0_2px_hsl(var(--destructive)_/_0.4)] dark:focus-visible:hover:shadow-[0_0_0_2px_hsl(var(--destructive)_/_0.4)]",
         danger:
-          "bg-destructive/15 text-destructive hover:bg-destructive/85 hover:text-destructive-foreground active:bg-destructive active:text-destructive-foreground focus:shadow-[0_0_0_2px_hsl(var(--destructive)_/_0.4)] focus-visible:shadow-[0_0_0_2px_hsl(var(--destructive)_/_0.4)] dark:focus:shadow-[0_0_0_2px_hsl(var(--destructive)_/_0.4)] dark:focus-visible:shadow-[0_0_0_2px_hsl(var(--destructive)_/_0.4)] focus:hover:shadow-[0_0_0_2px_hsl(var(--destructive)_/_0.4)] focus-visible:hover:shadow-[0_0_0_2px_hsl(var(--destructive)_/_0.4)] dark:focus:hover:shadow-[0_0_0_2px_hsl(var(--destructive)_/_0.4)] dark:focus-visible:hover:shadow-[0_0_0_2px_hsl(var(--destructive)_/_0.4)]",
+          "bg-destructive/15 dark:bg-destructive/8 text-destructive hover:bg-destructive/85 hover:text-destructive-foreground active:bg-destructive active:text-destructive-foreground focus:shadow-[0_0_0_2px_hsl(var(--destructive)_/_0.4)] focus-visible:shadow-[0_0_0_2px_hsl(var(--destructive)_/_0.4)] dark:focus:shadow-[0_0_0_2px_hsl(var(--destructive)_/_0.4)] dark:focus-visible:shadow-[0_0_0_2px_hsl(var(--destructive)_/_0.4)] focus:hover:shadow-[0_0_0_2px_hsl(var(--destructive)_/_0.4)] focus-visible:hover:shadow-[0_0_0_2px_hsl(var(--destructive)_/_0.4)] dark:focus:hover:shadow-[0_0_0_2px_hsl(var(--destructive)_/_0.4)] dark:focus-visible:hover:shadow-[0_0_0_2px_hsl(var(--destructive)_/_0.4)]",
         outline:
-          "border border-input bg-background text-foreground shadow-[0_1px_2px_rgba(0,0,0,0.05)] dark:shadow-[0_1px_2px_rgba(255,255,255,0.05)] " +
-          "hover:border-[color-mix(in_hsl,hsl(var(--input))_82%,hsl(var(--accent))_18%)] hover:bg-muted hover:shadow-none " +
-          "dark:hover:border-[color-mix(in_hsl,hsl(var(--input))_76%,hsl(var(--accent))_24%)] " +
-          "focus:border-accent focus-visible:border-accent focus:hover:border-accent focus-visible:hover:border-accent dark:focus:hover:border-accent dark:focus-visible:hover:border-accent focus:hover:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)] focus-visible:hover:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)] dark:focus:hover:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)] dark:focus-visible:hover:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)] " +
-          "data-[state=open]:outline-none data-[state=open]:border-accent data-[state=open]:bg-muted data-[state=open]:text-foreground " +
-          "data-[state=open]:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)] dark:data-[state=open]:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)] " +
-          "data-[state=open]:hover:border-accent dark:data-[state=open]:hover:border-accent " +
-          "data-[state=open]:hover:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)] dark:data-[state=open]:hover:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)] " +
+          "border border-input bg-background text-foreground shadow-[0_1px_2px_hsl(var(--shadow)/0.05)] dark:shadow-[0_1px_2px_hsl(var(--shadow)/0.05)] " +
+          "hover:border-[color-mix(in_hsl,hsl(var(--input))_90%,hsl(var(--accent))_10%)] hover:bg-muted hover:shadow-none " +
+          "dark:hover:border-[color-mix(in_hsl,hsl(var(--input))_88%,hsl(var(--accent))_12%)] " +
+          "focus:!border-[color:var(--accent-active)] focus-visible:!border-[color:var(--accent-active)] " +
+          "focus:hover:!border-[color:var(--accent-active)] focus-visible:hover:!border-[color:var(--accent-active)] " +
+          "dark:focus:hover:!border-[color:var(--accent-active)] dark:focus-visible:hover:!border-[color:var(--accent-active)] " +
+          "focus:!shadow-[0_0_0_2px_hsl(var(--accent)_/_var(--accent-ring-alpha))] focus-visible:!shadow-[0_0_0_2px_hsl(var(--accent)_/_var(--accent-ring-alpha))] " +
+          "focus:hover:!shadow-[0_0_0_2px_hsl(var(--accent)_/_var(--accent-ring-alpha))] focus-visible:hover:!shadow-[0_0_0_2px_hsl(var(--accent)_/_var(--accent-ring-alpha))] " +
+          "dark:focus:!shadow-[0_0_0_2px_hsl(var(--accent)_/_var(--accent-ring-alpha))] dark:focus-visible:!shadow-[0_0_0_2px_hsl(var(--accent)_/_var(--accent-ring-alpha))] " +
+          "dark:focus:hover:!shadow-[0_0_0_2px_hsl(var(--accent)_/_var(--accent-ring-alpha))] dark:focus-visible:hover:!shadow-[0_0_0_2px_hsl(var(--accent)_/_var(--accent-ring-alpha))] " +
+          "data-[state=open]:outline-none data-[state=open]:!border-[color:var(--accent-active)] data-[state=open]:bg-muted data-[state=open]:text-foreground " +
+          "data-[state=open]:!shadow-[0_0_0_2px_hsl(var(--accent)_/_var(--accent-ring-alpha))] dark:data-[state=open]:!shadow-[0_0_0_2px_hsl(var(--accent)_/_var(--accent-ring-alpha))] " +
+          "data-[state=open]:hover:!border-[color:var(--accent-active)] dark:data-[state=open]:hover:!border-[color:var(--accent-active)] " +
+          "data-[state=open]:hover:!shadow-[0_0_0_2px_hsl(var(--accent)_/_var(--accent-ring-alpha))] dark:data-[state=open]:hover:!shadow-[0_0_0_2px_hsl(var(--accent)_/_var(--accent-ring-alpha))] " +
           "active:bg-[color-mix(in_hsl,hsl(var(--secondary))_97%,hsl(var(--foreground))_3%)] dark:active:bg-[color-mix(in_hsl,hsl(var(--secondary))_97%,hsl(var(--foreground))_3%)]",
         secondary:
           "bg-secondary text-secondary-foreground hover:bg-[color-mix(in_hsl,hsl(var(--secondary))_97%,hsl(var(--foreground))_3%)] dark:hover:bg-[color-mix(in_hsl,hsl(var(--secondary))_97%,hsl(var(--foreground))_3%)] active:bg-secondary active:text-secondary-foreground",

@@ -270,7 +270,7 @@ function FolderRowSurface({
           "flex h-full min-h-[56px] items-center gap-0 rounded-xl border border-border bg-background pl-0 pr-4",
           "transition-[color,box-shadow,border-color]",
           isEditing &&
-            "focus-within:border-accent focus-within:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)] dark:focus-within:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]",
+            "focus-within:border-[color:var(--accent-active)] focus-within:shadow-[0_0_0_2px_hsl(var(--accent)_/_var(--accent-ring-alpha))] dark:focus-within:shadow-[0_0_0_2px_hsl(var(--accent)_/_var(--accent-ring-alpha))]",
           className,
         )}
       >
@@ -661,7 +661,7 @@ export default function FoldersSettingsPopup({ t }: FoldersSettingsPopupProps) {
           type="button"
           variant="secondary"
           className={cn(
-            "h-9 w-full rounded-lg bg-slate-100 font-medium text-foreground shadow-none dark:bg-muted",
+            "h-9 w-full rounded-lg bg-muted font-medium text-foreground shadow-none dark:bg-muted",
             mutedSurfaceHoverBgClassName,
           )}
           onClick={handleAddFolder}

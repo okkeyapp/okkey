@@ -60,8 +60,8 @@ export default function VaultListRow({
     onClick && "cursor-pointer hover:bg-secondary",
     focused && [
       "z-10 bg-secondary",
-      "!border-accent",
-      "shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]",
+      "!border-[color:var(--accent-active)]",
+      "shadow-[0_0_0_2px_hsl(var(--accent)_/_var(--accent-ring-alpha))]",
     ],
     className,
   );

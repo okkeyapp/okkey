@@ -9,7 +9,7 @@ type NewItemTagsSectionProps = {
 };
 
 const tagPillClassName = cn(
-  "inline-flex h-[26px] shrink-0 items-center gap-1.5 rounded-full bg-slate-100 px-2 text-sm text-foreground",
+  "inline-flex h-[26px] shrink-0 items-center gap-1.5 rounded-full bg-muted px-2 text-sm text-foreground",
   "dark:bg-muted",
 );
 
@@ -183,7 +183,7 @@ export default function NewItemTagsSection({ t, tags, onTagsChange }: NewItemTag
           type="button"
           aria-label={t("web.newItemPopup.addTagAria")}
           className={cn(
-            "inline-flex size-[26px] shrink-0 items-center justify-center rounded-full bg-slate-100 text-foreground dark:bg-muted",
+            "inline-flex size-[26px] shrink-0 items-center justify-center rounded-full bg-muted text-foreground dark:bg-muted",
             mutedSurfaceHoverBgClassName,
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
           )}

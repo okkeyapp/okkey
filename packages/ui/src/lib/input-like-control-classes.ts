@@ -10,20 +10,73 @@ import { cn } from "./utils.js";
 /** Typography for editable form controls — ≥16px below `md` to avoid iOS focus zoom. */
 export const formControlTextClassName = "text-base md:text-sm";
 
+/** Focus / focus-within chrome — `!` so plain `hover:` cannot override while focused. */
+const inputLikeFocusBorderClassName =
+  "focus:!border-[color:var(--accent-active)] focus-visible:!border-[color:var(--accent-active)] " +
+  "focus-within:!border-[color:var(--accent-active)] " +
+  "focus:hover:!border-[color:var(--accent-active)] focus-visible:hover:!border-[color:var(--accent-active)] " +
+  "focus-within:hover:!border-[color:var(--accent-active)] " +
+  "dark:focus:hover:!border-[color:var(--accent-active)] dark:focus-visible:hover:!border-[color:var(--accent-active)] " +
+  "dark:focus-within:hover:!border-[color:var(--accent-active)]";
+
+const inputLikeFocusRingClassName =
+  "focus:!shadow-[0_0_0_2px_hsl(var(--accent)_/_var(--accent-ring-alpha))] " +
+  "focus-visible:!shadow-[0_0_0_2px_hsl(var(--accent)_/_var(--accent-ring-alpha))] " +
+  "focus-within:!shadow-[0_0_0_2px_hsl(var(--accent)_/_var(--accent-ring-alpha))] " +
+  "focus:hover:!shadow-[0_0_0_2px_hsl(var(--accent)_/_var(--accent-ring-alpha))] " +
+  "focus-visible:hover:!shadow-[0_0_0_2px_hsl(var(--accent)_/_var(--accent-ring-alpha))] " +
+  "focus-within:hover:!shadow-[0_0_0_2px_hsl(var(--accent)_/_var(--accent-ring-alpha))] " +
+  "dark:focus:!shadow-[0_0_0_2px_hsl(var(--accent)_/_var(--accent-ring-alpha))] " +
+  "dark:focus-visible:!shadow-[0_0_0_2px_hsl(var(--accent)_/_var(--accent-ring-alpha))] " +
+  "dark:focus-within:!shadow-[0_0_0_2px_hsl(var(--accent)_/_var(--accent-ring-alpha))] " +
+  "dark:focus:hover:!shadow-[0_0_0_2px_hsl(var(--accent)_/_var(--accent-ring-alpha))] " +
+  "dark:focus-visible:hover:!shadow-[0_0_0_2px_hsl(var(--accent)_/_var(--accent-ring-alpha))] " +
+  "dark:focus-within:hover:!shadow-[0_0_0_2px_hsl(var(--accent)_/_var(--accent-ring-alpha))]";
+
 export const inputLikeControlClassName =
   `h-9 w-full rounded-md border border-input bg-background px-3 ${formControlTextClassName} text-foreground transition-[color,box-shadow,border-color] ` +
-  "shadow-[0_1px_2px_rgba(0,0,0,0.05)] dark:shadow-[0_1px_2px_rgba(255,255,255,0.05)] " +
+  "shadow-[0_1px_2px_hsl(var(--shadow)/0.05)] dark:shadow-[0_1px_2px_hsl(var(--shadow)/0.05)] " +
   "placeholder:text-muted-foreground " +
-  "hover:border-[color-mix(in_hsl,hsl(var(--input))_82%,hsl(var(--accent))_18%)] hover:shadow-none " +
-  "dark:hover:border-[color-mix(in_hsl,hsl(var(--input))_76%,hsl(var(--accent))_24%)] " +
-  "focus:bg-background focus-visible:bg-background active:bg-background " +
-  "focus:outline-none focus:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)] focus-visible:outline-none focus-visible:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)] " +
-  "dark:focus:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)] dark:focus-visible:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)] " +
-  "focus:hover:border-accent focus-visible:hover:border-accent dark:focus:hover:border-accent dark:focus-visible:hover:border-accent " +
-  "focus:hover:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)] focus-visible:hover:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)] " +
-  "dark:focus:hover:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)] dark:focus-visible:hover:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)] " +
-  "focus:border-accent focus-visible:border-accent " +
+  "hover:border-[color-mix(in_hsl,hsl(var(--input))_90%,hsl(var(--accent))_10%)] hover:shadow-none " +
+  "dark:hover:border-[color-mix(in_hsl,hsl(var(--input))_88%,hsl(var(--accent))_12%)] " +
+  "focus:bg-background focus-visible:bg-background focus-within:bg-background active:bg-background " +
+  "focus:outline-none focus-visible:outline-none " +
+  `${inputLikeFocusBorderClassName} ` +
+  `${inputLikeFocusRingClassName} ` +
   "disabled:cursor-not-allowed disabled:opacity-50";
+
+/**
+ * Segmented control / tab trigger (generator, import, capsules, …).
+ * Dark active: no elevation shadow (invisible on charcoal), `--accent-active` border, no hover shift.
+ */
+export function segmentedControlTabClassName(active: boolean): string {
+  return cn(
+    "relative min-w-0 shrink gap-2 overflow-hidden border",
+    active
+      ? cn(
+          "z-10",
+          "!bg-background hover:!bg-background active:!bg-background",
+          "!border-input hover:!border-input focus:!border-input focus-visible:!border-input",
+          "focus:hover:!border-input focus-visible:hover:!border-input",
+          "!shadow-[0_1px_2px_hsl(var(--shadow)/0.05)] hover:!shadow-[0_1px_2px_hsl(var(--shadow)/0.05)]",
+          "focus:!shadow-[0_1px_2px_hsl(var(--shadow)/0.05)] focus-visible:!shadow-[0_1px_2px_hsl(var(--shadow)/0.05)]",
+          "focus:hover:!shadow-[0_1px_2px_hsl(var(--shadow)/0.05)] focus-visible:hover:!shadow-[0_1px_2px_hsl(var(--shadow)/0.05)]",
+          "dark:!border-[color:var(--accent-active)] dark:hover:!border-[color:var(--accent-active)]",
+          "dark:focus:!border-[color:var(--accent-active)] dark:focus-visible:!border-[color:var(--accent-active)]",
+          "dark:focus:hover:!border-[color:var(--accent-active)] dark:focus-visible:hover:!border-[color:var(--accent-active)]",
+          "dark:!shadow-none dark:hover:!shadow-none dark:focus:!shadow-none dark:focus-visible:!shadow-none",
+          "dark:focus:hover:!shadow-none dark:focus-visible:hover:!shadow-none",
+        )
+      : cn(
+          "z-0 border-transparent shadow-none",
+          "hover:border-transparent hover:bg-foreground/5",
+          "focus:shadow-none focus-visible:shadow-none",
+          "dark:focus:shadow-none dark:focus-visible:shadow-none",
+          "focus:bg-foreground/10 focus-visible:bg-foreground/10",
+          "active:bg-foreground/10",
+        ),
+  );
+}
 
 /** Border and focus ring on KeyField / KeySection title row — matches {@link inputLikeControlClassName}. */
 export const keyFormFieldSurfaceTransitionClassName =
@@ -31,15 +84,18 @@ export const keyFormFieldSurfaceTransitionClassName =
 
 /** Accent focus ring for a KeyField / KeySection surface (use with focus-within: or state). */
 export const keyFormFieldSurfaceFocusRingClassName =
-  "border-x-accent !border-y-accent shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]";
+  "border-x-[color:var(--accent-active)] !border-y-[color:var(--accent-active)] shadow-[0_0_0_2px_hsl(var(--accent)_/_var(--accent-ring-alpha))]";
 
 /** Destructive validation ring for a KeyField surface. */
 export const keyFormFieldSurfaceErrorRingClassName =
   "border-x-destructive !border-y-destructive focus-within:!border-x-destructive focus-within:!border-y-destructive focus-within:!border-t-destructive focus-within:!border-b-destructive shadow-[0_0_0_2px_hsl(var(--destructive)_/_0.4)] focus-within:shadow-[0_0_0_2px_hsl(var(--destructive)_/_0.4)]";
 
-/** Opaque light hover — visual match for `slate-200/90` over `--secondary`. */
+/**
+ * Opaque light hover — one step past `--secondary` using zinc-neutral `--border`
+ * (not hardcoded slate `#e2e8f0`, which stayed blue regardless of accent).
+ */
 export const mutedSurfaceHoverBgLightClassName =
-  "color-mix(in_srgb,#e2e8f0_90%,hsl(var(--secondary))_10%)";
+  "color-mix(in_srgb,hsl(var(--border))_90%,hsl(var(--secondary))_10%)";
 
 /** Opaque dark hover — visual match for `muted/80` over `--secondary`. */
 export const mutedSurfaceHoverBgDarkClassName =
@@ -51,37 +107,37 @@ export const mutedSurfaceOpenBgDarkClassName =
 
 /** Hover background for tags, filters, and secondary list/key-form surfaces. */
 export const mutedSurfaceHoverBgClassName =
-  "hover:bg-[color-mix(in_srgb,#e2e8f0_90%,hsl(var(--secondary))_10%)] dark:hover:bg-[color-mix(in_srgb,hsl(var(--muted))_80%,hsl(var(--secondary))_20%)]";
+  "hover:bg-[color-mix(in_srgb,hsl(var(--border))_90%,hsl(var(--secondary))_10%)] dark:hover:bg-[color-mix(in_srgb,hsl(var(--muted))_80%,hsl(var(--secondary))_20%)]";
 
 /** Active/pressed background matching {@link mutedSurfaceHoverBgClassName}. */
 export const mutedSurfaceActiveBgClassName =
-  "bg-[color-mix(in_srgb,#e2e8f0_90%,hsl(var(--secondary))_10%)] dark:bg-[color-mix(in_srgb,hsl(var(--muted))_80%,hsl(var(--secondary))_20%)]";
+  "bg-[color-mix(in_srgb,hsl(var(--border))_90%,hsl(var(--secondary))_10%)] dark:bg-[color-mix(in_srgb,hsl(var(--muted))_80%,hsl(var(--secondary))_20%)]";
 
 /** {@link mutedSurfaceHoverBgClassName} with `!` to override component variants (e.g. ghost Button). */
 export const mutedSurfaceHoverBgImportantClassName =
-  "hover:!bg-[color-mix(in_srgb,#e2e8f0_90%,hsl(var(--secondary))_10%)] dark:hover:!bg-[color-mix(in_srgb,hsl(var(--muted))_80%,hsl(var(--secondary))_20%)]";
+  "hover:!bg-[color-mix(in_srgb,hsl(var(--border))_90%,hsl(var(--secondary))_10%)] dark:hover:!bg-[color-mix(in_srgb,hsl(var(--muted))_80%,hsl(var(--secondary))_20%)]";
 
 /** {@link mutedSurfaceActiveBgClassName} with `!` to override component variants. */
 export const mutedSurfaceActiveBgImportantClassName =
-  "!bg-[color-mix(in_srgb,#e2e8f0_90%,hsl(var(--secondary))_10%)] dark:!bg-[color-mix(in_srgb,hsl(var(--muted))_80%,hsl(var(--secondary))_20%)]";
+  "!bg-[color-mix(in_srgb,hsl(var(--border))_90%,hsl(var(--secondary))_10%)] dark:!bg-[color-mix(in_srgb,hsl(var(--muted))_80%,hsl(var(--secondary))_20%)]";
 
 /** Open menu/trigger background (dark uses 90% muted blend). */
 export const mutedSurfaceOpenBgClassName =
-  "data-[state=open]:bg-[color-mix(in_srgb,#e2e8f0_90%,hsl(var(--secondary))_10%)] dark:data-[state=open]:bg-[color-mix(in_srgb,hsl(var(--muted))_90%,hsl(var(--secondary))_10%)]";
+  "data-[state=open]:bg-[color-mix(in_srgb,hsl(var(--border))_90%,hsl(var(--secondary))_10%)] dark:data-[state=open]:bg-[color-mix(in_srgb,hsl(var(--muted))_90%,hsl(var(--secondary))_10%)]";
 
 /** {@link mutedSurfaceOpenBgClassName} with `!` to override component variants. */
 export const mutedSurfaceOpenBgImportantClassName =
-  "data-[state=open]:!bg-[color-mix(in_srgb,#e2e8f0_90%,hsl(var(--secondary))_10%)] dark:data-[state=open]:!bg-[color-mix(in_srgb,hsl(var(--muted))_90%,hsl(var(--secondary))_10%)]";
+  "data-[state=open]:!bg-[color-mix(in_srgb,hsl(var(--border))_90%,hsl(var(--secondary))_10%)] dark:data-[state=open]:!bg-[color-mix(in_srgb,hsl(var(--muted))_90%,hsl(var(--secondary))_10%)]";
 
 /** Divider on additional (gray) KeyForm sections — one step lighter than `--secondary`. */
 export const keyFormAdditionalDividerBorderYClassName =
-  "border-y-[color-mix(in_hsl,hsl(var(--secondary))_94%,hsl(var(--foreground))_6%)] dark:border-y-[color-mix(in_hsl,hsl(var(--secondary))_92%,hsl(var(--foreground))_8%)] focus-within:!border-y-accent";
+  "border-y-[color-mix(in_hsl,hsl(var(--secondary))_94%,hsl(var(--foreground))_6%)] dark:border-y-[color-mix(in_hsl,hsl(var(--secondary))_92%,hsl(var(--foreground))_8%)] focus-within:!border-y-[color:var(--accent-active)]";
 
 export const keyFormAdditionalDividerBorderBClassName =
-  "border-b-[color-mix(in_hsl,hsl(var(--secondary))_94%,hsl(var(--foreground))_6%)] dark:border-b-[color-mix(in_hsl,hsl(var(--secondary))_92%,hsl(var(--foreground))_8%)] focus-within:!border-b-accent";
+  "border-b-[color-mix(in_hsl,hsl(var(--secondary))_94%,hsl(var(--foreground))_6%)] dark:border-b-[color-mix(in_hsl,hsl(var(--secondary))_92%,hsl(var(--foreground))_8%)] focus-within:!border-b-[color:var(--accent-active)]";
 
 export const keyFormAdditionalDividerBorderTClassName =
-  "border-t-[color-mix(in_hsl,hsl(var(--secondary))_94%,hsl(var(--foreground))_6%)] dark:border-t-[color-mix(in_hsl,hsl(var(--secondary))_92%,hsl(var(--foreground))_8%)] focus-within:!border-t-accent focus-visible:!border-t-accent";
+  "border-t-[color-mix(in_hsl,hsl(var(--secondary))_94%,hsl(var(--foreground))_6%)] dark:border-t-[color-mix(in_hsl,hsl(var(--secondary))_92%,hsl(var(--foreground))_8%)] focus-within:!border-t-[color:var(--accent-active)] focus-visible:!border-t-[color:var(--accent-active)]";
 
 /** Borders between fields in additional sections — hides outer top/bottom on first/last row. */
 export function keyFormAdditionalFieldBorderClassName(options: {

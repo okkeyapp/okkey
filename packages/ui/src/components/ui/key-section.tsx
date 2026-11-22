@@ -173,8 +173,8 @@ export const KeySection = React.forwardRef<HTMLElement, KeySectionProps>(
                 variant === "additional" && keyFormAdditionalDividerBorderBClassName,
                 keyFormFieldSurfaceTransitionClassName,
                 "focus-within:relative focus-within:z-10",
-                "focus-within:border-x-accent focus-within:!border-y-accent",
-                "focus-within:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]",
+                "focus-within:border-x-[color:var(--accent-active)] focus-within:!border-y-[color:var(--accent-active)]",
+                "focus-within:shadow-[0_0_0_2px_hsl(var(--accent)_/_var(--accent-ring-alpha))]",
               )}
             >
               {canReorder ? (
@@ -264,7 +264,7 @@ export const KeySection = React.forwardRef<HTMLElement, KeySectionProps>(
                 variant === "primary" && isFieldDragging && "!rounded-none !border-x-transparent !border-b-transparent",
                 variant === "additional" && cn("border-x-transparent border-b-transparent", keyFormAdditionalDividerBorderTClassName),
                 "hover:bg-[color-mix(in_hsl,hsl(var(--secondary))_94%,hsl(var(--foreground))_6%)]",
-                "focus:border-accent focus-visible:border-accent",
+                "focus:border-[color:var(--accent-active)] focus-visible:border-[color:var(--accent-active)]",
               )}
               onClick={() => handleAddField(singleAddFieldType)}
             >
@@ -284,7 +284,7 @@ export const KeySection = React.forwardRef<HTMLElement, KeySectionProps>(
                     variant === "primary" && isFieldDragging && "!rounded-none !border-x-transparent !border-b-transparent",
                     variant === "additional" && cn("border-x-transparent border-b-transparent", keyFormAdditionalDividerBorderTClassName),
                     "hover:bg-[color-mix(in_hsl,hsl(var(--secondary))_94%,hsl(var(--foreground))_6%)]",
-                    "focus:border-accent focus-visible:border-accent",
+                    "focus:border-[color:var(--accent-active)] focus-visible:border-[color:var(--accent-active)]",
                   )}
                 >
                   <PlusIcon className="size-4" />

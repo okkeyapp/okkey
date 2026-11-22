@@ -47,7 +47,7 @@ import SetupPinPopup from "./SetupPinPopup";
 import { SettingsRow } from "./SettingsRows";
 
 const ACCENT_OPTIONS = [
-  { id: "a1", light: "hsl(215 5% 9%)", dark: "hsl(215 4% 98%)" },
+  { id: "a1", light: "hsl(0 0% 9%)", dark: "hsl(0 0% 98%)" },
   { id: "a2", light: "hsl(217.2 93.2% 59.8%)", dark: "hsl(217.2 93.2% 59.8%)" },
   { id: "a3", light: "hsl(188.7 96.2% 42.7%)", dark: "hsl(188.7 96.2% 42.7%)" },
   { id: "a4", light: "hsl(159.8 83.5% 41%)", dark: "hsl(159.8 83.5% 41%)" },
@@ -354,8 +354,8 @@ export default function SettingsDeviceSettingsContent({ t, page }: SettingsDevic
                       className={cn(
                         "relative flex h-[70px] w-full max-w-[100px] overflow-hidden rounded-[10px] border border-border bg-background",
                         "items-center justify-center transition-[border-color,box-shadow]",
-                        "group-focus-visible:border-accent group-focus-visible:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]",
-                        active && "border-accent shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]",
+                        "group-focus-visible:border-[color:var(--accent-active)] group-focus-visible:shadow-[0_0_0_2px_hsl(var(--accent)_/_var(--accent-ring-alpha))]",
+                        active && "border-[color:var(--accent-active)] shadow-[0_0_0_2px_hsl(var(--accent)_/_var(--accent-ring-alpha))]",
                       )}
                     >
                       <span className="absolute inset-0 rounded-[10px]" style={{ backgroundImage: option.gradient }} aria-hidden />
@@ -386,7 +386,7 @@ export default function SettingsDeviceSettingsContent({ t, page }: SettingsDevic
                     variant="ghost"
                     className={cn(
                       "group size-9 rounded-full p-0 shadow-none hover:shadow-none",
-                      "focus-visible:shadow-[0_0_0_3px_hsl(var(--accent)_/_0.35)]",
+                      "focus-visible:shadow-[0_0_0_3px_hsl(var(--accent)_/_var(--accent-ring-alpha))]",
                       checkOnLightAccent ? "text-white dark:text-[#0A0A0A]" : "text-white",
                     )}
                     style={{ backgroundColor: color }}

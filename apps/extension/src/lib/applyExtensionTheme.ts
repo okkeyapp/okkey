@@ -1,8 +1,11 @@
 import {
+  applyAccentRing,
+  applyPageBackgroundGradients,
   applySemanticAccentTint,
   DEFAULT_ACCENT_ID,
   DEFAULT_THEME_PREFERENCE,
   normalizeThemePreference,
+  parseAccentTintEnabled,
   type ThemePreference,
 } from "@okkey/ui";
 
@@ -34,12 +37,14 @@ export async function applyExtensionStoredTheme(): Promise<ThemePreference> {
   const accentIds = new Set(["a1", "a2", "a3", "a4", "a5", "a6", "a7"]);
   const accentId =
     stored.accent && accentIds.has(stored.accent) ? stored.accent : DEFAULT_ACCENT_ID;
-  const tintEnabled = stored.accentTint === "1" || stored.accentTint === "true";
+  const tintEnabled = parseAccentTintEnabled(stored.accentTint);
 
   const root = document.documentElement;
   root.classList.toggle("dark", resolved === "dark");
   root.dataset.accent = accentId;
   root.dataset.themePreference = themePreference;
+  applyAccentRing(root, resolved, accentId);
+  applyPageBackgroundGradients(root, accentId, tintEnabled);
   applySemanticAccentTint(root, resolved, accentId, tintEnabled);
 
   // Mirror into popup localStorage so shared helpers that still read it stay consistent.

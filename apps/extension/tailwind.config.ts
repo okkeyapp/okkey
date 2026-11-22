@@ -69,6 +69,14 @@ const config: Config = {
         md: "8px",
         sm: "6px",
       },
+      /** Soft elevation uses `--shadow` (gray + light accent), not pure black. */
+      boxShadow: {
+        sm: "0 1px 2px 0 hsl(var(--shadow) / 0.05)",
+        DEFAULT: "0 1px 3px 0 hsl(var(--shadow) / 0.1), 0 1px 2px -1px hsl(var(--shadow) / 0.1)",
+        md: "0 4px 6px -1px hsl(var(--shadow) / 0.1), 0 2px 4px -2px hsl(var(--shadow) / 0.1)",
+        lg: "0 10px 15px -3px hsl(var(--shadow) / 0.1), 0 4px 6px -4px hsl(var(--shadow) / 0.1)",
+        xl: "0 20px 25px -5px hsl(var(--shadow) / 0.1), 0 8px 10px -6px hsl(var(--shadow) / 0.1)",
+      },
       /**
        * Stacking scale — keep in sync with `packages/ui/src/lib/z-index.ts`
        * and CSS vars in `apps/extension/src/assets/extension.css`.

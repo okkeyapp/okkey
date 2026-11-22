@@ -27,7 +27,7 @@ import SidebarTipsBanner from "../../tips/SidebarTipsBanner";
 
 const mainPanelChromeClassName = cn(
   "flex min-h-0 min-w-0 flex-col rounded-xl bg-background text-foreground",
-  "shadow-[0_1px_3px_rgba(0,0,0,0.1)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.35)]",
+  "shadow-[0_1px_3px_hsl(var(--shadow)/0.1)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.35)]",
 );
 
 const itemsMobilePanelChromeClassName = "max-md:rounded-none max-md:shadow-none";

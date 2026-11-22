@@ -263,12 +263,15 @@ describe("App", () => {
     delete document.documentElement.dataset.accentTint;
     document.documentElement.style.removeProperty("--background");
     document.documentElement.style.removeProperty("--card");
+    document.documentElement.style.removeProperty("--popover");
     document.documentElement.style.removeProperty("--secondary");
     document.documentElement.style.removeProperty("--muted");
     document.documentElement.style.removeProperty("--muted-foreground");
     document.documentElement.style.removeProperty("--border");
     document.documentElement.style.removeProperty("--input");
     document.documentElement.style.removeProperty("--foreground");
+    document.documentElement.style.removeProperty("--sidebar-background");
+    document.documentElement.style.removeProperty("--sidebar-accent");
   }
 
   it("applies stored theme and accent", () => {
@@ -332,6 +335,7 @@ describe("App", () => {
   it("accent tint off keeps semantic tokens from stylesheet only", () => {
     mockLocalStorage({
       "okkey.accent": "a5",
+      "okkey.accentTint": "0",
     });
     resetDocTheme();
 
@@ -345,10 +349,9 @@ describe("App", () => {
     expect(document.documentElement.style.getPropertyValue("--foreground")).toBe("");
   });
 
-  it("accent tint on applies inline mixes for semantic tokens", () => {
+  it("accent tint defaults on and applies inline mixes when unset", () => {
     mockLocalStorage({
       "okkey.accent": "a5",
-      "okkey.accentTint": "1",
     });
     resetDocTheme();
 

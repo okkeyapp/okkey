@@ -1199,7 +1199,7 @@ export function PopupApp() {
                     className={cn(
                       "rounded-md px-3 py-2 text-sm font-medium transition-colors",
                       hostMode === "saas"
-                        ? "bg-background text-foreground shadow-sm"
+                        ? "bg-background text-foreground shadow-sm dark:border dark:border-[color:var(--accent-active)] dark:shadow-none dark:hover:bg-background"
                         : "text-muted-foreground hover:text-foreground",
                     )}
                     onClick={() => {
@@ -1216,7 +1216,7 @@ export function PopupApp() {
                     className={cn(
                       "rounded-md px-3 py-2 text-sm font-medium transition-colors",
                       hostMode === "self-hosted"
-                        ? "bg-background text-foreground shadow-sm"
+                        ? "bg-background text-foreground shadow-sm dark:border dark:border-[color:var(--accent-active)] dark:shadow-none dark:hover:bg-background"
                         : "text-muted-foreground hover:text-foreground",
                     )}
                     onClick={() => {

@@ -197,6 +197,7 @@ export {
   keyFormAdditionalFieldBorderClassName,
   formControlTextClassName,
   inputLikeControlClassName,
+  segmentedControlTabClassName,
   mutedSurfaceActiveBgClassName,
   mutedSurfaceActiveBgImportantClassName,
   mutedSurfaceHoverBgClassName,
@@ -307,9 +308,11 @@ export {
 } from "./components/ui/workspace-search-field.js";
 export {
   ACCENT_TINT_STORAGE_KEY,
+  applyAccentRing,
   applySemanticAccentTint,
   accentPrimaryHslTriplet,
   clearSemanticAccentTintInline,
+  parseAccentTintEnabled,
   readAccentTintEnabled,
   writeAccentTintEnabled,
 } from "./theme/accent-semantic-tint.js";
@@ -405,8 +408,11 @@ export {
   type OkkeyWorkspaceNavLinkComponent,
 } from "./components/ui/okkey-sidebar-menus.js";
 export {
+  applyPageBackgroundGradients,
+  pageBackgroundGradient,
   PAGE_BACKGROUND_GRADIENT_DARK,
   PAGE_BACKGROUND_GRADIENT_LIGHT,
+  type PageBackgroundAccentId,
 } from "./lib/page-background-gradients.js";
 export { BodyGradient } from "./components/auth/body-gradient.js";
 export { OkkeyLogoMark } from "./components/auth/okkey-logo-mark.js";
