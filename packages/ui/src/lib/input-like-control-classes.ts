@@ -37,9 +37,12 @@ export const keyFormFieldSurfaceFocusRingClassName =
 export const keyFormFieldSurfaceErrorRingClassName =
   "border-x-destructive !border-y-destructive focus-within:!border-x-destructive focus-within:!border-y-destructive focus-within:!border-t-destructive focus-within:!border-b-destructive shadow-[0_0_0_2px_hsl(var(--destructive)_/_0.4)] focus-within:shadow-[0_0_0_2px_hsl(var(--destructive)_/_0.4)]";
 
-/** Opaque light hover — visual match for `slate-200/90` over `--secondary`. */
+/**
+ * Opaque light hover — one step past `--secondary` using zinc-neutral `--border`
+ * (not hardcoded slate `#e2e8f0`, which stayed blue regardless of accent).
+ */
 export const mutedSurfaceHoverBgLightClassName =
-  "color-mix(in_srgb,#e2e8f0_90%,hsl(var(--secondary))_10%)";
+  "color-mix(in_srgb,hsl(var(--border))_90%,hsl(var(--secondary))_10%)";
 
 /** Opaque dark hover — visual match for `muted/80` over `--secondary`. */
 export const mutedSurfaceHoverBgDarkClassName =
@@ -51,27 +54,27 @@ export const mutedSurfaceOpenBgDarkClassName =
 
 /** Hover background for tags, filters, and secondary list/key-form surfaces. */
 export const mutedSurfaceHoverBgClassName =
-  "hover:bg-[color-mix(in_srgb,#e2e8f0_90%,hsl(var(--secondary))_10%)] dark:hover:bg-[color-mix(in_srgb,hsl(var(--muted))_80%,hsl(var(--secondary))_20%)]";
+  "hover:bg-[color-mix(in_srgb,hsl(var(--border))_90%,hsl(var(--secondary))_10%)] dark:hover:bg-[color-mix(in_srgb,hsl(var(--muted))_80%,hsl(var(--secondary))_20%)]";
 
 /** Active/pressed background matching {@link mutedSurfaceHoverBgClassName}. */
 export const mutedSurfaceActiveBgClassName =
-  "bg-[color-mix(in_srgb,#e2e8f0_90%,hsl(var(--secondary))_10%)] dark:bg-[color-mix(in_srgb,hsl(var(--muted))_80%,hsl(var(--secondary))_20%)]";
+  "bg-[color-mix(in_srgb,hsl(var(--border))_90%,hsl(var(--secondary))_10%)] dark:bg-[color-mix(in_srgb,hsl(var(--muted))_80%,hsl(var(--secondary))_20%)]";
 
 /** {@link mutedSurfaceHoverBgClassName} with `!` to override component variants (e.g. ghost Button). */
 export const mutedSurfaceHoverBgImportantClassName =
-  "hover:!bg-[color-mix(in_srgb,#e2e8f0_90%,hsl(var(--secondary))_10%)] dark:hover:!bg-[color-mix(in_srgb,hsl(var(--muted))_80%,hsl(var(--secondary))_20%)]";
+  "hover:!bg-[color-mix(in_srgb,hsl(var(--border))_90%,hsl(var(--secondary))_10%)] dark:hover:!bg-[color-mix(in_srgb,hsl(var(--muted))_80%,hsl(var(--secondary))_20%)]";
 
 /** {@link mutedSurfaceActiveBgClassName} with `!` to override component variants. */
 export const mutedSurfaceActiveBgImportantClassName =
-  "!bg-[color-mix(in_srgb,#e2e8f0_90%,hsl(var(--secondary))_10%)] dark:!bg-[color-mix(in_srgb,hsl(var(--muted))_80%,hsl(var(--secondary))_20%)]";
+  "!bg-[color-mix(in_srgb,hsl(var(--border))_90%,hsl(var(--secondary))_10%)] dark:!bg-[color-mix(in_srgb,hsl(var(--muted))_80%,hsl(var(--secondary))_20%)]";
 
 /** Open menu/trigger background (dark uses 90% muted blend). */
 export const mutedSurfaceOpenBgClassName =
-  "data-[state=open]:bg-[color-mix(in_srgb,#e2e8f0_90%,hsl(var(--secondary))_10%)] dark:data-[state=open]:bg-[color-mix(in_srgb,hsl(var(--muted))_90%,hsl(var(--secondary))_10%)]";
+  "data-[state=open]:bg-[color-mix(in_srgb,hsl(var(--border))_90%,hsl(var(--secondary))_10%)] dark:data-[state=open]:bg-[color-mix(in_srgb,hsl(var(--muted))_90%,hsl(var(--secondary))_10%)]";
 
 /** {@link mutedSurfaceOpenBgClassName} with `!` to override component variants. */
 export const mutedSurfaceOpenBgImportantClassName =
-  "data-[state=open]:!bg-[color-mix(in_srgb,#e2e8f0_90%,hsl(var(--secondary))_10%)] dark:data-[state=open]:!bg-[color-mix(in_srgb,hsl(var(--muted))_90%,hsl(var(--secondary))_10%)]";
+  "data-[state=open]:!bg-[color-mix(in_srgb,hsl(var(--border))_90%,hsl(var(--secondary))_10%)] dark:data-[state=open]:!bg-[color-mix(in_srgb,hsl(var(--muted))_90%,hsl(var(--secondary))_10%)]";
 
 /** Divider on additional (gray) KeyForm sections — one step lighter than `--secondary`. */
 export const keyFormAdditionalDividerBorderYClassName =

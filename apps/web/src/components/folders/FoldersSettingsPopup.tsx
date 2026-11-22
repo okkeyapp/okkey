@@ -661,7 +661,7 @@ export default function FoldersSettingsPopup({ t }: FoldersSettingsPopupProps) {
           type="button"
           variant="secondary"
           className={cn(
-            "h-9 w-full rounded-lg bg-slate-100 font-medium text-foreground shadow-none dark:bg-muted",
+            "h-9 w-full rounded-lg bg-muted font-medium text-foreground shadow-none dark:bg-muted",
             mutedSurfaceHoverBgClassName,
           )}
           onClick={handleAddFolder}

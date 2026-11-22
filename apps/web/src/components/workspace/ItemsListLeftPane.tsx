@@ -1250,7 +1250,7 @@ export default function ItemsListLeftPane({
                 variant="ghost"
                 aria-label={t("web.items.list.sortAria")}
                 className={cn(
-                  "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border-0 bg-slate-100 p-0 text-foreground shadow-none dark:bg-muted",
+                  "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border-0 bg-muted p-0 text-foreground shadow-none dark:bg-muted",
                   mutedSurfaceHoverBgClassName,
                   "hover:text-foreground",
                   "focus-visible:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.35)]",
