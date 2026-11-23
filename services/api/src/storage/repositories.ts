@@ -3980,10 +3980,13 @@ export class EventsRepository {
     itemSoftDeleted?: boolean | null;
   }): Promise<EventRecord> {
     return this.db.transaction(async (tx) => {
-      const vaultRows = await tx.query<{ id: string; crypto_version: number }>(
-        "SELECT id, crypto_version FROM vaults WHERE id = $1 FOR UPDATE",
-        [input.vaultId],
-      );
+      const vaultRows = await tx.query<{
+        id: string;
+        crypto_version: number;
+        event_version: number;
+      }>("SELECT id, crypto_version, event_version FROM vaults WHERE id = $1 FOR UPDATE", [
+        input.vaultId,
+      ]);
       if (!vaultRows[0]) {
         throw new EntityNotFoundError("vault", input.vaultId);
       }
@@ -4019,11 +4022,7 @@ export class EventsRepository {
         }
       }
 
-      const versionRows = await tx.query<{ current_version: number }>(
-        "SELECT COALESCE(MAX(version), 0) AS current_version FROM events WHERE vault_id = $1",
-        [input.vaultId],
-      );
-      const currentVersion = Number(versionRows[0]?.current_version ?? 0);
+      const currentVersion = Number(vaultRows[0].event_version ?? 0);
       if (input.baseVersion !== currentVersion) {
         throw new VersionConflictError(input.baseVersion, currentVersion);
       }
@@ -4118,10 +4117,11 @@ export class EventsRepository {
         `
           UPDATE vaults
           SET crypto_version = GREATEST(crypto_version, $2),
+              event_version = $3,
               updated_at = now()
           WHERE id = $1
         `,
-        [input.vaultId, payloadSchemaVersion],
+        [input.vaultId, payloadSchemaVersion, nextVersion],
       );
 
       return mapEvent(rows[0]);
@@ -4160,20 +4160,17 @@ export class EventsRepository {
     }
 
     return this.db.transaction(async (tx) => {
-      const vaultRows = await tx.query<{ id: string; crypto_version: number }>(
-        "SELECT id, crypto_version FROM vaults WHERE id = $1 FOR UPDATE",
-        [vaultId],
-      );
+      const vaultRows = await tx.query<{
+        id: string;
+        crypto_version: number;
+        event_version: number;
+      }>("SELECT id, crypto_version, event_version FROM vaults WHERE id = $1 FOR UPDATE", [vaultId]);
       if (!vaultRows[0]) {
         throw new EntityNotFoundError("vault", vaultId);
       }
       let vaultCryptoVersion = vaultRows[0].crypto_version;
 
-      const versionRows = await tx.query<{ current_version: number }>(
-        "SELECT COALESCE(MAX(version), 0) AS current_version FROM events WHERE vault_id = $1",
-        [vaultId],
-      );
-      let currentVersion = Number(versionRows[0]?.current_version ?? 0);
+      let currentVersion = Number(vaultRows[0].event_version ?? 0);
       // A conflict rolls the whole batch back, so callers must rebase against the
       // tip that is actually committed. Using the in-transaction cursor would
       // advertise a version this batch inserted and then aborted.
@@ -4297,10 +4294,11 @@ export class EventsRepository {
           `
             UPDATE vaults
             SET crypto_version = GREATEST(crypto_version, $2),
+                event_version = $3,
                 updated_at = now()
             WHERE id = $1
           `,
-          [vaultId, maxPayloadSchemaWritten],
+          [vaultId, maxPayloadSchemaWritten, currentVersion],
         );
       }
 
@@ -4312,12 +4310,72 @@ export class EventsRepository {
     const rows = await this.db.query<{ id: string }>(
       `
         DELETE FROM events
-        WHERE vault_id = $1 AND referenced_item_id = $2::bigint
+        WHERE vault_id = $1
+          AND referenced_item_id = $2::bigint
+          AND event_type <> 'ITEM_PURGE'
         RETURNING id
       `,
       [vaultId, referencedItemId],
     );
     return rows.length;
+  }
+
+  /**
+   * Hard-purge item history while keeping ITEM_PURGE tombstones for sync.
+   * Never deletes `ITEM_PURGE` rows (including siblings from a raced duplicate).
+   */
+  async deleteByVaultAndReferencedItemIdExcept(
+    vaultId: string,
+    referencedItemId: string,
+    keepEventId: string,
+  ): Promise<number> {
+    const rows = await this.db.query<{ id: string }>(
+      `
+        DELETE FROM events
+        WHERE vault_id = $1
+          AND referenced_item_id = $2::bigint
+          AND id <> $3::bigint
+          AND event_type <> 'ITEM_PURGE'
+        RETURNING id
+      `,
+      [vaultId, referencedItemId, keepEventId],
+    );
+    return rows.length;
+  }
+
+  /** Earliest ITEM_PURGE tombstone for this vault + item id, if any. */
+  async findItemPurgeEvent(
+    vaultId: string,
+    referencedItemId: string,
+  ): Promise<EventRecord | null> {
+    const rows = await this.db.query<{
+      id: string;
+      vault_id: string;
+      actor_id: string | null;
+      event_type: string;
+      encrypted_payload: Buffer;
+      payload_schema_version: number;
+      idempotency_key: string | null;
+      client_created_at: string | null;
+      referenced_item_id: string | null;
+      item_soft_deleted: boolean | null;
+      version: number;
+      created_at: string;
+    }>(
+      `
+        SELECT id, vault_id, actor_id, event_type, encrypted_payload,
+               payload_schema_version, idempotency_key, client_created_at,
+               referenced_item_id::text AS referenced_item_id, item_soft_deleted, version, created_at
+        FROM events
+        WHERE vault_id = $1
+          AND referenced_item_id = $2::bigint
+          AND event_type = 'ITEM_PURGE'
+        ORDER BY version ASC
+        LIMIT 1
+      `,
+      [vaultId, referencedItemId],
+    );
+    return rows[0] ? mapEvent(rows[0]) : null;
   }
 
   /** True when the vault event log has referenced this client item id (create/update/delete). */

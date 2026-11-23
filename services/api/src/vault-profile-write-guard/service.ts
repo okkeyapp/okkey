@@ -70,7 +70,7 @@ export function resolveSyncWriteAction(input: {
   if (eventType === "ITEM_CREATE") {
     return "entries.post";
   }
-  if (eventType === "ITEM_DELETE") {
+  if (eventType === "ITEM_DELETE" || eventType === "ITEM_PURGE") {
     return "entries.delete";
   }
   if (eventType === "ITEM_UPDATE") {

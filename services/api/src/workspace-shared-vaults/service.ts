@@ -592,11 +592,11 @@ export class WorkspaceSharedVaultsService {
       [vaultId, vault.workspaceId],
     );
 
-    const versionRows = await this.db.query<{ current_version: number }>(
-      "SELECT COALESCE(MAX(version), 0) AS current_version FROM events WHERE vault_id = $1",
+    const versionRows = await this.db.query<{ event_version: number }>(
+      "SELECT event_version FROM vaults WHERE id = $1",
       [vaultId],
     );
-    const latestVersion = Number(versionRows[0]?.current_version ?? 0);
+    const latestVersion = Number(versionRows[0]?.event_version ?? 0);
 
     return {
       members: rows.map((row) => ({
@@ -1065,11 +1065,11 @@ export class WorkspaceSharedVaultsService {
       }
     }
 
-    const versionRows = await tx.query<{ current_version: number }>(
-      "SELECT COALESCE(MAX(version), 0) AS current_version FROM events WHERE vault_id = $1",
+    const vaultTip = await tx.query<{ event_version: number }>(
+      "SELECT event_version FROM vaults WHERE id = $1 FOR UPDATE",
       [vaultId],
     );
-    const currentVersion = versionRows[0]?.current_version ?? 0;
+    const currentVersion = Number(vaultTip[0]?.event_version ?? 0);
     if (input.baseVersion !== currentVersion) {
       throw new WorkspaceSharedVaultsServiceError(
         "VERSION_CONFLICT",
@@ -1097,6 +1097,15 @@ export class WorkspaceSharedVaultsService {
         input.clientCreatedAt ?? null,
         nextVersion,
       ],
+    );
+    await tx.query(
+      `
+        UPDATE vaults
+        SET event_version = $2,
+            updated_at = now()
+        WHERE id = $1
+      `,
+      [vaultId, nextVersion],
     );
   }
 }

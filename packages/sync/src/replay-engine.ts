@@ -11,6 +11,7 @@ type CoreEventType =
   | "ITEM_CREATE"
   | "ITEM_UPDATE"
   | "ITEM_DELETE"
+  | "ITEM_PURGE"
   | "VAULT_CREATE"
   | "VAULT_SHARE"
   | "VAULT_KEY_ROTATION"
@@ -27,6 +28,7 @@ const CORE_EVENT_TYPES = new Set<CoreEventType>([
   "ITEM_CREATE",
   "ITEM_UPDATE",
   "ITEM_DELETE",
+  "ITEM_PURGE",
   "VAULT_CREATE",
   "VAULT_SHARE",
   "VAULT_KEY_ROTATION",
@@ -407,6 +409,7 @@ export class SyncReplayEngine {
     this.registerHandler("ITEM_CREATE", itemHandler);
     this.registerHandler("ITEM_UPDATE", itemHandler);
     this.registerHandler("ITEM_DELETE", itemHandler);
+    this.registerHandler("ITEM_PURGE", itemHandler);
 
     this.registerHandler("VAULT_CREATE", async (state, event) => {
       state.vaultLifecycle.latestCreateVersion = event.version;

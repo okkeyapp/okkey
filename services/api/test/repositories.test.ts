@@ -993,8 +993,7 @@ test("SessionsRepository.bindDevice does not move a session already bound to ano
 
 test("EventsRepository.append increments version in transaction", async () => {
   const db = new FakeDb();
-  db.enqueueResult([{ id: "v1", crypto_version: 2 }]); // lock vault
-  db.enqueueResult([{ current_version: 4 }]); // get current version
+  db.enqueueResult([{ id: "v1", crypto_version: 2, event_version: 4 }]); // lock vault + tip
   db.enqueueResult([{ m: null }]); // MAX(payload_schema_version); null => no floor
   db.enqueueResult([
     {
@@ -1010,7 +1009,7 @@ test("EventsRepository.append increments version in transaction", async () => {
       created_at: "2026-01-01T00:00:00.000Z",
     },
   ]);
-  db.enqueueResult([]); // UPDATE vaults crypto_version
+  db.enqueueResult([]); // UPDATE vaults crypto_version + event_version
 
   const repo = new EventsRepository(db);
   const event = await repo.append({
@@ -1022,16 +1021,17 @@ test("EventsRepository.append increments version in transaction", async () => {
   });
 
   assert.equal(event.version, 5);
-  assert.equal(db.queries.length, 5);
+  assert.equal(db.queries.length, 4);
   assert.match(db.queries[0].sql, /FOR UPDATE/);
-  assert.match(db.queries[2].sql, /MAX\(payload_schema_version\)/);
-  assert.match(db.queries[4].sql, /UPDATE vaults/);
+  assert.match(db.queries[0].sql, /event_version/);
+  assert.match(db.queries[1].sql, /MAX\(payload_schema_version\)/);
+  assert.match(db.queries[3].sql, /UPDATE vaults/);
+  assert.match(db.queries[3].sql, /event_version/);
 });
 
 test("EventsRepository.appendBatch reports the committed tip when a later event conflicts", async () => {
   const db = new FakeDb();
-  db.enqueueResult([{ id: "v1", crypto_version: 2 }]); // lock vault
-  db.enqueueResult([{ current_version: 0 }]); // committed tip
+  db.enqueueResult([{ id: "v1", crypto_version: 2, event_version: 0 }]); // lock vault + tip
   db.enqueueResult([{ m: null }]); // MAX(payload_schema_version)
   db.enqueueResult([]); // idempotency miss for the first event
   db.enqueueResult([
@@ -1084,8 +1084,7 @@ test("EventsRepository.appendBatch reports the committed tip when a later event 
 
 test("EventsRepository.append throws VersionConflictError", async () => {
   const db = new FakeDb();
-  db.enqueueResult([{ id: "v1", crypto_version: 2 }]); // lock vault
-  db.enqueueResult([{ current_version: 7 }]); // current version
+  db.enqueueResult([{ id: "v1", crypto_version: 2, event_version: 7 }]); // lock vault + tip
 
   const repo = new EventsRepository(db);
 

@@ -2,6 +2,7 @@ import type { EncryptedBlobDto, ItemPlaintextV2, SyncAppendEventRequestDto } fro
 import {
   assertCryptoVersionNotBelowFloor,
   createItemDeleteTombstoneV2,
+  createItemPurgeTombstoneV2,
   ITEM_PLAINTEXT_SCHEMA_VERSION_LATEST,
 } from "@okkey/types";
 import { encryptVaultItemPayload } from "@okkey/crypto/vault-item";
@@ -116,7 +117,7 @@ export function buildItemSyncMetadataFromPlaintext(
   request: SyncAppendEventRequestDto,
   item: ItemPlaintextV2,
 ): SyncAppendEventRequestDto {
-  const itemEventTypes = new Set(["ITEM_CREATE", "ITEM_UPDATE", "ITEM_DELETE"]);
+  const itemEventTypes = new Set(["ITEM_CREATE", "ITEM_UPDATE", "ITEM_DELETE", "ITEM_PURGE"]);
   if (!itemEventTypes.has(request.eventType)) {
     return request;
   }
@@ -126,7 +127,9 @@ export function buildItemSyncMetadataFromPlaintext(
   > = {
     referencedItemId: item.itemId,
   };
-  if (item.deleted) {
+  if (request.eventType === "ITEM_PURGE") {
+    metadata.itemSoftDeleted = false;
+  } else if (item.deleted) {
     metadata.itemSoftDeleted = true;
     metadata.itemDeletedAtMs = item.deletedAtMs ?? item.updatedAtMs;
   } else if (request.eventType === "ITEM_UPDATE") {
@@ -167,6 +170,46 @@ export async function buildItemDeleteAppendRequest(
       referencedItemId: itemId,
       itemSoftDeleted: true,
       itemDeletedAtMs: deletedAtMs,
+      ...(idempotencyKey ? { idempotencyKey } : {}),
+      clientCreatedAt,
+    };
+  } finally {
+    wipeBytes(plaintext);
+    wipeBytes(encrypted);
+  }
+}
+
+/** Permanent delete of a soft-deleted item (Recently deleted → gone). */
+export async function buildItemPurgeAppendRequest(
+  vaultKey: Uint8Array,
+  vaultId: string,
+  itemId: string,
+  baseVersion: number,
+  idempotencyKey?: string,
+  clientCreatedAt?: string,
+  options?: ItemAppendBuildOptions,
+): Promise<SyncAppendEventRequestDto> {
+  assertCryptoVersionNotBelowFloor(
+    options?.establishedCryptoFloor ?? null,
+    ITEM_PLAINTEXT_SCHEMA_VERSION_LATEST,
+  );
+  const tombstone = createItemPurgeTombstoneV2(itemId, vaultId);
+  let plaintext: Uint8Array | undefined;
+  let encrypted: Uint8Array | undefined;
+  try {
+    plaintext = await encodeItemPlaintextUtf8(tombstone);
+    encrypted = await encryptVaultItemPayload(vaultKey, plaintext, 2, {
+      itemId,
+    });
+    return {
+      eventType: "ITEM_PURGE",
+      encryptedBlob: toEncryptedBlob(
+        uint8ArrayToStandardBase64(assertBytes(encrypted, "encrypted")),
+        ITEM_PLAINTEXT_SCHEMA_VERSION_LATEST,
+      ),
+      baseVersion,
+      referencedItemId: itemId,
+      itemSoftDeleted: false,
       ...(idempotencyKey ? { idempotencyKey } : {}),
       clientCreatedAt,
     };

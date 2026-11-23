@@ -16,3 +16,8 @@ export function createItemDeleteTombstoneV2(itemId: string, vaultId: string): It
     fields: [],
   };
 }
+
+/** Minimal encrypted tombstone for ITEM_PURGE (permanent delete from trash). */
+export function createItemPurgeTombstoneV2(itemId: string, vaultId: string): ItemPlaintextV2 {
+  return createItemDeleteTombstoneV2(itemId, vaultId);
+}

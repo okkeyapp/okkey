@@ -57,6 +57,7 @@ function createSyncServiceWithLogger(config: {
       listAfterVersion: async () => [],
       hasItemCreateEvent: async () => true,
       findByIdempotencyKey: async () => null,
+      findItemPurgeEvent: async () => null,
       append: async (input) => ({
         id: "e1",
         vaultId: input.vaultId,
@@ -72,6 +73,7 @@ function createSyncServiceWithLogger(config: {
         createdAt: "2026-01-01T00:00:00.000Z",
       }),
       deleteByVaultAndReferencedItemId: async () => 0,
+      deleteByVaultAndReferencedItemIdExcept: async () => 0,
     },
     config: {
       deployEnv: "dev",

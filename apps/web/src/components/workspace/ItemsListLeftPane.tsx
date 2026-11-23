@@ -45,6 +45,7 @@ import { formatTagSearchQuery, parseTagSearchNeedle, scoreItemsListRecordSearch 
 import { LazyItemRecordFavicon } from "../items/ItemRecordFavicon";
 import { useClientWebsiteIconSrc } from "../../items/faviconMode";
 import DeleteItemsConfirmPopup from "../items/DeleteItemsConfirmPopup";
+import PurgeItemsConfirmPopup from "../items/PurgeItemsConfirmPopup";
 import { isItemCategoryId, itemCategoryIdToPopupSlug } from "../items/itemCategoryCatalog";
 import { useWorkspaceItems } from "../../items/WorkspaceItemsContext";
 import { useWorkspaceVaultProfiles } from "../../items/WorkspaceVaultProfilesContext";
@@ -734,6 +735,8 @@ export default function ItemsListLeftPane({
     setItemsArchived,
     setItemDeleted,
     setItemsDeleted,
+    purgeItem,
+    purgeItems,
     deletedItemsRetentionDays,
     getItemCreatedByUserId,
   } = useWorkspaceItems();
@@ -794,6 +797,14 @@ export default function ItemsListLeftPane({
   const [deleteConfirm, setDeleteConfirm] = useState<{ kind: "single"; row: ItemsListRecord } | { kind: "bulk" } | null>(
     null,
   );
+  const [purgeConfirm, setPurgeConfirm] = useState<
+    | { kind: "single"; row: ItemsListRecord }
+    | { kind: "bulk"; rows: ItemsListRecord[] }
+    | { kind: "emptyTrash" }
+    | null
+  >(null);
+  const [purging, setPurging] = useState(false);
+  const [purgeError, setPurgeError] = useState<string | null>(null);
 
   const vaultMeta = vaultQ ? vaults.find((v) => v.id === vaultQ) : undefined;
   const folderPath = folderQ ? findWorkspaceFolderPathById(folderTree, folderQ) : "";
@@ -975,6 +986,7 @@ export default function ItemsListLeftPane({
       ),
       canDelete: rowsWithPermits.some(({ row, canDelete }) => canDelete && !row.deleted),
       canRestore: rowsWithPermits.some(({ row, canDelete }) => canDelete && row.deleted),
+      canPurge: rowsWithPermits.some(({ row, canDelete }) => canDelete && row.deleted),
     };
   }, [selectedRows, canPutItem, canDeleteItem, canUseFunction, getItemCreatedByUserId]);
 
@@ -1088,6 +1100,66 @@ export default function ItemsListLeftPane({
         deleteSelectedItems(true);
       }
       setDeleteConfirm(null);
+    })();
+  };
+
+  const requestPurgeRow = (row: ItemsListRecord) => {
+    if (!row.deleted || !rowActionPermits(row).canDelete) {
+      return;
+    }
+    setPurgeError(null);
+    setPurgeConfirm({ kind: "single", row });
+  };
+
+  const purgeableTrashRows = useMemo(
+    () =>
+      filter === "recently_deleted"
+        ? filterItems(records, "recently_deleted").filter((row) => rowActionPermits(row).canDelete)
+        : [],
+    // rowActionPermits closes over canDeleteItem / getItemCreatedByUserId — refresh with records.
+    [filter, records, canDeleteItem, getItemCreatedByUserId],
+  );
+
+  const requestEmptyTrash = () => {
+    if (!purgeableTrashRows.length) {
+      return;
+    }
+    setPurgeError(null);
+    setPurgeConfirm({ kind: "emptyTrash" });
+  };
+
+  const confirmPendingPurge = () => {
+    if (!purgeConfirm || purging) {
+      return;
+    }
+    void (async () => {
+      if (!(await requestZoneUnlock("deletion", { persist: false }))) {
+        return;
+      }
+      setPurging(true);
+      setPurgeError(null);
+      try {
+        if (purgeConfirm.kind === "single") {
+          const row = purgeConfirm.row;
+          await purgeItem(row.id);
+          setSearchParams((prev) => withoutOpenItemQueryParam(prev, [row.id]), { replace: true });
+        } else if (purgeConfirm.kind === "bulk") {
+          const itemIds = purgeConfirm.rows.map((row) => row.id);
+          await finishBulkSelection(async () => {
+            await purgeItems(itemIds);
+            setSearchParams((prev) => withoutOpenItemQueryParam(prev, itemIds), { replace: true });
+          });
+        } else {
+          const itemIds = purgeableTrashRows.map((row) => row.id);
+          await purgeItems(itemIds);
+          setSearchParams((prev) => withoutOpenItemQueryParam(prev, itemIds), { replace: true });
+        }
+        setPurgeConfirm(null);
+      } catch {
+        setPurgeError(t("web.purgeItemsConfirmPopup.error"));
+      } finally {
+        setPurging(false);
+      }
     })();
   };
 
@@ -1242,6 +1314,18 @@ export default function ItemsListLeftPane({
             open={filterMenuOpen}
             onOpenChange={setFilterMenuOpen}
           />
+
+          {filter === "recently_deleted" && purgeableTrashRows.length > 0 ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="shrink-0"
+              onClick={requestEmptyTrash}
+            >
+              {t("web.items.list.emptyTrash")}
+            </Button>
+          ) : null}
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -1496,6 +1580,15 @@ export default function ItemsListLeftPane({
                                             </span>
                                           </DropdownMenuItem>
                                         ) : null}
+                                        {showDelete && row.deleted ? (
+                                          <DropdownMenuItem
+                                            className="gap-2 text-destructive data-[highlighted]:bg-destructive/15 data-[highlighted]:text-destructive"
+                                            onSelect={() => requestPurgeRow(row)}
+                                          >
+                                            <IconDelete16 />
+                                            <span>{t("web.items.menu.deletePermanently")}</span>
+                                          </DropdownMenuItem>
+                                        ) : null}
                                       </>
                                     );
                                   })()}
@@ -1599,6 +1692,24 @@ export default function ItemsListLeftPane({
                   <span>{t("web.items.menu.restore")}</span>
                 </DropdownMenuItem>
               ) : null}
+              {selectedActions.canPurge ? (
+                <DropdownMenuItem
+                  className="gap-2 text-destructive data-[highlighted]:bg-destructive/15 data-[highlighted]:text-destructive"
+                  onSelect={() => {
+                    const rows = selectedRows.filter(
+                      (row) => rowActionPermits(row).canDelete && row.deleted,
+                    );
+                    if (!rows.length) {
+                      return;
+                    }
+                    setPurgeError(null);
+                    setPurgeConfirm({ kind: "bulk", rows });
+                  }}
+                >
+                  <IconDelete16 />
+                  <span>{t("web.items.menu.deletePermanently")}</span>
+                </DropdownMenuItem>
+              ) : null}
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
@@ -1611,6 +1722,27 @@ export default function ItemsListLeftPane({
         t={t}
         onClose={() => setDeleteConfirm(null)}
         onConfirm={confirmPendingDelete}
+      />
+      <PurgeItemsConfirmPopup
+        open={purgeConfirm !== null}
+        mode={
+          purgeConfirm?.kind === "emptyTrash"
+            ? "emptyTrash"
+            : purgeConfirm?.kind === "bulk"
+              ? "multiple"
+              : "single"
+        }
+        purging={purging}
+        errorMessage={purgeError}
+        t={t}
+        onClose={() => {
+          if (purging) {
+            return;
+          }
+          setPurgeConfirm(null);
+          setPurgeError(null);
+        }}
+        onConfirm={confirmPendingPurge}
       />
     </div>
   );

@@ -67,6 +67,7 @@ test("resolveSyncWriteAction maps item and manage events; denies unknown", () =>
     "entries.delete",
   );
   assert.equal(resolveSyncWriteAction({ eventType: "ITEM_DELETE" }), "entries.delete");
+  assert.equal(resolveSyncWriteAction({ eventType: "ITEM_PURGE" }), "entries.delete");
   assert.equal(resolveSyncWriteAction({ eventType: "DEVICE_ADD" }), "vault.manage");
   assert.equal(resolveSyncWriteAction({ eventType: "DEVICE_REMOVE" }), "vault.manage");
   assert.equal(resolveSyncWriteAction({ eventType: "VAULT_CREATE" }), "vault.manage");
@@ -555,6 +556,47 @@ test("put-only profile allows ITEM_UPDATE for existing item and denies ITEM_CREA
         userId: "editor",
         eventType: "ITEM_CREATE",
         referencedItemId: "1000000000000000098",
+      }),
+    (error: unknown) => error instanceof VaultProfileWriteGuardError,
+  );
+});
+
+test("ITEM_PURGE requires entries.delete and denies other user's item on own-scope", async () => {
+  const ownDelete = {
+    ...EXTENDED,
+    entries: {
+      ...EXTENDED.entries,
+      delete: PROFILE_RESOURCE_PERMISSION_OWN,
+    },
+  };
+  const allow = serviceFor(
+    repoStub({
+      permissionsJson: ownDelete,
+      hasProfileAssignment: true,
+      itemCreatorId: "author",
+    }),
+  );
+  await allow.assertSyncAppendAllowed({
+    vaultId: "vault-1",
+    userId: "author",
+    eventType: "ITEM_PURGE",
+    referencedItemId: "1000000000000000001",
+  });
+
+  const deny = serviceFor(
+    repoStub({
+      permissionsJson: ownDelete,
+      hasProfileAssignment: true,
+      itemCreatorId: "author",
+    }),
+  );
+  await assert.rejects(
+    () =>
+      deny.assertSyncAppendAllowed({
+        vaultId: "vault-1",
+        userId: "other",
+        eventType: "ITEM_PURGE",
+        referencedItemId: "1000000000000000001",
       }),
     (error: unknown) => error instanceof VaultProfileWriteGuardError,
   );
