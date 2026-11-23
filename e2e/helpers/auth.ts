@@ -22,16 +22,18 @@ export async function registerBootstrapAndUnlock(
   await expect(page.getByRole("heading", { name: /first-run setup/i })).toBeVisible({
     timeout: 30_000,
   });
-  // Multi-cell setup code (TOTP-style): inject full code into the first cell so paste logic fills all.
+  // Multi-cell setup code (TOTP-style): paste into the first cell so applyPaste fills all 16 hex digits.
   const setupCodeCell = page.locator("#setup-code");
   await expect(setupCodeCell).toBeVisible({ timeout: 30_000 });
   await setupCodeCell.focus();
   await setupCodeCell.evaluate((el, value) => {
-    const input = el as HTMLInputElement;
-    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")?.set;
-    setter?.call(input, value);
-    input.dispatchEvent(new Event("input", { bubbles: true }));
+    const dt = new DataTransfer();
+    dt.setData("text/plain", value);
+    el.dispatchEvent(
+      new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true }),
+    );
   }, E2E_SETUP_CODE);
+  await expect(page.getByRole("button", { name: /^continue$/i })).toBeEnabled({ timeout: 10_000 });
   await page.getByRole("button", { name: /^continue$/i }).click();
 
   // Mail step — skip (mail activated later for OTP login of second users if needed).
