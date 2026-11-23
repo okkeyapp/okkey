@@ -42,10 +42,16 @@ export class AuthClient {
     this.api = api;
   }
 
-  async startEmailLogin(email: string, locale?: string): Promise<EmailAuthStartResponse> {
+  async startEmailLogin(
+    email: string,
+    locale?: string,
+    options?: { inviteToken?: string },
+  ): Promise<EmailAuthStartResponse> {
+    const inviteToken = options?.inviteToken?.trim();
     return this.api.post<EmailAuthStartResponse>("/auth/email/start", {
       email,
       ...(locale !== undefined ? { locale } : {}),
+      ...(inviteToken ? { inviteToken } : {}),
     });
   }
 

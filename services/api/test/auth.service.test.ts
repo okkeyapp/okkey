@@ -82,6 +82,7 @@ function setupAuthService(params?: {
   generatedCode?: string;
   /** Defaults to true so OTP-path unit tests keep sending. */
   emailDeliverable?: boolean;
+  resolveInviteRegistration?: ConstructorParameters<typeof AuthService>[0]["resolveInviteRegistration"];
 }) {
   const redis = new InMemoryRedis();
   redis.setNow(Date.UTC(2026, 0, 1, 12, 0, 0));
@@ -132,6 +133,7 @@ function setupAuthService(params?: {
     config,
     // Default tests exercise the OTP path; undeliverable cases override this.
     resolveEmailDeliverable: async () => params?.emailDeliverable ?? true,
+    resolveInviteRegistration: params?.resolveInviteRegistration,
     now: () => redis.now(),
     generateCode: () => generatedCode,
     generateId: () => `id-${nextId++}`,
@@ -509,4 +511,108 @@ test("startEmailLogin enforces email rate limit", async () => {
       }),
     (error: unknown) => error instanceof AuthError && error.code === "AUTH_RATE_LIMITED",
   );
+});
+
+test("startEmailLogin with valid invite skips OTP and stores inviteTokenHash", async () => {
+  const { service, sentEmails, redis } = setupAuthService({
+    resolveInviteRegistration: async () => ({
+      outcome: "valid",
+      tokenHash: "a".repeat(64),
+    }),
+  });
+
+  const result = await service.startEmailLogin({
+    email: "guest@example.com",
+    requestIp: "127.0.0.1",
+    inviteToken: "raw-invite-token",
+  });
+
+  assert.equal(result.inviteRegistration, true);
+  assert.equal(result.nextStep, "registration");
+  assert.ok(result.authStateId);
+  assert.equal(result.challengeId, "");
+  assert.equal(sentEmails.length, 0);
+
+  const raw = await redis.get(`auth:state:${result.authStateId}`);
+  assert.ok(raw);
+  const state = JSON.parse(raw) as { inviteTokenHash?: string; email: string };
+  assert.equal(state.email, "guest@example.com");
+  assert.equal(state.inviteTokenHash, "a".repeat(64));
+});
+
+test("startEmailLogin with unknown invite keeps emailed-code flow", async () => {
+  const { service, sentEmails } = setupAuthService({
+    resolveInviteRegistration: async () => ({ outcome: "not_found" }),
+  });
+
+  const result = await service.startEmailLogin({
+    email: "guest@example.com",
+    requestIp: "127.0.0.1",
+    inviteToken: "garbage-token",
+  });
+
+  assert.equal(result.inviteRegistration, undefined);
+  assert.equal(result.bootstrapRequired, undefined);
+  assert.ok(result.challengeId);
+  assert.equal(sentEmails.length, 1);
+});
+
+test("startEmailLogin rejects expired / used / revoked / wrong-email invites", async () => {
+  for (const [outcome, code] of [
+    ["expired", "INVITE_EXPIRED"],
+    ["used", "INVITE_USED"],
+    ["revoked", "INVITE_REVOKED"],
+    ["email_mismatch", "INVITE_EMAIL_MISMATCH"],
+  ] as const) {
+    const { service, sentEmails } = setupAuthService({
+      resolveInviteRegistration: async () => ({ outcome }),
+    });
+    await assert.rejects(
+      () =>
+        service.startEmailLogin({
+          email: "guest@example.com",
+          requestIp: "127.0.0.1",
+          inviteToken: "invite-token",
+        }),
+      (error: unknown) => error instanceof AuthError && error.code === code,
+    );
+    assert.equal(sentEmails.length, 0);
+  }
+});
+
+test("startEmailLogin with invite for existing user still requires emailed code", async () => {
+  const { service, sentEmails } = setupAuthService({
+    existingUser: true,
+    resolveInviteRegistration: async () => ({
+      outcome: "valid",
+      tokenHash: "b".repeat(64),
+    }),
+  });
+
+  const result = await service.startEmailLogin({
+    email: "user@example.com",
+    requestIp: "127.0.0.1",
+    inviteToken: "invite-token",
+  });
+
+  assert.equal(result.inviteRegistration, undefined);
+  assert.ok(result.challengeId);
+  assert.equal(sentEmails.length, 1);
+});
+
+test("ordinary startEmailLogin without invite still requires emailed code", async () => {
+  const { service, sentEmails } = setupAuthService({
+    resolveInviteRegistration: async () => {
+      throw new Error("resolver must not run without inviteToken");
+    },
+  });
+
+  const result = await service.startEmailLogin({
+    email: "newbie@example.com",
+    requestIp: "127.0.0.1",
+  });
+
+  assert.equal(result.inviteRegistration, undefined);
+  assert.ok(result.challengeId);
+  assert.equal(sentEmails.length, 1);
 });

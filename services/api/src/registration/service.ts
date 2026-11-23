@@ -21,10 +21,18 @@ import {
 import type { SessionService } from "../session/service.ts";
 import { createLoginVerifier, LOGIN_KEY_LEN } from "../crypto/login-verifier.ts";
 import { SESSION_SCOPE_REGISTRATION_RECOVERY } from "../session/scopes.ts";
-import type { PostgresDatabase } from "../storage/postgres.ts";
+import type { PostgresDatabase, QueryExecutor } from "../storage/postgres.ts";
 import type { UsersRepository } from "../storage/repositories.ts";
+import {
+  WorkspaceMembersServiceError,
+} from "../workspace-members/service.ts";
 import { insertRegistrationBundle } from "./repository.ts";
 import { assertOpaqueSplitKeyShare, assertSplitKeyShareB } from "./split-key-transport-policy.ts";
+
+export type ConsumeInviteDuringRegistration = (
+  tx: QueryExecutor,
+  input: { tokenHash: string; userId: string; email: string },
+) => Promise<{ workspaceId: string }>;
 
 const KDF_SALT_LEN = 16;
 const ED25519_PK_LEN = 32;
@@ -92,6 +100,11 @@ export interface RegisterCompleteResult {
   vaultId: string;
   deviceId: string;
   deviceStatus: "trusted";
+  /**
+   * Workspace joined via invite-link registration (when an invite was consumed
+   * in the same transaction). Distinct from the personal `workspaceId`.
+   */
+  acceptedWorkspaceId?: string;
   accessToken?: string;
   expiresAt?: string;
   tokenType?: "Bearer";
@@ -106,6 +119,7 @@ interface RegisterCompleteCachedIds {
   vaultId: string;
   deviceId: string;
   deviceStatus: "trusted";
+  acceptedWorkspaceId?: string;
 }
 
 export interface RegistrationServiceDeps {
@@ -121,6 +135,11 @@ export interface RegistrationServiceDeps {
   };
   sessionService: Pick<SessionService, "createSession">;
   config: ApiConfig;
+  /**
+   * When auth state carries `inviteTokenHash`, consume the invite in the same
+   * transaction as account creation. Bound after WorkspaceMembersService exists.
+   */
+  consumeInviteDuringRegistration?: ConsumeInviteDuringRegistration;
   now?: () => Date;
   log?: Logger;
 }
@@ -136,6 +155,7 @@ export class RegistrationService {
   private readonly redis: RegistrationServiceDeps["redis"];
   private readonly sessionService: Pick<SessionService, "createSession">;
   private readonly config: ApiConfig;
+  private consumeInviteDuringRegistration: ConsumeInviteDuringRegistration | undefined;
   private readonly now: () => Date;
   private readonly log: Logger | undefined;
 
@@ -146,8 +166,14 @@ export class RegistrationService {
     this.redis = deps.redis;
     this.sessionService = deps.sessionService;
     this.config = deps.config;
+    this.consumeInviteDuringRegistration = deps.consumeInviteDuringRegistration;
     this.now = deps.now ?? (() => new Date());
     this.log = deps.log;
+  }
+
+  /** Late-bind invite consumption after WorkspaceMembersService is constructed. */
+  setConsumeInviteDuringRegistration(fn: ConsumeInviteDuringRegistration): void {
+    this.consumeInviteDuringRegistration = fn;
   }
 
   private async consumeRateLimit(
@@ -200,6 +226,9 @@ export class RegistrationService {
           vaultId: parsed.vaultId,
           deviceId: parsed.deviceId,
           deviceStatus: "trusted",
+          ...(typeof parsed.acceptedWorkspaceId === "string" && parsed.acceptedWorkspaceId
+            ? { acceptedWorkspaceId: parsed.acceptedWorkspaceId }
+            : {}),
         };
       }
     } catch {
@@ -284,8 +313,16 @@ export class RegistrationService {
 
     try {
       const encryptedPrivateKey = this.validateEncryptedPrivateKey(input.encryptedPrivateKey);
+      const inviteTokenHash = authState.inviteTokenHash?.trim() || null;
+      if (inviteTokenHash && !this.consumeInviteDuringRegistration) {
+        throw new RegistrationError(
+          "INVITE_ACCEPT_UNAVAILABLE",
+          503,
+          "invite registration is temporarily unavailable",
+        );
+      }
       const bundle = await this.postgres.transaction(async (tx) => {
-        return insertRegistrationBundle(tx, {
+        const created = await insertRegistrationBundle(tx, {
           email: authState.email,
           publicKey: input.userPublicKey.trim(),
           publicPqKey: input.userPublicPqKey.trim(),
@@ -315,6 +352,20 @@ export class RegistrationService {
           loginVerifierSalt: loginVerifier?.salt ?? null,
           loginVerifierParamsVersion: loginVerifier?.paramsVersion ?? null,
         });
+        let acceptedWorkspaceId: string | undefined;
+        if (inviteTokenHash) {
+          try {
+            const accepted = await this.consumeInviteDuringRegistration!(tx, {
+              tokenHash: inviteTokenHash,
+              userId: created.userId,
+              email: authState.email,
+            });
+            acceptedWorkspaceId = accepted.workspaceId;
+          } catch (error) {
+            throw this.mapInviteRegistrationError(error);
+          }
+        }
+        return { ...created, acceptedWorkspaceId };
       });
 
       const session = await this.sessionService.createSession(bundle.userId, {
@@ -329,6 +380,9 @@ export class RegistrationService {
         vaultId: bundle.vaultId,
         deviceId: bundle.deviceId,
         deviceStatus: "trusted",
+        ...(bundle.acceptedWorkspaceId
+          ? { acceptedWorkspaceId: bundle.acceptedWorkspaceId }
+          : {}),
       };
 
       // Persist public ids only — never cache the bootstrap bearer.
@@ -381,6 +435,20 @@ export class RegistrationService {
     } finally {
       stopTimer();
     }
+  }
+
+  private mapInviteRegistrationError(error: unknown): RegistrationError {
+    if (error instanceof RegistrationError) {
+      return error;
+    }
+    if (error instanceof WorkspaceMembersServiceError) {
+      return new RegistrationError(error.code, error.statusCode, error.message);
+    }
+    return new RegistrationError(
+      "INVITE_ACCEPT_FAILED",
+      500,
+      "could not accept invitation during registration",
+    );
   }
 
   private loginVerifierFromKey(loginKey: Uint8Array | null | undefined) {

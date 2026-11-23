@@ -27,7 +27,22 @@ export interface AuthStatePayload {
   createdAt: string;
   /** Email challenge done; session requires TOTP or backup code first */
   pendingTwoFactor?: boolean;
+  /**
+   * SHA-256 hex of a workspace invite token that authorized skipping email OTP.
+   * Consumed atomically during `register/complete` in the same DB transaction.
+   * Never log this value.
+   */
+  inviteTokenHash?: string;
 }
+
+/** Soft invite lookup used to decide whether registration may skip email OTP. */
+export type InviteRegistrationLookup =
+  | { outcome: "not_found" }
+  | { outcome: "expired" }
+  | { outcome: "revoked" }
+  | { outcome: "used" }
+  | { outcome: "email_mismatch" }
+  | { outcome: "valid"; tokenHash: string };
 
 export class AuthError extends Error {
   readonly code: string;
@@ -75,6 +90,14 @@ export interface AuthServiceDeps {
    * Defaults to env-based {@link isOutboundEmailDeliverable}.
    */
   resolveEmailDeliverable?: () => Promise<boolean>;
+  /**
+   * Soft invite lookup for registration OTP skip. Unknown tokens must return
+   * `not_found` so callers keep the emailed-code path (never silently skip).
+   */
+  resolveInviteRegistration?: (
+    rawToken: string,
+    email: string,
+  ) => Promise<InviteRegistrationLookup>;
   now?: () => Date;
   generateCode?: () => string;
   /** Challenge / other snowflake ids. */
@@ -89,6 +112,11 @@ export interface EmailStartInput {
   /** Raw `Accept-Language` request header */
   acceptLanguage?: string;
   requestIp: string;
+  /**
+   * Raw workspace invite token from `/invite/:token`. When valid for a new user,
+   * registration skips the emailed code. Never log this value.
+   */
+  inviteToken?: string;
 }
 
 export interface EmailStartResult {
@@ -101,6 +129,11 @@ export interface EmailStartResult {
    * or when another first-run claim is already held.
    */
   bootstrapRequired?: boolean;
+  /**
+   * When true, a valid one-time invite authorized registration without an email code.
+   * The invite is consumed later in the same transaction as account creation.
+   */
+  inviteRegistration?: boolean;
   authStateId?: string;
   nextStep?: "registration";
   /**
@@ -190,6 +223,7 @@ export class AuthService {
   private readonly emailTemplates: Pick<EmailTemplateService, "sendAuthEmailCode">;
   private readonly config: ApiConfig;
   private readonly resolveEmailDeliverable?: () => Promise<boolean>;
+  private readonly resolveInviteRegistration?: AuthServiceDeps["resolveInviteRegistration"];
   private readonly now: () => Date;
   private readonly generateCode: () => string;
   private readonly generateId: () => string;
@@ -201,6 +235,7 @@ export class AuthService {
     this.emailTemplates = deps.emailTemplates;
     this.config = deps.config;
     this.resolveEmailDeliverable = deps.resolveEmailDeliverable;
+    this.resolveInviteRegistration = deps.resolveInviteRegistration;
     this.now = deps.now ?? (() => new Date());
     this.generateCode = deps.generateCode ?? createCode;
     this.generateId = deps.generateId ?? generateEntityId;
@@ -226,6 +261,27 @@ export class AuthService {
         expiresAt,
         resendAvailableAt: expiresAt,
         bootstrapRequired: true,
+        authStateId,
+        nextStep: "registration",
+        emailDeliverable: await this.emailDeliverable(),
+      };
+    }
+
+    // Valid one-time invite → skip emailed code for new accounts only.
+    // Unknown tokens fall through to OTP; expired/used/revoked/wrong-email error clearly.
+    const inviteSkip = await this.tryInviteRegistrationSkip(email, input.inviteToken);
+    if (inviteSkip) {
+      await this.consumeStartRateLimits(email, input.requestIp);
+      const authStateId = await this.createRegistrationAuthState(email, inviteSkip.tokenHash);
+      const now = this.now();
+      const expiresAt = new Date(
+        now.getTime() + this.config.registrationAuthStateTtlSeconds * 1000,
+      ).toISOString();
+      return {
+        challengeId: "",
+        expiresAt,
+        resendAvailableAt: expiresAt,
+        inviteRegistration: true,
         authStateId,
         nextStep: "registration",
         emailDeliverable: await this.emailDeliverable(),
@@ -558,13 +614,60 @@ export class AuthService {
     return holder === email;
   }
 
-  /** Mint Redis auth state for registration (email already trusted — OTP confirm or first-run). */
-  private async createRegistrationAuthState(email: string): Promise<string> {
+  /**
+   * When `inviteToken` authorizes registration without OTP, returns its hash.
+   * Returns null to keep the emailed-code path (missing resolver, existing user,
+   * or unknown token). Throws for expired / used / revoked / wrong-email invites.
+   */
+  private async tryInviteRegistrationSkip(
+    email: string,
+    inviteToken: string | undefined,
+  ): Promise<{ tokenHash: string } | null> {
+    const raw = inviteToken?.trim() ?? "";
+    if (!raw || !this.resolveInviteRegistration) {
+      return null;
+    }
+    // Existing accounts always keep the normal first-factor path.
+    if (await this.users.findByEmail(email)) {
+      return null;
+    }
+    const resolved = await this.resolveInviteRegistration(raw, email);
+    switch (resolved.outcome) {
+      case "valid":
+        return { tokenHash: resolved.tokenHash };
+      case "not_found":
+        // Invalid link: never skip OTP; continue with emailed code.
+        return null;
+      case "expired":
+        throw new AuthError("INVITE_EXPIRED", 410, "invitation expired");
+      case "revoked":
+        throw new AuthError("INVITE_REVOKED", 410, "invitation revoked");
+      case "used":
+        throw new AuthError("INVITE_USED", 409, "invitation already used");
+      case "email_mismatch":
+        throw new AuthError(
+          "INVITE_EMAIL_MISMATCH",
+          403,
+          "email does not match this invitation",
+        );
+      default: {
+        const _exhaustive: never = resolved;
+        return _exhaustive;
+      }
+    }
+  }
+
+  /** Mint Redis auth state for registration (email already trusted — OTP, first-run, or invite). */
+  private async createRegistrationAuthState(
+    email: string,
+    inviteTokenHash?: string,
+  ): Promise<string> {
     const authState: AuthStatePayload = {
       id: this.generateAuthStateIdFn(),
       email,
       userId: null,
       createdAt: this.now().toISOString(),
+      ...(inviteTokenHash ? { inviteTokenHash } : {}),
     };
     await this.redis.setWithTtl(
       authStateRedisKey(authState.id),

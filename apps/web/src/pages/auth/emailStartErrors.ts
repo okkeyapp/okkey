@@ -22,6 +22,14 @@ export function emailStartErrorI18nKey(err: unknown): string {
         return "auth.email.errorInvalidEmail";
       case "AUTH_RATE_LIMITED":
         return "auth.email.errorRateLimited";
+      case "INVITE_EXPIRED":
+        return "auth.email.errorInviteExpired";
+      case "INVITE_REVOKED":
+        return "auth.email.errorInviteRevoked";
+      case "INVITE_USED":
+        return "auth.email.errorInviteUsed";
+      case "INVITE_EMAIL_MISMATCH":
+        return "auth.email.errorInviteEmailMismatch";
       case "EMAIL_SEND_FAILED":
       case "EMAIL_TRANSPORT_ERROR":
       case "EMAIL_RENDER_FAILED":

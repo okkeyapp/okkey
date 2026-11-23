@@ -5,8 +5,12 @@ import workspaceTenancyModule from "@okkey-enterprise/workspace-tenancy";
 import { DEFAULT_AUTHENTICATED_PATH, invitePath, ITEMS_PATH, WORKSPACES_PATH } from "../routes/paths";
 import { completeExtensionAuthHandoffIfPending } from "./completeExtensionAuthHandoff";
 import { readPendingInviteToken } from "./pendingInviteStorage";
+import { resolveCurrentWorkspaceId } from "./resolveCurrentWorkspaceId";
 import { readStoredSession } from "./sessionAuthStorage";
-import { writeStoredCurrentWorkspaceId } from "./workspaceStorage";
+import {
+  readStoredCurrentWorkspaceId,
+  writeStoredCurrentWorkspaceId,
+} from "./workspaceStorage";
 
 export async function navigateAfterSession(
   core: CoreApiClient,
@@ -18,6 +22,8 @@ export async function navigateAfterSession(
     return;
   }
 
+  // Pending invite that still needs accept (email/link flow for existing accounts).
+  // Invite-link registration clears the token after register/complete.
   const pendingInvite = readPendingInviteToken();
   if (pendingInvite) {
     navigate(invitePath(pendingInvite), { replace: true });
@@ -27,8 +33,13 @@ export async function navigateAfterSession(
     const workspaces = await core.listWorkspaces();
     const session = readStoredSession();
     const userId = session?.user_id;
-    if ((workspaces.length === 1 || !workspaceTenancyModule.canCreateWorkspace) && workspaces[0] && userId) {
-      writeStoredCurrentWorkspaceId(userId, workspaces[0].id);
+    const preferred = userId ? readStoredCurrentWorkspaceId(userId) : null;
+    const resolved = resolveCurrentWorkspaceId({
+      memberships: workspaces,
+      preferredId: preferred,
+    });
+    if (resolved && userId) {
+      writeStoredCurrentWorkspaceId(userId, resolved);
       navigate(ITEMS_PATH, { replace: true });
       return;
     }

@@ -41,6 +41,18 @@ export class WorkspaceMembersServiceError extends Error {
   }
 }
 
+/**
+ * Soft lookup for invite-link registration (OTP skip).
+ * `not_found` must fall through to the normal email-code flow — never skip OTP.
+ */
+export type InviteRegistrationResolve =
+  | { outcome: "not_found" }
+  | { outcome: "expired" }
+  | { outcome: "revoked" }
+  | { outcome: "used" }
+  | { outcome: "email_mismatch" }
+  | { outcome: "valid"; tokenHash: string; workspaceId: string };
+
 export type MemberActorRef = {
   userId: string;
   email: string;
@@ -1635,6 +1647,80 @@ export class WorkspaceMembersService {
     };
   }
 
+  /**
+   * Soft invite check for registration OTP skip. Does not lock or consume the row.
+   * Unknown tokens return `not_found` so callers keep the normal email-code path.
+   */
+  async resolveInviteForRegistration(
+    rawToken: string,
+    email: string,
+  ): Promise<InviteRegistrationResolve> {
+    const token = rawToken.trim();
+    if (!token) {
+      return { outcome: "not_found" };
+    }
+    const tokenHash = hashInviteToken(token);
+    const rows = await this.db.query<{
+      workspace_id: string;
+      email: string | null;
+      delivery_method: string;
+      token_hash: string;
+      status: string;
+      expires_at: string | Date;
+    }>(
+      `
+        SELECT workspace_id, email, delivery_method, token_hash, status, expires_at
+        FROM workspace_invitations
+        WHERE token_hash = $1
+        LIMIT 1
+      `,
+      [tokenHash],
+    );
+    const row = rows[0];
+    if (!row || !inviteTokenHashesEqual(row.token_hash, tokenHash)) {
+      return { outcome: "not_found" };
+    }
+    if (row.status === "revoked") {
+      return { outcome: "revoked" };
+    }
+    if (row.status === "accepted") {
+      return { outcome: "used" };
+    }
+    const expiresAtMs = Date.parse(toIso(row.expires_at) ?? "");
+    if (row.status === "expired" || (row.status === "pending" && expiresAtMs <= Date.now())) {
+      return { outcome: "expired" };
+    }
+    if (row.status !== "pending") {
+      return { outcome: "not_found" };
+    }
+    const isLinkInvite = row.delivery_method === "link" || row.email == null;
+    if (!isLinkInvite && normalizeEmail(email) !== normalizeEmail(row.email ?? "")) {
+      return { outcome: "email_mismatch" };
+    }
+    return {
+      outcome: "valid",
+      tokenHash,
+      workspaceId: row.workspace_id,
+    };
+  }
+
+  /**
+   * Consume a pending invite inside an existing transaction (e.g. account creation).
+   * Locks the invitation row and rejects expired / used / revoked / wrong-email invites.
+   */
+  async acceptInvitationForRegistrationInTx(
+    tx: QueryExecutor,
+    input: { tokenHash: string; userId: string; email: string },
+  ): Promise<{ workspaceId: string; vaultId: string }> {
+    return this.acceptInvitationByHashInTx(tx, {
+      tokenHash: input.tokenHash,
+      actorId: input.userId,
+      actorEmail: input.email,
+      /** Registration must never treat a used invite as idempotent success. */
+      rejectAlreadyAccepted: true,
+    });
+  }
+
   async acceptInvitation(
     rawToken: string,
     actorId: string,
@@ -1645,34 +1731,6 @@ export class WorkspaceMembersService {
     }
     const tokenHash = hashInviteToken(token);
     const run = async (tx: QueryExecutor) => {
-      const invitationRows = await tx.query<{
-        id: string;
-        workspace_id: string;
-        email: string | null;
-        delivery_method: string;
-        token_hash: string;
-        role_id: string;
-        invited_by_user_id: string;
-        status: string;
-        expires_at: string | Date;
-        accepted_user_id: string | null;
-      }>(
-        `
-          SELECT
-            id, workspace_id, email, delivery_method, token_hash, role_id,
-            invited_by_user_id, status, expires_at, accepted_user_id
-          FROM workspace_invitations
-          WHERE token_hash = $1
-          LIMIT 1
-          FOR UPDATE
-        `,
-        [tokenHash],
-      );
-      const invitation = invitationRows[0];
-      if (!invitation || !inviteTokenHashesEqual(invitation.token_hash, tokenHash)) {
-        throw new WorkspaceMembersServiceError("NOT_FOUND", 404, "invitation not found");
-      }
-
       const actorRows = await tx.query<{ email: string }>(
         `SELECT email FROM users WHERE id = $1 LIMIT 1`,
         [actorId],
@@ -1681,101 +1739,154 @@ export class WorkspaceMembersService {
       if (!actorEmail) {
         throw new WorkspaceMembersServiceError("ACCESS_DENIED", 403, "access denied");
       }
-      const isLinkInvite = invitation.delivery_method === "link" || invitation.email == null;
-      if (
-        !isLinkInvite &&
-        normalizeEmail(actorEmail) !== normalizeEmail(invitation.email ?? "")
-      ) {
-        throw new WorkspaceMembersServiceError(
-          "INVITE_EMAIL_MISMATCH",
-          403,
-          "signed-in email does not match this invitation",
-        );
-      }
-
-      if (invitation.status === "revoked") {
-        throw new WorkspaceMembersServiceError("INVITE_REVOKED", 410, "invitation revoked");
-      }
-      const expiresAtMs = Date.parse(toIso(invitation.expires_at) ?? "");
-      if (invitation.status === "expired" || (invitation.status === "pending" && expiresAtMs <= Date.now())) {
-        if (invitation.status === "pending") {
-          await tx.query(
-            `UPDATE workspace_invitations SET status = 'expired' WHERE id = $1 AND status = 'pending'`,
-            [invitation.id],
-          );
-        }
-        throw new WorkspaceMembersServiceError("INVITE_EXPIRED", 410, "invitation expired");
-      }
-      if (invitation.status === "accepted") {
-        if (invitation.accepted_user_id !== actorId) {
-          throw new WorkspaceMembersServiceError("CONFLICT", 409, "invitation already accepted");
-        }
-        const vaultId = await this.ensurePersonalVault(tx, invitation.workspace_id, actorId);
-        return { workspaceId: invitation.workspace_id, vaultId };
-      }
-      if (invitation.status !== "pending") {
-        throw new WorkspaceMembersServiceError("BAD_REQUEST", 400, "invitation is not pending");
-      }
-
-      const alreadyMember = await tx.query<{ ok: boolean }>(
-        `
-          SELECT EXISTS (
-            SELECT 1 FROM (
-              SELECT 1 AS x FROM workspaces w
-              WHERE w.id = $1 AND w.owner_id = $2
-              UNION ALL
-              SELECT 1 AS x FROM workspace_members wm
-              WHERE wm.workspace_id = $1 AND wm.user_id = $2
-            ) rows
-          ) AS ok
-        `,
-        [invitation.workspace_id, actorId],
-      );
-      if (alreadyMember[0]?.ok) {
-        throw new WorkspaceMembersServiceError("CONFLICT", 409, "user already a member");
-      }
-
-      // The pending invitation already occupies a seat. Reject only when occupied
-      // seats are already over the cap (downgrade or a raced extra invite).
-      const workspace = await this.requireWorkspace(invitation.workspace_id);
-      await this.assertAdditionalMembersQuota(invitation.workspace_id, workspace, 0, tx);
-
-      const memberId = generateEntityId();
-      const nowIso = new Date().toISOString();
-      await tx.query(
-        `
-          INSERT INTO workspace_members (
-            id, workspace_id, user_id, role_id, invited_by_user_id, invited_at
-          ) VALUES ($1, $2, $3, $4, $5, $6::timestamptz)
-        `,
-        [
-          memberId,
-          invitation.workspace_id,
-          actorId,
-          invitation.role_id,
-          invitation.invited_by_user_id,
-          nowIso,
-        ],
-      );
-
-      const vaultId = await this.ensurePersonalVault(tx, invitation.workspace_id, actorId);
-
-      await tx.query(
-        `
-          UPDATE workspace_invitations
-          SET status = 'accepted', accepted_at = $2::timestamptz, accepted_user_id = $3
-          WHERE id = $1 AND status = 'pending'
-        `,
-        [invitation.id, nowIso, actorId],
-      );
-
-      return { workspaceId: invitation.workspace_id, vaultId };
+      return this.acceptInvitationByHashInTx(tx, {
+        tokenHash,
+        actorId,
+        actorEmail,
+        rejectAlreadyAccepted: false,
+      });
     };
 
     if (this.db.transaction) {
       return this.db.transaction(run);
     }
     return run(this.db);
+  }
+
+  private async acceptInvitationByHashInTx(
+    tx: QueryExecutor,
+    input: {
+      tokenHash: string;
+      actorId: string;
+      actorEmail: string;
+      rejectAlreadyAccepted: boolean;
+    },
+  ): Promise<{ workspaceId: string; vaultId: string }> {
+    const invitationRows = await tx.query<{
+      id: string;
+      workspace_id: string;
+      email: string | null;
+      delivery_method: string;
+      token_hash: string;
+      role_id: string;
+      invited_by_user_id: string;
+      status: string;
+      expires_at: string | Date;
+      accepted_user_id: string | null;
+    }>(
+      `
+        SELECT
+          id, workspace_id, email, delivery_method, token_hash, role_id,
+          invited_by_user_id, status, expires_at, accepted_user_id
+        FROM workspace_invitations
+        WHERE token_hash = $1
+        LIMIT 1
+        FOR UPDATE
+      `,
+      [input.tokenHash],
+    );
+    const invitation = invitationRows[0];
+    if (!invitation || !inviteTokenHashesEqual(invitation.token_hash, input.tokenHash)) {
+      throw new WorkspaceMembersServiceError("NOT_FOUND", 404, "invitation not found");
+    }
+
+    const isLinkInvite = invitation.delivery_method === "link" || invitation.email == null;
+    if (
+      !isLinkInvite &&
+      normalizeEmail(input.actorEmail) !== normalizeEmail(invitation.email ?? "")
+    ) {
+      throw new WorkspaceMembersServiceError(
+        "INVITE_EMAIL_MISMATCH",
+        403,
+        "signed-in email does not match this invitation",
+      );
+    }
+
+    if (invitation.status === "revoked") {
+      throw new WorkspaceMembersServiceError("INVITE_REVOKED", 410, "invitation revoked");
+    }
+    const expiresAtMs = Date.parse(toIso(invitation.expires_at) ?? "");
+    if (invitation.status === "expired" || (invitation.status === "pending" && expiresAtMs <= Date.now())) {
+      if (invitation.status === "pending") {
+        await tx.query(
+          `UPDATE workspace_invitations SET status = 'expired' WHERE id = $1 AND status = 'pending'`,
+          [invitation.id],
+        );
+      }
+      throw new WorkspaceMembersServiceError("INVITE_EXPIRED", 410, "invitation expired");
+    }
+    if (invitation.status === "accepted") {
+      if (!input.rejectAlreadyAccepted && invitation.accepted_user_id === input.actorId) {
+        const vaultId = await this.ensurePersonalVault(tx, invitation.workspace_id, input.actorId);
+        return { workspaceId: invitation.workspace_id, vaultId };
+      }
+      throw new WorkspaceMembersServiceError(
+        input.rejectAlreadyAccepted ? "INVITE_USED" : "CONFLICT",
+        409,
+        input.rejectAlreadyAccepted ? "invitation already used" : "invitation already accepted",
+      );
+    }
+    if (invitation.status !== "pending") {
+      throw new WorkspaceMembersServiceError("BAD_REQUEST", 400, "invitation is not pending");
+    }
+
+    const alreadyMember = await tx.query<{ ok: boolean }>(
+      `
+        SELECT EXISTS (
+          SELECT 1 FROM (
+            SELECT 1 AS x FROM workspaces w
+            WHERE w.id = $1 AND w.owner_id = $2
+            UNION ALL
+            SELECT 1 AS x FROM workspace_members wm
+            WHERE wm.workspace_id = $1 AND wm.user_id = $2
+          ) rows
+        ) AS ok
+      `,
+      [invitation.workspace_id, input.actorId],
+    );
+    if (alreadyMember[0]?.ok) {
+      throw new WorkspaceMembersServiceError("CONFLICT", 409, "user already a member");
+    }
+
+    // The pending invitation already occupies a seat. Reject only when occupied
+    // seats are already over the cap (downgrade or a raced extra invite).
+    const workspace = await this.requireWorkspace(invitation.workspace_id);
+    await this.assertAdditionalMembersQuota(invitation.workspace_id, workspace, 0, tx);
+
+    const memberId = generateEntityId();
+    const nowIso = new Date().toISOString();
+    await tx.query(
+      `
+        INSERT INTO workspace_members (
+          id, workspace_id, user_id, role_id, invited_by_user_id, invited_at
+        ) VALUES ($1, $2, $3, $4, $5, $6::timestamptz)
+      `,
+      [
+        memberId,
+        invitation.workspace_id,
+        input.actorId,
+        invitation.role_id,
+        invitation.invited_by_user_id,
+        nowIso,
+      ],
+    );
+
+    const vaultId = await this.ensurePersonalVault(tx, invitation.workspace_id, input.actorId);
+
+    const consumed = await tx.query<{ id: string }>(
+      `
+        UPDATE workspace_invitations
+        SET status = 'accepted', accepted_at = $2::timestamptz, accepted_user_id = $3
+        WHERE id = $1 AND status = 'pending'
+        RETURNING id
+      `,
+      [invitation.id, nowIso, input.actorId],
+    );
+    if (!consumed[0]) {
+      throw new WorkspaceMembersServiceError("INVITE_USED", 409, "invitation already used");
+    }
+
+    return { workspaceId: invitation.workspace_id, vaultId };
   }
 
   async listPendingVaultWraps(

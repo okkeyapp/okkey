@@ -78,6 +78,7 @@ import {
   NEW_VAULT_POPUP_ID,
   popupQuerySearch,
 } from "../routes/popupQuery";
+import { resolveCurrentWorkspaceId } from "../auth/resolveCurrentWorkspaceId";
 import {
   clearStoredCurrentWorkspaceId,
   readStoredCurrentWorkspaceId,
@@ -641,10 +642,10 @@ export default function WorkspaceRoutesLayout() {
 
         const fromQuery = workspaceParam;
         const fromLs = readStoredCurrentWorkspaceId(userId);
-        const candidate = fromQuery || fromLs || "";
-        const pickSingle = list.length === 1 ? list[0].id : "";
-        const resolved =
-          (candidate && list.some((w) => w.id === candidate) ? candidate : "") || pickSingle;
+        const resolved = resolveCurrentWorkspaceId({
+          memberships: list,
+          preferredId: fromQuery || fromLs || null,
+        });
 
         if (!resolved) {
           clearStoredCurrentWorkspaceId(userId);
