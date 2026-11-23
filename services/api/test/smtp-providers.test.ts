@@ -31,3 +31,17 @@ test("Postmark uses 587 + STARTTLS (not implicit TLS)", () => {
   assert.equal(postmark.smtpPort, 587);
   assert.equal(postmark.smtpTlsMode, "starttls");
 });
+
+test("SendGrid exposes fixed default username apikey (not a placeholder hint)", () => {
+  const sendgrid = SMTP_PROVIDER_TEMPLATES.find((t) => t.id === "sendgrid");
+  assert.ok(sendgrid);
+  assert.equal(sendgrid.defaultUsername, "apikey");
+  assert.equal(sendgrid.usernameHint, undefined);
+});
+
+test("example username hints are not fixed defaults", () => {
+  const gmail = SMTP_PROVIDER_TEMPLATES.find((t) => t.id === "gmail");
+  assert.ok(gmail);
+  assert.equal(gmail.usernameHint, "you@gmail.com");
+  assert.equal(gmail.defaultUsername, undefined);
+});

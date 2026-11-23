@@ -383,6 +383,7 @@ export class SetupService {
       smtp_port: t.smtpPort,
       smtp_tls_mode: t.smtpTlsMode,
       username_hint: t.usernameHint ?? null,
+      default_username: t.defaultUsername ?? null,
     }));
   }
 

@@ -13,6 +13,8 @@ export type SetupSmtpProviderDto = {
   smtp_port: number;
   smtp_tls_mode: SmtpTlsMode;
   username_hint: string | null;
+  /** Fixed username to prefill (e.g. SendGrid `apikey`); null when placeholder-only. */
+  default_username: string | null;
 };
 
 export type SetupVerifyDto = {

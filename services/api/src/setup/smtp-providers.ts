@@ -14,8 +14,13 @@ export type SmtpProviderTemplate = {
   smtpHost: string;
   smtpPort: number;
   smtpTlsMode: SmtpTlsMode;
-  /** Optional username hint shown in UI (not applied blindly). */
+  /** Optional username example shown as an input placeholder (never written as a value). */
   usernameHint?: string;
+  /**
+   * Optional fixed username to prefill as a real field value
+   * (e.g. SendGrid SMTP auth always uses the literal string `apikey`).
+   */
+  defaultUsername?: string;
 };
 
 /** Common SMTP provider presets for the first-run mail step (autofill only). */
@@ -52,7 +57,7 @@ export const SMTP_PROVIDER_TEMPLATES: readonly SmtpProviderTemplate[] = [
     smtpHost: "smtp.sendgrid.net",
     smtpPort: 587,
     smtpTlsMode: "starttls",
-    usernameHint: "apikey",
+    defaultUsername: "apikey",
   },
   {
     id: "postmark",
