@@ -45,10 +45,17 @@ export function computeKeyFieldPortaledOverlayPosition(input: {
     placement = "top";
   }
 
-  const top =
+  // Keep the panel inside the viewport even when it is taller than the free
+  // space on the preferred side (common inside short modals / narrow windows).
+  const maxTop = Math.max(
+    viewportPadding,
+    window.innerHeight - Math.min(panelHeight, window.innerHeight - viewportPadding * 2) - viewportPadding,
+  );
+  const unclampedTop =
     placement === "bottom"
       ? input.anchorRect.bottom + gap
-      : Math.max(viewportPadding, input.anchorRect.top - panelHeight - gap);
+      : input.anchorRect.top - panelHeight - gap;
+  const top = Math.max(viewportPadding, Math.min(unclampedTop, maxTop));
 
   let left = input.anchorRect.left;
   const maxLeft = window.innerWidth - input.panelRect.width - viewportPadding;
