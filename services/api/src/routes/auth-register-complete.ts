@@ -385,6 +385,9 @@ export function createRegisterCompleteRoute(
         device_id: result.deviceId,
         device_status: result.deviceStatus,
       };
+      if (result.acceptedWorkspaceId) {
+        bodyOut.accepted_workspace_id = result.acceptedWorkspaceId;
+      }
       // Bootstrap bearer only on first success (idempotent replay omits it).
       if (result.accessToken && result.expiresAt && result.tokenType && result.scope) {
         bodyOut.access_token = result.accessToken;

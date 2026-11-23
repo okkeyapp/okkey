@@ -32,7 +32,7 @@ import { assertOpaqueSplitKeyShare, assertSplitKeyShareB } from "./split-key-tra
 export type ConsumeInviteDuringRegistration = (
   tx: QueryExecutor,
   input: { tokenHash: string; userId: string; email: string },
-) => Promise<void>;
+) => Promise<{ workspaceId: string }>;
 
 const KDF_SALT_LEN = 16;
 const ED25519_PK_LEN = 32;
@@ -100,6 +100,11 @@ export interface RegisterCompleteResult {
   vaultId: string;
   deviceId: string;
   deviceStatus: "trusted";
+  /**
+   * Workspace joined via invite-link registration (when an invite was consumed
+   * in the same transaction). Distinct from the personal `workspaceId`.
+   */
+  acceptedWorkspaceId?: string;
   accessToken?: string;
   expiresAt?: string;
   tokenType?: "Bearer";
@@ -114,6 +119,7 @@ interface RegisterCompleteCachedIds {
   vaultId: string;
   deviceId: string;
   deviceStatus: "trusted";
+  acceptedWorkspaceId?: string;
 }
 
 export interface RegistrationServiceDeps {
@@ -220,6 +226,9 @@ export class RegistrationService {
           vaultId: parsed.vaultId,
           deviceId: parsed.deviceId,
           deviceStatus: "trusted",
+          ...(typeof parsed.acceptedWorkspaceId === "string" && parsed.acceptedWorkspaceId
+            ? { acceptedWorkspaceId: parsed.acceptedWorkspaceId }
+            : {}),
         };
       }
     } catch {
@@ -343,18 +352,20 @@ export class RegistrationService {
           loginVerifierSalt: loginVerifier?.salt ?? null,
           loginVerifierParamsVersion: loginVerifier?.paramsVersion ?? null,
         });
+        let acceptedWorkspaceId: string | undefined;
         if (inviteTokenHash) {
           try {
-            await this.consumeInviteDuringRegistration!(tx, {
+            const accepted = await this.consumeInviteDuringRegistration!(tx, {
               tokenHash: inviteTokenHash,
               userId: created.userId,
               email: authState.email,
             });
+            acceptedWorkspaceId = accepted.workspaceId;
           } catch (error) {
             throw this.mapInviteRegistrationError(error);
           }
         }
-        return created;
+        return { ...created, acceptedWorkspaceId };
       });
 
       const session = await this.sessionService.createSession(bundle.userId, {
@@ -369,6 +380,9 @@ export class RegistrationService {
         vaultId: bundle.vaultId,
         deviceId: bundle.deviceId,
         deviceStatus: "trusted",
+        ...(bundle.acceptedWorkspaceId
+          ? { acceptedWorkspaceId: bundle.acceptedWorkspaceId }
+          : {}),
       };
 
       // Persist public ids only — never cache the bootstrap bearer.

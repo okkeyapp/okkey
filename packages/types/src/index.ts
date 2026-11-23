@@ -2083,6 +2083,12 @@ export interface RegisterCompleteResponseDto {
   device_id: EntityId;
   device_status: "trusted";
   /**
+   * When registration consumed a one-time invite, the workspace that was joined.
+   * Distinct from personal `workspace_id`. Clients should prefer this as the
+   * current workspace after invite-link registration.
+   */
+  accepted_workspace_id?: EntityId;
+  /**
    * Short-lived bootstrap Bearer for recovery key enroll + export ack only.
    * Present on the first successful completion; omitted on idempotent replay.
    */

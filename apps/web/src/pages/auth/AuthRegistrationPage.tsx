@@ -44,6 +44,8 @@ import { ensureDeviceSigningPublicKey } from "../../auth/deviceSigningKey";
 import { useLocale } from "../../locale/LocaleContext";
 import { AUTH_EMAIL_PATH } from "../../routes/paths";
 import { writeLastLoginMethodHint } from "../../auth/loginMethodStorage";
+import { clearPendingInviteToken } from "../../auth/pendingInviteStorage";
+import { writeStoredCurrentWorkspaceId } from "../../auth/workspaceStorage";
 import { completeExtensionAuthHandoffIfPending } from "../../auth/completeExtensionAuthHandoff";
 import { registrationErrorI18nKey } from "./registrationErrors";
 import {
@@ -243,13 +245,21 @@ export default function AuthRegistrationPage() {
       await clearSplitKeyShareWrapKey("pending");
       clearEmailLoginFlow();
 
+      // Invite consumed during register/complete: prefer that workspace and skip
+      // the /invite/:token "already accepted" detour after the next sign-in.
+      const acceptedWorkspaceId = reg.accepted_workspace_id?.trim();
+      if (acceptedWorkspaceId) {
+        writeStoredCurrentWorkspaceId(reg.user_id, acceptedWorkspaceId);
+        clearPendingInviteToken();
+      }
+
       updateLocalProfile({
         email,
         firstName: firstName.trim(),
         lastName: lastName.trim(),
       });
       writeLastLoginMethodHint({ email, primary: "email" });
-      // After recovery export, sign in again for a full session (invite handoff survives in storage).
+      // After recovery export, sign in again for a full session.
       setPostRegRedirect(
         email.trim()
           ? `${AUTH_EMAIL_PATH}?email=${encodeURIComponent(email.trim())}`

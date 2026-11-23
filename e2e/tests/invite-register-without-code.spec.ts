@@ -113,22 +113,20 @@ test("2) invitee registers from the link without entering an email code", async 
     });
     await signInWithEmailOtp(page, inviteeEmail);
 
-    // Pending invite redirects here; invite was already consumed at registration.
-    const unlockInvite = page.getByRole("button", { name: /unlock vault|^unlock$/i });
-    await expect(unlockInvite).toBeVisible({ timeout: 60_000 });
-    await unlockInvite.click();
-
+    // Invite was consumed at registration: no /invite "already accepted" detour.
+    await expect(page).not.toHaveURL(/\/invite\//, { timeout: 30_000 });
     await expect(page.getByRole("heading", { name: /vault is locked/i })).toBeVisible({
-      timeout: 30_000,
+      timeout: 60_000,
     });
     await page.locator("#unlock-master-password").fill(E2E_MASTER_PASSWORD);
     await page.getByRole("button", { name: /^unlock$/i }).click();
-    // Unlock returns to the invite landing (redirect), not /items.
-    await expect(page.getByRole("button", { name: /open workspace/i })).toBeVisible({
-      timeout: 60_000,
-    });
-    await page.getByRole("button", { name: /open workspace/i }).click();
+
+    await expect(page).toHaveURL(/\/items/, { timeout: 60_000 });
     await expect(page.getByTestId("items-shell-topbar")).toBeVisible({ timeout: 90_000 });
+    // Vault shell ready (not stuck polling /devices with an empty workspace).
+    await expect(
+      page.getByTestId("items-shell-topbar").getByRole("button", { name: /^create item$/i }),
+    ).toBeVisible({ timeout: 60_000 });
   } finally {
     await inviteeContext.close();
   }

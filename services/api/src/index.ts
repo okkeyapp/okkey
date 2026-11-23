@@ -312,7 +312,11 @@ async function main(): Promise<void> {
   resolveInviteRegistration = (rawToken, email) =>
     workspaceMembersService.resolveInviteForRegistration(rawToken, email);
   registrationService.setConsumeInviteDuringRegistration(async (tx, input) => {
-    await workspaceMembersService.acceptInvitationForRegistrationInTx(tx, input);
+    const accepted = await workspaceMembersService.acceptInvitationForRegistrationInTx(
+      tx,
+      input,
+    );
+    return { workspaceId: accepted.workspaceId };
   });
   deliverPendingInvites = async () => {
     const result = await workspaceMembersService.deliverPendingInvitationEmails();
