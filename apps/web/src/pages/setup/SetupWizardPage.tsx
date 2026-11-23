@@ -61,9 +61,25 @@ import {
   type SetupSmtpProviderDto,
 } from "../../setup/setupApi";
 import { registrationStepAfterRecoveryEnroll } from "../auth/registrationRecoveryStep";
+import { SETUP_CODE_LENGTH, SetupCodeInput } from "./SetupCodeInput";
+import {
+  SETUP_WIZARD_NAV_STEPS,
+  SetupWizardShell,
+  type SetupWizardNavStep,
+} from "./SetupWizardShell";
 import { runSetupLogoUpload, setupLogoUploadDecision } from "./setupLogoUpload";
 
 type WizardStep = "code" | "mail" | "server" | "owner" | "password" | "recovery" | "finishing";
+
+function navStepIndex(step: WizardStep): number {
+  if (step === "code") {
+    return -1;
+  }
+  if (step === "finishing") {
+    return SETUP_WIZARD_NAV_STEPS.indexOf("recovery");
+  }
+  return SETUP_WIZARD_NAV_STEPS.indexOf(step as SetupWizardNavStep);
+}
 
 const TLS_MODES: SmtpTlsMode[] = ["none", "starttls", "tls"];
 const TEST_EMAIL_TIMEOUT_SECONDS = 30;
@@ -125,6 +141,7 @@ export default function SetupWizardPage() {
   const [busy, setBusy] = useState(false);
 
   const [code, setCode] = useState("");
+  const [codeResetKey, setCodeResetKey] = useState(0);
 
   const [providers, setProviders] = useState<SetupSmtpProviderDto[]>([]);
   const [providerId, setProviderId] = useState("custom");
@@ -320,6 +337,8 @@ export default function SetupWizardPage() {
       const mapped = messageFromError(err, "GENERIC");
       if (mapped === "SETUP_CODE_INVALID") {
         setError(t("auth.setup.errorInvalidCode"));
+        setCodeResetKey((value) => value + 1);
+        setCode("");
       } else if (mapped === "SETUP_CODE_LOCKED") {
         setError(t("auth.setup.errorLocked"));
       } else {
@@ -704,7 +723,9 @@ export default function SetupWizardPage() {
       });
 
       // Resume: complete setup only — never apply a session; go to normal sign-in.
-      if (resumeMode || finished.sign_in_required || !finished.access_token || !finished.expires_at) {
+      const accessToken = finished.access_token;
+      const expiresAt = finished.expires_at;
+      if (resumeMode || finished.sign_in_required || !accessToken || !expiresAt) {
         const hadPendingLogo = Boolean(logoPlaintextRef.current);
         wipeLogoVaultKey();
         clearPendingLogo();
@@ -724,8 +745,8 @@ export default function SetupWizardPage() {
 
       flushSync(() => {
         applyAccessTokenResponse({
-          access_token: finished.access_token,
-          expires_at: finished.expires_at,
+          access_token: accessToken,
+          expires_at: expiresAt,
           user_id: finished.user_id,
           token_type: "Bearer",
         });
@@ -750,7 +771,7 @@ export default function SetupWizardPage() {
         plaintext: logoPlaintextRef.current,
         upload: async (vaultKey, plaintext) => {
           const { encryptWorkspaceLogo } = await import("../../workspace/workspaceKeyClient");
-          const core = createAuthenticatedCoreClient(finished.access_token as string);
+          const core = createAuthenticatedCoreClient(accessToken);
           const ciphertext = await encryptWorkspaceLogo({
             core,
             workspaceId: finished.workspace_id,
@@ -808,7 +829,9 @@ export default function SetupWizardPage() {
           : step === "password"
             ? t("web.setupWizard.passwordTitle")
             : step === "recovery" || step === "finishing"
-              ? t("auth.registration.recovery.title")
+              ? resumeMode
+                ? t("web.setupWizard.resumeFinishTitle")
+                : t("auth.registration.recovery.title")
               : t("auth.setup.title");
 
   const description =
@@ -822,22 +845,55 @@ export default function SetupWizardPage() {
             ? t("web.setupWizard.passwordDescription")
             : step === "code"
               ? t("auth.setup.description")
-              : undefined;
+              : resumeMode
+                ? t("web.setupWizard.resumeFinishHint")
+                : undefined;
 
-  if (step === "finishing") {
+  const codeComplete = code.replace(/-/g, "").length >= SETUP_CODE_LENGTH;
+
+  // Setup-code gate: same auth shell + multi-cell input pattern as Auth TOTP.
+  if (step === "code") {
     return (
-      <AppShellLayout title={title} busy>
-        <Spinner aria-label={t("auth.registration.recovery.preparing")} />
+      <AppShellLayout
+        title={t("auth.setup.title")}
+        description={t("auth.setup.description")}
+        logo={<OkkeyLogoMark className="h-[60px] w-[61px]" />}
+      >
+        <form onSubmit={handleVerifyCode} className="flex w-full flex-col gap-6" noValidate>
+          {error ? (
+            <Alert variant="error">
+              <AlertTitle>{t("unlock.errorTitle")}</AlertTitle>
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          ) : null}
+          <div className="flex w-full flex-col gap-3">
+            <span id="setup-code-label" className="okkey-small font-medium text-copy-primary">
+              {t("auth.setup.codeLabel")}
+            </span>
+            <SetupCodeInput
+              resetKey={codeResetKey}
+              disabled={busy}
+              labelledBy="setup-code-label"
+              digitAriaLabel={(n, total) =>
+                t("auth.otp.digitAriaLabel", { n: String(n), total: String(total) })
+              }
+              onChange={setCode}
+            />
+          </div>
+          <Button type="submit" className="w-full" disabled={busy || !codeComplete}>
+            {t("auth.setup.submitCode")}
+          </Button>
+        </form>
       </AppShellLayout>
     );
   }
 
-  return (
-    <AppShellLayout
-      title={title}
-      description={description}
-      logo={<OkkeyLogoMark className="h-[60px] w-[61px]" />}
-    >
+  const activeNavStep: SetupWizardNavStep =
+    step === "finishing" ? "recovery" : (step as SetupWizardNavStep);
+  const reachableIndex = Math.max(0, navStepIndex(step));
+
+  const stepBody = (
+    <>
       {error ? (
         <Alert variant="error" className="mb-4">
           <AlertTitle>{t("unlock.errorTitle")}</AlertTitle>
@@ -845,25 +901,10 @@ export default function SetupWizardPage() {
         </Alert>
       ) : null}
 
-      {step === "code" ? (
-        <form onSubmit={handleVerifyCode} className="flex w-full flex-col gap-6" noValidate>
-          <div className="flex flex-col gap-3">
-            <label htmlFor="setup-code" className="okkey-small font-medium text-copy-primary">
-              {t("auth.setup.codeLabel")}
-            </label>
-            <Input
-              id="setup-code"
-              value={code}
-              onChange={(e) => setCode(e.target.value)}
-              autoComplete="one-time-code"
-              autoFocus
-              disabled={busy}
-            />
-          </div>
-          <Button type="submit" disabled={busy || !code.trim()}>
-            {t("auth.setup.submitCode")}
-          </Button>
-        </form>
+      {step === "finishing" ? (
+        <div className="flex w-full flex-col items-center gap-4 py-10" role="status" aria-busy="true">
+          <Spinner aria-label={t("auth.registration.recovery.preparing")} />
+        </div>
       ) : null}
 
       {step === "mail" ? (
@@ -1200,6 +1241,25 @@ export default function SetupWizardPage() {
           </Button>
         </div>
       ) : null}
-    </AppShellLayout>
+    </>
+  );
+
+  return (
+    <SetupWizardShell
+      activeStep={activeNavStep}
+      reachableIndex={reachableIndex}
+      onSelectStep={(next) => {
+        if (busy || testing || step === "finishing") {
+          return;
+        }
+        setError(null);
+        setStep(next);
+      }}
+      t={t}
+      title={title}
+      description={description}
+    >
+      {stepBody}
+    </SetupWizardShell>
   );
 }

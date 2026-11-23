@@ -581,3 +581,136 @@ test("finish rolls back when invitation insert fails and leaves setup still requ
   const session = await fixture.service.requireSession(fixture.setupToken);
   assert.equal(session.id, fixture.setupToken);
 });
+
+test("listSmtpProviderTemplates exposes autofill hosts for known providers", () => {
+  const { service } = createService();
+  const templates = service.listSmtpProviderTemplates();
+  assert.ok(templates.some((t) => t.id === "custom"));
+  const gmail = templates.find((t) => t.id === "gmail");
+  assert.ok(gmail);
+  assert.equal(gmail.smtp_host, "smtp.gmail.com");
+  assert.equal(gmail.smtp_port, 587);
+  assert.equal(gmail.smtp_tls_mode, "starttls");
+  const postmark = templates.find((t) => t.id === "postmark");
+  assert.ok(postmark);
+  assert.equal(postmark.smtp_host, "smtp.postmarkapp.com");
+  assert.equal(postmark.smtp_tls_mode, "tls");
+});
+
+test("skipMail leaves SMTP inactive and marks the setup session", async () => {
+  let skipCalls = 0;
+  const fixture = createService({ setupCodePlaintext: "aaaa-bbbb-cccc-dddd" });
+  // Replace mail deps with tracking stubs after construction via prototype-safe patch.
+  const mail = {
+    getPublicSettings: async () => ({
+      smtpHost: "smtp.example",
+      smtpPort: 587,
+      smtpTlsMode: "starttls" as const,
+      smtpUsername: "u",
+      emailFrom: "from@example.com",
+      publicAppUrl: "https://app.example",
+      passwordSet: true,
+      passwordUnreadable: false,
+      smtpActive: false,
+      smtpVerifiedAt: null as string | null,
+    }),
+    updateForSetup: async () => {
+      throw new Error("not used");
+    },
+    sendTestEmailForSetup: async () => {
+      throw new Error("not used");
+    },
+    skipMailForSetup: async () => {
+      skipCalls += 1;
+      return {
+        smtpHost: "smtp.example",
+        smtpPort: 587,
+        smtpTlsMode: "starttls" as const,
+        smtpUsername: "u",
+        emailFrom: "from@example.com",
+        publicAppUrl: "https://app.example",
+        passwordSet: true,
+        passwordUnreadable: false,
+        smtpActive: false,
+        smtpVerifiedAt: null,
+      };
+    },
+    updatePublicAppUrlPreservingVerification: async () => {
+      throw new Error("not used");
+    },
+  };
+  (fixture.service as unknown as { mailSettings: typeof mail }).mailSettings = mail;
+
+  await fixture.service.ensureBootstrapCode();
+  const verified = await fixture.service.verifyCode("aaaa-bbbb-cccc-dddd");
+  const result = await fixture.service.skipMail(verified.setupToken);
+  assert.equal(skipCalls, 1);
+  assert.equal(result.smtpActive, false);
+  assert.equal(result.smtpVerifiedAt, null);
+
+  const sessionRaw = await fixture.redis.get(`setup:session:${verified.setupToken}`);
+  assert.ok(sessionRaw);
+  const session = JSON.parse(sessionRaw) as { mailSkipped?: boolean };
+  assert.equal(session.mailSkipped, true);
+});
+
+test("sendTestEmail activates mail via sendTestEmailForSetup", async () => {
+  let testCalls = 0;
+  const fixture = createService({ setupCodePlaintext: "aaaa-bbbb-cccc-dddd" });
+  const mail = {
+    getPublicSettings: async () => ({
+      smtpHost: "",
+      smtpPort: 587,
+      smtpTlsMode: "starttls" as const,
+      smtpUsername: "",
+      emailFrom: "",
+      publicAppUrl: "https://app.example",
+      passwordSet: false,
+      passwordUnreadable: false,
+      smtpActive: false,
+      smtpVerifiedAt: null as string | null,
+    }),
+    updateForSetup: async () => {
+      throw new Error("not used");
+    },
+    sendTestEmailForSetup: async () => {
+      testCalls += 1;
+      return {
+        smtpHost: "smtp.gmail.com",
+        smtpPort: 587,
+        smtpTlsMode: "starttls" as const,
+        smtpUsername: "you@gmail.com",
+        emailFrom: "you@gmail.com",
+        publicAppUrl: "https://app.example",
+        passwordSet: true,
+        passwordUnreadable: false,
+        smtpActive: true,
+        smtpVerifiedAt: new Date().toISOString(),
+      };
+    },
+    skipMailForSetup: async () => {
+      throw new Error("not used");
+    },
+    updatePublicAppUrlPreservingVerification: async () => {
+      throw new Error("not used");
+    },
+  };
+  (fixture.service as unknown as { mailSettings: typeof mail }).mailSettings = mail;
+
+  await fixture.service.ensureBootstrapCode();
+  const verified = await fixture.service.verifyCode("aaaa-bbbb-cccc-dddd");
+  const result = await fixture.service.sendTestEmail(
+    verified.setupToken,
+    {
+      smtpHost: "smtp.gmail.com",
+      smtpPort: 587,
+      smtpTlsMode: "starttls",
+      emailFrom: "you@gmail.com",
+      password: "app-password",
+    },
+    "you@gmail.com",
+  );
+  assert.equal(testCalls, 1);
+  assert.equal(result.smtpActive, true);
+  assert.ok(result.smtpVerifiedAt);
+});
