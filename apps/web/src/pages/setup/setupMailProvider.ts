@@ -5,6 +5,7 @@ export type SetupMailProviderTemplate = {
   smtp_port: number;
   smtp_tls_mode: "none" | "starttls" | "tls";
   username_hint?: string | null;
+  default_username?: string | null;
 };
 
 export type SetupMailProviderFields = {
@@ -18,7 +19,9 @@ export type SetupMailProviderFields = {
 /**
  * Apply a provider template to mail fields.
  * Username hints are placeholders only — never written as the input value.
- * Switching away from a provider clears the username when it still equals that hint.
+ * Providers with `default_username` (e.g. SendGrid `apikey`) prefill that value
+ * when the field is empty. Switching away clears an unedited default/hint value;
+ * a username the operator typed themselves is preserved. Password is untouched.
  */
 export function applySetupMailProvider(
   previous: SetupMailProviderFields & { providerId: string },
@@ -29,8 +32,12 @@ export function applySetupMailProvider(
   const nextProvider = providers.find((p) => p.id === nextId);
 
   let smtpUsername = previous.smtpUsername;
+  const previousDefault = previousProvider?.default_username?.trim() ?? "";
   const previousHint = previousProvider?.username_hint?.trim() ?? "";
-  if (previousHint && smtpUsername === previousHint) {
+  if (
+    (previousDefault && smtpUsername === previousDefault) ||
+    (previousHint && smtpUsername === previousHint)
+  ) {
     smtpUsername = "";
   }
 
@@ -43,6 +50,11 @@ export function applySetupMailProvider(
       smtpUsername,
       usernamePlaceholder: "",
     };
+  }
+
+  const nextDefault = nextProvider.default_username?.trim() ?? "";
+  if (nextDefault && !smtpUsername) {
+    smtpUsername = nextDefault;
   }
 
   return {

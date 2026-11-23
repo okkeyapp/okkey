@@ -591,6 +591,13 @@ test("listSmtpProviderTemplates exposes autofill hosts for known providers", () 
   assert.equal(gmail.smtp_host, "smtp.gmail.com");
   assert.equal(gmail.smtp_port, 587);
   assert.equal(gmail.smtp_tls_mode, "starttls");
+  assert.equal(gmail.username_hint, "you@gmail.com");
+  assert.equal(gmail.default_username, null);
+  const sendgrid = templates.find((t) => t.id === "sendgrid");
+  assert.ok(sendgrid);
+  assert.equal(sendgrid.smtp_host, "smtp.sendgrid.net");
+  assert.equal(sendgrid.username_hint, null);
+  assert.equal(sendgrid.default_username, "apikey");
   const postmark = templates.find((t) => t.id === "postmark");
   assert.ok(postmark);
   assert.equal(postmark.smtp_host, "smtp.postmarkapp.com");
