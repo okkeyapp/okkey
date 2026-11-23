@@ -331,14 +331,19 @@ export { CalendarMonthYearCaption } from "./components/ui/calendar-month-year-ca
 export { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from "./components/ui/popover.js";
 export {
   clampDateTimePickerSize,
+  resolveDateTimePickerPlacement,
   DATE_TIME_PICKER_BODY_LAYOUT_CLASS,
   DATE_TIME_PICKER_BODY_MAX_HEIGHT_CLASS,
   DATE_TIME_PICKER_CALENDAR_SCROLL_CLASS,
   DATE_TIME_PICKER_POPOVER_CONTENT_CLASS,
+  DATE_TIME_PICKER_SIDE_OFFSET_PX,
   DATE_TIME_PICKER_TIME_COLUMN_CLASS,
+  DATE_TIME_PICKER_TIME_SCROLL_CLASS,
   DATE_TIME_PICKER_VIEWPORT_MARGIN_PX,
   POPOVER_VIEWPORT_MAX_HEIGHT_CLASS,
   POPOVER_VIEWPORT_MAX_WIDTH_CLASS,
+  type DateTimePickerPlacement,
+  type DateTimePickerPlacementSide,
 } from "./lib/popover-positioning.js";
 export { scrollIntoNearestViewport } from "./lib/scroll-into-nearest-viewport.js";
 export {

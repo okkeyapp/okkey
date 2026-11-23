@@ -3,10 +3,12 @@ import type { Locale } from "date-fns";
 
 import {
   DATE_TIME_PICKER_BODY_LAYOUT_CLASS,
-  DATE_TIME_PICKER_BODY_MAX_HEIGHT_CLASS,
   DATE_TIME_PICKER_CALENDAR_SCROLL_CLASS,
   DATE_TIME_PICKER_POPOVER_CONTENT_CLASS,
   DATE_TIME_PICKER_TIME_COLUMN_CLASS,
+  DATE_TIME_PICKER_TIME_SCROLL_CLASS,
+  resolveDateTimePickerPlacement,
+  type DateTimePickerPlacementSide,
 } from "../../lib/popover-positioning.js";
 import { scrollIntoNearestViewport } from "../../lib/scroll-into-nearest-viewport.js";
 import { cn } from "../../lib/utils.js";
@@ -81,7 +83,7 @@ function TimeValueScroll({
   }, [selected]);
 
   return (
-    <ScrollArea className={cn("h-full min-h-0 min-w-0 w-12 flex-1 sm:w-14", className)}>
+    <ScrollArea className={cn(DATE_TIME_PICKER_TIME_SCROLL_CLASS, className)}>
       <div className="flex flex-col p-1">
         {values.map((value) => {
           const candidate = new Date(date);
@@ -152,13 +154,11 @@ export function DateTimePickerPanel({
   return (
     <div
       data-slot="date-time-picker-panel"
-      className={cn("flex min-h-0 w-full min-w-0 flex-col overflow-hidden", className)}
+      className={cn("flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden", className)}
     >
       <div
-        className={cn(
-          DATE_TIME_PICKER_BODY_LAYOUT_CLASS,
-          DATE_TIME_PICKER_BODY_MAX_HEIGHT_CLASS,
-        )}
+        className={DATE_TIME_PICKER_BODY_LAYOUT_CLASS}
+        data-slot="date-time-picker-body"
       >
         <div className={DATE_TIME_PICKER_CALENDAR_SCROLL_CLASS} data-slot="date-time-picker-calendar">
           <Calendar
@@ -241,22 +241,71 @@ export type DateTimePickerProps = DateTimePickerPanelProps & {
 
 /**
  * Anchored date+time popover with collision-aware positioning (portal, flip/shift).
+ * Prefers the vertical side with more free space; body scrolls so footer stays visible.
  */
 export function DateTimePicker({
   open,
   onOpenChange,
   trigger,
   align = "end",
-  side,
+  side: sideProp,
   contentClassName,
   ...panelProps
 }: DateTimePickerProps) {
+  const triggerRef = React.useRef<HTMLElement | null>(null);
+  const [resolvedSide, setResolvedSide] = React.useState<DateTimePickerPlacementSide>("bottom");
+
+  const updateSideFromTrigger = React.useCallback(() => {
+    const el = triggerRef.current;
+    if (!el || sideProp) {
+      return;
+    }
+    const placement = resolveDateTimePickerPlacement(
+      el.getBoundingClientRect(),
+      window.innerHeight,
+      400,
+    );
+    setResolvedSide(placement.side);
+  }, [sideProp]);
+
+  React.useLayoutEffect(() => {
+    if (open) {
+      updateSideFromTrigger();
+    }
+  }, [open, updateSideFromTrigger]);
+
+  const handleOpenChange = React.useCallback(
+    (nextOpen: boolean) => {
+      if (nextOpen) {
+        updateSideFromTrigger();
+      }
+      onOpenChange(nextOpen);
+    },
+    [onOpenChange, updateSideFromTrigger],
+  );
+
+  const triggerWithRef = React.isValidElement(trigger)
+    ? React.cloneElement(trigger as React.ReactElement<{ ref?: React.Ref<HTMLElement | null> }>, {
+        ref: (node: HTMLElement | null) => {
+          triggerRef.current = node;
+          const originalRef = (
+            trigger as React.ReactElement<{ ref?: React.Ref<HTMLElement | null> }>
+          ).props.ref;
+          if (typeof originalRef === "function") {
+            originalRef(node);
+          } else if (originalRef && typeof originalRef === "object") {
+            (originalRef as React.MutableRefObject<HTMLElement | null>).current = node;
+          }
+        },
+      })
+    : trigger;
+
   return (
-    <Popover open={open} onOpenChange={onOpenChange}>
-      <PopoverTrigger asChild>{trigger}</PopoverTrigger>
+    <Popover open={open} onOpenChange={handleOpenChange}>
+      <PopoverTrigger asChild>{triggerWithRef}</PopoverTrigger>
       <PopoverContent
         align={align}
-        side={side}
+        side={sideProp ?? resolvedSide}
         className={cn(DATE_TIME_PICKER_POPOVER_CONTENT_CLASS, contentClassName)}
       >
         <DateTimePickerPanel {...panelProps} />
