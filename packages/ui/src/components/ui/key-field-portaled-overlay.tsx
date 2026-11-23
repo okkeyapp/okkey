@@ -150,7 +150,7 @@ export function KeyFieldPortaledOverlay({ open, anchorRef, children }: KeyFieldP
     <KeyFieldPortaledOverlayContext.Provider value={contextValue}>
       <div
         ref={panelRef}
-        className="fixed z-floating"
+        className="fixed z-floating max-h-[calc(100dvh-1rem)] overflow-auto"
         style={{
           top: coords?.top ?? -9999,
           left: coords?.left ?? -9999,
