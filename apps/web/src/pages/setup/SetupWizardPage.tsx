@@ -68,6 +68,8 @@ import {
   type SetupWizardNavStep,
 } from "./SetupWizardShell";
 import { setupCodeErrorKind } from "./setupCodeErrors";
+import { applySetupMailProvider } from "./setupMailProvider";
+import { smtpTestErrorKind, smtpTestErrorMessageKey } from "@/lib/smtpTestErrors";
 import {
   capturePendingLogoForFinish,
   runSetupLogoUpload,
@@ -109,16 +111,6 @@ function RequirementCrossIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
-function messageFromError(error: unknown, fallback: string): string {
-  if (error && typeof error === "object" && "body" in error) {
-    const body = (error as { body?: { message?: unknown } }).body;
-    if (typeof body?.message === "string" && body.message.trim()) {
-      return body.message;
-    }
-  }
-  return fallback;
-}
-
 export default function SetupWizardPage() {
   const { t } = useLocale();
   const navigate = useNavigate();
@@ -149,6 +141,7 @@ export default function SetupWizardPage() {
   const [smtpPort, setSmtpPort] = useState("587");
   const [smtpTlsMode, setSmtpTlsMode] = useState<SmtpTlsMode>("starttls");
   const [smtpUsername, setSmtpUsername] = useState("");
+  const [usernamePlaceholder, setUsernamePlaceholder] = useState("");
   const [smtpPassword, setSmtpPassword] = useState("");
   const [emailFrom, setEmailFrom] = useState("");
   const [testRecipient, setTestRecipient] = useState("");
@@ -356,17 +349,24 @@ export default function SetupWizardPage() {
   }
 
   function applyProvider(id: string) {
-    setProviderId(id);
-    const provider = providers.find((p) => p.id === id);
-    if (!provider || id === "custom") {
-      return;
-    }
-    setSmtpHost(provider.smtp_host);
-    setSmtpPort(String(provider.smtp_port));
-    setSmtpTlsMode(provider.smtp_tls_mode);
-    if (provider.username_hint) {
-      setSmtpUsername(provider.username_hint);
-    }
+    const next = applySetupMailProvider(
+      {
+        providerId,
+        smtpHost,
+        smtpPort,
+        smtpTlsMode,
+        smtpUsername,
+        usernamePlaceholder,
+      },
+      id,
+      providers,
+    );
+    setProviderId(next.providerId);
+    setSmtpHost(next.smtpHost);
+    setSmtpPort(next.smtpPort);
+    setSmtpTlsMode(next.smtpTlsMode);
+    setSmtpUsername(next.smtpUsername);
+    setUsernamePlaceholder(next.usernamePlaceholder);
   }
 
   async function handleTestEmail() {
@@ -401,8 +401,8 @@ export default function SetupWizardPage() {
     } catch (err) {
       const message = timedOut
         ? t("web.workspaceSettings.serverMail.testTimeout")
-        : messageFromError(err, t("web.workspaceSettings.serverMail.testError"));
-      setTestFailedMessage(message === "GENERIC" ? t("web.workspaceSettings.serverMail.testError") : message);
+        : t(smtpTestErrorMessageKey(smtpTestErrorKind(err)));
+      setTestFailedMessage(message);
       if (timedOut) {
         void request.catch(() => undefined);
       }
@@ -984,7 +984,13 @@ export default function SetupWizardPage() {
           </div>
           <div className="flex w-full flex-col gap-2">
             <span className="okkey-small font-medium text-copy-primary">{t("web.workspaceSettings.serverMail.username")}</span>
-            <Input value={smtpUsername} onChange={(e) => setSmtpUsername(e.target.value)} disabled={busy || testing} />
+            <Input
+              value={smtpUsername}
+              onChange={(e) => setSmtpUsername(e.target.value)}
+              placeholder={usernamePlaceholder || undefined}
+              disabled={busy || testing}
+              autoComplete="username"
+            />
           </div>
           <div className="flex w-full flex-col gap-2">
             <span className="okkey-small font-medium text-copy-primary">{t("web.workspaceSettings.serverMail.password")}</span>

@@ -16,6 +16,10 @@ import type {
   SmtpTlsMode,
 } from "./types.ts";
 import {
+  classifySmtpTransportError,
+  smtpTestErrorSafeMessage,
+} from "./smtp-transport-error.ts";
+import {
   parseEmailFrom,
   parsePublicAppUrl,
   parseSmtpHost,
@@ -396,9 +400,10 @@ export class MailSettingsService {
           : error instanceof Error
             ? error.message
             : "smtp send failed";
-      const messageText = redactSecret(cause, snapshot.smtpPassword).slice(0, 500);
-      this.logger?.warn("server mail test email failed", { actorId });
-      throw new MailSettingsError("EMAIL_TRANSPORT_ERROR", 502, messageText);
+      const redacted = redactSecret(String(cause), snapshot.smtpPassword).slice(0, 500);
+      const code = classifySmtpTransportError(redacted);
+      this.logger?.warn("server mail test email failed", { actorId, code });
+      throw new MailSettingsError(code, 502, smtpTestErrorSafeMessage(code));
     }
 
     next.smtpVerifiedAt = new Date().toISOString();
@@ -500,9 +505,10 @@ export class MailSettingsService {
           : error instanceof Error
             ? error.message
             : "smtp send failed";
-      const messageText = redactSecret(cause, snapshot.smtpPassword).slice(0, 500);
-      this.logger?.warn("server mail test email failed", { workspaceId, userId });
-      throw new MailSettingsError("EMAIL_TRANSPORT_ERROR", 502, messageText);
+      const redacted = redactSecret(String(cause), snapshot.smtpPassword).slice(0, 500);
+      const code = classifySmtpTransportError(redacted);
+      this.logger?.warn("server mail test email failed", { workspaceId, userId, code });
+      throw new MailSettingsError(code, 502, smtpTestErrorSafeMessage(code));
     }
 
     next.smtpVerifiedAt = new Date().toISOString();

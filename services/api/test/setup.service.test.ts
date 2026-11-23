@@ -594,7 +594,8 @@ test("listSmtpProviderTemplates exposes autofill hosts for known providers", () 
   const postmark = templates.find((t) => t.id === "postmark");
   assert.ok(postmark);
   assert.equal(postmark.smtp_host, "smtp.postmarkapp.com");
-  assert.equal(postmark.smtp_tls_mode, "tls");
+  assert.equal(postmark.smtp_port, 587);
+  assert.equal(postmark.smtp_tls_mode, "starttls");
 });
 
 test("skipMail leaves SMTP inactive and marks the setup session", async () => {

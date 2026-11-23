@@ -58,7 +58,7 @@ export const SMTP_PROVIDER_TEMPLATES: readonly SmtpProviderTemplate[] = [
     id: "postmark",
     smtpHost: "smtp.postmarkapp.com",
     smtpPort: 587,
-    smtpTlsMode: "tls",
+    smtpTlsMode: "starttls",
   },
 ] as const;
 

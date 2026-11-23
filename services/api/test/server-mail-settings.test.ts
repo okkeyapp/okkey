@@ -440,7 +440,7 @@ test("test email uses the form values, saves, and activates SMTP", async () => {
   assert.equal(await service.isOutboundActive(), true);
 });
 
-test("test email reports the transport cause", async () => {
+test("test email maps transport failures to stable codes without raw SMTP text", async () => {
   const store = new MemoryMailStore();
   const service = new MailSettingsService({
     store,
@@ -468,7 +468,9 @@ test("test email reports the transport cause", async () => {
       }),
     (error: unknown) => {
       assert.equal((error as { statusCode?: number }).statusCode, 502);
-      assert.equal((error as { message?: string }).message, "connect ECONNREFUSED");
+      assert.equal((error as { code?: string }).code, "SMTP_CONNECTION_REFUSED");
+      assert.equal((error as { message?: string }).message, "smtp connection refused");
+      assert.ok(!(error as { message?: string }).message?.includes("ECONNREFUSED"));
       return true;
     },
   );
@@ -502,7 +504,8 @@ test("test email hard-times out a hung SMTP send", async () => {
       }),
     (error: unknown) => {
       assert.equal((error as { statusCode?: number }).statusCode, 502);
-      assert.match((error as { message?: string }).message ?? "", /timed out after 1s/);
+      assert.equal((error as { code?: string }).code, "SMTP_TIMEOUT");
+      assert.equal((error as { message?: string }).message, "smtp connection timed out");
       return true;
     },
   );
