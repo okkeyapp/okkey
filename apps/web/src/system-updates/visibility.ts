@@ -16,7 +16,13 @@ export type SystemUpdateAvailable = {
   releaseNotesUrl?: string | null;
 };
 
-export type SystemUpdateCheckError = "FEED_FETCH_FAILED" | "FEED_INVALID" | "LICENSE_EXPIRED";
+export type SystemUpdateCheckError =
+  | "FEED_FETCH_FAILED"
+  | "FEED_INVALID"
+  | "FEED_UNAUTHORIZED"
+  | "FEED_REDIRECT_FORBIDDEN"
+  | "FEED_TOO_MANY_REDIRECTS"
+  | "LICENSE_EXPIRED";
 
 export type SystemUpdateComponentStatus = {
   component: SystemUpdateComponent;

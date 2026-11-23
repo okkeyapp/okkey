@@ -7,7 +7,12 @@ import path from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
 import { HttpApp } from "../src/http.ts";
-import { feedRequestUrl, fetchUpdateFeed } from "../src/system-updates/feed.ts";
+import {
+  downloadSignedPackage,
+  feedRequestUrl,
+  fetchUpdateFeed,
+  headersForSameOriginRequest,
+} from "../src/system-updates/feed.ts";
 import {
   generateUpdateKeyPair,
   parseUpdateFeed,
@@ -562,6 +567,307 @@ test("apply sends the license header to the license host and omits it for other 
       { host: "cdn.example", licenseHeader: null },
     ],
   );
+});
+
+test("same-origin redirect with a license key is followed and the key stays on that origin", async () => {
+  const licenseKey = "redirect-same-origin-key";
+  const feed = {
+    schema: "okkey.update-feed.v1",
+    packages: [
+      {
+        component: "enterprise",
+        version: "3.1.0",
+        fromVersion: "0.0.0",
+        summary: "Enterprise",
+        releasedAt: "2026-11-01T00:00:00.000Z",
+        packageUrl: "http://license.internal/enterprise-3.1.0.okpkg",
+        packageSha256: "ab".repeat(32),
+      },
+    ],
+  };
+  const seen: Array<{ url: string; licenseHeader: string | null }> = [];
+  const document = await fetchUpdateFeed(
+    "http://license.internal/enterprise.json",
+    false,
+    async (url, init) => {
+      const headers = new Headers(init?.headers);
+      seen.push({ url: String(url), licenseHeader: headers.get("X-Okkey-License-Key") });
+      if (String(url) === "http://license.internal/enterprise.json") {
+        return new Response(null, {
+          status: 302,
+          headers: { location: "/v1/enterprise.json" },
+        });
+      }
+      assert.equal(String(url), "http://license.internal/v1/enterprise.json");
+      return new Response(JSON.stringify(feed), { status: 200 });
+    },
+    { "X-Okkey-License-Key": licenseKey },
+  );
+  assert.equal(document?.packages[0]?.version, "3.1.0");
+  assert.deepEqual(seen, [
+    { url: "http://license.internal/enterprise.json", licenseHeader: licenseKey },
+    { url: "http://license.internal/v1/enterprise.json", licenseHeader: licenseKey },
+  ]);
+});
+
+test("cross-origin redirect with a license key is rejected and the key never reaches the other host", async () => {
+  const licenseKey = "redirect-cross-origin-key";
+  const seen: Array<{ url: string; licenseHeader: string | null }> = [];
+  await assert.rejects(
+    () =>
+      fetchUpdateFeed(
+        "https://license.example/enterprise.json",
+        false,
+        async (url, init) => {
+          const headers = new Headers(init?.headers);
+          seen.push({ url: String(url), licenseHeader: headers.get("X-Okkey-License-Key") });
+          return new Response(null, {
+            status: 302,
+            headers: { location: "https://cdn.example/enterprise.json" },
+          });
+        },
+        { "X-Okkey-License-Key": licenseKey },
+      ),
+    (error: unknown) => {
+      assert.ok(error instanceof SystemUpdateError);
+      assert.equal(error.code, "FEED_REDIRECT_FORBIDDEN");
+      assert.equal(String(error.message).includes(licenseKey), false);
+      return true;
+    },
+  );
+  assert.deepEqual(seen, [
+    { url: "https://license.example/enterprise.json", licenseHeader: licenseKey },
+  ]);
+  assert.equal(
+    seen.some((entry) => entry.url.includes("cdn.example")),
+    false,
+  );
+});
+
+test("https to http redirect is rejected with or without a license key", async () => {
+  for (const headers of [undefined, { "X-Okkey-License-Key": "downgrade-key" }] as const) {
+    await assert.rejects(
+      () =>
+        fetchUpdateFeed("https://license.example/feed.json", false, async () => {
+          return new Response(null, {
+            status: 302,
+            headers: { location: "http://license.example/feed.json" },
+          });
+        }, headers),
+      (error: unknown) => {
+        assert.ok(error instanceof SystemUpdateError);
+        assert.equal(error.code, "FEED_REDIRECT_FORBIDDEN");
+        return true;
+      },
+    );
+  }
+});
+
+test("redirect chains stop at the redirect limit with a specific error code", async () => {
+  let hops = 0;
+  await assert.rejects(
+    () =>
+      fetchUpdateFeed(
+        "https://license.example/feed.json",
+        false,
+        async () => {
+          hops += 1;
+          return new Response(null, {
+            status: 302,
+            headers: { location: `https://license.example/feed-${hops}.json` },
+          });
+        },
+        { "X-Okkey-License-Key": "limit-key" },
+      ),
+    (error: unknown) => {
+      assert.ok(error instanceof SystemUpdateError);
+      assert.equal(error.code, "FEED_TOO_MANY_REDIRECTS");
+      return true;
+    },
+  );
+  assert.equal(hops, 4);
+
+  hops = 0;
+  await assert.rejects(
+    () =>
+      downloadSignedPackage(
+        "https://cdn.example/pkg.okpkg",
+        "ab".repeat(32),
+        async () => {
+          hops += 1;
+          return new Response(null, {
+            status: 302,
+            headers: { location: `https://cdn.example/pkg-${hops}.okpkg` },
+          });
+        },
+      ),
+    (error: unknown) => {
+      assert.ok(error instanceof SystemUpdateError);
+      assert.equal(error.code, "PACKAGE_TOO_MANY_REDIRECTS");
+      return true;
+    },
+  );
+  assert.equal(hops, 4);
+});
+
+test("cross-origin packageUrl downloads without the license key and still verifies the digest", async () => {
+  const licenseKey = "cdn-package-key-must-not-leak";
+  const keys = generateUpdateKeyPair();
+  const signed = signOfflinePackage(
+    payload({
+      component: "enterprise",
+      version: "4.0.0",
+      fromVersion: "1.0.0",
+      summary: "CDN package",
+      images: { enterprise: "ghcr.io/okkeyapp/enterprise:4.0.0" },
+    }),
+    keys.privateKeyPem,
+  );
+  const raw = JSON.stringify(signed);
+  const sha = createHash("sha256").update(raw).digest("hex");
+  const seen: Array<{ host: string; licenseHeader: string | null }> = [];
+
+  const downloaded = await downloadSignedPackage(
+    "https://cdn.example/enterprise-4.0.0.okpkg",
+    sha,
+    async (url, init) => {
+      const headers = new Headers(init?.headers);
+      seen.push({
+        host: new URL(String(url)).host,
+        licenseHeader: headers.get("X-Okkey-License-Key"),
+      });
+      return new Response(raw, { status: 200 });
+    },
+    headersForSameOriginRequest(
+      "https://cdn.example/enterprise-4.0.0.okpkg",
+      new URL("https://license.example/enterprise.json").origin,
+      { "X-Okkey-License-Key": licenseKey },
+    ),
+  );
+  assert.equal(downloaded.payload.version, "4.0.0");
+  assert.deepEqual(seen, [{ host: "cdn.example", licenseHeader: null }]);
+
+  const feed = {
+    schema: "okkey.update-feed.v1",
+    packages: [
+      feedPackage("enterprise", "4.0.0", "https://cdn.example/enterprise-4.0.0.okpkg", raw, {
+        minCoreVersion: "1.0.0",
+      }),
+    ],
+  };
+  const requests: Array<{ host: string; licenseHeader: string | null }> = [];
+  const service = createSystemUpdateService({
+    deploymentMode: "self_hosted",
+    currentVersion: "1.0.0",
+    enterpriseInstalled: true,
+    enterpriseVersion: "1.0.0",
+    coreFeedUrl: "http://updates.internal/feed.json",
+    enterpriseFeedUrl: "https://license.example/enterprise.json",
+    enterpriseLicenseKey: licenseKey,
+    isolated: false,
+    feedCacheTtlMs: 0,
+    fetchImpl: async (url, init) => {
+      const headers = new Headers(init?.headers);
+      requests.push({
+        host: new URL(String(url)).host,
+        licenseHeader: headers.get("X-Okkey-License-Key"),
+      });
+      if (String(url).includes("license.example")) {
+        return new Response(JSON.stringify(feed), { status: 200 });
+      }
+      if (String(url).includes("cdn.example")) {
+        return new Response(raw, { status: 200 });
+      }
+      return new Response(JSON.stringify({ schema: "okkey.update-feed.v1", packages: [] }), {
+        status: 200,
+      });
+    },
+    agent: {
+      async start() {
+        return {
+          id: "22222222-2222-4222-8222-222222222222",
+          status: "verifying",
+          progress: 0,
+          component: "enterprise",
+          fromVersion: "1.0.0",
+          toVersion: "4.0.0",
+        };
+      },
+      async get() {
+        return null;
+      },
+    },
+    isAdmin: async () => true,
+  });
+  await service.apply("owner", { source: "feed", component: "enterprise" });
+  assert.deepEqual(requests, [
+    { host: "license.example", licenseHeader: licenseKey },
+    { host: "cdn.example", licenseHeader: null },
+  ]);
+});
+
+test("feed unauthorized and package download failures use stable error codes", async () => {
+  await assert.rejects(
+    () =>
+      fetchUpdateFeed("https://license.example/feed.json", false, async () => {
+        return new Response("denied", { status: 401 });
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof SystemUpdateError);
+      assert.equal(error.code, "FEED_UNAUTHORIZED");
+      return true;
+    },
+  );
+
+  await assert.rejects(
+    () =>
+      downloadSignedPackage("https://cdn.example/pkg.okpkg", "ab".repeat(32), async () => {
+        return new Response("missing", { status: 404 });
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof SystemUpdateError);
+      assert.equal(error.code, "PACKAGE_DOWNLOAD_FAILED");
+      return true;
+    },
+  );
+
+  const statusService = createSystemUpdateService({
+    deploymentMode: "self_hosted",
+    currentVersion: "1.0.0",
+    enterpriseInstalled: true,
+    enterpriseVersion: "1.0.0",
+    coreFeedUrl: "http://updates.internal/feed.json",
+    enterpriseFeedUrl: "https://license.example/enterprise.json",
+    enterpriseLicenseKey: "status-redirect-key",
+    isolated: false,
+    feedCacheTtlMs: 0,
+    fetchImpl: async (url) => {
+      if (String(url).includes("license.example")) {
+        return new Response(null, {
+          status: 302,
+          headers: { location: "https://other.example/enterprise.json" },
+        });
+      }
+      return new Response(JSON.stringify({ schema: "okkey.update-feed.v1", packages: [] }), {
+        status: 200,
+      });
+    },
+    agent: {
+      async start() {
+        throw new Error("unused");
+      },
+      async get() {
+        return null;
+      },
+    },
+    isAdmin: async () => true,
+  });
+  const status = await statusService.statusFor("owner");
+  assert.equal(
+    status.components.find((row) => row.component === "enterprise")?.checkError,
+    "FEED_REDIRECT_FORBIDDEN",
+  );
+  assert.equal(JSON.stringify(status).includes("status-redirect-key"), false);
 });
 
 test("an expired enterprise license refuses the feed, sets the lapse flag, and a renewal clears both", async () => {
