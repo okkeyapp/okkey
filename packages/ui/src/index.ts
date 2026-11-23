@@ -148,6 +148,7 @@ export {
   type TooltipContentProps,
 } from "./components/ui/tooltip.js";
 export { Button, buttonVariants, type ButtonProps } from "./components/ui/button.js";
+export { PlusIcon } from "./components/ui/plus-icon.js";
 export { Checkbox, type CheckboxProps } from "./components/ui/checkbox.js";
 export { Input, type InputProps } from "./components/ui/input.js";
 export { Separator, type SeparatorProps } from "./components/ui/separator.js";

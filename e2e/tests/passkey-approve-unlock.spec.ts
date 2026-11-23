@@ -62,7 +62,7 @@ async function enrollPasskeyAndAllowApprove(page: Page): Promise<void> {
   await expect(add).toBeVisible({ timeout: 30_000 });
   await add.click();
   const allow = dialog.getByRole("button", {
-    name: /allow this passkey to approve new devices/i,
+    name: /allow passkey to approve new devices/i,
   });
   const ready = dialog.getByText(/this passkey can approve a new device/i);
   await expect(allow.or(ready)).toBeVisible({ timeout: 90_000 });
