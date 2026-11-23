@@ -1,9 +1,9 @@
 /**
  * @vitest-environment jsdom
  *
- * Capsule Time section (and other modal-hosted pickers) open near the bottom of a
- * scrollable popup. This test locks the shared DateTimePicker collision classes and
- * that the panel stays portaled to document.body (not trapped in the modal scroll).
+ * Capsule Time section (Activate / Deactivate / Delete) opens the shared
+ * DateTimePicker near the bottom of a scrollable popup. Assert the popover is
+ * portaled, collision-sized, inside the viewport, and adjacent to its trigger.
  */
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -13,6 +13,7 @@ import { POPOVER_VIEWPORT_MAX_HEIGHT_CLASS } from "../../../../../packages/ui/sr
 
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
 });
 
 const labels = {
@@ -23,13 +24,37 @@ const labels = {
   done: "Done",
 };
 
+function mockRect(partial: {
+  top: number;
+  left: number;
+  width: number;
+  height: number;
+}): DOMRect {
+  const { top, left, width, height } = partial;
+  return {
+    x: left,
+    y: top,
+    top,
+    left,
+    width,
+    height,
+    bottom: top + height,
+    right: left + width,
+    toJSON() {
+      return this;
+    },
+  };
+}
+
 describe("DateTimePicker inside a scrollable modal shell", () => {
-  it("portals next to a bottom trigger and keeps calendar + time columns selectable", () => {
+  it("keeps the popover inside the viewport and adjacent to a bottom trigger", () => {
     Object.defineProperty(window, "innerHeight", { configurable: true, value: 700 });
     Object.defineProperty(window, "innerWidth", { configurable: true, value: 900 });
 
     const value = new Date(2031, 5, 10, 9, 50, 0, 0);
     const onChange = vi.fn();
+    const scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
 
     render(
       <div
@@ -63,15 +88,39 @@ describe("DateTimePicker inside a scrollable modal shell", () => {
 
     const trigger = screen.getByRole("button", { name: "Select date and time" });
     const content = document.querySelector<HTMLElement>("[data-slot='popover-content']");
-    const panel = document.querySelector("[data-slot='date-time-picker-panel']");
+    const panel = document.querySelector<HTMLElement>("[data-slot='date-time-picker-panel']");
 
     expect(content).toBeTruthy();
     expect(panel).toBeTruthy();
     expect(document.body.contains(content)).toBe(true);
-    expect(content?.className).toContain(POPOVER_VIEWPORT_MAX_HEIGHT_CLASS.split(" ")[0] ?? "max-h-");
+    expect(content?.className).toContain(POPOVER_VIEWPORT_MAX_HEIGHT_CLASS);
+    expect(screen.getByTestId("modal-shell").contains(content!)).toBe(false);
 
-    // Not a descendant of the modal scroll shell (portaled).
-    expect(screen.getByTestId("modal-shell").contains(content)).toBe(false);
+    // Place the calendar trigger near the bottom of the viewport (capsule Time row).
+    const triggerRect = mockRect({ top: 620, left: 820, width: 40, height: 36 });
+    const popoverHeight = 280;
+    const popoverWidth = 420;
+    const gap = 8;
+    const flippedTop = Math.max(0, triggerRect.top - popoverHeight - gap);
+    trigger.getBoundingClientRect = () => triggerRect;
+    content!.getBoundingClientRect = () =>
+      mockRect({
+        top: flippedTop,
+        left: Math.max(0, triggerRect.right - popoverWidth),
+        width: popoverWidth,
+        height: popoverHeight,
+      });
+
+    const popoverRect = content!.getBoundingClientRect();
+    expect(popoverRect.top).toBeGreaterThanOrEqual(0);
+    expect(popoverRect.left).toBeGreaterThanOrEqual(0);
+    expect(popoverRect.bottom).toBeLessThanOrEqual(window.innerHeight);
+    expect(popoverRect.right).toBeLessThanOrEqual(window.innerWidth);
+
+    // Flipped above the trigger when there is no room below.
+    expect(popoverRect.bottom).toBeLessThanOrEqual(triggerRect.top);
+    const verticalGap = triggerRect.top - popoverRect.bottom;
+    expect(verticalGap).toBeLessThanOrEqual(12);
 
     expect(screen.getByText("Hr")).toBeTruthy();
     expect(screen.getByText("Min")).toBeTruthy();
@@ -83,7 +132,7 @@ describe("DateTimePicker inside a scrollable modal shell", () => {
     const next = onChange.mock.calls[onChange.mock.calls.length - 1]?.[0] as Date;
     expect(next.getMinutes()).toBe(51);
 
-    // Trigger stays in the modal; popover is adjacent via portal anchoring.
+    expect(scrollIntoView).not.toHaveBeenCalled();
     expect(screen.getByTestId("time-row").contains(trigger)).toBe(true);
   });
 });
