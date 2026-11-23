@@ -19,6 +19,7 @@ import { toast } from "sonner";
 
 import { useAuthenticatedCoreClient } from "../../../auth/AuthVaultContext";
 import { runSaveWithToast } from "../../../lib/saveWithToast";
+import { smtpTestErrorKind, smtpTestErrorMessageKey } from "../../../lib/smtpTestErrors";
 
 type ServerMailSettingsBlockProps = {
   workspaceId: string;
@@ -278,7 +279,7 @@ export default function ServerMailSettingsBlock({
     } catch (error: unknown) {
       const message = timedOut
         ? t("web.workspaceSettings.serverMail.testTimeout")
-        : messageFromError(error, t("web.workspaceSettings.serverMail.testError"));
+        : t(smtpTestErrorMessageKey(smtpTestErrorKind(error)));
       setTestFailedMessage(message);
       if (timedOut) {
         void request.catch(() => undefined);

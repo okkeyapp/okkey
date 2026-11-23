@@ -64,7 +64,8 @@ test("auth email: no vertical page overflow on phone sizes", async () => {
   for (const vp of MOBILE_VIEWPORTS) {
     await page.setViewportSize({ width: vp.width, height: vp.height });
     await page.goto("/auth/email");
-    await expect(page.getByRole("heading", { name: /welcome to okkey/i })).toBeVisible({
+    // Empty self-host catalog redirects /auth/email → /setup (first-run wizard).
+    await expect(page.getByRole("heading", { name: /first-run setup|welcome to okkey/i })).toBeVisible({
       timeout: 30_000,
     });
     await assertViewportFitCover(page);

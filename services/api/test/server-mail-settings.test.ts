@@ -4,7 +4,11 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 
 import { deriveAes256KeyFromSessionSecret, deriveSmtpPasswordKey, openSecret, sealSecret } from "../src/crypto/server-aes.ts";
 import { wipeSecretBytes } from "../src/crypto/secret-lifecycle.ts";
-import { RuntimeEmailSender, type EmailMessage } from "../src/email/service.ts";
+import {
+  RuntimeEmailSender,
+  SMTP_TEST_CONNECTION_TIMEOUT_MS,
+  type EmailMessage,
+} from "../src/email/service.ts";
 import { registerServerMailSettingsRoutes } from "../src/mail-settings/routes.ts";
 import {
   MailSettingsError,
@@ -436,7 +440,7 @@ test("test email uses the form values, saves, and activates SMTP", async () => {
   assert.equal(await service.isOutboundActive(), true);
 });
 
-test("test email reports the transport cause", async () => {
+test("test email maps transport failures to stable codes without raw SMTP text", async () => {
   const store = new MemoryMailStore();
   const service = new MailSettingsService({
     store,
@@ -464,7 +468,9 @@ test("test email reports the transport cause", async () => {
       }),
     (error: unknown) => {
       assert.equal((error as { statusCode?: number }).statusCode, 502);
-      assert.equal((error as { message?: string }).message, "connect ECONNREFUSED");
+      assert.equal((error as { code?: string }).code, "SMTP_CONNECTION_REFUSED");
+      assert.equal((error as { message?: string }).message, "smtp connection refused");
+      assert.ok(!(error as { message?: string }).message?.includes("ECONNREFUSED"));
       return true;
     },
   );
@@ -498,7 +504,8 @@ test("test email hard-times out a hung SMTP send", async () => {
       }),
     (error: unknown) => {
       assert.equal((error as { statusCode?: number }).statusCode, 502);
-      assert.match((error as { message?: string }).message ?? "", /timed out after 1s/);
+      assert.equal((error as { code?: string }).code, "SMTP_TIMEOUT");
+      assert.equal((error as { message?: string }).message, "smtp connection timed out");
       return true;
     },
   );
@@ -853,4 +860,45 @@ test("saas does not probe saved SMTP on startup", async () => {
   assert.equal(verified, 0);
   assert.equal(store.row?.smtpVerifiedAt, null);
   assert.equal(store.row?.smtpLegacyProbedAt, null);
+});
+
+test("SMTP interactive test timeout default is 30 seconds", () => {
+  assert.equal(SMTP_TEST_CONNECTION_TIMEOUT_MS, 30_000);
+});
+
+test("setup test email activates SMTP; skip leaves mail inactive", async () => {
+  const { service: activateService, sent } = createService();
+  const activated = await activateService.sendTestEmailForSetup(
+    {
+      smtpHost: "smtp.setup.example",
+      smtpPort: 587,
+      smtpTlsMode: "starttls",
+      smtpUsername: "setup-user",
+      emailFrom: "setup@example.com",
+      publicAppUrl: "https://setup.example",
+      password: "setup-secret",
+    },
+    "operator@example.com",
+    "system:setup",
+  );
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0]?.to, "operator@example.com");
+  assert.equal(activated.smtpActive, true);
+  assert.ok(activated.smtpVerifiedAt);
+  assert.equal(await activateService.isOutboundActive(), true);
+
+  const { service: skipService, store } = createService();
+  // Seed first so skip writes over env seed.
+  await skipService.getPublicSettings();
+  assert.equal(store.updatedBy, "system:env-seed");
+  const skipped = await skipService.skipMailForSetup("system:setup");
+  assert.equal(skipped.smtpActive, false);
+  assert.equal(skipped.smtpVerifiedAt, null);
+  assert.equal(store.updatedBy, "system:setup");
+  assert.equal(await skipService.isOutboundActive(), false);
+  // Cleared host after skip must not re-merge EMAIL_* from env.
+  await skipService.updateForSetup({ smtpHost: "" }, "system:setup");
+  const afterClear = await skipService.getPublicSettings();
+  assert.equal(afterClear.smtpHost, "");
+  assert.equal(afterClear.smtpActive, false);
 });

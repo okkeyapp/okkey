@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { AuthService } from "../src/auth/service.ts";
+import { AuthError, AuthService } from "../src/auth/service.ts";
 import { createTestApiConfig } from "./test-api-config.ts";
 
 class InMemoryRedis {
@@ -41,9 +41,8 @@ class InMemoryRedis {
   }
 }
 
-test("email OTP is skipped only while the self-hosted directory is empty", async () => {
+test("empty self-host catalog requires setup wizard instead of OTP skip", async () => {
   const redis = new InMemoryRedis();
-  let userCount = 0;
   const sent: string[] = [];
   let nextId = 1;
   const service = new AuthService({
@@ -51,7 +50,42 @@ test("email OTP is skipped only while the self-hosted directory is empty", async
     users: {
       findByEmail: async () => null,
       isTwoFactorEnabled: async () => false,
-      hasAnyUsers: async () => userCount > 0,
+      hasAnyUsers: async () => false,
+    },
+    emailTemplates: {
+      sendAuthEmailCode: async (input) => {
+        sent.push(input.to);
+      },
+    },
+    config: createTestApiConfig(),
+    resolveEmailDeliverable: async () => true,
+    resolveRegistrationAllowed: async () => false,
+    now: () => new Date("2026-01-01T00:00:00.000Z"),
+    generateCode: () => "111111",
+    generateId: () => `id-${nextId++}`,
+  });
+
+  await assert.rejects(
+    () =>
+      service.startEmailLogin({
+        email: "first@example.com",
+        requestIp: "203.0.113.8",
+      }),
+    (error: unknown) => error instanceof AuthError && error.code === "SETUP_REQUIRED",
+  );
+  assert.equal(sent.length, 0);
+});
+
+test("after the first user exists, email OTP is required for later registrants", async () => {
+  const redis = new InMemoryRedis();
+  const sent: string[] = [];
+  let nextId = 1;
+  const service = new AuthService({
+    redis,
+    users: {
+      findByEmail: async () => null,
+      isTwoFactorEnabled: async () => false,
+      hasAnyUsers: async () => true,
     },
     emailTemplates: {
       sendAuthEmailCode: async (input) => {
@@ -65,15 +99,6 @@ test("email OTP is skipped only while the self-hosted directory is empty", async
     generateId: () => `id-${nextId++}`,
   });
 
-  const first = await service.startEmailLogin({
-    email: "first@example.com",
-    requestIp: "203.0.113.8",
-  });
-  assert.equal(first.bootstrapRequired, true);
-  assert.equal(first.emailDeliverable, true);
-  assert.equal(sent.length, 0);
-
-  userCount = 1;
   const second = await service.startEmailLogin({
     email: "second@example.com",
     requestIp: "203.0.113.8",

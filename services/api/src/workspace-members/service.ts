@@ -314,6 +314,26 @@ export class WorkspaceMembersService {
     });
   }
 
+  /** True when a pending, non-expired workspace invitation exists for this email. */
+  async hasPendingInvitationForEmail(email: string): Promise<boolean> {
+    const normalized = normalizeEmail(email);
+    if (!normalized) {
+      return false;
+    }
+    const rows = await this.db.query<{ ok: boolean }>(
+      `
+        SELECT TRUE AS ok
+        FROM workspace_invitations
+        WHERE lower(email) = $1
+          AND status = 'pending'
+          AND expires_at > now()
+        LIMIT 1
+      `,
+      [normalized],
+    );
+    return Boolean(rows[0]);
+  }
+
   /**
    * Authorize before body validation so foreign workspaces cannot be probed via 400s
    * (same pattern as Core item-category-preferences / the item-category route).

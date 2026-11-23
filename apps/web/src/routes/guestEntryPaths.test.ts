@@ -40,6 +40,10 @@ describe("isAllowedPathWithoutBearerSession", () => {
     expect(isAllowedPathWithoutBearerSession("/auth/extension/start", guest)).toBe(true);
   });
 
+  it("allows first-run setup without a Bearer session", () => {
+    expect(isAllowedPathWithoutBearerSession("/setup", guest)).toBe(true);
+  });
+
   it("allows privacy policy without a Bearer session", () => {
     expect(isAllowedPathWithoutBearerSession(PRIVACY_POLICY_PATH, guest)).toBe(true);
     expect(isAllowedPathWithoutBearerSession("/privacy", guest)).toBe(true);

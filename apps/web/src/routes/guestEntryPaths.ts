@@ -15,6 +15,7 @@ import {
   isDevUiPathname,
   isInvitePathname,
   isPrivacyPolicyPathname,
+  SETUP_PATH,
   UNLOCK_PASSWORD_LEGACY_PATH,
 } from "./paths";
 
@@ -36,6 +37,9 @@ export function isAllowedPathWithoutBearerSession(pathname: string, ctx: GuestEn
     return true;
   }
   if (pathname === AUTH_EMAIL_PATH) {
+    return true;
+  }
+  if (pathname === SETUP_PATH) {
     return true;
   }
   if (pathname === AUTH_EXTENSION_START_PATH) {

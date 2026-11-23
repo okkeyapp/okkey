@@ -39,7 +39,9 @@ export default function PendingDeviceInfoCard({
   return (
     <div
       className={cn(
-        "grid grid-cols-1 gap-3 rounded-xl bg-secondary p-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,max-content)] sm:items-start sm:gap-4",
+        // Mobile: explicit column flex (avoids sub-pixel grid row collisions at ~320px).
+        // Desktop: two-column grid with minmax(0,1fr) so long titles cannot overlap geo.
+        "flex flex-col gap-3 rounded-xl bg-secondary p-4 sm:grid sm:grid-cols-[minmax(0,1fr)_minmax(0,max-content)] sm:items-start sm:gap-4",
         className,
       )}
       data-testid="pending-device-info-card"

@@ -144,7 +144,7 @@ export interface RegistrationServiceDeps {
   log?: Logger;
 }
 
-function registrationResultRedisKey(authStateId: string): string {
+export function registrationResultRedisKey(authStateId: string): string {
   return `registration:result:${authStateId}`;
 }
 

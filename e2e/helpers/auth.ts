@@ -1,10 +1,15 @@
 import { expect, type Page } from "@playwright/test";
 
 import { markE2eSmtpDeliverable } from "./db";
-import { E2E_MASTER_PASSWORD } from "./env";
+import { E2E_BASE_URL, E2E_MASTER_PASSWORD, E2E_SETUP_CODE } from "./env";
 import { waitForMailpitOtp } from "./mailpit";
 
-/** qa/web 3.1–3.6 + 4.5: empty-DB bootstrap → recovery export → email login → unlock. */
+/** Public origin for invite/email links (CI uses PUBLIC_APP_BASE_URL=http://localhost:4173). */
+function e2ePublicAppUrl(): string {
+  return (process.env.PUBLIC_APP_BASE_URL ?? E2E_BASE_URL).trim().replace(/\/$/, "");
+}
+
+/** qa/web: empty-DB setup wizard → recovery export → full session unlock. */
 export async function registerBootstrapAndUnlock(
   page: Page,
   input: {
@@ -18,44 +23,73 @@ export async function registerBootstrapAndUnlock(
   const firstName = input.firstName ?? "E2E";
   const lastName = input.lastName ?? "User";
 
-  await page.goto("/auth/email");
-  await expect(page.getByRole("heading", { name: /welcome to okkey/i })).toBeVisible();
-  await page.locator("#auth-email").fill(input.email);
-  await page.getByRole("button", { name: /^sign in$/i }).click();
-
-  await expect(page.getByRole("heading", { name: /register with okkey/i })).toBeVisible({
+  await page.goto("/setup");
+  await expect(page.getByRole("heading", { name: /first-run setup/i })).toBeVisible({
     timeout: 30_000,
   });
-  await page.locator("#auth-reg-first-name").fill(firstName);
-  await page.locator("#auth-reg-last-name").fill(lastName);
-  await page.locator("#auth-reg-master-password").fill("short-pass");
-  await page.locator("#auth-reg-repeat-master-password").fill("short-pass");
+  // Multi-cell setup code (TOTP-style): paste into the first cell so applyPaste fills all 16 hex digits.
+  const setupCodeCell = page.locator("#setup-code");
+  await expect(setupCodeCell).toBeVisible({ timeout: 30_000 });
+  await setupCodeCell.focus();
+  await setupCodeCell.evaluate((el, value) => {
+    const dt = new DataTransfer();
+    dt.setData("text/plain", value);
+    el.dispatchEvent(
+      new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true }),
+    );
+  }, E2E_SETUP_CODE);
+  await expect(page.getByRole("button", { name: /^continue$/i })).toBeEnabled({ timeout: 10_000 });
+  await page.getByRole("button", { name: /^continue$/i }).click();
+
+  // Mail step — skip (mail activated later for OTP login of second users if needed).
+  await expect(page.getByTestId("setup-mail-step")).toBeVisible({ timeout: 30_000 });
+  await page.getByRole("button", { name: /skip for now/i }).click();
+
+  // Server address + registration mode (required for invite-link URLs).
+  await expect(page.getByRole("heading", { name: /server address/i })).toBeVisible({
+    timeout: 30_000,
+  });
+  await page.locator("#setup-public-app-url").fill(e2ePublicAppUrl());
+  await page.getByRole("button", { name: /^continue$/i }).click();
+
+  // Owner + workspace.
+  await expect(page.getByRole("heading", { name: /owner and workspace/i })).toBeVisible({
+    timeout: 30_000,
+  });
+  await page.locator("#setup-owner-email").fill(input.email);
+  await page.locator("#setup-first-name").fill(firstName);
+  await page.locator("#setup-last-name").fill(lastName);
+  await page.locator("#setup-workspace-name").fill("E2E Workspace");
+  await page.getByRole("button", { name: /^continue$/i }).click();
+
+  // Master password.
+  await expect(page.getByRole("heading", { name: /master password/i })).toBeVisible({
+    timeout: 30_000,
+  });
+  await page.locator("#setup-master-password").fill("short-pass");
+  await page.locator("#setup-repeat-master-password").fill("short-pass");
   await expect(page.getByRole("button", { name: /^register$/i })).toBeDisabled();
-  await expect(page.getByText(/at least 12 characters/i)).toBeVisible();
-  await page.locator("#auth-reg-master-password").fill(masterPassword);
-  await page.locator("#auth-reg-repeat-master-password").fill(masterPassword);
+  await page.locator("#setup-master-password").fill(masterPassword);
+  await page.locator("#setup-repeat-master-password").fill(masterPassword);
   await page.getByRole("button", { name: /^register$/i }).click();
 
   await expect(page.getByRole("heading", { name: /save your recovery key/i })).toBeVisible({
     timeout: 90_000,
   });
 
-  const next = page.getByRole("button", { name: /^continue$/i });
-  await expect(next).toBeDisabled();
+  const finish = page.getByRole("button", { name: /finish setup/i });
+  await expect(finish).toBeDisabled();
 
   const recoveryKey = (await page.locator("p.font-mono").first().innerText()).trim();
   expect(recoveryKey.length).toBeGreaterThan(16);
 
   await page.getByRole("button", { name: /^copy$/i }).click();
-  await expect(next).toBeEnabled({ timeout: 15_000 });
-  await next.click();
+  await expect(finish).toBeEnabled({ timeout: 15_000 });
+  await finish.click();
 
-  // Bootstrap Bearer is not a full session — complete email OTP, then unlock.
-  await expect(page.getByRole("heading", { name: /welcome to okkey/i })).toBeVisible({
-    timeout: 30_000,
-  });
-  await signInWithEmailOtp(page, input.email);
-  await unlockWithMasterPassword(page, masterPassword);
+  // Full session + unlock in the same tab → items.
+  await expect(page).toHaveURL(/\/items/, { timeout: 90_000 });
+  await expectNoPersistedServerKeyShare(page);
 
   return { recoveryKey };
 }

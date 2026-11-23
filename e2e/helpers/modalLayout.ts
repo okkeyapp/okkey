@@ -2,13 +2,16 @@ import { expect, type Locator, type Page } from "@playwright/test";
 
 type Box = { x: number; y: number; width: number; height: number };
 
-/** True when two axis-aligned boxes overlap (including edge touching counts as no overlap). */
-export function boxesOverlap(a: Box, b: Box): boolean {
+/**
+ * True when two axis-aligned boxes overlap by more than `epsilon` px.
+ * Edge touching (and sub-pixel gaps from DPR/layout rounding) count as no overlap.
+ */
+export function boxesOverlap(a: Box, b: Box, epsilon = 1): boolean {
   return !(
-    a.x + a.width <= b.x ||
-    b.x + b.width <= a.x ||
-    a.y + a.height <= b.y ||
-    b.y + b.height <= a.y
+    a.x + a.width <= b.x + epsilon ||
+    b.x + b.width <= a.x + epsilon ||
+    a.y + a.height <= b.y + epsilon ||
+    b.y + b.height <= a.y + epsilon
   );
 }
 
@@ -39,6 +42,15 @@ export async function assertNoHorizontalOverflow(
 
 /** Assert pending-device identity and geo rows do not overlap (desktop or mobile). */
 export async function assertPendingDeviceRowsDoNotOverlap(dialog: Locator): Promise<void> {
+  // Bottom-sheet enter animation can leave intermediate boxes overlapping until settle.
+  const sheet = dialog.locator(".okkey-popup-sheet").first();
+  if ((await sheet.count()) > 0) {
+    await sheet.evaluate(async (el) => {
+      const animations = el.getAnimations({ subtree: true });
+      await Promise.all(animations.map((animation) => animation.finished.catch(() => undefined)));
+    });
+  }
+
   const identity = dialog.getByTestId("pending-device-identity");
   const geo = dialog.getByTestId("pending-device-geo");
   const title = dialog.getByTestId("pending-device-title");
