@@ -26,7 +26,12 @@ describe("popover positioning class helpers", () => {
     expect(DATE_TIME_PICKER_POPOVER_CONTENT_CLASS).toContain("overflow-hidden");
     expect(DATE_TIME_PICKER_BODY_LAYOUT_CLASS).toContain("flex-col");
     expect(DATE_TIME_PICKER_CALENDAR_SCROLL_CLASS).toContain("overflow-y-auto");
+    expect(DATE_TIME_PICKER_CALENDAR_SCROLL_CLASS).toContain("min-h-[12rem]");
+    expect(DATE_TIME_PICKER_CALENDAR_SCROLL_CLASS).toContain("sm:min-h-0");
     expect(DATE_TIME_PICKER_TIME_COLUMN_CLASS).toContain("w-full");
+    expect(DATE_TIME_PICKER_TIME_COLUMN_CLASS).toContain("h-[9rem]");
+    expect(DATE_TIME_PICKER_TIME_COLUMN_CLASS).toContain("overflow-hidden");
+    expect(DATE_TIME_PICKER_TIME_COLUMN_CLASS).toContain("sm:h-auto");
   });
 
   it("clamps preferred size into 375x667 and 1280x720 viewports", () => {

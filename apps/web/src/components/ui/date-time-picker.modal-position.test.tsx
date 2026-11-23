@@ -147,6 +147,7 @@ describe("DateTimePicker inside a scrollable modal shell", () => {
 
   it.each([
     { width: 375, height: 667 },
+    { width: 375, height: 812 },
     { width: 1280, height: 720 },
   ])("fits viewport $width x $height with Done fully visible", ({ width, height }) => {
     Object.defineProperty(window, "innerWidth", { configurable: true, value: width });
@@ -174,14 +175,21 @@ describe("DateTimePicker inside a scrollable modal shell", () => {
 
     const content = document.querySelector<HTMLElement>("[data-slot='popover-content']");
     const done = screen.getByRole("button", { name: "Done" });
+    const calendar = document.querySelector<HTMLElement>("[data-slot='date-time-picker-calendar']");
+    const timeColumn = document.querySelector<HTMLElement>("[data-slot='date-time-picker-time']");
     expect(content).toBeTruthy();
     expect(content?.className).toContain(POPOVER_VIEWPORT_MAX_WIDTH_CLASS);
     expect(content?.className).toContain(POPOVER_VIEWPORT_MAX_HEIGHT_CLASS);
+    expect(calendar?.className).toContain("min-h-[12rem]");
+    expect(timeColumn?.className).toContain("h-[9rem]");
 
     const top = Math.max(DATE_TIME_PICKER_VIEWPORT_MARGIN_PX, 24);
     const left = Math.max(DATE_TIME_PICKER_VIEWPORT_MARGIN_PX, 8);
+    const calendarHeight = Math.max(192, clamped.height - 152);
     content!.getBoundingClientRect = () =>
       mockRect({ top, left, width: clamped.width, height: clamped.height });
+    calendar!.getBoundingClientRect = () =>
+      mockRect({ top: top + 8, left: left + 8, width: clamped.width - 16, height: calendarHeight });
     done.getBoundingClientRect = () =>
       mockRect({
         top: top + clamped.height - 44,
@@ -197,6 +205,7 @@ describe("DateTimePicker inside a scrollable modal shell", () => {
     expect(doneRect.right).toBeLessThanOrEqual(width);
     expect(doneRect.bottom).toBeLessThanOrEqual(height);
     expect(doneRect.right).toBeLessThanOrEqual(popoverRect.right);
+    expect(calendar!.getBoundingClientRect().height).toBeGreaterThan(0);
     expect(clamped.width).toBeLessThanOrEqual(width - DATE_TIME_PICKER_VIEWPORT_MARGIN_PX * 2);
   });
 });

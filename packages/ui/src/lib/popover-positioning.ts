@@ -45,13 +45,20 @@ export const DATE_TIME_PICKER_BODY_MAX_HEIGHT_CLASS =
 export const DATE_TIME_PICKER_BODY_LAYOUT_CLASS =
   "flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden sm:flex-row";
 
-/** Scrollable calendar host so weeks never overflow into the Today/Done footer. */
+/**
+ * Scrollable calendar host. On narrow (stacked) layouts keep a usable month-grid
+ * min-height so the time column cannot collapse it to 0; from `sm` up, allow
+ * flex shrink beside the time columns.
+ */
 export const DATE_TIME_PICKER_CALENDAR_SCROLL_CLASS =
-  "min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto";
+  "min-h-[12rem] min-w-0 flex-1 overflow-x-hidden overflow-y-auto sm:min-h-0";
 
-/** Time columns host: full width when stacked, fixed-ish when beside calendar. */
+/**
+ * Time columns host: capped height when stacked under the calendar so hour/minute
+ * lists scroll instead of eating the popup; unrestricted beside the calendar from `sm`.
+ */
 export const DATE_TIME_PICKER_TIME_COLUMN_CLASS =
-  "flex min-h-0 w-full shrink-0 flex-col border-t sm:w-auto sm:min-w-[7rem] sm:border-l sm:border-t-0";
+  "flex h-[9rem] min-h-0 w-full shrink-0 flex-col overflow-hidden border-t sm:h-auto sm:w-auto sm:min-w-[7rem] sm:border-l sm:border-t-0";
 
 export const DATE_TIME_PICKER_POPOVER_CONTENT_CLASS = [
   "flex w-auto flex-col overflow-hidden p-0",

@@ -126,7 +126,8 @@ describe("DateTimePicker positioning", () => {
   });
 
   it.each([
-    { width: 375, height: 667, label: "phone" },
+    { width: 375, height: 667, label: "phone-667" },
+    { width: 375, height: 812, label: "phone-812" },
     { width: 1280, height: 720, label: "laptop" },
   ])(
     "keeps popover bbox and Done inside the $label viewport ($width x $height)",
@@ -163,17 +164,25 @@ describe("DateTimePicker positioning", () => {
 
       const content = document.querySelector<HTMLElement>("[data-slot='popover-content']");
       const done = screen.getByRole("button", { name: "Done" });
+      const calendar = document.querySelector<HTMLElement>("[data-slot='date-time-picker-calendar']");
+      const timeColumn = document.querySelector<HTMLElement>("[data-slot='date-time-picker-time']");
       expect(content).toBeTruthy();
       expect(content?.className).toContain(DATE_TIME_PICKER_POPOVER_CONTENT_CLASS.split(" ")[0]!);
       expect(content?.className).toContain(POPOVER_VIEWPORT_MAX_WIDTH_CLASS);
       expect(content?.className).toMatch(/max-h-\[min\(100dvh/);
-      expect(document.querySelector("[data-slot='date-time-picker-calendar']")).toBeTruthy();
+      expect(calendar).toBeTruthy();
+      expect(calendar?.className).toContain("min-h-[12rem]");
+      expect(timeColumn?.className).toContain("h-[9rem]");
+      expect(timeColumn?.className).toContain("overflow-hidden");
       expect(document.querySelector("[data-slot='date-time-picker-footer']")).toBeTruthy();
 
       const top = Math.max(DATE_TIME_PICKER_VIEWPORT_MARGIN_PX, height - clamped.height - 40);
       const left = Math.max(DATE_TIME_PICKER_VIEWPORT_MARGIN_PX, (width - clamped.width) / 2);
+      const calendarHeight = Math.max(192, clamped.height - 152);
       content!.getBoundingClientRect = () =>
         mockRect({ top, left, width: clamped.width, height: clamped.height });
+      calendar!.getBoundingClientRect = () =>
+        mockRect({ top: top + 8, left: left + 8, width: clamped.width - 16, height: calendarHeight });
       done.getBoundingClientRect = () =>
         mockRect({
           top: top + clamped.height - 44,
@@ -183,14 +192,33 @@ describe("DateTimePicker positioning", () => {
         });
 
       const popoverRect = content!.getBoundingClientRect();
+      const calendarRect = calendar!.getBoundingClientRect();
       const doneRect = done.getBoundingClientRect();
       assertInsideViewport(popoverRect, width, height);
       assertInsideViewport(doneRect, width, height);
+      expect(calendarRect.height).toBeGreaterThan(0);
       expect(doneRect.right).toBeLessThanOrEqual(popoverRect.right);
       expect(doneRect.bottom).toBeLessThanOrEqual(popoverRect.bottom);
       expect(doneRect.width).toBeGreaterThan(0);
       expect(clamped.width).toBeLessThanOrEqual(width - DATE_TIME_PICKER_VIEWPORT_MARGIN_PX * 2);
       expect(clamped.height).toBeLessThanOrEqual(height - DATE_TIME_PICKER_VIEWPORT_MARGIN_PX * 2);
+
+      if (width <= 375) {
+        const dayButton = document.querySelector<HTMLElement>(
+          "[data-slot='date-time-picker-calendar'] button",
+        );
+        expect(dayButton).toBeTruthy();
+        dayButton!.getBoundingClientRect = () =>
+          mockRect({
+            top: top + 48,
+            left: left + 24,
+            width: 32,
+            height: 32,
+          });
+        expect(dayButton!.getBoundingClientRect().height).toBeGreaterThan(0);
+        expect(dayButton!.getBoundingClientRect().width).toBeGreaterThan(0);
+        fireEvent.click(dayButton!);
+      }
     },
   );
 });
