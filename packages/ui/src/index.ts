@@ -330,9 +330,15 @@ export { Calendar, CalendarDayButton } from "./components/ui/calendar.js";
 export { CalendarMonthYearCaption } from "./components/ui/calendar-month-year-caption.js";
 export { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from "./components/ui/popover.js";
 export {
+  clampDateTimePickerSize,
+  DATE_TIME_PICKER_BODY_LAYOUT_CLASS,
   DATE_TIME_PICKER_BODY_MAX_HEIGHT_CLASS,
+  DATE_TIME_PICKER_CALENDAR_SCROLL_CLASS,
   DATE_TIME_PICKER_POPOVER_CONTENT_CLASS,
+  DATE_TIME_PICKER_TIME_COLUMN_CLASS,
+  DATE_TIME_PICKER_VIEWPORT_MARGIN_PX,
   POPOVER_VIEWPORT_MAX_HEIGHT_CLASS,
+  POPOVER_VIEWPORT_MAX_WIDTH_CLASS,
 } from "./lib/popover-positioning.js";
 export { scrollIntoNearestViewport } from "./lib/scroll-into-nearest-viewport.js";
 export {

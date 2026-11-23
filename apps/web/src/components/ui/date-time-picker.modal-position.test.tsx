@@ -9,7 +9,12 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { DateTimePicker } from "../../../../../packages/ui/src/components/ui/date-time-picker";
-import { POPOVER_VIEWPORT_MAX_HEIGHT_CLASS } from "../../../../../packages/ui/src/lib/popover-positioning";
+import {
+  clampDateTimePickerSize,
+  DATE_TIME_PICKER_VIEWPORT_MARGIN_PX,
+  POPOVER_VIEWPORT_MAX_HEIGHT_CLASS,
+  POPOVER_VIEWPORT_MAX_WIDTH_CLASS,
+} from "../../../../../packages/ui/src/lib/popover-positioning";
 
 afterEach(() => {
   cleanup();
@@ -94,21 +99,26 @@ describe("DateTimePicker inside a scrollable modal shell", () => {
     expect(panel).toBeTruthy();
     expect(document.body.contains(content)).toBe(true);
     expect(content?.className).toContain(POPOVER_VIEWPORT_MAX_HEIGHT_CLASS);
+    expect(content?.className).toContain(POPOVER_VIEWPORT_MAX_WIDTH_CLASS);
     expect(screen.getByTestId("modal-shell").contains(content!)).toBe(false);
 
-    // Place the calendar trigger near the bottom of the viewport (capsule Time row).
     const triggerRect = mockRect({ top: 620, left: 820, width: 40, height: 36 });
-    const popoverHeight = 280;
-    const popoverWidth = 420;
+    const preferred = { width: 420, height: 280 };
+    const clamped = clampDateTimePickerSize(
+      preferred.width,
+      preferred.height,
+      window.innerWidth,
+      window.innerHeight,
+    );
     const gap = 8;
-    const flippedTop = Math.max(0, triggerRect.top - popoverHeight - gap);
+    const flippedTop = Math.max(0, triggerRect.top - clamped.height - gap);
     trigger.getBoundingClientRect = () => triggerRect;
     content!.getBoundingClientRect = () =>
       mockRect({
         top: flippedTop,
-        left: Math.max(0, triggerRect.right - popoverWidth),
-        width: popoverWidth,
-        height: popoverHeight,
+        left: Math.max(0, triggerRect.right - clamped.width),
+        width: clamped.width,
+        height: clamped.height,
       });
 
     const popoverRect = content!.getBoundingClientRect();
@@ -117,7 +127,6 @@ describe("DateTimePicker inside a scrollable modal shell", () => {
     expect(popoverRect.bottom).toBeLessThanOrEqual(window.innerHeight);
     expect(popoverRect.right).toBeLessThanOrEqual(window.innerWidth);
 
-    // Flipped above the trigger when there is no room below.
     expect(popoverRect.bottom).toBeLessThanOrEqual(triggerRect.top);
     const verticalGap = triggerRect.top - popoverRect.bottom;
     expect(verticalGap).toBeLessThanOrEqual(12);
@@ -134,5 +143,60 @@ describe("DateTimePicker inside a scrollable modal shell", () => {
 
     expect(scrollIntoView).not.toHaveBeenCalled();
     expect(screen.getByTestId("time-row").contains(trigger)).toBe(true);
+  });
+
+  it.each([
+    { width: 375, height: 667 },
+    { width: 1280, height: 720 },
+  ])("fits viewport $width x $height with Done fully visible", ({ width, height }) => {
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: width });
+    Object.defineProperty(window, "innerHeight", { configurable: true, value: height });
+
+    const value = new Date(2031, 5, 10, 9, 50, 0, 0);
+    const clamped = clampDateTimePickerSize(393, 400, width, height);
+
+    render(
+      <DateTimePicker
+        open
+        onOpenChange={() => undefined}
+        value={value}
+        onChange={() => undefined}
+        onToday={() => undefined}
+        onDone={() => undefined}
+        labels={labels}
+        trigger={
+          <button type="button" aria-label="Select date and time">
+            Open
+          </button>
+        }
+      />,
+    );
+
+    const content = document.querySelector<HTMLElement>("[data-slot='popover-content']");
+    const done = screen.getByRole("button", { name: "Done" });
+    expect(content).toBeTruthy();
+    expect(content?.className).toContain(POPOVER_VIEWPORT_MAX_WIDTH_CLASS);
+    expect(content?.className).toContain(POPOVER_VIEWPORT_MAX_HEIGHT_CLASS);
+
+    const top = Math.max(DATE_TIME_PICKER_VIEWPORT_MARGIN_PX, 24);
+    const left = Math.max(DATE_TIME_PICKER_VIEWPORT_MARGIN_PX, 8);
+    content!.getBoundingClientRect = () =>
+      mockRect({ top, left, width: clamped.width, height: clamped.height });
+    done.getBoundingClientRect = () =>
+      mockRect({
+        top: top + clamped.height - 44,
+        left: left + clamped.width - 88,
+        width: 72,
+        height: 36,
+      });
+
+    const popoverRect = content!.getBoundingClientRect();
+    const doneRect = done.getBoundingClientRect();
+    expect(popoverRect.right).toBeLessThanOrEqual(width);
+    expect(popoverRect.bottom).toBeLessThanOrEqual(height);
+    expect(doneRect.right).toBeLessThanOrEqual(width);
+    expect(doneRect.bottom).toBeLessThanOrEqual(height);
+    expect(doneRect.right).toBeLessThanOrEqual(popoverRect.right);
+    expect(clamped.width).toBeLessThanOrEqual(width - DATE_TIME_PICKER_VIEWPORT_MARGIN_PX * 2);
   });
 });
