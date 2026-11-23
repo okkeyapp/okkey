@@ -1048,6 +1048,7 @@ export default function SetupWizardPage() {
           <div className="flex w-full flex-col gap-2">
             <span className="okkey-small font-medium text-copy-primary">{t("web.setupWizard.publicAppUrl")}</span>
             <Input
+              id="setup-public-app-url"
               value={publicAppUrl}
               onChange={(e) => setPublicAppUrl(e.target.value)}
               placeholder="https://vault.example.com"

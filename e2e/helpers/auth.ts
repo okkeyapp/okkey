@@ -1,8 +1,13 @@
 import { expect, type Page } from "@playwright/test";
 
 import { markE2eSmtpDeliverable } from "./db";
-import { E2E_MASTER_PASSWORD, E2E_SETUP_CODE } from "./env";
+import { E2E_BASE_URL, E2E_MASTER_PASSWORD, E2E_SETUP_CODE } from "./env";
 import { waitForMailpitOtp } from "./mailpit";
+
+/** Public origin for invite/email links (CI uses PUBLIC_APP_BASE_URL=http://localhost:4173). */
+function e2ePublicAppUrl(): string {
+  return (process.env.PUBLIC_APP_BASE_URL ?? E2E_BASE_URL).trim().replace(/\/$/, "");
+}
 
 /** qa/web: empty-DB setup wizard → recovery export → full session unlock. */
 export async function registerBootstrapAndUnlock(
@@ -40,10 +45,11 @@ export async function registerBootstrapAndUnlock(
   await expect(page.getByTestId("setup-mail-step")).toBeVisible({ timeout: 30_000 });
   await page.getByRole("button", { name: /skip for now/i }).click();
 
-  // Server address + registration mode.
+  // Server address + registration mode (required for invite-link URLs).
   await expect(page.getByRole("heading", { name: /server address/i })).toBeVisible({
     timeout: 30_000,
   });
+  await page.locator("#setup-public-app-url").fill(e2ePublicAppUrl());
   await page.getByRole("button", { name: /^continue$/i }).click();
 
   // Owner + workspace.
