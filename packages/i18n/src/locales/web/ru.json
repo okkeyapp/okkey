@@ -2060,7 +2060,7 @@
   "auth.setup.codeLabel": "Код настройки",
   "auth.setup.submitCode": "Продолжить",
   "auth.setup.errorInvalidCode": "Неверный код настройки.",
-  "auth.setup.errorLocked": "Слишком много попыток. Попробуйте позже или проверьте логи API на новый код.",
+  "auth.setup.errorLocked": "Слишком много попыток. Перезапустите API, чтобы получить новый код настройки.",
   "auth.setup.errorGeneric": "Что-то пошло не так. Попробуйте ещё раз.",
   "auth.setup.errorNotRequired": "Настройка на этом сервере не требуется.",
   "auth.setup.redirecting": "Открываем настройку…",

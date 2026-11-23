@@ -67,7 +67,13 @@ import {
   SetupWizardShell,
   type SetupWizardNavStep,
 } from "./SetupWizardShell";
-import { runSetupLogoUpload, setupLogoUploadDecision } from "./setupLogoUpload";
+import { setupCodeErrorKind } from "./setupCodeErrors";
+import {
+  capturePendingLogoForFinish,
+  runSetupLogoUpload,
+  setupLogoUploadDecision,
+  shouldWipeLogoMaterialsOnUnmount,
+} from "./setupLogoUpload";
 
 type WizardStep = "code" | "mail" | "server" | "owner" | "password" | "recovery" | "finishing";
 
@@ -105,15 +111,9 @@ function RequirementCrossIcon(props: SVGProps<SVGSVGElement>) {
 
 function messageFromError(error: unknown, fallback: string): string {
   if (error && typeof error === "object" && "body" in error) {
-    const body = (error as { body?: { message?: unknown; error?: unknown } }).body;
+    const body = (error as { body?: { message?: unknown } }).body;
     if (typeof body?.message === "string" && body.message.trim()) {
       return body.message;
-    }
-    if (body?.error === "SETUP_CODE_INVALID") {
-      return "SETUP_CODE_INVALID";
-    }
-    if (body?.error === "SETUP_CODE_LOCKED") {
-      return "SETUP_CODE_LOCKED";
     }
   }
   return fallback;
@@ -187,6 +187,8 @@ export default function SetupWizardPage() {
   const recoveryCopyResetTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [postRegAccessToken, setPostRegAccessToken] = useState<string | null>(null);
   const vaultKeyPendingEnrollRef = useRef<Uint8Array | null>(null);
+  /** True while finish holds logo materials across GuestAuthOnly unmount after session apply. */
+  const finishInFlightRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -214,6 +216,8 @@ export default function SetupWizardPage() {
 
   // Secrets/refs must not share a cleanup effect with logoPreviewUrl — changing the
   // preview (or Strict Mode remount) would wipe logoVaultKeyRef before finish upload.
+  // Skip logo wipe while finish is in flight: flushSync(session) unmounts this page via
+  // GuestAuthOnly before the upload runs; materials are captured into locals first.
   useEffect(() => {
     return () => {
       if (recoveryCopyResetTimeoutRef.current) {
@@ -223,7 +227,7 @@ export default function SetupWizardPage() {
         wipeBytes(vaultKeyPendingEnrollRef.current);
         vaultKeyPendingEnrollRef.current = null;
       }
-      if (logoVaultKeyRef.current) {
+      if (shouldWipeLogoMaterialsOnUnmount(finishInFlightRef.current) && logoVaultKeyRef.current) {
         wipeBytes(logoVaultKeyRef.current);
         logoVaultKeyRef.current = null;
       }
@@ -334,13 +338,15 @@ export default function SetupWizardPage() {
       setRegistrationMode(instance.registration_mode);
       setStep("mail");
     } catch (err) {
-      const mapped = messageFromError(err, "GENERIC");
-      if (mapped === "SETUP_CODE_INVALID") {
+      const kind = setupCodeErrorKind(err);
+      if (kind === "invalid") {
         setError(t("auth.setup.errorInvalidCode"));
         setCodeResetKey((value) => value + 1);
         setCode("");
-      } else if (mapped === "SETUP_CODE_LOCKED") {
+      } else if (kind === "locked") {
         setError(t("auth.setup.errorLocked"));
+        setCodeResetKey((value) => value + 1);
+        setCode("");
       } else {
         setError(t("auth.setup.errorGeneric"));
       }
@@ -708,6 +714,11 @@ export default function SetupWizardPage() {
     setBusy(true);
     setStep("finishing");
     setError(null);
+    finishInFlightRef.current = true;
+    let pendingLogo = capturePendingLogoForFinish({
+      vaultKey: null,
+      plaintext: null,
+    });
     try {
       const invitations = inviteEmails
         .split(/[\n,;]+/)
@@ -722,20 +733,35 @@ export default function SetupWizardPage() {
         dismiss_personal_data_bootstrap: false,
       });
 
+      // Snapshot + detach refs before session apply: GuestAuthOnly unmounts /setup on bearer.
+      pendingLogo = capturePendingLogoForFinish({
+        vaultKey: logoVaultKeyRef.current,
+        plaintext: logoPlaintextRef.current,
+      });
+      logoVaultKeyRef.current = null;
+      logoPlaintextRef.current = null;
+      setLogoFileName(null);
+      setLogoPreviewUrl((prev) => {
+        if (prev) {
+          URL.revokeObjectURL(prev);
+        }
+        return null;
+      });
+
       // Resume: complete setup only — never apply a session; go to normal sign-in.
       const accessToken = finished.access_token;
       const expiresAt = finished.expires_at;
       if (resumeMode || finished.sign_in_required || !accessToken || !expiresAt) {
-        const hadPendingLogo = Boolean(logoPlaintextRef.current);
-        wipeLogoVaultKey();
-        clearPendingLogo();
+        if (pendingLogo.vaultKey) {
+          wipeBytes(pendingLogo.vaultKey);
+        }
         masterPasswordRef.current = "";
         setMasterPassword("");
         setRepeatMasterPassword("");
         setRegistrationAuthStateId(null);
         setPostRegAccessToken(null);
         setSetupToken(null);
-        if (hadPendingLogo) {
+        if (pendingLogo.hadPendingLogo) {
           toast.error(t("web.setupWizard.resumeLogoSkipped"));
         }
         toast.success(t("web.setupWizard.resumeSignInRequired"));
@@ -758,17 +784,17 @@ export default function SetupWizardPage() {
       masterPasswordRef.current = "";
       setMasterPassword("");
       setRepeatMasterPassword("");
-      const hadPendingLogo = Boolean(logoPlaintextRef.current);
+      // Use captured locals — page may already be unmounted; refs were detached above.
       const logoDecision = setupLogoUploadDecision({
-        hadPendingLogo,
+        hadPendingLogo: pendingLogo.hadPendingLogo,
         unlockOk: unlock.ok,
-        hasVaultKey: Boolean(logoVaultKeyRef.current),
-        hasPlaintext: Boolean(logoPlaintextRef.current),
+        hasVaultKey: Boolean(pendingLogo.vaultKey),
+        hasPlaintext: Boolean(pendingLogo.plaintext),
       });
       const logoOutcome = await runSetupLogoUpload({
         decision: logoDecision,
-        vaultKey: logoVaultKeyRef.current,
-        plaintext: logoPlaintextRef.current,
+        vaultKey: pendingLogo.vaultKey,
+        plaintext: pendingLogo.plaintext,
         upload: async (vaultKey, plaintext) => {
           const { encryptWorkspaceLogo } = await import("../../workspace/workspaceKeyClient");
           const core = createAuthenticatedCoreClient(accessToken);
@@ -788,8 +814,9 @@ export default function SetupWizardPage() {
           });
         },
       });
-      wipeLogoVaultKey();
-      clearPendingLogo();
+      if (pendingLogo.vaultKey) {
+        wipeBytes(pendingLogo.vaultKey);
+      }
       if (logoOutcome === "failed") {
         toast.error(t("web.setupWizard.logoUploadFailed"));
       }
@@ -800,9 +827,13 @@ export default function SetupWizardPage() {
       if (import.meta.env.DEV) {
         console.error("[setup/finish]", err);
       }
+      if (pendingLogo.vaultKey) {
+        wipeBytes(pendingLogo.vaultKey);
+      }
       setError(t("auth.setup.errorGeneric"));
       setStep("recovery");
     } finally {
+      finishInFlightRef.current = false;
       setBusy(false);
     }
   }
@@ -971,12 +1002,19 @@ export default function SetupWizardPage() {
             <Input value={emailFrom} onChange={(e) => setEmailFrom(e.target.value)} disabled={busy || testing} />
           </div>
           <div className="flex w-full flex-col gap-2">
-            <span className="okkey-small font-medium text-copy-primary">{t("web.setupWizard.mailRecipient")}</span>
+            <label
+              htmlFor="setup-mail-recipient"
+              className="okkey-small font-medium text-copy-primary"
+            >
+              {t("web.setupWizard.mailRecipient")}
+            </label>
             <Input
+              id="setup-mail-recipient"
               type="email"
               value={testRecipient}
               onChange={(e) => setTestRecipient(e.target.value)}
               disabled={busy || testing}
+              autoComplete="email"
             />
           </div>
           {testFailedMessage ? (
@@ -1235,7 +1273,7 @@ export default function SetupWizardPage() {
 
       {step === "recovery" && !recoverySecret && recoveryExported ? (
         <div className="flex w-full flex-col gap-6">
-          <p className="text-sm text-copy-secondary">{t("web.setupWizard.resumeFinishHint")}</p>
+          {/* Hint is shown once via SetupWizardShell description (resumeFinishHint). */}
           <Button type="button" disabled={busy} onClick={() => void handleFinish()}>
             {t("web.setupWizard.finish")}
           </Button>

@@ -2060,7 +2060,7 @@
   "auth.setup.codeLabel": "Setup code",
   "auth.setup.submitCode": "Continue",
   "auth.setup.errorInvalidCode": "Invalid setup code.",
-  "auth.setup.errorLocked": "Too many attempts. Try again later or check the API logs for a new code.",
+  "auth.setup.errorLocked": "Too many attempts. Restart the API to get a new setup code.",
   "auth.setup.errorGeneric": "Something went wrong. Please try again.",
   "auth.setup.errorNotRequired": "Setup is not required on this server.",
   "auth.setup.redirecting": "Opening setup…",
