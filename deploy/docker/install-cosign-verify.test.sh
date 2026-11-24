@@ -31,8 +31,8 @@ head -n 30 "${INSTALL_SH}" | grep -Fq -- '--allow-candidate' || fail "script hea
 head -n 30 "${INSTALL_SH}" | grep -Fq -- '--allow-dev' || fail "script header missing --allow-dev"
 
 # Default git ref is the documented release tag, not the dev branch.
-grep -Fq 'OKKEY_REF="${OKKEY_REF:-v1.0.0-beta.2}"' "${INSTALL_SH}" || fail "default OKKEY_REF must be v1.0.0-beta.2"
-head -n 20 "${INSTALL_SH}" | grep -Fq 'okkey/v1.0.0-beta.2/deploy/docker/install.sh' || fail "header must download install.sh from the release tag"
+grep -Fq 'OKKEY_REF="${OKKEY_REF:-v1.0.0-beta.3}"' "${INSTALL_SH}" || fail "default OKKEY_REF must be v1.0.0-beta.3"
+head -n 20 "${INSTALL_SH}" | grep -Fq 'okkey/v1.0.0-beta.3/deploy/docker/install.sh' || fail "header must download install.sh from the release tag"
 if head -n 20 "${INSTALL_SH}" | grep -Fq 'okkey/dev/deploy/docker/install.sh'; then
   fail "header must not download install.sh from the dev branch"
 fi
@@ -64,8 +64,8 @@ verify_line="$(grep -n '^verify_pulled_image_signatures "\${skip_pull}"' "${INST
 up_line="$(grep -n '^run_compose \.env up -d$' "${INSTALL_SH}" | head -1 | cut -d: -f1)"
 [[ -n "${verify_line}" && -n "${up_line}" ]] || fail "could not locate verify / compose up"
 [[ "${verify_line}" -lt "${up_line}" ]] || fail "verify (line ${verify_line}) must run before compose up (line ${up_line})"
-# Default image tag must match compose (${OKKEY_IMAGE_TAG:-1.0.0-beta.2}).
-grep -Fq 'image_tag:-1.0.0-beta.2' "${INSTALL_SH}" || fail "compose_image_tag default must be 1.0.0-beta.2"
+# Default image tag must match compose (${OKKEY_IMAGE_TAG:-1.0.0-beta.3}).
+grep -Fq 'image_tag:-1.0.0-beta.3' "${INSTALL_SH}" || fail "compose_image_tag default must be 1.0.0-beta.3"
 grep -Fq 'OKKEY_ENTERPRISE_IMAGE_TAG' "${INSTALL_SH}" || fail "install.sh must honor OKKEY_ENTERPRISE_IMAGE_TAG like compose"
 
 # Expected keyless identity: this repo's publish-images workflow, GitHub Actions OIDC.
@@ -577,13 +577,14 @@ ${RUN_COSIGN}"
 done
 
 # Empty process-env OKKEY_IMAGE_TAG must not fall through to .env (compose :- semantics).
-run_install "1.0.0-beta.3" 1 0 OKKEY_IMAGE_TAG= --
+# .env uses a sentinel tag; compose/install default pin is 1.0.0-beta.3.
+run_install "from-env-should-not-win" 1 0 OKKEY_IMAGE_TAG= --
 [[ "${RUN_RC}" -eq 0 ]] || fail "empty process-env tag should still install with compose default
 ${RUN_OUT}"
 for image in api worker web; do
-  printf '%s\n' "${RUN_DOCKER}" | grep -Fq "ghcr.io/okkeyapp/${image}:1.0.0-beta.2" || fail "empty process tag must use compose default for ${image}
+  printf '%s\n' "${RUN_DOCKER}" | grep -Fq "ghcr.io/okkeyapp/${image}:1.0.0-beta.3" || fail "empty process tag must use compose default for ${image}
 ${RUN_DOCKER}"
-  printf '%s\n' "${RUN_DOCKER}" | grep -Fq "ghcr.io/okkeyapp/${image}:1.0.0-beta.3" && fail "empty process tag must not use .env tag for ${image}
+  printf '%s\n' "${RUN_DOCKER}" | grep -Fq "ghcr.io/okkeyapp/${image}:from-env-should-not-win" && fail "empty process tag must not use .env tag for ${image}
 ${RUN_DOCKER}"
 done
 
