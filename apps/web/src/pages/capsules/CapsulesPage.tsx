@@ -36,6 +36,7 @@ import {
 import { subscribeCapsulesListRefresh } from "../../capsules/capsulesListRefresh";
 import { BackChevronIcon } from "../../components/items/itemCategoryIcons";
 import { stickyHeaderShadowClassName, stickyHeaderSurfaceClassName } from "../../components/workspace/stickyHeaderShadow";
+import { publicDocsUrl } from "../../docs/publicDocsUrl";
 import { useScrollAncestorScrolled } from "../../hooks/useRadixScrollAreaScrolled";
 import { calendarDaysBetween } from "../../lib/calendarDaysBetween";
 import { useLocale } from "../../locale/LocaleContext";
@@ -396,7 +397,7 @@ export default function CapsulesPage({ workspaceId, workspaceName, canCreate }: 
               {t("web.capsules.list.intro")}{" "}
               <a
                 className="inline-flex items-center gap-1 font-medium text-foreground hover:underline"
-                href="/docs/capsules"
+                href={publicDocsUrl("capsules", locale)}
                 target="_blank"
                 rel="noopener noreferrer"
               >

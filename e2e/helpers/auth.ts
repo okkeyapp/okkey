@@ -1,5 +1,6 @@
 import { expect, type Page } from "@playwright/test";
 
+import { markE2eSmtpDeliverable } from "./db";
 import { E2E_MASTER_PASSWORD } from "./env";
 import { waitForMailpitOtp } from "./mailpit";
 
@@ -27,6 +28,10 @@ export async function registerBootstrapAndUnlock(
   });
   await page.locator("#auth-reg-first-name").fill(firstName);
   await page.locator("#auth-reg-last-name").fill(lastName);
+  await page.locator("#auth-reg-master-password").fill("short-pass");
+  await page.locator("#auth-reg-repeat-master-password").fill("short-pass");
+  await expect(page.getByRole("button", { name: /^register$/i })).toBeDisabled();
+  await expect(page.getByText(/at least 12 characters/i)).toBeVisible();
   await page.locator("#auth-reg-master-password").fill(masterPassword);
   await page.locator("#auth-reg-repeat-master-password").fill(masterPassword);
   await page.getByRole("button", { name: /^register$/i }).click();
@@ -57,6 +62,7 @@ export async function registerBootstrapAndUnlock(
 
 /** Email login + OTP from Mailpit (real SMTP path). Auto-submits on 6 digits. */
 export async function signInWithEmailOtp(page: Page, email: string): Promise<void> {
+  await markE2eSmtpDeliverable();
   const sinceMs = Date.now();
   await page.goto("/auth/email");
   await page.locator("#auth-email").fill(email);
@@ -79,6 +85,74 @@ export async function unlockWithMasterPassword(
   await page.locator("#unlock-master-password").fill(masterPassword);
   await page.getByRole("button", { name: /^unlock$/i }).click();
   await expect(page).toHaveURL(/\/items/, { timeout: 60_000 });
+  await expectNoPersistedServerKeyShare(page);
+}
+
+/** Device storage may keep the device share. It must not keep the server share. */
+export async function expectNoPersistedServerKeyShare(page: Page): Promise<void> {
+  const raw = await page.evaluate(() => {
+    const parts: string[] = [];
+    for (let i = 0; i < localStorage.length; i += 1) {
+      const key = localStorage.key(i);
+      if (key?.startsWith("okkey.vault.bundle")) {
+        parts.push(localStorage.getItem(key) ?? "");
+      }
+    }
+    parts.push(sessionStorage.getItem("okkey.vault.bundle") ?? "");
+    return parts.join("\n");
+  });
+  expect(raw.includes("server_key_share")).toBe(false);
+}
+
+/** Assert unlock rejects this master password and stays on the lock screen. */
+export async function expectUnlockRejectsMasterPassword(
+  page: Page,
+  masterPassword: string,
+): Promise<void> {
+  await expect(page.getByRole("heading", { name: /vault is locked/i })).toBeVisible({
+    timeout: 30_000,
+  });
+  await page.locator("#unlock-master-password").fill(masterPassword);
+  await page.getByRole("button", { name: /^unlock$/i }).click();
+  await expect(page.getByText(/incorrect master password/i)).toBeVisible({
+    timeout: 30_000,
+  });
+  await expect(page.getByRole("heading", { name: /vault is locked/i })).toBeVisible();
+  await expect(page).toHaveURL(/\/account\/lock/, { timeout: 10_000 });
+}
+
+/**
+ * Complete email + OTP on the current page (or from email entry).
+ * Does not navigate away first — used by extension PKCE auth tabs.
+ */
+export async function completeEmailOtpOnPage(page: Page, email: string): Promise<void> {
+  const sinceMs = Date.now();
+  const otpDigit = page.getByLabel(/digit 1 of 6/i);
+  const emailField = page.locator("#auth-email");
+
+  if (!(await otpDigit.isVisible().catch(() => false))) {
+    await expect(emailField.or(otpDigit)).toBeVisible({ timeout: 60_000 });
+    if (await emailField.isVisible().catch(() => false)) {
+      await emailField.fill(email);
+      await page.getByRole("button", { name: /^sign in$/i }).click();
+    }
+  }
+
+  await expect(otpDigit).toBeVisible({ timeout: 30_000 });
+  const otp = await waitForMailpitOtp(email, { sinceMs });
+  for (let i = 0; i < 6; i += 1) {
+    await page.getByLabel(new RegExp(`digit ${i + 1} of 6`, "i")).fill(otp[i]!);
+  }
+}
+
+/**
+ * Drop the tab unlock record so the next full navigation starts locked.
+ * Hiding the page no longer locks the vault for a new account (sleep lock defaults off).
+ */
+export async function clearTabVaultUnlock(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    sessionStorage.removeItem("okkey.vault.unlock.tab");
+  });
 }
 
 /**

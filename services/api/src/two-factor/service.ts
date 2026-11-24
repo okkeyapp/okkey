@@ -4,6 +4,7 @@ import type { AuthService, AuthStatePayload } from "../auth/service.ts";
 import type { ApiConfig } from "../config.ts";
 import type { EmailTemplateService } from "../email/service.ts";
 import { buildEmailAppPathUrl } from "../email/service.ts";
+import { resolveLinkBaseUrl, type PublicAppUrlResolver } from "../mail-settings/public-url.ts";
 import {
   generateBackupCodePlaintext,
   hashBackupCode,
@@ -46,6 +47,8 @@ export interface TwoFactorServiceDeps {
   authService: Pick<AuthService, "readAuthState" | "removeAuthState">;
   sessionService: SessionService;
   config: ApiConfig;
+  /** Effective public origin at send time (database, otherwise env). */
+  resolvePublicAppBaseUrl?: PublicAppUrlResolver;
   emailTemplates?: Pick<
     EmailTemplateService,
     | "sendTwoFactorEnabledBestEffort"
@@ -79,6 +82,7 @@ export class TwoFactorService {
   private readonly authService: TwoFactorServiceDeps["authService"];
   private readonly sessionService: SessionService;
   private readonly config: ApiConfig;
+  private readonly resolvePublicAppBaseUrl?: PublicAppUrlResolver;
   private readonly emailTemplates?: Pick<
     EmailTemplateService,
     | "sendTwoFactorEnabledBestEffort"
@@ -94,8 +98,13 @@ export class TwoFactorService {
     this.authService = deps.authService;
     this.sessionService = deps.sessionService;
     this.config = deps.config;
+    this.resolvePublicAppBaseUrl = deps.resolvePublicAppBaseUrl;
     this.emailTemplates = deps.emailTemplates;
     this.now = deps.now ?? (() => new Date());
+  }
+
+  private appBaseUrl(): Promise<string> {
+    return resolveLinkBaseUrl(this.config.publicAppBaseUrl, this.resolvePublicAppBaseUrl);
   }
 
   private aesKey(): Buffer {
@@ -495,7 +504,7 @@ export class TwoFactorService {
           variables: {
             occurredAtIso: this.now().toISOString(),
             securitySettingsUrl: buildEmailAppPathUrl(
-              this.config.publicAppBaseUrl,
+              await this.appBaseUrl(),
               "/items?popup=settings|twoFactor",
             ),
           },
@@ -561,7 +570,7 @@ export class TwoFactorService {
         variables: {
           occurredAtIso: this.now().toISOString(),
           securitySettingsUrl: buildEmailAppPathUrl(
-            this.config.publicAppBaseUrl,
+            await this.appBaseUrl(),
             "/items?popup=settings|twoFactor",
           ),
         },
@@ -639,7 +648,7 @@ export class TwoFactorService {
         variables: {
           occurredAtIso: this.now().toISOString(),
           securitySettingsUrl: buildEmailAppPathUrl(
-            this.config.publicAppBaseUrl,
+            await this.appBaseUrl(),
             "/items?popup=settings|twoFactor",
           ),
         },

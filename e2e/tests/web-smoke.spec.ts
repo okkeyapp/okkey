@@ -1,6 +1,8 @@
 import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
 
 import {
+  clearTabVaultUnlock,
+  expectUnlockRejectsMasterPassword,
   gotoItemsUnlocked,
   registerBootstrapAndUnlock,
   signInWithEmailOtp,
@@ -8,14 +10,17 @@ import {
 } from "../helpers/auth";
 import { assertVaultBlobsHaveNoPlaintext, resetE2eCatalog } from "../helpers/db";
 import { E2E_MASTER_PASSWORD, uniqueEmail } from "../helpers/env";
+import { extensionBuildReady, extensionPkceSignInUnlockAndSeeItem } from "../helpers/extension";
 import { createLoginItem } from "../helpers/items";
 
 /**
- * Minimal browser smoke:
+ * Minimal browser smoke for the password-manager chain:
  * 1) registration → recovery key gate → unlock
  * 2) create Login item → visible after reload → ciphertext-only in DB
- * 3) second browser → device pending → trust → decrypt
- * 4) forgot master password → recovery key → new password → items readable
+ * 3) second browser → reject → request again → trust → unlock / decrypt
+ * 3b) same UA second profile → reject → request again → block
+ * 4) forgot master password → recovery key → new password proves old rejected
+ * 5) Chromium extension PKCE → trust → unlock → item visible
  *
  * Shared browser context keeps vault storage across steps inside this file.
  * beforeAll clears users and the e2e Redis DB so bootstrap registration does not
@@ -80,14 +85,13 @@ test("2) create Login item → reload → DB has no plaintext", async () => {
   await assertVaultBlobsHaveNoPlaintext([LOGIN_PASSWORD, E2E_MASTER_PASSWORD]);
 });
 
-test("3) second browser → device confirm → item decrypts", async () => {
+test("3) second browser → reject → request again → trust → unlock", async () => {
   test.skip(!email, "registration did not run");
 
   await gotoItemsUnlocked(page, E2E_MASTER_PASSWORD);
 
-  // Device fingerprints are derived from UA (`web_app-{browser}-{os}-…`). A second
-  // Chromium context with the default Playwright UA shares the primary fingerprint
-  // and is treated as already trusted (skips /account/device-pending → lock).
+  // Device fingerprints are derived from the user agent plus a per-profile install id.
+  // A second Chromium context with the same user agent is a different device.
   const second = await browserRef.newContext({
     locale: "en-US",
     userAgent:
@@ -97,6 +101,29 @@ test("3) second browser → device confirm → item decrypts", async () => {
   try {
     await signInWithEmailOtp(page2, email);
     await expect(page2).toHaveURL(/\/account\/device-pending/, { timeout: 60_000 });
+    await expect(page2.getByRole("heading", { name: /confirm this device/i })).toBeVisible({
+      timeout: 30_000,
+    });
+
+    // Cover reject → request again → unlock in this same OTP start so the serial
+    // suite stays under AUTH_RATE_LIMIT_START_PER_EMAIL (extension PKCE needs a
+    // later start for the same address).
+    const notNow = page.getByRole("button", { name: /^not now$/i });
+    await expect(notNow).toBeVisible({ timeout: 60_000 });
+    await notNow.click();
+    await expect(page2.getByRole("heading", { name: /this device was denied/i })).toBeVisible({
+      timeout: 60_000,
+    });
+
+    await page2.getByRole("button", { name: /request approval again/i }).click();
+    await expect(page2.getByRole("heading", { name: /confirm this device/i })).toBeVisible({
+      timeout: 60_000,
+    });
+    // Session must rebind after reject so trusted approvers (and passkey options)
+    // are available again — not the empty "no trusted devices" state.
+    await expect(
+      page2.getByText(/no trusted devices are available yet/i),
+    ).toHaveCount(0);
 
     const trust = page.getByRole("button", { name: /^trust device$/i });
     await expect(trust).toBeVisible({ timeout: 60_000 });
@@ -118,9 +145,51 @@ test("3) second browser → device confirm → item decrypts", async () => {
   }
 });
 
-test("4) recovery key → new master password → items readable", async () => {
+test("3b) same user agent second profile → reject, then block", async () => {
+  test.skip(!email, "registration did not run");
+
+  await gotoItemsUnlocked(page, E2E_MASTER_PASSWORD);
+  const sameProfile = await browserRef.newContext({ locale: "en-US" });
+  const page2 = await sameProfile.newPage();
+  try {
+    await signInWithEmailOtp(page2, email);
+    await expect(page2).toHaveURL(/\/account\/device-pending/, { timeout: 60_000 });
+    await expect(page2.getByText(/no longer has its device signing key/i)).toHaveCount(0);
+    await expect(page2.getByRole("heading", { name: /confirm this device/i })).toBeVisible({
+      timeout: 30_000,
+    });
+
+    const notNow = page.getByRole("button", { name: /^not now$/i });
+    await expect(notNow).toBeVisible({ timeout: 60_000 });
+    await notNow.click();
+    await expect(page2.getByRole("heading", { name: /this device was denied/i })).toBeVisible({
+      timeout: 60_000,
+    });
+
+    await page2.getByRole("button", { name: /request approval again/i }).click();
+    await expect(page2.getByRole("heading", { name: /confirm this device/i })).toBeVisible({
+      timeout: 60_000,
+    });
+    await expect(
+      page2.getByText(/no trusted devices are available yet/i),
+    ).toHaveCount(0);
+    await expect(notNow).toBeVisible({ timeout: 60_000 });
+    await page.getByRole("button", { name: /block options/i }).click();
+    await page.getByRole("menuitem", { name: /block forever/i }).click();
+    await expect(page2.getByRole("heading", { name: /this device is blocked/i })).toBeVisible({
+      timeout: 60_000,
+    });
+    await expect(page2.getByText(/blocked until/i)).toHaveCount(0);
+    await expect(page2.getByText(/blocked permanently/i)).toBeVisible();
+  } finally {
+    await sameProfile.close();
+  }
+});
+
+test("4) recovery key → new master password → old rejected, new unlocks", async () => {
   test.skip(!email || !recoveryKey, "registration did not run");
 
+  await clearTabVaultUnlock(page);
   await page.goto("/account/lock");
   await expect(page.getByRole("heading", { name: /vault is locked/i })).toBeVisible({
     timeout: 30_000,
@@ -140,6 +209,10 @@ test("4) recovery key → new master password → items readable", async () => {
   await expect(page.locator("#restore-recovery-key")).toBeVisible({ timeout: 15_000 });
 
   await page.locator("#restore-recovery-key").fill(recoveryKey);
+  await page.locator("#restore-new-password").fill("short-pass");
+  await page.locator("#restore-repeat-password").fill("short-pass");
+  await expect(page.getByRole("button", { name: /^restore access$/i })).toBeDisabled();
+  await expect(page.getByText(/at least 12 characters/i)).toBeVisible();
   await page.locator("#restore-new-password").fill(NEW_MASTER);
   await page.locator("#restore-repeat-password").fill(NEW_MASTER);
   await page.getByRole("button", { name: /^restore access$/i }).click();
@@ -154,16 +227,41 @@ test("4) recovery key → new master password → items readable", async () => {
   await cont.click();
   await expect(newKeyHeading).toBeHidden({ timeout: 30_000 });
 
-  // After recovery the app may land unlocked on /items (CI screenshot) or on lock.
-  // Must not remint the post-login recovery gate ("Save your recovery key").
-  const lock = page.getByRole("heading", { name: /vault is locked/i });
-  const topbar = page.getByTestId("items-shell-topbar");
-  await expect(lock.or(topbar)).toBeVisible({ timeout: 60_000 });
-  if (await lock.isVisible().catch(() => false)) {
-    await unlockWithMasterPassword(page, NEW_MASTER);
-  }
+  // After recovery the app may land unlocked on /items or on lock. Force lock and
+  // prove rotation: old master password is rejected; new password unlocks and decrypts.
+  await clearTabVaultUnlock(page);
+  await page.goto("/account/lock");
+  await expect(page.getByRole("heading", { name: /vault is locked/i })).toBeVisible({
+    timeout: 60_000,
+  });
+  await expectUnlockRejectsMasterPassword(page, E2E_MASTER_PASSWORD);
+  await unlockWithMasterPassword(page, NEW_MASTER);
 
   await expect(page.getByText(LOGIN_TITLE, { exact: false }).first()).toBeVisible({
     timeout: 60_000,
+  });
+
+  await page.reload();
+  await gotoItemsUnlocked(page, NEW_MASTER);
+  await expect(page.getByText(LOGIN_TITLE, { exact: false }).first()).toBeVisible({
+    timeout: 60_000,
+  });
+});
+
+test("5) extension PKCE → trust → unlock → item visible", async () => {
+  test.skip(
+    process.env.E2E_EXTENSION !== "1" || !extensionBuildReady(),
+    "set E2E_EXTENSION=1 and run yarn build:extension:chromium",
+  );
+  test.skip(!email, "registration did not run");
+
+  // Primary web session must stay unlocked so Trust device can approve the extension.
+  await gotoItemsUnlocked(page, NEW_MASTER);
+
+  await extensionPkceSignInUnlockAndSeeItem({
+    trustPage: page,
+    email,
+    masterPassword: NEW_MASTER,
+    itemTitle: LOGIN_TITLE,
   });
 });

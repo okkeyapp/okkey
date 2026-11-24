@@ -114,6 +114,16 @@ Security defaults:
 - max invalid attempts per challenge: 5
 - rate limiting on start/resend/confirm
 
+### Master-password proof when mail cannot be delivered
+
+On self-host, when outbound email is not deliverable, `POST /auth/email/start` sets `emailDeliverable: false`. The client shows a master-password step instead of the code step. The master password stays on the client. The client derives a **login key** with a separate Argon2id branch (domain-separated password input and an email-derived salt, not the vault KDF salt) and sends only that key to `POST /auth/login/master-password`.
+
+The server stores Argon2id(login key, per-user random salt). A leaked verifier is not share **C**, so it cannot rebuild VaultKey, and checking a password guess still pays the client KDF plus the server KDF.
+
+SaaS and any instance that can send mail keep the emailed code. `POST /auth/login/master-password` rejects those instances.
+
+Existing accounts with no verifier keep the emailed-code path until a verifier is stored (registration, master-password change, or `POST /account/login-verifier` after a successful unlock). The login response is the same auth state as email confirm (`device_check` or `two_factor`). It does not issue a session and does not trust a device. If TOTP is enabled, it is required. After a login that did not require TOTP, the client offers authenticator enrollment.
+
 After successful `confirm`, backend returns an intermediate auth state (`authStateId`, `nextStep`).
 If the user has **2FA enabled**, `nextStep` is `two_factor` and the client must call `POST /auth/two-factor/verify` with a TOTP or backup code before receiving an access token. Otherwise `nextStep` is `device_check` and the client calls `POST /auth/session/bootstrap` to obtain a **Bearer** access token. Device registration/approval uses that authenticated context (Bearer or, in non-production, `X-User-Id` fallback when explicitly allowed).
 

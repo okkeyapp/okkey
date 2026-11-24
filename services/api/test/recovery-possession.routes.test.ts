@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { MASTER_PASSWORD_POLICY_VERSION } from "@okkey/types";
 import { generateKeyPairSync, sign } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { createApiApp } from "../src/app.ts";
@@ -123,6 +124,8 @@ function createHarness(options?: { publicKey?: string | null; now?: () => number
       expiresAtIso: string,
     ) => {
       const row = sessions.get(sessionService.hashAccessToken(token));
+      // Same rule as SessionsRepository.setRecoveryChallenge: a proved session
+      // may take another single-use nonce. Do not reject when row.proved.
       if (!row?.deviceId) {
         return false;
       }
@@ -269,12 +272,23 @@ test("pending session proves with a device-bound challenge and does not receive 
     "/account/recovery/key/wrap",
     "/account/recovery/identity-encrypted-key",
     "/workspaces",
-    "/account/profile",
-    "/vaults/v1/key",
+    "/vaults/1000000000000000002/key",
   ]) {
     const blocked = await call(app, "GET", url);
     assert.equal(blocked.statusCode, 401, url);
+    assert.equal(blocked.raw.includes(WRAP.payload), false, url);
+    assert.equal(blocked.raw.includes(IDENTITY.payload), false, url);
   }
+
+  const profileEarly = await call(app, "GET", "/account/profile");
+  assert.equal(profileEarly.statusCode, 200);
+  assert.equal(profileEarly.json.email, "a@b.c");
+  assert.equal(profileEarly.raw.includes(WRAP.payload), false);
+  assert.equal(profileEarly.raw.includes(IDENTITY.payload), false);
+  assert.equal(
+    (await call(app, "PATCH", "/account/profile", { first_name: "Nope" })).statusCode,
+    401,
+  );
 
   const claimEarly = await call(app, "POST", "/devices/register", {
     device_public_key: Buffer.alloc(32, 3).toString("base64"),
@@ -349,12 +363,23 @@ test("pending session proves with a device-bound challenge and does not receive 
         server_key_share: Buffer.alloc(32, 1).toString("base64"),
         password_kdf_salt: Buffer.alloc(16, 2).toString("base64"),
         password_kdf_params_version: 2,
+        master_password_policy_version: MASTER_PASSWORD_POLICY_VERSION,
       })
     ).statusCode,
     200,
   );
-  assert.equal((await call(app, "GET", "/account/profile")).statusCode, 401);
-  assert.equal((await call(app, "GET", "/vaults/v1/key")).statusCode, 401);
+  const profileAfterProof = await call(app, "GET", "/account/profile");
+  assert.equal(profileAfterProof.statusCode, 200);
+  assert.equal(profileAfterProof.json.email, "a@b.c");
+  assert.equal(profileAfterProof.raw.includes(WRAP.payload), false);
+  assert.equal(profileAfterProof.raw.includes(IDENTITY.payload), false);
+  assert.equal(
+    (await call(app, "PATCH", "/account/profile", { first_name: "Nope" })).statusCode,
+    401,
+  );
+  const vaultKey = await call(app, "GET", "/vaults/1000000000000000002/key");
+  assert.equal(vaultKey.statusCode, 401);
+  assert.equal(vaultKey.raw.includes(WRAP.payload), false);
 
   const claim = await call(app, "POST", "/devices/register", {
     device_public_key: Buffer.alloc(32, 3).toString("base64"),
@@ -365,7 +390,7 @@ test("pending session proves with a device-bound challenge and does not receive 
   });
   assert.equal(claim.statusCode, 200);
   assert.equal(claim.json.status, "trusted");
-  assert.equal((await call(app, "GET", "/vaults/v1/key")).statusCode, 200);
+  assert.equal((await call(app, "GET", "/vaults/1000000000000000002/key")).statusCode, 200);
 });
 
 test("legacy wrap and a session with no device do not receive ciphertext", async () => {
@@ -498,4 +523,109 @@ test("account lockout applies to a second session after the account budget is sp
   } finally {
     // injected clock; nothing global to restore
   }
+});
+
+test("a proved session can prove again without dropping the grant or the device", async () => {
+  const harness = createHarness();
+  const app = harness.app;
+
+  const first = await call(app, "POST", "/account/recovery/key/prove", {});
+  assert.equal(first.statusCode, 200);
+  const firstChallenge = first.json.challenge as string;
+  const firstSignature = signChallenge({
+    userId: "u1",
+    deviceId: "d-pending",
+    challenge: firstChallenge,
+  });
+  const proved = await call(app, "POST", "/account/recovery/key/prove", {
+    challenge: firstChallenge,
+    signature: firstSignature,
+  });
+  assert.equal(proved.statusCode, 200);
+  assert.equal(proved.json.proved, true);
+  assert.equal(harness.sessions.get("hash-a")?.proved, true);
+  assert.equal((await call(app, "GET", "/account/recovery/key/wrap")).statusCode, 200);
+
+  const second = await call(app, "POST", "/account/recovery/key/prove", {});
+  assert.equal(second.statusCode, 200);
+  assert.equal(second.json.proved, false);
+  assert.equal(second.json.deviceId, "d-pending");
+  const secondChallenge = second.json.challenge as string;
+  assert.notEqual(secondChallenge, firstChallenge);
+  assert.equal(harness.sessions.get("hash-a")?.proved, true);
+  assert.equal(harness.sessions.get("hash-a")?.deviceId, "d-pending");
+  assert.equal((await call(app, "GET", "/account/recovery/key/wrap")).statusCode, 200);
+
+  const replayed = await call(app, "POST", "/account/recovery/key/prove", {
+    challenge: firstChallenge,
+    signature: firstSignature,
+  });
+  assert.equal(replayed.statusCode, 400);
+
+  const otherSession = await call(
+    app,
+    "POST",
+    "/account/recovery/key/prove",
+    {
+      challenge: secondChallenge,
+      signature: signChallenge({
+        userId: "u1",
+        deviceId: "d-pending",
+        challenge: secondChallenge,
+      }),
+    },
+    "tok-b",
+  );
+  assert.notEqual(otherSession.statusCode, 200);
+  assert.equal(harness.sessions.get("hash-a")?.challenge, secondChallenge);
+
+  const wrongDevice = await call(app, "POST", "/account/recovery/key/prove", {
+    challenge: secondChallenge,
+    signature: signChallenge({
+      userId: "u1",
+      deviceId: "d-other",
+      challenge: secondChallenge,
+    }),
+  });
+  assert.equal(wrongDevice.statusCode, 403);
+  assert.equal(wrongDevice.json.error, "RECOVERY_PROOF_INVALID");
+  assert.equal(harness.sessions.get("hash-a")?.proved, true);
+  assert.equal(harness.sessions.get("hash-a")?.deviceId, "d-pending");
+  assert.equal((await call(app, "GET", "/account/recovery/key/wrap")).statusCode, 200);
+
+  const replaced = await call(app, "POST", "/account/recovery/key/prove", {});
+  assert.equal(replaced.statusCode, 200);
+  const kept = await call(app, "POST", "/account/recovery/key/prove", {});
+  assert.equal(kept.statusCode, 200);
+  const retired = await call(app, "POST", "/account/recovery/key/prove", {
+    challenge: replaced.json.challenge,
+    signature: signChallenge({
+      userId: "u1",
+      deviceId: "d-pending",
+      challenge: replaced.json.challenge as string,
+    }),
+  });
+  assert.equal(retired.statusCode, 400);
+
+  const again = await call(app, "POST", "/account/recovery/key/prove", {
+    challenge: kept.json.challenge,
+    signature: signChallenge({
+      userId: "u1",
+      deviceId: "d-pending",
+      challenge: kept.json.challenge as string,
+    }),
+  });
+  assert.equal(again.statusCode, 200);
+  assert.equal(again.json.proved, true);
+  const reused = await call(app, "POST", "/account/recovery/key/prove", {
+    challenge: kept.json.challenge,
+    signature: signChallenge({
+      userId: "u1",
+      deviceId: "d-pending",
+      challenge: kept.json.challenge as string,
+    }),
+  });
+  assert.equal(reused.statusCode, 400);
+  assert.equal(harness.sessions.get("hash-a")?.proved, true);
+  assert.equal(harness.sessions.get("hash-a")?.deviceId, "d-pending");
 });

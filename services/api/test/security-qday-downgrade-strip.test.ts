@@ -41,11 +41,11 @@ function createSyncService(
   return new SyncService({
     vaults: {
       findById: async () => ({
-        id: "v-security",
-        workspaceId: "w-security",
+        id: "1000000000000000010",
+        workspaceId: "1000000000000000011",
         name: "Security Vault",
         isPersonal: false,
-        ownerId: "u-owner",
+        ownerId: "1000000000000000012",
         cryptoVersion: 2,
         createdAt: "",
         updatedAt: "",
@@ -59,9 +59,9 @@ function createSyncService(
       append: async (input) => {
         await appendImpl({ payloadSchemaVersion: input.payloadSchemaVersion ?? 2 });
         return {
-          id: "e-security",
-          vaultId: "v-security",
-          actorId: "u-owner",
+          id: "1000000000000000013",
+          vaultId: "1000000000000000010",
+          actorId: "1000000000000000012",
           eventType: input.eventType,
           encryptedPayload: input.encryptedPayload,
           payloadSchemaVersion: input.payloadSchemaVersion ?? 2,
@@ -91,7 +91,7 @@ test("security: rejects strip attack with removed crypto_version", async () => {
   };
 
   await assert.rejects(
-    () => service.appendEvent("v-security", "u-owner", mkItemUpdateInput(strippedBlob)),
+    () => service.appendEvent("1000000000000000010", "1000000000000000012", mkItemUpdateInput(strippedBlob)),
     (error: unknown) => error instanceof SyncServiceError && error.code === "SYNC_BAD_REQUEST",
   );
 });
@@ -102,8 +102,8 @@ test("security: rejects legacy encryptedBlob string when legacy shape is disable
   await assert.rejects(
     () =>
       service.appendEvent(
-        "v-security",
-        "u-owner",
+        "1000000000000000010",
+        "1000000000000000012",
         mkItemUpdateInput(Buffer.from("legacy-cipher", "utf8").toString("base64")),
       ),
     (error: unknown) => error instanceof SyncServiceError && error.code === "SYNC_BAD_REQUEST",
@@ -112,12 +112,12 @@ test("security: rejects legacy encryptedBlob string when legacy shape is disable
 
 test("security: maps downgrade attempt to CRYPTO_DOWNGRADE_NOT_ALLOWED", async () => {
   const service = createSyncService(async () => {
-    throw new CryptoDowngradeInvariantError("v-security", 2, 1);
+    throw new CryptoDowngradeInvariantError("1000000000000000010", 2, 1);
   }, [1, 2]);
 
   await assert.rejects(
     () =>
-      service.appendEvent("v-security", "u-owner", mkItemUpdateInput(mkBlob("downgrade-attempt", 1))),
+      service.appendEvent("1000000000000000010", "1000000000000000012", mkItemUpdateInput(mkBlob("downgrade-attempt", 1))),
     (error: unknown) =>
       error instanceof SyncServiceError &&
       error.code === "CRYPTO_DOWNGRADE_NOT_ALLOWED" &&
@@ -130,7 +130,7 @@ test("security: rejects profile not allowed by production policy", async () => {
 
   await assert.rejects(
     () =>
-      service.appendEvent("v-security", "u-owner", mkItemUpdateInput(mkBlob("policy-violation", 1))),
+      service.appendEvent("1000000000000000010", "1000000000000000012", mkItemUpdateInput(mkBlob("policy-violation", 1))),
     (error: unknown) =>
       error instanceof SyncServiceError && error.code === "CRYPTO_PROFILE_NOT_ALLOWED",
   );

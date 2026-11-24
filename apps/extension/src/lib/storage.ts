@@ -1,4 +1,4 @@
-import { extensionSessionStorage } from "./extensionStorageApi.ts";
+import { extensionLocalStorage, extensionSessionStorage } from "./extensionStorageApi.ts";
 
 /** Broadcast after a full local wipe so the service worker can drop in-memory caches. */
 export const EXTENSION_DATA_WIPED_MSG = "okkey.extension.dataWiped" as const;
@@ -8,6 +8,8 @@ export const EXTENSION_DATA_WIPED_MSG = "okkey.extension.dataWiped" as const;
 export const STORAGE_KEYS = {
   profile: "okkey.extension.profile",
   session: "okkey.extension.session",
+  /** Last known account name and email. Shown before the profile request returns. */
+  accountIdentity: "okkey.extension.accountIdentity",
   pkce: "okkey.extension.pkce",
   devicePublicKey: "okkey.extension.devicePublicKey",
   devicePrivateKey: "okkey.extension.devicePrivateKey",
@@ -18,6 +20,10 @@ export const STORAGE_KEYS = {
    * Prevents auto re-register → pending popup loop.
    */
   deviceDeferred: "okkey.extension.deviceDeferred",
+  /** One-time X25519 + ML-KEM private keys for share-B delivery. */
+  shareDeliveryKey: "okkey.extension.shareDeliveryKey",
+  /** Set when those keys were replaced and approval must be requested again. */
+  shareDeliveryReapproval: "okkey.extension.shareDeliveryReapproval",
   /** Survives logout / wipe — last chosen SaaS vs self-hosted server URL. */
   lastServer: "okkey.extension.lastServer",
 } as const;
@@ -54,8 +60,12 @@ export type ExtensionPkcePending = {
   createdAt: number;
 };
 
-function storageArea(): typeof browser.storage.local {
-  return browser.storage.local;
+function storageArea() {
+  const area = extensionLocalStorage();
+  if (!area) {
+    throw new Error("extension storage is unavailable");
+  }
+  return area;
 }
 
 export async function readProfile(): Promise<ExtensionProfile | null> {
@@ -88,6 +98,40 @@ export async function readSession(): Promise<ExtensionSession | null> {
 
 export async function writeSession(session: ExtensionSession): Promise<void> {
   await storageArea().set({ [STORAGE_KEYS.session]: session });
+}
+
+export type ExtensionAccountIdentity = {
+  email: string;
+  firstName: string;
+  lastName: string;
+};
+
+export async function readAccountIdentity(): Promise<ExtensionAccountIdentity | null> {
+  const result = await storageArea().get(STORAGE_KEYS.accountIdentity);
+  const raw = result[STORAGE_KEYS.accountIdentity] as Partial<ExtensionAccountIdentity> | undefined;
+  const email = typeof raw?.email === "string" ? raw.email.trim() : "";
+  if (!email) {
+    return null;
+  }
+  return {
+    email,
+    firstName: typeof raw?.firstName === "string" ? raw.firstName.trim() : "",
+    lastName: typeof raw?.lastName === "string" ? raw.lastName.trim() : "",
+  };
+}
+
+export async function writeAccountIdentity(identity: ExtensionAccountIdentity): Promise<void> {
+  const email = identity.email.trim();
+  if (!email) {
+    return;
+  }
+  await storageArea().set({
+    [STORAGE_KEYS.accountIdentity]: {
+      email,
+      firstName: identity.firstName.trim(),
+      lastName: identity.lastName.trim(),
+    },
+  });
 }
 
 export async function clearSession(): Promise<void> {
@@ -149,6 +193,51 @@ export async function readDeviceId(): Promise<string | null> {
 
 export async function writeDeviceId(deviceId: string): Promise<void> {
   await storageArea().set({ [STORAGE_KEYS.deviceId]: deviceId });
+}
+
+export type ExtensionShareDeliveryKey = {
+  fingerprint: string;
+  x25519PrivateB64: string;
+  mlkemPrivateB64: string;
+};
+
+export async function readShareDeliveryKey(): Promise<ExtensionShareDeliveryKey | null> {
+  const result = await storageArea().get(STORAGE_KEYS.shareDeliveryKey);
+  const raw = result[STORAGE_KEYS.shareDeliveryKey] as Partial<ExtensionShareDeliveryKey> | undefined;
+  if (
+    !raw ||
+    typeof raw.fingerprint !== "string" ||
+    typeof raw.x25519PrivateB64 !== "string" ||
+    typeof raw.mlkemPrivateB64 !== "string"
+  ) {
+    return null;
+  }
+  return {
+    fingerprint: raw.fingerprint,
+    x25519PrivateB64: raw.x25519PrivateB64,
+    mlkemPrivateB64: raw.mlkemPrivateB64,
+  };
+}
+
+export async function writeShareDeliveryKey(value: ExtensionShareDeliveryKey): Promise<void> {
+  await storageArea().set({ [STORAGE_KEYS.shareDeliveryKey]: value });
+}
+
+export async function clearShareDeliveryKey(): Promise<void> {
+  await storageArea().remove(STORAGE_KEYS.shareDeliveryKey);
+}
+
+export async function readShareDeliveryReapproval(): Promise<boolean> {
+  const result = await storageArea().get(STORAGE_KEYS.shareDeliveryReapproval);
+  return result[STORAGE_KEYS.shareDeliveryReapproval] === true;
+}
+
+export async function writeShareDeliveryReapproval(value: boolean): Promise<void> {
+  if (!value) {
+    await storageArea().remove(STORAGE_KEYS.shareDeliveryReapproval);
+    return;
+  }
+  await storageArea().set({ [STORAGE_KEYS.shareDeliveryReapproval]: true });
 }
 
 export type ExtensionDeviceDeferred = {

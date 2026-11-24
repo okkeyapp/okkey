@@ -40,15 +40,41 @@ export type SwitchProps = React.ComponentPropsWithoutRef<typeof SwitchPrimitives
   VariantProps<typeof switchRootVariants>;
 
 const Switch = React.forwardRef<React.ElementRef<typeof SwitchPrimitives.Root>, SwitchProps>(
-  ({ className, size, ...props }, ref) => (
-    <SwitchPrimitives.Root
-      className={cn(switchRootVariants({ size }), className)}
-      {...props}
-      ref={ref}
-    >
-      <SwitchPrimitives.Thumb className={cn(switchThumbVariants({ size }))} />
-    </SwitchPrimitives.Root>
-  ),
+  ({ className, size, onPointerDown, onKeyDown, ...props }, ref) => {
+    // The thumb and track transitions must not run on mount. A checked switch
+    // otherwise slides in from the unchecked position when its tab is shown.
+    const [motionReady, setMotionReady] = React.useState(false);
+    React.useEffect(() => {
+      const frame = requestAnimationFrame(() => {
+        setMotionReady(true);
+      });
+      return () => cancelAnimationFrame(frame);
+    }, []);
+
+    const enableMotion = () => {
+      setMotionReady(true);
+    };
+
+    return (
+      <SwitchPrimitives.Root
+        className={cn(switchRootVariants({ size }), !motionReady && "transition-none", className)}
+        {...props}
+        onPointerDown={(event) => {
+          enableMotion();
+          onPointerDown?.(event);
+        }}
+        onKeyDown={(event) => {
+          enableMotion();
+          onKeyDown?.(event);
+        }}
+        ref={ref}
+      >
+        <SwitchPrimitives.Thumb
+          className={cn(switchThumbVariants({ size }), !motionReady && "transition-none")}
+        />
+      </SwitchPrimitives.Root>
+    );
+  },
 );
 Switch.displayName = SwitchPrimitives.Root.displayName;
 

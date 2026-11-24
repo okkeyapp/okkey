@@ -8,10 +8,6 @@ const coreMocks = vi.hoisted(() => ({
   enrollAccountRecoveryKey: vi.fn(),
   rotateAccountRecoveryKey: vi.fn(),
   ackAccountRecoveryKeyExport: vi.fn(),
-  inviteTrustedContact: vi.fn(),
-  deleteTrustedContact: vi.fn(),
-  acceptTrustedContactInvite: vi.fn(),
-  rejectTrustedContactInvite: vi.fn(),
   listDevices: vi.fn(),
 }));
 
@@ -44,6 +40,18 @@ vi.mock("../../locale/LocaleContext", () => ({
 
 vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn(), loading: vi.fn(), dismiss: vi.fn() },
+}));
+
+const recoverySlots = vi.hoisted(() => ({
+  TrustedContactsSection: null as ((props: { locked?: boolean }) => JSX.Element) | null,
+}));
+
+vi.mock("@okkey-enterprise/account-recovery", () => ({
+  default: {
+    get TrustedContactsSection() {
+      return recoverySlots.TrustedContactsSection;
+    },
+  },
 }));
 
 import SettingsRecoveryContent from "./SettingsRecoveryContent";
@@ -81,6 +89,7 @@ function freeStatus(overrides?: Record<string, unknown>) {
 describe("SettingsRecoveryContent", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    recoverySlots.TrustedContactsSection = null;
     clearSettingsPopupCache();
     coreMocks.getAccountRecoveryStatus.mockResolvedValue(freeStatus());
     coreMocks.listDevices.mockResolvedValue({ devices: [], pending: [], blocked: [] });
@@ -94,9 +103,12 @@ describe("SettingsRecoveryContent", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText("web.settingsPopup.recovery.key.label")).toBeTruthy();
+      expect(
+        screen.getByRole("switch", { name: "web.settingsPopup.recovery.devices.label" }),
+      ).toBeDisabled();
     });
-    expect(screen.queryByText("web.settingsPopup.recovery.devices.label")).toBeNull();
+    expect(screen.getByText("web.settingsPopup.recovery.devices.label")).toBeTruthy();
+    expect(screen.getByText("web.settingsPopup.recovery.error.entitlement")).toBeTruthy();
     expect(screen.queryByText("web.settingsPopup.recovery.contacts.label")).toBeNull();
     expect(
       screen.getByText((_, node) => {
@@ -114,70 +126,14 @@ describe("SettingsRecoveryContent", () => {
     ).toBeTruthy();
   });
 
-  it("lists trusted contacts when paid entitlement is present", async () => {
-    coreMocks.getAccountRecoveryStatus.mockResolvedValue(
-      freeStatus({
-        entitlements: {
-          recoveryKey: true,
-          trustedDevices: true,
-          trustedContacts: true,
-        },
-        settings: {
-          keyEnabled: true,
-          devicesEnabled: true,
-          contactsEnabled: false,
-        },
-        contacts: [
-          {
-            id: "1",
-            email: "a@example.com",
-            status: "confirmed",
-            createdAt: "2026-01-01T00:00:00.000Z",
-            confirmedAt: "2026-01-01T00:00:00.000Z",
-          },
-          {
-            id: "2",
-            email: "b@example.com",
-            status: "pending",
-            createdAt: "2026-01-02T00:00:00.000Z",
-            confirmedAt: null,
-          },
-        ],
-        confirmedContactCount: 1,
-      }),
-    );
-
-    render(
-      <MemoryRouter>
-        <SettingsRecoveryContent t={t} />
-      </MemoryRouter>,
-    );
-
-    await waitFor(() => {
-      expect(screen.getByText("a@example.com")).toBeTruthy();
-    });
-    expect(screen.getByText("b@example.com")).toBeTruthy();
-    expect(screen.getByText("web.settingsPopup.recovery.contacts.add")).toBeTruthy();
-  });
-
-  it("lists accounts where the current user serves as a trusted contact", async () => {
+  it("does not render the contacts catalog when the slot is empty", async () => {
     coreMocks.getAccountRecoveryStatus.mockResolvedValue(
       freeStatus({
         entitlements: {
           recoveryKey: true,
           trustedDevices: false,
-          trustedContacts: false,
+          trustedContacts: true,
         },
-        servingAsContact: [
-          {
-            id: "m1",
-            ownerEmail: "owner@example.com",
-            ownerFirstName: "Alex",
-            ownerLastName: null,
-            createdAt: "2026-01-01T00:00:00.000Z",
-            confirmedAt: "2026-01-02T00:00:00.000Z",
-          },
-        ],
       }),
     );
 
@@ -188,12 +144,49 @@ describe("SettingsRecoveryContent", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText("web.settingsPopup.recovery.servingAs.label")).toBeTruthy();
+      expect(screen.getByText("web.settingsPopup.recovery.key.label")).toBeTruthy();
     });
-    expect(screen.getByText("owner@example.com")).toBeTruthy();
-    expect(
-      screen.getByLabelText("web.settingsPopup.recovery.servingAs.remove"),
-    ).toBeTruthy();
+    expect(screen.queryByText("web.settingsPopup.recovery.contacts.label")).toBeNull();
+    expect(screen.queryByTestId("trusted-contacts-section")).toBeNull();
+  });
+
+  it("mounts the contacts slot on a free plan with adding locked", async () => {
+    recoverySlots.TrustedContactsSection = ({ locked }) => (
+      <div data-testid="trusted-contacts-section" data-locked={String(Boolean(locked))} />
+    );
+
+    render(
+      <MemoryRouter>
+        <SettingsRecoveryContent t={t} />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("trusted-contacts-section").getAttribute("data-locked")).toBe("true");
+    });
+  });
+
+  it("mounts the contacts slot when the plan grants trusted contacts", async () => {
+    recoverySlots.TrustedContactsSection = () => <div data-testid="trusted-contacts-section" />;
+    coreMocks.getAccountRecoveryStatus.mockResolvedValue(
+      freeStatus({
+        entitlements: {
+          recoveryKey: true,
+          trustedDevices: false,
+          trustedContacts: true,
+        },
+      }),
+    );
+
+    render(
+      <MemoryRouter>
+        <SettingsRecoveryContent t={t} />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("trusted-contacts-section")).toBeTruthy();
+    });
   });
 
   it("blocks enabling trusted-devices recovery until ≥2 trusted devices incl. current", async () => {

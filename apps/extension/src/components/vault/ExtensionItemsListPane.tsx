@@ -29,6 +29,7 @@ import {
   type ItemsListSortValue,
 } from "@okkey/ui";
 import { parseTagSearchNeedle, type ExtensionItemListRecord } from "@okkey/vault";
+import { useClientWebsiteIconSrc } from "../../lib/useFaviconProvider";
 import {
   ItemsListFilterDropdown,
   LazyItemRecordFavicon,
@@ -105,13 +106,14 @@ function ExtensionListRowFavicon(props: {
     faviconId: props.row.faviconId,
     enabled: Boolean(props.vaultKey && props.row.faviconId),
   });
+  const clientIconSrc = useClientWebsiteIconSrc(props.apiBaseUrl, props.row.urls, !props.row.faviconId);
 
   return (
     <LazyItemRecordFavicon
       categoryId={props.row.categoryId}
       title={props.row.title}
       faviconId={props.row.faviconId}
-      previewImageSrc={faviconUrl.imageSrc}
+      previewImageSrc={faviconUrl.imageSrc ?? clientIconSrc}
       previewLoading={faviconUrl.loading}
       size={32}
       alt=""

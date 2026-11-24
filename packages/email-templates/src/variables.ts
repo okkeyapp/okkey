@@ -1,10 +1,10 @@
 /** Why the OTP was issued; selects subject/body copy for `auth_email_code`. */
-export type AuthEmailCodePurpose = "sign_in" | "email_change";
+export type AuthEmailCodePurpose = "sign_in" | "registration" | "email_change";
 
 export interface AuthEmailCodeVariables {
   code: string;
   ttlSeconds: number;
-  /** Defaults to `sign_in` when omitted (login / registration OTP). */
+  /** Defaults to `sign_in` when omitted (existing-account login OTP). */
   purpose?: AuthEmailCodePurpose;
 }
 
@@ -26,6 +26,23 @@ export interface WorkspaceInviteVariables {
   inviterDisplayName: string;
   workspaceName: string;
   inviteUrl: string;
+  /**
+   * Inviter account email shown in the body.
+   * Optional so Core alone stays renderable when a caller has not upgraded yet.
+   */
+  inviterEmail?: string | null;
+  /**
+   * Built-in role key; when set, the template localizes Owner/Admin/User.
+   * Custom roles omit this and use {@link roleName} as-is.
+   */
+  roleBuiltinKey?: "owner" | "admin" | "user" | null;
+  /**
+   * Role display name for custom roles (and fallback when builtin key is absent).
+   * Optional together with {@link roleBuiltinKey} for Core-alone compatibility.
+   */
+  roleName?: string | null;
+  /** ISO timestamp when the invite link expires. Optional for Core-alone callers. */
+  expiresAtIso?: string | null;
 }
 
 export interface TwoFactorNoticeVariables {

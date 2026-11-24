@@ -20,6 +20,8 @@ import type {
   DeviceKeyRebindRequestDto,
   DeviceRegisterRequestDto,
   DeviceRegisterResponseDto,
+  DeviceApprovalRetryResponseDto,
+  DeviceApprovalStatusResponseDto,
   DeviceRejectResponseDto,
   DeviceBlockRequestDto,
   DeviceBlockResponseDto,
@@ -32,6 +34,8 @@ import type {
   DeviceRevokeResponseDto,
   EncryptedBlobDto,
   SyncAppendEventRequestDto,
+  SyncAppendEventsBatchRequestDto,
+  SyncAppendEventsBatchResponseDto,
   SyncEventWireDto,
   SyncEventsListResponseDto,
   WorkspacePersonalEventWireDto,
@@ -43,10 +47,21 @@ import type {
   Vault,
   VaultUnlockBootstrapResponseDto,
   Workspace,
+  WorkspaceClientSettingsResponseDto,
+  WorkspaceClientSettingsUpdateRequestDto,
+  WorkspaceKeyGrantWrapRequestDto,
+  WorkspaceKeyPublishRequestDto,
+  WorkspaceKeyRotationDto,
+  WorkspaceKeyStateDto,
+  WorkspaceLogoPutResponseDto,
   AccountProfileResponseDto,
   AccountProfileUpdateRequestDto,
   AccountMasterPasswordChangeRequestDto,
   AccountMasterPasswordChangeResponseDto,
+  LoginVerifierEnrollRequestDto,
+  LoginVerifierStatusDto,
+  MldsaIdentityKeyUploadRequestDto,
+  MldsaIdentityKeyUploadResponseDto,
   VaultUnlockAttestationDto,
   VaultUnlockAttemptStatusDto,
   VaultUnlockRecordResponseDto,
@@ -64,8 +79,14 @@ import type {
   AccountRecoveryKeyWrapResponseDto,
   AccountRecoverySettingsUpdateRequestDto,
   AccountRecoveryStatusResponseDto,
-  TrustedContactInviteRequestDto,
-  TrustedContactInviteResponseDto,
+  PasskeyApprovalOptionsResponseDto,
+  PasskeyApprovalVerifyRequestDto,
+  PasskeyApprovalVerifyResponseDto,
+  PasskeyHandoffResponseDto,
+  WebAuthnCredentialRenameRequestDto,
+  PasskeyShareWrapOptionsResponseDto,
+  PasskeyShareWrapVerifyRequestDto,
+  PasskeyShareWrapVerifyResponseDto,
   WebAuthnAuthenticatorAttachment,
   WebAuthnCeremonyOptionsResponseDto,
   WebAuthnRegisterOptionsRequestDto,
@@ -79,6 +100,9 @@ import type {
   WorkspaceItemTemplatesListResponseDto,
   WorkspaceSettingsResponseDto,
   WorkspaceSettingsUpdateRequestDto,
+  ServerMailSettingsResponseDto,
+  ServerMailSettingsUpdateRequestDto,
+  ServerMailTestEmailRequestDto,
   WorkspaceDeleteRequestDto,
   WorkspacePlanChangeRequestDto,
   WorkspacePlanChangeRequestResponseDto,
@@ -93,6 +117,8 @@ import type {
   MeVaultProfilesResponseDto,
   WorkspaceInvitationsCreateRequestDto,
   WorkspaceInvitationsCreateResponseDto,
+  WorkspaceInvitationCopyLinkResponseDto,
+  WorkspaceInvitationResendResponseDto,
   WorkspaceInvitationUpdateRequestDto,
   WorkspaceMemberUpdateRequestDto,
   MemberVaultAccessResponseDto,
@@ -105,7 +131,7 @@ import type {
   VaultAccessResponseDto,
   VaultAccessUpdateRequestDto,
 } from "@okkey/types";
-import { isClientPqCapable } from "@okkey/types";
+import { SYNC_EVENTS_BATCH_MAX, isClientPqCapable } from "@okkey/types";
 
 export interface ApiClientOptions {
   baseUrl: string;
@@ -126,6 +152,20 @@ export class ApiRequestError extends Error {
   }
 }
 
+/** Server code when this app build cannot continue and must be updated. */
+export const CLIENT_UPGRADE_REQUIRED = "CLIENT_UPGRADE_REQUIRED";
+/** Advertised by current clients that understand an ML-DSA-65 identity bundle. */
+export const MLDSA_IDENTITY_CAPABILITY = "mldsa-identity-v2";
+export const CLIENT_CAPABILITY_HEADER = "X-Okkey-Client-Capabilities";
+
+export function isClientUpgradeRequiredError(error: unknown): boolean {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+  const body = (error as { body?: { error?: unknown } }).body;
+  return body?.error === CLIENT_UPGRADE_REQUIRED;
+}
+
 export interface ApiRequestOptions {
   /** Merged over defaultHeaders for this request only. */
   headers?: Record<string, string>;
@@ -140,7 +180,10 @@ export class ApiClient {
     this.baseUrl = options.baseUrl.replace(/\/$/, "");
     // Native `fetch` must be bound; storing it unbound causes "Illegal invocation" when called.
     this.fetchImpl = options.fetchImpl ?? globalThis.fetch.bind(globalThis);
-    this.defaultHeaders = options.defaultHeaders ?? {};
+    this.defaultHeaders = {
+      [CLIENT_CAPABILITY_HEADER]: MLDSA_IDENTITY_CAPABILITY,
+      ...(options.defaultHeaders ?? {}),
+    };
   }
 
   async get<T>(path: string, options?: ApiRequestOptions): Promise<T> {
@@ -161,6 +204,46 @@ export class ApiClient {
 
   async delete<T>(path: string, body?: unknown, options?: ApiRequestOptions): Promise<T> {
     return this.request<T>("DELETE", path, body, options);
+  }
+
+  async putBytes<T>(path: string, bytes: Uint8Array, options?: ApiRequestOptions): Promise<T> {
+    return this.requestBytes<T>("PUT", path, bytes, options);
+  }
+
+  async getBytes(path: string, options?: ApiRequestOptions): Promise<{ bytes: Uint8Array; headers: Headers }> {
+    const headers: Record<string, string> = { ...this.defaultHeaders, ...options?.headers };
+    const res = await this.fetchImpl(`${this.baseUrl}${path}`, { method: "GET", headers });
+    if (!res.ok) {
+      const raw: unknown = await res.json().catch(() => null);
+      throw new ApiRequestError(res.status, parseCoreApiErrorBody(raw, res));
+    }
+    return { bytes: new Uint8Array(await res.arrayBuffer()), headers: res.headers };
+  }
+
+  private async requestBytes<T>(
+    method: string,
+    path: string,
+    bytes: Uint8Array,
+    options?: ApiRequestOptions,
+  ): Promise<T> {
+    const headers: Record<string, string> = {
+      ...this.defaultHeaders,
+      ...options?.headers,
+      "Content-Type": "application/octet-stream",
+    };
+    const body = new ArrayBuffer(bytes.byteLength);
+    new Uint8Array(body).set(bytes);
+    const res = await this.fetchImpl(`${this.baseUrl}${path}`, { method, headers, body });
+    if (!res.ok) {
+      const raw: unknown = await res.json().catch(() => null);
+      throw new ApiRequestError(res.status, parseCoreApiErrorBody(raw, res));
+    }
+    const text = await res.text();
+    const trimmed = text.trim();
+    if (!trimmed) {
+      throw new SyntaxError("empty API response body");
+    }
+    return JSON.parse(trimmed) as T;
   }
 
   async request<T>(
@@ -227,6 +310,9 @@ function parseCoreApiErrorBody(raw: unknown, res: Response): CoreApiErrorBody {
     requestId: "unknown",
   };
 }
+
+/** Header for the approval-status credential. It does not authenticate any other route. */
+export const DEVICE_APPROVAL_STATUS_HEADER = "X-Device-Approval-Token";
 
 /** API client with `Authorization: Bearer` for Vault, Sync, and Device routes. */
 export function createBearerApiClient(
@@ -328,6 +414,16 @@ export class CoreApiClient {
     );
   }
 
+  renameWebauthnCredential(
+    credentialId: string,
+    body: WebAuthnCredentialRenameRequestDto,
+  ): Promise<AccountLoginMethodsResponseDto> {
+    return this.api.patch<AccountLoginMethodsResponseDto>(
+      `/account/webauthn/credentials/${encodeURIComponent(credentialId)}`,
+      body,
+    );
+  }
+
   deleteWebauthnCredentialsByAttachment(
     attachment: WebAuthnAuthenticatorAttachment,
   ): Promise<AccountLoginMethodsResponseDto> {
@@ -337,10 +433,80 @@ export class CoreApiClient {
     );
   }
 
+  passkeyShareWrapOptions(credentialId: string): Promise<PasskeyShareWrapOptionsResponseDto> {
+    return this.api.post<PasskeyShareWrapOptionsResponseDto>(
+      `/account/webauthn/credentials/${encodeURIComponent(credentialId)}/share-wrap/options`,
+      {},
+    );
+  }
+
+  passkeyShareWrapVerify(
+    credentialId: string,
+    body: PasskeyShareWrapVerifyRequestDto,
+  ): Promise<PasskeyShareWrapVerifyResponseDto> {
+    return this.api.post<PasskeyShareWrapVerifyResponseDto>(
+      `/account/webauthn/credentials/${encodeURIComponent(credentialId)}/share-wrap/verify`,
+      body,
+    );
+  }
+
+  deletePasskeyShareWrap(credentialId: string): Promise<{ credential_id: string; has_share_wrap: false }> {
+    return this.api.delete<{ credential_id: string; has_share_wrap: false }>(
+      `/account/webauthn/credentials/${encodeURIComponent(credentialId)}/share-wrap`,
+    );
+  }
+
+  passkeyApprovalOptions(deviceId: string): Promise<PasskeyApprovalOptionsResponseDto> {
+    return this.api.post<PasskeyApprovalOptionsResponseDto>(
+      `/devices/${encodeURIComponent(deviceId)}/passkey-approval/options`,
+      {},
+    );
+  }
+
+  passkeyApprovalVerify(
+    deviceId: string,
+    body: PasskeyApprovalVerifyRequestDto,
+  ): Promise<PasskeyApprovalVerifyResponseDto> {
+    return this.api.post<PasskeyApprovalVerifyResponseDto>(
+      `/devices/${encodeURIComponent(deviceId)}/passkey-approval/verify`,
+      body,
+    );
+  }
+
+  /** Pending-device session: open a short-lived handoff the web tab can finish. */
+  createPasskeyHandoff(deviceId: string): Promise<PasskeyHandoffResponseDto> {
+    return this.api.post<PasskeyHandoffResponseDto>(
+      `/devices/${encodeURIComponent(deviceId)}/passkey-approval/handoff`,
+      {},
+    );
+  }
+
+  /** Pending-device session: poll until the web tab confirms, rejects, or the handoff expires. */
+  getPasskeyHandoff(deviceId: string, handoffId: string): Promise<PasskeyHandoffResponseDto> {
+    return this.api.get<PasskeyHandoffResponseDto>(
+      `/devices/${encodeURIComponent(deviceId)}/passkey-approval/handoff/${encodeURIComponent(handoffId)}`,
+    );
+  }
+
   changeMasterPassword(
     body: AccountMasterPasswordChangeRequestDto,
   ): Promise<AccountMasterPasswordChangeResponseDto> {
     return this.api.post<AccountMasterPasswordChangeResponseDto>("/account/master-password/change", body);
+  }
+
+  getLoginVerifierStatus(): Promise<LoginVerifierStatusDto> {
+    return this.api.get<LoginVerifierStatusDto>("/account/login-verifier");
+  }
+
+  enrollLoginVerifier(body: LoginVerifierEnrollRequestDto): Promise<LoginVerifierStatusDto> {
+    return this.api.post<LoginVerifierStatusDto>("/account/login-verifier", body);
+  }
+
+  /** Publish the account ML-DSA-65 verifying key, authenticated by the Ed25519 identity key. */
+  uploadMlDsaIdentityKey(
+    body: MldsaIdentityKeyUploadRequestDto,
+  ): Promise<MldsaIdentityKeyUploadResponseDto> {
+    return this.api.post<MldsaIdentityKeyUploadResponseDto>("/account/identity/mldsa-key", body);
   }
 
   /** Reports a successful vault unlock with a signed attestation (no secrets). */
@@ -437,6 +603,26 @@ export class CoreApiClient {
     );
   }
 
+  resendWorkspaceInvitation(
+    workspaceId: string,
+    invitationId: string,
+  ): Promise<WorkspaceInvitationResendResponseDto> {
+    return this.api.post<WorkspaceInvitationResendResponseDto>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/invitations/${encodeURIComponent(invitationId)}/resend`,
+      {},
+    );
+  }
+
+  copyWorkspaceInvitationLink(
+    workspaceId: string,
+    invitationId: string,
+  ): Promise<WorkspaceInvitationCopyLinkResponseDto> {
+    return this.api.post<WorkspaceInvitationCopyLinkResponseDto>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/invitations/${encodeURIComponent(invitationId)}/copy-link`,
+      {},
+    );
+  }
+
   revokeWorkspaceInvitation(workspaceId: string, invitationId: string): Promise<{ revoked: true }> {
     return this.api.delete<{ revoked: true }>(
       `/workspaces/${encodeURIComponent(workspaceId)}/invitations/${encodeURIComponent(invitationId)}`,
@@ -485,10 +671,72 @@ export class CoreApiClient {
     );
   }
 
-  deleteWorkspaceMember(workspaceId: string, userId: string): Promise<{ deleted: true }> {
+  deleteWorkspaceMember(
+    workspaceId: string,
+    userId: string,
+    body?: { workspace_key_rotation?: WorkspaceKeyRotationDto },
+  ): Promise<{ deleted: true }> {
     return this.api.delete<{ deleted: true }>(
       `/workspaces/${encodeURIComponent(workspaceId)}/members/${encodeURIComponent(userId)}`,
+      body,
     );
+  }
+
+  getWorkspaceKey(workspaceId: string): Promise<WorkspaceKeyStateDto> {
+    return this.api.get<WorkspaceKeyStateDto>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/workspace-key`,
+    );
+  }
+
+  publishWorkspaceKey(
+    workspaceId: string,
+    body: WorkspaceKeyPublishRequestDto,
+  ): Promise<{ current_version: number }> {
+    return this.api.post<{ current_version: number }>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/workspace-key`,
+      body,
+    );
+  }
+
+  grantWorkspaceKeyWrap(
+    workspaceId: string,
+    body: WorkspaceKeyGrantWrapRequestDto,
+  ): Promise<{ key_version: number }> {
+    return this.api.post<{ key_version: number }>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/workspace-key/wraps`,
+      body,
+    );
+  }
+
+  getWorkspaceLogo(workspaceId: string): Promise<{ bytes: Uint8Array; keyVersion: number | null }> {
+    return this.api.getBytes(`/workspaces/${encodeURIComponent(workspaceId)}/logo`).then((result) => ({
+      bytes: result.bytes,
+      keyVersion: Number(result.headers.get("X-Workspace-Key-Version")) || null,
+    }));
+  }
+
+  putWorkspaceLogo(workspaceId: string, ciphertext: Uint8Array): Promise<WorkspaceLogoPutResponseDto> {
+    return this.api.putBytes<WorkspaceLogoPutResponseDto>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/logo`,
+      ciphertext,
+    );
+  }
+
+  deleteWorkspaceLogo(workspaceId: string): Promise<{ deleted: true }> {
+    return this.api.delete<{ deleted: true }>(`/workspaces/${encodeURIComponent(workspaceId)}/logo`);
+  }
+
+  getWorkspaceClientSettings(workspaceId: string): Promise<WorkspaceClientSettingsResponseDto> {
+    return this.api.get<WorkspaceClientSettingsResponseDto>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/client-settings`,
+    );
+  }
+
+  putWorkspaceClientSettings(
+    workspaceId: string,
+    body: WorkspaceClientSettingsUpdateRequestDto,
+  ): Promise<WorkspaceClientSettingsResponseDto & { tile_color?: string | null }> {
+    return this.api.put(`/workspaces/${encodeURIComponent(workspaceId)}/client-settings`, body);
   }
 
   getMemberVaultAccess(workspaceId: string, userId: string): Promise<MemberVaultAccessResponseDto> {
@@ -593,6 +841,32 @@ export class CoreApiClient {
     );
   }
 
+  getServerMailSettings(workspaceId: string): Promise<ServerMailSettingsResponseDto> {
+    return this.api.get<ServerMailSettingsResponseDto>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/server-mail-settings`,
+    );
+  }
+
+  updateServerMailSettings(
+    workspaceId: string,
+    body: ServerMailSettingsUpdateRequestDto,
+  ): Promise<ServerMailSettingsResponseDto> {
+    return this.api.patch<ServerMailSettingsResponseDto>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/server-mail-settings`,
+      body,
+    );
+  }
+
+  sendServerMailTestEmail(
+    workspaceId: string,
+    body: ServerMailTestEmailRequestDto,
+  ): Promise<ServerMailSettingsResponseDto> {
+    return this.api.post<ServerMailSettingsResponseDto>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/server-mail-settings/test-email`,
+      body,
+    );
+  }
+
   deleteWorkspace(workspaceId: string, body: WorkspaceDeleteRequestDto): Promise<{ ok: true }> {
     return this.api.delete<{ ok: true }>(
       `/workspaces/${encodeURIComponent(workspaceId)}/settings`,
@@ -673,6 +947,28 @@ export class CoreApiClient {
     this.assertStrictWritePathCapability(body.encryptedBlob, "sync.append");
     return this.api.post<SyncEventWireDto>(
       `/vaults/${encodeURIComponent(vaultId)}/events`,
+      body,
+    );
+  }
+
+  appendVaultEventsBatch(
+    vaultId: string,
+    body: SyncAppendEventsBatchRequestDto,
+  ): Promise<SyncAppendEventsBatchResponseDto> {
+    if (!body || !Array.isArray(body.events) || body.events.length === 0) {
+      throw new Error("events must be a non-empty array");
+    }
+    if (body.events.length > SYNC_EVENTS_BATCH_MAX) {
+      throw new Error(`events batch exceeds max of ${SYNC_EVENTS_BATCH_MAX}`);
+    }
+    for (const event of body.events) {
+      if (!event || typeof event !== "object") {
+        throw new Error("each event must be an object");
+      }
+      this.assertStrictWritePathCapability(event.encryptedBlob, "sync.append");
+    }
+    return this.api.post<SyncAppendEventsBatchResponseDto>(
+      `/vaults/${encodeURIComponent(vaultId)}/events/batch`,
       body,
     );
   }
@@ -848,6 +1144,29 @@ export class CoreApiClient {
     return this.api.post<DeviceRegisterResponseDto>("/devices/register", body);
   }
 
+  /** Read one device's approval request. The credential is not sent as a session bearer. */
+  getDeviceApprovalStatus(
+    deviceId: string,
+    approvalStatusToken: string,
+  ): Promise<DeviceApprovalStatusResponseDto> {
+    return this.api.get<DeviceApprovalStatusResponseDto>(
+      `/devices/${encodeURIComponent(deviceId)}/approval-status`,
+      { headers: { [DEVICE_APPROVAL_STATUS_HEADER]: approvalStatusToken } },
+    );
+  }
+
+  /** After a rejection, ask again and rotate the approval-status credential. */
+  retryDeviceApproval(
+    deviceId: string,
+    approvalStatusToken: string,
+  ): Promise<DeviceApprovalRetryResponseDto> {
+    return this.api.post<DeviceApprovalRetryResponseDto>(
+      `/devices/${encodeURIComponent(deviceId)}/approval-retry`,
+      {},
+      { headers: { [DEVICE_APPROVAL_STATUS_HEADER]: approvalStatusToken } },
+    );
+  }
+
   createDeviceBindChallenge(deviceId: string): Promise<DeviceBindChallengeResponseDto> {
     return this.api.post<DeviceBindChallengeResponseDto>(
       `/devices/${encodeURIComponent(deviceId)}/bind-challenge`,
@@ -939,39 +1258,6 @@ export class CoreApiClient {
     );
   }
 
-  inviteTrustedContact(
-    body: TrustedContactInviteRequestDto,
-  ): Promise<TrustedContactInviteResponseDto> {
-    return this.api.post<TrustedContactInviteResponseDto>("/account/recovery/contacts", body);
-  }
-
-  deleteTrustedContact(contactId: string): Promise<AccountRecoveryStatusResponseDto> {
-    return this.api.delete<AccountRecoveryStatusResponseDto>(
-      `/account/recovery/contacts/${encodeURIComponent(contactId)}`,
-    );
-  }
-
-  acceptTrustedContactInvite(inviteId: string): Promise<AccountRecoveryStatusResponseDto> {
-    return this.api.post<AccountRecoveryStatusResponseDto>(
-      `/account/recovery/contacts/invites/${encodeURIComponent(inviteId)}/accept`,
-      {},
-    );
-  }
-
-  rejectTrustedContactInvite(inviteId: string): Promise<AccountRecoveryStatusResponseDto> {
-    return this.api.post<AccountRecoveryStatusResponseDto>(
-      `/account/recovery/contacts/invites/${encodeURIComponent(inviteId)}/reject`,
-      {},
-    );
-  }
-
-  /** Leave another owner's trusted-contact list (you are the contact). */
-  leaveTrustedContactMembership(contactId: string): Promise<AccountRecoveryStatusResponseDto> {
-    return this.api.delete<AccountRecoveryStatusResponseDto>(
-      `/account/recovery/contacts/memberships/${encodeURIComponent(contactId)}`,
-    );
-  }
-
   patchDevice(deviceId: string, body: DevicePatchRequestDto): Promise<DevicePatchResponseDto> {
     return this.api.patch<DevicePatchResponseDto>(
       `/devices/${encodeURIComponent(deviceId)}`,
@@ -1002,11 +1288,42 @@ export class CoreApiClient {
     );
   }
 
-  approveDevice(pendingDeviceId: string, approverDeviceId: string): Promise<DeviceRegisterResponseDto> {
+  approveDevice(
+    pendingDeviceId: string,
+    approverDeviceId: string,
+    shareDeliveryEnvelopeB64?: string,
+    deviceShareB64?: string,
+  ): Promise<DeviceRegisterResponseDto> {
+    const body: { share_delivery_envelope?: string; device_share?: string } = {};
+    if (shareDeliveryEnvelopeB64) {
+      body.share_delivery_envelope = shareDeliveryEnvelopeB64;
+    }
+    if (deviceShareB64) {
+      body.device_share = deviceShareB64;
+    }
     return this.api.post<DeviceRegisterResponseDto>(
       `/devices/${encodeURIComponent(pendingDeviceId)}/approve`,
-      {},
+      body,
       { headers: { "X-Device-Id": approverDeviceId } },
+    );
+  }
+
+  getDeviceShareDelivery(deviceId: string): Promise<{
+    share_delivery_envelope: string;
+    expires_at: string;
+  }> {
+    return this.api.get(
+      `/devices/${encodeURIComponent(deviceId)}/share-delivery`,
+    );
+  }
+
+  confirmDeviceShareDelivery(
+    deviceId: string,
+    deviceShareB64: string,
+  ): Promise<DeviceRegisterResponseDto> {
+    return this.api.post<DeviceRegisterResponseDto>(
+      `/devices/${encodeURIComponent(deviceId)}/share-delivery/confirm`,
+      { device_share: deviceShareB64 },
     );
   }
 
@@ -1057,6 +1374,38 @@ export class CoreApiClient {
       );
     }
   }
+}
+
+/** Public WebAuthn handoff. The request id is the secret; no extension bearer is sent. */
+export function postPasskeyHandoffOptions(
+  api: ApiClient,
+  handoffId: string,
+): Promise<PasskeyApprovalOptionsResponseDto> {
+  return api.post<PasskeyApprovalOptionsResponseDto>(
+    `/auth/passkey-device-approval/${encodeURIComponent(handoffId)}/options`,
+    {},
+  );
+}
+
+export function postPasskeyHandoffVerify(
+  api: ApiClient,
+  handoffId: string,
+  body: PasskeyApprovalVerifyRequestDto,
+): Promise<PasskeyApprovalVerifyResponseDto> {
+  return api.post<PasskeyApprovalVerifyResponseDto>(
+    `/auth/passkey-device-approval/${encodeURIComponent(handoffId)}/verify`,
+    body,
+  );
+}
+
+export function postPasskeyHandoffReject(
+  api: ApiClient,
+  handoffId: string,
+): Promise<PasskeyHandoffResponseDto> {
+  return api.post<PasskeyHandoffResponseDto>(
+    `/auth/passkey-device-approval/${encodeURIComponent(handoffId)}/reject`,
+    {},
+  );
 }
 
 export function createCoreApiClient(

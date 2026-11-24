@@ -97,7 +97,16 @@ export function validateNewItemForm(input: {
   }
 
   for (const section of input.sections ?? []) {
+    let seenWebsiteUrl = false;
     for (const field of section.fields) {
+      if (section.id === "websites" && field.type === "url") {
+        const isPrimaryWebsiteUrl = !seenWebsiteUrl;
+        seenWebsiteUrl = true;
+        const blank = isFieldValueEmpty(field);
+        if (!isPrimaryWebsiteUrl && blank) {
+          continue;
+        }
+      }
       if (!field.required) {
         continue;
       }

@@ -50,7 +50,6 @@ export const DEV_UI_WORKSPACE_NAV: OkkeySidebarWorkspaceNavItem[] = [
     trailingPlus: true,
     addAriaLabel: "Add capsule",
   },
-  { id: "w-mon", icon: devUiEmoji("📊"), label: "Monitoring" },
 ];
 
 export const DEV_UI_VAULT_ITEMS: OkkeySidebarVaultItem[] = [

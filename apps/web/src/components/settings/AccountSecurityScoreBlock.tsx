@@ -7,7 +7,7 @@ import type {
 import { Alert, AlertDescription } from "@okkey/ui";
 import { useLocation, useNavigate } from "react-router-dom";
 
-import { MonitoringGaugeChart } from "../../monitoring/MonitoringCharts";
+import { ScoreGaugeChart } from "./ScoreGaugeChart";
 import {
   buildPopupQueryValue,
   popupQuerySearch,
@@ -39,7 +39,7 @@ const LEVEL_MESSAGE: Record<AccountSecurityLevel, string> = {
   critical: "web.settingsPopup.securityScore.level.critical",
 };
 
-const RECOMMENDATION_MESSAGE: Record<AccountSecurityRecommendationId, string> = {
+export const RECOMMENDATION_MESSAGE: Record<AccountSecurityRecommendationId, string> = {
   enableTwoFactor: "web.settingsPopup.securityScore.rec.enableTwoFactor",
   downloadBackupCodes: "web.settingsPopup.securityScore.rec.downloadBackupCodes",
   refreshBackupCodes: "web.settingsPopup.securityScore.rec.refreshBackupCodes",
@@ -105,7 +105,7 @@ export default function AccountSecurityScoreBlock({ t }: AccountSecurityScoreBlo
     >
       <div className="flex items-center gap-4">
         <div className="relative size-24 shrink-0">
-          <MonitoringGaugeChart
+          <ScoreGaugeChart
             score={score}
             className="size-24"
             trackClassName="stroke-[hsl(var(--background))]"

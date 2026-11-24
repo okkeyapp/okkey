@@ -12,9 +12,9 @@ import type { WebMessageValues } from "@okkey/i18n";
 import { useMemo } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
-import enterpriseSharedVaultsModule from "@okkey-enterprise/workspace-shared-vaults";
-
 import { useAuthVault, useAuthenticatedCoreClient } from "../../../../auth/AuthVaultContext";
+import SharedVaultsSection from "./SharedVaultsSection";
+import VaultCardPopup from "./VaultCardPopup";
 import { usePopupZoneGate } from "../../../../auth/usePopupZoneGate";
 import {
   EDIT_VAULT_POPUP_ID,
@@ -24,7 +24,6 @@ import {
   popupQuerySearch,
 } from "../../../../routes/popupQuery";
 
-import RemnantSharedVaultsSection from "./RemnantSharedVaultsSection";
 import SharedVaultsUpsell from "./SharedVaultsUpsell";
 import VaultListRow from "./VaultListRow";
 import VaultsSectionHeader from "./VaultsSectionHeader";
@@ -61,20 +60,10 @@ export default function WorkspaceSettingsVaultsSection({
   const [searchParams] = useSearchParams();
 
   const canManageSharedPlan = workspaceHasPlanFeature(workspace, "sharedVaults");
-  const SharedVaultsSection = enterpriseSharedVaultsModule.SharedVaultsSection;
-  const PersonalVaultCardPopup = enterpriseSharedVaultsModule.PersonalVaultCardPopup;
-  const showEnterpriseShared = Boolean(SharedVaultsSection);
   const sharedVaultsReadOnly = !canManageSharedPlan;
-  /** Personal vault rename/edit needs the enterprise popup module only — not `sharedVaults` plan. */
-  const canOpenPersonalVault = Boolean(PersonalVaultCardPopup);
+  const canPutPersonal = permissionAllowsMutate(resourcePermissions?.put ?? 0);
 
   const personalVault = useMemo(() => vaults.find((vault) => vault.isPersonal) ?? null, [vaults]);
-  const remnantSharedVaults = useMemo(
-    () => vaults.filter((vault) => !vault.isPersonal),
-    [vaults],
-  );
-  const showRemnantShared = !showEnterpriseShared && remnantSharedVaults.length > 0;
-  const canPutPersonal = permissionAllowsMutate(resourcePermissions?.put ?? 0);
 
   const popupRaw = searchParams.get(POPUP_QUERY_PARAM);
   const parsedPopup = parsePopupQueryValue(popupRaw);
@@ -82,7 +71,7 @@ export default function WorkspaceSettingsVaultsSection({
   const editVaultId = isEditVault ? parsedPopup?.menuItemId : undefined;
   const editingVault = editVaultId ? vaults.find((vault) => vault.id === editVaultId) : undefined;
   const editingPersonal =
-    editingVault && editingVault.isPersonal && canOpenPersonalVault ? editingVault : undefined;
+    editingVault && editingVault.isPersonal ? editingVault : undefined;
 
   const sharedVaultsUpsell = (
     <section className="flex flex-col gap-4">
@@ -118,7 +107,7 @@ export default function WorkspaceSettingsVaultsSection({
     );
   }
 
-  const personalEditUrlOpen = Boolean(editingPersonal && core && userId && PersonalVaultCardPopup);
+  const personalEditUrlOpen = Boolean(editingPersonal && core && userId);
   const showPersonalEdit = usePopupZoneGate("vaultPopups", personalEditUrlOpen, closePopup);
 
   return (
@@ -140,42 +129,26 @@ export default function WorkspaceSettingsVaultsSection({
               personalVault.description || t("web.workspaceSettings.vaults.personal.description")
             }
             trailing={t("web.workspaceSettings.vaults.personal.onlyYou")}
-            onClick={
-              canOpenPersonalVault
-                ? () => openPopup(buildPopupQueryValue(EDIT_VAULT_POPUP_ID, personalVault.id))
-                : undefined
-            }
+            onClick={() => openPopup(buildPopupQueryValue(EDIT_VAULT_POPUP_ID, personalVault.id))}
           />
         </div>
       ) : null}
 
-      {showEnterpriseShared && SharedVaultsSection ? (
-        <SharedVaultsSection
-          workspaceId={workspaceId}
-          workspace={workspace}
-          vaults={vaults}
-          vaultsListReady={vaultsListReady}
-          t={t}
-          onVaultsChanged={onVaultsChanged}
-          personalVaultId={personalVault?.id ?? null}
-          resourcePermissions={resourcePermissions}
-          readOnly={sharedVaultsReadOnly}
-          emptyFallback={sharedVaultsReadOnly ? sharedVaultsUpsell : undefined}
-        />
-      ) : showRemnantShared ? (
-        <RemnantSharedVaultsSection
-          vaults={vaults}
-          vaultsListReady={vaultsListReady}
-          t={t}
-          onVaultsChanged={onVaultsChanged}
-          resourcePermissions={resourcePermissions}
-        />
-      ) : (
-        sharedVaultsUpsell
-      )}
+      <SharedVaultsSection
+        workspaceId={workspaceId}
+        workspace={workspace}
+        vaults={vaults}
+        vaultsListReady={vaultsListReady}
+        t={t}
+        onVaultsChanged={onVaultsChanged}
+        personalVaultId={personalVault?.id ?? null}
+        resourcePermissions={resourcePermissions}
+        readOnly={sharedVaultsReadOnly}
+        emptyFallback={sharedVaultsReadOnly ? sharedVaultsUpsell : undefined}
+      />
 
-      {showPersonalEdit && editingPersonal && core && userId && PersonalVaultCardPopup ? (
-        <PersonalVaultCardPopup
+      {showPersonalEdit && editingPersonal && core && userId ? (
+        <VaultCardPopup
           popupId={`${EDIT_VAULT_POPUP_ID}|${editVaultId}`}
           mode="personal"
           initialVault={editingPersonal}

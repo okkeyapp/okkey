@@ -1,6 +1,6 @@
 # Extension store — submit checklist
 
-Ready-to-submit pack for **Okkey extension `1.0.0.2`**. This folder documents packaging and console fields only. It does **not** create product tags or GitHub Releases on `main`.
+Ready-to-submit pack for **Okkey extension `1.0.0.1000`**. This folder documents packaging and console fields only. It does **not** create product tags or GitHub Releases on `main`.
 
 **Locales:** EN **and** RU are required for this release (listing copy + live screenshots). See [LOCALES.md](./LOCALES.md).
 
@@ -21,8 +21,8 @@ Self-host framing only (FREE / ENTERPRISE on the user’s instance). Do **not** 
 ## 0. Preflight (all stores)
 
 - [ ] Tip of branch includes current `origin/dev`
-- [ ] `apps/extension/package.json` → `"version": "1.0.0"` (workspace SemVer; **not** `1.0.0.2`)
-- [ ] `wxt.config.ts` / built manifest → `"version": "1.0.0.2"`, `default_locale: "en"`, name/description via `__MSG_*__`
+- [ ] `apps/extension/package.json` → `"version": "1.0.0"` (workspace SemVer; the manifest uses the four-part store number)
+- [ ] `wxt.config.ts` / built manifest → `"version": "1.0.0.1000"`, `default_locale: "en"`, name/description via `__MSG_*__`
 - [ ] Zip contains `_locales/en/messages.json` **and** `_locales/ru/messages.json`
 - [ ] Listing copy reviewed: [LISTING.en.md](./LISTING.en.md) **and** [LISTING.ru.md](./LISTING.ru.md)
 - [ ] Locale console plan reviewed: [LOCALES.md](./LOCALES.md)
@@ -45,7 +45,7 @@ Expected outputs:
 ```text
 apps/extension/output/
   chrome-mv3/                                      # unpacked Chromium
-  okkeyextension-1.0.0.2-chrome.zip                # CWS / Edge / Opera
+  okkeyextension-1.0.0.1000-chrome.zip                # CWS / Edge / Opera
 ```
 
 Confirm version + locales inside the zip:
@@ -55,7 +55,7 @@ unzip -p apps/extension/output/*chrome*.zip manifest.json | python3 -c "import s
 unzip -l apps/extension/output/*chrome*.zip | rg '_locales/(en|ru)/messages.json'
 ```
 
-Expect: `1.0.0.2`, **no** `version_name`, `default_locale=en`, `__MSG_extName__` / `__MSG_extDescription__`, both locale files present.
+Expect: `1.0.0.1000`, **no** `version_name`, `default_locale=en`, `__MSG_extName__` / `__MSG_extDescription__`, both locale files present.
 
 ### Local load (Chromium — Chrome / Edge / Opera / Brave / Yandex)
 
@@ -71,7 +71,7 @@ Store-shaped zip: unpack `*chrome*.zip` and Load unpacked, or upload the zip in 
 Do these in order in the [Chrome Web Store Developer Dashboard](https://chrome.google.com/webstore/devconsole).
 
 1. [ ] Create or open the Okkey item (draft is fine for rehearsal).
-2. [ ] Upload package: `apps/extension/output/okkeyextension-1.0.0.2-chrome.zip` (must include `_locales/en` + `_locales/ru`).
+2. [ ] Upload package: `apps/extension/output/okkeyextension-1.0.0.1000-chrome.zip` (must include `_locales/en` + `_locales/ru`).
 3. [ ] **EN locale:** paste short + detailed description from [LISTING.en.md](./LISTING.en.md).
 4. [ ] **RU locale:** switch locale dropdown → paste from [LISTING.ru.md](./LISTING.ru.md).
 5. [ ] Paste single-purpose / host-access justification from [PERMISSIONS.md](./PERMISSIONS.md).
@@ -87,7 +87,7 @@ Do these in order in the [Chrome Web Store Developer Dashboard](https://chrome.g
 Do these in order in the [Partner Center](https://partner.microsoft.com/dashboard) Edge Add-ons flow. Reuse the **same** Chromium zip.
 
 1. [ ] Create or open the Okkey Edge listing (draft is fine for rehearsal).
-2. [ ] Upload package: `apps/extension/output/okkeyextension-1.0.0.2-chrome.zip` (same file as CWS).
+2. [ ] Upload package: `apps/extension/output/okkeyextension-1.0.0.1000-chrome.zip` (same file as CWS).
 3. [ ] On Store Listings: keep languages **en** and **ru** (from package `_locales`).
 4. [ ] Paste EN description from [LISTING.en.md](./LISTING.en.md); RU from [LISTING.ru.md](./LISTING.ru.md) (≥250 chars each).
 5. [ ] Logo: upload once, Duplicate to the other language if UI allows.
@@ -106,12 +106,12 @@ Same Chromium zip as CWS/Edge. Paste **EN and RU** listing where Opera supports 
 
 ## 5. Firefox AMO
 
-**Do not submit to the AMO console from automation.** Upload only after pack + lint below are green and Саша completes temporary-addon smoke.
+**Do not submit to the AMO console from automation.** Upload only after pack + lint below are green and a maintainer completes temporary-addon smoke.
 
 Unblock checklist:
 
-1. `yarn zip:extension:firefox` produces `okkeyextension-1.0.0.2-firefox.zip` and a **monorepo-shaped** `okkeyextension-1.0.0.2-sources.zip` without errors — rebuild steps in [SOURCES.md](./SOURCES.md).
-2. Temporary add-on smoke passes (`about:debugging` → Load Temporary Add-on → `firefox-mv3/manifest.json`) — **manual (Саша)**.
+1. `yarn zip:extension:firefox` produces `okkeyextension-1.0.0.1000-firefox.zip` and a **monorepo-shaped** `okkeyextension-1.0.0.1000-sources.zip` without errors — rebuild steps in [SOURCES.md](./SOURCES.md).
+2. Temporary add-on smoke passes (`about:debugging` → Load Temporary Add-on → `firefox-mv3/manifest.json`) — **manual**.
 3. `npx web-ext lint --source-dir apps/extension/output/firefox-mv3` reports **no errors**; remaining warnings triaged in [PERMISSIONS.md](./PERMISSIONS.md) (§ Firefox web-ext lint).
 
 When smoke + lint are done, mark this section Ready and run the steps below.
@@ -131,8 +131,8 @@ Expected:
 ```text
 apps/extension/output/
   firefox-mv3/
-  okkeyextension-1.0.0.2-firefox.zip
-  okkeyextension-1.0.0.2-sources.zip
+  okkeyextension-1.0.0.1000-firefox.zip
+  okkeyextension-1.0.0.1000-sources.zip
 ```
 
 2. [ ] Confirm gecko id / version / locales:
@@ -142,7 +142,7 @@ unzip -p apps/extension/output/*firefox*.zip manifest.json | python3 -c "import 
 unzip -l apps/extension/output/*firefox*.zip | rg '_locales/(en|ru)/messages.json'
 ```
 
-Expect: `1.0.0.2`, `default_locale=en`, gecko id `extension@okkey.io`, both locale files.
+Expect: `1.0.0.1000`, `default_locale=en`, gecko id `extension@okkey.io`, both locale files.
 
 3. [ ] Local smoke: Load Temporary Add-on from `firefox-mv3/manifest.json`; same self-host smoke as Chromium.
 4. [ ] Lint: `npx web-ext lint --source-dir apps/extension/output/firefox-mv3` — fix or document every warning; **no errors**.
@@ -165,4 +165,4 @@ Use the short block at the top of [PERMISSIONS.md](./PERMISSIONS.md). Emphasize:
 ## 7. After upload
 
 - [ ] Record draft/item IDs from each store console in team notes (not required in-repo)
-- [ ] **Do not** create product tags / GitHub Releases on `main` from this packaging pack alone — product release flow stays on `main` (extension packaging here is only `1.0.0.2`)
+- [ ] **Do not** create product tags / GitHub Releases on `main` from this packaging pack alone — product release flow stays on `main` (extension packaging here is only `1.0.0.1000`)

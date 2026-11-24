@@ -1,4 +1,4 @@
-# Store listing — English (`1.0.0.2`)
+# Store listing — English (`1.0.0.1000`)
 
 Use for Chrome Web Store, Edge Add-ons, Opera Add-ons, and Firefox AMO.  
 **This release requires EN and RU** — Russian: [LISTING.ru.md](./LISTING.ru.md). Locale console steps: [LOCALES.md](./LOCALES.md).
@@ -53,7 +53,7 @@ Okkey needs access to websites you visit only to detect login forms and autofill
 
 Open source core: https://github.com/okkeyapp/okkey
 
-Extension build: 1.0.0.2.
+Extension build: 1.0.0.1000.
 ```
 
 ## Category / tags (suggestions)

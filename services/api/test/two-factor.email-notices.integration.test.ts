@@ -97,8 +97,9 @@ test("integration: after TOTP enroll confirm, transport receives two_factor_enab
   assert.equal(sent.length, 1);
   assert.equal(sent[0].subject, formatEmailMessage("ru", "email.twoFactor.enabled.subject", {}));
   assert.equal(sent[0].to, email);
-  assert.match(sent[0].html, /popup=settings\|twoFactor/);
-  assert.match(sent[0].text, /popup=settings\|twoFactor/);
+  assert.match(sent[0].html, /popup=settings%7CtwoFactor/);
+  assert.match(sent[0].html, /lng=ru/);
+  assert.match(sent[0].text, /popup=settings%7CtwoFactor/);
   assert.equal(sent[0].html.includes("/settings/security"), false);
   for (const code of backupCodes) {
     assert.equal(sent[0].text.includes(code), false, "plaintext backup codes must not appear in email");
@@ -194,7 +195,8 @@ test("integration: after backup regeneration, transport receives two_factor_back
   assert.equal(sent.length, 1);
   assert.equal(sent[0].subject, formatEmailMessage("ru", "email.twoFactor.backupRegen.subject", {}));
   assert.equal(sent[0].to, email);
-  assert.match(sent[0].html, /popup=settings\|twoFactor/);
+  assert.match(sent[0].html, /popup=settings%7CtwoFactor/);
+  assert.match(sent[0].html, /lng=ru/);
   assert.equal(sent[0].html.includes("/settings/security"), false);
   for (const code of newCodes) {
     assert.equal(sent[0].text.includes(code), false);
@@ -291,8 +293,9 @@ test("integration: after TOTP disable, transport receives two_factor_disabled (r
   assert.equal(sent.length, 1);
   assert.equal(sent[0].subject, formatEmailMessage("ru", "email.twoFactor.disabled.subject", {}));
   assert.equal(sent[0].to, email);
-  assert.match(sent[0].html, /popup=settings\|twoFactor/);
-  assert.match(sent[0].text, /popup=settings\|twoFactor/);
+  assert.match(sent[0].html, /popup=settings%7CtwoFactor/);
+  assert.match(sent[0].html, /lng=ru/);
+  assert.match(sent[0].text, /popup=settings%7CtwoFactor/);
   assert.equal(sent[0].html.includes("/settings/security"), false);
   assert.equal(BACKUP_CODE_LIKE.test(sent[0].text), false);
   assert.equal(BACKUP_CODE_LIKE.test(sent[0].html), false);

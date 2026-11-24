@@ -1,0 +1,93 @@
+# Reusable archive build. Call this from a release workflow that already has
+# the signed core package and the signed enterprise package on disk.
+# This workflow checks out the caller for those files, then checks out the
+# workflow's own ref for the packer. It does not build either package.
+name: Build offline bundle
+
+on:
+  workflow_call:
+    inputs:
+      core_package:
+        description: Path to the signed core package in the caller workspace
+        required: true
+        type: string
+      enterprise_package:
+        description: Path to the signed enterprise package in the caller workspace
+        required: true
+        type: string
+      output:
+        description: Archive path to write (.okbundle or .zip)
+        required: false
+        type: string
+        default: dist/okkey-offline.okbundle
+    outputs:
+      archive:
+        description: Path of the written archive
+        value: ${{ jobs.bundle.outputs.archive }}
+
+jobs:
+  bundle:
+    name: offline-bundle
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      archive: ${{ steps.pack.outputs.archive }}
+    steps:
+      - name: Resolve this workflow ref
+        id: tool
+        shell: bash
+        run: |
+          set -euo pipefail
+          # owner/repo/.github/workflows/file.yml@refs/heads/name
+          workflow_ref="${GITHUB_WORKFLOW_REF}"
+          git_ref="${workflow_ref#*@}"
+          if [[ -z "${git_ref}" || "${git_ref}" == "${workflow_ref}" ]]; then
+            echo "Could not read the bundle workflow ref" >&2
+            exit 1
+          fi
+          echo "ref=${git_ref}" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout caller packages
+        uses: actions/checkout@v4
+
+      - name: Checkout bundle tool
+        uses: actions/checkout@v4
+        with:
+          repository: okkeyapp/okkey
+          ref: ${{ steps.tool.outputs.ref }}
+          path: .okkey-bundle-tool
+          sparse-checkout: |
+            scripts/build-offline-bundle.mjs
+            services/api/package.json
+            services/api/src/system-updates/offline-bundle.ts
+            services/api/src/system-updates/errors.ts
+            services/api/src/system-updates/package-format.ts
+            services/api/src/system-updates/versions.ts
+          sparse-checkout-cone-mode: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "25"
+
+      - name: Build offline bundle
+        id: pack
+        shell: bash
+        env:
+          CORE_PACKAGE: ${{ inputs.core_package }}
+          ENTERPRISE_PACKAGE: ${{ inputs.enterprise_package }}
+          OUTPUT_PATH: ${{ inputs.output }}
+        run: |
+          set -euo pipefail
+          node --experimental-strip-types "$GITHUB_WORKSPACE/.okkey-bundle-tool/scripts/build-offline-bundle.mjs" \
+            --core "$CORE_PACKAGE" \
+            --enterprise "$ENTERPRISE_PACKAGE" \
+            --out "$OUTPUT_PATH"
+          echo "archive=${OUTPUT_PATH}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload offline bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: okkey-offline-bundle
+          path: ${{ inputs.output }}
+          if-no-files-found: error

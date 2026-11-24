@@ -9,6 +9,7 @@ import { applyItemPlaintextToReplayMap } from "./item-replay-state.js";
 
 const ITEM_TYPES = new Set(["ITEM_CREATE", "ITEM_UPDATE", "ITEM_DELETE"]);
 
+/** Plaintext item schema versions. Not the crypto profile (vault items require qday v2). */
 const SUPPORTED_PAYLOAD_SCHEMA_VERSIONS = new Set<number>([
   ITEM_PLAINTEXT_SCHEMA_VERSION,
   ITEM_PLAINTEXT_SCHEMA_VERSION_LATEST,
@@ -45,7 +46,9 @@ export type DecryptWirePayload = (
 /**
  * Deterministic replay of ITEM_* events for a vault stream (after decrypting ciphertext).
  * v1 and v2 plaintext JSON are normalized to {@link ItemPlaintextV2}.
- * Unknown `encryptedBlob.crypto_version` values are skipped (see sync architecture).
+ * The version checked here is the plaintext schema, not the crypto profile.
+ * Vault item decryption must use crypto profile v2 (`qday_default`).
+ * Unknown plaintext schema versions are skipped (see sync architecture).
  * Events whose plaintext.itemId ≠ referencedItemId are skipped.
  */
 export async function replayItemPlaintextEvents(

@@ -2,23 +2,26 @@
  * Extension adapters for vault unlock session (chrome.storage.session) and
  * device prefs (chrome.storage.local). Master password is never persisted.
  */
+import type { UnlockWithMasterPasswordResult } from "@okkey/vault/unlock-with-master-password";
+import { vaultIdleLockMsFromServerSeconds } from "@okkey/vault/vault-idle-lock-ms";
+import {
+  DEFAULT_VAULT_DEVICE_PREFS,
+  readVaultDevicePrefsMigratingLockOnSleep,
+  writeVaultDevicePrefsAsync,
+  type VaultDevicePrefs,
+} from "@okkey/vault/vault-device-prefs";
 import {
   clearVaultUnlockSession,
-  DEFAULT_VAULT_DEVICE_PREFS,
   persistVaultUnlockSession,
-  readVaultDevicePrefsAsync,
   readVaultUnlockSessionIfFresh,
   touchVaultUnlockSession,
   vaultUnlockSessionExceededIdle,
-  type UnlockWithMasterPasswordResult,
-  type VaultDevicePrefs,
   type VaultUnlockSessionFreshResult,
   type VaultUnlockSessionStorage,
-  vaultIdleLockMsFromServerSeconds,
-  writeVaultDevicePrefsAsync,
-} from "@okkey/vault";
+} from "@okkey/vault/vault-unlock-session";
 
-import { extensionLocalStorage, extensionSessionStorage } from "./extensionStorageApi";
+import { extensionLocalStorage, extensionSessionStorage } from "./extensionStorageApi.ts";
+import { extensionVaultBundleStorageKey } from "./vaultStorage.ts";
 
 const THEME_KEY = "okkey.theme";
 const ACCENT_KEY = "okkey.accent";
@@ -31,7 +34,7 @@ export const DEFAULT_EXTENSION_IDLE_LOCK_MS = DEFAULT_EXTENSION_IDLE_LOCK_SECOND
 /** Security defaults for new extension installs / unset device prefs. */
 export const EXTENSION_DEVICE_SECURITY_DEFAULTS = {
   idleLockSeconds: DEFAULT_EXTENSION_IDLE_LOCK_SECONDS,
-  lockOnDeviceSleep: DEFAULT_VAULT_DEVICE_PREFS.lockOnDeviceSleep, // true
+  lockOnDeviceSleep: DEFAULT_VAULT_DEVICE_PREFS.lockOnDeviceSleep, // false
   lockOnPopupClose: DEFAULT_VAULT_DEVICE_PREFS.lockOnPopupClose, // false
   clipboardClearSeconds: DEFAULT_VAULT_DEVICE_PREFS.clipboardClearSeconds, // 0 = never
 } as const;
@@ -107,8 +110,28 @@ export async function extensionUnlockSessionExceededIdle(userId: string): Promis
   return vaultUnlockSessionExceededIdle(chromeSessionStorage(), userId);
 }
 
+/**
+ * Same prior-state marker as the web app: a local vault bundle that already
+ * existed for this user. chrome.storage.local keeps the bundle as an object,
+ * so presence is checked on the storage area rather than the string KV adapter.
+ */
+async function extensionHasPriorVaultBundle(userId: string): Promise<boolean> {
+  const area = extensionLocalStorage();
+  if (!area) {
+    return false;
+  }
+  try {
+    const key = extensionVaultBundleStorageKey(userId);
+    const bag = await area.get(key);
+    return bag[key] != null;
+  } catch {
+    return false;
+  }
+}
+
 export async function readExtensionDevicePrefs(userId: string | null): Promise<VaultDevicePrefs> {
-  return readVaultDevicePrefsAsync(userId, chromeLocalKvStorage());
+  const hasPrior = userId ? await extensionHasPriorVaultBundle(userId) : false;
+  return readVaultDevicePrefsMigratingLockOnSleep(userId, chromeLocalKvStorage(), hasPrior);
 }
 
 export async function writeExtensionDevicePrefs(

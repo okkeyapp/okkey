@@ -1,21 +1,18 @@
 import type { IncomingMessage } from "node:http";
 import { json, readJsonBody, type RouteHandler } from "../http.ts";
+import { parseOptionalEntityId } from "../http-params.ts";
 import {
   parseAllowedFileExtensionsPayload,
   parseCapsulePoliciesPayload,
   parseDeletedItemsRetentionDaysPayload,
   parseFilesInItemsEnabledPayload,
   parseMaxFileSizeMbPayload,
-  parseMonitoringCardSettingsPayload,
   parseOptionalNamePayload,
   parseOptionalStringPayload,
   WorkspaceSettingsService,
   WorkspaceSettingsServiceError,
 } from "../workspace-settings/service.ts";
-import {
-  workspaceCapsulePoliciesToDto,
-  workspaceMonitoringCardSettingsToDto,
-} from "@okkey/types";
+import { workspaceCapsulePoliciesToDto, type WorkspaceStorageQuotaStatus } from "@okkey/types";
 
 function errorPayload(code: string, message: string, requestId: string) {
   return { error: code, message, requestId };
@@ -28,7 +25,6 @@ type WorkspaceSettingsBody = {
   max_file_size_mb?: unknown;
   files_in_items_enabled?: unknown;
   capsule_policies?: unknown;
-  monitoring_card_settings?: unknown;
   tile_color?: unknown;
   logo_vault_id?: unknown;
   logo_attachment_id?: unknown;
@@ -45,10 +41,14 @@ function serializeSettings(settings: {
   maxFileSizeMb: number;
   filesInItemsEnabled: boolean;
   capsulePolicies: import("@okkey/types").WorkspaceCapsulePolicies;
-  monitoringCardSettings: import("@okkey/types").WorkspaceMonitoringCardSettings;
   tileColor: string | null;
   logoVaultId: string | null;
   logoAttachmentId: string | null;
+  logoKeyVersion?: number | null;
+  logoUpdatedAt?: string | null;
+  clientSettingsKeyVersion?: number | null;
+  clientSettingsCiphertext?: string | null;
+  storageQuota?: WorkspaceStorageQuotaStatus;
 }) {
   return {
     name: settings.name,
@@ -57,10 +57,25 @@ function serializeSettings(settings: {
     max_file_size_mb: settings.maxFileSizeMb,
     files_in_items_enabled: settings.filesInItemsEnabled,
     capsule_policies: workspaceCapsulePoliciesToDto(settings.capsulePolicies),
-    monitoring_card_settings: workspaceMonitoringCardSettingsToDto(settings.monitoringCardSettings),
     tile_color: settings.tileColor,
     logo_vault_id: settings.logoVaultId,
     logo_attachment_id: settings.logoAttachmentId,
+    logo_key_version: settings.logoKeyVersion ?? null,
+    logo_updated_at: settings.logoUpdatedAt ?? null,
+    client_settings_key_version: settings.clientSettingsKeyVersion ?? null,
+    client_settings_ciphertext: settings.clientSettingsCiphertext ?? null,
+    ...(settings.storageQuota
+      ? {
+          storage_quota: {
+            base_mb: settings.storageQuota.baseMb,
+            per_member_mb: settings.storageQuota.perMemberMb,
+            limit_mb: settings.storageQuota.limitMb,
+            limit_bytes: settings.storageQuota.limitBytes,
+            used_bytes: settings.storageQuota.usedBytes,
+            active_member_count: settings.storageQuota.activeMemberCount,
+          },
+        }
+      : {}),
   };
 }
 
@@ -105,7 +120,6 @@ export function createWorkspaceSettingsRoute(
         maxFileSizeMb?: number;
         filesInItemsEnabled?: boolean;
         capsulePolicies?: import("@okkey/types").WorkspaceCapsulePolicies;
-        monitoringCardSettings?: import("@okkey/types").WorkspaceMonitoringCardSettings;
         tileColor?: string | null;
         logoVaultId?: string | null;
         logoAttachmentId?: string | null;
@@ -207,38 +221,33 @@ export function createWorkspaceSettingsRoute(
         }
       }
 
-      if (body.monitoring_card_settings !== undefined) {
-        const monitoringCardSettings = parseMonitoringCardSettingsPayload(
-          body.monitoring_card_settings,
-        );
-        if (monitoringCardSettings === null) {
-          json(
-            ctx.res,
-            400,
-            errorPayload(
-              "INVALID_MONITORING_CARD_SETTINGS",
-              "monitoring_card_settings is invalid",
-              ctx.requestId,
-            ),
-          );
-          return;
-        }
-        if (monitoringCardSettings !== undefined) {
-          patch.monitoringCardSettings = monitoringCardSettings;
-        }
-      }
-
       const tileColor = parseOptionalStringPayload(body.tile_color);
       if (tileColor !== undefined) {
         patch.tileColor = tileColor;
       }
-      const logoVaultId = parseOptionalStringPayload(body.logo_vault_id);
-      if (logoVaultId !== undefined) {
-        patch.logoVaultId = logoVaultId;
+      const logoVaultId = parseOptionalEntityId(body.logo_vault_id);
+      if (logoVaultId.kind === "invalid") {
+        json(ctx.res, 400, errorPayload("INVALID_LOGO_VAULT_ID", "logo_vault_id must be a snowflake entity id", ctx.requestId));
+        return;
       }
-      const logoAttachmentId = parseOptionalStringPayload(body.logo_attachment_id);
-      if (logoAttachmentId !== undefined) {
-        patch.logoAttachmentId = logoAttachmentId;
+      if (logoVaultId.kind === "clear") {
+        patch.logoVaultId = null;
+      } else if (logoVaultId.kind === "value") {
+        patch.logoVaultId = logoVaultId.id;
+      }
+      const logoAttachmentId = parseOptionalEntityId(body.logo_attachment_id);
+      if (logoAttachmentId.kind === "invalid") {
+        json(
+          ctx.res,
+          400,
+          errorPayload("INVALID_LOGO_ATTACHMENT_ID", "logo_attachment_id must be a snowflake entity id", ctx.requestId),
+        );
+        return;
+      }
+      if (logoAttachmentId.kind === "clear") {
+        patch.logoAttachmentId = null;
+      } else if (logoAttachmentId.kind === "value") {
+        patch.logoAttachmentId = logoAttachmentId.id;
       }
 
       const updated = await service.updateSettings(workspaceId, userId, patch);

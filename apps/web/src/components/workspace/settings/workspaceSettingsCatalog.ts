@@ -1,6 +1,5 @@
 import {
   workspaceCapsulePoliciesFromDto,
-  workspaceMonitoringCardSettingsFromDto,
   type Workspace,
   type WorkspaceSettingsResponseDto,
 } from "@okkey/types";
@@ -44,6 +43,7 @@ export const WORKSPACE_TILE_PRESET_COLORS = [
 
 export type WorkspaceSettingsSectionId =
   | "general"
+  | "mail"
   | "items"
   | "capsules"
   | "roles"
@@ -58,6 +58,7 @@ export const DEFAULT_WORKSPACE_SETTINGS_SECTION: WorkspaceSettingsSectionId = "g
 export function isWorkspaceSettingsSectionId(value: string): value is WorkspaceSettingsSectionId {
   return [
     "general",
+    "mail",
     "items",
     "capsules",
     "roles",
@@ -95,10 +96,13 @@ export function workspacePatchFromSettingsResponse(
   | "maxFileSizeMb"
   | "filesInItemsEnabled"
   | "capsulePolicies"
-  | "monitoringCardSettings"
   | "tileColor"
   | "logoVaultId"
   | "logoAttachmentId"
+  | "logoKeyVersion"
+  | "logoUpdatedAt"
+  | "clientSettingsKeyVersion"
+  | "clientSettingsCiphertext"
 > {
   return {
     name: updated.name,
@@ -107,11 +111,12 @@ export function workspacePatchFromSettingsResponse(
     maxFileSizeMb: updated.max_file_size_mb,
     filesInItemsEnabled: updated.files_in_items_enabled,
     capsulePolicies: workspaceCapsulePoliciesFromDto(updated.capsule_policies),
-    monitoringCardSettings: workspaceMonitoringCardSettingsFromDto(
-      updated.monitoring_card_settings,
-    ),
     tileColor: updated.tile_color,
     logoVaultId: updated.logo_vault_id,
     logoAttachmentId: updated.logo_attachment_id,
+    logoKeyVersion: updated.logo_key_version ?? null,
+    logoUpdatedAt: updated.logo_updated_at ?? null,
+    clientSettingsKeyVersion: updated.client_settings_key_version ?? null,
+    clientSettingsCiphertext: updated.client_settings_ciphertext ?? null,
   };
 }

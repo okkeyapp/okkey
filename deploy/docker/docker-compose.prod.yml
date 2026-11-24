@@ -5,7 +5,8 @@
 
 services:
   postgres:
-    image: postgres:16-alpine
+    # postgres:16-alpine
+    image: postgres:16-alpine@sha256:aa6cb33cf4c19c765cefcf48d96176258800870a9a1e930ad126200f9d825139
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
@@ -20,7 +21,8 @@ services:
       retries: 20
 
   redis:
-    image: redis:7-alpine
+    # redis:7-alpine
+    image: redis:7-alpine@sha256:7b1753b4c5ad8458906c272a8132b8c15f5557b000379eb115fb239706a384b7
     restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes"]
     volumes:
@@ -34,7 +36,8 @@ services:
   # Official minio/minio + minio/mc left Docker Hub (2026-09); Quay anonymous pulls
   # also 401. pgsty/minio is a drop-in Community rebuild (same CLI/env/health).
   minio:
-    image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z
+    # pgsty/minio:RELEASE.2026-08-04T00-00-00Z
+    image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z@sha256:b6bfe7239bfc83fb90d31612d9704d86039dd714f7904b3f1ad68f211e602372
     restart: unless-stopped
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}
@@ -49,7 +52,8 @@ services:
       retries: 20
 
   minio-init:
-    image: amazon/aws-cli:2.17.0
+    # amazon/aws-cli:2.17.0
+    image: amazon/aws-cli:2.17.0@sha256:643507c10ada7964ca6157b3d799f030b90577643da9955d319a77399ed80d73
     depends_on:
       minio:
         condition: service_healthy
@@ -75,7 +79,8 @@ services:
     restart: "no"
 
   api:
-    image: ${OKKEY_API_IMAGE:-ghcr.io/okkeyapp/api}:${OKKEY_IMAGE_TAG:-1.0.0-beta.2}
+    # Prefer OKKEY_ENTERPRISE_IMAGE_TAG when set (enterprise install); else OKKEY_IMAGE_TAG.
+    image: ${OKKEY_API_IMAGE:-ghcr.io/okkeyapp/api}:${OKKEY_ENTERPRISE_IMAGE_TAG:-${OKKEY_IMAGE_TAG:-1.0.0-beta.2}}
     restart: unless-stopped
     depends_on:
       postgres:
@@ -88,11 +93,11 @@ services:
         condition: service_completed_successfully
     environment:
       NODE_ENV: production
-      # Self-host web registers with password_kdf_params_version=1; prod policy allows only [2].
-      # Default deployEnv=dev so allowed profiles are 1,2 (see CRYPTO_ALLOWED_PROFILE_VERSIONS).
+      # Vault items require crypto profile 2. The allowlist can only narrow.
       DEPLOY_ENV: ${DEPLOY_ENV:-dev}
-      CRYPTO_ALLOWED_PROFILE_VERSIONS: ${CRYPTO_ALLOWED_PROFILE_VERSIONS:-1,2}
-      CRYPTO_ROLLOUT_MODE: ${CRYPTO_ROLLOUT_MODE:-compat}
+      CRYPTO_ALLOWED_PROFILE_VERSIONS: ${CRYPTO_ALLOWED_PROFILE_VERSIONS:-2}
+      # Unset mode is strict. Explicit compat with DEPLOY_ENV=prod refuses to start.
+      CRYPTO_ROLLOUT_MODE: ${CRYPTO_ROLLOUT_MODE:-strict}
       PORT: "4000"
       RUN_BACKGROUND_JOBS: "false"
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
@@ -119,27 +124,54 @@ services:
       EMAIL_SMTP_SECURE: ${EMAIL_SMTP_SECURE:-false}
       EMAIL_SMTP_USER: ${EMAIL_SMTP_USER:-}
       EMAIL_SMTP_PASSWORD: ${EMAIL_SMTP_PASSWORD:-}
+      EMAIL_API_ENDPOINT: ${EMAIL_API_ENDPOINT:-}
+      EMAIL_API_KEY: ${EMAIL_API_KEY:-}
+      EMAIL_API_TIMEOUT_MS: ${EMAIL_API_TIMEOUT_MS:-10000}
+      EMAIL_HTTP_API_INLINE: ${EMAIL_HTTP_API_INLINE:-cid}
+      EMAIL_LOGO_URL: ${EMAIL_LOGO_URL:-}
       WEBAUTHN_RP_ID: ${WEBAUTHN_RP_ID}
       WEBAUTHN_RP_NAME: ${WEBAUTHN_RP_NAME:-Okkey}
       WEBAUTHN_ORIGINS: ${WEBAUTHN_ORIGINS}
       OKKEY_DEPLOYMENT_MODE: self_hosted
+      OKKEY_VERSION: ${OKKEY_IMAGE_TAG:-1.0.0-beta.2}
+      # Do not set OKKEY_GIT_SHA here: an empty compose value would override the
+      # okkey-repo commit baked into the api/worker image at build time. Leave
+      # it unset so the image ENV is used. Packaging overlays must not replace
+      # that value with their own HEAD. OKKEY_ENTERPRISE_GIT_SHA is set by
+      # enterprise overlays when those modules are installed.
+      OKKEY_ENTERPRISE_VERSION: ${OKKEY_ENTERPRISE_VERSION:-}
+      # Empty core feed URL uses the GitHub Releases default inside the API.
+      # OKKEY_UPDATE_FEED_URL is the previous name and still overrides when the core name is empty.
+      # OKKEY_UPDATE_ISOLATED=true skips every update check, including that default.
+      OKKEY_UPDATE_CORE_FEED_URL: ${OKKEY_UPDATE_CORE_FEED_URL:-${OKKEY_UPDATE_FEED_URL:-}}
+      OKKEY_UPDATE_ENTERPRISE_FEED_URL: ${OKKEY_UPDATE_ENTERPRISE_FEED_URL:-}
+      OKKEY_UPDATE_ISOLATED: ${OKKEY_UPDATE_ISOLATED:-false}
+      OKKEY_UPDATE_AGENT_URL: http://update-agent:8090
+      OKKEY_UPDATE_AGENT_TOKEN: ${OKKEY_UPDATE_AGENT_TOKEN:-}
       # 0 = ignore X-Forwarded-For (TCP peer). Set 1 when api sits behind deploy/docker/proxy nginx.
       # Keep the host publish on 127.0.0.1 so a forged XFF cannot hit the API from the LAN/WAN.
       TRUSTED_PROXY_HOPS: ${TRUSTED_PROXY_HOPS:-0}
       GEOIP_ENABLED: ${GEOIP_ENABLED:-false}
-      FAVICON_PROVIDER: ${FAVICON_PROVIDER:-direct}
+      FAVICON_PROVIDER: ${FAVICON_PROVIDER:-off}
     ports:
       # Loopback only — browsers use OKKEY_API_PUBLIC_URL; proxy overlay reaches api:4000 on the Docker network.
       - "127.0.0.1:${API_PORT:-4000}:4000"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:4000/health"]
+      # Use node fetch so the API image does not need curl/wget.
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:4000/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
       interval: 10s
       timeout: 5s
       retries: 12
       start_period: 40s
 
   worker:
-    image: ${OKKEY_WORKER_IMAGE:-ghcr.io/okkeyapp/worker}:${OKKEY_IMAGE_TAG:-1.0.0-beta.2}
+    image: ${OKKEY_WORKER_IMAGE:-ghcr.io/okkeyapp/worker}:${OKKEY_ENTERPRISE_IMAGE_TAG:-${OKKEY_IMAGE_TAG:-1.0.0-beta.2}}
     restart: unless-stopped
     depends_on:
       postgres:
@@ -155,8 +187,9 @@ services:
     environment:
       NODE_ENV: production
       DEPLOY_ENV: ${DEPLOY_ENV:-dev}
-      CRYPTO_ALLOWED_PROFILE_VERSIONS: ${CRYPTO_ALLOWED_PROFILE_VERSIONS:-1,2}
-      CRYPTO_ROLLOUT_MODE: ${CRYPTO_ROLLOUT_MODE:-compat}
+      CRYPTO_ALLOWED_PROFILE_VERSIONS: ${CRYPTO_ALLOWED_PROFILE_VERSIONS:-2}
+      # Unset mode is strict. Explicit compat with DEPLOY_ENV=prod refuses to start.
+      CRYPTO_ROLLOUT_MODE: ${CRYPTO_ROLLOUT_MODE:-strict}
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       REDIS_URL: redis://redis:6379
       S3_ENDPOINT: http://minio:9000
@@ -179,11 +212,19 @@ services:
       EMAIL_SMTP_SECURE: ${EMAIL_SMTP_SECURE:-false}
       EMAIL_SMTP_USER: ${EMAIL_SMTP_USER:-}
       EMAIL_SMTP_PASSWORD: ${EMAIL_SMTP_PASSWORD:-}
+      EMAIL_API_ENDPOINT: ${EMAIL_API_ENDPOINT:-}
+      EMAIL_API_KEY: ${EMAIL_API_KEY:-}
+      EMAIL_API_TIMEOUT_MS: ${EMAIL_API_TIMEOUT_MS:-10000}
+      EMAIL_HTTP_API_INLINE: ${EMAIL_HTTP_API_INLINE:-cid}
+      EMAIL_LOGO_URL: ${EMAIL_LOGO_URL:-}
+      # Match the api service. Unset mode defaults to self_hosted.
+      OKKEY_DEPLOYMENT_MODE: self_hosted
       GEOIP_ENABLED: ${GEOIP_ENABLED:-false}
 
   web:
-    image: ${OKKEY_WEB_IMAGE:-ghcr.io/okkeyapp/web}:${OKKEY_IMAGE_TAG:-1.0.0-beta.2}
+    image: ${OKKEY_WEB_IMAGE:-ghcr.io/okkeyapp/web}:${OKKEY_ENTERPRISE_IMAGE_TAG:-${OKKEY_IMAGE_TAG:-1.0.0-beta.2}}
     restart: unless-stopped
+    # Do not mount the Docker socket on this service. Package apply runs only in update-agent.
     depends_on:
       api:
         condition: service_healthy
@@ -191,6 +232,55 @@ services:
       OKKEY_API_PUBLIC_URL: ${OKKEY_API_PUBLIC_URL}
     ports:
       - "${WEB_PORT:-8080}:80"
+
+  # Dedicated update agent. The Docker socket is mounted on this service only.
+  # Same image repo/tag selection as api (shares OKKEY_API_IMAGE).
+  update-agent:
+    # Root is required: the api image is distroless nonroot (uid 65532), but the
+    # agent must rewrite host-owned /okkey/.env (mode 644) and open the Docker
+    # socket (root:docker 0660). Socket access is already root-equivalent.
+    # api/worker stay nonroot.
+    # Prefer OKKEY_ENTERPRISE_IMAGE_TAG when set (enterprise install); else OKKEY_IMAGE_TAG.
+    image: ${OKKEY_API_IMAGE:-ghcr.io/okkeyapp/api}:${OKKEY_ENTERPRISE_IMAGE_TAG:-${OKKEY_IMAGE_TAG:-1.0.0-beta.2}}
+    restart: unless-stopped
+    user: "0:0"
+    command:
+      [
+        "/usr/local/bin/node",
+        "--experimental-strip-types",
+        "services/api/src/update-agent/main.ts",
+      ]
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      OKKEY_UPDATE_AGENT_TOKEN: ${OKKEY_UPDATE_AGENT_TOKEN:-}
+      OKKEY_UPDATE_TRUSTED_PUBLIC_KEY: ${OKKEY_UPDATE_TRUSTED_PUBLIC_KEY:-}
+      OKKEY_UPDATE_ENTERPRISE_TRUSTED_PUBLIC_KEY: ${OKKEY_UPDATE_ENTERPRISE_TRUSTED_PUBLIC_KEY:-}
+      OKKEY_VERSION: ${OKKEY_IMAGE_TAG:-1.0.0-beta.2}
+      OKKEY_UPDATE_ISOLATED: ${OKKEY_UPDATE_ISOLATED:-false}
+      OKKEY_COMPOSE_PROJECT: ${OKKEY_COMPOSE_PROJECT:-okkey}
+      OKKEY_INSTALL_DIR: /okkey
+      DOCKER_SOCKET: /var/run/docker.sock
+      OKKEY_UPDATE_AGENT_PORT: "8090"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${OKKEY_HOST_INSTALL_DIR:-.}:/okkey
+    # Override the api image HEALTHCHECK (port 4000). The agent listens on 8090;
+    # unauthenticated /v1/jobs returns 401 when the process is up.
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "/usr/local/bin/node",
+          "-e",
+          "fetch('http://127.0.0.1:8090/v1/jobs').then((r)=>process.exit(r.status===401?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
 
 volumes:
   okkey-postgres:

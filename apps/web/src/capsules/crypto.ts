@@ -1,7 +1,7 @@
 import {
   decryptCapsuleMetadata,
   decryptCapsulePayload,
-  encodeCapsuleKeyFragment,
+  exportCapsuleGuestKeyFragment,
   encryptCapsuleMetadata,
   encryptCapsulePayload,
   generateCapsuleKey,
@@ -43,7 +43,7 @@ export async function buildEncryptedCapsule(input: {
       encryptedPayload: bytesToBlob(payload, "capsule_payload"),
       encryptedMetadata: bytesToBlob(metadata, "capsule_owner_metadata"),
       ownerKeyWrap: bytesToBlob(ownerWrap, "capsule_owner_key_wrap"),
-      fragment: encodeCapsuleKeyFragment(capsuleKey),
+      fragment: await exportCapsuleGuestKeyFragment(capsuleKey),
     };
   } catch (error) {
     wipeBytes(capsuleKey);
@@ -105,7 +105,7 @@ export async function reencryptCapsuleWithOwnerKey(input: {
       encryptedPayload: bytesToBlob(payload, "capsule_payload"),
       encryptedMetadata: bytesToBlob(metadata, "capsule_owner_metadata"),
       ownerKeyWrap: input.ownerKeyWrap,
-      fragment: encodeCapsuleKeyFragment(capsuleKey),
+      fragment: await exportCapsuleGuestKeyFragment(capsuleKey),
     };
   } catch (error) {
     wipeBytes(capsuleKey);
@@ -119,7 +119,7 @@ export async function recoverOwnerCapsuleFragment(
 ): Promise<string> {
   const capsuleKey = await unwrapCapsuleKeyForOwner(accountVaultKey, blobToBytes(ownerKeyWrap));
   try {
-    return encodeCapsuleKeyFragment(capsuleKey);
+    return await exportCapsuleGuestKeyFragment(capsuleKey);
   } finally {
     wipeBytes(capsuleKey);
   }

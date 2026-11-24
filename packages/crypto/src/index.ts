@@ -7,7 +7,10 @@ import {
   ed25519_sign,
   ed25519_verify,
   hybrid_sign_v1,
+  hybrid_sign_v2,
   hybrid_verify_v1,
+  hybrid_verify_v2,
+  mldsa65_keypair,
   x25519_keypair,
   x25519_shared,
   ed25519_secret_to_x25519,
@@ -94,6 +97,40 @@ export function hybridVerifyV1(
 ): boolean {
   return withWasmError("hybridVerifyV1", () =>
     hybrid_verify_v1(publicKey, signerPqPublicKey, context, message, signature));
+}
+
+export function mldsa65Keypair(): Uint8Array {
+  return withWasmError("mldsa65Keypair", () => mldsa65_keypair());
+}
+
+export function hybridSignV2(
+  ed25519PrivateKey: Uint8Array,
+  mldsaSeed: Uint8Array,
+  signerPqPublicKey: Uint8Array,
+  context: Uint8Array,
+  message: Uint8Array,
+): Uint8Array {
+  return withWasmError("hybridSignV2", () =>
+    hybrid_sign_v2(ed25519PrivateKey, mldsaSeed, signerPqPublicKey, context, message));
+}
+
+export function hybridVerifyV2(
+  ed25519PublicKey: Uint8Array,
+  mldsaPublicKey: Uint8Array,
+  signerPqPublicKey: Uint8Array,
+  context: Uint8Array,
+  message: Uint8Array,
+  signature: Uint8Array,
+): boolean {
+  return withWasmError("hybridVerifyV2", () =>
+    hybrid_verify_v2(
+      ed25519PublicKey,
+      mldsaPublicKey,
+      signerPqPublicKey,
+      context,
+      message,
+      signature,
+    ));
 }
 
 export function x25519Keypair(): Uint8Array {
@@ -218,6 +255,43 @@ export {
   type RebalanceServerShareForNewPasswordResult,
 } from "./registration.js";
 
+export {
+  LOGIN_KDF_DOMAIN,
+  LOGIN_KDF_SALT_DOMAIN,
+  deriveLoginKey,
+  loginKdfSaltForEmail,
+  normalizeLoginEmail,
+} from "./login-key.js";
+
+export {
+  SPLIT_KEY_SHARE_B_AAD,
+  SPLIT_KEY_SHARE_B_WRAP_SCHEME,
+  generateSplitKeyShareWrapKey,
+  wrapSplitKeyShareB,
+  openStoredSplitKeyShareB,
+  sealSplitKeyShareB,
+  randomSplitKeyShare,
+  type SplitKeyShareWrapKey,
+} from "./split-key-share-wrap.js";
+
+export {
+  SPLIT_KEY_SHARE_B_LEGACY_LEN,
+  SPLIT_KEY_SHARE_B_FRAME_PREFIX_LEN,
+  classifySplitKeyShareBWire,
+  encodeSplitKeyShareBFrame,
+  splitKeyShareBEnvelope,
+  splitKeyShareBWrapPublicKeys,
+  type SplitKeyShareBWireKind,
+  type SplitKeyShareBWrapPublicKeys,
+} from "./split-key-share-frame.js";
+
+export {
+  CAPSULE_GUEST_KEY_DELIVERY_LEGACY_FRAGMENT,
+  CAPSULE_GUEST_KEY_HYBRID_RECIPIENT,
+  exportCapsuleGuestKeyFragment,
+  readCapsuleGuestKey,
+} from "./capsule-guest-key.js";
+
 export { encryptVaultItemPayload, decryptVaultItemPayload } from "./vault-item.js";
 export {
   encryptAttachmentPayload,
@@ -261,6 +335,15 @@ export {
 } from "./recovery-possession.js";
 
 export {
+  deviceShareDeliveryAad,
+  generateOneTimeDeliveryKeyPair,
+  wipeOneTimeDeliveryPrivateKeys,
+  sealDeviceShareForOneTimeKey,
+  openDeviceShareDelivery,
+  type OneTimeDeliveryKeyPair,
+} from "./device-share-delivery.js";
+
+export {
   wrapUnlockMaterialWithPin,
   unwrapUnlockMaterialWithPin,
   wrapUnlockMaterialWithBioKey,
@@ -268,6 +351,15 @@ export {
   generateDeviceBioWrapKey,
   type PinUnlockWrap,
 } from "./device-unlock-wrap.js";
+
+export {
+  PASSKEY_SHARE_WRAP_MAX_LEN,
+  PASSKEY_SHARE_WRAP_OVERHEAD,
+  PASSKEY_SHARE_WRAP_SALT_LEN,
+  PASSKEY_SHARE_WRAP_VERSION,
+  openPasskeyShareWrap,
+  sealPasskeyShareWrap,
+} from "./passkey-share-wrap.js";
 
 export {
   HYBRID_VAULT_KEY_WRAP_SCHEME,
@@ -283,14 +375,42 @@ export {
 } from "./vault-key-wrap.js";
 
 export {
+  HYBRID_WORKSPACE_KEY_WRAP_SCHEME,
+  WORKSPACE_KEY_WRAP_ENTITY,
+  WORKSPACE_KEY_WRAP_ECC_MODE,
+  WORKSPACE_CIPHERTEXT_VERSION_LEN,
+  generateWorkspaceKey,
+  wrapWorkspaceKeyForMember,
+  unwrapWorkspaceKeyForSelf,
+  encryptWorkspaceScopedBytes,
+  decryptWorkspaceScopedBytes,
+  reencryptWorkspaceScopedBytes,
+  readWorkspaceCiphertextKeyVersion,
+  type WorkspaceScopedDomain,
+  type WrapWorkspaceKeyInput,
+  type UnwrapWorkspaceKeyInput,
+} from "./workspace-key.js";
+
+export {
   OKKEY_CRYPTO_PROFILE_V2,
   MLKEM768_ENCAPSULATION_KEY_LEN,
   MLKEM768_DECAPSULATION_KEY_LEN,
+  MLDSA65_SEED_LEN,
+  MLDSA65_PUBLIC_KEY_LEN,
+  MLDSA65_SIGNATURE_LEN,
+  USER_IDENTITY_BUNDLE_IDENTITY_V1,
+  USER_IDENTITY_BUNDLE_IDENTITY_V2,
+  USER_IDENTITY_PRIVATE_BUNDLE_V1_LEN,
+  USER_IDENTITY_PRIVATE_BUNDLE_V2_LEN,
   USER_IDENTITY_ENCRYPTED_PRIVATE_MIN_PAYLOAD_BYTES,
   USER_IDENTITY_SK_AAD,
+  UnsupportedIdentityBundleError,
   encodeUserIdentityPrivateBundleV1,
+  encodeUserIdentityPrivateBundleV2,
   decodeUserIdentityPrivateBundleV1,
+  decodeUserIdentityPrivateBundle,
   generateMlkem768KeypairMaterial,
+  type DecodedUserIdentityPrivateBundle,
   encryptUserIdentityPrivateBundle,
   decryptUserIdentityPrivateBundle,
   decryptUserIdentityFromEncryptedBlob,
@@ -298,14 +418,28 @@ export {
 } from "./user-identity-bundle.js";
 
 export {
+  ED25519_SIGNATURE_LEN,
   HYBRID_SIGNATURE_ENVELOPE_VERSION_V1,
+  HYBRID_SIGNATURE_ENVELOPE_VERSION_V2,
   HYBRID_SIGNATURE_ALGORITHM_V1,
+  HYBRID_SIGNATURE_ALGORITHM_V2,
   HYBRID_SIGNATURE_REQUIRED_CONTEXTS,
   buildHybridSignaturePayloadBytes,
   buildHybridSignatureEnvelopeV1,
+  buildHybridSignatureEnvelopeV2,
   verifyHybridSignatureEnvelopeV1,
+  verifyHybridSignatureEnvelopeV2,
+  type HybridSignatureEnvelope,
   type HybridSignatureEnvelopeV1,
+  type HybridSignatureEnvelopeV2,
 } from "./hybrid-signature.js";
+
+export {
+  MLDSA_IDENTITY_UPLOAD_DOMAIN,
+  buildMlDsaIdentityUploadMessage,
+  prepareMlDsaIdentityUpgrade,
+  type PreparedMlDsaIdentityUpgrade,
+} from "./mldsa-identity.js";
 
 export { getCryptoConfig, listCryptoConfigs, type CryptoConfig } from "./config/index.js";
 export { wipeBytes, withSensitiveBytes, withSensitiveBytesAsync } from "./secret-buffer.js";

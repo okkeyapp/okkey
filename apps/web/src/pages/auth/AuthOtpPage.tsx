@@ -23,6 +23,7 @@ import { navigateAfterSession } from "../../auth/redirectAfterLogin";
 import { writeLastLoginMethodHint } from "../../auth/loginMethodStorage";
 import { useLocale } from "../../locale/LocaleContext";
 import { ACCOUNT_NEW_PATH, AUTH_EMAIL_PATH, AUTH_TWO_FACTOR_PATH } from "../../routes/paths";
+import { MailNotConfiguredHint } from "./MailNotConfiguredHint";
 
 const OTP_LENGTH = 6;
 
@@ -50,6 +51,7 @@ export default function AuthOtpPage() {
     setTwoFactorAuthStateId,
     applyAccessTokenResponse,
     emailResendAvailableAt,
+    emailDeliverable,
     clearEmailLoginFlow,
   } = useAuthVault();
 
@@ -252,7 +254,7 @@ export default function AuthOtpPage() {
     try {
       const out = await authClient.resendEmailCode(emailChallengeId, locale);
       setResendUntil(Date.parse(out.resendAvailableAt));
-      setEmailChallenge(email, out.challengeId, out.resendAvailableAt);
+      setEmailChallenge(email, out.challengeId, out.resendAvailableAt, out.emailDeliverable);
     } catch (err) {
       if (err instanceof ApiRequestError) {
         const retry = err.body.details?.retryAfterSeconds;
@@ -284,6 +286,7 @@ export default function AuthOtpPage() {
       logo={<OkkeyLogoMark className="h-[60px] w-[61px]" />}
     >
       <form onSubmit={handleSubmit} className="flex w-full flex-col gap-6" noValidate>
+        <MailNotConfiguredHint emailDeliverable={emailDeliverable} />
         {formError ? (
           <Alert variant="error">
             <AlertTitle>{t("unlock.errorTitle")}</AlertTitle>

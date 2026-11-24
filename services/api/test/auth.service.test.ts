@@ -80,11 +80,18 @@ function setupAuthService(params?: {
   hasAnyUsers?: boolean;
   twoFactorEnabledForExisting?: boolean;
   generatedCode?: string;
+  /** Defaults to true so OTP-path unit tests keep sending. */
+  emailDeliverable?: boolean;
 }) {
   const redis = new InMemoryRedis();
   redis.setNow(Date.UTC(2026, 0, 1, 12, 0, 0));
 
-  const sentEmails: Array<{ to: string; code: string; locale?: string }> = [];
+  const sentEmails: Array<{
+    to: string;
+    code: string;
+    locale?: string;
+    purpose?: string;
+  }> = [];
   const config = { ...baseConfig, ...(params?.configOverrides ?? {}) };
   const generatedCode = params?.generatedCode ?? "123456";
   const hasAnyUsers = params?.hasAnyUsers ?? true;
@@ -118,10 +125,13 @@ function setupAuthService(params?: {
           to: input.to,
           code: input.variables.code,
           locale: input.localeHints.explicitLocale,
+          purpose: input.variables.purpose,
         });
       },
     },
     config,
+    // Default tests exercise the OTP path; undeliverable cases override this.
+    resolveEmailDeliverable: async () => params?.emailDeliverable ?? true,
     now: () => redis.now(),
     generateCode: () => generatedCode,
     generateId: () => `id-${nextId++}`,
@@ -144,6 +154,7 @@ test("startEmailLogin sends normalized email and 6-digit code", async () => {
   assert.equal(sentEmails.length, 1);
   assert.equal(sentEmails[0].to, "user@example.com");
   assert.equal(sentEmails[0].code, "654321");
+  assert.equal(sentEmails[0].purpose, "registration");
   assert.equal(result.bootstrapRequired, undefined);
 });
 
@@ -184,6 +195,7 @@ test("startEmailLogin empty catalog on saas still requires email OTP", async () 
   assert.ok(result.challengeId);
   assert.equal(sentEmails.length, 1);
   assert.equal(sentEmails[0].to, "first@example.com");
+  assert.equal(sentEmails[0].purpose, "registration");
 });
 
 test("startEmailLogin first-run claim is idempotent for the same email", async () => {
@@ -222,6 +234,40 @@ test("startEmailLogin second empty-catalog email requires OTP while claim is hel
   assert.ok(second.challengeId);
   assert.equal(sentEmails.length, 1);
   assert.equal(sentEmails[0].to, "other@example.com");
+  assert.equal(sentEmails[0].purpose, "registration");
+});
+
+test("startEmailLogin uses sign_in purpose for existing users", async () => {
+  const { service, sentEmails } = setupAuthService({
+    existingUser: true,
+    generatedCode: "777888",
+  });
+
+  await service.startEmailLogin({
+    email: "user@example.com",
+    requestIp: "127.0.0.1",
+  });
+
+  assert.equal(sentEmails.length, 1);
+  assert.equal(sentEmails[0].purpose, "sign_in");
+});
+
+test("startEmailLogin still queues the code when outbound mail is inactive", async () => {
+  const { service, sentEmails } = setupAuthService({
+    emailDeliverable: false,
+    generatedCode: "999000",
+  });
+
+  const result = await service.startEmailLogin({
+    email: "nodeliver@example.com",
+    requestIp: "127.0.0.1",
+  });
+
+  assert.equal(result.emailDeliverable, false);
+  assert.ok(result.challengeId);
+  assert.equal(sentEmails.length, 1);
+  assert.equal(sentEmails[0].code, "999000");
+  assert.equal(sentEmails[0].to, "nodeliver@example.com");
 });
 
 test("startEmailLogin reuses active challenge for same email without sending again", async () => {
@@ -298,6 +344,30 @@ test("startEmailLogin still reuses when remaining TTL is above cooldown", async 
 
   assert.equal(second.challengeId, first.challengeId);
   assert.equal(sentEmails.length, 1);
+});
+
+test("resendEmailCode still queues a new code when outbound mail is inactive", async () => {
+  const { service, sentEmails, redis } = setupAuthService({
+    emailDeliverable: false,
+    generatedCode: "999000",
+    configOverrides: { authResendCooldownSeconds: 60 },
+  });
+  const start = await service.startEmailLogin({
+    email: "nodeliver@example.com",
+    requestIp: "127.0.0.1",
+  });
+  assert.equal(sentEmails.length, 1);
+
+  redis.setNow(Date.UTC(2026, 0, 1, 12, 1, 1));
+  const resent = await service.resendEmailCode({
+    challengeId: start.challengeId,
+    requestIp: "127.0.0.1",
+  });
+
+  assert.equal(resent.emailDeliverable, false);
+  assert.equal(sentEmails.length, 2);
+  assert.equal(sentEmails[1].code, "999000");
+  assert.equal(sentEmails[1].to, "nodeliver@example.com");
 });
 
 test("resendEmailCode blocks resend before cooldown", async () => {

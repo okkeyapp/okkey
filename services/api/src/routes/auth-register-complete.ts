@@ -1,3 +1,11 @@
+import { isCurrentMasterPasswordPolicyVersion } from "@okkey/types";
+
+import { decodeLoginKey } from "../crypto/login-verifier.ts";
+import {
+  CLIENT_UPGRADE_REQUIRED,
+  CLIENT_UPGRADE_REQUIRED_MESSAGE,
+  CLIENT_UPGRADE_REQUIRED_STATUS,
+} from "../crypto/client-upgrade.ts";
 import { getHeader, json, readJsonBody, type RouteHandler } from "../http.ts";
 import { RegistrationError, type RegistrationService } from "../registration/service.ts";
 import type { EncryptedBlob } from "../crypto/encrypted-blob.ts";
@@ -8,10 +16,13 @@ interface RegisterCompleteBody {
   auth_state_id?: unknown;
   user_public_key?: string;
   user_public_pq_key?: string;
+  user_public_mldsa_key?: string;
   encrypted_private_key?: unknown;
   server_key_share?: string;
   password_kdf_salt?: string;
   password_kdf_params_version?: number;
+  /** Client attestation of the current new-password policy. Not a password or length. */
+  master_password_policy_version?: unknown;
   device_public_key?: string;
   device_share?: string;
   device_fingerprint?: string;
@@ -29,6 +40,8 @@ interface RegisterCompleteBody {
   /** Optional; persisted for UI when client storage is cleared. */
   first_name?: string;
   last_name?: string;
+  /** Base64 32-byte login key. Not the master password. */
+  login_key?: string;
   metadata?: {
     platform?: string;
     os_name?: string;
@@ -156,6 +169,15 @@ export function createRegisterCompleteRoute(
       return;
     }
 
+    if (typeof body.user_public_mldsa_key !== "string" || !body.user_public_mldsa_key.trim()) {
+      json(
+        ctx.res,
+        CLIENT_UPGRADE_REQUIRED_STATUS,
+        errorPayload(CLIENT_UPGRADE_REQUIRED, CLIENT_UPGRADE_REQUIRED_MESSAGE, ctx.requestId),
+      );
+      return;
+    }
+
     const requiredString = [
       ["user_public_key", body.user_public_key],
       ["user_public_pq_key", body.user_public_pq_key],
@@ -189,6 +211,19 @@ export function createRegisterCompleteRoute(
         errorPayload(
           "REGISTRATION_BAD_REQUEST",
           "password_kdf_params_version is required",
+          ctx.requestId,
+        ),
+      );
+      return;
+    }
+
+    if (!isCurrentMasterPasswordPolicyVersion(body.master_password_policy_version)) {
+      json(
+        ctx.res,
+        400,
+        errorPayload(
+          "MASTER_PASSWORD_POLICY_REJECTED",
+          "master_password_policy_version is not the current policy",
           ctx.requestId,
         ),
       );
@@ -280,6 +315,19 @@ export function createRegisterCompleteRoute(
       return;
     }
 
+    let loginKey: Uint8Array | null = null;
+    if (body.login_key !== undefined && body.login_key !== "") {
+      loginKey = decodeLoginKey(body.login_key);
+      if (!loginKey) {
+        json(
+          ctx.res,
+          400,
+          errorPayload("REGISTRATION_BAD_REQUEST", "login_key must be 32 bytes", ctx.requestId),
+        );
+        return;
+      }
+    }
+
     const srvShare = decodeRequiredBase64(body.server_key_share);
     const kdfSalt = decodeRequiredBase64(body.password_kdf_salt);
     const devShare = decodeRequiredBase64(body.device_share);
@@ -306,6 +354,7 @@ export function createRegisterCompleteRoute(
         authStateId,
         userPublicKey: body.user_public_key!.trim(),
         userPublicPqKey: body.user_public_pq_key!.trim(),
+        userPublicMldsaKey: body.user_public_mldsa_key!.trim(),
         encryptedPrivateKey: body.encrypted_private_key as EncryptedBlob,
         serverKeyShare: srvShare,
         passwordKdfSalt: kdfSalt,
@@ -326,6 +375,7 @@ export function createRegisterCompleteRoute(
         personalVaultName: personalVaultName ?? undefined,
         firstName: firstNameForDb,
         lastName: lastNameForDb,
+        loginKey,
       });
 
       const bodyOut: Record<string, unknown> = {

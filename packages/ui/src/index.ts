@@ -1,5 +1,12 @@
 export { cn } from "./lib/utils.js";
 export {
+  PUBLIC_DOCS_ORIGIN,
+  PUBLIC_DOCS_TOPICS,
+  publicDocsUrl,
+  type PublicDocsLocale,
+  type PublicDocsTopic,
+} from "./lib/public-docs-url.js";
+export {
   PortalContainerProvider,
   usePortalContainer,
   type PortalContainer,
@@ -245,6 +252,16 @@ export {
   type FaviconProps,
 } from "./components/ui/favicon.js";
 export {
+  FAVICON_PROVIDER_MODES,
+  clientSideFaviconUrl,
+  clientSideFaviconUrlFromUrls,
+  faviconProviderUsesServerPreview,
+  parseFaviconProviderMode,
+  resolveWebsiteIconDisplay,
+  type FaviconProviderMode,
+  type WebsiteIconDisplay,
+} from "./lib/favicon-mode.js";
+export {
   ChevronDownGlyph,
   FilterIconAllRecords,
   FilterIconArchived,
@@ -343,6 +360,7 @@ export {
   OkkeyAppSidebarToolbar,
   type OkkeyAppShellLayoutContextValue,
   type OkkeyAppSidebarToolbarProps,
+  OkkeyNavMonitoringIcon,
   okkeyWorkspaceShellNavItems,
   useOkkeyAppShellLayout,
   workspaceSwitcherActiveItemClassName,

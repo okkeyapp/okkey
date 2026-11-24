@@ -185,7 +185,7 @@ test("email change confirm updates user email", async () => {
   assert.equal(noticeEmails[0].newEmailMasked, "n***@example.com");
   assert.equal(
     noticeEmails[0].securitySettingsUrl,
-    "https://app.okkey.test/items?popup=settings|twoFactor",
+    "https://app.okkey.test/items?popup=settings%7CtwoFactor",
   );
   assert.equal(noticeEmails[0].localeHints.explicitLocale, "ru");
   assert.equal(noticeEmails[0].localeHints.acceptLanguage, "ru-RU,ru;q=0.9");
@@ -217,7 +217,7 @@ test("email change confirm notice uses request Accept-Language when user locale 
   assert.equal(noticeEmails[0].localeHints.acceptLanguage, "ru");
   assert.equal(
     noticeEmails[0].securitySettingsUrl,
-    "https://app.okkey.test/items?popup=settings|twoFactor",
+    "https://app.okkey.test/items?popup=settings%7CtwoFactor",
   );
 });
 

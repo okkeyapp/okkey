@@ -23,7 +23,7 @@
 
 ## Beta note
 
-Store builds may change quickly. Include the extension version (`1.0.0.2` / manifest `version`), browser name, and whether you use a self-hosted or local Okkey instance when filing an issue.
+Store builds may change quickly. Include the extension version (`1.0.0.1000` / manifest `version`), browser name, and whether you use a self-hosted or local Okkey instance when filing an issue.
 
 ## Document location
 

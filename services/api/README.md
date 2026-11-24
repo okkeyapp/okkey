@@ -76,6 +76,12 @@ Note: the storage layer needs `pg` and `redis` dependencies to run.
 - `google` — explicit opt-in; sends login-item website domains to Google's favicon
   service. Prefer `direct` or `off` for self-hosted deployments.
 
+Response status:
+
+- `200` — favicon image bytes
+- `404 NOT_FOUND` — site was reachable but no favicon was found (clients may clear a previous icon)
+- `503 FAVICON_UNAVAILABLE` — DNS / connection refused / timeout / upstream 5xx (clients must keep a previous icon)
+
 ## Email providers
 
 Transports (`EMAIL_PROVIDER`) are protocols, not named vendors. See [`docs/backend-email.md`](../../docs/backend-email.md) and `services/api/.env.example` for presets.
@@ -83,7 +89,7 @@ Transports (`EMAIL_PROVIDER`) are protocols, not named vendors. See [`docs/backe
 - `EMAIL_PROVIDER=logger` — log sends only (default; used in CI)
 - `EMAIL_PROVIDER=smtp` — any SMTP host (personal mailbox or Unisender Go / Postmark / Resend / OVH / …)
 - `EMAIL_PROVIDER=ses` — AWS SES API (SigV4) with optional `EMAIL_SES_ENDPOINT` for SES-compatible APIs (Yandex Cloud Postbox)
-- `EMAIL_PROVIDER=http-api` — generic JSON POST + Bearer webhook
+- `EMAIL_PROVIDER=http-api` — generic JSON POST + Bearer webhook (JSON includes optional `inlineAttachments` for CID logos; see `docs/backend-email.md` and `EMAIL_HTTP_API_INLINE`)
 
 Set `PUBLIC_APP_URL` (e.g. `http://localhost:5173`) so invite emails contain a working link.
 

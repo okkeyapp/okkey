@@ -1,5 +1,7 @@
 import type { ItemFieldV2, ItemPlaintextV2 } from "@okkey/types";
 
+import { formatTotpForExport } from "../utils/totp.js";
+
 export function readFieldText(item: ItemPlaintextV2, fieldId: string): string {
   const field = item.fields.find((entry) => entry.id === fieldId);
   return fieldValueToText(field);
@@ -18,7 +20,7 @@ export function fieldValueToText(field: ItemFieldV2 | undefined): string {
     case "url":
       return value.url ?? "";
     case "totp":
-      return value.secretBase32 ?? "";
+      return formatTotpForExport(value);
     case "note":
       return value.note ?? "";
     case "file":
@@ -40,7 +42,8 @@ export function collectLoginLike(item: ItemPlaintextV2): {
   const websiteField = item.fields.find((field) => field.id === "website-1" || field.type === "url");
   const url = fieldValueToText(websiteField);
   const totpField = item.fields.find((field) => field.type === "totp" || field.id === "totp");
-  const totp = fieldValueToText(totpField);
+  const totp =
+    totpField?.value.kind === "totp" ? formatTotpForExport(totpField.value) : fieldValueToText(totpField);
   const notes = readFieldText(item, "note");
   return { username, password, url, totp, notes };
 }

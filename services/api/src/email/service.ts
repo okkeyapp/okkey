@@ -1,5 +1,6 @@
 import type { Logger } from "../logger.ts";
 import type { ApiConfig } from "../config.ts";
+import type { MailDeliverySnapshot } from "../mail-settings/types.ts";
 import {
   renderEmailTemplate,
   type AccountEmailChangedVariables,
@@ -19,7 +20,11 @@ import {
   type EmailQueueRedis,
 } from "./queue.ts";
 import { withOkkeyMarkInlineAttachment } from "./inline-attachments.ts";
+import type { EmailHttpApiInlineMode } from "./http-api-inline-mode.ts";
+import { prepareHttpApiEmailPayload } from "./http-api-payload.ts";
 import { SesEmailSender } from "./ses-sender.ts";
+
+export type { EmailHttpApiInlineMode } from "./http-api-inline-mode.ts";
 
 /** Inline (CID) attachment referenced from HTML as `cid:<cid>`. */
 export interface EmailInlineAttachment {
@@ -30,6 +35,15 @@ export interface EmailInlineAttachment {
   contentBase64: string;
 }
 
+/**
+ * One-time auth code carried next to the rendered message so the worker can log
+ * it when outbound mail is not deliverable. Stripped before any external send.
+ */
+export interface EmailAuthCodeLog {
+  code: string;
+  expiresAt: string;
+}
+
 export interface EmailMessage {
   to: string;
   from: string;
@@ -38,6 +52,11 @@ export interface EmailMessage {
   html: string;
   /** Optional; transports also inject the Okkey mark when HTML uses its CID. */
   inlineAttachments?: EmailInlineAttachment[];
+  /**
+   * Set only for sign-in / email-confirmation codes. Not part of the message
+   * that leaves the process.
+   */
+  authCodeLog?: EmailAuthCodeLog;
 }
 
 export interface EmailSender {
@@ -54,23 +73,84 @@ export interface EmailTemplateServiceOptions {
   from: string;
   defaultLocale: string;
   publicAppBaseUrl: string;
+  /** Read at send time. Falls back to `from` when omitted or blank. */
+  resolveFrom?: () => Promise<string>;
+  /** Read at send time. Falls back to `publicAppBaseUrl` when omitted. */
+  resolvePublicAppBaseUrl?: () => Promise<string>;
   /** When send fails after successful render; omit to throw */
   logger?: Pick<Logger, "warn" | "error">;
 }
 
-export function buildEmailAppPathUrl(publicAppBaseUrl: string, path: string): string {
+export type MailDeliveryRuntime = {
+  effective(): Promise<MailDeliverySnapshot>;
+};
+
+/**
+ * Build an absolute app URL for email CTAs.
+ * Query values are percent-encoded (RFC 3986), so settings deep-links use
+ * `popup=settings%7Cdevices` instead of a raw `|` that some mail clients truncate.
+ * Optional `locale` is exposed as `lng` for the web app.
+ */
+export function buildEmailAppPathUrl(
+  publicAppBaseUrl: string,
+  path: string,
+  options?: { locale?: string | null },
+): string {
   const base = publicAppBaseUrl.trim().replace(/\/$/, "");
   if (!base) {
     return "";
   }
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
-  return `${base}${normalizedPath}`;
+  const qIndex = normalizedPath.indexOf("?");
+  const pathname = qIndex === -1 ? normalizedPath : normalizedPath.slice(0, qIndex);
+  const rawQuery = qIndex === -1 ? "" : normalizedPath.slice(qIndex + 1);
+  const params = new URLSearchParams(rawQuery);
+  const locale = options?.locale?.trim();
+  if (locale) {
+    params.set("lng", locale);
+  }
+  const qs = params.toString();
+  return qs ? `${base}${pathname}?${qs}` : `${base}${pathname}`;
+}
+
+const EMAIL_APP_DEEP_LINK_KEYS = ["helpUrl", "securitySettingsUrl", "inviteUrl"] as const;
+
+/**
+ * Re-encode app deep-link fields and attach `lng` so CTAs match the email locale.
+ * No-op when `publicAppBaseUrl` is empty or a field is not an app URL.
+ */
+export function applyEmailAppUrlLocale<T extends Record<string, unknown>>(
+  variables: T,
+  publicAppBaseUrl: string,
+  locale: string,
+): T {
+  const base = publicAppBaseUrl.trim().replace(/\/$/, "");
+  if (!base) {
+    return variables;
+  }
+  let changed = false;
+  const next: Record<string, unknown> = { ...variables };
+  for (const key of EMAIL_APP_DEEP_LINK_KEYS) {
+    const value = next[key];
+    if (typeof value !== "string" || !value.startsWith(base)) {
+      continue;
+    }
+    const suffix = value.slice(base.length);
+    const path = suffix.startsWith("/") ? suffix : `/${suffix}`;
+    const updated = buildEmailAppPathUrl(base, path, { locale });
+    if (updated !== value) {
+      next[key] = updated;
+      changed = true;
+    }
+  }
+  return (changed ? next : variables) as T;
 }
 
 export type LoggerEmailSenderOptions = {
   /**
-   * When true, log the plain-text body (e.g. OTP) alongside metadata.
+   * When true, log the plain-text body alongside metadata.
    * See {@link shouldLogPlainTextForLoggerProvider} for when this is enabled for `EMAIL_PROVIDER=logger`.
+   * Self-host auth codes with undeliverable mail are a separate log line; this flag does not control that line.
    */
   includePlainTextBody?: boolean;
 };
@@ -129,43 +209,107 @@ type NodemailerSendMailOptions = {
   attachments?: NodemailerAttachment[];
 };
 
-export class SmtpEmailSender implements EmailSender {
-  private readonly transport: {
-    sendMail(options: NodemailerSendMailOptions): Promise<unknown>;
-  };
+type SmtpTransport = {
+  sendMail(options: NodemailerSendMailOptions): Promise<unknown>;
+  /** Connect and authenticate. Does not send a message. */
+  verify?: () => Promise<unknown>;
+  close?: () => void;
+};
 
-  constructor(transport: {
-    sendMail(options: NodemailerSendMailOptions): Promise<unknown>;
-  }) {
+function smtpAuth(username: string, password: string): { user: string; pass: string } | undefined {
+  if (!username || !password) {
+    return undefined;
+  }
+  return { user: username, pass: password };
+}
+
+function smtpSocketOptions(mode: MailDeliverySnapshot["smtpTlsMode"]): {
+  secure: boolean;
+  ignoreTLS?: boolean;
+} {
+  if (mode === "tls") {
+    return { secure: true };
+  }
+  if (mode === "none") {
+    return { secure: false, ignoreTLS: true };
+  }
+  return { secure: false };
+}
+
+function redactSecret(message: string, secret: string): string {
+  if (!secret) {
+    return message;
+  }
+  return message.split(secret).join("[redacted]");
+}
+
+/** Connection wait for interactive SMTP test sends (Mail settings → Send test email). */
+export const SMTP_TEST_CONNECTION_TIMEOUT_MS = 30_000;
+
+export type SmtpTransportTimeouts = {
+  connectionTimeout?: number;
+  greetingTimeout?: number;
+  socketTimeout?: number;
+};
+
+export class SmtpEmailSender implements EmailSender {
+  private readonly transport: SmtpTransport;
+  private readonly password: string;
+  private readonly closeAfterSend: boolean;
+
+  constructor(transport: SmtpTransport, password = "", closeAfterSend = false) {
     this.transport = transport;
+    this.password = password;
+    this.closeAfterSend = closeAfterSend;
   }
 
   static async fromConfig(config: ApiConfig): Promise<SmtpEmailSender> {
+    return SmtpEmailSender.fromSnapshot({
+      smtpHost: config.smtpHost,
+      smtpPort: config.smtpPort,
+      smtpTlsMode: config.smtpSecure ? "tls" : "starttls",
+      smtpUsername: config.smtpUser,
+      smtpPassword: config.smtpPassword,
+      emailFrom: config.emailFrom,
+      publicAppBaseUrl: config.publicAppBaseUrl,
+      passwordSet: config.smtpPassword.length > 0,
+      passwordUnreadable: false,
+      useSmtpTransport: true,
+    });
+  }
+
+  static async fromSnapshot(
+    snapshot: MailDeliverySnapshot,
+    timeouts?: SmtpTransportTimeouts,
+  ): Promise<SmtpEmailSender> {
     const nodemailerModule = (await import("nodemailer")) as {
       createTransport(options: {
         host: string;
         port: number;
         secure: boolean;
+        ignoreTLS?: boolean;
         auth?: { user: string; pass: string };
-      }): {
-        sendMail(options: NodemailerSendMailOptions): Promise<unknown>;
-      };
+        connectionTimeout?: number;
+        greetingTimeout?: number;
+        socketTimeout?: number;
+      }): SmtpTransport;
     };
-
+    const socket = smtpSocketOptions(snapshot.smtpTlsMode);
     const transport = nodemailerModule.createTransport({
-      host: config.smtpHost,
-      port: config.smtpPort,
-      secure: config.smtpSecure,
-      auth:
-        config.smtpUser && config.smtpPassword
-          ? {
-              user: config.smtpUser,
-              pass: config.smtpPassword,
-            }
-          : undefined,
+      host: snapshot.smtpHost,
+      port: snapshot.smtpPort,
+      secure: socket.secure,
+      ...(socket.ignoreTLS ? { ignoreTLS: true } : {}),
+      auth: smtpAuth(snapshot.smtpUsername, snapshot.smtpPassword),
+      ...(timeouts?.connectionTimeout !== undefined
+        ? { connectionTimeout: timeouts.connectionTimeout }
+        : {}),
+      ...(timeouts?.greetingTimeout !== undefined
+        ? { greetingTimeout: timeouts.greetingTimeout }
+        : {}),
+      ...(timeouts?.socketTimeout !== undefined ? { socketTimeout: timeouts.socketTimeout } : {}),
     });
-
-    return new SmtpEmailSender(transport);
+    return new SmtpEmailSender(transport, snapshot.smtpPassword, true);
   }
 
   async send(message: EmailMessage): Promise<void> {
@@ -190,28 +334,137 @@ export class SmtpEmailSender implements EmailSender {
         ...(attachments ? { attachments } : {}),
       });
     } catch (cause) {
+      const raw = cause instanceof Error ? cause.message : String(cause);
       throw new EmailTemplateError(
         "EMAIL_TRANSPORT_ERROR",
         "smtp send failed",
-        { cause: cause instanceof Error ? cause.message : String(cause) },
+        { cause: redactSecret(raw, this.password).slice(0, 500) },
       );
+    } finally {
+      if (this.closeAfterSend) {
+        this.close();
+      }
+    }
+  }
+
+  /**
+   * Open the SMTP connection and authenticate when credentials are set.
+   * Does not send a message.
+   */
+  async verifyConnection(): Promise<void> {
+    const verify = this.transport.verify;
+    if (!verify) {
+      throw new EmailTemplateError("EMAIL_TRANSPORT_ERROR", "smtp verify failed", {
+        cause: "verify unavailable",
+      });
+    }
+    try {
+      await verify.call(this.transport);
+    } catch (cause) {
+      const raw = cause instanceof Error ? cause.message : String(cause);
+      throw new EmailTemplateError("EMAIL_TRANSPORT_ERROR", "smtp verify failed", {
+        cause: redactSecret(raw, this.password).slice(0, 500),
+      });
+    } finally {
+      if (this.closeAfterSend) {
+        this.close();
+      }
+    }
+  }
+
+  /** Drop the underlying SMTP socket (e.g. after a hard test-send timeout). */
+  close(): void {
+    try {
+      this.transport.close?.();
+    } catch {
+      /* ignore close races */
     }
   }
 }
+
+/**
+ * Applies database mail settings at send time.
+ * SMTP is used when the snapshot says so; otherwise the process provider runs
+ * with the effective sender address.
+ */
+export class RuntimeEmailSender implements EmailSender {
+  private readonly base: EmailSender;
+  private readonly runtime: MailDeliveryRuntime;
+  private readonly sendViaSmtp: (
+    snapshot: MailDeliverySnapshot,
+    message: EmailMessage,
+  ) => Promise<void>;
+
+  private readonly logger?: Logger;
+  /** Self-host: log the one-time code when database SMTP is not active. */
+  private readonly logInactiveAuthCode: boolean;
+
+  constructor(
+    base: EmailSender,
+    runtime: MailDeliveryRuntime,
+    sendViaSmtp?: (snapshot: MailDeliverySnapshot, message: EmailMessage) => Promise<void>,
+    options?: { logger?: Logger; logInactiveAuthCode?: boolean },
+  ) {
+    this.base = base;
+    this.runtime = runtime;
+    this.logger = options?.logger;
+    this.logInactiveAuthCode = options?.logInactiveAuthCode === true;
+    this.sendViaSmtp =
+      sendViaSmtp ??
+      (async (snapshot, message) => {
+        const smtp = await SmtpEmailSender.fromSnapshot(snapshot);
+        await smtp.send(message);
+      });
+  }
+
+  async send(message: EmailMessage): Promise<void> {
+    const snapshot = await this.runtime.effective();
+    const from = snapshot.emailFrom.trim() || message.from;
+    const next = from === message.from ? message : { ...message, from };
+    // SMTP only after a successful test send. Until then, self-host logs the
+    // code on this worker and does not open an SMTP connection.
+    if (snapshot.useSmtpTransport) {
+      await this.sendViaSmtp(snapshot, stripAuthCodeLog(next));
+      return;
+    }
+    if (this.logInactiveAuthCode && this.logger) {
+      logUndeliverableAuthCode(this.logger, next);
+    }
+    await this.base.send(stripAuthCodeLog(next));
+  }
+}
+
+export type HttpApiEmailSenderOptions = {
+  inlineMode?: EmailHttpApiInlineMode;
+  /** Absolute https URL used when `inlineMode` is `url`. */
+  logoUrl?: string;
+};
 
 export class HttpApiEmailSender implements EmailSender {
   private readonly endpoint: string;
   private readonly apiKey: string;
   private readonly timeoutMs: number;
+  private readonly inlineMode: EmailHttpApiInlineMode;
+  private readonly logoUrl: string;
 
-  constructor(endpoint: string, apiKey: string, timeoutMs: number) {
+  constructor(
+    endpoint: string,
+    apiKey: string,
+    timeoutMs: number,
+    options: HttpApiEmailSenderOptions = {},
+  ) {
     this.endpoint = endpoint;
     this.apiKey = apiKey;
     this.timeoutMs = timeoutMs;
+    this.inlineMode = options.inlineMode ?? "cid";
+    this.logoUrl = (options.logoUrl ?? "").trim();
   }
 
   async send(message: EmailMessage): Promise<void> {
-    const prepared = withOkkeyMarkInlineAttachment(message);
+    const prepared = prepareHttpApiEmailPayload(message, {
+      inlineMode: this.inlineMode,
+      logoUrl: this.logoUrl,
+    });
     const controller = new AbortController();
     const timeout = setTimeout(() => {
       controller.abort();
@@ -278,6 +531,13 @@ export function assertEmailTransportConfig(config: ApiConfig): void {
       if (!config.emailApiKey) {
         throw new Error("EMAIL_API_KEY is required for EMAIL_PROVIDER=http-api");
       }
+      if (config.emailHttpApiInlineMode === "url") {
+        if (!config.emailLogoUrl.trim()) {
+          throw new Error(
+            "EMAIL_LOGO_URL is required when EMAIL_PROVIDER=http-api and EMAIL_HTTP_API_INLINE=url",
+          );
+        }
+      }
       return;
     case "ses":
       if (!config.sesRegion) {
@@ -319,12 +579,116 @@ export function isOutboundEmailDeliverable(config: ApiConfig): boolean {
   }
 }
 
+/** Marker for the single worker log line that carries an undeliverable auth code. */
+export const UNDELIVERABLE_AUTH_CODE_LOG_MESSAGE = "[okkey] auth code (mail not configured)";
+
+/**
+ * Self-host with no deliverable outbound mail logs one-time auth codes.
+ * SaaS and any configured provider keep those codes out of the logs.
+ */
+export function shouldLogUndeliverableAuthCode(config: ApiConfig): boolean {
+  return config.deploymentMode === "self_hosted" && !isOutboundEmailDeliverable(config);
+}
+
+/** `ada@example.com` → `a***@example.com`. */
+export function maskEmailForAuthCodeLog(email: string): string {
+  const normalized = email.trim().toLowerCase();
+  const at = normalized.indexOf("@");
+  if (at <= 0) {
+    return "***";
+  }
+  const local = normalized.slice(0, at);
+  const domain = normalized.slice(at + 1);
+  const first = local.charAt(0) || "*";
+  return `${first}***@${domain}`;
+}
+
+function stripAuthCodeLog(message: EmailMessage): EmailMessage {
+  if (!message.authCodeLog) {
+    return message;
+  }
+  const { authCodeLog: _authCodeLog, ...rest } = message;
+  return rest;
+}
+
+function logUndeliverableAuthCode(logger: Logger, message: EmailMessage): void {
+  const details = message.authCodeLog;
+  if (!details || !/^\d{6}$/.test(details.code)) {
+    return;
+  }
+  const expiresAt = details.expiresAt.trim();
+  if (!expiresAt || Number.isNaN(Date.parse(expiresAt))) {
+    return;
+  }
+  logger.info(UNDELIVERABLE_AUTH_CODE_LOG_MESSAGE, {
+    email: maskEmailForAuthCodeLog(message.to),
+    code: details.code,
+    expiresAt,
+  });
+}
+
+/**
+ * Worker transport wrapper. Logs a sign-in or email-confirmation code when mail
+ * cannot be delivered, then drops that field so providers only see the message.
+ */
+class UndeliverableAuthCodeLogSender implements EmailSender {
+  private readonly inner: EmailSender;
+  private readonly logger: Logger;
+  private readonly enabled: boolean;
+
+  constructor(inner: EmailSender, logger: Logger, enabled: boolean) {
+    this.inner = inner;
+    this.logger = logger;
+    this.enabled = enabled;
+  }
+
+  async send(message: EmailMessage): Promise<void> {
+    if (this.enabled) {
+      logUndeliverableAuthCode(this.logger, message);
+    }
+    await this.inner.send(stripAuthCodeLog(message));
+  }
+}
+
 /** Create the provider that actually delivers mail (SMTP / SES / logger / http-api). */
 export async function createTransportEmailSender(
   config: ApiConfig,
   logger: Logger,
+  mailRuntime?: MailDeliveryRuntime,
 ): Promise<EmailSender> {
   assertEmailTransportConfig(config);
+  // With interactive mail settings, outbound SMTP is gated by a successful test.
+  // Do not fall back to process-env SMTP/SES when DB SMTP is inactive — only log.
+  if (mailRuntime) {
+    // Log inside the runtime sender so the code is still present. The static
+    // wrapper strips it first and would also log after SMTP is verified.
+    return new RuntimeEmailSender(
+      new LoggerEmailSender(logger, {
+        includePlainTextBody: shouldLogPlainTextForLoggerProvider({
+          ...config,
+          emailProvider: "logger",
+        }),
+      }),
+      mailRuntime,
+      undefined,
+      {
+        logger,
+        logInactiveAuthCode: config.deploymentMode === "self_hosted",
+      },
+    );
+  }
+  const transport = await createStaticTransportEmailSender(config, logger);
+  return new UndeliverableAuthCodeLogSender(
+    transport,
+    logger,
+    shouldLogUndeliverableAuthCode(config),
+  );
+}
+
+async function createStaticTransportEmailSender(
+  config: ApiConfig,
+  logger: Logger,
+): Promise<EmailSender> {
   switch (config.emailProvider) {
     case "logger":
       return new LoggerEmailSender(logger, {
@@ -337,6 +701,10 @@ export async function createTransportEmailSender(
         config.emailApiEndpoint,
         config.emailApiKey,
         config.emailApiTimeoutMs,
+        {
+          inlineMode: config.emailHttpApiInlineMode,
+          logoUrl: config.emailLogoUrl,
+        },
       );
     case "ses":
       return new SesEmailSender({
@@ -361,12 +729,13 @@ export async function createOutboundEmailSender(
   config: ApiConfig,
   logger: Logger,
   redis: EmailQueueRedis,
+  mailRuntime?: MailDeliveryRuntime,
 ): Promise<EmailSender> {
   assertEmailTransportConfig(config);
   if (config.emailDeliveryMode === "queue") {
     return new QueuedEmailSender(redis, logger);
   }
-  return createTransportEmailSender(config, logger);
+  return createTransportEmailSender(config, logger, mailRuntime);
 }
 
 /** @deprecated Prefer {@link createTransportEmailSender} or {@link createOutboundEmailSender}. */
@@ -406,6 +775,8 @@ export class EmailTemplateService {
   private readonly from: string;
   private readonly defaultLocale: string;
   private readonly publicAppBaseUrl: string;
+  private readonly resolveFrom?: () => Promise<string>;
+  private readonly resolvePublicAppBaseUrl?: () => Promise<string>;
   private readonly logger?: Pick<Logger, "warn" | "error">;
 
   constructor(sender: EmailSender, options: EmailTemplateServiceOptions) {
@@ -413,6 +784,8 @@ export class EmailTemplateService {
     this.from = options.from;
     this.defaultLocale = options.defaultLocale;
     this.publicAppBaseUrl = options.publicAppBaseUrl;
+    this.resolveFrom = options.resolveFrom;
+    this.resolvePublicAppBaseUrl = options.resolvePublicAppBaseUrl;
     this.logger = options.logger;
   }
 
@@ -422,14 +795,43 @@ export class EmailTemplateService {
     return resolveEmailLocaleForRecipient(toHintsInput(hints, this.defaultLocale));
   }
 
-  private async dispatchRendered(to: string, rendered: { subject: string; text: string; html: string }): Promise<void> {
+  private async currentFrom(): Promise<string> {
+    if (!this.resolveFrom) {
+      return this.from;
+    }
+    const from = (await this.resolveFrom()).trim();
+    return from || this.from;
+  }
+
+  private async currentPublicAppBaseUrl(): Promise<string> {
+    if (!this.resolvePublicAppBaseUrl) {
+      return this.publicAppBaseUrl;
+    }
+    return (await this.resolvePublicAppBaseUrl()).trim().replace(/\/$/, "");
+  }
+
+  /** Encode deep-link query values and attach `lng` for the resolved template locale. */
+  private async withLocalizedAppUrls<T extends object>(variables: T, locale: string): Promise<T> {
+    return applyEmailAppUrlLocale(
+      variables as T & Record<string, unknown>,
+      await this.currentPublicAppBaseUrl(),
+      locale,
+    );
+  }
+
+  private async dispatchRendered(
+    to: string,
+    rendered: { subject: string; text: string; html: string },
+    authCodeLog?: EmailAuthCodeLog,
+  ): Promise<void> {
     try {
       await this.sender.send({
         to,
-        from: this.from,
+        from: await this.currentFrom(),
         subject: rendered.subject,
         text: rendered.text,
         html: rendered.html,
+        ...(authCodeLog ? { authCodeLog } : {}),
       });
     } catch (cause) {
       if (cause instanceof EmailTemplateError) {
@@ -467,7 +869,13 @@ export class EmailTemplateService {
   }): Promise<void> {
     const locale = this.resolveLocale(input.localeHints);
     const rendered = await renderEmailTemplate("auth_email_code", locale, input.variables);
-    await this.dispatchRendered(input.to, rendered);
+    const expiresAt = new Date(
+      Date.now() + Math.max(0, input.variables.ttlSeconds) * 1000,
+    ).toISOString();
+    await this.dispatchRendered(input.to, rendered, {
+      code: input.variables.code,
+      expiresAt,
+    });
   }
 
   async sendDeviceApprovalRequest(input: {
@@ -479,7 +887,7 @@ export class EmailTemplateService {
     const rendered = await renderEmailTemplate(
       "device_approval_request",
       locale,
-      input.variables,
+      await this.withLocalizedAppUrls(input.variables, locale),
     );
     await this.dispatchRendered(input.to, rendered);
   }
@@ -490,7 +898,11 @@ export class EmailTemplateService {
     variables: WorkspaceInviteVariables;
   }): Promise<void> {
     const locale = this.resolveLocale(input.localeHints);
-    const rendered = await renderEmailTemplate("workspace_invite", locale, input.variables);
+    const rendered = await renderEmailTemplate(
+      "workspace_invite",
+      locale,
+      await this.withLocalizedAppUrls(input.variables, locale),
+    );
     await this.dispatchRendered(input.to, rendered);
   }
 
@@ -510,7 +922,11 @@ export class EmailTemplateService {
     variables: TwoFactorNoticeVariables;
   }): Promise<void> {
     const locale = this.resolveLocale(input.localeHints);
-    const rendered = await renderEmailTemplate("two_factor_enabled", locale, input.variables);
+    const rendered = await renderEmailTemplate(
+      "two_factor_enabled",
+      locale,
+      await this.withLocalizedAppUrls(input.variables, locale),
+    );
     await this.dispatchRendered(input.to, rendered);
   }
 
@@ -520,7 +936,11 @@ export class EmailTemplateService {
     variables: TwoFactorNoticeVariables;
   }): Promise<void> {
     const locale = this.resolveLocale(input.localeHints);
-    const rendered = await renderEmailTemplate("two_factor_disabled", locale, input.variables);
+    const rendered = await renderEmailTemplate(
+      "two_factor_disabled",
+      locale,
+      await this.withLocalizedAppUrls(input.variables, locale),
+    );
     await this.dispatchRendered(input.to, rendered);
   }
 
@@ -533,7 +953,7 @@ export class EmailTemplateService {
     const rendered = await renderEmailTemplate(
       "two_factor_backup_codes_regenerated",
       locale,
-      input.variables,
+      await this.withLocalizedAppUrls(input.variables, locale),
     );
     await this.dispatchRendered(input.to, rendered);
   }
@@ -593,7 +1013,11 @@ export class EmailTemplateService {
     variables: AccountEmailChangedVariables;
   }): Promise<void> {
     const locale = this.resolveLocale(input.localeHints);
-    const rendered = await renderEmailTemplate("account_email_changed", locale, input.variables);
+    const rendered = await renderEmailTemplate(
+      "account_email_changed",
+      locale,
+      await this.withLocalizedAppUrls(input.variables, locale),
+    );
     await this.dispatchRendered(input.to, rendered);
   }
 
@@ -623,7 +1047,7 @@ export class EmailTemplateService {
     const rendered = await renderEmailTemplate(
       "device_recovery_approval_request",
       locale,
-      input.variables,
+      await this.withLocalizedAppUrls(input.variables, locale),
     );
     await this.dispatchRendered(input.to, rendered);
   }
@@ -651,7 +1075,7 @@ export class EmailTemplateService {
     const rendered = await renderEmailTemplate(
       "contact_recovery_release_request",
       locale,
-      input.variables,
+      await this.withLocalizedAppUrls(input.variables, locale),
     );
     await this.dispatchRendered(input.to, rendered);
   }
@@ -679,7 +1103,7 @@ export class EmailTemplateService {
     const rendered = await renderEmailTemplate(
       "trusted_contact_invite",
       locale,
-      input.variables,
+      await this.withLocalizedAppUrls(input.variables, locale),
     );
     await this.dispatchRendered(input.to, rendered);
   }

@@ -85,8 +85,10 @@ function createService(overrides?: {
   }[];
   recovery?: Partial<AccountRecoveryRepository>;
   devices?: ReturnType<typeof mockDevice>[];
-  emailTemplates?: ConstructorParameters<typeof AccountRecoveryService>[0]["emailTemplates"];
-  publicAppBaseUrl?: string;
+  config?: {
+    deploymentMode: "self_hosted" | "saas";
+    enterpriseModulesEnabled: boolean;
+  };
 }) {
   const workspaces = overrides?.workspaces ?? [{ planTier: "FREE" }];
   const users = overrides?.users ?? [
@@ -221,7 +223,6 @@ function createService(overrides?: {
           maxFileSizeMb: 10,
           filesInItemsEnabled: false,
           capsulePolicies: {} as never,
-          monitoringCardSettings: {} as never,
           tileColor: null,
           logoVaultId: null,
           logoAttachmentId: null,
@@ -233,51 +234,6 @@ function createService(overrides?: {
       listByUser: async () => deviceRows,
     },
     users: {
-      findById: async (id: string) => {
-        const user = users.find((u) => u.id === id);
-        if (!user) {
-          return null;
-        }
-        return {
-          id: user.id,
-          email: user.email,
-          publicKey: "pk",
-          publicPqKey: null,
-          locale: user.locale ?? null,
-          createdAt: "2026-01-01T00:00:00.000Z",
-          updatedAt: "2026-01-01T00:00:00.000Z",
-        };
-      },
-      findByEmail: async (email: string) => {
-        const user = users.find((u) => u.email.toLowerCase() === email.toLowerCase());
-        if (!user) {
-          return null;
-        }
-        return {
-          id: user.id,
-          email: user.email,
-          publicKey: "pk",
-          publicPqKey: null,
-          locale: user.locale ?? null,
-          createdAt: "2026-01-01T00:00:00.000Z",
-          updatedAt: "2026-01-01T00:00:00.000Z",
-        };
-      },
-      loadAccountProfile: async (userId: string) => {
-        const user = users.find((u) => u.id === userId);
-        if (!user) {
-          return null;
-        }
-        return {
-          email: user.email,
-          firstName: user.firstName ?? null,
-          lastName: user.lastName ?? null,
-          locale: user.locale ?? null,
-          billingRegion: null,
-          vaultIdleLockSeconds: 0,
-          masterPasswordChangedAt: "2026-01-01T00:00:00.000Z",
-        };
-      },
       loadVaultUnlockRow: async (userId: string) => {
         if (userId !== "u1") {
           return null;
@@ -296,8 +252,7 @@ function createService(overrides?: {
         };
       },
     },
-    emailTemplates: overrides?.emailTemplates,
-    publicAppBaseUrl: overrides?.publicAppBaseUrl,
+    config: overrides?.config,
   });
 }
 
@@ -377,6 +332,43 @@ test("getRecoveryPossession reports a public key or a legacy wrap and never retu
   assert.equal(JSON.stringify(legacyState).includes("abc"), false);
 });
 
+test("enrollKey rejects a wrap whose key_scope is not account", async () => {
+  const service = createService();
+  const base = {
+    crypto_version: 2,
+    algorithm: "xchacha20-poly1305",
+    payload: "abc",
+  };
+  await assert.rejects(
+    () =>
+      service.enrollKey("u1", {
+        ...base,
+        meta: { entity: "vault_key_recovery_wrap", key_scope: "vault" },
+      }),
+    (err: unknown) =>
+      err instanceof AccountRecoveryError &&
+      err.code === "RECOVERY_BAD_REQUEST" &&
+      err.statusCode === 400,
+  );
+  await assert.rejects(
+    () =>
+      service.enrollKey("u1", {
+        ...base,
+        meta: { entity: "vault_key_recovery_wrap" },
+      }),
+    (err: unknown) =>
+      err instanceof AccountRecoveryError && err.code === "RECOVERY_BAD_REQUEST",
+  );
+  assert.equal(await service.hasEnrolledRecoveryKey("u1"), false);
+
+  const enrolled = await service.enrollKey("u1", {
+    ...base,
+    meta: { entity: "vault_key_recovery_wrap", key_scope: "account" },
+  });
+  assert.equal(enrolled.key.enrolled, true);
+  assert.equal(await service.hasEnrolledRecoveryKey("u1"), true);
+});
+
 test("enrollKey persists wrap and enables key settings", async () => {
   const service = createService({ workspaces: [{ planTier: "PREMIUM" }] });
   assert.equal(await service.hasEnrolledRecoveryKey("u1"), false);
@@ -419,6 +411,91 @@ test("devicesEnabled requires paid entitlement", async () => {
     () => service.updateSettings("u1", { devicesEnabled: true }),
     (err: unknown) => err instanceof AccountRecoveryError && err.code === "RECOVERY_ENTITLEMENT_REQUIRED",
   );
+});
+
+test("self-hosted modules off ignores plan_tier ENTERPRISE for trusted recovery", async () => {
+  const service = createService({
+    workspaces: [{ planTier: "ENTERPRISE" }],
+    devices: [
+      mockDevice({ fingerprint: "fp-current", status: "trusted" }),
+      mockDevice({ fingerprint: "fp-other", status: "trusted" }),
+    ],
+    config: { deploymentMode: "self_hosted", enterpriseModulesEnabled: false },
+  });
+  const status = await service.getStatus("u1");
+  assert.equal(status.entitlements.recoveryKey, true);
+  assert.equal(status.entitlements.trustedDevices, false);
+  assert.equal(status.entitlements.trustedContacts, false);
+  await assert.rejects(
+    () =>
+      service.updateSettings(
+        "u1",
+        { devicesEnabled: true },
+        { currentFingerprint: "fp-current" },
+      ),
+    (err: unknown) =>
+      err instanceof AccountRecoveryError && err.code === "RECOVERY_ENTITLEMENT_REQUIRED",
+  );
+});
+
+test("self-hosted modules on and FREE grant trusted recovery with no license lapse", async () => {
+  const allowed = createService({
+    workspaces: [{ planTier: "FREE" }],
+    devices: [
+      mockDevice({ fingerprint: "fp-current", status: "trusted" }),
+      mockDevice({ fingerprint: "fp-other", status: "trusted" }),
+    ],
+    config: { deploymentMode: "self_hosted", enterpriseModulesEnabled: true },
+  });
+  const status = await allowed.getStatus("u1");
+  assert.equal(status.entitlements.recoveryKey, true);
+  assert.equal(status.entitlements.trustedDevices, true);
+  assert.equal(status.entitlements.trustedContacts, true);
+  const updated = await allowed.updateSettings(
+    "u1",
+    { devicesEnabled: true },
+    { currentFingerprint: "fp-current" },
+  );
+  assert.equal(updated.settings.devicesEnabled, true);
+  assert.equal(updated.entitlements.trustedDevices, true);
+});
+
+test("self-hosted modules on and a paid plan grant trusted recovery", async () => {
+  const blocked = createService({
+    workspaces: [{ planTier: "ENTERPRISE" }],
+    devices: [mockDevice({ fingerprint: "fp-current", status: "trusted" })],
+    config: { deploymentMode: "self_hosted", enterpriseModulesEnabled: true },
+  });
+  const status = await blocked.getStatus("u1");
+  assert.equal(status.entitlements.recoveryKey, true);
+  assert.equal(status.entitlements.trustedDevices, true);
+  assert.equal(status.entitlements.trustedContacts, true);
+  await assert.rejects(
+    () =>
+      blocked.updateSettings(
+        "u1",
+        { devicesEnabled: true },
+        { currentFingerprint: "fp-current" },
+      ),
+    (err: unknown) =>
+      err instanceof AccountRecoveryError && err.code === "RECOVERY_DEVICES_INSUFFICIENT",
+  );
+
+  const allowed = createService({
+    workspaces: [{ planTier: "ENTERPRISE" }],
+    devices: [
+      mockDevice({ fingerprint: "fp-current", status: "trusted" }),
+      mockDevice({ fingerprint: "fp-other", status: "trusted" }),
+    ],
+    config: { deploymentMode: "self_hosted", enterpriseModulesEnabled: true },
+  });
+  const updated = await allowed.updateSettings(
+    "u1",
+    { devicesEnabled: true },
+    { currentFingerprint: "fp-current" },
+  );
+  assert.equal(updated.settings.devicesEnabled, true);
+  assert.equal(updated.entitlements.trustedDevices, true);
 });
 
 test("devicesEnabled requires ≥2 trusted devices including current", async () => {
@@ -466,278 +543,23 @@ test("devicesEnabled requires ≥2 trusted devices including current", async () 
   assert.equal(status.settings.devicesEnabled, true);
 });
 
-test("inviteContact works on PREMIUM membership", async () => {
-  const service = createService({
-    workspaces: [{ planTier: "PREMIUM" }],
-  });
-  const contact = await service.inviteContact("u1", "friend@example.com");
-  assert.equal(contact.email, "friend@example.com");
-  assert.equal(contact.status, "pending");
+test("core status does not include the trusted-contacts directory", async () => {
+  const service = createService({ workspaces: [{ planTier: "PREMIUM" }] });
+  const status = await service.getStatus("u1");
+  assert.equal(status.entitlements.trustedContacts, true);
+  assert.deepEqual(status.contacts, []);
+  assert.deepEqual(status.pendingInvites, []);
+  assert.deepEqual(status.servingAsContact, []);
+  assert.equal(status.confirmedContactCount, 0);
 });
 
-test("inviteContacts accepts Name <email> paste and invite-members invitations shape", async () => {
-  const service = createService({
-    workspaces: [{ planTier: "PREMIUM" }],
-  });
-  const contacts = await service.inviteContacts("u1", ["Friend <friend@example.com>"]);
-  assert.equal(contacts.length, 1);
-  assert.equal(contacts[0]?.email, "friend@example.com");
-});
-
-test("inviteContact rejects self-invite with RECOVERY_SELF_INVITE", async () => {
-  const service = createService({
-    workspaces: [{ planTier: "PREMIUM" }],
-  });
+test("settings patch cannot enable trusted contacts in core", async () => {
+  const service = createService({ workspaces: [{ planTier: "PREMIUM" }] });
   await assert.rejects(
-    () => service.inviteContact("u1", "owner@example.com"),
-    (err: unknown) => err instanceof AccountRecoveryError && err.code === "RECOVERY_SELF_INVITE",
+    () => service.updateSettings("u1", { contactsEnabled: true }),
+    (err: unknown) =>
+      err instanceof AccountRecoveryError && err.code === "RECOVERY_CONTACTS_UNAVAILABLE",
   );
-});
-
-test("inviteContact rejects FREE-only account", async () => {
-  const service = createService();
-  await assert.rejects(
-    () => service.inviteContact("u1", "friend@example.com"),
-    (err: unknown) => err instanceof AccountRecoveryError && err.code === "RECOVERY_ENTITLEMENT_REQUIRED",
-  );
-});
-
-test("rejectInvite removes pending invite for contact user", async () => {
-  const invites: Array<{
-    id: string;
-    userId: string;
-    contactEmail: string;
-    contactUserId: string;
-    ownerEmail: string;
-    ownerFirstName: string | null;
-    ownerLastName: string | null;
-    createdAt: string;
-  }> = [
-    {
-      id: "inv1",
-      userId: "u1",
-      contactEmail: "friend@example.com",
-      contactUserId: "u2",
-      ownerEmail: "owner@example.com",
-      ownerFirstName: "Alex",
-      ownerLastName: "Okkey",
-      createdAt: "2026-01-01T00:00:00.000Z",
-    },
-  ];
-  const service = createService({
-    workspaces: [{ planTier: "PREMIUM" }],
-    recovery: {
-      listPendingInvitesForContact: async (contactUserId: string) =>
-        invites.filter((invite) => invite.contactUserId === contactUserId),
-      rejectInvite: async (contactUserId: string, inviteId: string) => {
-        const idx = invites.findIndex(
-          (invite) => invite.id === inviteId && invite.contactUserId === contactUserId,
-        );
-        if (idx < 0) {
-          return false;
-        }
-        invites.splice(idx, 1);
-        return true;
-      },
-    },
-  });
-  const before = await service.getStatus("u2");
-  assert.equal(before.pendingInvites.length, 1);
-  assert.equal(before.pendingInvites[0]?.ownerFirstName, "Alex");
-  const status = await service.rejectInvite("u2", "inv1");
-  assert.equal(status.pendingInvites.length, 0);
-});
-
-test("leaveAsContact removes membership and disables owner contacts below minimum", async () => {
-  const memberships: Array<{
-    id: string;
-    userId: string;
-    ownerEmail: string;
-    ownerFirstName: string | null;
-    ownerLastName: string | null;
-    createdAt: string;
-    confirmedAt: string | null;
-  }> = [
-    {
-      id: "c1",
-      userId: "u1",
-      ownerEmail: "owner@example.com",
-      ownerFirstName: "Alex",
-      ownerLastName: "Okkey",
-      createdAt: "2026-01-01T00:00:00.000Z",
-      confirmedAt: "2026-01-02T00:00:00.000Z",
-    },
-  ];
-  const ownerContacts: Array<{
-    id: string;
-    userId: string;
-    contactEmail: string;
-    contactUserId: string | null;
-    status: "pending" | "confirmed";
-    createdAt: string;
-    confirmedAt: string | null;
-  }> = [
-    {
-      id: "c1",
-      userId: "u1",
-      contactEmail: "friend@example.com",
-      contactUserId: "u2",
-      status: "confirmed",
-      createdAt: "2026-01-01T00:00:00.000Z",
-      confirmedAt: "2026-01-02T00:00:00.000Z",
-    },
-  ];
-  let ownerSettings = {
-    userId: "u1",
-    keyEnabled: false,
-    devicesEnabled: false,
-    contactsEnabled: true,
-    updatedAt: "2026-01-01T00:00:00.000Z",
-  };
-
-  const service = createService({
-    workspaces: [{ planTier: "PREMIUM" }],
-    recovery: {
-      getSettings: async (userId: string) => (userId === "u1" ? ownerSettings : null),
-      upsertSettings: async (userId, input) => {
-        ownerSettings = { userId, ...input, updatedAt: "2026-01-03T00:00:00.000Z" };
-        return ownerSettings;
-      },
-      listContacts: async (userId: string) => ownerContacts.filter((c) => c.userId === userId),
-      listMembershipsForContact: async (contactUserId: string) =>
-        contactUserId === "u2" ? memberships : [],
-      deleteMembershipAsContact: async (contactUserId: string, contactId: string) => {
-        if (contactUserId !== "u2") {
-          return null;
-        }
-        const idx = memberships.findIndex((row) => row.id === contactId);
-        if (idx < 0) {
-          return null;
-        }
-        const [removed] = memberships.splice(idx, 1);
-        const ownerIdx = ownerContacts.findIndex((c) => c.id === contactId);
-        if (ownerIdx >= 0) {
-          ownerContacts.splice(ownerIdx, 1);
-        }
-        return { ownerUserId: removed.userId };
-      },
-    },
-  });
-
-  const before = await service.getStatus("u2");
-  assert.equal(before.servingAsContact.length, 1);
-  assert.equal(before.servingAsContact[0]?.ownerEmail, "owner@example.com");
-
-  const after = await service.leaveAsContact("u2", "c1");
-  assert.equal(after.servingAsContact.length, 0);
-  assert.equal(ownerSettings.contactsEnabled, false);
-});
-
-test("inviteContacts sends trusted-contact invite email best-effort", async () => {
-  const sends: Array<{ to: string; inviterDisplayName: string; inviterEmail: string }> = [];
-  const service = createService({
-    workspaces: [{ planTier: "PREMIUM" }],
-    users: [
-      { id: "u1", email: "owner@example.com", firstName: "Alex", lastName: "Okkey" },
-      { id: "u2", email: "friend@example.com" },
-    ],
-    emailTemplates: {
-      sendTrustedContactInviteBestEffort: async (input) => {
-        sends.push({
-          to: input.to,
-          inviterDisplayName: input.variables.inviterDisplayName,
-          inviterEmail: input.variables.inviterEmail,
-        });
-      },
-    },
-    publicAppBaseUrl: "https://app.example",
-  });
-
-  await service.inviteContacts("u1", ["friend@example.com"]);
-  assert.equal(sends.length, 1);
-  assert.equal(sends[0]?.to, "friend@example.com");
-  assert.equal(sends[0]?.inviterDisplayName, "Alex Okkey");
-  assert.equal(sends[0]?.inviterEmail, "owner@example.com");
-});
-
-test("inviteContacts email locale: recipient → inviter UI → inviter profile", async () => {
-  const sends: Array<{
-    userLocale: string | null | undefined;
-    explicitLocale: string | null | undefined;
-    acceptLanguage: string | null | undefined;
-  }> = [];
-
-  const serviceRecipient = createService({
-    workspaces: [{ planTier: "PREMIUM" }],
-    users: [
-      { id: "u1", email: "owner@example.com", locale: "en" },
-      { id: "u2", email: "friend@example.com", locale: "ru" },
-    ],
-    emailTemplates: {
-      sendTrustedContactInviteBestEffort: async (input) => {
-        sends.push({
-          userLocale: input.localeHints.userLocale,
-          explicitLocale: input.localeHints.explicitLocale,
-          acceptLanguage: input.localeHints.acceptLanguage,
-        });
-      },
-    },
-    publicAppBaseUrl: "https://app.example",
-  });
-  await serviceRecipient.inviteContacts("u1", ["friend@example.com"], {
-    explicitLocale: "en",
-    acceptLanguage: "en-US",
-  });
-  assert.equal(sends[0]?.userLocale, "ru");
-  assert.equal(sends[0]?.explicitLocale, "en");
-
-  sends.length = 0;
-  const serviceInviterUi = createService({
-    workspaces: [{ planTier: "PREMIUM" }],
-    users: [
-      { id: "u1", email: "owner@example.com", locale: null },
-      { id: "u2", email: "friend@example.com", locale: null },
-    ],
-    emailTemplates: {
-      sendTrustedContactInviteBestEffort: async (input) => {
-        sends.push({
-          userLocale: input.localeHints.userLocale,
-          explicitLocale: input.localeHints.explicitLocale,
-          acceptLanguage: input.localeHints.acceptLanguage,
-        });
-      },
-    },
-    publicAppBaseUrl: "https://app.example",
-  });
-  await serviceInviterUi.inviteContacts("u1", ["friend@example.com"], {
-    explicitLocale: "ru",
-    acceptLanguage: "en-US,en;q=0.9",
-  });
-  assert.equal(sends[0]?.userLocale, null);
-  assert.equal(sends[0]?.explicitLocale, "ru");
-  assert.equal(sends[0]?.acceptLanguage, "en-US,en;q=0.9");
-
-  sends.length = 0;
-  const serviceInviterProfile = createService({
-    workspaces: [{ planTier: "PREMIUM" }],
-    users: [
-      { id: "u1", email: "owner@example.com", locale: "ru" },
-      { id: "u2", email: "friend@example.com", locale: null },
-    ],
-    emailTemplates: {
-      sendTrustedContactInviteBestEffort: async (input) => {
-        sends.push({
-          userLocale: input.localeHints.userLocale,
-          explicitLocale: input.localeHints.explicitLocale,
-          acceptLanguage: input.localeHints.acceptLanguage,
-        });
-      },
-    },
-    publicAppBaseUrl: "https://app.example",
-  });
-  await serviceInviterProfile.inviteContacts("u1", ["friend@example.com"]);
-  assert.equal(sends[0]?.userLocale, null);
-  assert.equal(sends[0]?.explicitLocale, "ru");
 });
 
 test("getIdentityEncryptedKey returns ciphertext blob for restore bootstrap", async () => {

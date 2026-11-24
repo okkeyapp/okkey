@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -15,11 +16,19 @@ import {
   loadEnterpriseBackendEnv,
 } from "./enterpriseEnv.ts";
 import { resolveEmailDeliveryMode, type EmailDeliveryMode } from "./email/queue.ts";
+import {
+  normalizeEmailLogoUrl,
+  parseEmailHttpApiInlineMode,
+  type EmailHttpApiInlineMode,
+} from "./email/http-api-inline-mode.ts";
 import { parseFaviconProvider, type FaviconProvider } from "./favicon/fetch-remote.ts";
+import { resolveCoreUpdateFeedUrl } from "./system-updates/core-feed.ts";
 
 type NodeEnv = "development" | "test" | "production";
 type EmailProvider = "logger" | "smtp" | "http-api" | "ses";
 type CryptoRolloutState = "resume" | "stop";
+
+export type { EmailHttpApiInlineMode };
 
 export type DeploymentMode = "self_hosted" | "saas";
 
@@ -28,6 +37,40 @@ export interface ApiConfig {
   deployEnv: DeployEnv;
   /** Product deployment: self_hosted (default OSS) vs saas (multi-workspace via enterprise plugin). */
   deploymentMode: DeploymentMode;
+  /** Running core image tag (`OKKEY_VERSION`, else `OKKEY_IMAGE_TAG`). */
+  systemVersion: string;
+  /**
+   * This repository's commit that built the running core image (`OKKEY_GIT_SHA`).
+   * Never a packaging/wrapper revision. Empty when unknown.
+   */
+  gitSha: string;
+  /** Release tag when the image was built from a tag (`OKKEY_RELEASE_TAG`). */
+  releaseTag: string;
+  /** Installed enterprise module version, when the sibling reports one. */
+  enterpriseVersion: string;
+  /** Full git commit for the enterprise sibling (`OKKEY_ENTERPRISE_GIT_SHA`). */
+  enterpriseGitSha: string;
+  /**
+   * Core (okkey) update feed URL.
+   * `OKKEY_UPDATE_CORE_FEED_URL` overrides the GitHub Releases default.
+   * `OKKEY_UPDATE_FEED_URL` is the previous name and still overrides when the
+   * core name is empty. An enterprise feed is a separate setting.
+   * This is not a license server.
+   */
+  updateCoreFeedUrl: string;
+  /**
+   * Optional enterprise feed URL (`OKKEY_UPDATE_ENTERPRISE_FEED_URL`).
+   * Empty means there is no separate enterprise check.
+   * Contacted only when enterprise modules are installed.
+   */
+  updateEnterpriseFeedUrl: string;
+  /** Enterprise feed credential (`OKKEY_LICENSE_KEY`). Sent only on that feed. */
+  enterpriseLicenseKey: string;
+  /** When true, update checks and feed downloads do not call the network. */
+  updateIsolated: boolean;
+  /** Base URL of the dedicated update agent. Empty disables apply. */
+  updateAgentUrl: string;
+  updateAgentToken: string;
   /**
    * Plan assigned to newly created workspaces (catalog / billing display).
    * Always FREE. Self-hosted paid features unlock from loaded modules, not this column.
@@ -51,6 +94,10 @@ export interface ApiConfig {
   invitePreviewRateLimitPerIp: number;
   authRateLimitConfirmPerIp: number;
   authRateLimitResendPerIp: number;
+  /** POST /auth/login/master-password per-account budget within `authRateLimitWindowSeconds`. */
+  authRateLimitLoginKeyPerEmail: number;
+  /** Same window, keyed by client IP. */
+  authRateLimitLoginKeyPerIp: number;
   /** POST /auth/register/complete per-IP budget within `authRateLimitWindowSeconds`. */
   authRateLimitRegisterCompletePerIp: number;
   /** Same window; keyed by email from the auth state (normalized). */
@@ -80,6 +127,11 @@ export interface ApiConfig {
   /** Load enterprise backend plugins from `enterpriseModulesPath`. */
   enterpriseModulesEnabled: boolean;
   enterpriseModulesPath: string;
+  /**
+   * Self-hosted license lapse. Set only when the enterprise update feed reports
+   * an expired license. Not read from the environment.
+   */
+  enterpriseLicenseLapsed: boolean;
   defaultEmailLocale: string;
   /** Base URL for links in transactional email (e.g. https://app.example.com); empty = text-only hints */
   publicAppBaseUrl: string;
@@ -109,6 +161,17 @@ export interface ApiConfig {
   emailApiEndpoint: string;
   emailApiKey: string;
   emailApiTimeoutMs: number;
+  /**
+   * `EMAIL_HTTP_API_INLINE` for `EMAIL_PROVIDER=http-api`:
+   * how the Okkey mark is represented when HTML uses `cid:okkey-mark`.
+   * Default `cid` — include `inlineAttachments` in the JSON body.
+   */
+  emailHttpApiInlineMode: EmailHttpApiInlineMode;
+  /**
+   * Absolute https URL for the Okkey mark when `emailHttpApiInlineMode` is `url`
+   * (`EMAIL_LOGO_URL`). Ignored for other modes.
+   */
+  emailLogoUrl: string;
   /** AWS SES / SES-compatible (Yandex Postbox) region for SigV4. */
   sesRegion: string;
   sesAccessKeyId: string;
@@ -138,9 +201,10 @@ export interface ApiConfig {
   webauthnChallengeTtlSeconds: number;
   /**
    * How `/favicon/preview` resolves website icons.
-   * - `direct` (default): fetch from the site origin only.
+   * - `off` (default when unset): do not fetch; clients show a monogram.
+   * - `client`: clients may load the site favicon themselves; this API does not fetch.
+   * - `direct`: explicit opt-in; fetch from the site origin only.
    * - `google`: explicit opt-in; uses Google's favicon service.
-   * - `off`: disable remote favicon preview.
    */
   faviconProvider: FaviconProvider;
 }
@@ -296,6 +360,32 @@ function resolveEnterpriseModulesPath(explicitPath: string | undefined): string 
   return path.resolve(servicesApiDir, "../../../../okkey-enterprise");
 }
 
+/**
+ * Prefer an explicit env SHA (`OKKEY_GIT_SHA` for core). That value must be this
+ * repository's commit for the core image — not a packaging/wrapper HEAD.
+ * In local development, fall back to `git rev-parse HEAD` in the given repo so
+ * the system-update UI can show a short commit without a pin.
+ */
+function resolveGitSha(fromEnv: string | undefined, nodeEnv: NodeEnv, repoRoot: string): string {
+  const trimmed = (fromEnv ?? "").trim();
+  if (trimmed) {
+    return trimmed;
+  }
+  if (nodeEnv !== "development") {
+    return "";
+  }
+  try {
+    return execFileSync("git", ["rev-parse", "HEAD"], {
+      cwd: repoRoot,
+      encoding: "utf8",
+      timeout: 2_000,
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+  } catch {
+    return "";
+  }
+}
+
 /** Fail-closed: sibling (or explicit) path must expose the API plugin entry. */
 export function isEnterpriseBackendLoadable(enterpriseModulesPath: string): boolean {
   return existsSync(path.join(enterpriseModulesPath, "backend/api-plugin/index.ts"));
@@ -327,6 +417,26 @@ export function resolveSalesEmail(raw: string | undefined): string {
     throw new Error("OKKEY_SALES_EMAIL must be a valid email address");
   }
   return trimmed;
+}
+
+/**
+ * Optional public https URL for the email logo (`EMAIL_LOGO_URL`).
+ * Empty is allowed at load time; `EMAIL_HTTP_API_INLINE=url` still requires a non-empty
+ * value (validated in transport assert). When set, the value is validated for any
+ * `EMAIL_PROVIDER` (fail-closed) and stored as the normalized `URL.href`.
+ */
+export function resolveEmailLogoUrl(raw: string | undefined): string {
+  const trimmed = (raw ?? "").trim();
+  if (!trimmed) {
+    return "";
+  }
+  const normalized = normalizeEmailLogoUrl(trimmed);
+  if (!normalized) {
+    throw new Error(
+      "EMAIL_LOGO_URL must be an absolute public https URL without credentials or loopback hosts (e.g. https://cdn.example.com/okkey-mark.png)",
+    );
+  }
+  return normalized;
 }
 
 export function loadConfig(): ApiConfig {
@@ -366,6 +476,12 @@ export function loadConfig(): ApiConfig {
     process.env.CRYPTO_ROLLOUT_MODE,
     deployEnv,
   );
+  // Fail closed: compat skips capability checks. Prod must not boot in that mode.
+  if (deployEnv === "prod" && cryptoRolloutMode === "compat") {
+    throw new Error(
+      "CRYPTO_ROLLOUT_MODE=compat is forbidden when DEPLOY_ENV=prod: compat allows every capability check. Set CRYPTO_ROLLOUT_MODE=strict (production default).",
+    );
+  }
   const cryptoRolloutEnabled = parseBoolean(process.env.CRYPTO_ROLLOUT_ENABLED, true);
   const cryptoRolloutState = parseCryptoRolloutState(process.env.CRYPTO_ROLLOUT_STATE);
   const cryptoRolloutStopWritePaths = parseCsvList(process.env.CRYPTO_ROLLOUT_STOP_WRITE_PATHS);
@@ -375,6 +491,27 @@ export function loadConfig(): ApiConfig {
     nodeEnv,
     deployEnv,
     deploymentMode,
+    systemVersion:
+      (process.env.OKKEY_VERSION ?? process.env.OKKEY_IMAGE_TAG ?? "").trim() || "unknown",
+    gitSha: resolveGitSha(process.env.OKKEY_GIT_SHA, nodeEnv, path.resolve(serviceRoot, "..")),
+    releaseTag: (process.env.OKKEY_RELEASE_TAG ?? "").trim(),
+    enterpriseVersion: (process.env.OKKEY_ENTERPRISE_VERSION ?? "").trim(),
+    enterpriseGitSha: resolveGitSha(
+      process.env.OKKEY_ENTERPRISE_GIT_SHA,
+      nodeEnv,
+      // Sibling checkout next to Core: repositories/okkey-enterprise
+      path.resolve(serviceRoot, "../../../okkey-enterprise"),
+    ),
+    updateCoreFeedUrl: resolveCoreUpdateFeedUrl(
+      process.env.OKKEY_UPDATE_CORE_FEED_URL,
+      process.env.OKKEY_UPDATE_FEED_URL,
+    ),
+    updateEnterpriseFeedUrl: (process.env.OKKEY_UPDATE_ENTERPRISE_FEED_URL ?? "").trim(),
+    enterpriseLicenseKey: (process.env.OKKEY_LICENSE_KEY ?? "").trim(),
+    enterpriseLicenseLapsed: false,
+    updateIsolated: parseBoolean(process.env.OKKEY_UPDATE_ISOLATED, false),
+    updateAgentUrl: (process.env.OKKEY_UPDATE_AGENT_URL ?? "").trim(),
+    updateAgentToken: (process.env.OKKEY_UPDATE_AGENT_TOKEN ?? "").trim(),
     defaultWorkspacePlanTier,
     port: parsePort(process.env.PORT),
     logLevel: process.env.LOG_LEVEL ?? "info",
@@ -412,6 +549,14 @@ export function loadConfig(): ApiConfig {
     authRateLimitResendPerIp: parsePositiveInt(
       process.env.AUTH_RATE_LIMIT_RESEND_PER_IP,
       10,
+    ),
+    authRateLimitLoginKeyPerEmail: parsePositiveInt(
+      process.env.AUTH_RATE_LIMIT_LOGIN_KEY_PER_EMAIL,
+      5,
+    ),
+    authRateLimitLoginKeyPerIp: parsePositiveInt(
+      process.env.AUTH_RATE_LIMIT_LOGIN_KEY_PER_IP,
+      20,
     ),
     authRateLimitRegisterCompletePerIp: parsePositiveInt(
       process.env.AUTH_RATE_LIMIT_REGISTER_COMPLETE_PER_IP,
@@ -485,6 +630,8 @@ export function loadConfig(): ApiConfig {
     emailApiEndpoint: process.env.EMAIL_API_ENDPOINT ?? "",
     emailApiKey: process.env.EMAIL_API_KEY ?? "",
     emailApiTimeoutMs: parsePositiveInt(process.env.EMAIL_API_TIMEOUT_MS, 10000),
+    emailHttpApiInlineMode: parseEmailHttpApiInlineMode(process.env.EMAIL_HTTP_API_INLINE),
+    emailLogoUrl: resolveEmailLogoUrl(process.env.EMAIL_LOGO_URL),
     sesRegion: process.env.EMAIL_SES_REGION ?? "",
     sesAccessKeyId: process.env.EMAIL_SES_ACCESS_KEY_ID ?? "",
     sesSecretAccessKey: process.env.EMAIL_SES_SECRET_ACCESS_KEY ?? "",

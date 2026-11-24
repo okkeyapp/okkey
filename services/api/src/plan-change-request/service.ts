@@ -2,9 +2,8 @@ import { randomUUID } from "node:crypto";
 
 import {
   canRequestPlanUpgrade,
-  isPlanTier,
   normalizePlanTier,
-  type PlanTier,
+  readPlanTier,
 } from "@okkey/types";
 
 import type { DeploymentMode } from "../config.ts";
@@ -12,6 +11,7 @@ import { assertWorkspacePermission } from "../workspace-roles/permissions.ts";
 import type { QueryExecutor } from "../storage/postgres.ts";
 import type { UsersRepository, WorkspacesRepository } from "../storage/repositories.ts";
 import type { EmailTemplateService } from "../email/service.ts";
+import { resolveLinkBaseUrl, type PublicAppUrlResolver } from "../mail-settings/public-url.ts";
 
 /** Max license / plan-change request attempts per workspace per rolling 24h window. */
 export const PLAN_CHANGE_REQUEST_DAILY_LIMIT = 3;
@@ -30,7 +30,7 @@ export class PlanChangeRequestServiceError extends Error {
     | "EMAIL_NOT_CONFIGURED"
     | "EMAIL_SEND_FAILED";
   readonly status: number;
-  readonly details?: { retryAfterSeconds?: number };
+  readonly details?: { retryAfterSeconds?: number; availableAt?: string };
 
   constructor(
     code:
@@ -44,7 +44,7 @@ export class PlanChangeRequestServiceError extends Error {
       | "EMAIL_SEND_FAILED",
     status: number,
     message: string,
-    details?: { retryAfterSeconds?: number },
+    details?: { retryAfterSeconds?: number; availableAt?: string },
   ) {
     super(message);
     this.name = "PlanChangeRequestServiceError";
@@ -101,8 +101,10 @@ export class PlanChangeRequestService {
   private readonly redis: RateLimitRedis;
   private readonly salesEmail: string;
   private readonly salesEmailDeliverable: boolean;
+  private readonly resolveSalesEmailDeliverable?: () => Promise<boolean>;
   private readonly deploymentMode: DeploymentMode;
   private readonly publicAppBaseUrl: string;
+  private readonly resolvePublicAppBaseUrl?: PublicAppUrlResolver;
   private readonly nowMs: () => number;
 
   constructor(deps: {
@@ -120,8 +122,12 @@ export class PlanChangeRequestService {
      * submit is rejected and clients should use mailto instead.
      */
     salesEmailDeliverable?: boolean;
+    /** Re-checked at request time so UI SMTP settings apply without a restart. */
+    resolveSalesEmailDeliverable?: () => Promise<boolean>;
     deploymentMode: DeploymentMode;
     publicAppBaseUrl?: string;
+    /** Effective public origin at send time (database, otherwise env). */
+    resolvePublicAppBaseUrl?: PublicAppUrlResolver;
     /** Injectable clock for rolling-window tests (epoch ms). */
     nowMs?: () => number;
   }) {
@@ -132,8 +138,10 @@ export class PlanChangeRequestService {
     this.redis = deps.redis;
     this.salesEmail = deps.salesEmail.trim();
     this.salesEmailDeliverable = deps.salesEmailDeliverable ?? true;
+    this.resolveSalesEmailDeliverable = deps.resolveSalesEmailDeliverable;
     this.deploymentMode = deps.deploymentMode;
     this.publicAppBaseUrl = (deps.publicAppBaseUrl ?? "").trim().replace(/\/$/, "");
+    this.resolvePublicAppBaseUrl = deps.resolvePublicAppBaseUrl;
     this.nowMs = deps.nowMs ?? (() => Date.now());
   }
 
@@ -167,7 +175,7 @@ export class PlanChangeRequestService {
       );
     }
 
-    const salesEmailDeliverable = this.isSalesEmailDeliverable();
+    const salesEmailDeliverable = await this.isSalesEmailDeliverable();
     // Already-sent / no-resend only applies when outbound email is deliverable (real SMTP).
     // Logger / mailto path always reports not submitted so clients keep showing mailto.
     const submitted =
@@ -180,8 +188,14 @@ export class PlanChangeRequestService {
     };
   }
 
-  private isSalesEmailDeliverable(): boolean {
-    return Boolean(this.salesEmail) && this.salesEmailDeliverable;
+  private async isSalesEmailDeliverable(): Promise<boolean> {
+    if (!this.salesEmail) {
+      return false;
+    }
+    if (this.resolveSalesEmailDeliverable) {
+      return this.resolveSalesEmailDeliverable();
+    }
+    return this.salesEmailDeliverable;
   }
 
   private async consumeDailyRateLimit(workspaceId: string): Promise<void> {
@@ -214,17 +228,18 @@ export class PlanChangeRequestService {
         1,
         Math.ceil((pivotScore + windowMs - nowMs) / 1000),
       );
+      const availableAt = new Date(nowMs + retryAfterSeconds * 1000).toISOString();
       throw new PlanChangeRequestServiceError(
         "RATE_LIMITED",
         429,
         "license request rate limit exceeded",
-        { retryAfterSeconds },
+        { retryAfterSeconds, availableAt },
       );
     }
   }
 
   async submit(input: PlanChangeRequestInput): Promise<{ submitted: true }> {
-    if (!this.isSalesEmailDeliverable()) {
+    if (!(await this.isSalesEmailDeliverable())) {
       throw new PlanChangeRequestServiceError(
         "EMAIL_NOT_CONFIGURED",
         503,
@@ -235,7 +250,8 @@ export class PlanChangeRequestService {
     }
 
     const contactEmail = input.contactEmail.trim();
-    if (!contactEmail.includes("@") || contactEmail.length > 320) {
+    // Same practical check as auth, recovery, and mail settings (`isValidEmail`).
+    if (contactEmail.length > 320 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail)) {
       throw new PlanChangeRequestServiceError(
         "INVALID_REQUEST",
         400,
@@ -243,14 +259,14 @@ export class PlanChangeRequestService {
       );
     }
 
-    if (!isPlanTier(input.requestedPlanTier)) {
+    const requestedPlanTier = readPlanTier(input.requestedPlanTier);
+    if (!requestedPlanTier) {
       throw new PlanChangeRequestServiceError(
         "INVALID_REQUEST",
         400,
         "requested plan tier is invalid",
       );
     }
-    const requestedPlanTier = input.requestedPlanTier as PlanTier;
 
     const locale =
       input.locale === "ru" || input.locale === "en" ? input.locale : "en";
@@ -295,8 +311,9 @@ export class PlanChangeRequestService {
     // `plan_change_request_sent_at` so the UI can show the latest datetime and “Send again”.
 
     const currentPlanTier = normalizePlanTier(workspace.planTier);
-    // Self-hosted license purchase is not a SaaS catalog upgrade: Core FREE UI ignores DB
-    // `plan_tier` (modules gate). Skip the ladder so ENTERPRISE→ENTERPRISE license requests work.
+    // Self-hosted license requests are not catalog upgrades. Skip the SaaS ladder so a
+    // request is accepted when the stored plan_tier is already at or above the requested
+    // tier (for example ENTERPRISE to ENTERPRISE). SaaS still requires a higher tier.
     if (
       this.deploymentMode === "saas" &&
       !canRequestPlanUpgrade(currentPlanTier, requestedPlanTier)
@@ -322,7 +339,10 @@ export class PlanChangeRequestService {
     const workspaceMemberCount = clientMemberCountValid
       ? (rawMemberCount as number)
       : await this.workspaces.countMembers(input.workspaceId);
-    const workspaceUrl = this.publicAppBaseUrl;
+    const workspaceUrl = await resolveLinkBaseUrl(
+      this.publicAppBaseUrl,
+      this.resolvePublicAppBaseUrl,
+    );
 
     try {
       await this.emailTemplates.sendPlanChangeRequest({

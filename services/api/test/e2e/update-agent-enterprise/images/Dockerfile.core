@@ -1,0 +1,7 @@
+# Core-like fixture: /app workdir, root user, no custom entrypoint.
+FROM alpine:3.20
+WORKDIR /app
+USER root
+ENV OKKEY_GIT_SHA=core-fixture
+HEALTHCHECK --interval=1s --timeout=1s --start-period=0s --retries=1 CMD exit 0
+CMD ["sh", "-c", "while true; do sleep 3600; done"]

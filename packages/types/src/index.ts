@@ -1,5 +1,10 @@
 export type { EntityId, UUID } from "./entity-id.js";
 export {
+  canReclaimSoleTrustedDevice,
+  isLegacyHexFingerprint,
+} from "./device-reclaim.js";
+export type { SoleTrustedReclaimInput } from "./device-reclaim.js";
+export {
   ENTITY_ID_RE,
   MAX_ENTITY_ID,
   assertEntityId,
@@ -13,10 +18,12 @@ import type { PlanFeatureOverrides, PlanTier } from "./plan-features.js";
 import type { WorkspaceBuiltInRoleDto } from "./workspace-roles.js";
 import type { WorkspaceCapsulePolicies } from "./workspace-capsule-policies.js";
 import type { WorkspaceCapsulePoliciesDto } from "./workspace-capsule-policies.js";
-import type { WorkspaceMonitoringCardSettings } from "./workspace-monitoring-card-settings.js";
-import type { WorkspaceMonitoringCardSettingsDto } from "./workspace-monitoring-card-settings.js";
-
-export type { EncryptedBlobDto, HybridSignatureEnvelopeDto } from "./crypto-wire.js";
+export type {
+  EncryptedBlobDto,
+  HybridSignatureEnvelopeDto,
+  HybridSignatureEnvelopeV1Dto,
+  HybridSignatureEnvelopeV2Dto,
+} from "./crypto-wire.js";
 
 export type {
   DeploymentMode,
@@ -24,29 +31,49 @@ export type {
   PlanCustomOverride,
   PlanEntitlementOptions,
   PlanFeature,
+  PlanFeatureAccess,
   PlanFeatureOverrides,
+  PlanFeatureWriteDecision,
   PlanQuotaLimits,
   PlanTier,
+  WorkspaceStorageQuota,
+  WorkspaceStorageQuotaStatus,
 } from "./plan-features.js";
 export {
   PLAN_CATALOG_BUSINESS,
   PLAN_CATALOG_PERSONAL,
+  ENTERPRISE_MODULE_FEATURES,
   PLAN_FEATURES,
   PLAN_FEATURE_MATRIX,
+  PLAN_LICENSE_LAPSED,
+  PLAN_LICENSE_LAPSED_MESSAGE,
+  PLAN_LICENSE_LAPSED_STATUS,
+  PLAN_QUOTA_EXCEEDED,
   PLAN_QUOTA_LIMITS,
   PLAN_TIER_RANK,
   PLAN_TIERS,
   SELF_HOSTED_FREE_EXTRA,
+  SELF_HOSTED_FREE_QUOTA_OVERRIDES,
+  STORAGE_QUOTA_BYTES_PER_MIB,
   canRequestPlanUpgrade,
   comparePlanTiers,
   emptyPlanFeatureOverrides,
   getPlanQuotaLimits,
   hasPlanFeature,
+  isEnterpriseModuleFeature,
+  isSelfHostedEnterpriseLicenseLapsed,
+  planFeatureAccess,
+  planFeatureReadable,
+  planFeatureWriteDecision,
+  resolveWorkspaceStorageLimitBytes,
+  resolveWorkspaceStorageLimitMb,
+  storageWriteExceedsQuota,
   isPlanTier,
   normalizePlanTier,
   planCatalogGroupForTier,
   planEntitlementOptionsFromWorkspace,
   planTiersForCatalogGroup,
+  readPlanTier,
   resolveEntitlementPlanTier,
   resolvePlanFeatures,
   sanitizePlanFeatureOverrides,
@@ -86,6 +113,19 @@ export {
   computeAccountSecurityScore,
 } from "./account-security-score.js";
 
+export {
+  MASTER_PASSWORD_POLICY_VERSION,
+  MIN_MASTER_PASSWORD_LENGTH,
+  isCurrentMasterPasswordPolicyVersion,
+  masterPasswordMeetsNewPasswordPolicy,
+  masterPasswordUtf8Length,
+  masterPasswordUtf8MeetsNewPasswordPolicy,
+  readShortMasterPasswordHintDismissed,
+  shortMasterPasswordHintDismissedStorageKey,
+  shouldSuggestLongerMasterPassword,
+  writeShortMasterPasswordHintDismissed,
+} from "./master-password-policy.js";
+
 export interface User {
   id: EntityId;
   email: string;
@@ -110,6 +150,13 @@ export {
   clampMaxFileSizeMb,
   resolveMaxFileSizeMbFromInput,
 } from "./workspace-file-upload.js";
+export {
+  OFFLINE_BUNDLE_MAX_APPLY_BODY_BYTES,
+  OFFLINE_BUNDLE_MAX_ARCHIVE_BYTES,
+  OFFLINE_BUNDLE_MAX_DOCUMENT_BYTES,
+  OFFLINE_BUNDLE_NGINX_CLIENT_MAX_BODY_SIZE_MB,
+  isOfflineUploadTooLarge,
+} from "./offline-bundle-limits.js";
 
 export interface Workspace {
   id: EntityId;
@@ -133,14 +180,23 @@ export interface Workspace {
   filesInItemsEnabled: boolean;
   /** Workspace-level capsule admin policies. */
   capsulePolicies: WorkspaceCapsulePolicies;
-  /** Workspace-wide monitoring card visibility / feature toggles. */
-  monitoringCardSettings: WorkspaceMonitoringCardSettings;
   /** Hex tile color when no custom logo is set. */
   tileColor?: string | null;
   /** Vault storing the encrypted workspace logo attachment. */
   logoVaultId?: string | null;
   /** Encrypted logo attachment id. */
   logoAttachmentId?: string | null;
+  /**
+   * Workspace-key version of the encrypted logo ciphertext.
+   * Null when the workspace still uses a legacy vault attachment (or has no logo).
+   */
+  logoKeyVersion?: number | null;
+  /** ISO timestamp of the encrypted logo write. */
+  logoUpdatedAt?: string | null;
+  /** Key version of the encrypted client-settings blob. */
+  clientSettingsKeyVersion?: number | null;
+  /** Base64 workspace-key ciphertext of client-side settings (tile color). */
+  clientSettingsCiphertext?: string | null;
   /**
    * When set, a plan-change / license purchase request email was already sent for this workspace.
    * ISO timestamp string from the API.
@@ -208,7 +264,10 @@ export interface WorkspaceMemberActorRefDto {
   lastName: string | null;
 }
 
-export type WorkspaceMemberStatus = "active" | "pending";
+export type WorkspaceMemberStatus = "active" | "pending" | "pending_delivery";
+
+/** Whether the invitation email has been handed to outbound mail. */
+export type WorkspaceInvitationDeliveryStatus = "pending" | "sent";
 
 /** `GET /workspaces/:workspaceId/members` member or pending-invite row. */
 export interface WorkspaceMemberDto {
@@ -270,6 +329,7 @@ export type WorkspacePermissionPostLevel = 0 | 1;
 
 export type WorkspacePermissionResourceId =
   | "settings"
+  | "settings_mail"
   | "settings_items"
   | "settings_capsules"
   | "roles"
@@ -327,6 +387,7 @@ export function permissionAllowsObject(
 
 export const WORKSPACE_PERMISSION_RESOURCE_IDS: readonly WorkspacePermissionResourceId[] = [
   "settings",
+  "settings_mail",
   "settings_items",
   "settings_capsules",
   "roles",
@@ -356,7 +417,7 @@ function inheritSettingsNestedCell(
 
 /**
  * Fills missing permission resources. Legacy matrices without
- * `settings_items` / `settings_capsules` inherit those cells from `settings`.
+ * `settings_items` / `settings_capsules` / `settings_mail` inherit those cells from `settings`.
  */
 export function normalizeWorkspacePermissionsMatrix(
   input: Partial<WorkspacePermissionsMatrixDto> | WorkspacePermissionsMatrixDto | null | undefined,
@@ -365,6 +426,7 @@ export function normalizeWorkspacePermissionsMatrix(
     settings: { ...EMPTY_PERMISSION_CELL },
     settings_items: { ...EMPTY_PERMISSION_CELL },
     settings_capsules: { ...EMPTY_PERMISSION_CELL },
+    settings_mail: { ...EMPTY_PERMISSION_CELL },
     roles: { ...EMPTY_PERMISSION_CELL },
     profiles: { ...EMPTY_PERMISSION_CELL },
     members: { ...EMPTY_PERMISSION_CELL },
@@ -394,6 +456,9 @@ export function normalizeWorkspacePermissionsMatrix(
   }
   if (!input.settings_capsules) {
     normalized.settings_capsules = inheritSettingsNestedCell(normalized.settings);
+  }
+  if (!input.settings_mail) {
+    normalized.settings_mail = inheritSettingsNestedCell(normalized.settings);
   }
 
   return normalized;
@@ -457,6 +522,24 @@ export interface WorkspaceInvitationsCreateResponseDto {
     email: string;
     roleId: EntityId;
   }>;
+  /** `pending` when outbound mail is inactive; emails will send after mail is activated. */
+  deliveryStatus: WorkspaceInvitationDeliveryStatus;
+}
+
+/** `POST /workspaces/:workspaceId/invitations/:invitationId/resend` success body. */
+export interface WorkspaceInvitationResendResponseDto {
+  workspaceId: EntityId;
+  invitationId: EntityId;
+  deliveryStatus: WorkspaceInvitationDeliveryStatus;
+}
+
+/** `POST /workspaces/:workspaceId/invitations/:invitationId/copy-link` success body. */
+export interface WorkspaceInvitationCopyLinkResponseDto {
+  workspaceId: EntityId;
+  invitationId: EntityId;
+  /** Fresh single-use accept URL; returned once (token is stored hashed only). */
+  inviteUrl: string;
+  expiresAt: string;
 }
 
 /** `PATCH /workspaces/:workspaceId/members/:userId` body. */
@@ -860,6 +943,19 @@ export interface EmailAuthStartResponse {
   bootstrapRequired?: boolean;
   authStateId?: string;
   nextStep?: "registration";
+  /**
+   * False when this server accepts a master-password login proof instead of an
+   * emailed code (self-hosted and outbound mail is not deliverable). True on
+   * SaaS and whenever mail can be delivered. No other mail configuration is exposed.
+   */
+  emailDeliverable?: boolean;
+}
+
+/** `POST /auth/login/master-password` request. The master password is not sent. */
+export interface MasterPasswordLoginRequestDto {
+  email: string;
+  /** Standard base64 of the 32-byte login key. */
+  loginKey: string;
 }
 
 /** `POST /auth/email/confirm` success body. */
@@ -1094,6 +1190,8 @@ export interface WebAuthnCredentialPublicDto {
   name: string;
   created_at: string;
   last_used_at: string | null;
+  /** True when this credential stores a PRF wrap of share B. */
+  has_share_wrap: boolean;
 }
 
 /** `GET /account/login-methods` and mutating login-method responses. */
@@ -1155,6 +1253,83 @@ export interface WebAuthnLoginVerifyResponseDto {
   authStateId: string;
   userExists: true;
   nextStep: "device_check" | "two_factor";
+}
+
+/** `POST /account/webauthn/credentials/:credentialId/share-wrap/options` success. */
+export interface PasskeyShareWrapOptionsResponseDto {
+  challengeId: string;
+  options: Record<string, unknown>;
+  prf_salt: string;
+  credential_id: string;
+}
+
+/** `POST /account/webauthn/credentials/:credentialId/share-wrap/verify` request. */
+export interface PasskeyShareWrapVerifyRequestDto {
+  challengeId: string;
+  response: Record<string, unknown>;
+  share_wrap: string;
+}
+
+/** `POST /account/webauthn/credentials/:credentialId/share-wrap/verify` success. */
+export interface PasskeyShareWrapVerifyResponseDto {
+  credential_id: string;
+  has_share_wrap: true;
+}
+
+export interface PasskeyShareWrapCredentialDto {
+  credential_id: string;
+  share_wrap: string;
+  share_wrap_salt: string;
+  share_wrap_version: number;
+}
+
+/** `POST /devices/:deviceId/passkey-approval/options` success. */
+export interface PasskeyApprovalOptionsResponseDto {
+  challengeId: string;
+  options: Record<string, unknown>;
+  prf_salt: string;
+  credentials: PasskeyShareWrapCredentialDto[];
+  /** Pending device wrap public keys. The client re-wraps raw share B for these keys. */
+  share_wrap_ed25519_public_key: string | null;
+  share_wrap_pq_public_key: string | null;
+}
+
+/** Max length for a WebAuthn credential display name. */
+export const WEBAUTHN_CREDENTIAL_NAME_MAX_LEN = 64;
+
+/** `PATCH /account/webauthn/credentials/:credentialId` request. */
+export interface WebAuthnCredentialRenameRequestDto {
+  name: string;
+}
+
+/** `POST /devices/:deviceId/passkey-approval/verify` request. */
+export interface PasskeyApprovalVerifyRequestDto {
+  challengeId: string;
+  response: Record<string, unknown>;
+  device_share: string;
+}
+
+/** `POST /devices/:deviceId/passkey-approval/verify` success. */
+export interface PasskeyApprovalVerifyResponseDto {
+  device_id: string;
+  status: "trusted";
+}
+
+/** How long an extension passkey handoff stays usable. The extension poll uses the same window. */
+export const PASSKEY_HANDOFF_TTL_MS = 180_000;
+
+/** 32 random bytes, base64url, no padding. */
+export function isPasskeyHandoffRequestId(value: string): boolean {
+  return /^[A-Za-z0-9_-]{43}$/.test(value);
+}
+
+export type PasskeyHandoffStatus = "pending" | "confirmed" | "rejected" | "expired";
+
+/** Create and status responses for an extension passkey handoff. */
+export interface PasskeyHandoffResponseDto {
+  request_id: string;
+  status: PasskeyHandoffStatus;
+  expires_at: string;
 }
 
 /** One event as returned by sync HTTP API (opaque base64 payload). */
@@ -1242,6 +1417,77 @@ export interface SyncAppendEventRequestDto {
   itemDeletedAtMs?: number;
 }
 
+/**
+ * Max events accepted by `POST /vaults/:vaultId/events/batch`.
+ * 300 imported records become 3 HTTP requests at this size.
+ */
+export const SYNC_EVENTS_BATCH_MAX = 100;
+
+/** `POST /vaults/:vaultId/events/batch` request body. */
+export interface SyncAppendEventsBatchRequestDto {
+  events: SyncAppendEventRequestDto[];
+}
+
+/** `POST /vaults/:vaultId/events/batch` success body. */
+export interface SyncAppendEventsBatchResponseDto {
+  vaultId: EntityId;
+  events: SyncEventWireDto[];
+  latestVersion: number;
+}
+
+export type SmtpTlsMode = "none" | "starttls" | "tls";
+
+/** `GET /workspaces/:workspaceId/server-mail-settings`. The SMTP password is never included. */
+export interface ServerMailSettingsResponseDto {
+  smtp_host: string;
+  /** Null when cleared in the database. */
+  smtp_port: number | null;
+  /** Null when cleared in the database. */
+  smtp_tls_mode: SmtpTlsMode | null;
+  smtp_username: string;
+  email_from: string;
+  public_app_url: string;
+  /**
+   * True when a decryptable SMTP password is stored in the database.
+   * False when none is stored, or a stored password cannot be decrypted.
+   */
+  password_set: boolean;
+  /**
+   * True when a stored SMTP password exists but cannot be decrypted with the current server secret.
+   * False when no password is stored or decryption succeeds.
+   */
+  password_unreadable: boolean;
+  /** True when SMTP passed a test send and is used for outbound mail / OTP. */
+  smtp_active: boolean;
+  smtp_verified_at: string | null;
+}
+
+/**
+ * `PATCH /workspaces/:workspaceId/server-mail-settings` — save form and mark SMTP inactive.
+ * Empty strings clear that field in the database.
+ */
+export interface ServerMailSettingsUpdateRequestDto {
+  smtp_host?: string;
+  smtp_port?: number | null;
+  smtp_tls_mode?: SmtpTlsMode | null;
+  smtp_username?: string;
+  email_from?: string;
+  public_app_url?: string;
+  /** Empty or omitted keeps the stored password. */
+  password?: string;
+  /** Drop the stored password. */
+  clear_password?: boolean;
+}
+
+/**
+ * `POST /workspaces/:workspaceId/server-mail-settings/test-email` —
+ * on success persists the body and marks SMTP active.
+ */
+export type ServerMailTestEmailRequestDto = ServerMailSettingsUpdateRequestDto;
+
+/** Successful test-email response includes the saved settings. */
+export type ServerMailTestEmailResponseDto = ServerMailSettingsResponseDto;
+
 /** `GET /workspaces/:workspaceId/settings` success body. */
 export interface WorkspaceSettingsResponseDto {
   name: string;
@@ -1250,10 +1496,70 @@ export interface WorkspaceSettingsResponseDto {
   max_file_size_mb: number;
   files_in_items_enabled: boolean;
   capsule_policies: WorkspaceCapsulePoliciesDto;
-  monitoring_card_settings: WorkspaceMonitoringCardSettingsDto;
   tile_color: string | null;
   logo_vault_id: string | null;
   logo_attachment_id: string | null;
+  logo_key_version?: number | null;
+  logo_updated_at?: string | null;
+  client_settings_key_version?: number | null;
+  client_settings_ciphertext?: string | null;
+}
+
+/** One member's wrapped copy of a workspace key. The server never sees the raw key. */
+export interface WorkspaceKeyWrapDto {
+  user_id: string;
+  encrypted_workspace_key: EncryptedBlobDto;
+}
+
+/** `GET /workspaces/:workspaceId/workspace-key` — only the caller's wraps. */
+export interface WorkspaceKeyStateDto {
+  current_version: number | null;
+  wraps: Array<{
+    key_version: number;
+    encrypted_workspace_key: EncryptedBlobDto;
+  }>;
+}
+
+/** `POST /workspaces/:workspaceId/workspace-key` — publish version 1 for every active member. */
+export interface WorkspaceKeyPublishRequestDto {
+  wraps: WorkspaceKeyWrapDto[];
+}
+
+/** `POST /workspaces/:workspaceId/workspace-key/wraps` — wrap the current version for one member. */
+export interface WorkspaceKeyGrantWrapRequestDto {
+  user_id: string;
+  encrypted_workspace_key: EncryptedBlobDto;
+}
+
+/**
+ * Sent with member removal when a workspace key exists.
+ * Wraps of version current+1 for every remaining member, and none for the removed member.
+ */
+export interface WorkspaceKeyRotationDto {
+  wraps: WorkspaceKeyWrapDto[];
+}
+
+/** `GET /workspaces/:workspaceId/client-settings` */
+export interface WorkspaceClientSettingsResponseDto {
+  key_version: number | null;
+  ciphertext: string | null;
+}
+
+/** `PUT /workspaces/:workspaceId/client-settings` */
+export interface WorkspaceClientSettingsUpdateRequestDto {
+  ciphertext: string;
+  /** Display cache for locked clients. The ciphertext is the canonical client setting. */
+  tile_color?: string | null;
+}
+
+/** `PUT /workspaces/:workspaceId/logo` success body. */
+export interface WorkspaceLogoPutResponseDto {
+  key_version: number;
+  ciphertext_bytes: number;
+  etag: string;
+  logo_updated_at: string;
+  logo_vault_id: null;
+  logo_attachment_id: null;
 }
 
 /** `PATCH /workspaces/:workspaceId/settings` request body. */
@@ -1264,7 +1570,6 @@ export interface WorkspaceSettingsUpdateRequestDto {
   max_file_size_mb?: number;
   files_in_items_enabled?: boolean;
   capsule_policies?: Partial<WorkspaceCapsulePoliciesDto>;
-  monitoring_card_settings?: Partial<WorkspaceMonitoringCardSettingsDto>;
   tile_color?: string | null;
   logo_vault_id?: string | null;
   logo_attachment_id?: string | null;
@@ -1412,7 +1717,6 @@ export interface VaultMemberRoleUpdateRequestDto {
 
 export * from "./capsules.js";
 export * from "./workspace-capsule-policies.js";
-export * from "./workspace-monitoring-card-settings.js";
 
 /** Optional nested metadata (same semantics as `POST /devices/register`). */
 export interface RegisterCompleteMetadataDto {
@@ -1424,10 +1728,23 @@ export interface RegisterCompleteMetadataDto {
   user_agent?: string;
   crypto_capable?: boolean;
   /**
-   * When true on `POST /devices/register`, if the user has exactly one trusted device,
-   * rebind that row to this fingerprint/public key instead of creating a pending device.
+   * When true on `POST /devices/register`, rebind the sole trusted device to this
+   * fingerprint and public key and keep its stored device share.
+   * Accepted only when that device has a legacy hex fingerprint, its client type
+   * is compatible with this request, the caller's session is bound to it, and
+   * `previous_device_id` plus `previous_device_fingerprint` match the stored row.
    */
   reclaim_sole_trusted?: boolean;
+  /**
+   * Id of the trusted device to rebind. Required when `reclaim_sole_trusted` is true.
+   * Metadata wins over the top-level field when both are set.
+   */
+  previous_device_id?: string;
+  /**
+   * Stored fingerprint of the trusted device to rebind. Required when
+   * `reclaim_sole_trusted` is true. Metadata wins over the top-level field.
+   */
+  previous_device_fingerprint?: string;
   /**
    * When true on `POST /devices/register` after account recovery: become sole trusted
    * device with the provided device_share and revoke other trusted devices.
@@ -1447,6 +1764,10 @@ export interface DeviceRegisterRequestDto {
   device_share: string;
   device_fingerprint: string;
   device_name: string;
+  /** Base64 32-byte X25519 public key for a single approval. Sent with the ML-KEM key. */
+  one_time_x25519_public_key?: string;
+  /** Base64 ML-KEM-768 encapsulation key (1184 bytes) for a single approval. */
+  one_time_mlkem_public_key?: string;
   platform?: string;
   os_name?: string;
   os_version?: string;
@@ -1458,6 +1779,16 @@ export interface DeviceRegisterRequestDto {
    * Prefer this over `Accept-Language` — browsers forbid overriding that header from fetch.
    */
   locale?: string;
+  /**
+   * Id of the trusted device to rebind. Required when `reclaim_sole_trusted` is true.
+   * Ignored when metadata contains `previous_device_id`.
+   */
+  previous_device_id?: string;
+  /**
+   * Stored fingerprint of the trusted device to rebind. Required when
+   * `reclaim_sole_trusted` is true. Ignored when metadata contains the field.
+   */
+  previous_device_fingerprint?: string;
   metadata?: RegisterCompleteMetadataDto;
 }
 
@@ -1518,6 +1849,28 @@ export interface DeviceRegisterResponseDto {
   status: "trusted" | "pending_approval" | "blocked";
   /** Present when status is `blocked`; null means permanently blocked. */
   blocked_until?: string | null;
+  /**
+   * One-time credential for this pending request. Not a session.
+   * Present only when status is `pending_approval`.
+   */
+  approval_status_token?: string;
+  approval_status_expires_at?: string;
+}
+
+/** `GET /devices/:deviceId/approval-status` — pending, approved, rejected, or blocked. */
+export interface DeviceApprovalStatusResponseDto {
+  device_id: EntityId;
+  status: "pending" | "approved" | "rejected" | "blocked";
+  blocked_until?: string | null;
+  expires_at: string;
+}
+
+/** `POST /devices/:deviceId/approval-retry` after a rejection. Rotates the credential. */
+export interface DeviceApprovalRetryResponseDto {
+  device_id: EntityId;
+  status: "pending_approval";
+  approval_status_token: string;
+  approval_status_expires_at: string;
 }
 
 /** `POST /devices/:deviceId/reject` success body. */
@@ -1527,7 +1880,7 @@ export interface DeviceRejectResponseDto {
 }
 
 /** Timed / permanent block durations for pending device dismissal. */
-export type DeviceBlockDuration = "1h" | "1d" | "1w" | "forever";
+export type DeviceBlockDuration = "1h" | "1d" | "forever";
 
 /** `POST /devices/:deviceId/block` request body. */
 export interface DeviceBlockRequestDto {
@@ -1576,6 +1929,35 @@ export interface DeviceListItemDto {
   approval_expires_at: string | null;
   /** Present for blocked devices; null means permanently blocked. */
   blocked_until?: string | null;
+  /** Set on a pending device that can receive share B in a one-time hybrid envelope. */
+  one_time_x25519_public_key?: string;
+  one_time_mlkem_public_key?: string;
+  /** Base64 Ed25519 public key for a framed share-B wrap. Null for legacy 32-byte shares. */
+  share_wrap_ed25519_public_key?: string | null;
+  /** Base64 ML-KEM-768 encapsulation key for a framed share-B wrap. */
+  share_wrap_pq_public_key?: string | null;
+}
+
+/** `POST /devices/:deviceId/approve`. */
+export interface DeviceApproveRequestDto {
+  /** Base64 hybrid envelope of the approver's 32-byte share B for one-time delivery. */
+  share_delivery_envelope?: string;
+  /**
+   * Base64 hybrid share-B envelope to store on the pending device.
+   * Required when `share_delivery_envelope` is omitted.
+   */
+  device_share?: string;
+}
+
+/** `GET /devices/:deviceId/share-delivery` success body. */
+export interface DeviceShareDeliveryResponseDto {
+  share_delivery_envelope: string;
+  expires_at: string;
+}
+
+/** `POST /devices/:deviceId/share-delivery/confirm` request body. */
+export interface DeviceShareDeliveryConfirmRequestDto {
+  device_share: string;
 }
 
 /** `GET /devices` success body. */
@@ -1619,10 +2001,18 @@ export interface RegisterCompleteRequestDto {
   user_public_key: string;
   /** ML-KEM-768 encapsulation key (1184 raw bytes), standard base64. */
   user_public_pq_key: string;
+  /** ML-DSA-65 verifying key (1952 raw bytes), standard base64. */
+  user_public_mldsa_key: string;
   encrypted_private_key: EncryptedBlobDto;
   server_key_share: string;
   password_kdf_salt: string;
   password_kdf_params_version: number;
+  /**
+   * Client attestation that the new master password meets
+   * {@link MASTER_PASSWORD_POLICY_VERSION}. The server checks the version
+   * only and never receives the password.
+   */
+  master_password_policy_version: number;
   device_public_key: string;
   device_share: string;
   device_fingerprint: string;
@@ -1644,6 +2034,11 @@ export interface RegisterCompleteRequestDto {
   /** Optional; stored server-side to restore UI after clearing browser storage. */
   first_name?: string;
   last_name?: string;
+  /**
+   * Standard base64 of the 32-byte login key derived from the new master password.
+   * Not the password and not password share C. Omitted by older clients.
+   */
+  login_key?: string;
 }
 
 /** `POST /auth/register/complete` success body (snake_case on wire). */
@@ -1692,11 +2087,49 @@ export interface AccountMasterPasswordChangeRequestDto {
   server_key_share: string;
   password_kdf_salt: string;
   password_kdf_params_version: number;
+  /**
+   * Client attestation that the new master password meets
+   * {@link MASTER_PASSWORD_POLICY_VERSION}. The server checks the version
+   * only and never receives the password.
+   */
+  master_password_policy_version: number;
+  /**
+   * Standard base64 of the 32-byte login key for the new master password.
+   * When omitted, the server clears any stored login verifier.
+   */
+  login_key?: string;
+}
+
+/** `GET /account/login-verifier` (Bearer). */
+export interface LoginVerifierStatusDto {
+  enrolled: boolean;
+}
+
+/** `POST /account/login-verifier` (Bearer). */
+export interface LoginVerifierEnrollRequestDto {
+  /** Standard base64 of the 32-byte login key. Not the master password. */
+  login_key: string;
 }
 
 /** `POST /account/master-password/change` success body. */
 export interface AccountMasterPasswordChangeResponseDto {
   master_password_changed_at: string;
+}
+
+/** `POST /account/identity/mldsa-key` — bind an ML-DSA-65 verifying key to the account. */
+export interface MldsaIdentityKeyUploadRequestDto {
+  /** ML-DSA-65 verifying key (1952 raw bytes), standard base64. */
+  public_key: string;
+  /** Re-encrypted identity bundle that includes the ML-DSA-65 seed. */
+  encrypted_private_key: EncryptedBlobDto;
+  /** Ed25519 signature by the account identity key over the upload statement. */
+  signature: string;
+}
+
+/** `POST /account/identity/mldsa-key` success body. */
+export interface MldsaIdentityKeyUploadResponseDto {
+  public_mldsa_key: string;
+  status: "stored";
 }
 
 /** Signed proof for `POST /account/vault-unlock` (identity Ed25519). */

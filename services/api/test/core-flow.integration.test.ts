@@ -11,6 +11,7 @@ import { TwoFactorService } from "../src/two-factor/service.ts";
 import { VaultService } from "../src/vault/service.ts";
 import { SyncService } from "../src/sync/service.ts";
 import { createIntegrationStorage } from "./integration-env.ts";
+import { hybridDeviceShareB64 } from "./hybrid-share-fixture.ts";
 import {
   applyMigrations,
   cleanupUserData,
@@ -57,6 +58,7 @@ test("integration: register → email login (Bearer) → vault + sync → second
     users: storage.repositories.users,
     emailTemplates,
     config,
+    resolveEmailDeliverable: async () => true,
     generateCode: () => "123456",
   });
 
@@ -107,6 +109,7 @@ test("integration: register → email login (Bearer) → vault + sync → second
     email,
     requestIp: "127.0.0.1",
   });
+  assert.equal(loginStart.emailDeliverable, true);
   assert.ok(sent.length >= 1);
   assert.ok(sent[0].subject.length > 0);
 
@@ -160,11 +163,10 @@ test("integration: register → email login (Bearer) → vault + sync → second
   assert.ok(trustedDeviceId);
 
   const emailCountBeforeSecondDevice = sent.length;
-  const secondShare = new Uint8Array(32).fill(7);
   const reg2 = await deviceService.registerDevice(userId, "127.0.0.1", {
     deviceFingerprint: "b".repeat(64),
     devicePublicKey: Buffer.from("second-pk").toString("base64"),
-    deviceShare: Buffer.from(secondShare).toString("base64"),
+    deviceShare: hybridDeviceShareB64(7),
     deviceName: "Second",
     platform: "desktop",
     osName: "macOS",

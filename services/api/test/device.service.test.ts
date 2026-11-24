@@ -7,14 +7,37 @@ import {
 } from "../src/device/service.ts";
 import type { EmailTemplateService } from "../src/email/service.ts";
 import { UniqueConstraintError } from "../src/storage/errors.ts";
-import { TrustedDeviceKeyConflictError } from "../src/storage/repositories.ts";
+import {
+  PendingDeviceLimitError,
+  TrustedDeviceKeyConflictError,
+} from "../src/storage/repositories.ts";
 import type { DeviceApprovalState } from "../src/storage/repositories.ts";
+import { encodeSplitKeyShareBFrame } from "@okkey/crypto";
+import {
+  APPROVAL_SHARE_MUST_BE_NEW,
+  APPROVAL_SHARE_WRONG_RECIPIENT,
+} from "../src/device/approval-share.ts";
+import { hybridDeviceShareB64 } from "./hybrid-share-fixture.ts";
+
+function framedShare(recipientFill: number, envelopeFill: number): Uint8Array {
+  const envelope = new Uint8Array(1148 + 48);
+  envelope[0] = 1;
+  envelope[1] = 1;
+  envelope[2] = 1;
+  envelope[3] = 0;
+  envelope[4] = envelopeFill & 0xff;
+  return encodeSplitKeyShareBFrame({
+    ed25519PublicKey: new Uint8Array(32).fill(recipientFill & 0xff),
+    mlkemEncapsulationKey: new Uint8Array(1184).fill(recipientFill & 0xff),
+    envelope,
+  });
+}
 
 function createInput(overrides?: Partial<RegisterDeviceInput>): RegisterDeviceInput {
   return {
     deviceFingerprint: "a".repeat(64),
     devicePublicKey: Buffer.from("public-key").toString("base64"),
-    deviceShare: Buffer.alloc(32, 5).toString("base64"),
+    deviceShare: hybridDeviceShareB64(5),
     deviceName: "MacBook Pro",
     platform: "desktop",
     osName: "macOS",
@@ -56,15 +79,40 @@ function createDeviceRecord(overrides?: Record<string, unknown>) {
 }
 
 function createService(overrides?: {
-  registerOrUpdate?: () => Promise<ReturnType<typeof createDeviceRecord>>;
+  registerOrUpdate?: (input: { deviceFingerprint: string }) => Promise<
+    ReturnType<typeof createDeviceRecord> & { sendApprovalEmail?: boolean; created?: boolean }
+  >;
   reclaimSoleTrusted?: () => Promise<ReturnType<typeof createDeviceRecord> | null>;
-  claimTrustedAfterRecovery?: () => Promise<ReturnType<typeof createDeviceRecord>>;
-  isTrustedDevice?: () => Promise<boolean>;
-  resolveApproval?: () => Promise<DeviceApprovalState>;
+  claimTrustedAfterRecovery?: (input: {
+    deviceFingerprint: string;
+    devicePublicKey: string;
+    deviceShare: Uint8Array;
+  }) => Promise<ReturnType<typeof createDeviceRecord>>;
+  findOwnedDeviceAuth?: (
+    userId: string,
+    deviceId: string,
+  ) => Promise<{
+    id: string;
+    status: string;
+    devicePublicKey: string;
+    deviceShare: Uint8Array;
+    deviceFingerprint: string;
+  } | null>;
+  isTrustedDevice?: (userId?: string, deviceId?: string) => Promise<boolean>;
+  listDeviceShares?: () => Promise<Uint8Array[]>;
+  resolveApproval?: (input: {
+    action: "approve" | "reject";
+    deviceId?: string;
+    deviceShare?: Uint8Array;
+  }) => Promise<DeviceApprovalState>;
   listByUser?: () => Promise<Array<ReturnType<typeof createDeviceRecord>>>;
   renameDevice?: () => Promise<ReturnType<typeof createDeviceRecord> | null>;
   revokeOwned?: () => Promise<ReturnType<typeof createDeviceRecord> | null>;
-  blockPending?: () => Promise<ReturnType<typeof createDeviceRecord> | null>;
+  blockPending?: (input: {
+    deviceId?: string;
+    blockedUntil: string | null;
+    reason?: string;
+  }) => Promise<ReturnType<typeof createDeviceRecord> | null>;
   unblockDevice?: () => Promise<ReturnType<typeof createDeviceRecord> | null>;
   clearExpiredBlocks?: () => Promise<void>;
   geoIp?: { lookup: (ip: string) => Promise<{ country: string | null; city: string | null }> };
@@ -79,6 +127,8 @@ function createService(overrides?: {
       claimTrustedAfterRecovery:
         overrides?.claimTrustedAfterRecovery ??
         (async () => createDeviceRecord({ status: "trusted", id: "d-claim" })),
+      findOwnedDeviceAuth: overrides?.findOwnedDeviceAuth ?? (async () => null),
+      listDeviceShares: overrides?.listDeviceShares ?? (async () => []),
       isTrustedDevice: overrides?.isTrustedDevice ?? (async () => true),
       resolveApproval:
         overrides?.resolveApproval ??
@@ -112,6 +162,135 @@ function createService(overrides?: {
   });
 }
 
+test("approveDevice rejects approval without a device share", async () => {
+  let resolved = false;
+  const service = createService({
+    resolveApproval: async () => {
+      resolved = true;
+      return { kind: "approved", device: createDeviceRecord({ status: "trusted" }) };
+    },
+  });
+
+  await assert.rejects(
+    () => service.approveDevice("u1", "trusted1", "pending1"),
+    (err: unknown) =>
+      err instanceof DeviceServiceError &&
+      err.statusCode === 400 &&
+      err.code === "DEVICE_BAD_REQUEST" &&
+      err.message === "device_share is required",
+  );
+  await assert.rejects(
+    () => service.approveDevice("u1", "trusted1", "pending1", undefined, new Uint8Array(0)),
+    (err: unknown) =>
+      err instanceof DeviceServiceError &&
+      err.statusCode === 400 &&
+      err.code === "DEVICE_BAD_REQUEST" &&
+      err.message === "device_share is required",
+  );
+  assert.equal(resolved, false);
+});
+
+test("approveDevice stores a hybrid device share envelope", async () => {
+  const pendingShare = framedShare(6, 1);
+  const share = framedShare(6, 2);
+  let seen: Uint8Array | undefined;
+  const service = createService({
+    findOwnedDeviceAuth: async () => ({
+      id: "pending1",
+      status: "pending",
+      devicePublicKey: "cGs=",
+      deviceShare: pendingShare,
+      deviceFingerprint: "a".repeat(64),
+    }),
+    listDeviceShares: async () => [pendingShare, framedShare(3, 3)],
+    resolveApproval: async (input) => {
+      seen = input.deviceShare;
+      return {
+        kind: "approved",
+        device: createDeviceRecord({ status: "trusted", deviceShare: share }),
+      };
+    },
+  });
+
+  const result = await service.approveDevice("u1", "trusted1", "pending1", undefined, share);
+  assert.equal(result.status, "trusted");
+  assert.equal(result.deviceId, "d1");
+  assert.deepEqual(seen, share);
+});
+
+test("approveDevice rejects a stored share and a share for another wrap key", async () => {
+  const pendingShare = framedShare(6, 1);
+  const approverShare = framedShare(3, 3);
+  let resolved = false;
+  const service = createService({
+    findOwnedDeviceAuth: async () => ({
+      id: "pending1",
+      status: "pending",
+      devicePublicKey: "cGs=",
+      deviceShare: pendingShare,
+      deviceFingerprint: "a".repeat(64),
+    }),
+    listDeviceShares: async () => [pendingShare, approverShare],
+    resolveApproval: async () => {
+      resolved = true;
+      return { kind: "approved", device: createDeviceRecord({ status: "trusted" }) };
+    },
+  });
+
+  await assert.rejects(
+    () => service.approveDevice("u1", "trusted1", "pending1", undefined, approverShare),
+    (err: unknown) =>
+      err instanceof DeviceServiceError &&
+      err.statusCode === 400 &&
+      err.code === "DEVICE_BAD_REQUEST" &&
+      err.message === APPROVAL_SHARE_MUST_BE_NEW,
+  );
+  await assert.rejects(
+    () => service.approveDevice("u1", "trusted1", "pending1", approverShare),
+    (err: unknown) =>
+      err instanceof DeviceServiceError &&
+      err.statusCode === 400 &&
+      err.code === "DEVICE_BAD_REQUEST" &&
+      err.message === APPROVAL_SHARE_MUST_BE_NEW,
+  );
+  await assert.rejects(
+    () => service.approveDevice("u1", "trusted1", "pending1", undefined, framedShare(9, 4)),
+    (err: unknown) =>
+      err instanceof DeviceServiceError &&
+      err.statusCode === 400 &&
+      err.code === "DEVICE_BAD_REQUEST" &&
+      err.message === APPROVAL_SHARE_WRONG_RECIPIENT,
+  );
+  assert.equal(resolved, false);
+});
+
+test("approveDevice rejects a raw 32-byte device share", async () => {
+  let resolved = false;
+  const service = createService({
+    resolveApproval: async () => {
+      resolved = true;
+      return { kind: "approved", device: createDeviceRecord({ status: "trusted" }) };
+    },
+  });
+
+  await assert.rejects(
+    () =>
+      service.approveDevice(
+        "u1",
+        "trusted1",
+        "pending1",
+        undefined,
+        new Uint8Array(32).fill(1),
+      ),
+    (err: unknown) =>
+      err instanceof DeviceServiceError &&
+      err.statusCode === 400 &&
+      err.code === "DEVICE_BAD_REQUEST" &&
+      /hybrid X25519\+ML-KEM share envelope/u.test(err.message),
+  );
+  assert.equal(resolved, false);
+});
+
 test("registerDevice returns pending_approval for new device", async () => {
   const service = createService({
     registerOrUpdate: async () => createDeviceRecord(),
@@ -122,7 +301,7 @@ test("registerDevice returns pending_approval for new device", async () => {
   assert.equal(result.deviceId, "d1");
 });
 
-test("q2-6: registerDevice rejects non-opaque device_share (not hybrid KEM)", async () => {
+test("registerDevice rejects a malformed device_share", async () => {
   const service = createService({
     registerOrUpdate: async () => {
       throw new Error("registerOrUpdate must not run for invalid share");
@@ -139,7 +318,21 @@ test("q2-6: registerDevice rejects non-opaque device_share (not hybrid KEM)", as
     (err: unknown) =>
       err instanceof DeviceServiceError &&
       err.code === "DEVICE_BAD_REQUEST" &&
-      /32 opaque bytes|not hybrid KEM/u.test(err.message),
+      /hybrid X25519\+ML-KEM share envelope/u.test(err.message),
+  );
+
+  await assert.rejects(
+    () =>
+      service.registerDevice(
+        "u1",
+        "127.0.0.1",
+        createInput({ deviceShare: Buffer.alloc(32, 5).toString("base64") }),
+      ),
+    (err: unknown) =>
+      err instanceof DeviceServiceError &&
+      err.statusCode === 400 &&
+      err.code === "DEVICE_BAD_REQUEST" &&
+      /hybrid X25519\+ML-KEM share envelope/u.test(err.message),
   );
 
   await assert.rejects(
@@ -152,30 +345,93 @@ test("q2-6: registerDevice rejects non-opaque device_share (not hybrid KEM)", as
     (err: unknown) =>
       err instanceof DeviceServiceError &&
       err.code === "DEVICE_BAD_REQUEST" &&
-      /32 opaque bytes|not hybrid KEM/u.test(err.message),
+      /hybrid X25519\+ML-KEM share envelope/u.test(err.message),
   );
 });
 
-test("registerDevice claimAfterRecovery becomes sole trusted without pending", async () => {
-  let claimed = false;
+test("registerDevice claimAfterRecovery requires the proved device and keeps its identity", async () => {
+  let claimed:
+    | { deviceFingerprint: string; devicePublicKey: string; deviceShare: Uint8Array }
+    | undefined;
+  const pendingKey = Buffer.from("public-key").toString("base64");
   const service = createService({
-    claimTrustedAfterRecovery: async () => {
-      claimed = true;
+    claimTrustedAfterRecovery: async (input) => {
+      claimed = input;
       return createDeviceRecord({ id: "d-fresh", status: "trusted" });
     },
+    findOwnedDeviceAuth: async () => ({
+      id: "pending-1",
+      status: "pending",
+      devicePublicKey: pendingKey,
+      deviceFingerprint: "a".repeat(64),
+      deviceShare: new Uint8Array(32).fill(1),
+    }),
     registerOrUpdate: async () => {
       throw new Error("registerOrUpdate must not run for claimAfterRecovery");
     },
   });
 
+  await assert.rejects(
+    () =>
+      service.registerDevice(
+        "u1",
+        "127.0.0.1",
+        createInput({ claimAfterRecovery: true }),
+      ),
+    (error: unknown) =>
+      error instanceof DeviceServiceError &&
+      error.code === "RECOVERY_CLAIM_REQUIRES_PROVED_DEVICE" &&
+      error.statusCode === 403,
+  );
+  assert.equal(claimed, undefined);
+
+  const mintedShare = hybridDeviceShareB64(9);
   const result = await service.registerDevice(
     "u1",
     "127.0.0.1",
-    createInput({ claimAfterRecovery: true }),
+    createInput({
+      claimAfterRecovery: true,
+      provedDeviceId: "pending-1",
+      deviceShare: mintedShare,
+    }),
   );
-  assert.equal(claimed, true);
   assert.equal(result.status, "trusted");
   assert.equal(result.deviceId, "d-fresh");
+  assert.equal(claimed?.deviceFingerprint, "a".repeat(64));
+  assert.equal(claimed?.devicePublicKey, pendingKey);
+  assert.deepEqual(claimed?.deviceShare, Uint8Array.from(Buffer.from(mintedShare, "base64")));
+});
+
+test("registerDevice claimAfterRecovery keeps repository this when loading the proved device", async () => {
+  const pendingKey = Buffer.from("public-key").toString("base64");
+  const devices = {
+    calls: 0,
+    async findOwnedDeviceAuth(this: { calls: number }) {
+      this.calls += 1;
+      return {
+        id: "pending-1",
+        status: "pending",
+        devicePublicKey: pendingKey,
+        deviceFingerprint: "a".repeat(64),
+        deviceShare: new Uint8Array(32).fill(1),
+      };
+    },
+    async claimTrustedAfterRecovery() {
+      return createDeviceRecord({ id: "d-fresh", status: "trusted" });
+    },
+  };
+  const service = new DeviceService({
+    devices: devices as never,
+    config: { deviceApprovalTtlSeconds: 60, publicAppBaseUrl: "https://app.test" },
+  });
+
+  const result = await service.registerDevice(
+    "u1",
+    "127.0.0.1",
+    createInput({ claimAfterRecovery: true, provedDeviceId: "pending-1" }),
+  );
+  assert.equal(result.deviceId, "d-fresh");
+  assert.equal(devices.calls, 1);
 });
 
 test("registerDevice recoveryPending keeps a pending sibling and does not claim", async () => {
@@ -203,6 +459,78 @@ test("registerDevice recoveryPending keeps a pending sibling and does not claim"
   assert.equal(result.deviceId, "d-sibling");
   assert.equal(result.status, "pending_approval");
   assert.equal(result.created, true);
+});
+
+test("registerDevice maps the pending device cap to DEVICE_PENDING_LIMIT", async () => {
+  const service = createService({
+    registerOrUpdate: async () => {
+      throw new PendingDeviceLimitError(20);
+    },
+  });
+  await assert.rejects(
+    () =>
+      service.registerDevice(
+        "u1",
+        "127.0.0.1",
+        createInput({ recoveryPending: true }),
+      ),
+    (error: unknown) =>
+      error instanceof DeviceServiceError &&
+      error.code === "DEVICE_PENDING_LIMIT" &&
+      error.statusCode === 409 &&
+      error.message === "pending device limit reached" &&
+      error.details?.limit === 20,
+  );
+});
+
+test("registerDevice forwards the caller token hash", async () => {
+  let seen: string | undefined;
+  const service = createService({
+    registerOrUpdate: async (input: { preserveSessionTokenHash?: string }) => {
+      seen = input.preserveSessionTokenHash;
+      return {
+        ...createDeviceRecord({ id: "d-sibling", status: "pending" }),
+        sendApprovalEmail: false,
+        created: true,
+      };
+    },
+  });
+  await service.registerDevice(
+    "u1",
+    "127.0.0.1",
+    createInput({ recoveryPending: true, preserveSessionTokenHash: "caller-hash" }),
+  );
+  assert.equal(seen, "caller-hash");
+});
+
+test("registerDevice does not register when sole-device reclaim preconditions fail", async () => {
+  let registered = false;
+  const service = createService({
+    reclaimSoleTrusted: async () => null,
+    registerOrUpdate: async () => {
+      registered = true;
+      return createDeviceRecord();
+    },
+  });
+  await assert.rejects(
+    () =>
+      service.registerDevice(
+        "u1",
+        "127.0.0.1",
+        createInput({
+          reclaimSoleTrusted: true,
+          previousDeviceId: "1",
+          previousDeviceFingerprint: "ab",
+          sessionDeviceId: "1",
+        }),
+      ),
+    (error: unknown) =>
+      error instanceof DeviceServiceError &&
+      error.code === "DEVICE_RECLAIM_PRECONDITION_FAILED" &&
+      error.statusCode === 403 &&
+      error.message === "sole trusted device reclaim preconditions were not met",
+  );
+  assert.equal(registered, false);
 });
 
 test("registerDevice does not accept new keys for an existing trusted fingerprint", async () => {
@@ -323,7 +651,7 @@ test("registerDevice sends device_approval_request when pending and email deps c
   assert.equal(sends[0].variables.requestIp, "203.0.113.9");
   assert.match(
     sends[0].variables.helpUrl,
-    /^https:\/\/app\.test\/items\?popup=settings\|devices$/,
+    /^https:\/\/app\.test\/items\?popup=settings%7Cdevices$/,
   );
   assert.ok(typeof sends[0].variables.requestedAtIso === "string");
   assert.ok(typeof sends[0].variables.expiresAtIso === "string");
@@ -516,8 +844,20 @@ test("approveDevice and rejectDevice are idempotent for resolved same action", a
       device: createDeviceRecord({ status: "trusted" }),
     }),
   });
-  const approved = await approveService.approveDevice("u1", "trusted1", "pending1");
-  assert.equal(approved.status, "trusted");
+  await assert.rejects(
+    () =>
+      approveService.approveDevice(
+        "u1",
+        "trusted1",
+        "pending1",
+        undefined,
+        Uint8Array.from(Buffer.from(hybridDeviceShareB64(4), "base64")),
+      ),
+    (error: unknown) =>
+      error instanceof DeviceServiceError &&
+      error.code === "DEVICE_APPROVAL_ALREADY_RESOLVED" &&
+      error.statusCode === 409,
+  );
 
   const rejectService = createService({
     resolveApproval: async () => ({
@@ -537,7 +877,14 @@ test("approval flow rejects invalid transitions and expired challenge", async ()
     }),
   });
   await assert.rejects(
-    () => conflictingApprove.approveDevice("u1", "trusted1", "pending1"),
+    () =>
+      conflictingApprove.approveDevice(
+        "u1",
+        "trusted1",
+        "pending1",
+        undefined,
+        Uint8Array.from(Buffer.from(hybridDeviceShareB64(4), "base64")),
+      ),
     (error: unknown) =>
       error instanceof DeviceServiceError &&
       error.code === "DEVICE_APPROVAL_ALREADY_RESOLVED",
@@ -563,7 +910,14 @@ test("approval flow requires trusted approver device", async () => {
   });
 
   await assert.rejects(
-    () => service.approveDevice("u1", "pending-device", "pending1"),
+    () =>
+      service.approveDevice(
+        "u1",
+        "pending-device",
+        "pending1",
+        undefined,
+        Uint8Array.from(Buffer.from(hybridDeviceShareB64(4), "base64")),
+      ),
     (error: unknown) =>
       error instanceof DeviceServiceError &&
       error.code === "DEVICE_APPROVAL_ACCESS_DENIED",
@@ -630,6 +984,120 @@ test("renameDevice and revokeDevice map not found", async () => {
   assert.equal(renamed.deviceName, "Renamed");
 });
 
+test("two web install fingerprints stay separate through reject and permanent block", async () => {
+  const coarse = "web_app-chrome-linux-unknown";
+  const second = `${coarse}.0123456789abcdef`;
+  const third = `${coarse}.fedcba9876543210`;
+  const rows = new Map<string, ReturnType<typeof createDeviceRecord>>();
+
+  const remember = (fingerprint: string, status: "trusted" | "pending" | "revoked" | "blocked") => {
+    const existing = rows.get(fingerprint);
+    if (existing && existing.status === status) {
+      return { ...existing, sendApprovalEmail: false, created: false };
+    }
+    const record = createDeviceRecord({
+      id: existing?.id ?? `d-${rows.size + 1}`,
+      deviceFingerprint: fingerprint,
+      status,
+      created: !existing,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      blockedUntil: status === "blocked" ? null : null,
+      rejectionReason: status === "revoked" ? "dismissed by user" : status === "blocked" ? "blocked:forever" : null,
+    });
+    rows.set(fingerprint, record);
+    return { ...record, sendApprovalEmail: status === "pending" && !existing, created: !existing };
+  };
+
+  const service = createService({
+    registerOrUpdate: async (input: { deviceFingerprint: string }) => {
+      const fingerprint = input.deviceFingerprint.trim().toLowerCase();
+      if (fingerprint === coarse) {
+        return remember(fingerprint, "trusted");
+      }
+      const current = rows.get(fingerprint);
+      if (current?.status === "blocked") {
+        return { ...current, sendApprovalEmail: false, created: false };
+      }
+      return remember(fingerprint, "pending");
+    },
+    isTrustedDevice: async (_userId: string, deviceId: string) =>
+      [...rows.values()].some((row) => row.id === deviceId && row.status === "trusted"),
+    resolveApproval: async (input: { deviceId: string; action: "approve" | "reject" }) => {
+      const row = [...rows.values()].find((item) => item.id === input.deviceId);
+      if (!row || row.status !== "pending") {
+        return { kind: "not_found" as const };
+      }
+      if (input.action === "reject") {
+        const revoked = createDeviceRecord({
+          ...row,
+          status: "revoked",
+          rejectionReason: "dismissed by user",
+        });
+        rows.set(row.deviceFingerprint, revoked);
+        return { kind: "rejected" as const, device: revoked };
+      }
+      return { kind: "approved" as const, device: row };
+    },
+    blockPending: async (input: { deviceId: string; blockedUntil: string | null; reason?: string }) => {
+      const row = [...rows.values()].find((item) => item.id === input.deviceId);
+      if (!row || row.status !== "pending") {
+        return null;
+      }
+      const blocked = createDeviceRecord({
+        ...row,
+        status: "blocked",
+        blockedUntil: input.blockedUntil,
+        rejectionReason: input.reason ?? null,
+      });
+      rows.set(row.deviceFingerprint, blocked);
+      return blocked;
+    },
+    now: () => new Date("2026-01-01T00:00:00.000Z"),
+  });
+
+  const trusted = await service.registerDevice(
+    "u1",
+    "127.0.0.1",
+    createInput({ deviceFingerprint: coarse, clientType: "chrome" }),
+  );
+  const pending = await service.registerDevice(
+    "u1",
+    "127.0.0.1",
+    createInput({
+      deviceFingerprint: second,
+      devicePublicKey: Buffer.from("other-public-key").toString("base64"),
+      clientType: "chrome",
+    }),
+  );
+
+  assert.equal(trusted.status, "trusted");
+  assert.equal(pending.status, "pending_approval");
+  assert.notEqual(trusted.deviceId, pending.deviceId);
+  assert.equal(rows.get(coarse)?.status, "trusted");
+  assert.equal(rows.get(second)?.status, "pending");
+
+  const rejected = await service.rejectDevice("u1", trusted.deviceId, pending.deviceId, "dismissed by user");
+  assert.equal(rejected.status, "revoked");
+  assert.equal(rows.get(coarse)?.status, "trusted");
+  assert.equal(rows.get(second)?.status, "revoked");
+
+  const again = await service.registerDevice(
+    "u1",
+    "127.0.0.1",
+    createInput({
+      deviceFingerprint: third,
+      devicePublicKey: Buffer.from("third-public-key").toString("base64"),
+      clientType: "chrome",
+    }),
+  );
+  assert.equal(again.status, "pending_approval");
+  const blocked = await service.blockDevice("u1", trusted.deviceId, again.deviceId, "forever");
+  assert.equal(blocked.status, "blocked");
+  assert.equal(blocked.blockedUntil, null);
+  assert.equal(rows.get(coarse)?.status, "trusted");
+  assert.equal(rows.get(third)?.status, "blocked");
+});
+
 
 test("blockDevice blocks pending for 1h and unblockDevice can trust", async () => {
   const until = "2026-01-01T01:00:00.000Z";
@@ -655,4 +1123,39 @@ test("blockDevice blocks pending for 1h and unblockDevice can trust", async () =
 
   const trusted = await service.unblockDevice("u1", "d-pending", true);
   assert.equal(trusted.status, "trusted");
+});
+
+test("blockDevice applies 1d and unblock still works for a stored 1w block", async () => {
+  let captured: { blockedUntil: string | null; reason: string } | null = null;
+  const service = createService({
+    blockPending: async (input) => {
+      captured = {
+        blockedUntil: input.blockedUntil,
+        reason: input.reason ?? "",
+      };
+      return createDeviceRecord({
+        id: "d-pending",
+        status: "blocked",
+        blockedUntil: input.blockedUntil,
+        rejectionReason: input.reason,
+      });
+    },
+    unblockDevice: async () =>
+      createDeviceRecord({
+        id: "d-legacy",
+        status: "revoked",
+        rejectionReason: "blocked:1w",
+        blockedUntil: "2026-01-08T00:00:00.000Z",
+      }),
+    now: () => new Date("2026-01-01T00:00:00.000Z"),
+  });
+
+  const blocked = await service.blockDevice("u1", "d-approver", "d-pending", "1d");
+  assert.equal(blocked.blockedUntil, "2026-01-02T00:00:00.000Z");
+  assert.equal(captured?.blockedUntil, "2026-01-02T00:00:00.000Z");
+  assert.equal(captured?.reason, "blocked:1d");
+
+  const revoked = await service.unblockDevice("u1", "d-legacy", false);
+  assert.equal(revoked.status, "revoked");
+  assert.equal(revoked.deviceId, "d-legacy");
 });

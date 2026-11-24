@@ -10,6 +10,7 @@ import { EmailTemplateService } from "../src/email/service.ts";
 import { RegistrationError, RegistrationService } from "../src/registration/service.ts";
 import { SessionService } from "../src/session/service.ts";
 import { ENTITY_ID_RE } from "../../../packages/types/dist/index.js";
+import { hybridDeviceShareBytes } from "./hybrid-share-fixture.ts";
 import { applyMigrations } from "./two-factor-test-helpers.ts";
 import { createIntegrationStorage } from "./integration-env.ts";
 
@@ -17,6 +18,7 @@ import { createIntegrationStorage } from "./integration-env.ts";
 const testDir = path.dirname(fileURLToPath(import.meta.url));
 
 const MIN_ENCRYPTED_USER_IDENTITY_BYTES = 2473;
+const SAMPLE_MLDSA_PK_B64 = Buffer.alloc(1952, 4).toString("base64");
 const SAMPLE_PQ_PK_B64 = Buffer.alloc(1184, 9).toString("base64");
 
 function mkEncryptedPrivateKeyBlob(byte: number) {
@@ -103,14 +105,15 @@ test("integration: registration completes user, workspace, vault, trusted device
     authStateId,
     userPublicKey: pkB64,
     userPublicPqKey: SAMPLE_PQ_PK_B64,
+    userPublicMldsaKey: SAMPLE_MLDSA_PK_B64,
     encryptedPrivateKey: encPriv,
     serverKeyShare: share32,
     passwordKdfSalt: salt16,
-    passwordKdfParamsVersion: 1,
+    passwordKdfParamsVersion: 2,
     deviceFingerprint: "a".repeat(64),
     deviceName: "First device",
     devicePublicKey: Buffer.from("device-pk").toString("base64"),
-    deviceShare: share32,
+    deviceShare: hybridDeviceShareBytes(),
     platform: "desktop",
     osName: "macOS",
     osVersion: "14.0",
@@ -148,14 +151,15 @@ test("integration: registration completes user, workspace, vault, trusted device
     authStateId,
     userPublicKey: pkB64,
     userPublicPqKey: SAMPLE_PQ_PK_B64,
+    userPublicMldsaKey: SAMPLE_MLDSA_PK_B64,
     encryptedPrivateKey: encPriv,
     serverKeyShare: share32,
     passwordKdfSalt: salt16,
-    passwordKdfParamsVersion: 1,
+    passwordKdfParamsVersion: 2,
     deviceFingerprint: "a".repeat(64),
     deviceName: "First device",
     devicePublicKey: Buffer.from("device-pk").toString("base64"),
-    deviceShare: share32,
+    deviceShare: hybridDeviceShareBytes(),
     platform: "desktop",
     osName: "macOS",
     osVersion: "14.0",
@@ -242,14 +246,15 @@ test("integration: parallel completeRegistration creates single user", async (t)
     authStateId,
     userPublicKey: pkB64,
     userPublicPqKey: SAMPLE_PQ_PK_B64,
+    userPublicMldsaKey: SAMPLE_MLDSA_PK_B64,
     encryptedPrivateKey: encPriv,
     serverKeyShare: share32,
     passwordKdfSalt: salt16,
-    passwordKdfParamsVersion: 1,
+    passwordKdfParamsVersion: 2,
     deviceFingerprint: "c".repeat(64),
     deviceName: "Parallel device",
     devicePublicKey: Buffer.from("device-pk-p").toString("base64"),
-    deviceShare: share32,
+    deviceShare: hybridDeviceShareBytes(),
     platform: "desktop",
     osName: "macOS",
     osVersion: "14.0",
@@ -335,6 +340,7 @@ test("integration: missing auth state returns AUTH_CHALLENGE_EXPIRED", async (t)
         authStateId: missingStateId,
         userPublicKey: Buffer.alloc(32, 1).toString("base64"),
         userPublicPqKey: SAMPLE_PQ_PK_B64,
+    userPublicMldsaKey: SAMPLE_MLDSA_PK_B64,
         encryptedPrivateKey: {
           crypto_version: 2,
           algorithm: "opaque",
@@ -343,11 +349,11 @@ test("integration: missing auth state returns AUTH_CHALLENGE_EXPIRED", async (t)
         },
         serverKeyShare: new Uint8Array(32).fill(2),
         passwordKdfSalt: new Uint8Array(16).fill(3),
-        passwordKdfParamsVersion: 1,
+        passwordKdfParamsVersion: 2,
         deviceFingerprint: "d".repeat(64),
         deviceName: "x",
         devicePublicKey: Buffer.from("pk").toString("base64"),
-        deviceShare: new Uint8Array(32).fill(4),
+        deviceShare: hybridDeviceShareBytes(4),
         platform: "desktop",
         osName: "macOS",
         osVersion: "14",
@@ -430,6 +436,7 @@ test("integration: strict rollout rejects registration without PQ-capable device
         authStateId,
         userPublicKey: Buffer.alloc(32, 5).toString("base64"),
         userPublicPqKey: SAMPLE_PQ_PK_B64,
+    userPublicMldsaKey: SAMPLE_MLDSA_PK_B64,
         encryptedPrivateKey: mkEncryptedPrivateKeyBlob(33),
         serverKeyShare: new Uint8Array(32).fill(11),
         passwordKdfSalt: new Uint8Array(16).fill(22),
@@ -437,7 +444,7 @@ test("integration: strict rollout rejects registration without PQ-capable device
         deviceFingerprint: "a".repeat(64),
         deviceName: "First device",
         devicePublicKey: Buffer.from("device-pk").toString("base64"),
-        deviceShare: new Uint8Array(32).fill(11),
+        deviceShare: hybridDeviceShareBytes(11),
         platform: "desktop",
         osName: "macOS",
         osVersion: "14.0",

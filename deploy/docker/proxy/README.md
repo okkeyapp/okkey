@@ -34,7 +34,7 @@ the install dir; do not symlink `nginx`/`certs` next to `docker-compose.prod.yml
 
 ```bash
 INSTALL_DIR=~/okkey
-REF=dev   # or your OKKEY_REF
+REF=v1.0.0-beta.2   # OKKEY_REF for this release
 
 # Prefer a git checkout / full tree copy (Dockerfile + templates + certs dir):
 #   cp -a deploy/docker/proxy "$INSTALL_DIR/proxy"
@@ -151,3 +151,5 @@ STRICT_HOST=app.example.com COMPAT_HOST=compat-app.example.com ./proxy/rollback-
 ```
 
 Evidence: `docs/security/6.19-tls-transport-qday-evidence.md` §1 / §4.
+
+**Caddy alternative (note only).** Strict policy is a site `tls` block (`protocols tls1.3`, `curves x25519mlkem768`). Roll that policy back to Caddy's default hybrid by **deleting the `tls` block**. An empty `tls { }` is rejected (`parsing caddyfile tokens for 'tls': wrong argument count`); `caddy validate` fails closed and the running server stays on the previous config. Do not empty the block. Live drill: evidence §4.1.

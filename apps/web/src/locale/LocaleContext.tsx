@@ -20,6 +20,7 @@ type LocaleContextValue = {
 const LocaleContext = createContext<LocaleContextValue | null>(null);
 
 export function LocaleProvider({ children }: { children: ReactNode }) {
+  // `main.tsx` already consumed `lng` (persisted + stripped) before React mounts.
   const [locale, setLocaleState] = useState<WebLocale>(() => readStoredLocale());
 
   useEffect(() => {

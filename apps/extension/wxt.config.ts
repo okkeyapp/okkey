@@ -1,15 +1,46 @@
 import fs from "node:fs";
 import path from "node:path";
 import { defineConfig } from "wxt";
+import { extensionManifestPermissions } from "./src/lib/extensionManifestPermissions.ts";
+import {
+  DEV_BUILD_ENV,
+  PRODUCT_VERSION_ENV,
+  STORE_RELEASE_ENV,
+  parseLastSubmittedStoreVersion,
+  resolveExtensionManifestVersion,
+} from "./src/lib/extensionStoreVersion.ts";
 
 const repoRoot = path.resolve(__dirname, "../..");
 const cryptoWasmSrc = path.resolve(repoRoot, "packages/crypto/dist/okkey_crypto_engine_bg.wasm");
 const cryptoWasmPublic = path.resolve(__dirname, "public/okkey_crypto_engine_bg.wasm");
 
+function readPackageVersion(pkgPath: string): string {
+  const parsed: unknown = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
+  if (typeof parsed !== "object" || parsed === null || !("version" in parsed)) {
+    throw new Error(`Package ${pkgPath} is missing a string version.`);
+  }
+  const version = parsed.version;
+  if (typeof version !== "string") {
+    throw new Error(`Package ${pkgPath} is missing a string version.`);
+  }
+  return version;
+}
+
 function syncCryptoWasmPublicAsset(): void {
   // Background SW must fetch a real extension URL (not Vite data: inline) under MV3 CSP.
   fs.mkdirSync(path.dirname(cryptoWasmPublic), { recursive: true });
-  fs.copyFileSync(cryptoWasmSrc, cryptoWasmPublic);
+  if (fs.existsSync(cryptoWasmSrc)) {
+    fs.copyFileSync(cryptoWasmSrc, cryptoWasmPublic);
+    return;
+  }
+  // A previous `yarn build:wasm` may already have copied the module into public/.
+  // Store zips still require that file; fail only when neither copy exists.
+  if (fs.existsSync(cryptoWasmPublic)) {
+    return;
+  }
+  throw new Error(
+    `Missing ${cryptoWasmSrc}. Run \`yarn build:wasm\` from the repo root before packaging the extension.`,
+  );
 }
 
 // See https://wxt.dev/api/config.html
@@ -24,8 +55,8 @@ export default defineConfig({
       syncCryptoWasmPublicAsset();
     },
   },
-  // Store zips use manifest `version` (1.0.0.N), not package.json SemVer (yarn workspaces
-  // reject four-part versions — keep package.json at 1.0.0).
+  // Store zips use the numeric manifest version computed from the product SemVer.
+  // package.json stays a three-part SemVer (yarn workspaces reject a fourth component).
   zip: {
     name: "okkeyextension",
     // WXT 0.20.x: {{version}} = manifest.version (store numeric). No {{modeSuffix}} yet.
@@ -45,6 +76,7 @@ export default defineConfig({
       "ARCHITECTURE.md",
       "README.md",
       "scripts/verify-crypto-bootstrap.mjs",
+      "scripts/ensure-crypto-wasm-dist.mjs",
       // Extension (no output/, node_modules/, store screenshot assets, prebuilt wasm)
       "apps/extension/package.json",
       "apps/extension/wxt.config.ts",
@@ -58,7 +90,10 @@ export default defineConfig({
       "apps/extension/public/fonts/**",
       "apps/extension/public/icons/**",
       "apps/extension/public/icon-*.png",
+      "apps/extension/scripts/store-version.ts",
+      "apps/extension/scripts/ensure-store-wasm.mjs",
       "apps/extension/store/*.md",
+      "apps/extension/store/LAST_SUBMITTED_MANIFEST_VERSION",
       // Shared packages — sources only (rebuild dist / wasm)
       "packages/api/package.json",
       "packages/api/tsconfig.json",
@@ -73,7 +108,14 @@ export default defineConfig({
       "packages/crypto/src/**",
       "packages/i18n/package.json",
       "packages/i18n/tsconfig.json",
+      "packages/i18n/scripts/**",
       "packages/i18n/src/**",
+      "packages/email-templates/package.json",
+      "packages/email-templates/tsconfig.json",
+      "packages/email-templates/src/**",
+      "packages/import/package.json",
+      "packages/import/tsconfig.json",
+      "packages/import/src/**",
       "packages/id/package.json",
       "packages/id/tsconfig.json",
       "packages/id/src/**",
@@ -96,6 +138,11 @@ export default defineConfig({
       "rust/crypto-engine/Cargo.toml",
       "rust/crypto-engine/Cargo.lock",
       "rust/crypto-engine/src/**",
+      // WXT 0.20 keeps a path when it matches includeSources, even if excludeSources
+      // also matches (`include || !exclude`). Negate tests here so they stay out of
+      // the AMO sources zip (see store/SOURCES.md).
+      "!**/*.test.ts",
+      "!**/*.test.tsx",
     ],
     // WXT filter is `includeMatch || !excludeMatch` (not a pure allowlist).
     // Excluding `**` forces only `includeSources` paths into the AMO sources zip.
@@ -104,24 +151,28 @@ export default defineConfig({
     dotSources: true,
   },
   manifest: ({ browser }) => {
-    // Chrome / Edge / AMO: dotted integers only. No Chromium `version_name`, no `*-beta.*`.
-    // Product SemVer (e.g. 1.0.0-beta.2) is for GitHub Releases / images — not store packaging.
-    const manifestVersion = "1.0.0.2";
-    const chromiumOnlyPermissions = ["offscreen"] as const;
-    const sharedPermissions = [
-      "storage",
-      "tabs",
-      "idle",
-      "alarms",
-      "clipboardRead",
-      "clipboardWrite",
-    ] as const;
+    // Chrome / Edge / AMO: dotted integers only. No Chromium version_name and no beta
+    // string in the manifest. Dev/local builds stay below the store floor. A store
+    // build sets OKKEY_EXTENSION_STORE_RELEASE=1 or uses a root product version other
+    // than the dev sentinel, then takes the fourth component from the product SemVer.
+    const manifestVersion = resolveExtensionManifestVersion({
+      rootVersion: readPackageVersion(path.join(repoRoot, "package.json")),
+      extensionPackageVersion: readPackageVersion(path.join(__dirname, "package.json")),
+      storeReleaseEnv: process.env[STORE_RELEASE_ENV],
+      productVersionEnv: process.env[PRODUCT_VERSION_ENV],
+      devBuildCounterEnv: process.env[DEV_BUILD_ENV],
+      floor: parseLastSubmittedStoreVersion(
+        fs.readFileSync(
+          path.join(__dirname, "store/LAST_SUBMITTED_MANIFEST_VERSION"),
+          "utf8",
+        ),
+      ),
+    }).manifestVersion;
     // Firefox has no offscreen documents — clipboard clear uses navigator.clipboard in the
-    // background (see extensionVaultLifecycle). Declaring `offscreen` trips web-ext lint.
-    const permissions =
-      browser === "firefox"
-        ? [...sharedPermissions]
-        : [...sharedPermissions, ...chromiumOnlyPermissions];
+    // background (see extensionVaultLifecycle). HTTP auth permissions also differ:
+    // Chromium uses webRequestAuthProvider; Firefox uses webRequestBlocking.
+    // See store/PERMISSIONS.md and extensionManifestPermissions.
+    const permissions = extensionManifestPermissions(browser);
     return {
       // Store consoles expose EN+RU listing locales from package `_locales/`.
       // In-app UI still uses `@okkey/i18n` + chrome.storage (not browser.i18n).

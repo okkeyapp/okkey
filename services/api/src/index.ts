@@ -1,5 +1,7 @@
 import { AuthService } from "./auth/service.ts";
 import { EmailChangeService } from "./account/email-change.ts";
+import { whenCapsuleAccessSettingsBound } from "./capsule/access-settings-provider.ts";
+import { CapsuleDefaultsService } from "./capsule-defaults/service.ts";
 import { CapsuleService } from "./capsule/service.ts";
 import { MmdbGeoIpLookup } from "./capsule/geoip.ts";
 import { RegistrationService } from "./registration/service.ts";
@@ -7,27 +9,34 @@ import { createServer } from "node:http";
 import { createApiApp } from "./app.ts";
 import { isEnterpriseBackendLoadable, loadConfig } from "./config.ts";
 import { RedisDeviceBindChallengeStore } from "./device/bind-challenge-store.ts";
+import { DeviceApprovalStatusService } from "./device/approval-status.ts";
 import { DeviceService } from "./device/service.ts";
+import { PostgresDeviceApprovalStatusStore } from "./storage/device-approval-status-repository.ts";
 import { json } from "./http.ts";
 import {
   createOutboundEmailSender,
   EmailTemplateService,
   isOutboundEmailDeliverable,
 } from "./email/service.ts";
+import { MailSettingsService } from "./mail-settings/service.ts";
+import { PostgresServerMailSettingsStore } from "./mail-settings/store.ts";
 import { createLogger } from "./logger.ts";
 import { SessionService } from "./session/service.ts";
 import { ExtensionAuthService } from "./extension-auth/service.ts";
 import { createStorageLayer } from "./storage/index.ts";
 import { SyncService } from "./sync/service.ts";
 import { WorkspacePersonalSyncService } from "./workspace-personal-sync/service.ts";
+import { WorkspaceKeyService, WorkspaceKeyServiceError } from "./workspace-key/service.ts";
+import { PlanQuotaExceededError } from "./storage-quota/service.ts";
+import { PgWorkspaceKeyStore } from "./workspace-key/store.ts";
 import { TwoFactorService } from "./two-factor/service.ts";
 import { WebAuthnService } from "./webauthn/service.ts";
+import { PasskeyDeviceApprovalService } from "./webauthn/passkey-device-approval.ts";
 import { WebAuthnCredentialsRepository } from "./webauthn/repository.ts";
 import { VaultUnlockBootstrapService } from "./account/vault-unlock-bootstrap.ts";
 import { VaultService } from "./vault/service.ts";
 import { VaultSharingService } from "./vault-sharing/service.ts";
 import { ItemCategoryPreferencesService } from "./item-category-preferences/service.ts";
-import { CapsuleDefaultsService } from "./capsule-defaults/service.ts";
 import { ItemTemplatesService } from "./item-templates/service.ts";
 import { ItemPurgeService } from "./item-purge/service.ts";
 import {
@@ -40,15 +49,19 @@ import { WorkspaceBuiltInRolesService } from "./workspace-roles/list-service.ts"
 import { WorkspaceBuiltInProfilesService } from "./workspace-profiles/list-service.ts";
 import { WorkspaceMeVaultProfilesService } from "./routes/workspace-me-vault-profiles.ts";
 import { WorkspaceMembersService } from "./workspace-members/service.ts";
+import { WorkspaceSharedVaultsService } from "./workspace-shared-vaults/service.ts";
 import { loadEnterprisePlugins } from "./plugins/load-enterprise-plugins.ts";
 import {
   KeyFieldFileStorage,
   loadKeyFieldFileStorageConfigFromEnv,
 } from "./storage/key-field-file-storage.ts";
+import { backfillLegacyDeviceShares } from "./device/legacy-device-share-backfill.ts";
 import { applySqlMigrations } from "./storage/migrate.ts";
 import { ItemFaviconService } from "./favicon/service.ts";
 import { AttachmentService } from "./attachments/service.ts";
+import { WorkspaceStorageQuotaService } from "./storage-quota/service.ts";
 import {
+  assertWorkspacePermission,
   resolveWorkspacePermissions,
   WorkspacePermissionError,
 } from "./workspace-roles/permissions.ts";
@@ -61,11 +74,35 @@ async function main(): Promise<void> {
   const logger = createLogger();
   const storage = await createStorageLayer(config, logger);
   await applySqlMigrations(storage.postgres, { logger });
-  const emailSender = await createOutboundEmailSender(config, logger, storage.redis);
+  await backfillLegacyDeviceShares(storage.postgres, {
+    approvalTtlMs: config.deviceApprovalTtlSeconds * 1000,
+    logger,
+  });
+  // Lazily bound after WorkspaceMembersService is constructed (pending-invite flush on SMTP activate).
+  let deliverPendingInvites: (() => Promise<void>) | null = null;
+  const mailSettings = new MailSettingsService({
+    store: new PostgresServerMailSettingsStore(storage.postgres),
+    config,
+    users: storage.repositories.users,
+    workspaces: storage.repositories.workspaces,
+    assertPermission: async (workspaceId, userId, action) => {
+      await assertWorkspacePermission(storage.postgres, workspaceId, userId, "settings_mail", action);
+    },
+    logger,
+    onSmtpActivated: async () => {
+      if (deliverPendingInvites) {
+        await deliverPendingInvites();
+      }
+    },
+  });
+  await mailSettings.probeLegacySmtpOnce();
+  const emailSender = await createOutboundEmailSender(config, logger, storage.redis, mailSettings);
   const emailTemplates = new EmailTemplateService(emailSender, {
     from: config.emailFrom,
     defaultLocale: config.defaultEmailLocale,
     publicAppBaseUrl: config.publicAppBaseUrl,
+    resolveFrom: async () => (await mailSettings.effective()).emailFrom,
+    resolvePublicAppBaseUrl: () => mailSettings.publicAppBaseUrl(),
     logger,
   });
   logger.info("email outbound ready", {
@@ -77,12 +114,14 @@ async function main(): Promise<void> {
     users: storage.repositories.users,
     emailTemplates,
     config,
+    resolveEmailDeliverable: () => mailSettings.isOutboundActive(),
   });
   const emailChangeService = new EmailChangeService({
     redis: storage.redis,
     users: storage.repositories.users,
     emailTemplates,
     config,
+    resolvePublicAppBaseUrl: () => mailSettings.publicAppBaseUrl(),
   });
   const sessionService = new SessionService({
     sessions: storage.repositories.sessions,
@@ -99,6 +138,7 @@ async function main(): Promise<void> {
     authService,
     sessionService,
     config,
+    resolvePublicAppBaseUrl: () => mailSettings.publicAppBaseUrl(),
     emailTemplates,
   });
   const webauthnService = new WebAuthnService({
@@ -107,6 +147,13 @@ async function main(): Promise<void> {
     users: storage.repositories.users,
     authService,
     config,
+  });
+  const passkeyDeviceApprovalService = new PasskeyDeviceApprovalService({
+    redis: storage.redis,
+    credentials: storage.repositories.webauthnCredentials,
+    devices: storage.repositories.devices,
+    config,
+    log: logger,
   });
   const registrationService = new RegistrationService({
     authService,
@@ -137,11 +184,15 @@ async function main(): Promise<void> {
   const capsuleDefaultsService = new CapsuleDefaultsService({
     defaults: storage.repositories.workspaceMemberCapsuleDefaults,
     workspaces: storage.repositories.workspaces,
+    config,
   });
+  const storageQuota = new WorkspaceStorageQuotaService({ db: storage.postgres, config });
   const workspaceSettingsService = new WorkspaceSettingsService({
     workspaces: storage.repositories.workspaces,
+    vaults: storage.repositories.vaults,
     db: storage.postgres,
     config,
+    storageQuota,
   });
   const planChangeRequestService = new PlanChangeRequestService({
     db: storage.postgres,
@@ -151,8 +202,10 @@ async function main(): Promise<void> {
     redis: storage.redis,
     salesEmail: config.salesEmail,
     salesEmailDeliverable: isOutboundEmailDeliverable(config),
+    resolveSalesEmailDeliverable: () => mailSettings.isOutboundActive(),
     deploymentMode: config.deploymentMode,
     publicAppBaseUrl: config.publicAppBaseUrl,
+    resolvePublicAppBaseUrl: () => mailSettings.publicAppBaseUrl(),
   });
   const workspaceBuiltInRolesService = new WorkspaceBuiltInRolesService({
     roles: storage.repositories.workspaceRoles,
@@ -169,10 +222,6 @@ async function main(): Promise<void> {
     storage.repositories.workspaces,
     storage.postgres,
   );
-  const workspaceMembersService = new WorkspaceMembersService({
-    db: storage.postgres,
-    workspaces: storage.repositories.workspaces,
-  });
   if (config.enterpriseModulesRequested && !config.enterpriseModulesEnabled) {
     logger.warn(
       "ENTERPRISE_MODULES=true but enterprise backend is not loadable; continuing as FREE",
@@ -191,6 +240,66 @@ async function main(): Promise<void> {
     config = { ...config, enterpriseModulesEnabled: false };
   }
   const enterprisePlugins = enterpriseLoad.plugins;
+  const workspaceSharedVaultsService = new WorkspaceSharedVaultsService({
+    vaults: storage.repositories.vaults,
+    workspaces: storage.repositories.workspaces,
+    db: storage.postgres,
+    vaultSharing: vaultSharingService,
+    config,
+  });
+  const workspaceKeyService = new WorkspaceKeyService(new PgWorkspaceKeyStore(storage.postgres), {
+    assertMember: async (workspaceId, userId) => {
+      const allowed = await storage.repositories.workspaces.hasAccess(workspaceId, userId);
+      if (!allowed) {
+        throw new WorkspaceKeyServiceError("ACCESS_DENIED", 403, "access denied");
+      }
+    },
+    assertSettingsPut: async (workspaceId, userId) => {
+      try {
+        await assertWorkspacePermission(storage.postgres, workspaceId, userId, "settings", "put");
+      } catch (error) {
+        if (error instanceof WorkspacePermissionError) {
+          throw new WorkspaceKeyServiceError(error.code, error.statusCode, error.message);
+        }
+        throw error;
+      }
+    },
+  }, {
+    assertLogoWrite: async ({ workspaceId, additionalBytes, replacedBytes }) => {
+      const workspace = await storage.repositories.workspaces.findById(workspaceId);
+      if (!workspace) {
+        return;
+      }
+      try {
+        await storageQuota.assertAdditionalBytes({
+          workspace,
+          additionalBytes,
+          replacedBytes,
+        });
+      } catch (error) {
+        if (error instanceof PlanQuotaExceededError) {
+          throw new WorkspaceKeyServiceError(error.code, error.statusCode, error.message, error.details);
+        }
+        throw error;
+      }
+    },
+  });
+  const workspaceMembersService = new WorkspaceMembersService({
+    db: storage.postgres,
+    workspaces: storage.repositories.workspaces,
+    vaultService: workspaceSharedVaultsService,
+    emailTemplates,
+    publicAppBaseUrl: config.publicAppBaseUrl,
+    resolvePublicAppBaseUrl: () => mailSettings.publicAppBaseUrl(),
+    resolveOutboundMailActive: () => mailSettings.isOutboundActive(),
+    logger,
+    config,
+    workspaceKeys: workspaceKeyService,
+  });
+  deliverPendingInvites = async () => {
+    const result = await workspaceMembersService.deliverPendingInvitationEmails();
+    logger.info("pending invitation emails delivered after SMTP activate", result);
+  };
   const vaultUnlockBootstrapService = new VaultUnlockBootstrapService({
     users: storage.repositories.users,
     devices: storage.repositories.devices,
@@ -201,6 +310,7 @@ async function main(): Promise<void> {
     softDeletes: storage.repositories.vaultItemSoftDeletes,
     users: storage.repositories.users,
     workspaces: storage.repositories.workspaces,
+    storageQuota,
     config,
     log: logger,
   });
@@ -217,26 +327,34 @@ async function main(): Promise<void> {
     redis: storage.redis,
     users: storage.repositories.users,
     objectStorage: storage.objectStorage,
+    storageQuota,
     geoIp,
     config,
     log: logger,
+  });
+  const deviceApprovalStatus = new DeviceApprovalStatusService({
+    store: new PostgresDeviceApprovalStatusStore(storage.postgres),
+    requestTtlSeconds: config.deviceApprovalTtlSeconds,
   });
   const deviceService = new DeviceService({
     devices: storage.repositories.devices,
     config,
     users: storage.repositories.users,
     emailTemplates,
+    resolvePublicAppBaseUrl: () => mailSettings.publicAppBaseUrl(),
     geoIp,
     log: logger,
     bindChallenges: new RedisDeviceBindChallengeStore(storage.redis),
+    approvalStatus: deviceApprovalStatus,
   });
+  deviceApprovalStatus.onRetry((device, requestIp) =>
+    deviceService.notifyReopenedApproval(device, requestIp),
+  );
   const accountRecoveryService = new AccountRecoveryService({
     recovery: storage.repositories.accountRecovery,
     workspaces: storage.repositories.workspaces,
     users: storage.repositories.users,
     devices: storage.repositories.devices,
-    emailTemplates,
-    publicAppBaseUrl: config.publicAppBaseUrl,
     config,
   });
   const keyFieldFileStorageConfig = loadKeyFieldFileStorageConfigFromEnv();
@@ -263,6 +381,7 @@ async function main(): Promise<void> {
         softDeletes: storage.repositories.vaultItemSoftDeletes,
         templates: storage.repositories.workspaceItemTemplates,
         config,
+        storageQuota,
         canUpdateWorkspaceBranding: async (workspaceId, userId) => {
           try {
             const matrix = await resolveWorkspacePermissions(
@@ -312,19 +431,24 @@ async function main(): Promise<void> {
     workspaceBuiltInProfilesService,
     workspaceMeVaultProfilesService,
     workspaceMembersService,
+    workspaceSharedVaultsService,
+    workspaceKeyService,
     vaultUnlockBootstrapService,
     vaultSharingService,
     syncService,
     workspacePersonalSyncService,
     deviceService,
+    deviceApprovalStatus,
     accountRecoveryService,
     sessionService,
     extensionAuthService,
     twoFactorService,
     webauthnService,
+    passkeyDeviceApprovalService,
     capsuleService,
     attachmentService,
     itemFaviconService,
+    mailSettingsService: mailSettings,
   }, {
     enterprisePlugins,
     postgres: storage.postgres,
@@ -335,6 +459,8 @@ async function main(): Promise<void> {
     redis: storage.redis,
     geoIp,
   });
+  await app.pluginsReady;
+  await whenCapsuleAccessSettingsBound();
 
   // Public capability probe for web/UI flag sync (registered here to avoid touching app.ts).
   const enterpriseModulesActive = config.enterpriseModulesEnabled;

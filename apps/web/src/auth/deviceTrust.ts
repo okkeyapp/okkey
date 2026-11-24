@@ -1,6 +1,10 @@
 import { ApiRequestError, type CoreApiClient } from "@okkey/api";
 import { deviceBindShareProof, initCrypto, wipeBytes } from "@okkey/crypto";
-import type { DeviceListItemDto, DeviceRegisterResponseDto } from "@okkey/types";
+import {
+  canReclaimSoleTrustedDevice,
+  type DeviceListItemDto,
+  type DeviceRegisterResponseDto,
+} from "@okkey/types";
 
 import { readStoredLocale } from "../locale/localeStorage";
 import { bytesToBase64 } from "./base64";
@@ -12,11 +16,19 @@ import {
   rotateDeviceSigningKey,
   signDeviceBindChallenge,
 } from "./deviceSigningKey";
+import { getOrCreateDeviceFingerprint } from "./deviceFingerprint";
 import {
-  getOrCreateDeviceFingerprint,
-  isLegacyHexFingerprint,
-} from "./deviceFingerprint";
-import { readVaultBundle } from "./localVaultBundle";
+  acceptShareDeliveryIfPresent,
+  clearShareDeliveryReapproval,
+  discardOneTimeShareDelivery,
+  hasOneTimeShareDelivery,
+  markShareDeliveryReapproval,
+  needsShareDeliveryReapproval,
+  prepareOneTimeShareDelivery,
+} from "./deviceShareDelivery";
+import { readVaultBundle, writeVaultBundle } from "./localVaultBundle";
+import { rememberApprovalFromRegister } from "./deviceApprovalStatus";
+import { deviceShareB64ForRegister } from "./deviceShareWire";
 
 export type DeviceTrustStatus =
   | "checking"
@@ -36,6 +48,8 @@ export type DeviceTrustSnapshot = {
   blockedUntil?: string | null;
   /** Sole trusted device lost its seed — user must use account recovery. */
   needsRecovery?: boolean;
+  /** Pending device lost its one-time key and must be approved again. */
+  needsShareReapproval?: boolean;
 };
 
 const PLACEHOLDER_SHARE_LEN = 32;
@@ -54,7 +68,85 @@ function randomPlaceholderShare(): Uint8Array {
 }
 
 function fingerprintMatch(device: DeviceListItemDto, fingerprint: string): boolean {
-  return device.device_fingerprint.trim().toLowerCase() === fingerprint.trim().toLowerCase();
+  const stored = device.device_fingerprint;
+  if (typeof stored !== "string" || stored.trim().length === 0) {
+    return false;
+  }
+  return stored.trim().toLowerCase() === fingerprint.trim().toLowerCase();
+}
+
+/** Wire status for a device that still needs approval. */
+function isPendingApproval(device: { status?: string }): boolean {
+  return device.status === "pending_approval" || device.status === "pending";
+}
+
+/**
+ * Rows in `devices` are trusted approvers. A pending sign-in must not be treated
+ * as trusted just because it was returned in that array.
+ */
+function isTrustedRow(device: { status?: string }): boolean {
+  return device.status == null || device.status === "trusted";
+}
+
+function sameListedDeviceId(left: unknown, right: unknown): boolean {
+  if (left == null || right == null) {
+    return false;
+  }
+  const a = String(left).trim();
+  const b = String(right).trim();
+  if (a.length === 0 || b.length === 0) {
+    return false;
+  }
+  if (a === b) {
+    return true;
+  }
+  if (!/^\d+$/.test(a) || !/^\d+$/.test(b)) {
+    return false;
+  }
+  try {
+    return BigInt(a) === BigInt(b);
+  } catch {
+    return false;
+  }
+}
+
+function pendingRows(listed: {
+  devices?: DeviceListItemDto[];
+  pending?: DeviceListItemDto[];
+}): DeviceListItemDto[] {
+  return [
+    ...(listed.pending ?? []),
+    ...(listed.devices ?? []).filter((device) => isPendingApproval(device)),
+  ];
+}
+
+function findPendingRow(
+  listed: { devices?: DeviceListItemDto[]; pending?: DeviceListItemDto[] },
+  fingerprint: string,
+  pendingDeviceId?: string | null,
+): DeviceListItemDto | undefined {
+  const rows = pendingRows(listed);
+  const byFingerprint = rows.find((device) => fingerprintMatch(device, fingerprint));
+  if (byFingerprint) {
+    return byFingerprint;
+  }
+  if (pendingDeviceId == null || String(pendingDeviceId).trim().length === 0) {
+    return undefined;
+  }
+  return rows.find((device) => sameListedDeviceId(device.device_id, pendingDeviceId));
+}
+
+function findTrustedRow(
+  devices: DeviceListItemDto[] | undefined,
+  fingerprint: string,
+): DeviceListItemDto | undefined {
+  return (devices ?? []).find(
+    (device) => isTrustedRow(device) && fingerprintMatch(device, fingerprint),
+  );
+}
+
+function trustedApprovers(devices: DeviceListItemDto[] | undefined): DeviceListItemDto[] {
+  return (devices ?? []).filter((device) => isTrustedRow(device));
 }
 
 function browserBindMetadata() {
@@ -125,34 +217,20 @@ async function bindDeviceWithProof(
 }
 
 /**
- * Reclaim is only for the registration browser that lost a legacy random hex fingerprint
- * but still holds the local vault bundle. Never rebind a different browser onto the sole
- * trusted device (that collapsed 4 browsers into 1 row).
+ * After binding a pending session, re-list so redacted trusted approvers are
+ * visible. The pre-bind list for an unbound Bearer is fingerprint-only.
  */
-function canReclaimSoleTrustedDevice(
-  sole: DeviceListItemDto,
-  nextFingerprint: string,
-  nextClientType: string,
-): boolean {
-  const oldFp = sole.device_fingerprint.trim().toLowerCase();
-  const nextFp = nextFingerprint.trim().toLowerCase();
-  if (oldFp === nextFp) {
-    return false;
+async function approversAfterPendingBind(
+  core: CoreApiClient,
+  fingerprint: string,
+  fallback: DeviceListItemDto[],
+): Promise<DeviceListItemDto[]> {
+  try {
+    const listed = await core.listDevices(fingerprint);
+    return trustedApprovers(listed.devices);
+  } catch {
+    return trustedApprovers(fallback);
   }
-  if (!isLegacyHexFingerprint(oldFp)) {
-    // Structured id already identifies the browser — different fp ⇒ different device.
-    return false;
-  }
-  const soleClient = (sole.client_type ?? "").trim().toLowerCase();
-  if (
-    soleClient &&
-    soleClient !== "unknown" &&
-    soleClient !== "web" &&
-    soleClient !== nextClientType.trim().toLowerCase()
-  ) {
-    return false;
-  }
-  return true;
 }
 
 /**
@@ -216,13 +294,18 @@ export async function resolveDeviceTrust(
     }
   }
 
-  const trustedMatch = listed.devices.find((device) => fingerprintMatch(device, fingerprint));
-  const pendingMatch = listed.pending.find((device) => fingerprintMatch(device, fingerprint));
+  const trustedMatch = findTrustedRow(listed.devices, fingerprint);
+  const pendingMatch = findPendingRow(listed, fingerprint);
   const soleTrusted = listed.devices.length === 1 ? listed.devices[0] : null;
   const canReclaimSole =
     hasBundle &&
     soleTrusted !== null &&
-    canReclaimSoleTrustedDevice(soleTrusted, fingerprint, env.clientType);
+    canReclaimSoleTrustedDevice({
+      storedFingerprint: soleTrusted.device_fingerprint,
+      storedClientType: soleTrusted.client_type,
+      nextFingerprint: fingerprint,
+      nextClientType: env.clientType,
+    });
   const canBootstrapTrusted = hasBundle && listed.devices.length === 0;
 
   // Re-login on an already trusted or pending fingerprint binds the session
@@ -273,6 +356,12 @@ export async function resolveDeviceTrust(
     }
   }
   if (pendingMatch && !canReclaimSole && !canBootstrapTrusted) {
+    const needsShareReapproval = await rotateLostShareDeliveryKey(
+      core,
+      fingerprint,
+      pendingMatch,
+      userId,
+    );
     if (!(await hasDeviceSigningKey())) {
       const shareB64 = bundle?.device_share_b64?.trim() ?? "";
       if (shareB64) {
@@ -281,23 +370,30 @@ export async function resolveDeviceTrust(
           return {
             status: "pending",
             deviceId: pendingMatch.device_id,
-            approverDevices: listed.devices,
+            approverDevices: await approversAfterPendingBind(
+              core,
+              fingerprint,
+              listed.devices,
+            ),
+            needsShareReapproval: needsShareReapproval || undefined,
           };
         } catch (error: unknown) {
           return {
             status: "pending",
             deviceId: pendingMatch.device_id,
-            approverDevices: listed.devices,
+            approverDevices: trustedApprovers(listed.devices),
+            needsShareReapproval: needsShareReapproval || undefined,
             errorMessage: error instanceof Error ? error.message : String(error),
           };
         }
       }
+      // Pending sessions receive redacted trusted rows for the wait UI; an empty
+      // list means there are genuinely no trusted approvers yet.
       return {
         status: "pending",
         deviceId: pendingMatch.device_id,
-        approverDevices: listed.devices,
-        needsRecovery: listed.devices.length < 1,
-        errorMessage: listed.devices.length < 1 ? "DEVICE_REBIND_REQUIRES_RECOVERY" : undefined,
+        approverDevices: trustedApprovers(listed.devices),
+        needsShareReapproval: needsShareReapproval || undefined,
       };
     }
     try {
@@ -305,13 +401,19 @@ export async function resolveDeviceTrust(
       return {
         status: "pending",
         deviceId: pendingMatch.device_id,
-        approverDevices: listed.devices,
+        approverDevices: await approversAfterPendingBind(
+          core,
+          fingerprint,
+          listed.devices,
+        ),
+        needsShareReapproval: needsShareReapproval || undefined,
       };
     } catch (error: unknown) {
       return {
         status: "pending",
         deviceId: pendingMatch.device_id,
-        approverDevices: listed.devices,
+        approverDevices: trustedApprovers(listed.devices),
+        needsShareReapproval: needsShareReapproval || undefined,
         errorMessage: error instanceof Error ? error.message : String(error),
       };
     }
@@ -321,10 +423,16 @@ export async function resolveDeviceTrust(
     const registered = await registerCurrentBrowserDevice(core, fingerprint, {
       userId,
       reclaimSoleTrusted: canReclaimSole,
+      previousDeviceId: canReclaimSole ? soleTrusted?.device_id : undefined,
+      previousDeviceFingerprint: canReclaimSole
+        ? soleTrusted?.device_fingerprint
+        : undefined,
     });
-    if (registered.status === "trusted") {
-      // POST /devices still binds the Bearer when it creates a trusted row.
+    if (registered.status === "trusted" || registered.status === "pending_approval") {
+      // POST /devices binds the Bearer for both trusted and newly created pending rows.
       boundSessionDeviceId = registered.device_id;
+    }
+    if (registered.status === "trusted") {
       const after = await core.listDevices(fingerprint).catch(() => listed);
       return {
         status: "trusted",
@@ -347,7 +455,7 @@ export async function resolveDeviceTrust(
     return {
       status: "pending",
       deviceId: registered.device_id,
-      approverDevices: afterPending.devices,
+      approverDevices: trustedApprovers(afterPending.devices),
     };
   } catch (error: unknown) {
     if (
@@ -367,7 +475,7 @@ export async function resolveDeviceTrust(
       return {
         status: "pending",
         deviceId: pendingMatch.device_id,
-        approverDevices: listed.devices,
+        approverDevices: trustedApprovers(listed.devices),
       };
     }
     return {
@@ -383,13 +491,40 @@ export async function resolveDeviceTrust(
  * Poll trust status for a previously registered pending device.
  * When the row disappears from both trusted and pending lists → rejected.
  */
+/**
+ * Pending device published a one-time key, but this browser no longer has the
+ * private half. Publish a new pair and drop any stored envelope so approval
+ * can be requested again.
+ */
+async function rotateLostShareDeliveryKey(
+  core: CoreApiClient,
+  fingerprint: string,
+  pending: DeviceListItemDto,
+  userId?: string,
+): Promise<boolean> {
+  if (!pending.one_time_x25519_public_key || !pending.one_time_mlkem_public_key) {
+    return false;
+  }
+  if (hasOneTimeShareDelivery(fingerprint)) {
+    return false;
+  }
+  try {
+    await registerCurrentBrowserDevice(core, fingerprint, { userId });
+    markShareDeliveryReapproval();
+    return true;
+  } catch {
+    discardOneTimeShareDelivery(fingerprint);
+    return false;
+  }
+}
+
 export async function pollDeviceTrust(
   core: CoreApiClient,
   fingerprint: string,
   pendingDeviceId: string | null,
   userId?: string,
 ): Promise<DeviceTrustSnapshot> {
-  const listed = await core.listDevices(fingerprint);
+  let listed = await core.listDevices(fingerprint);
 
   if (pendingDeviceId) {
     const blockedById = (listed.blocked ?? []).find(
@@ -431,8 +566,37 @@ export async function pollDeviceTrust(
     }
   }
 
-  const trustedMatch = listed.devices.find((device) => fingerprintMatch(device, fingerprint));
+  const pendingBeforeTrust = findPendingRow(listed, fingerprint, pendingDeviceId);
+  if (pendingBeforeTrust) {
+    const rotated = await rotateLostShareDeliveryKey(
+      core,
+      fingerprint,
+      pendingBeforeTrust,
+      userId,
+    );
+    if (rotated) {
+      return {
+        status: "pending",
+        deviceId: pendingBeforeTrust.device_id,
+        approverDevices: trustedApprovers(listed.devices),
+        needsShareReapproval: true,
+      };
+    }
+    const accepted = await acceptShareDeliveryIfPresent(
+      core,
+      fingerprint,
+      pendingBeforeTrust.device_id,
+      userId ?? "",
+    ).catch(() => false);
+    if (accepted) {
+      listed = await core.listDevices(fingerprint);
+    }
+  }
+
+  const trustedMatch = findTrustedRow(listed.devices, fingerprint);
   if (trustedMatch) {
+    discardOneTimeShareDelivery(fingerprint);
+    clearShareDeliveryReapproval();
     // Never report trusted for an unbound Bearer — that unlocked the vault UI while
     // /account/recovery and vault-unlock stayed 401 after a failed bind-session proof.
     if (boundSessionDeviceId === trustedMatch.device_id) {
@@ -487,22 +651,61 @@ export async function pollDeviceTrust(
     }
   }
 
-  const pendingMatch =
-    listed.pending.find((device) => fingerprintMatch(device, fingerprint)) ??
-    (pendingDeviceId
-      ? listed.pending.find((device) => device.device_id === pendingDeviceId)
-      : undefined);
+  const pendingMatch = findPendingRow(listed, fingerprint, pendingDeviceId);
 
   if (pendingMatch) {
+    // Reject unbinds the session; keep the signing key and rebind so the wait
+    // UI can list trusted approvers and passkey options are allowed again.
+    if (boundSessionDeviceId !== pendingMatch.device_id) {
+      if (await hasDeviceSigningKey()) {
+        try {
+          await bindDeviceWithProof(core, pendingMatch.device_id);
+          return {
+            status: "pending",
+            deviceId: pendingMatch.device_id,
+            approverDevices: await approversAfterPendingBind(
+              core,
+              fingerprint,
+              listed.devices,
+            ),
+            needsShareReapproval: needsShareDeliveryReapproval(),
+          };
+        } catch {
+          /* Fall through with the fingerprint-scoped list. */
+        }
+      } else {
+        const shareB64 =
+          (userId ? readVaultBundle(userId)?.device_share_b64?.trim() : "") ?? "";
+        if (shareB64) {
+          try {
+            await bindDeviceWithShareProof(core, pendingMatch.device_id, shareB64);
+            return {
+              status: "pending",
+              deviceId: pendingMatch.device_id,
+              approverDevices: await approversAfterPendingBind(
+                core,
+                fingerprint,
+                listed.devices,
+              ),
+              needsShareReapproval: needsShareDeliveryReapproval(),
+            };
+          } catch {
+            /* Fall through with the fingerprint-scoped list. */
+          }
+        }
+      }
+    }
     return {
       status: "pending",
       deviceId: pendingMatch.device_id,
-      approverDevices: listed.devices,
+      approverDevices: trustedApprovers(listed.devices),
+      needsShareReapproval: needsShareDeliveryReapproval(),
     };
   }
 
   if (pendingDeviceId) {
-    await clearDeviceSigningKey();
+    // Soft reject: keep the signing key so "Request approval again" can rebind
+    // without minting a new key or signing out. Blocked paths still clear it.
     return {
       status: "rejected",
       deviceId: pendingDeviceId,
@@ -522,6 +725,9 @@ export async function registerCurrentBrowserDevice(
   fingerprint = getOrCreateDeviceFingerprint(),
   options?: {
     reclaimSoleTrusted?: boolean;
+    /** Trusted row this browser is rebinding. Sent only with reclaim. */
+    previousDeviceId?: string;
+    previousDeviceFingerprint?: string;
     claimAfterRecovery?: boolean;
     /** Bind a pending sibling before recovery-key proof. Not a trusted-device claim. */
     recoveryPending?: boolean;
@@ -535,47 +741,62 @@ export async function registerCurrentBrowserDevice(
   // Prefer structured identity from UA; argument is kept for callers/tests.
   const deviceFingerprint = fingerprint.trim() || env.fingerprint;
   const devicePublicKeyB64 = await ensureDeviceSigningPublicKey();
+  const oneTime = await prepareOneTimeShareDelivery(deviceFingerprint).catch(() => null);
 
   const bundle = options?.userId ? readVaultBundle(options.userId) : null;
-  let shareBytes: Uint8Array | null = null;
-  let ownsShare = false;
-  if (bundle?.device_share_b64) {
-    try {
-      const binary = atob(bundle.device_share_b64);
-      shareBytes = Uint8Array.from(binary, (c) => c.charCodeAt(0));
-    } catch {
-      shareBytes = null;
+  const userId = options?.userId?.trim() ?? "";
+  let shareB64: string;
+  if (!userId) {
+    const placeholder = randomPlaceholderShare();
+    shareB64 = bytesToBase64(placeholder);
+    wipeBytes(placeholder);
+  } else {
+    const wire = await deviceShareB64ForRegister({
+      userId,
+      existingShareB64: bundle?.device_share_b64 ?? null,
+    });
+    shareB64 = wire.shareB64;
+    if (wire.upgradedShareB64 && bundle) {
+      writeVaultBundle({ ...bundle, device_share_b64: wire.upgradedShareB64 }, userId);
     }
-  }
-  if (!shareBytes || shareBytes.length === 0) {
-    shareBytes = randomPlaceholderShare();
-    ownsShare = true;
   }
 
-  try {
-    return await core.registerDevice({
-      device_public_key: devicePublicKeyB64,
-      device_share: bytesToBase64(shareBytes),
-      device_fingerprint: deviceFingerprint,
-      device_name: env.deviceName,
-      platform: env.platform,
-      os_name: env.osName,
-      os_version: env.osVersion,
-      app_version: "web",
-      client_type: env.clientType,
-      user_agent: env.userAgent,
-      // Explicit body locale: browsers ignore Accept-Language set via fetch.
-      locale: readStoredLocale(),
-      metadata: {
-        crypto_capable: true,
-        reclaim_sole_trusted: options?.reclaimSoleTrusted === true,
-        claim_after_recovery: options?.claimAfterRecovery === true,
-        recovery_pending: options?.recoveryPending === true,
-      },
-    });
-  } finally {
-    if (ownsShare) {
-      wipeBytes(shareBytes);
-    }
+  const registered = await core.registerDevice({
+    device_public_key: devicePublicKeyB64,
+    device_share: shareB64,
+    device_fingerprint: deviceFingerprint,
+    ...(oneTime
+      ? {
+          one_time_x25519_public_key: oneTime.x25519PublicB64,
+          one_time_mlkem_public_key: oneTime.mlkemPublicB64,
+        }
+      : {}),
+    device_name: env.deviceName,
+    platform: env.platform,
+    os_name: env.osName,
+    os_version: env.osVersion,
+    app_version: "web",
+    client_type: env.clientType,
+    user_agent: env.userAgent,
+    locale: readStoredLocale(),
+    metadata: {
+      crypto_capable: true,
+      reclaim_sole_trusted: options?.reclaimSoleTrusted === true,
+      ...(options?.reclaimSoleTrusted === true &&
+      options.previousDeviceId &&
+      options.previousDeviceFingerprint
+        ? {
+            previous_device_id: options.previousDeviceId,
+            previous_device_fingerprint: options.previousDeviceFingerprint,
+          }
+        : {}),
+      claim_after_recovery: options?.claimAfterRecovery === true,
+      recovery_pending: options?.recoveryPending === true,
+    },
+  });
+  if (registered.status === "trusted") {
+    discardOneTimeShareDelivery(deviceFingerprint);
   }
+  rememberApprovalFromRegister(registered);
+  return registered;
 }

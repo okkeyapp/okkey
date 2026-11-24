@@ -6,7 +6,8 @@ const registerDevice = vi.fn();
 const createDeviceBindChallenge = vi.fn();
 const bindDeviceSession = vi.fn();
 const requestDeviceKeyRebind = vi.fn();
-const fingerprint = "a".repeat(64);
+const fingerprintState = vi.hoisted(() => ({ value: "a".repeat(64) }));
+const fingerprint = fingerprintState.value;
 const readVaultBundle = vi.fn(() => null as unknown);
 
 const hasDeviceSigningKey = vi.fn(async () => true);
@@ -19,7 +20,7 @@ vi.mock("./deviceFingerprint", async () => {
   const actual = await vi.importActual<typeof import("./deviceFingerprint")>("./deviceFingerprint");
   return {
     ...actual,
-    getOrCreateDeviceFingerprint: () => fingerprint,
+    getOrCreateDeviceFingerprint: () => fingerprintState.value,
   };
 });
 
@@ -33,6 +34,23 @@ vi.mock("./deviceSigningKey", () => ({
   signDeviceBindChallenge: (message: Uint8Array) => signDeviceBindChallenge(message),
   rotateDeviceSigningKey: () => rotateDeviceSigningKey(),
   clearDeviceSigningKey: () => clearDeviceSigningKey(),
+}));
+
+vi.mock("./deviceShareDelivery", () => ({
+  prepareOneTimeShareDelivery: vi.fn(async () => null),
+  acceptShareDeliveryIfPresent: vi.fn(async () => false),
+  discardOneTimeShareDelivery: vi.fn(),
+  hasOneTimeShareDelivery: vi.fn(() => true),
+  markShareDeliveryReapproval: vi.fn(),
+  clearShareDeliveryReapproval: vi.fn(),
+  needsShareDeliveryReapproval: vi.fn(() => false),
+}));
+
+vi.mock("./deviceShareWire", () => ({
+  deviceShareB64ForRegister: vi.fn(async () => ({
+    shareB64: btoa("device-share-bytes-32!!!!!!!!!!!!".slice(0, 32)),
+    upgradedShareB64: null,
+  })),
 }));
 
 vi.mock("@okkey/crypto", () => ({
@@ -66,6 +84,7 @@ function vaultBundle() {
 
 describe("resolveDeviceTrust", () => {
   beforeEach(() => {
+    fingerprintState.value = fingerprint;
     vi.clearAllMocks();
     listDevices.mockReset();
     registerDevice.mockReset();
@@ -119,6 +138,35 @@ describe("resolveDeviceTrust", () => {
     expect(snapshot.status).toBe("pending");
     expect(snapshot.deviceId).toBe("d-new");
     expect(snapshot.approverDevices).toHaveLength(1);
+  });
+
+  it("registers a second profile whose install id only extends the trusted fingerprint", async () => {
+    const coarse = "web_app-chrome-linux-unknown";
+    fingerprintState.value = `${coarse}.0123456789abcdef`;
+    hasDeviceSigningKey.mockResolvedValue(false);
+    listDevices.mockResolvedValue({
+      devices: [
+        {
+          device_id: "d-trusted",
+          device_fingerprint: coarse,
+          status: "trusted",
+        },
+      ],
+      pending: [],
+    });
+    registerDevice.mockResolvedValue({
+      device_id: "d-profile-2",
+      status: "pending_approval",
+    });
+
+    const snapshot = await resolveDeviceTrust(coreClient(), "u1");
+
+    expect(registerDevice).toHaveBeenCalledOnce();
+    expect(registerDevice.mock.calls[0]?.[0]?.device_fingerprint).toBe(fingerprintState.value);
+    expect(snapshot.status).toBe("pending");
+    expect(snapshot.deviceId).toBe("d-profile-2");
+    expect(snapshot.needsRecovery).not.toBe(true);
+    fingerprintState.value = fingerprint;
   });
 
   it("binds a trusted fingerprint with a device-key signature and does not register", async () => {
@@ -311,6 +359,10 @@ describe("resolveDeviceTrust", () => {
 
     expect(registerDevice).toHaveBeenCalledOnce();
     expect(registerDevice.mock.calls[0]?.[0]?.metadata?.reclaim_sole_trusted).toBe(true);
+    expect(registerDevice.mock.calls[0]?.[0]?.metadata?.previous_device_id).toBe("d-old");
+    expect(registerDevice.mock.calls[0]?.[0]?.metadata?.previous_device_fingerprint).toBe(
+      legacyFp,
+    );
     expect(snapshot.status).toBe("trusted");
     expect(snapshot.deviceId).toBe("d-old");
   });
@@ -369,10 +421,52 @@ describe("resolveDeviceTrust", () => {
     expect(snapshot.status).toBe("trusted");
     expect(snapshot.deviceId).toBe("d-pending");
   });
+
+  it("keeps a pending_approval row pending when it is returned with trusted devices", async () => {
+    hasDeviceSigningKey.mockResolvedValue(false);
+    listDevices.mockResolvedValue({
+      devices: [
+        {
+          device_id: "d-new",
+          device_fingerprint: fingerprint,
+          status: "pending_approval",
+        },
+      ],
+      pending: [],
+    });
+
+    const snapshot = await resolveDeviceTrust(coreClient(), "u1");
+
+    expect(registerDevice).not.toHaveBeenCalled();
+    expect(snapshot.status).toBe("pending");
+    expect(snapshot.deviceId).toBe("d-new");
+    expect(snapshot.needsRecovery).toBeUndefined();
+  });
+
+  it("does not require recovery for a pending device whose approvers are hidden", async () => {
+    hasDeviceSigningKey.mockResolvedValue(false);
+    listDevices.mockResolvedValue({
+      devices: [],
+      pending: [
+        {
+          device_id: "d-new",
+          device_fingerprint: fingerprint,
+          status: "pending_approval",
+        },
+      ],
+    });
+
+    const snapshot = await resolveDeviceTrust(coreClient(), "u1");
+
+    expect(registerDevice).not.toHaveBeenCalled();
+    expect(snapshot.status).toBe("pending");
+    expect(snapshot.needsRecovery).toBeUndefined();
+  });
 });
 
 describe("pollDeviceTrust", () => {
   beforeEach(() => {
+    fingerprintState.value = fingerprint;
     vi.clearAllMocks();
     clearBoundDeviceSession();
     hasDeviceSigningKey.mockResolvedValue(true);
@@ -402,6 +496,101 @@ describe("pollDeviceTrust", () => {
     expect(bindDeviceSession).toHaveBeenCalled();
     expect(snapshot.status).toBe("trusted");
     expect(snapshot.deviceId).toBe("d-me");
+  });
+
+  it("treats pending_approval in the trusted list as still waiting", async () => {
+    hasDeviceSigningKey.mockResolvedValue(false);
+    listDevices.mockResolvedValue({
+      devices: [
+        {
+          device_id: "d-new",
+          device_fingerprint: fingerprint,
+          status: "pending_approval",
+        },
+      ],
+      pending: [],
+    });
+
+    const snapshot = await pollDeviceTrust(coreClient(), fingerprint, "d-new");
+
+    expect(createDeviceBindChallenge).not.toHaveBeenCalled();
+    expect(snapshot.status).toBe("pending");
+    expect(snapshot.deviceId).toBe("d-new");
+    expect(snapshot.needsRecovery).toBeUndefined();
+  });
+
+  it("stays pending while the approval row is still listed", async () => {
+    listDevices
+      .mockResolvedValueOnce({
+        devices: [],
+        pending: [
+          {
+            device_id: "d-new",
+            device_fingerprint: fingerprint,
+            status: "pending_approval",
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        devices: [
+          {
+            device_id: "d-trusted",
+            device_fingerprint: "other-fp",
+            status: "trusted",
+            device_name: "Phone",
+          },
+        ],
+        pending: [
+          {
+            device_id: "d-new",
+            device_fingerprint: fingerprint,
+            status: "pending_approval",
+          },
+        ],
+      });
+    bindDeviceSession.mockResolvedValue({ device_id: "d-new", status: "pending" });
+
+    const snapshot = await pollDeviceTrust(coreClient(), fingerprint, "d-new");
+
+    expect(createDeviceBindChallenge).toHaveBeenCalledWith("d-new");
+    expect(bindDeviceSession).toHaveBeenCalled();
+    expect(snapshot.status).toBe("pending");
+    expect(snapshot.deviceId).toBe("d-new");
+    expect(snapshot.approverDevices).toEqual([
+      expect.objectContaining({ device_id: "d-trusted", device_name: "Phone" }),
+    ]);
+  });
+
+  it("matches a pending device id even when the decimal forms differ", async () => {
+    listDevices.mockResolvedValue({
+      devices: [],
+      pending: [
+        {
+          device_id: "000202",
+          device_fingerprint: "not-this-browser",
+          status: "pending_approval",
+        },
+      ],
+    });
+
+    const snapshot = await pollDeviceTrust(coreClient(), fingerprint, "202");
+
+    expect(snapshot.status).toBe("pending");
+    expect(snapshot.deviceId).toBe("000202");
+  });
+
+  it("reports rejected only after the pending row is gone without clearing the signing key", async () => {
+    listDevices.mockResolvedValue({
+      devices: [],
+      pending: [],
+      blocked: [],
+    });
+
+    const snapshot = await pollDeviceTrust(coreClient(), fingerprint, "d-new");
+
+    expect(snapshot.status).toBe("rejected");
+    expect(snapshot.deviceId).toBe("d-new");
+    expect(clearDeviceSigningKey).not.toHaveBeenCalled();
   });
 
   it("keeps error when bind proof fails so recovery gate cannot open unbound", async () => {

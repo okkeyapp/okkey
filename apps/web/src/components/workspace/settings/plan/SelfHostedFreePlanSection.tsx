@@ -118,6 +118,9 @@ export default function SelfHostedFreePlanSection({
   const [popupOpen, setPopupOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  /** Friendly copy after 429; also shown beside the disabled Send again button. */
+  const [rateLimitMessage, setRateLimitMessage] = useState<string | null>(null);
+  const [rateLimitedUntilMs, setRateLimitedUntilMs] = useState<number | null>(null);
   /** ISO timestamp of last successful submit (SMTP API or mailto confirm). */
   const [sentAt, setSentAt] = useState<string | null>(null);
   const [statusReady, setStatusReady] = useState(false);
@@ -173,6 +176,25 @@ export default function SelfHostedFreePlanSection({
       cancelled = true;
     };
   }, [core, workspaceId]);
+
+  useEffect(() => {
+    if (rateLimitedUntilMs == null) {
+      return;
+    }
+    const delay = rateLimitedUntilMs - Date.now();
+    if (delay <= 0) {
+      setRateLimitedUntilMs(null);
+      setRateLimitMessage(null);
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      setRateLimitedUntilMs(null);
+      setRateLimitMessage(null);
+    }, delay);
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [rateLimitedUntilMs]);
 
   function openRequestPopup() {
     setPopupOpen(true);
@@ -251,37 +273,36 @@ export default function SelfHostedFreePlanSection({
       markSubmitted(new Date().toISOString());
       setPopupOpen(false);
     } catch (error) {
-      if (error instanceof ApiRequestError && error.body.error === "ALREADY_SUBMITTED") {
-        // Legacy servers may still reject re-send; show success and keep form usable after refresh.
-        markSubmitted(sentAt ?? new Date().toISOString());
-        setPopupOpen(false);
-        setSubmitError(null);
-        return;
-      }
       if (error instanceof ApiRequestError && error.body.error === "RATE_LIMITED") {
         const retryRaw = error.body.details?.retryAfterSeconds;
         const retrySeconds =
           typeof retryRaw === "number" && Number.isFinite(retryRaw) && retryRaw > 0
             ? retryRaw
             : PLAN_CHANGE_REQUEST_RETRY_FALLBACK_SECONDS;
+        const availableRaw = error.body.details?.availableAt;
+        const availableMs =
+          typeof availableRaw === "string" ? Date.parse(availableRaw) : Number.NaN;
+        const untilMs = Number.isFinite(availableMs)
+          ? availableMs
+          : Date.now() + retrySeconds * 1000;
         const hours = String(Math.max(1, Math.ceil(retrySeconds / 3600)));
-        setSubmitError(
-          t("web.workspaceSettings.plan.request.errorRateLimited", { hours }),
-        );
+        const when = formatLicenseRequestSentAt(new Date(untilMs).toISOString(), profile.locale);
+        const message = t("web.workspaceSettings.plan.request.errorRateLimited", { hours, when });
+        setSubmitError(message);
+        setRateLimitMessage(message);
+        setRateLimitedUntilMs(untilMs);
+        setPopupOpen(false);
         return;
       }
-      const message =
-        error instanceof ApiRequestError
-          ? error.message
-          : t("web.workspaceSettings.plan.request.errorGeneric");
-      setSubmitError(message);
+      setSubmitError(t("web.workspaceSettings.plan.request.errorGeneric"));
     } finally {
       setSubmitting(false);
     }
   }
 
   const showSuccess = sentAt != null;
-  const ctaDisabled = !canRequest || !statusReady;
+  const rateLimited = rateLimitedUntilMs != null && rateLimitedUntilMs > Date.now();
+  const ctaDisabled = !canRequest || !statusReady || rateLimited;
   const sentAtLabel =
     sentAt != null ? formatLicenseRequestSentAt(sentAt, profile.locale) : "";
   const statusText = showSuccess
@@ -315,6 +336,7 @@ export default function SelfHostedFreePlanSection({
             <li>{t("web.workspaceSettings.plan.selfHosted.enterpriseFeatures.andMore")}</li>
           </ul>
           <p className="mb-3">{statusText}</p>
+          {rateLimitMessage ? <p className="mb-3">{rateLimitMessage}</p> : null}
           <Button type="button" disabled={ctaDisabled} onClick={openRequestPopup}>
             {ctaLabel}
           </Button>

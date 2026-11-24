@@ -1,3 +1,9 @@
+import {
+  CLIENT_UPGRADE_REQUIRED,
+  CLIENT_UPGRADE_REQUIRED_MESSAGE,
+  CLIENT_UPGRADE_REQUIRED_STATUS,
+  identityBundleRequiresCurrentClient,
+} from "../crypto/client-upgrade.ts";
 import { decodeEncryptedBlobFromStorage } from "../crypto/encrypted-blob.ts";
 import type { DevicesRepository, UsersRepository } from "../storage/repositories.ts";
 
@@ -46,29 +52,42 @@ export class VaultUnlockBootstrapService {
   async getForBoundDevice(input: {
     userId: string;
     deviceId: string;
+    /** When false, an ML-DSA identity bundle is refused so an old client fails loudly. */
+    clientSupportsMlDsaIdentity?: boolean;
   }): Promise<VaultUnlockBootstrapWire> {
     const row = await this.users.loadVaultUnlockRow(input.userId);
     if (!row) {
       throw new VaultUnlockBootstrapError("USER_NOT_FOUND", 404, "user not found");
     }
 
-    const deviceShare = await this.devices.findTrustedDeviceShareById(
+    const found = await this.devices.findTrustedDeviceShareById(
       input.userId,
       input.deviceId,
     );
-    if (!deviceShare) {
+    if (!found) {
       throw new VaultUnlockBootstrapError(
         "VAULT_UNLOCK_DEVICE_NOT_FOUND",
         404,
         "no trusted device match for unlock bootstrap",
       );
     }
+    const deviceShare = found.share;
 
     const encryptedPrivateKey = decodeEncryptedBlobFromStorage(row.encryptedPrivateKey);
+    if (
+      input.clientSupportsMlDsaIdentity === false &&
+      identityBundleRequiresCurrentClient(encryptedPrivateKey.meta)
+    ) {
+      throw new VaultUnlockBootstrapError(
+        CLIENT_UPGRADE_REQUIRED,
+        CLIENT_UPGRADE_REQUIRED_STATUS,
+        CLIENT_UPGRADE_REQUIRED_MESSAGE,
+      );
+    }
 
     return {
       server_key_share: Buffer.from(row.serverKeyShare).toString("base64"),
-      device_share: Buffer.from(deviceShare).toString("base64"),
+      device_share: deviceShare ? Buffer.from(deviceShare).toString("base64") : "",
       password_kdf_salt: Buffer.from(row.passwordKdfSalt).toString("base64"),
       password_kdf_params_version: row.passwordKdfParamsVersion,
       encrypted_private_key: {

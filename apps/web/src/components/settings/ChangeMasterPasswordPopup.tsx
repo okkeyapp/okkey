@@ -1,4 +1,8 @@
 import type { WebMessageValues } from "@okkey/i18n";
+import {
+  MIN_MASTER_PASSWORD_LENGTH,
+  masterPasswordMeetsNewPasswordPolicy,
+} from "@okkey/types";
 import { Alert, AlertDescription, AlertTitle, Button, Input, Popup } from "@okkey/ui";
 import { useId, useState } from "react";
 
@@ -40,9 +44,11 @@ export default function ChangeMasterPasswordPopup({
     onClose();
   }
 
+  const newPasswordTooShort =
+    newPassword.length > 0 && !masterPasswordMeetsNewPasswordPolicy(newPassword);
   const canSubmit =
     oldPassword.length > 0 &&
-    newPassword.length >= 4 &&
+    masterPasswordMeetsNewPasswordPolicy(newPassword) &&
     confirmPassword.length > 0 &&
     !submitting;
 
@@ -79,8 +85,12 @@ export default function ChangeMasterPasswordPopup({
             setLocalError(t("web.settingsPopup.vault.changePassword.mismatch"));
             return;
           }
-          if (newPassword.length < 4) {
-            setLocalError(t("web.settingsPopup.vault.changePassword.tooShort"));
+          if (!masterPasswordMeetsNewPasswordPolicy(newPassword)) {
+            setLocalError(
+              t("web.settingsPopup.vault.changePassword.tooShort", {
+                min: MIN_MASTER_PASSWORD_LENGTH,
+              }),
+            );
             return;
           }
           setLocalError(null);
@@ -116,9 +126,20 @@ export default function ChangeMasterPasswordPopup({
             value={newPassword}
             disabled={submitting}
             autoComplete="new-password"
-            onChange={(event) => setNewPassword(event.target.value)}
+            aria-invalid={newPasswordTooShort || undefined}
+            onChange={(event) => {
+              setNewPassword(event.target.value);
+              setLocalError(null);
+            }}
           />
         </label>
+        {newPasswordTooShort ? (
+          <p className="-mt-3 text-sm font-normal text-destructive" role="alert">
+            {t("web.settingsPopup.vault.changePassword.tooShort", {
+              min: MIN_MASTER_PASSWORD_LENGTH,
+            })}
+          </p>
+        ) : null}
         <label className="flex w-full flex-col gap-3 text-sm font-medium text-foreground">
           {t("web.settingsPopup.vault.changePassword.confirmLabel")}
           <Input

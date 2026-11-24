@@ -7,13 +7,13 @@ import type {
 import { permissionAllowsPost } from "@okkey/types";
 
 import { workspaceHasPlanFeature } from "../../../../workspace/planEntitlements";
+import { canManageCustomWorkspaceProfiles } from "../profiles/builtinProfiles";
 import type { WebMessageValues } from "@okkey/i18n";
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
-import enterpriseSharedVaultsModule from "@okkey-enterprise/workspace-shared-vaults";
-
 import { useAuthVault, useAuthenticatedCoreClient } from "../../../../auth/AuthVaultContext";
+import VaultCardPopup from "./VaultCardPopup";
 import { usePopupZoneGate } from "../../../../auth/usePopupZoneGate";
 import {
   NEW_VAULT_POPUP_ID,
@@ -44,7 +44,6 @@ export default function NewVaultPopup({
   const location = useLocation();
   const [searchParams] = useSearchParams();
 
-  const SharedVaultCardPopup = enterpriseSharedVaultsModule.SharedVaultCardPopup;
   const canManageSharedPlan = workspaceHasPlanFeature(workspace, "sharedVaults");
   const vaultPermissions = settingsSectionPermissionCell(workspacePermissions, "vaults");
   const canPost = permissionAllowsPost(vaultPermissions?.post ?? 0);
@@ -52,7 +51,7 @@ export default function NewVaultPopup({
   const popupRaw = searchParams.get(POPUP_QUERY_PARAM);
   const isNewVault = parsePopupQueryValue(popupRaw)?.popupId === NEW_VAULT_POPUP_ID;
   const urlOpen = Boolean(
-    isNewVault && canManageSharedPlan && SharedVaultCardPopup && canPost && core && userId,
+    isNewVault && canManageSharedPlan && canPost && core && userId,
   );
 
   const [members, setMembers] = useState<WorkspaceMemberDto[]>([]);
@@ -97,25 +96,32 @@ export default function NewVaultPopup({
             );
           }),
         );
+        const mappedProfiles = profilesResponse.profiles.map((profile) => {
+          const row = profile as {
+            id: string;
+            name: string;
+            description: string;
+            kind?: "builtin" | "custom";
+            builtin_id?: WorkspaceProfileSummary["builtinId"];
+            application_count: number;
+          };
+          return {
+            id: row.id,
+            name: row.name,
+            description: row.description,
+            kind: row.kind ?? "builtin",
+            builtinId: row.builtin_id,
+            applicationCount: row.application_count,
+          };
+        });
         setProfiles(
-          profilesResponse.profiles.map((profile) => {
-            const row = profile as {
-              id: string;
-              name: string;
-              description: string;
-              kind?: "builtin" | "custom";
-              builtin_id?: WorkspaceProfileSummary["builtinId"];
-              application_count: number;
-            };
-            return {
-              id: row.id,
-              name: row.name,
-              description: row.description,
-              kind: row.kind ?? "builtin",
-              builtinId: row.builtin_id,
-              applicationCount: row.application_count,
-            };
-          }),
+          canManageCustomWorkspaceProfiles(workspace)
+            ? mappedProfiles
+            : mappedProfiles.filter(
+                (profile) =>
+                  profile.kind === "builtin" &&
+                  (profile.builtinId === "extended" || profile.builtinId === "simple"),
+              ),
         );
       } catch {
         if (!cancelled) {
@@ -127,14 +133,14 @@ export default function NewVaultPopup({
     return () => {
       cancelled = true;
     };
-  }, [core, urlOpen, workspaceId]);
+  }, [core, urlOpen, workspace, workspaceId]);
 
-  if (!open || !SharedVaultCardPopup || !core || !userId) {
+  if (!open || !core || !userId) {
     return null;
   }
 
   return (
-    <SharedVaultCardPopup
+    <VaultCardPopup
       popupId={NEW_VAULT_POPUP_ID}
       mode="shared"
       workspaceId={workspaceId}

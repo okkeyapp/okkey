@@ -300,7 +300,8 @@ function isFieldRequired(
   }
 
   if (sectionId === "websites" && formFieldType(field) === "url") {
-    return sectionFields.filter((candidate) => formFieldType(candidate) === "url").length > 0;
+    const urlFields = sectionFields.filter((candidate) => formFieldType(candidate) === "url");
+    return urlFields[0]?.id === field.id;
   }
 
   return false;
@@ -430,9 +431,9 @@ function mergeLoginPresetSections(
         return {
           ...defaultSection,
           ...loadedSection,
-          fields: urlFields.map((field) => ({
+          fields: urlFields.map((field, index) => ({
             ...field,
-            required: true,
+            required: index === 0,
             deletable: urlFields.length > 1,
             editableLabel: true,
           })),

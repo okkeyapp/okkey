@@ -90,6 +90,11 @@ export function buildSettingsMainDeepLink(webBaseUrl: string): string {
   return joinWebPath(webBaseUrl, `/items?popup=${encodePopupQueryParam("settings|main")}`);
 }
 
+/** `/items?popup=settings|vault` — master-password change lives on the web vault settings tab. */
+export function buildVaultSettingsDeepLink(webBaseUrl: string): string {
+  return joinWebPath(webBaseUrl, `/items?popup=${encodePopupQueryParam("settings|vault")}`);
+}
+
 /** `/settings/main` — workspace settings entry from extension. */
 export function buildWorkspaceSettingsDeepLink(webBaseUrl: string): string {
   return joinWebPath(webBaseUrl, "/settings/main");

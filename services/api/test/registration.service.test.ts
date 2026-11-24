@@ -4,6 +4,7 @@ import type { AuthService } from "../src/auth/service.ts";
 import type { ApiConfig } from "../src/config.ts";
 import type { PostgresDatabase } from "../src/storage/postgres.ts";
 import { RegistrationError, RegistrationService } from "../src/registration/service.ts";
+import { hybridDeviceShareBytes } from "./hybrid-share-fixture.ts";
 import { createMockSessionService, createTestApiConfig } from "./test-api-config.ts";
 
 const baseConfig: ApiConfig = createTestApiConfig();
@@ -13,6 +14,7 @@ function baseInput() {
     authStateId: "s1",
     userPublicKey: Buffer.alloc(32, 9).toString("base64"),
     userPublicPqKey: Buffer.alloc(1184, 7).toString("base64"),
+    userPublicMldsaKey: Buffer.alloc(1952, 4).toString("base64"),
     encryptedPrivateKey: {
       crypto_version: 2,
       algorithm: "opaque",
@@ -21,11 +23,11 @@ function baseInput() {
     },
     serverKeyShare: new Uint8Array(32).fill(2),
     passwordKdfSalt: new Uint8Array(16).fill(3),
-    passwordKdfParamsVersion: 1,
+    passwordKdfParamsVersion: 2,
     deviceFingerprint: "b".repeat(64),
     deviceName: "d",
     devicePublicKey: Buffer.from("pk").toString("base64"),
-    deviceShare: new Uint8Array(32).fill(4),
+    deviceShare: hybridDeviceShareBytes(),
     platform: "p",
     osName: "o",
     osVersion: "v",
@@ -80,7 +82,7 @@ test("completeRegistration rejects short server_key_share", async () => {
   );
 });
 
-test("q2-6: completeRegistration rejects hybrid-sized device_share (opaque only)", async () => {
+test("completeRegistration rejects a malformed device_share", async () => {
   const service = createService();
   const input = baseInput();
   input.deviceShare = new Uint8Array(1216).fill(9);
@@ -90,7 +92,21 @@ test("q2-6: completeRegistration rejects hybrid-sized device_share (opaque only)
       err instanceof RegistrationError &&
       err.code === "CRYPTO_PAYLOAD_INVALID" &&
       err.statusCode === 400 &&
-      /32 opaque bytes|not hybrid KEM/u.test(err.message),
+      /hybrid X25519\+ML-KEM share envelope/u.test(err.message),
+  );
+});
+
+test("completeRegistration rejects a raw 32-byte device_share", async () => {
+  const service = createService();
+  const input = baseInput();
+  input.deviceShare = new Uint8Array(32).fill(4);
+  await assert.rejects(
+    () => service.completeRegistration(input),
+    (err: unknown) =>
+      err instanceof RegistrationError &&
+      err.code === "CRYPTO_PAYLOAD_INVALID" &&
+      err.statusCode === 400 &&
+      /hybrid X25519\+ML-KEM share envelope/u.test(err.message),
   );
 });
 

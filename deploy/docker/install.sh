@@ -1,17 +1,20 @@
 #!/usr/bin/env bash
 # Okkey Core — one-command self-host installer (Docker Compose).
 #
-# Default git ref `v1.0.0-beta.2` (compose/config). Image pin is OKKEY_IMAGE_TAG.
-#   curl -fsSL https://raw.githubusercontent.com/okkeyapp/okkey/v1.0.0-beta.2/deploy/docker/install.sh | bash
-#
-# Production — pin a SemVer image (never `:latest`):
+# Release pin (script, compose files, and container tag). Never `:latest`.
 #   curl -fsSL https://raw.githubusercontent.com/okkeyapp/okkey/v1.0.0-beta.2/deploy/docker/install.sh \
-#     | OKKEY_IMAGE_TAG=1.0.0-beta.2 bash
+#     | OKKEY_REF=v1.0.0-beta.2 OKKEY_IMAGE_TAG=1.0.0-beta.2 bash
 #
 # Env must be on the right of `|` so bash sees it (`VAR=x curl | bash` does not).
 #
 # From a checked-out tree:
 #   ./deploy/docker/install.sh
+#
+# Emergency bypass (not for production; prints a loud warning):
+#   ./deploy/docker/install.sh --skip-cosign-verify
+#
+# QA candidate images (release/* and hotfix/*). Signature verification stays on:
+#   ./deploy/docker/install.sh --allow-candidate
 set -euo pipefail
 
 OKKEY_INSTALL_DIR="${OKKEY_INSTALL_DIR:-$HOME/okkey}"
@@ -20,7 +23,8 @@ if [[ -n "${OKKEY_RAW_BASE:-}" ]]; then
   OKKEY_REPO_RAW_BASE="${OKKEY_RAW_BASE}"
 fi
 OKKEY_REPO_RAW_BASE="${OKKEY_REPO_RAW_BASE:-https://raw.githubusercontent.com/okkeyapp/okkey}"
-# Git ref for raw file downloads (branch, tag, or commit SHA). Default `v1.0.0-beta.2`.
+# Git ref for raw file downloads (branch, tag, or commit SHA).
+# Default is the current release tag (v*), matching the documented install pin.
 # Not the same as OKKEY_IMAGE_TAG (GHCR container tag; see .env.example).
 OKKEY_REF="${OKKEY_REF:-v1.0.0-beta.2}"
 # Historical production pin name (first planned SemVer). Not published in GHCR yet —
@@ -32,6 +36,50 @@ ENV_EXAMPLE_NAME=".env.example"
 
 log() { printf '%s\n' "$*"; }
 die() { printf 'error: %s\n' "$*" >&2; exit 1; }
+
+usage() {
+  cat <<'EOF'
+Usage: install.sh [--skip-cosign-verify] [--allow-candidate]
+
+  --skip-cosign-verify   Emergency bypass: do not verify GHCR cosign signatures
+                         before docker compose up. Prints a loud warning.
+                         Off by default. Not for production.
+  --allow-candidate      Also accept publish-images.yml signatures from
+                         refs/heads/release/* and refs/heads/hotfix/*.
+                         Verification stays on. Prints a warning that a
+                         pre-release candidate is being installed.
+                         Off by default. Process env: OKKEY_ALLOW_CANDIDATE=1
+                         (not read from .env).
+  -h, --help             Show this help
+EOF
+}
+
+# Set by parse_args. Not read from .env.
+SKIP_COSIGN_VERIFY_FLAG=0
+ALLOW_CANDIDATE_FLAG=0
+
+parse_args() {
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --skip-cosign-verify)
+        SKIP_COSIGN_VERIFY_FLAG=1
+        shift
+        ;;
+      --allow-candidate)
+        ALLOW_CANDIDATE_FLAG=1
+        shift
+        ;;
+      -h|--help)
+        usage
+        exit 0
+        ;;
+      *)
+        die "unknown argument: $1
+Run: install.sh --help"
+        ;;
+    esac
+  done
+}
 
 # Read KEY=value from the install-dir .env (no export). Empty if missing.
 env_file_value() {
@@ -135,7 +183,12 @@ need_cmd() {
 
 # Cosign keyless OIDC identity for Core publish workflow
 # (.github/workflows/publish-images.yml on okkeyapp/okkey).
-OKKEY_COSIGN_CERTIFICATE_IDENTITY_REGEXP="${OKKEY_COSIGN_CERTIFICATE_IDENTITY_REGEXP:-https://github.com/okkeyapp/okkey/\.github/workflows/publish-images\.yml@refs/(heads/dev|tags/v.+)}"
+# Default: refs/heads/dev and refs/tags/v<semver> only. --allow-candidate adds
+# refs/heads/release/<name> and refs/heads/hotfix/<name>. Anchored with ^...$
+# because cosign matches the regexp as a substring. An exported
+# OKKEY_COSIGN_CERTIFICATE_IDENTITY_REGEXP replaces both.
+OKKEY_COSIGN_DEFAULT_IDENTITY_REGEXP='^https://github\.com/okkeyapp/okkey/\.github/workflows/publish-images\.yml@refs/(?:heads/dev|tags/v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?)$'
+OKKEY_COSIGN_CANDIDATE_IDENTITY_REGEXP='^https://github\.com/okkeyapp/okkey/\.github/workflows/publish-images\.yml@refs/(?:heads/dev|tags/v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?|heads/release/[0-9A-Za-z._-]+|heads/hotfix/[0-9A-Za-z._-]+)$'
 OKKEY_COSIGN_CERTIFICATE_OIDC_ISSUER="${OKKEY_COSIGN_CERTIFICATE_OIDC_ISSUER:-https://token.actions.githubusercontent.com}"
 
 # Resolve image ref used by compose for a service (env override → default GHCR).
@@ -156,7 +209,7 @@ image_digest_ref() {
   digest_line="$(docker image inspect --format '{{index .RepoDigests 0}}' "${ref}" 2>/dev/null || true)"
   if [[ -z "${digest_line}" || "${digest_line}" == "<no value>" ]]; then
     die "cannot resolve digest for ${ref} after pull (RepoDigests empty).
-hint: re-pull from GHCR, or set OKKEY_SKIP_COSIGN_VERIFY=1 only for local/unsigned images."
+hint: re-pull from GHCR, or re-run with --skip-cosign-verify only for local/unsigned images."
   fi
   # RepoDigests is already name@sha256:…
   if [[ "${digest_line}" == *@sha256:* ]]; then
@@ -167,15 +220,45 @@ hint: re-pull from GHCR, or set OKKEY_SKIP_COSIGN_VERIFY=1 only for local/unsign
   die "unexpected RepoDigests format for ${ref}: ${digest_line} (id=${digest})"
 }
 
+# Loud stderr warning for the emergency signature bypass.
+warn_skip_cosign() {
+  local why="$1"
+  printf '%s\n' \
+    "==> WARNING: image signature verification is DISABLED (${why})." \
+    "==> WARNING: api, worker, and web will start WITHOUT a cosign check." \
+    "==> WARNING: Emergency bypass only. Do not use this for production." >&2
+}
+
+# Opt-in for release/* and hotfix/* candidate signatures. Verification stays on.
+warn_allow_candidate() {
+  local why="$1"
+  printf '%s\n' \
+    "==> WARNING: pre-release candidate install (${why})." \
+    "==> WARNING: also accepting publish-images signatures from refs/heads/release/* and refs/heads/hotfix/*." \
+    "==> WARNING: Signature verification stays on. This is not a bypass." >&2
+}
+
 # Verify cosign keyless signatures for api/web/worker before compose up.
-# Skip only with an explicit flag (default: verify on). Local/preloaded
-# installs that skip pull also skip verify unless OKKEY_FORCE_COSIGN_VERIFY=1.
+# Default is verify on for every GHCR tag, including full SemVer and :dev.
+# Emergency bypass is the CLI flag --skip-cosign-verify (or the equivalent
+# process env OKKEY_SKIP_COSIGN_VERIFY=1). Local installs that skip pull also
+# skip verify unless OKKEY_FORCE_COSIGN_VERIFY=1.
 verify_pulled_image_signatures() {
   local tag="$1"
   local skip_pull="${2:-0}"
+  local allow_candidate=0
 
+  # Process env only. A line in the install .env does not enable this.
+  if [[ "${ALLOW_CANDIDATE_FLAG}" == "1" || "${OKKEY_ALLOW_CANDIDATE:-}" == "1" ]]; then
+    allow_candidate=1
+  fi
+
+  if [[ "${SKIP_COSIGN_VERIFY_FLAG}" == "1" ]]; then
+    warn_skip_cosign "--skip-cosign-verify"
+    return 0
+  fi
   if [[ "${OKKEY_SKIP_COSIGN_VERIFY:-}" == "1" ]]; then
-    log "==> WARNING: skipping image signature verify (OKKEY_SKIP_COSIGN_VERIFY=1)"
+    warn_skip_cosign "OKKEY_SKIP_COSIGN_VERIFY=1"
     return 0
   fi
   if [[ "${skip_pull}" == "1" && "${OKKEY_FORCE_COSIGN_VERIFY:-}" != "1" ]]; then
@@ -183,8 +266,32 @@ verify_pulled_image_signatures() {
     return 0
   fi
 
-  need_cmd cosign
+  if ! command -v cosign >/dev/null 2>&1; then
+    die "cosign is not installed, so GHCR image signatures cannot be verified.
+Install cosign and re-run:
+  https://docs.sigstore.dev/cosign/system_config/installation/
+Emergency bypass (prints a warning; not for production):
+  ./deploy/docker/install.sh --skip-cosign-verify
+  curl -fsSL …/install.sh | bash -s -- --skip-cosign-verify"
+  fi
   need_cmd docker
+
+  local identity_regexp="${OKKEY_COSIGN_CERTIFICATE_IDENTITY_REGEXP:-}"
+  if [[ -z "${identity_regexp}" ]]; then
+    if [[ "${allow_candidate}" == "1" ]]; then
+      identity_regexp="${OKKEY_COSIGN_CANDIDATE_IDENTITY_REGEXP}"
+    else
+      identity_regexp="${OKKEY_COSIGN_DEFAULT_IDENTITY_REGEXP}"
+    fi
+  fi
+
+  if [[ "${allow_candidate}" == "1" ]]; then
+    if [[ "${ALLOW_CANDIDATE_FLAG}" == "1" ]]; then
+      warn_allow_candidate "--allow-candidate"
+    else
+      warn_allow_candidate "OKKEY_ALLOW_CANDIDATE=1"
+    fi
+  fi
 
   local refs=()
   refs+=("$(compose_image_ref OKKEY_API_IMAGE ghcr.io/okkeyapp/api "${tag}")")
@@ -196,13 +303,15 @@ verify_pulled_image_signatures() {
     digest_ref="$(image_digest_ref "${ref}")"
     log "==> Verifying cosign signature: ${digest_ref}"
     if ! cosign verify \
-      --certificate-identity-regexp "${OKKEY_COSIGN_CERTIFICATE_IDENTITY_REGEXP}" \
+      --certificate-identity-regexp "${identity_regexp}" \
       --certificate-oidc-issuer "${OKKEY_COSIGN_CERTIFICATE_OIDC_ISSUER}" \
       "${digest_ref}"; then
       die "cosign verify failed for ${digest_ref}.
+The image is unsigned or was not signed by this repo's publish-images workflow
+(GitHub Actions OIDC). Refusing to start the stack.
 hint: Core images must be signed keyless by .github/workflows/publish-images.yml.
-  Install cosign (https://docs.sigstore.dev/cosign/system_config/installation/).
-  Emergency bypass only: OKKEY_SKIP_COSIGN_VERIFY=1 (prints a warning; not for prod)."
+  Install cosign: https://docs.sigstore.dev/cosign/system_config/installation/
+  Emergency bypass only: install.sh --skip-cosign-verify (prints a warning; not for prod)."
     fi
   done
   log "==> Image signatures OK (api, worker, web)"
@@ -382,6 +491,8 @@ hint: set OKKEY_REF on the right of \`|\` so bash sees it, e.g.
     | OKKEY_REF=v1.0.0-beta.2 bash"
 }
 
+parse_args "$@"
+
 need_cmd docker
 docker compose version >/dev/null 2>&1 || die "docker compose plugin is required"
 
@@ -480,6 +591,15 @@ fi
 replace_env OKKEY_SALES_EMAIL "${sales_email}"
 log "==> OKKEY_SALES_EMAIL=${sales_email}"
 
+update_agent_token="$(env_file_value OKKEY_UPDATE_AGENT_TOKEN)"
+if [[ -z "${update_agent_token}" ]]; then
+  update_agent_token="$(gen_secret)"
+  replace_env OKKEY_UPDATE_AGENT_TOKEN "${update_agent_token}"
+  log "==> Generated OKKEY_UPDATE_AGENT_TOKEN"
+fi
+replace_env OKKEY_COMPOSE_PROJECT "$(compose_project_name)"
+replace_env OKKEY_HOST_INSTALL_DIR "${OKKEY_INSTALL_DIR}"
+
 image_tag="$(env_file_value OKKEY_IMAGE_TAG)"
 image_tag="${image_tag:-dev}"
 log "==> Pulling images and starting stack (compose project=$(compose_project_name), OKKEY_IMAGE_TAG=${image_tag})"
@@ -492,7 +612,7 @@ else
   if ! run_compose .env pull; then
     die "docker compose pull failed (OKKEY_IMAGE_TAG=${image_tag}).
 hint: the tag must exist in GHCR (ghcr.io/okkeyapp/{api,web,worker}).
-  Tracking channel: OKKEY_IMAGE_TAG=dev (published on every push to the \`dev\` branch after CI lands).
+  Tracking channel: OKKEY_IMAGE_TAG=dev (published only by a manual workflow_dispatch of .github/workflows/publish-images.yml on refs/heads/dev; a push to the dev branch does not publish :dev).
   Production: pin a published SemVer with OKKEY_IMAGE_TAG=<semver> (OKKEY_CHANNEL=prod is gated until SemVer exists).
   Or set OKKEY_SKIP_PULL=1 with local images."
   fi

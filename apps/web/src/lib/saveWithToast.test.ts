@@ -57,6 +57,16 @@ describe("formatSaveError", () => {
 
   it("keeps non-internal Error messages", () => {
     expect(formatSaveError(new Error("Network offline"), "Couldn't save")).toBe("Network offline");
+    expect(
+      formatSaveError(
+        new Error(
+          "This workspace has reached its storage limit. Delete something or upgrade the plan to save more.",
+        ),
+        "Couldn't save",
+      ),
+    ).toBe(
+      "This workspace has reached its storage limit. Delete something or upgrade the plan to save more.",
+    );
   });
 
   it("treats SCREAMING_SNAKE codes as internal", () => {

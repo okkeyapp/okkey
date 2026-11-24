@@ -1,0 +1,38 @@
+name: Build offline update bundle
+description: >
+  Pack a signed core package and a signed enterprise package into one offline
+  archive. The packages are inputs. This action does not build them.
+inputs:
+  core_package:
+    description: Path to the signed core okkey-offline-package file
+    required: true
+  enterprise_package:
+    description: Path to the signed enterprise okkey-offline-package file
+    required: true
+  output:
+    description: >
+      Archive path to write. A .okbundle path writes the JSON wrapper. A .zip
+      path writes the raw zip. Both carry the same manifest and packages.
+    required: false
+    default: okkey-offline.okbundle
+runs:
+  using: composite
+  steps:
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: "25"
+
+    - name: Build offline bundle
+      shell: bash
+      env:
+        CORE_PACKAGE: ${{ inputs.core_package }}
+        ENTERPRISE_PACKAGE: ${{ inputs.enterprise_package }}
+        OUTPUT_PATH: ${{ inputs.output }}
+        TOOL_ROOT: ${{ github.action_path }}/../../..
+      run: |
+        set -euo pipefail
+        node --experimental-strip-types "$TOOL_ROOT/scripts/build-offline-bundle.mjs" \
+          --core "$CORE_PACKAGE" \
+          --enterprise "$ENTERPRISE_PACKAGE" \
+          --out "$OUTPUT_PATH"

@@ -10,7 +10,8 @@ type WorkspacePlanLike = {
 
 /**
  * Inviting / managing non-owner members: SaaS `plan_tier`
- * (+ `planFeatureOverrides` when custom override is on) / self-host enterprise modules.
+ * (+ `planFeatureOverrides` when custom override is on).
+ * Self-host follows loaded enterprise modules and ignores `plan_tier`.
  */
 export function canInviteAdditionalWorkspaceMembers(
   workspace: WorkspacePlanLike | null | undefined,

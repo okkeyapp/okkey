@@ -31,6 +31,7 @@ import type {
 import type { VaultItemSoftDeletesRepository } from "../storage/vault-item-soft-deletes.ts";
 import type { UsersRepository } from "../storage/repositories.ts";
 import type { ApiConfig } from "../config.ts";
+import { SYNC_EVENTS_BATCH_MAX } from "@okkey/types";
 import {
   decodeEncryptedBlobFromStorage,
   mergeEncryptedBlobMeta,
@@ -39,14 +40,15 @@ import {
   type EncryptedBlob,
 } from "../crypto/encrypted-blob.ts";
 import {
-  SIGNATURE_INVALID,
-  SIGNATURE_REQUIRED,
-  SIGNATURE_STATUS_CODE,
-  parseHybridSignatureEnvelope,
-  verifyHybridSignatureForPayload,
-} from "../crypto/hybrid-signature.ts";
+  enforceOperationSignature,
+  OperationSignatureError,
+} from "../crypto/signature-requirement.ts";
 import { isEntityId } from "../entity-id.ts";
 import { type PlanEntitlementRuntimeConfig } from "../plan-entitlements.ts";
+import {
+  PlanQuotaExceededError,
+  type WorkspaceStorageQuotaService,
+} from "../storage-quota/service.ts";
 import { evaluateSharedVaultItemCreateGate } from "./shared-vault-item-create-gate.ts";
 
 const SYNC_EVENT_TYPES = new Set([
@@ -61,10 +63,37 @@ const SYNC_EVENT_TYPES = new Set([
 ]);
 
 const EVENT_TYPES_REQUIRING_IDEMPOTENCY = new Set(["ITEM_CREATE"]);
-const EVENT_TYPES_REQUIRING_SIGNATURE = new Set(["VAULT_SHARE", "VAULT_KEY_ROTATION"]);
 
 /** Max decoded ciphertext size per event (DoS guard). */
 export const SYNC_MAX_ENCRYPTED_PAYLOAD_BYTES = 512 * 1024;
+
+/** Re-export for route handlers — same value as `@okkey/types`. */
+export { SYNC_EVENTS_BATCH_MAX };
+
+type PreparedAppendInsert = {
+  kind: "insert";
+  storage: {
+    vaultId: string;
+    actorId: string;
+    eventType: string;
+    encryptedPayload: Uint8Array;
+    baseVersion: number;
+    payloadSchemaVersion: number;
+    idempotencyKey?: string;
+    clientCreatedAt?: string;
+    referencedItemId: string | null;
+    itemSoftDeleted: boolean | null;
+  };
+  itemDeletedAtMs?: number;
+};
+
+type PreparedAppendIdempotent = {
+  kind: "idempotent";
+  event: EventRecord;
+  itemDeletedAtMs?: number;
+};
+
+type PreparedAppend = PreparedAppendInsert | PreparedAppendIdempotent;
 
 export class SyncServiceError extends Error {
   readonly code: string;
@@ -93,11 +122,15 @@ export interface SyncServiceDeps {
     | "deleteByVaultAndReferencedItemId"
     | "hasItemCreateEvent"
     | "findByIdempotencyKey"
-  >;
+  > & {
+    appendBatch?: EventsRepository["appendBatch"];
+  };
   softDeletes?: Pick<VaultItemSoftDeletesRepository, "upsert" | "remove">;
   users?: Pick<UsersRepository, "findById">;
   /** Required in production to gate ITEM_CREATE on shared vaults after EE→FREE. */
   workspaces?: Pick<WorkspacesRepository, "findById">;
+  /** When set, SaaS item writes are rejected once encrypted content exceeds the plan ceiling. */
+  storageQuota?: WorkspaceStorageQuotaService;
   config?: Partial<
     Pick<
       ApiConfig,
@@ -147,6 +180,7 @@ export class SyncService {
   private readonly softDeletes: SyncServiceDeps["softDeletes"];
   private readonly users: SyncServiceDeps["users"];
   private readonly workspaces: SyncServiceDeps["workspaces"];
+  private readonly storageQuota: SyncServiceDeps["storageQuota"];
   private readonly config: Pick<
     ApiConfig,
     | "allowedCryptoProfileVersions"
@@ -166,8 +200,9 @@ export class SyncService {
     this.softDeletes = deps.softDeletes;
     this.users = deps.users;
     this.workspaces = deps.workspaces;
+    this.storageQuota = deps.storageQuota;
     this.config = {
-      allowedCryptoProfileVersions: [1, 2],
+      allowedCryptoProfileVersions: [2],
       deployEnv: "dev",
       cryptoRolloutMode: "compat",
       cryptoRolloutEnabled: true,
@@ -185,6 +220,9 @@ export class SyncService {
     userId: string,
     afterVersion: number,
   ): Promise<SyncEventResponse[]> {
+    if (!isEntityId(vaultId.trim())) {
+      throw new SyncServiceError("INVALID_VAULT_ID", 400, "vaultId must be a snowflake entity id");
+    }
     if (!Number.isInteger(afterVersion) || afterVersion < 0) {
       throw new SyncServiceError(
         "SYNC_BAD_REQUEST",
@@ -203,6 +241,9 @@ export class SyncService {
     userId: string,
     input: SyncAppendEventInput,
   ): Promise<SyncEventResponse> {
+    if (!isEntityId(vaultId.trim())) {
+      throw new SyncServiceError("INVALID_VAULT_ID", 400, "vaultId must be a snowflake entity id");
+    }
     const operation = "sync.append";
     const stopTimer = startCryptoOperationTimer(this.log, {
       operation,
@@ -228,6 +269,237 @@ export class SyncService {
     }
     const vault = await this.ensureVaultReadable(vaultId, userId);
 
+
+    try {
+      const prepared = await this.prepareAppend(vaultId, userId, vault, input);
+      if (prepared.kind === "idempotent") {
+        recordCryptoOperationOutcome(this.log, {
+          operation,
+          deployEnv: this.config.deployEnv,
+          rolloutMode: this.config.cryptoRolloutMode,
+          outcome: "success",
+        });
+        return mapEventToResponse(prepared.event);
+      }
+      const created = await this.events.append(prepared.storage);
+      await this.applySoftDeleteIndex(vaultId, created, prepared.itemDeletedAtMs);
+      recordCryptoOperationOutcome(this.log, {
+        operation,
+        deployEnv: this.config.deployEnv,
+        rolloutMode: this.config.cryptoRolloutMode,
+        outcome: "success",
+      });
+      return mapEventToResponse(created);
+    } catch (error) {
+      if (error instanceof SyncServiceError) {
+        throw error;
+      }
+      this.rethrowAppendStorageError(error, vaultId, userId, operation);
+    } finally {
+      stopTimer();
+    }
+  }
+
+  async appendEvents(
+    vaultId: string,
+    userId: string,
+    inputs: SyncAppendEventInput[],
+  ): Promise<SyncEventResponse[]> {
+    if (!isEntityId(vaultId.trim())) {
+      throw new SyncServiceError("INVALID_VAULT_ID", 400, "vaultId must be a snowflake entity id");
+    }
+    if (!Array.isArray(inputs) || inputs.length === 0) {
+      throw new SyncServiceError("SYNC_BAD_REQUEST", 400, "events must be a non-empty array");
+    }
+    if (inputs.length > SYNC_EVENTS_BATCH_MAX) {
+      throw new SyncServiceError(
+        "SYNC_BAD_REQUEST",
+        400,
+        `events batch exceeds max of ${SYNC_EVENTS_BATCH_MAX}`,
+      );
+    }
+    for (const input of inputs) {
+      if (!input || typeof input !== "object") {
+        throw new SyncServiceError("SYNC_BAD_REQUEST", 400, "each event must be an object");
+      }
+    }
+    if (!this.events.appendBatch) {
+      throw new SyncServiceError("INTERNAL_SERVER_ERROR", 500, "batch append is unavailable");
+    }
+
+    const operation = "sync.append";
+    const stopTimer = startCryptoOperationTimer(this.log, {
+      operation,
+      deployEnv: this.config.deployEnv,
+      rolloutMode: this.config.cryptoRolloutMode,
+    });
+    const rolloutGateViolation = getCryptoRolloutGateViolation(this.config, operation);
+    if (rolloutGateViolation) {
+      recordCryptoOperationOutcome(this.log, {
+        operation,
+        deployEnv: this.config.deployEnv,
+        rolloutMode: this.config.cryptoRolloutMode,
+        outcome: "blocked",
+        code: rolloutGateViolation.code,
+      });
+      stopTimer();
+      throw new SyncServiceError(
+        rolloutGateViolation.code,
+        rolloutGateViolation.statusCode,
+        rolloutGateViolation.message,
+        rolloutGateViolation.details,
+      );
+    }
+    const vault = await this.ensureVaultReadable(vaultId, userId);
+
+    try {
+      const batchCreatedItemIds = new Set<string>();
+      const preparedList: PreparedAppend[] = [];
+      for (const input of inputs) {
+        const prepared = await this.prepareAppend(vaultId, userId, vault, input, {
+          batchCreatedItemIds,
+        });
+        preparedList.push(prepared);
+        if (
+          prepared.kind === "insert" &&
+          prepared.storage.eventType === "ITEM_CREATE" &&
+          prepared.storage.referencedItemId
+        ) {
+          batchCreatedItemIds.add(prepared.storage.referencedItemId);
+        }
+      }
+
+      const storageInputs: PreparedAppendInsert["storage"][] = [];
+      for (const prepared of preparedList) {
+        if (prepared.kind === "insert") {
+          storageInputs.push(prepared.storage);
+        }
+      }
+
+      const insertedRows =
+        storageInputs.length > 0 ? await this.events.appendBatch(storageInputs) : [];
+      if (insertedRows.length !== storageInputs.length) {
+        throw new SyncServiceError(
+          "INTERNAL_SERVER_ERROR",
+          500,
+          "appendBatch returned unexpected row count",
+        );
+      }
+
+      const out: SyncEventResponse[] = new Array(preparedList.length);
+      let insertCursor = 0;
+      for (let i = 0; i < preparedList.length; i += 1) {
+        const prepared = preparedList[i]!;
+        if (prepared.kind === "idempotent") {
+          out[i] = mapEventToResponse(prepared.event);
+          continue;
+        }
+        const row = insertedRows[insertCursor]!;
+        insertCursor += 1;
+        await this.applySoftDeleteIndex(vaultId, row, prepared.itemDeletedAtMs);
+        out[i] = mapEventToResponse(row);
+      }
+      recordCryptoOperationOutcome(this.log, {
+        operation,
+        deployEnv: this.config.deployEnv,
+        rolloutMode: this.config.cryptoRolloutMode,
+        outcome: "success",
+      });
+      return out;
+    } catch (error) {
+      if (error instanceof SyncServiceError) {
+        throw error;
+      }
+      this.rethrowAppendStorageError(error, vaultId, userId, operation);
+    } finally {
+      stopTimer();
+    }
+  }
+
+  private rethrowAppendStorageError(
+    error: unknown,
+    vaultId: string,
+    userId: string,
+    operation: string,
+  ): never {
+    if (error instanceof VersionConflictError) {
+      throw new SyncServiceError("VERSION_MISMATCH", 409, "baseVersion is stale", {
+        code: "VERSION_MISMATCH",
+        expectedBaseVersion: error.expectedVersion,
+        latestVersion: error.actualVersion,
+      });
+    }
+    if (error instanceof CryptoDowngradeInvariantError) {
+      logCryptoPolicyViolation(this.log, {
+        reason: "downgrade",
+        deployEnv: this.config.deployEnv ?? "dev",
+        vaultId,
+        actorId: userId,
+        requestedVersion: error.requestedVersion,
+        establishedMaxVersion: error.establishedMaxVersion,
+      });
+      throw new SyncServiceError(
+        CRYPTO_DOWNGRADE_NOT_ALLOWED,
+        CRYPTO_DOWNGRADE_STATUS_CODE,
+        `crypto profile downgrade blocked: vault stream requires at least v${error.establishedMaxVersion}`,
+        buildCryptoDowngradeDetails(
+          vaultId,
+          error.establishedMaxVersion,
+          error.requestedVersion,
+        ),
+      );
+    }
+    if (error instanceof SyncServiceError) {
+      recordCryptoOperationOutcome(this.log, {
+        operation,
+        deployEnv: this.config.deployEnv,
+        rolloutMode: this.config.cryptoRolloutMode,
+        outcome: "error",
+        code: error.code,
+      });
+      throw error;
+    }
+    recordCryptoOperationOutcome(this.log, {
+      operation,
+      deployEnv: this.config.deployEnv,
+      rolloutMode: this.config.cryptoRolloutMode,
+      outcome: "error",
+      code: "UNEXPECTED",
+    });
+    throw error;
+  }
+
+  private async applySoftDeleteIndex(
+    vaultId: string,
+    created: EventRecord,
+    itemDeletedAtMs?: number,
+  ): Promise<void> {
+    if (!this.softDeletes || !created.referencedItemId) {
+      return;
+    }
+    const referencedItemId = created.referencedItemId;
+    const persistedSoftDelete =
+      created.eventType === "ITEM_DELETE" || created.itemSoftDeleted === true;
+    if (persistedSoftDelete) {
+      await this.softDeletes.upsert({
+        vaultId,
+        itemId: referencedItemId,
+        deletedAtMs: Math.trunc(itemDeletedAtMs ?? Date.now()),
+      });
+      return;
+    }
+    if (created.eventType === "ITEM_UPDATE" && created.itemSoftDeleted === false) {
+      await this.softDeletes.remove(vaultId, referencedItemId);
+    }
+  }
+
+  private async prepareAppend(
+    vaultId: string,
+    userId: string,
+    vault: VaultRecord,
+    input: SyncAppendEventInput,
+    options?: { batchCreatedItemIds?: ReadonlySet<string> },
+  ): Promise<PreparedAppend> {
     if (!SYNC_EVENT_TYPES.has(input.eventType)) {
       throw new SyncServiceError("SYNC_INVALID_EVENT_TYPE", 400, "invalid eventType");
     }
@@ -260,67 +532,38 @@ export class SyncService {
       entity: "sync_event",
       event_type: input.eventType,
     });
-    const signatureIsRequired =
-      EVENT_TYPES_REQUIRING_SIGNATURE.has(input.eventType) &&
-      this.config.cryptoRolloutMode === "strict";
-    if (EVENT_TYPES_REQUIRING_SIGNATURE.has(input.eventType) && (input.signature || signatureIsRequired)) {
-      if (!input.signature) {
-        throw new SyncServiceError(
-          SIGNATURE_REQUIRED,
-          SIGNATURE_STATUS_CODE,
-          "signature is required for this eventType",
-          { context: "sync.append", eventType: input.eventType },
-        );
-      }
-      const actor = this.users ? await this.users.findById(userId) : null;
-      if (!actor?.publicKey || !actor.publicPqKey) {
-        throw new SyncServiceError(
-          SIGNATURE_INVALID,
-          SIGNATURE_STATUS_CODE,
-          "signer keys are unavailable",
-          { context: "sync.append", eventType: input.eventType },
-        );
-      }
-      let envelope;
-      try {
-        envelope = parseHybridSignatureEnvelope(input.signature, "sync.append");
-      } catch (error) {
-        throw new SyncServiceError(
-          SIGNATURE_INVALID,
-          SIGNATURE_STATUS_CODE,
-          (error as Error).message,
-          { context: "sync.append", eventType: input.eventType },
-        );
-      }
-      if (envelope.signer_pq_public_key !== actor.publicPqKey) {
-        throw new SyncServiceError(
-          SIGNATURE_INVALID,
-          SIGNATURE_STATUS_CODE,
-          "signature signer_pq_public_key mismatch",
-          { context: "sync.append", eventType: input.eventType },
-        );
-      }
-      const verified = verifyHybridSignatureForPayload({
-        envelope,
+    const actor = input.signature && this.users ? await this.users.findById(userId) : null;
+    try {
+      const envelope = enforceOperationSignature({
+        rolloutMode: this.config.cryptoRolloutMode,
+        operation: "sync.append",
+        eventType: input.eventType,
+        signature: input.signature,
         payload: {
           vaultId,
           eventType: input.eventType,
           encryptedBlob: normalizedBlob,
         },
-        signerPublicKeyBase64: actor.publicKey,
+        signer:
+          actor?.publicKey && actor.publicPqKey
+            ? {
+                publicKey: actor.publicKey,
+                publicPqKey: actor.publicPqKey,
+                publicMldsaKey: actor.publicMldsaKey ?? null,
+              }
+            : null,
       });
-      if (!verified) {
-        throw new SyncServiceError(
-          SIGNATURE_INVALID,
-          SIGNATURE_STATUS_CODE,
-          "signature verification failed",
-          { context: "sync.append", eventType: input.eventType },
-        );
+      if (envelope) {
+        normalizedBlob.meta = {
+          ...normalizedBlob.meta,
+          signature: envelope,
+        };
       }
-      normalizedBlob.meta = {
-        ...normalizedBlob.meta,
-        signature: envelope,
-      };
+    } catch (error) {
+      if (error instanceof OperationSignatureError) {
+        throw new SyncServiceError(error.code, error.statusCode, error.message, error.details);
+      }
+      throw error;
     }
     const policyViolation = getCryptoWritePolicyViolation(
       this.config,
@@ -386,13 +629,12 @@ export class SyncService {
       );
     }
 
+    const batchCreated = options?.batchCreatedItemIds;
     if (input.eventType === "ITEM_CREATE" && referencedItemId) {
-      const alreadyCreated = await this.events.hasItemCreateEvent(
-        vaultId,
-        referencedItemId,
-      );
+      const alreadyCreated =
+        (batchCreated?.has(referencedItemId) ?? false) ||
+        (await this.events.hasItemCreateEvent(vaultId, referencedItemId));
       if (alreadyCreated) {
-        // Same-key retries must keep returning the original create (append short-circuit).
         if (input.idempotencyKey) {
           const existingByKey = await this.events.findByIdempotencyKey(
             vaultId,
@@ -403,7 +645,11 @@ export class SyncService {
             existingByKey.eventType === "ITEM_CREATE" &&
             existingByKey.referencedItemId === referencedItemId
           ) {
-            return mapEventToResponse(existingByKey);
+            return {
+              kind: "idempotent",
+              event: existingByKey,
+              itemDeletedAtMs: input.itemDeletedAtMs,
+            };
           }
         }
         throw new SyncServiceError(
@@ -419,7 +665,9 @@ export class SyncService {
       (input.eventType === "ITEM_UPDATE" || input.eventType === "ITEM_DELETE") &&
       referencedItemId
     ) {
-      const hasCreate = await this.events.hasItemCreateEvent(vaultId, referencedItemId);
+      const hasCreate =
+        (batchCreated?.has(referencedItemId) ?? false) ||
+        (await this.events.hasItemCreateEvent(vaultId, referencedItemId));
       if (!hasCreate) {
         throw new SyncServiceError(
           "SYNC_ITEM_NOT_FOUND",
@@ -457,16 +705,53 @@ export class SyncService {
       clientCreatedAt = new Date(parsed).toISOString();
     }
 
-    // Always persist an explicit boolean for ITEM_* events (never leave unset on new rows).
-    // Omitted UPDATE/CREATE hints default to false; ITEM_DELETE is always soft-delete.
     let itemSoftDeleted: boolean | null = null;
     if (itemEventTypes.has(input.eventType)) {
       itemSoftDeleted =
         input.eventType === "ITEM_DELETE" ? true : input.itemSoftDeleted === true;
     }
 
-    try {
-      const created = await this.events.append({
+    if (
+      this.storageQuota &&
+      (input.eventType === "ITEM_CREATE" || input.eventType === "ITEM_UPDATE") &&
+      itemSoftDeleted !== true &&
+      referencedItemId
+    ) {
+      const existingIdempotent = input.idempotencyKey
+        ? await this.events.findByIdempotencyKey(vaultId, input.idempotencyKey)
+        : null;
+      if (!existingIdempotent) {
+        const workspace = this.workspaces
+          ? await this.workspaces.findById(vault.workspaceId)
+          : null;
+        if (workspace) {
+          const nextPayloadBytes = serializeEncryptedBlobToStorage(normalizedBlob).byteLength;
+          try {
+            await this.storageQuota.assertVaultItemWrite({
+              workspace,
+              vaultId,
+              referencedItemId,
+              eventType: input.eventType,
+              nextPayloadBytes,
+            });
+          } catch (error) {
+            if (error instanceof PlanQuotaExceededError) {
+              throw new SyncServiceError(
+                error.code,
+                error.statusCode,
+                error.message,
+                error.details,
+              );
+            }
+            throw error;
+          }
+        }
+      }
+    }
+
+    return {
+      kind: "insert",
+      storage: {
         vaultId,
         actorId: userId,
         eventType: input.eventType,
@@ -477,77 +762,9 @@ export class SyncService {
         clientCreatedAt: clientCreatedAt ?? undefined,
         referencedItemId,
         itemSoftDeleted,
-      });
-      // Drive retention index from the *persisted* event (idempotent retries may
-      // return an older row). Never mark soft-delete in the index without a matching
-      // item_soft_deleted / ITEM_DELETE on that event row.
-      if (this.softDeletes && referencedItemId) {
-        const persistedSoftDelete =
-          created.eventType === "ITEM_DELETE" || created.itemSoftDeleted === true;
-        if (persistedSoftDelete) {
-          await this.softDeletes.upsert({
-            vaultId,
-            itemId: referencedItemId,
-            deletedAtMs: Math.trunc(input.itemDeletedAtMs ?? Date.now()),
-          });
-        } else if (
-          created.eventType === "ITEM_UPDATE" &&
-          created.itemSoftDeleted === false
-        ) {
-          await this.softDeletes.remove(vaultId, referencedItemId);
-        }
-      }
-      recordCryptoOperationOutcome(this.log, {
-        operation,
-        deployEnv: this.config.deployEnv,
-        rolloutMode: this.config.cryptoRolloutMode,
-        outcome: "success",
-      });
-      return mapEventToResponse(created);
-    } catch (error) {
-      if (error instanceof VersionConflictError) {
-        throw new SyncServiceError(
-          "VERSION_MISMATCH",
-          409,
-          "baseVersion is stale",
-          {
-            code: "VERSION_MISMATCH",
-            expectedBaseVersion: error.expectedVersion,
-            latestVersion: error.actualVersion,
-          },
-        );
-      }
-      if (error instanceof CryptoDowngradeInvariantError) {
-        logCryptoPolicyViolation(this.log, {
-          reason: "downgrade",
-          deployEnv: this.config.deployEnv ?? "dev",
-          vaultId,
-          actorId: userId,
-          requestedVersion: error.requestedVersion,
-          establishedMaxVersion: error.establishedMaxVersion,
-        });
-        throw new SyncServiceError(
-          CRYPTO_DOWNGRADE_NOT_ALLOWED,
-          CRYPTO_DOWNGRADE_STATUS_CODE,
-          `crypto profile downgrade blocked: vault stream requires at least v${error.establishedMaxVersion}`,
-          buildCryptoDowngradeDetails(
-            vaultId,
-            error.establishedMaxVersion,
-            error.requestedVersion,
-          ),
-        );
-      }
-      recordCryptoOperationOutcome(this.log, {
-        operation,
-        deployEnv: this.config.deployEnv,
-        rolloutMode: this.config.cryptoRolloutMode,
-        outcome: "error",
-        code: error instanceof SyncServiceError ? error.code : "UNEXPECTED",
-      });
-      throw error;
-    } finally {
-      stopTimer();
-    }
+      },
+      itemDeletedAtMs: input.itemDeletedAtMs,
+    };
   }
 
   private async ensureVaultReadable(vaultId: string, userId: string): Promise<VaultRecord> {
@@ -564,7 +781,7 @@ export class SyncService {
   }
 
   /**
-   * After EE→FREE (no `sharedVaults`), existing shared vaults stay readable/editable,
+   * When `sharedVaults` is off, existing shared vaults stay readable/editable,
    * but new items / move-into shared must be denied.
    */
   private async assertSharedVaultItemCreateAllowed(vault: VaultRecord): Promise<void> {
@@ -575,7 +792,7 @@ export class SyncService {
       throw new SyncServiceError(
         "PLAN_FEATURE_REQUIRED",
         403,
-        "shared vaults require a paid plan",
+        "shared vaults are not available on this plan",
       );
     }
     const planConfig: PlanEntitlementRuntimeConfig = {

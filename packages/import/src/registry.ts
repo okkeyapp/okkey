@@ -123,7 +123,6 @@ export const importFormatOptions: ImportFormatOption[] = [
     featured: false,
     acceptedFileTypes: ["zip"],
     supportsTextPaste: false,
-    requiresExportPassword: true,
   },
   { id: "passworkjson", name: "Passwork (json)", featured: true, acceptedFileTypes: ["json"], supportsTextPaste: true },
   { id: "genericcsv", name: "Custom CSV", featured: false, acceptedFileTypes: ["csv"], supportsTextPaste: true },

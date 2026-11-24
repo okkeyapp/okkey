@@ -48,7 +48,7 @@ Key product concepts (see `docs/glossary.md`):
                     │  Browser Extension         │
                     └─────────────┬──────────────┘
                                   │
-                                  │ HTTPS / WebSocket
+                                  │ HTTPS / REST
                                   │
                     ┌─────────────▼──────────────┐
                     │       Okkey Core API       │
@@ -178,7 +178,7 @@ Core uses explicit crypto versioning for encrypted artifacts and a strict produc
 - `v2` hybrid ECC + PQ envelopes (production baseline)
 - future pure-PQ modes
 
-For the first production release, all production write paths are `v2` only, without legacy client-data obligations. Legacy `v1` behavior is limited to explicitly documented dev/test fixtures.
+Vault items require crypto profile `v2` (`qday_default`) for read and write in every environment. Crypto profile `v1` is forbidden for vault items, with no migration of existing profile `v1` payloads.
 
 ---
 
@@ -187,7 +187,7 @@ For the first production release, all production write paths are `v2` only, with
 ```
 Clients
 │
-│ HTTPS / WebSocket
+│ HTTPS / REST
 ▼
 Okkey Core API
 │

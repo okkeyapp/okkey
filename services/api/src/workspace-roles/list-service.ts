@@ -138,11 +138,15 @@ export class WorkspaceBuiltInRolesService {
   }
 
   private async requireAccessibleWorkspace(workspaceId: string, userId: string) {
-    const workspace = await this.workspaces.findById(workspaceId);
+    const normalizedWorkspaceId = workspaceId.trim();
+    if (!isEntityId(normalizedWorkspaceId)) {
+      throw new WorkspaceBuiltInRolesServiceError("INVALID_WORKSPACE_ID", 400, "workspace id is required");
+    }
+    const workspace = await this.workspaces.findById(normalizedWorkspaceId);
     if (!workspace) {
       throw new WorkspaceBuiltInRolesServiceError("WORKSPACE_NOT_FOUND", 404, "workspace not found");
     }
-    const hasAccess = await this.workspaces.hasAccess(workspaceId, userId);
+    const hasAccess = await this.workspaces.hasAccess(normalizedWorkspaceId, userId);
     if (!hasAccess) {
       throw new WorkspaceBuiltInRolesServiceError("ACCESS_DENIED", 403, "access denied");
     }

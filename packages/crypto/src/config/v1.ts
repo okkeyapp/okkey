@@ -8,10 +8,11 @@ export interface CryptoConfig {
   allowedEnvironments: ReadonlyArray<"dev" | "test" | "stage" | "prod">;
 }
 
+/** Legacy profile. Vault item read and write paths reject it; v2 is required. */
 export const CRYPTO_CONFIG_V1: Readonly<CryptoConfig> = Object.freeze({
   version: 1,
   id: "v1",
   encryptedBlobAlgorithm: "opaque",
   runtimeMode: "dev_test_legacy",
-  allowedEnvironments: Object.freeze(["dev", "test"] as const),
+  allowedEnvironments: Object.freeze([] as const),
 });

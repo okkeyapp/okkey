@@ -1,13 +1,31 @@
-import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
+import { createCipheriv, createDecipheriv, createHash, hkdfSync, randomBytes } from "node:crypto";
 import { wipeSecretBytes } from "./secret-lifecycle.ts";
 
 const ALGO = "aes-256-gcm";
 const IV_LEN = 12;
 const TAG_LEN = 16;
 const KEY_DERIVE_LABEL = "okkey:api:totp-secret:v1";
+/** Domain-separated from the 2FA key that is the HKDF input. */
+const SMTP_PASSWORD_KEY_INFO = "okkey:api:smtp-password:v1";
 
 export function deriveAes256KeyFromSessionSecret(sessionSecret: string): Buffer {
   return createHash("sha256").update(`${KEY_DERIVE_LABEL}:${sessionSecret}`, "utf8").digest();
+}
+
+/**
+ * AES-256 key for SMTP passwords stored by the API.
+ * Derived from the existing 2FA server key so current installs keep working
+ * without a new required environment variable.
+ */
+export function deriveSmtpPasswordKey(sessionSecret: string): Buffer {
+  const ikm = deriveAes256KeyFromSessionSecret(sessionSecret);
+  try {
+    return Buffer.from(
+      hkdfSync("sha256", ikm, Buffer.alloc(0), SMTP_PASSWORD_KEY_INFO, 32),
+    );
+  } finally {
+    wipeSecretBytes(ikm);
+  }
 }
 
 /** Packed: IV (12) || tag (16) || ciphertext */

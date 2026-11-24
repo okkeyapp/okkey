@@ -1,17 +1,34 @@
-import { expect, type Page } from "@playwright/test";
+import { expect, type Locator, type Page } from "@playwright/test";
 
 /**
- * If `#editItem` is open (e.g. personal-data bootstrap on a non-e2e build),
- * dismiss via Cancel → leave-without-saving Continue. CI builds set
- * VITE_E2E_DISABLE_PERSONAL_DATA_BOOTSTRAP=1 so this is usually a no-op.
+ * After first unlock, personal-data bootstrap creates a row and may open `#editItem`
+ * asynchronously. Wait until that settles, then dismiss via Cancel → leave-without-saving
+ * Continue so Login create is not raced by a late-opening edit dialog.
  */
 export async function dismissOpenItemDialog(page: Page): Promise<void> {
   const editItem = page.locator("#editItem");
-  const appeared = await editItem
-    .waitFor({ state: "visible", timeout: 5_000 })
-    .then(() => true)
-    .catch(() => false);
-  if (!appeared) {
+  const personalDataRow = page.getByRole("button", { name: /personal data/i }).first();
+
+  // Bootstrap create+navigate can take several seconds. Wait until either signal
+  // appears — do not use locator.or().toBeVisible() (strict mode fails when both exist).
+  await expect
+    .poll(
+      async () => {
+        if (await editItem.isVisible().catch(() => false)) {
+          return "edit";
+        }
+        if (await personalDataRow.isVisible().catch(() => false)) {
+          return "row";
+        }
+        return "";
+      },
+      { timeout: 30_000 },
+    )
+    .not.toBe("");
+
+  const editVisible = await editItem.isVisible().catch(() => false);
+  if (!editVisible) {
+    await expect(page.getByRole("dialog")).toHaveCount(0, { timeout: 15_000 });
     return;
   }
 
@@ -29,6 +46,12 @@ export async function dismissOpenItemDialog(page: Page): Promise<void> {
 
   await expect(editItem).toBeHidden({ timeout: 15_000 });
   await expect(page.getByRole("dialog")).toHaveCount(0, { timeout: 15_000 });
+}
+
+async function fillAndAssert(field: Locator, value: string): Promise<void> {
+  await field.click();
+  await field.fill(value);
+  await expect(field).toHaveValue(value);
 }
 
 /** Create a Login / Password item via the new-item popup (qa/web 7.1 subset). */
@@ -54,14 +77,29 @@ export async function createLoginItem(
     timeout: 15_000,
   });
 
-  await dialog.getByLabel(/item name/i).fill(input.title);
+  const nameField = dialog.getByLabel(/item name/i);
+  // Let the one-shot title autofocus settle before driving fills (avoids focus races).
+  await expect(nameField).toBeVisible();
+  await nameField.click();
+  await fillAndAssert(nameField, input.title);
 
   // Key-form fields expose placeholder as accessible name, not the visible label text.
-  await dialog.getByPlaceholder(/^enter login$/i).fill(input.login);
-  await dialog.getByPlaceholder(/^enter password$/i).fill(input.password);
-  await dialog.getByPlaceholder("https://example.com").fill(input.url);
+  const loginField = dialog.getByPlaceholder(/^enter login$/i);
+  const passwordField = dialog.getByPlaceholder(/^enter password$/i);
+  const urlField = dialog.getByPlaceholder("https://example.com");
 
-  await dialog.getByRole("button", { name: /^save$/i }).click();
+  await fillAndAssert(loginField, input.login);
+  // Title must stay the explicit title — not the login email (autofill/focus flake).
+  await expect(nameField).toHaveValue(input.title);
+
+  await fillAndAssert(passwordField, input.password);
+  await fillAndAssert(urlField, input.url);
+  await expect(nameField).toHaveValue(input.title);
+  await expect(loginField).toHaveValue(input.login);
+
+  const save = dialog.getByRole("button", { name: /^save$/i });
+  await expect(save).toBeEnabled({ timeout: 15_000 });
+  await save.click();
   await expect(dialog).toBeHidden({ timeout: 30_000 });
   await expect(page.getByText(input.title, { exact: false }).first()).toBeVisible({
     timeout: 30_000,

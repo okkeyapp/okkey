@@ -15,6 +15,7 @@ import { webEnterpriseModulesActive, workspaceHasPlanFeature } from "./planEntit
 import {
   cn,
   DropdownMenuItem,
+  OkkeyNavMonitoringIcon,
   okkeyWorkspaceShellNavItems,
   Spinner,
   type OkkeyAppSidebarAccountMenu,
@@ -28,7 +29,11 @@ import workspaceTenancyModule from "@okkey-enterprise/workspace-tenancy";
 import {
   canCompletePendingVaultWraps,
   tryCompletePendingVaultWraps,
-} from "@okkey-enterprise/workspace-members";
+} from "../components/workspace/settings/members/completePendingVaultWraps";
+import WorkspaceKeyPendingNotice, {
+  WorkspaceKeyNoticeBoundary,
+} from "../components/workspace/settings/members/WorkspaceKeyPendingNotice";
+import { workspaceWithMemberAppearance } from "../workspace/workspaceAppearanceForMember";
 import { refreshWorkspaceFoldersCachesForIds } from "@okkey/vault";
 import { toast } from "sonner";
 
@@ -55,14 +60,13 @@ import NewItemPopup from "../components/items/NewItemPopup";
 import EditItemPopup from "../components/items/EditItemPopup";
 import PersonalDataBootstrapController from "../components/items/PersonalDataBootstrapController";
 import NewCapsulePopup from "../components/capsules/NewCapsulePopup";
-import CapsuleApprovalController from "../components/capsules/CapsuleApprovalController";
+import workspaceCapsulesModule from "@okkey-enterprise/workspace-capsules";
 import DeviceApprovalController from "../components/devices/DeviceApprovalController";
 import DeviceRecoveryApprovalController from "../components/devices/DeviceRecoveryApprovalController";
-import TrustedContactInviteController from "../components/devices/TrustedContactInviteController";
 import ContactsShareReleaseController from "../components/devices/ContactsShareReleaseController";
 import accountRecoveryModule from "@okkey-enterprise/account-recovery";
+import passwordMonitoringModule from "@okkey-enterprise/monitoring";
 import NewVaultPopup from "../components/workspace/settings/vaults/NewVaultPopup";
-import enterpriseSharedVaultsModule from "@okkey-enterprise/workspace-shared-vaults";
 import {
   buildPopupQueryValue,
   FOLDERS_POPUP_ID,
@@ -94,7 +98,6 @@ import {
   itemsPathAllWorkspaceMerged,
   itemsPathWithFolderMerged,
   itemsPathWithVaultMerged,
-  MONITORING_PATH,
   SEARCH_QUERY_PARAM,
   SETTINGS_PATH,
   settingsPath,
@@ -109,6 +112,10 @@ import {
   WORKSPACES_PATH,
   type WorkspaceAppShellPath,
 } from "../routes/paths";
+import {
+  mergePasswordMonitoringNavItem,
+  visiblePasswordMonitoringPath,
+} from "../monitoring-features/nav";
 import { webDisplayPlanTier } from "./planEntitlements";
 import { planTierLabel } from "./planTierLabel";
 
@@ -155,7 +162,11 @@ function ShellChevrons({ className }: { className?: string }) {
   );
 }
 
-function resolveWorkspaceShellPath(pathname: string): WorkspaceAppShellPath | null {
+function resolveWorkspaceShellPath(pathname: string): WorkspaceAppShellPath | "monitoring" | null {
+  const monitoringPath = visiblePasswordMonitoringPath(passwordMonitoringModule.monitoringPath);
+  if (monitoringPath && pathname === monitoringPath) {
+    return "monitoring";
+  }
   if ((WORKSPACE_APP_SHELL_PATHS as readonly string[]).includes(pathname)) {
     return pathname as WorkspaceAppShellPath;
   }
@@ -173,13 +184,14 @@ function shellTitleKey(pathname: string): string {
   if (!shellPath) {
     return "workspaces.shellTitle";
   }
+  if (shellPath === "monitoring") {
+    return "web.shell.monitoringTitle";
+  }
   switch (shellPath) {
     case ITEMS_PATH:
       return "web.shell.itemsTitle";
     case CAPSULES_PATH:
       return "web.shell.capsulesTitle";
-    case MONITORING_PATH:
-      return "web.shell.monitoringTitle";
     case TOOLS_PATH:
       return "web.shell.toolsTitle";
     case SETTINGS_PATH:
@@ -189,7 +201,9 @@ function shellTitleKey(pathname: string): string {
   }
 }
 
+const TrustedContactInviteController = accountRecoveryModule.TrustedContactInviteController;
 const ContactsShareAutoEnrollController = accountRecoveryModule.ContactsShareAutoEnrollController;
+const CapsuleApprovalController = workspaceCapsulesModule.CapsuleApprovalController;
 
 export default function WorkspaceRoutesLayout() {
   const { t } = useLocale();
@@ -212,6 +226,7 @@ export default function WorkspaceRoutesLayout() {
     [isItemsMobileListView],
   );
 
+  const [workspaceKeyAccess, setWorkspaceKeyAccess] = useState<"open" | "pending" | "unknown">("unknown");
   const [phase, setPhase] = useState<"loading" | "ready">("loading");
   const [resolvedWorkspaceId, setResolvedWorkspaceId] = useState<string | null>(null);
   const [workspaceList, setWorkspaceList] = useState<Workspace[]>([]);
@@ -237,10 +252,6 @@ export default function WorkspaceRoutesLayout() {
 
   useEffect(() => {
     if (!core || !userId || !vaultKey || !vaultUnlocked || !resolvedWorkspaceId) {
-      return;
-    }
-    // EE route `/pending-vault-wraps` — skip entirely when modules are off (avoid 404 spam).
-    if (!webEnterpriseModulesActive()) {
       return;
     }
     // Contract requires `members:get`; builtin user role has none — do not probe (403 spam).
@@ -321,7 +332,6 @@ export default function WorkspaceRoutesLayout() {
     return {
       items: ITEMS_PATH,
       capsules: CAPSULES_PATH,
-      monitoring: MONITORING_PATH,
       tools: toolsPath(),
       settings: firstSettings ? settingsPath(firstSettings) : settingsPath("general"),
     };
@@ -353,16 +363,24 @@ export default function WorkspaceRoutesLayout() {
     const labels = {
       allItems: t("web.nav.allItems"),
       capsules: t("web.nav.capsules"),
-      monitoring: t("web.nav.monitoring"),
       tools: t("web.nav.tools"),
       settings: t("web.nav.settings"),
       addRecords: t("web.items.createRecord"),
       addCapsule: t("web.nav.addCapsule"),
     };
-    const base = okkeyWorkspaceShellNavItems(navPaths, labels);
+    const monitoringPath = visiblePasswordMonitoringPath(passwordMonitoringModule.monitoringPath);
+    const workspaceForNav = workspaceList.find((workspace) => workspace.id === resolvedWorkspaceId);
+    const monitoringNav = monitoringPath
+      ? {
+          id: "mon",
+          to: monitoringPath,
+          icon: <OkkeyNavMonitoringIcon />,
+          label: t("web.nav.monitoring"),
+        }
+      : null;
+    const base = mergePasswordMonitoringNavItem(okkeyWorkspaceShellNavItems(navPaths, labels), monitoringNav);
     const firstSettings = firstAllowedSettingsSection(workspacePermissions);
     const hideSettings = workspacePermissionsReady && !firstSettings;
-    const workspaceForNav = workspaceList.find((workspace) => workspace.id === resolvedWorkspaceId);
     const capsulesAllowed = isCapsuleAllowedForMember(
       workspaceForNav?.capsulePolicies ?? DEFAULT_WORKSPACE_CAPSULE_POLICIES,
       userId,
@@ -454,6 +472,17 @@ export default function WorkspaceRoutesLayout() {
     () => workspaceList.find((w) => w.id === resolvedWorkspaceId),
     [workspaceList, resolvedWorkspaceId],
   );
+  const shownWorkspace = useMemo(
+    () =>
+      currentWorkspace
+        ? workspaceWithMemberAppearance(currentWorkspace, workspaceKeyAccess)
+        : currentWorkspace,
+    [currentWorkspace, workspaceKeyAccess],
+  );
+
+  useEffect(() => {
+    setWorkspaceKeyAccess("unknown");
+  }, [resolvedWorkspaceId]);
 
   const workspaceFoldersState = useWorkspaceFoldersState({
     userId: userId ?? "",
@@ -732,21 +761,21 @@ export default function WorkspaceRoutesLayout() {
   const workspaceSwitcherTrigger = useMemo(() => {
     return ({ expanded }: { expanded: boolean }) => (
       <>
-        <WorkspaceTileAvatar workspace={currentWorkspace} sizeClass={expanded ? "size-8" : "size-9"} />
+        <WorkspaceTileAvatar workspace={shownWorkspace} sizeClass={expanded ? "size-8" : "size-9"} />
         {expanded ? (
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-semibold leading-5 text-foreground">
-              {currentWorkspace?.name ?? "…"}
+              {shownWorkspace?.name ?? "…"}
             </p>
             <p className="truncate text-xs font-normal leading-4 text-muted-foreground">
-              {currentWorkspace ? planTierLabel(webDisplayPlanTier(currentWorkspace), t) : ""}
+              {shownWorkspace ? planTierLabel(webDisplayPlanTier(shownWorkspace), t) : ""}
             </p>
           </div>
         ) : null}
         {expanded && isMultiWorkspaceUi ? <ShellChevrons /> : null}
       </>
     );
-  }, [currentWorkspace, isMultiWorkspaceUi, t]);
+  }, [shownWorkspace, isMultiWorkspaceUi, t]);
 
   const workspaceSwitcherDropdown = useMemo(() => {
     if (!userId || !isMultiWorkspaceUi) {
@@ -771,7 +800,7 @@ export default function WorkspaceRoutesLayout() {
                   navigate(ITEMS_PATH);
                 }}
               >
-                <WorkspaceTileAvatar workspace={ws} sizeClass="size-8" />
+                <WorkspaceTileAvatar workspace={active && shownWorkspace ? shownWorkspace : ws} sizeClass="size-8" />
                 <div className="min-w-0 flex-1 text-left">
                   <p className="truncate text-sm font-semibold leading-5 text-foreground">{ws.name}</p>
                   <p className="truncate text-xs leading-4 text-muted-foreground">
@@ -814,6 +843,7 @@ export default function WorkspaceRoutesLayout() {
     setResolvedWorkspaceId,
     setPhase,
     isMultiWorkspaceUi,
+    shownWorkspace,
   ]);
 
   if (phase === "loading" || !resolvedWorkspaceId) {
@@ -913,7 +943,8 @@ export default function WorkspaceRoutesLayout() {
                 }
                 maxFileSizeMb={currentWorkspace?.maxFileSizeMb ?? DEFAULT_MAX_FILE_SIZE_MB}
                 filesInItemsEnabled={currentWorkspace?.filesInItemsEnabled ?? true}
-                currentWorkspace={currentWorkspace}
+                currentWorkspace={shownWorkspace}
+                onWorkspaceKeyAccess={setWorkspaceKeyAccess}
                 vaults={vaults}
                 vaultsListReady={vaultsListReady}
                 workspaceNavItems={workspaceNavItems}
@@ -983,6 +1014,7 @@ type WorkspaceShellWithItemsProps = {
   refreshVaults: () => Promise<void>;
   workspacePermissions: WorkspacePermissionsMatrixDto | null;
   workspacePermissionsReady: boolean;
+  onWorkspaceKeyAccess: (access: "open" | "pending" | "unknown") => void;
 };
 
 function WorkspaceShellWithItems({
@@ -1020,14 +1052,12 @@ function WorkspaceShellWithItems({
   refreshVaults,
   workspacePermissions,
   workspacePermissionsReady,
+  onWorkspaceKeyAccess,
 }: WorkspaceShellWithItemsProps) {
   const { itemFolderByItemId, itemFavoriteByItemId } = useWorkspaceFolders();
   const { isContentBlocked, requestAccess } = useSectionReauth();
   const canShowVaultHeaderPlus = useMemo(() => {
     if (!workspaceHasPlanFeature(currentWorkspace, "sharedVaults")) {
-      return false;
-    }
-    if (!enterpriseSharedVaultsModule.SharedVaultCardPopup) {
       return false;
     }
     const vaultPermissions = settingsSectionPermissionCell(workspacePermissions, "vaults");
@@ -1085,10 +1115,14 @@ function WorkspaceShellWithItems({
             workspaceId={resolvedWorkspaceId}
             workspace={currentWorkspace}
           />
-          <CapsuleApprovalController />
+          {CapsuleApprovalController && enterpriseModulesOn ? (
+            <CapsuleApprovalController />
+          ) : null}
           <DeviceApprovalController />
           {enterpriseModulesOn ? <DeviceRecoveryApprovalController /> : null}
-          <TrustedContactInviteController />
+          {TrustedContactInviteController && enterpriseModulesOn ? (
+            <TrustedContactInviteController />
+          ) : null}
           {enterpriseModulesOn ? <ContactsShareReleaseController /> : null}
           {ContactsShareAutoEnrollController && enterpriseModulesOn ? (
             <ContactsShareAutoEnrollController />
@@ -1121,7 +1155,8 @@ function WorkspaceShellWithItems({
               isSettingsPathname(pathname) ||
               isToolsPathname(pathname) ||
               pathname === CAPSULES_PATH ||
-              pathname === MONITORING_PATH
+              (visiblePasswordMonitoringPath(passwordMonitoringModule.monitoringPath) != null &&
+                pathname === passwordMonitoringModule.monitoringPath)
             }
             mainColumnLayout={pathname === ITEMS_PATH ? "items-two-pane" : "single"}
             workspaceNavItems={permittedWorkspaceNavItems}
@@ -1157,8 +1192,17 @@ function WorkspaceShellWithItems({
               ),
             )}
             itemsListRecordsLoaded={workspaceItemsState.bootstrapped}
-            monitoringCardSettings={currentWorkspace?.monitoringCardSettings}
           >
+            {core ? (
+              <WorkspaceKeyNoticeBoundary>
+                <WorkspaceKeyPendingNotice
+                  core={core}
+                  workspaceId={resolvedWorkspaceId}
+                  t={t}
+                  onAccessChange={onWorkspaceKeyAccess}
+                />
+              </WorkspaceKeyNoticeBoundary>
+            ) : null}
             {isContentBlocked ? (
               <WorkspaceErrorState
                 titleKey="web.forbidden.title"

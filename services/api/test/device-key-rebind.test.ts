@@ -4,6 +4,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { createApiApp } from "../src/app.ts";
 import { DeviceService, DeviceServiceError } from "../src/device/service.ts";
 import type { SessionService } from "../src/session/service.ts";
+import { hybridDeviceShareB64 } from "./hybrid-share-fixture.ts";
 import { createTestApiConfig } from "./test-api-config.ts";
 
 const DEVICE_ID = "1234567890123456789";
@@ -112,7 +113,7 @@ test("request-key-rebind demotes to pending when another trusted device can appr
 
   const missingProof = await call(`/devices/${DEVICE_ID}/request-key-rebind`, {
     device_public_key: Buffer.alloc(32, 1).toString("base64"),
-    device_share: Buffer.alloc(32, 2).toString("base64"),
+    device_share: hybridDeviceShareB64(2),
     device_fingerprint: FINGERPRINT,
   });
   assert.equal(missingProof.status, 400);
@@ -123,7 +124,7 @@ test("request-key-rebind demotes to pending when another trusted device can appr
     challenge_id: "unused",
     signature: "good-sig",
     device_public_key: Buffer.alloc(32, 1).toString("base64"),
-    device_share: Buffer.alloc(32, 2).toString("base64"),
+    device_share: hybridDeviceShareB64(2),
     device_fingerprint: FINGERPRINT,
   });
   assert.equal(foreignDevice.status, 404);
@@ -136,7 +137,7 @@ test("request-key-rebind demotes to pending when another trusted device can appr
     challenge_id: challenge.body.challenge_id,
     signature: "good-sig",
     device_public_key: Buffer.alloc(32, 1).toString("base64"),
-    device_share: Buffer.alloc(32, 2).toString("base64"),
+    device_share: hybridDeviceShareB64(2),
     device_fingerprint: "someone-else",
   });
   assert.equal(foreign.status, 403);
@@ -147,7 +148,7 @@ test("request-key-rebind demotes to pending when another trusted device can appr
     challenge_id: challenge.body.challenge_id,
     signature: "good-sig",
     device_public_key: Buffer.alloc(32, 1).toString("base64"),
-    device_share: Buffer.alloc(32, 2).toString("base64"),
+    device_share: hybridDeviceShareB64(2),
     device_fingerprint: FINGERPRINT,
     device_name: "Browser",
   });
@@ -196,7 +197,7 @@ test("request-key-rebind returns DEVICE_REBIND_REQUIRES_RECOVERY for sole device
       challenge_id: issued.challenge_id,
       signature: "good-sig",
       device_public_key: Buffer.alloc(32, 1).toString("base64"),
-      device_share: Buffer.alloc(32, 2).toString("base64"),
+      device_share: hybridDeviceShareB64(2),
       device_fingerprint: FINGERPRINT,
     },
   } as IncomingMessage;
@@ -229,7 +230,7 @@ test("DeviceService maps requires_recovery to DeviceServiceError", async () => {
         challengeId: issued.challengeId,
         signatureB64: "good-sig",
         devicePublicKey: Buffer.alloc(32, 1).toString("base64"),
-        deviceShare: Buffer.alloc(32, 2).toString("base64"),
+        deviceShare: hybridDeviceShareB64(2),
         deviceName: "Browser",
         platform: "web",
         osName: "linux",

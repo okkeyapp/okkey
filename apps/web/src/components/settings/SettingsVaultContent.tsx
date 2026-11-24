@@ -1,4 +1,5 @@
 import type { WebMessageValues } from "@okkey/i18n";
+import { MIN_MASTER_PASSWORD_LENGTH } from "@okkey/types";
 import {
   Button,
   MultiSelect,
@@ -8,6 +9,7 @@ import {
   MultiSelectTrigger,
 } from "@okkey/ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import passwordMonitoringModule from "@okkey-enterprise/monitoring";
 
 import { useAuthVault } from "../../auth/AuthVaultContext";
 import {
@@ -105,7 +107,9 @@ export default function SettingsVaultContent({ t, workspaceIds }: SettingsVaultC
           label: t("web.settingsPopup.vault.zones.group.sections"),
           zones: [
             { id: "capsules" as const, label: t("web.settingsPopup.vault.zones.capsules") },
-            { id: "monitoring" as const, label: t("web.settingsPopup.vault.zones.monitoring") },
+            ...(passwordMonitoringModule.monitoringPath
+              ? [{ id: "monitoring" as const, label: t("web.settingsPopup.vault.zones.monitoring") }]
+              : []),
             { id: "tools" as const, label: t("web.settingsPopup.vault.zones.tools") },
             {
               id: "workspaceSettings" as const,
@@ -207,11 +211,21 @@ export default function SettingsVaultContent({ t, workspaceIds }: SettingsVaultC
             });
             setChangeSubmitting(false);
             if (!result.ok) {
-              setChangeError(
-                result.error === "wrong_old_password"
-                  ? t("web.settingsPopup.vault.changePassword.wrongOld")
-                  : t("web.settingsPopup.vault.changePassword.failed"),
-              );
+              if (result.error === "upgrade_required") {
+                setChangeError(t("clientUpgrade.body"));
+              } else if (result.error === "wrong_old_password") {
+                setChangeError(t("web.settingsPopup.vault.changePassword.wrongOld"));
+              } else if (result.error === "too_short") {
+                setChangeError(
+                  t("web.settingsPopup.vault.changePassword.tooShort", {
+                    min: MIN_MASTER_PASSWORD_LENGTH,
+                  }),
+                );
+              } else if (result.error === "policy_rejected") {
+                setChangeError(t("auth.masterPassword.policyRejected"));
+              } else {
+                setChangeError(t("web.settingsPopup.vault.changePassword.failed"));
+              }
               return;
             }
             setChangedAt(result.masterPasswordChangedAt);

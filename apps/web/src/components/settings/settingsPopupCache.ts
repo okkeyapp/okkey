@@ -56,6 +56,13 @@ function createEmptyCache(): SettingsPopupCacheState {
 
 let cache: SettingsPopupCacheState = createEmptyCache();
 let generation = 0;
+const sliceEpoch: Record<SettingsPopupCacheKey, number> = {
+  recovery: 0,
+  devices: 0,
+  login: 0,
+  twoFactor: 0,
+  profile: 0,
+};
 const listeners = new Set<() => void>();
 
 function notify(): void {
@@ -105,24 +112,33 @@ export function setSettingsPopupCacheData<K extends SettingsPopupCacheKey>(
 type LoadSliceOptions<T> = {
   key: SettingsPopupCacheKey;
   quiet?: boolean;
+  /** Start a new fetch even when one is already running, and ignore the older result. */
+  force?: boolean;
   fetcher: () => Promise<T>;
   mapError?: (err: unknown) => string;
 };
 
-async function loadSlice<T>({ key, quiet = false, fetcher, mapError }: LoadSliceOptions<T>): Promise<T | null> {
+async function loadSlice<T>({
+  key,
+  quiet = false,
+  force = false,
+  fetcher,
+  mapError,
+}: LoadSliceOptions<T>): Promise<T | null> {
   const current = cache[key] as SettingsPopupSlice<T>;
-  if (current.inflight) {
+  if (current.inflight && !force) {
     await current.inflight;
     return (cache[key] as SettingsPopupSlice<T>).data;
   }
 
   const gen = generation;
+  const epoch = ++sliceEpoch[key];
   const keepStale = Boolean(quiet && current.data != null);
 
   const run = (async () => {
     try {
       const data = await fetcher();
-      if (gen !== generation) {
+      if (gen !== generation || epoch !== sliceEpoch[key]) {
         return;
       }
       writeSlice(key, {
@@ -133,7 +149,7 @@ async function loadSlice<T>({ key, quiet = false, fetcher, mapError }: LoadSlice
       } as SettingsPopupSlice<never>);
       notify();
     } catch (err) {
-      if (gen !== generation) {
+      if (gen !== generation || epoch !== sliceEpoch[key]) {
         return;
       }
       const message = mapError?.(err) ?? "error";
@@ -221,14 +237,37 @@ export async function prefetchSettingsPopupCache(deps: PrefetchSettingsPopupCach
 export async function refreshSettingsPopupCacheSlice<K extends SettingsPopupCacheKey>(
   key: K,
   fetcher: () => Promise<NonNullable<SettingsPopupCacheState[K]["data"]>>,
-  opts?: { quiet?: boolean; mapError?: (err: unknown) => string },
+  opts?: { quiet?: boolean; force?: boolean; mapError?: (err: unknown) => string },
 ): Promise<SettingsPopupCacheState[K]["data"]> {
   return loadSlice({
     key,
     quiet: opts?.quiet,
+    force: opts?.force,
     fetcher,
     mapError: opts?.mapError,
   }) as Promise<SettingsPopupCacheState[K]["data"]>;
+}
+
+/** Refetch trusted/pending/blocked devices after approve or reject. */
+export function refreshSettingsDevicesCache(
+  listDevices: () => Promise<{
+    devices: DeviceListItemDto[];
+    pending: DeviceListItemDto[];
+    blocked?: DeviceListItemDto[];
+  }>,
+): Promise<SettingsDevicesListCache | null> {
+  return refreshSettingsPopupCacheSlice(
+    "devices",
+    async () => {
+      const result = await listDevices();
+      return {
+        devices: result.devices,
+        pending: result.pending,
+        blocked: result.blocked ?? [],
+      };
+    },
+    { quiet: true, force: true },
+  );
 }
 
 /** True when the UI should show section skeletons (no usable cached data yet). */

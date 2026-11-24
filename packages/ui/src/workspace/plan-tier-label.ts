@@ -5,8 +5,6 @@ export function planTierLabel(planTier: string, t: (key: string) => string): str
   switch (normalizePlanTier(planTier)) {
     case "PREMIUM":
       return t("plan.premium");
-    case "FAMILY":
-      return t("plan.family");
     case "TEAM":
       return t("plan.team");
     case "ENTERPRISE":

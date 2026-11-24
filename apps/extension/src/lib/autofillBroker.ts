@@ -23,6 +23,11 @@ import {
 } from "@okkey/vault";
 
 import { createCoreClient, isUnauthorizedApiError } from "./api";
+import {
+  extensionMayRequestServerFavicon,
+  fetchClientOriginFavicon,
+  loadFaviconProviderMode,
+} from "./faviconMode";
 import { EMAIL_OTP_URL } from "./autofillFieldClassify";
 import {
   clearAllPendingSaveOffers,
@@ -174,6 +179,10 @@ async function syncWebsiteFaviconForItem(input: {
   item: ItemPlaintextV2;
 }): Promise<void> {
   if (input.item.faviconSource === "manual") {
+    return;
+  }
+  const mode = await loadFaviconProviderMode(input.apiBaseUrl);
+  if (!extensionMayRequestServerFavicon(mode)) {
     return;
   }
   const urls = collectItemWebsiteUrls(input.item);
@@ -596,6 +605,10 @@ function bytesToBase64(bytes: Uint8Array): string {
 }
 
 async function previewFaviconPng(apiBaseUrl: string, accessToken: string, urls: string[]): Promise<Uint8Array | null> {
+  const mode = await loadFaviconProviderMode(apiBaseUrl);
+  if (!extensionMayRequestServerFavicon(mode)) {
+    return null;
+  }
   try {
     const response = await fetch(`${apiBaseUrl.replace(/\/$/, "")}/favicon/preview`, {
       method: "POST",
@@ -641,6 +654,17 @@ export async function handleAutofillSiteIcon(
   }
   // Same expand order as vault item favicon / web form preview: full URL → origin → eTLD+1.
   const lookupUrls = [...new Set([...(urls ?? []), websiteUrl].map((u) => u.trim()).filter(Boolean))];
+  const mode = await loadFaviconProviderMode(profile.apiBaseUrl);
+  if (!extensionMayRequestServerFavicon(mode)) {
+    if (mode !== "client") {
+      return { status: "missing" };
+    }
+    const local = await fetchClientOriginFavicon(lookupUrls);
+    if (!local || local.byteLength === 0) {
+      return { status: "missing" };
+    }
+    return { status: "ok", iconUrl: pngToDataUrl(local) };
+  }
   const png = await previewFaviconPng(profile.apiBaseUrl, session.access_token, lookupUrls);
   if (!png || png.byteLength === 0) {
     // Favicon 401 wipes local state; surface signed-out instead of "missing".

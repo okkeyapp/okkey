@@ -89,8 +89,9 @@ async function dispatch(input: {
   headers?: Record<string, string>;
   body?: unknown;
   syncService?: SyncService;
+  config?: ApiConfig;
 }) {
-  const app = createApiApp(config, loggerStub(), {
+  const app = createApiApp(input.config ?? config, loggerStub(), {
     syncService: input.syncService ?? createSyncServiceStub(),
   });
   const req = {
@@ -108,7 +109,7 @@ async function dispatch(input: {
 test("GET /vaults/:vaultId/events returns events", async () => {
   const res = await dispatch({
     method: "GET",
-    url: "/vaults/v1/events?afterVersion=0",
+    url: "/vaults/1000000000000000001/events?afterVersion=0",
     headers: { "x-user-id": "u1" },
   });
 
@@ -126,7 +127,7 @@ test("GET /vaults/:vaultId/events returns events", async () => {
 test("POST /vaults/:vaultId/events appends event", async () => {
   const res = await dispatch({
     method: "POST",
-    url: "/vaults/v1/events",
+    url: "/vaults/1000000000000000001/events",
     headers: { "x-user-id": "u1" },
     body: {
       eventType: "ITEM_UPDATE",
@@ -144,7 +145,7 @@ test("POST /vaults/:vaultId/events appends event", async () => {
 test("sync routes require x-user-id", async () => {
   const res = await dispatch({
     method: "GET",
-    url: "/vaults/v1/events?afterVersion=0",
+    url: "/vaults/1000000000000000001/events?afterVersion=0",
   });
 
   assert.equal(res.statusCode, 401);
@@ -155,7 +156,7 @@ test("sync routes require x-user-id", async () => {
 test("POST /vaults/:vaultId/events validates required fields", async () => {
   const res = await dispatch({
     method: "POST",
-    url: "/vaults/v1/events",
+    url: "/vaults/1000000000000000001/events",
     headers: { "x-user-id": "u1" },
     body: { eventType: "ITEM_UPDATE" },
   });
@@ -168,7 +169,7 @@ test("POST /vaults/:vaultId/events validates required fields", async () => {
 test("sync routes map VERSION_MISMATCH", async () => {
   const res = await dispatch({
     method: "POST",
-    url: "/vaults/v1/events",
+    url: "/vaults/1000000000000000001/events",
     headers: { "x-user-id": "u1" },
     body: {
       eventType: "ITEM_UPDATE",
@@ -190,7 +191,7 @@ test("sync routes map VERSION_MISMATCH", async () => {
 test("GET /vaults/:vaultId/events maps ACCESS_DENIED", async () => {
   const res = await dispatch({
     method: "GET",
-    url: "/vaults/v1/events?afterVersion=0",
+    url: "/vaults/1000000000000000001/events?afterVersion=0",
     headers: { "x-user-id": "u1" },
     syncService: createSyncServiceStub({
       listEvents: async () => {
@@ -207,7 +208,7 @@ test("GET /vaults/:vaultId/events maps ACCESS_DENIED", async () => {
 test("GET /vaults/:vaultId/events maps VAULT_NOT_FOUND", async () => {
   const res = await dispatch({
     method: "GET",
-    url: "/vaults/v1/events?afterVersion=0",
+    url: "/vaults/1000000000000000001/events?afterVersion=0",
     headers: { "x-user-id": "u1" },
     syncService: createSyncServiceStub({
       listEvents: async () => {
@@ -224,7 +225,7 @@ test("GET /vaults/:vaultId/events maps VAULT_NOT_FOUND", async () => {
 test("POST /vaults/:vaultId/events maps ACCESS_DENIED", async () => {
   const res = await dispatch({
     method: "POST",
-    url: "/vaults/v1/events",
+    url: "/vaults/1000000000000000001/events",
     headers: { "x-user-id": "u1" },
     body: {
       eventType: "ITEM_UPDATE",
@@ -246,7 +247,7 @@ test("POST /vaults/:vaultId/events maps ACCESS_DENIED", async () => {
 test("POST /vaults/:vaultId/events maps PAYLOAD_TOO_LARGE", async () => {
   const res = await dispatch({
     method: "POST",
-    url: "/vaults/v1/events",
+    url: "/vaults/1000000000000000001/events",
     headers: { "x-user-id": "u1" },
     body: {
       eventType: "ITEM_UPDATE",
@@ -268,7 +269,7 @@ test("POST /vaults/:vaultId/events maps PAYLOAD_TOO_LARGE", async () => {
 test("POST /vaults/:vaultId/events maps CRYPTO_DOWNGRADE_NOT_ALLOWED", async () => {
   const res = await dispatch({
     method: "POST",
-    url: "/vaults/v1/events",
+    url: "/vaults/1000000000000000001/events",
     headers: { "x-user-id": "u1" },
     body: {
       eventType: "ITEM_UPDATE",
@@ -293,27 +294,32 @@ test("POST /vaults/:vaultId/events maps CRYPTO_DOWNGRADE_NOT_ALLOWED", async () 
   assert.equal(payload.details?.reason, "downgrade");
 });
 
-test("POST /vaults/:vaultId/events requires signature for VAULT_SHARE", async () => {
-  const res = await dispatch({
-    method: "POST",
-    url: "/vaults/v1/events",
-    headers: { "x-user-id": "u1" },
-    body: {
-      eventType: "VAULT_SHARE",
-      encryptedBlob: mkBlob("x", 2),
-      baseVersion: 0,
-    },
-  });
+for (const mode of ["strict", "compat"] as const) {
+  for (const eventType of ["VAULT_SHARE", "VAULT_KEY_ROTATION"] as const) {
+    test(`POST /vaults/:vaultId/events ${mode} requires signature for ${eventType}`, async () => {
+      const res = await dispatch({
+        method: "POST",
+        url: "/vaults/1000000000000000001/events",
+        headers: { "x-user-id": "u1" },
+        config: { ...config, cryptoRolloutMode: mode },
+        body: {
+          eventType,
+          encryptedBlob: mkBlob("x", 2),
+          baseVersion: 0,
+        },
+      });
 
-  assert.equal(res.statusCode, 400);
-  const payload = JSON.parse(res.body) as { error: string };
-  assert.equal(payload.error, "SIGNATURE_REQUIRED");
-});
+      assert.equal(res.statusCode, 400);
+      const payload = JSON.parse(res.body) as { error: string };
+      assert.equal(payload.error, "SIGNATURE_REQUIRED");
+    });
+  }
+}
 
 test("POST /vaults/:vaultId/events accepts signature for VAULT_KEY_ROTATION", async () => {
   const res = await dispatch({
     method: "POST",
-    url: "/vaults/v1/events",
+    url: "/vaults/1000000000000000001/events",
     headers: { "x-user-id": "u1" },
     body: {
       eventType: "VAULT_KEY_ROTATION",
@@ -324,4 +330,31 @@ test("POST /vaults/:vaultId/events accepts signature for VAULT_KEY_ROTATION", as
   });
 
   assert.equal(res.statusCode, 201);
+});
+
+test("POST /vaults/:vaultId/events/batch rejects a null body", async () => {
+  const res = await dispatch({
+    method: "POST",
+    url: "/vaults/1000000000000000001/events/batch",
+    headers: { "x-user-id": "u1" },
+    body: null,
+  });
+
+  assert.equal(res.statusCode, 400);
+  const payload = JSON.parse(res.body) as { error: string };
+  assert.equal(payload.error, "SYNC_BAD_REQUEST");
+});
+
+test("POST /vaults/:vaultId/events/batch rejects events: [null]", async () => {
+  const res = await dispatch({
+    method: "POST",
+    url: "/vaults/1000000000000000001/events/batch",
+    headers: { "x-user-id": "u1" },
+    body: { events: [null] },
+  });
+
+  assert.equal(res.statusCode, 400);
+  const payload = JSON.parse(res.body) as { error: string; message: string };
+  assert.equal(payload.error, "SYNC_BAD_REQUEST");
+  assert.match(payload.message, /each event must be an object/);
 });
