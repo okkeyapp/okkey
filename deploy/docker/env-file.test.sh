@@ -57,7 +57,7 @@ got="$(resolve_env_value OKKEY_IMAGE_TAG)"
   exit 1
 }
 
-# --- compose_image_tag: ENTERPRISE → IMAGE_TAG → 1.0.0-beta.2 ---
+# --- compose_image_tag: ENTERPRISE → IMAGE_TAG → 1.0.0-beta.3 ---
 printf 'OKKEY_IMAGE_TAG=1.0.0-beta.3\nOKKEY_ENTERPRISE_IMAGE_TAG=dev\n' > .env
 got="$(compose_image_tag)"
 [[ "${got}" == "dev" ]] || {
@@ -72,7 +72,7 @@ got="$(compose_image_tag)"
 }
 printf 'OTHER=1\n' > .env
 got="$(compose_image_tag)"
-[[ "${got}" == "1.0.0-beta.2" ]] || {
+[[ "${got}" == "1.0.0-beta.3" ]] || {
   echo "FAIL: compose default tag: [${got}]" >&2
   exit 1
 }
