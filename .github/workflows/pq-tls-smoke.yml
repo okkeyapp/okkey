@@ -22,7 +22,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Run policy-compat.sh
         working-directory: deploy/docker/proxy
@@ -43,7 +43,7 @@ jobs:
     needs: policy-compat
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Install build deps
         run: |

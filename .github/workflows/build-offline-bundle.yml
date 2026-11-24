@@ -48,10 +48,10 @@ jobs:
           echo "ref=${git_ref}" >> "$GITHUB_OUTPUT"
 
       - name: Checkout caller packages
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Checkout bundle tool
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: okkeyapp/okkey
           ref: ${{ steps.tool.outputs.ref }}

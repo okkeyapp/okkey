@@ -27,7 +27,7 @@ jobs:
       PROVENANCE_OUT_DIR: .artifacts/crypto-provenance
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Run installer signature checks
         run: |
