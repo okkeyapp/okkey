@@ -3,11 +3,11 @@
 # Third-party bases are pinned by multi-arch index digest. The tag documents
 # the channel; the pull uses the digest. NODE_VERSION must stay 25.
 #
-# Runtime is distroless/cc (no shell/package manager). There is no official
-# distroless/nodejs image for Node 25, so the Node binary and libatomic come
-# from the pinned node:25-bookworm-slim image after an OS upgrade. Patched
-# OpenSSL shared libraries (and matching dpkg status.d metadata) are overlaid
-# so scanners see the fixed bookworm package version.
+# Runtime is assembled from gcr.io/distroless/cc-debian12:nonroot with system
+# OpenSSL removed, then sealed into FROM scratch. Official Node 25 embeds its
+# own OpenSSL and does not dynamically link libssl/libcrypto; api/worker also
+# ship no native addons that need system OpenSSL. Stripping libssl3 keeps the
+# Trivy OS gate clear of Debian OpenSSL CVEs that have no bookworm fix.
 ARG NODE_VERSION=25
 
 # node:25-bookworm
@@ -103,8 +103,9 @@ RUN --mount=type=cache,target=/usr/local/share/.cache/yarn \
   yarn config set network-timeout 600000 \
   && yarn install --frozen-lockfile --ignore-scripts --production --network-timeout 600000
 
-# Collect the Node 25 binary plus the OS pieces the runtime still needs after
-# leaving bookworm-slim. TARGETARCH comes from BuildKit (amd64 / arm64).
+# Node binary + libatomic only. Do not overlay bookworm libssl/libcrypto —
+# Node embeds OpenSSL, and the assembled runtime deliberately drops system
+# OpenSSL from the distroless/cc rootfs. TARGETARCH comes from BuildKit.
 FROM node:25-bookworm-slim@sha256:81db02c4b671288a03915da9534dbd54f96d0e7c24d80ccc54f5b36b2e684370 AS node-runtime-bits
 ARG TARGETARCH
 ARG NODE_VERSION
@@ -112,7 +113,6 @@ RUN test "${NODE_VERSION}" = "25"
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update \
   && apt-get upgrade -y \
-  && apt-get install -y --no-install-recommends ca-certificates \
   && rm -rf /var/lib/apt/lists/*
 RUN set -eux; \
   case "${TARGETARCH}" in \
@@ -123,55 +123,110 @@ RUN set -eux; \
   mkdir -p \
     /export/usr/local/bin \
     /export/lib/${LIBDIR} \
-    /export/usr/lib/${LIBDIR} \
-    /export/etc/ssl/certs \
     /export/var/lib/dpkg/status.d; \
   cp -a /usr/local/bin/node /export/usr/local/bin/node; \
   cp -a /lib/${LIBDIR}/libatomic.so.1* /export/lib/${LIBDIR}/; \
-  cp -a /usr/lib/${LIBDIR}/libssl.so.3 /export/usr/lib/${LIBDIR}/; \
-  cp -a /usr/lib/${LIBDIR}/libcrypto.so.3 /export/usr/lib/${LIBDIR}/; \
-  if [ -d /usr/lib/${LIBDIR}/engines-3 ]; then \
-    cp -a /usr/lib/${LIBDIR}/engines-3 /export/usr/lib/${LIBDIR}/; \
-  fi; \
-  if [ -d /usr/lib/${LIBDIR}/ossl-modules ]; then \
-    cp -a /usr/lib/${LIBDIR}/ossl-modules /export/usr/lib/${LIBDIR}/; \
-  fi; \
-  cp -a /etc/ssl/certs/ca-certificates.crt /export/etc/ssl/certs/; \
-  # Distroless advertises packages via status.d; refresh OpenSSL + CA metadata
-  # so Trivy matches the overlaid shared libraries.
-  dpkg-query -s libssl3 \
+  dpkg-query -s libatomic1 \
     | awk 'BEGIN{ORS="\n"} /^Package:|^Source:|^Version:|^Architecture:|^Maintainer:|^Installed-Size:|^Depends:|^Breaks:|^Replaces:|^Homepage:|^Priority:|^Section:|^Multi-Arch:|^Description:/{print}' \
-    > /export/var/lib/dpkg/status.d/libssl3; \
-  dpkg-query -s ca-certificates \
-    | awk 'BEGIN{ORS="\n"} /^Package:|^Source:|^Version:|^Architecture:|^Maintainer:|^Installed-Size:|^Depends:|^Breaks:|^Replaces:|^Homepage:|^Priority:|^Section:|^Multi-Arch:|^Description:/{print}' \
-    > /export/var/lib/dpkg/status.d/ca-certificates
+    > /export/var/lib/dpkg/status.d/libatomic1; \
+  # Fail the build if this stage accidentally ships system OpenSSL.
+  if ldd /export/usr/local/bin/node | grep -E 'libssl|libcrypto'; then \
+    echo "node unexpectedly links system OpenSSL" >&2; \
+    ldd /export/usr/local/bin/node >&2; \
+    exit 1; \
+  fi
 
-# gcr.io/distroless/cc-debian12:nonroot — no shell, package managers, or OS
-# utilities (perl/gzip/util-linux/ncurses/pam/acl/udev). Runs as uid 65532.
+# Assemble the final rootfs: distroless/cc minus OpenSSL, plus Node bits and
+# the app tree. bookworm-slim provides the shell/tools needed to strip and
+# assert; the sealed runtime is FROM scratch below.
+FROM node:25-bookworm-slim@sha256:81db02c4b671288a03915da9534dbd54f96d0e7c24d80ccc54f5b36b2e684370 AS assemble
+ARG TARGETARCH
+ARG NODE_VERSION
+RUN test "${NODE_VERSION}" = "25"
+ENV DEBIAN_FRONTEND=noninteractive
+# gcr.io/distroless/cc-debian12:nonroot — glibc + libgcc/libstdc++ + CA certs.
 # Cosign is not baked in: the update-agent runs a pinned cosign image via the
 # Docker socket (see createDockerCosignRunner) so api/worker stay free of
 # cosign gobinary CVEs in the Trivy gate.
-FROM gcr.io/distroless/cc-debian12:nonroot@sha256:9dac0a79194e45a7da0158a9c6da57b217585af0786db3845d1f0ec1a0dd182f AS runtime
+COPY --from=gcr.io/distroless/cc-debian12:nonroot@sha256:9dac0a79194e45a7da0158a9c6da57b217585af0786db3845d1f0ec1a0dd182f / /export/
+COPY --from=node-runtime-bits /export/ /export/
+COPY --from=prod-deps --chown=65532:65532 /app/package.json /app/yarn.lock /export/app/
+COPY --from=prod-deps --chown=65532:65532 /app/node_modules /export/app/node_modules/
+COPY --from=prod-deps --chown=65532:65532 /app/packages /export/app/packages/
+COPY --from=builder --chown=65532:65532 /src/services/api /export/app/services/api/
+COPY --from=builder --chown=65532:65532 /src/scripts /export/app/scripts/
+# bash: process substitution so addon checks fail the stage (not only a pipe subshell).
+SHELL ["/bin/bash", "-euxo", "pipefail", "-c"]
+RUN <<'EOF'
+case "${TARGETARCH}" in
+  amd64) LIBDIR=x86_64-linux-gnu ;;
+  arm64) LIBDIR=aarch64-linux-gnu ;;
+  *) echo "unsupported TARGETARCH=${TARGETARCH}" >&2; exit 1 ;;
+esac
+# Drop system OpenSSL from the distroless/cc rootfs (libs + scanner metadata).
+rm -f \
+  /export/usr/lib/${LIBDIR}/libssl.so.3* \
+  /export/usr/lib/${LIBDIR}/libcrypto.so.3* \
+  /export/lib/${LIBDIR}/libssl.so.3* \
+  /export/lib/${LIBDIR}/libcrypto.so.3*
+rm -rf \
+  /export/usr/lib/${LIBDIR}/engines-3 \
+  /export/usr/lib/${LIBDIR}/ossl-modules \
+  /export/usr/share/doc/libssl3 \
+  /export/var/lib/dpkg/status.d/libssl3 \
+  /export/var/lib/dpkg/status.d/libssl3.md5sums \
+  /export/var/lib/dpkg/status.d/openssl \
+  /export/var/lib/dpkg/status.d/openssl.md5sums
+# Fail closed if any OpenSSL shared lib or package metadata remains.
+leftovers="$(find /export \( \
+    -type f \( \
+      -name 'libssl.so.3*' -o -name 'libcrypto.so.3*' -o \
+      -path '*/var/lib/dpkg/status.d/libssl3' -o \
+      -path '*/var/lib/dpkg/status.d/libssl3.md5sums' -o \
+      -path '*/var/lib/dpkg/status.d/openssl' -o \
+      -path '*/var/lib/dpkg/status.d/openssl.md5sums' \
+    \) -o \
+    -type d \( -name 'engines-3' -o -name 'ossl-modules' \) \
+  \) -print 2>/dev/null || true)"
+if [ -n "${leftovers}" ]; then
+  echo "OpenSSL artifacts remain in runtime rootfs:" >&2
+  printf '%s\n' "${leftovers}" >&2
+  exit 1
+fi
+if ldd /export/usr/local/bin/node | grep -E 'libssl|libcrypto'; then
+  echo "node unexpectedly links system OpenSSL after assemble" >&2
+  ldd /export/usr/local/bin/node >&2
+  exit 1
+fi
+# Refuse native addons that pull system OpenSSL into the runtime.
+while IFS= read -r -d '' addon; do
+  if ldd "${addon}" 2>/dev/null | grep -E 'libssl|libcrypto'; then
+    echo "native addon links system OpenSSL: ${addon}" >&2
+    ldd "${addon}" >&2
+    exit 1
+  fi
+  if command -v readelf >/dev/null 2>&1; then
+    if readelf -d "${addon}" 2>/dev/null | grep -Ei 'NEEDED.*(libssl|libcrypto)'; then
+      echo "native addon NEEDED system OpenSSL: ${addon}" >&2
+      readelf -d "${addon}" >&2
+      exit 1
+    fi
+  fi
+done < <(find /export/app -type f -name '*.node' -print0 2>/dev/null || true)
+EOF
+SHELL ["/bin/sh", "-c"]
+
+# Sealed runtime: no shell/package manager. Nonroot uid 65532 comes from the
+# copied distroless /etc/passwd. PATH must be set explicitly on scratch.
+FROM scratch AS runtime
 ARG NODE_VERSION
-# Distroless has no shell; keep the version pin documented for readers/CI.
-WORKDIR /app
-# Baked at image build time. Must be this repository's commit (the core that
-# built api/worker). Empty default for local builds. Downstream image rebuilds
-# must pass the same SHA through unchanged — do not substitute a packaging or
-# wrapper commit. Must live on the final runtime stage (api/worker inherit it)
-# — not on prod-deps / builder. ARG/ENV only; no shell required.
 ARG OKKEY_GIT_SHA=
 ENV OKKEY_GIT_SHA=${OKKEY_GIT_SHA}
 ENV NODE_ENV=production
 ENV DEPLOY_ENV=prod
-
-COPY --from=node-runtime-bits /export/ /
-COPY --from=prod-deps --chown=65532:65532 /app/package.json /app/yarn.lock ./
-COPY --from=prod-deps --chown=65532:65532 /app/node_modules ./node_modules
-COPY --from=prod-deps --chown=65532:65532 /app/packages ./packages
-COPY --from=builder --chown=65532:65532 /src/services/api ./services/api
-COPY --from=builder --chown=65532:65532 /src/scripts ./scripts
-
+ENV PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+COPY --from=assemble /export/ /
+WORKDIR /app
 USER nonroot
 EXPOSE 4000
 # Absolute node path: works as PID 1 for SIGTERM/SIGINT; compose healthchecks
@@ -179,7 +234,7 @@ EXPOSE 4000
 CMD ["/usr/local/bin/node", "--experimental-strip-types", "services/api/src/index.ts"]
 
 FROM runtime AS api
-# Exec-form only: distroless has no /bin/sh. Compose uses the same node fetch probe.
+# Exec-form only: scratch/distroless has no /bin/sh. Compose uses the same node fetch probe.
 HEALTHCHECK --interval=10s --timeout=5s --start-period=40s --retries=12 \
   CMD ["/usr/local/bin/node", "-e", "fetch('http://127.0.0.1:4000/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
 CMD ["/usr/local/bin/node", "--experimental-strip-types", "services/api/src/index.ts"]

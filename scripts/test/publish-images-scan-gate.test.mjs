@@ -214,8 +214,23 @@ test("third-party Dockerfile and compose images are digest pinned", () => {
     const froms = [...text.matchAll(/^FROM\s+(\S+)/gm)].map((match) => match[1]);
     assert.ok(froms.length > 0, file);
     for (const image of froms) {
+      // Internal stage alias (e.g. FROM runtime AS api) — not a registry image.
       if (image === "runtime") continue;
+      // Docker built-in empty base: no registry digest exists or is required.
+      // Third-party content must still enter via digest-pinned FROM / COPY --from.
+      if (image === "scratch") continue;
       assert.match(image, /@sha256:[a-f0-9]{64}$/, `${file} ${image}`);
+    }
+    // External COPY --from=registry/image@sha256:… must be digest-pinned too
+    // (stage names like assemble / prod-deps have no registry ref).
+    for (const match of text.matchAll(/^COPY\s+--from=(\S+)/gm)) {
+      const image = match[1];
+      if (!/[:@/]/.test(image)) continue;
+      assert.match(
+        image,
+        /@sha256:[a-f0-9]{64}/,
+        `${file} COPY --from=${image}`,
+      );
     }
   }
 
