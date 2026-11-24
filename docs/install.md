@@ -16,32 +16,32 @@ The web app listens on port `8080` (`WEB_PORT`). The API listens on port `4000` 
 
 ## Install with the pinned script
 
-On tag v1.0.0-beta.2 the installer defaults `OKKEY_REF` to `v1.0.0-beta.2`. When you pipe the script to `bash`, `OKKEY_REF` is the git ref used to download `deploy/docker/docker-compose.prod.yml` and `deploy/docker/.env.example`. It is separate from the container tag. Set it on the right side of `|`.
+On tag v1.0.0-beta.3 the installer defaults `OKKEY_REF` to `v1.0.0-beta.3`. When you pipe the script to `bash`, `OKKEY_REF` is the git ref used to download `deploy/docker/docker-compose.prod.yml` and `deploy/docker/.env.example`. It is separate from the container tag. Set it on the right side of `|`.
 
-The container tag `1.0.0-beta.2` is published when the git tag `v1.0.0-beta.2` is created. Images are `ghcr.io/okkeyapp/api`, `ghcr.io/okkeyapp/web`, and `ghcr.io/okkeyapp/worker`.
+The container tag `1.0.0-beta.3` is published when the git tag `v1.0.0-beta.3` is created. Images are `ghcr.io/okkeyapp/api`, `ghcr.io/okkeyapp/web`, and `ghcr.io/okkeyapp/worker`.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/okkeyapp/okkey/v1.0.0-beta.2/deploy/docker/install.sh \
-  | OKKEY_REF=v1.0.0-beta.2 OKKEY_IMAGE_TAG=1.0.0-beta.2 bash
+curl -fsSL https://raw.githubusercontent.com/okkeyapp/okkey/v1.0.0-beta.3/deploy/docker/install.sh \
+  | OKKEY_REF=v1.0.0-beta.3 OKKEY_IMAGE_TAG=1.0.0-beta.3 bash
 ```
 
-From a checkout of tag `v1.0.0-beta.2`, the script copies `docker-compose.prod.yml` and `.env.example` from the directory next to `install.sh`. `OKKEY_REF` applies to the piped `curl` command above. Pin the container tag:
+From a checkout of tag `v1.0.0-beta.3`, the script copies `docker-compose.prod.yml` and `.env.example` from the directory next to `install.sh`. `OKKEY_REF` applies to the piped `curl` command above. Pin the container tag:
 
 ```bash
-git checkout v1.0.0-beta.2
-OKKEY_IMAGE_TAG=1.0.0-beta.2 ./deploy/docker/install.sh
+git checkout v1.0.0-beta.3
+OKKEY_IMAGE_TAG=1.0.0-beta.3 ./deploy/docker/install.sh
 ```
 
 The installer asks for an email address and writes it to `OKKEY_SALES_EMAIL`. The API and the worker require it. There is no default. The server uses that address as the recipient for license and plan-change requests. On a machine with no terminal, pass it on the right side of `|`:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/okkeyapp/okkey/v1.0.0-beta.2/deploy/docker/install.sh \
-  | OKKEY_REF=v1.0.0-beta.2 OKKEY_IMAGE_TAG=1.0.0-beta.2 OKKEY_SALES_EMAIL=you@example.com bash
+curl -fsSL https://raw.githubusercontent.com/okkeyapp/okkey/v1.0.0-beta.3/deploy/docker/install.sh \
+  | OKKEY_REF=v1.0.0-beta.3 OKKEY_IMAGE_TAG=1.0.0-beta.3 OKKEY_SALES_EMAIL=you@example.com bash
 ```
 
 On a new install the script generates `JWT_SECRET`, `SESSION_SECRET`, `EMAIL_DEAD_LETTER_SEAL_KEY`, `POSTGRES_PASSWORD`, and `MINIO_ROOT_PASSWORD` in `~/okkey/.env`. Keep that file. Postgres keeps the first `POSTGRES_PASSWORD` it was initialized with. Deleting `.env` and running the installer again, while the Postgres volume still exists, makes the installer stop with an error. Restore the old `.env`, or set `OKKEY_RESET_VOLUMES=1` to wipe the volumes and start over. Wiping volumes deletes the database.
 
-On tag `v1.0.0-beta.2`, the installer writes these values. Leave them as written:
+On tag `v1.0.0-beta.3`, the installer writes these values. Leave them as written:
 
 ```text
 DEPLOY_ENV=dev
@@ -64,14 +64,14 @@ After `docker compose pull`, `install.sh` runs cosign against the pulled digest 
 To check one image yourself after it has been pulled, use the same anchored identity regexp as `OKKEY_COSIGN_DEFAULT_IDENTITY_REGEXP` in [`deploy/docker/install.sh`](../deploy/docker/install.sh):
 
 ```bash
-digest="$(docker image inspect --format '{{index .RepoDigests 0}}' ghcr.io/okkeyapp/api:1.0.0-beta.2)"
+digest="$(docker image inspect --format '{{index .RepoDigests 0}}' ghcr.io/okkeyapp/api:1.0.0-beta.3)"
 cosign verify \
   --certificate-identity-regexp '^https://github\.com/okkeyapp/okkey/\.github/workflows/publish-images\.yml@refs/(?:heads/dev|tags/v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?)$' \
   --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
   "$digest"
 ```
 
-Repeat for `ghcr.io/okkeyapp/worker:1.0.0-beta.2` and `ghcr.io/okkeyapp/web:1.0.0-beta.2`.
+Repeat for `ghcr.io/okkeyapp/worker:1.0.0-beta.3` and `ghcr.io/okkeyapp/web:1.0.0-beta.3`.
 
 `OKKEY_SKIP_COSIGN_VERIFY=1` skips the check and prints a warning. `OKKEY_SKIP_PULL=1` also skips it unless you set `OKKEY_FORCE_COSIGN_VERIFY=1`.
 
@@ -83,7 +83,7 @@ On an empty database:
 
 1. On **Welcome to Okkey**, enter an email address and choose **Sign in**.
 2. The server skips the email code for that first account and opens **Register with Okkey**. No SMTP server is required for this account. If two people try at the same time, only the claim holder skips the code.
-3. Enter your name and a **Master password** of at least 4 characters, then choose **Register**.
+3. Enter your name and a **Master password** of at least 12 characters, then choose **Register**.
 4. On **Save your recovery key**, copy the key or choose **Download PDF**. You cannot open the vault until this step is saved. The screen shows the key once. Anyone with the key can restore the vault. Okkey cannot show it again.
 
 The next account uses **Email confirmation**. With the default `EMAIL_PROVIDER=logger`, read the code from the worker logs:
