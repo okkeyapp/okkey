@@ -24,8 +24,8 @@ ${help_out}"
 head -n 30 "${INSTALL_SH}" | grep -Fq -- '--allow-candidate' || fail "script header missing --allow-candidate"
 
 # Default git ref is the documented release tag, not the dev branch.
-grep -Fq 'OKKEY_REF="${OKKEY_REF:-v1.0.0-beta.2}"' "${INSTALL_SH}" || fail "default OKKEY_REF must be v1.0.0-beta.2"
-head -n 20 "${INSTALL_SH}" | grep -Fq 'okkey/v1.0.0-beta.2/deploy/docker/install.sh' || fail "header must download install.sh from the release tag"
+grep -Fq 'OKKEY_REF="${OKKEY_REF:-v1.0.0-beta.3}"' "${INSTALL_SH}" || fail "default OKKEY_REF must be v1.0.0-beta.3"
+head -n 20 "${INSTALL_SH}" | grep -Fq 'okkey/v1.0.0-beta.3/deploy/docker/install.sh' || fail "header must download install.sh from the release tag"
 if head -n 20 "${INSTALL_SH}" | grep -Fq 'okkey/dev/deploy/docker/install.sh'; then
   fail "header must not download install.sh from the dev branch"
 fi

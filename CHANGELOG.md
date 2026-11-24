@@ -7,11 +7,27 @@ Do not edit AUTO blocks by hand; edit outside markers or re-run after human revi
 To draft notes for the next tag:
 
 ```bash
-node scripts/generate-release-notes.mjs --from v1.0.0-beta.1 --version 1.0.0-beta.2
+node scripts/generate-release-notes.mjs --from v1.0.0-beta.2 --version 1.0.0-beta.3
 ```
 
-This writes `docs/releases/v1.0.0-beta.2.md` and updates the AUTO block for that version.
+This writes `docs/releases/v1.0.0-beta.3.md` and updates the AUTO block for that version.
 Do **not** publish a GitHub Release or push a git tag from this script.
+
+<a id="v1.0.0-beta.3"></a>
+
+## v1.0.0-beta.3
+
+Public beta after v1.0.0-beta.2. The browser extension is not part of this release. Installer and image pins use `v1.0.0-beta.3` / `1.0.0-beta.3`.
+
+- Device share of the account vault key is stored on the server only as a hybrid X25519 + ML-KEM-768 envelope for a key that stays on the device. A leak of the server database alone is not enough to brute-force the master password offline.
+- Self-host system updates: Compose runs an `update-agent` service; an admin can apply a signed `.okpkg` from the GitHub Releases `feed.json` (or an uploaded offline package).
+- Shared vaults and additional workspace members are available in Core (within plan quotas).
+- Workspace owner can edit server SMTP and the public app URL in **Server mail** settings.
+- Pending devices can be approved with a passkey (PRF wrap), including unlock follow-ups after approval.
+- A newly chosen master password must be at least 12 characters.
+- When outbound mail is not configured, self-host auth can use a login key / codes written to the worker logs.
+- Hybrid ML-DSA-65 signatures (crypto profile v2) and related strict-mode shared-vault signature checks.
+- Docker Compose install defaults and published images pin `OKKEY_REF=v1.0.0-beta.3` and `OKKEY_IMAGE_TAG=1.0.0-beta.3`.
 
 <a id="v1.0.0-beta.2"></a>
 
