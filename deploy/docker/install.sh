@@ -2,8 +2,8 @@
 # Okkey Core — one-command self-host installer (Docker Compose).
 #
 # Release pin (script, compose files, and container tag). Never `:latest`.
-#   curl -fsSL https://raw.githubusercontent.com/okkeyapp/okkey/v1.0.0-beta.2/deploy/docker/install.sh \
-#     | OKKEY_REF=v1.0.0-beta.2 OKKEY_IMAGE_TAG=1.0.0-beta.2 bash
+#   curl -fsSL https://raw.githubusercontent.com/okkeyapp/okkey/v1.0.0-beta.3/deploy/docker/install.sh \
+#     | OKKEY_REF=v1.0.0-beta.3 OKKEY_IMAGE_TAG=1.0.0-beta.3 bash
 #
 # Env must be on the right of `|` so bash sees it (`VAR=x curl | bash` does not).
 #
@@ -26,11 +26,11 @@ OKKEY_REPO_RAW_BASE="${OKKEY_REPO_RAW_BASE:-https://raw.githubusercontent.com/ok
 # Git ref for raw file downloads (branch, tag, or commit SHA).
 # Default is the current release tag (v*), matching the documented install pin.
 # Not the same as OKKEY_IMAGE_TAG (GHCR container tag; see .env.example).
-OKKEY_REF="${OKKEY_REF:-v1.0.0-beta.2}"
+OKKEY_REF="${OKKEY_REF:-v1.0.0-beta.3}"
 # Historical production pin name (first planned SemVer). Not published in GHCR yet —
 # OKKEY_CHANNEL=prod is refused until a SemVer exists (or OKKEY_PROD_CHANNEL_FORCE=1).
 # Used only when OKKEY_CHANNEL=prod is forced and OKKEY_IMAGE_TAG is unset. Never `:latest`.
-OKKEY_PROD_IMAGE_TAG="${OKKEY_PROD_IMAGE_TAG:-1.0.0-beta.2}"
+OKKEY_PROD_IMAGE_TAG="${OKKEY_PROD_IMAGE_TAG:-1.0.0-beta.3}"
 COMPOSE_FILE_NAME="docker-compose.prod.yml"
 ENV_EXAMPLE_NAME=".env.example"
 
@@ -435,7 +435,7 @@ wait_for_api_healthy() {
 }
 
 # Resolve effective GHCR tag for a fresh install.
-# Precedence: OKKEY_IMAGE_TAG env → OKKEY_CHANNEL=prod pin → .env.example default (`1.0.0-beta.2`).
+# Precedence: OKKEY_IMAGE_TAG env → OKKEY_CHANNEL=prod pin → .env.example default (`1.0.0-beta.3`).
 resolve_image_tag_for_fresh_install() {
   if [[ -n "${OKKEY_IMAGE_TAG:-}" ]]; then
     printf '%s\n' "${OKKEY_IMAGE_TAG}"
@@ -444,20 +444,20 @@ resolve_image_tag_for_fresh_install() {
   case "${OKKEY_CHANNEL:-}" in
     prod|production)
       # Guard: refuse OKKEY_CHANNEL=prod until SemVer exists in GHCR.
-      # .env.example already pins 1.0.0-beta.2 (never :latest); tag publishes with v1.0.0-beta.2.
+      # .env.example already pins 1.0.0-beta.3 (never :latest); tag publishes with v1.0.0-beta.3.
       if [[ "${OKKEY_PROD_CHANNEL_FORCE:-}" != "1" ]]; then
         die "OKKEY_CHANNEL=prod is not available yet: no SemVer image tag in GHCR (only :dev).
 Use tracking images:
   OKKEY_IMAGE_TAG=dev
 Or pin the prod SemVer when published:
-  OKKEY_IMAGE_TAG=1.0.0-beta.2
+  OKKEY_IMAGE_TAG=1.0.0-beta.3
 To force the pin ${OKKEY_PROD_IMAGE_TAG} anyway (pull will fail if missing):
   OKKEY_PROD_CHANNEL_FORCE=1 OKKEY_CHANNEL=prod"
       fi
       printf '%s\n' "${OKKEY_PROD_IMAGE_TAG}"
       ;;
     *)
-      # Leave empty → keep .env.example value (1.0.0-beta.2).
+      # Leave empty → keep .env.example value (1.0.0-beta.3).
       printf '\n'
       ;;
   esac
@@ -487,8 +487,8 @@ fetch_file() {
 tried:
   ${url}
 hint: set OKKEY_REF on the right of \`|\` so bash sees it, e.g.
-  curl -fsSL https://raw.githubusercontent.com/okkeyapp/okkey/v1.0.0-beta.2/deploy/docker/install.sh \\
-    | OKKEY_REF=v1.0.0-beta.2 bash"
+  curl -fsSL https://raw.githubusercontent.com/okkeyapp/okkey/v1.0.0-beta.3/deploy/docker/install.sh \\
+    | OKKEY_REF=v1.0.0-beta.3 bash"
 }
 
 parse_args "$@"

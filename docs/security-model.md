@@ -4,8 +4,6 @@ Okkey encrypts vault items in the browser. The server stores ciphertext, account
 
 An independent security audit has not been done. This release is not production-ready.
 
-The vault-key model in this page matches the 1.0.0-beta.3 code on the `dev` branch. The published tag is still v1.0.0-beta.2.
-
 ## What the browser encrypts
 
 Vault item fields are encrypted in the browser with XChaCha20-Poly1305 before they are sent. The server stores the ciphertext and does not parse the item JSON.
@@ -84,13 +82,12 @@ The default `.env` from the installer sets `DEPLOY_ENV=dev`, `CRYPTO_ALLOWED_PRO
 ## What this release does not cover
 
 - An independent security audit has not been done.
-- v1.0.0-beta.2 is not production-ready.
+- v1.0.0-beta.3 is not production-ready.
 - The browser extension is not part of this release.
 - A newly chosen master password must be at least 12 characters. Accounts that already have a shorter password can still unlock.
 - The server can open authenticator secrets, because it seals them with `SESSION_SECRET`.
 - A person with access to the host can read `~/okkey/.env`, the database, the object store, and the worker logs. A fully compromised server that serves a substituted web client can obtain the master password or the vault key when someone unlocks the vault in the browser.
 - This design does not protect against malware on the device.
-- **Create vault** for a shared vault, and inviting more members, are unavailable on a default self-hosted server.
 - Capsule **Advanced settings** show "Not available on your current plan" on a default self-hosted server.
 - **Trusted devices** and **Trusted contacts** are unavailable in the web app. The restore screen says web recovery via a remote trusted device is not available yet, and interactive contact recovery in the web app is not available yet.
 - Compromised-password checks contact Have I Been Pwned, as described above.

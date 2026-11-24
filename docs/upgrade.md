@@ -29,4 +29,10 @@ Check <http://127.0.0.1:4000/health> on the same machine.
 
 If `OKKEY_INSTALL_DIR` is not `~/okkey`, `cd` there and use that directory's lowercase name as the `-p` project name.
 
-For this release, `<tag>` is `1.0.0-beta.2` and the git tag is `v1.0.0-beta.2`.
+For this release, `<tag>` is `1.0.0-beta.3` and the git tag is `v1.0.0-beta.3`.
+
+## Self-host system updates
+
+The production Compose file runs an `update-agent` service (same API image; Docker socket mounted only there). The API checks a core update feed. When `OKKEY_UPDATE_CORE_FEED_URL` is empty, the default is `https://github.com/okkeyapp/okkey/releases/latest/download/feed.json`. That feed lists signed `.okpkg` packages (for example `okkey-1.0.0-beta.3.okpkg` on the [v1.0.0-beta.3](https://github.com/okkeyapp/okkey/releases/tag/v1.0.0-beta.3) release).
+
+An admin applies an available update from the web UI (**Update**). The agent downloads the package, checks the signature against `OKKEY_UPDATE_TRUSTED_PUBLIC_KEY`, and applies it. Set `OKKEY_UPDATE_ISOLATED=true` to skip every online update check. Offline upload and enterprise feed variables are documented in [`deploy/docker/.env.example`](../deploy/docker/.env.example).
