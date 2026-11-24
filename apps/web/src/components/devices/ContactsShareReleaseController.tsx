@@ -53,7 +53,7 @@ function formatAbsoluteDate(iso: string, locale: string): string {
 
 /**
  * Popup for pending contact share-release requests
- * (owner card matches TrustedContactInviteController / MembersListCard).
+ * (owner card matches MembersListCard).
  */
 export default function ContactsShareReleaseController() {
   // Vite may load EE UI while API modules are off — gate polls on /public/features.

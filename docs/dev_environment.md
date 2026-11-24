@@ -102,4 +102,4 @@ Versions are pinned in `package.json` via `engines` and `packageManager`.
 ## Local services
 
 For local development, ensure PostgreSQL, Redis, and MinIO are running and reachable.
-If the project later provides Docker Compose or Kubernetes manifests, prefer those.
+Kubernetes and Helm are planned and are not part of v1.0.0. Only Docker Compose is supported.

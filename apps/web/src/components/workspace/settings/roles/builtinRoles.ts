@@ -53,8 +53,8 @@ export function buildBuiltInRoleSummaries(
 }
 
 /**
- * Custom roles: SaaS `plan_tier` (+ `planFeatureOverrides` when custom override is on)
- * / self-host enterprise modules (checked separately for UI module).
+ * Custom roles: SaaS `plan_tier` (+ `planFeatureOverrides` when custom override is on).
+ * Self-host follows loaded enterprise modules and ignores `plan_tier`.
  */
 export function canManageCustomWorkspaceRoles(
   workspace: WorkspacePlanLike | null | undefined,

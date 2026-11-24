@@ -27,6 +27,11 @@ import {
 } from "../crypto/encrypted-blob.ts";
 import { isEntityId } from "../entity-id.ts";
 
+/**
+ * Per-user folder and favorite metadata. These events do not grant, revoke,
+ * or rotate a shared vault key, so they are not signature-critical in either
+ * rollout mode. See `crypto/signature-requirement.ts`.
+ */
 const WORKSPACE_PERSONAL_EVENT_TYPES = new Set([
   "FOLDER_CREATE",
   "FOLDER_UPDATE",
@@ -144,7 +149,7 @@ export class WorkspacePersonalSyncService {
     this.events = deps.events;
     this.users = deps.users;
     this.config = {
-      allowedCryptoProfileVersions: [1, 2],
+      allowedCryptoProfileVersions: [2],
       deployEnv: "dev",
       cryptoRolloutMode: "compat",
       cryptoRolloutEnabled: true,

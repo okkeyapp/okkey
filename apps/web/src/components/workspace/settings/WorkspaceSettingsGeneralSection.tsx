@@ -32,21 +32,22 @@ import {
   Switch,
 } from "@okkey/ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 
 import workspaceCapsulesModule from "@okkey-enterprise/workspace-capsules";
 import workspaceTenancyModule from "@okkey-enterprise/workspace-tenancy";
 
-import { workspaceHasPlanFeature } from "../../../workspace/planEntitlements";
+import { webDeploymentMode, webPlanFeatureAccess } from "../../../workspace/planEntitlements";
+import { settingsPath } from "../../../routes/paths";
 
-import {
-  deleteKeyFieldFileAttachment,
-  uploadKeyFieldFileAttachment,
-} from "../../../api/key-field-files";
+import { deleteKeyFieldFileAttachment } from "../../../api/key-field-files";
+import { assertWorkspaceLogoImage, commitWorkspaceLogoReplacement } from "../../../workspace/logoImage";
 import { useAuthVault, useAuthenticatedCoreClient } from "../../../auth/AuthVaultContext";
 import { useWorkspaceLogoUrl } from "../../../hooks/useWorkspaceLogoUrl";
 import { runSaveWithToast } from "../../../lib/saveWithToast";
 import WorkspaceLogoTile from "../WorkspaceLogoTile";
 import FileExtensionTagsInput from "./FileExtensionTagsInput";
+import ServerMailSettingsBlock from "./ServerMailSettingsBlock";
 import WorkspaceSettingsCapsulesSkeleton from "./WorkspaceSettingsCapsulesSkeleton";
 import WorkspaceSettingsGeneralSkeleton from "./WorkspaceSettingsGeneralSkeleton";
 import WorkspaceSettingsItemsSkeleton from "./WorkspaceSettingsItemsSkeleton";
@@ -80,7 +81,7 @@ function capsulePoliciesEqual(a: WorkspaceCapsulePolicies, b: WorkspaceCapsulePo
     JSON.stringify(workspaceCapsulePoliciesToDto(b))
   );
 }
-type WorkspaceSettingsGeneralPanel = "general" | "items" | "capsules";
+type WorkspaceSettingsGeneralPanel = "general" | "mail" | "items" | "capsules";
 
 type WorkspaceSettingsGeneralSectionProps = {
   workspaceId: string;
@@ -111,6 +112,7 @@ export default function WorkspaceSettingsGeneralSection({
 }: WorkspaceSettingsGeneralSectionProps) {
   const core = useAuthenticatedCoreClient();
   const { userId, accessToken, vaultKey } = useAuthVault();
+  void vaults;
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [initialLoading, setInitialLoading] = useState(true);
@@ -120,6 +122,10 @@ export default function WorkspaceSettingsGeneralSection({
   const [tileColor, setTileColor] = useState(DEFAULT_WORKSPACE_TILE_COLOR);
   const [logoVaultId, setLogoVaultId] = useState<string | null>(null);
   const [logoAttachmentId, setLogoAttachmentId] = useState<string | null>(null);
+  const [logoKeyVersion, setLogoKeyVersion] = useState<number | null>(workspace?.logoKeyVersion ?? null);
+  const [clientSettingsCiphertext, setClientSettingsCiphertext] = useState<string | null>(
+    workspace?.clientSettingsCiphertext ?? null,
+  );
   const [deletedItemsRetentionDays, setDeletedItemsRetentionDays] = useState(30);
   const [allowedFileExtensions, setAllowedFileExtensions] = useState<string[]>([...DEFAULT_ALLOWED_FILE_EXTENSIONS]);
   const [maxFileSizeMb, setMaxFileSizeMb] = useState<number>(DEFAULT_MAX_FILE_SIZE_MB);
@@ -133,15 +139,16 @@ export default function WorkspaceSettingsGeneralSection({
 
   const isOwner = Boolean(workspace && userId && workspace.ownerId === userId);
   const canEdit = canPut ?? isOwner;
-  const canManageCapsuleAccessSettings = workspaceHasPlanFeature(workspace, "capsuleAccessSettings");
+  const capsuleAccess = webPlanFeatureAccess(workspace, "capsuleAccessSettings");
+  const canEditCapsules = canEdit && capsuleAccess !== "lapsed";
+  const canManageCapsuleAccessSettings = capsuleAccess === "granted";
   const CapsulesAdvancedPoliciesSection = workspaceCapsulesModule.CapsulesAdvancedPoliciesSection;
   const showCapsuleAccessSettings = Boolean(
-    CapsulesAdvancedPoliciesSection && canManageCapsuleAccessSettings,
+    CapsulesAdvancedPoliciesSection && capsuleAccess !== "unavailable",
   );
   const DangerZoneSection = workspaceTenancyModule.DangerZoneSection;
   const showDangerZone = Boolean(isOwner && DangerZoneSection);
-  const personalVault = useMemo(() => vaults.find((vault) => vault.isPersonal), [vaults]);
-  const hasCustomLogo = Boolean(logoVaultId && logoAttachmentId);
+  const hasCustomLogo = Boolean(logoKeyVersion || (logoVaultId && logoAttachmentId));
   const logoUrl = useWorkspaceLogoUrl({
     accessToken,
     vaultKey,
@@ -149,6 +156,8 @@ export default function WorkspaceSettingsGeneralSection({
     attachmentId: logoAttachmentId,
     workspaceId,
     enabled: hasCustomLogo,
+    logoKeyVersion,
+    userId,
   });
 
   const saveToastMessages = useMemo(
@@ -172,6 +181,8 @@ export default function WorkspaceSettingsGeneralSection({
       setTileColor(patch.tileColor ?? DEFAULT_WORKSPACE_TILE_COLOR);
       setLogoVaultId(patch.logoVaultId ?? null);
       setLogoAttachmentId(patch.logoAttachmentId ?? null);
+      setLogoKeyVersion(patch.logoKeyVersion ?? null);
+      setClientSettingsCiphertext(patch.clientSettingsCiphertext ?? null);
       setDeletedItemsRetentionDays(patch.deletedItemsRetentionDays);
       setAllowedFileExtensions([...patch.allowedFileExtensions]);
       setMaxFileSizeMb(patch.maxFileSizeMb);
@@ -217,6 +228,8 @@ export default function WorkspaceSettingsGeneralSection({
     });
     setLogoVaultId((prev) => (prev === patch.logoVaultId ? prev : patch.logoVaultId ?? null));
     setLogoAttachmentId((prev) => (prev === patch.logoAttachmentId ? prev : patch.logoAttachmentId ?? null));
+    setLogoKeyVersion(patch.logoKeyVersion ?? null);
+    setClientSettingsCiphertext(patch.clientSettingsCiphertext ?? null);
     setDeletedItemsRetentionDays((prev) =>
       prev === patch.deletedItemsRetentionDays ? prev : patch.deletedItemsRetentionDays,
     );
@@ -259,7 +272,29 @@ export default function WorkspaceSettingsGeneralSection({
   }
 
   async function handleColorChange(nextColor: string) {
-    await persistSettings({ tile_color: readableHexColor(nextColor) });
+    if (!core || !vaultKey || !workspace) {
+      return;
+    }
+    const readable = readableHexColor(nextColor);
+    try {
+      await runSaveWithToast(saveToastMessages, async () => {
+        const { saveWorkspaceClientSettings } = await import("../../../workspace/workspaceKeyClient");
+        await saveWorkspaceClientSettings({
+          core,
+          workspace: {
+            id: workspaceId,
+            tileColor: readable,
+            clientSettingsCiphertext,
+          },
+          vaultKey,
+          userId,
+          patch: { tileColor: readable },
+        });
+        applySettingsResponse(await core.getWorkspaceSettings(workspaceId));
+      });
+    } catch {
+      /* toast handles error */
+    }
   }
 
   async function handleNameBlur() {
@@ -309,7 +344,7 @@ export default function WorkspaceSettingsGeneralSection({
   }
 
   async function persistCapsulePolicies(next: WorkspaceCapsulePolicies) {
-    if (capsulePoliciesEqual(next, capsulePolicies)) {
+    if (!canEditCapsules || capsulePoliciesEqual(next, capsulePolicies)) {
       return;
     }
     const previous = cloneCapsulePolicies(capsulePolicies);
@@ -383,27 +418,33 @@ export default function WorkspaceSettingsGeneralSection({
   }
 
   async function handleLogoUpload(file: File) {
-    if (!core || !accessToken || !vaultKey || !personalVault) {
+    if (!core || !vaultKey) {
       return;
     }
     setLogoSaving(true);
     try {
       await runSaveWithToast(saveToastMessages, async () => {
-        const uploaded = await uploadKeyFieldFileAttachment({
-          accessToken,
-          vaultId: personalVault.id,
-          itemId: workspaceId,
+        const plaintext = new Uint8Array(await file.arrayBuffer());
+        assertWorkspaceLogoImage(plaintext);
+        const { encryptWorkspaceLogo } = await import("../../../workspace/workspaceKeyClient");
+        const ciphertext = await encryptWorkspaceLogo({
+          core,
+          workspaceId,
           vaultKey,
-          file,
+          userId,
+          plaintext,
         });
-        if (logoVaultId && logoAttachmentId) {
-          await removeExistingLogoAttachment();
-        }
-        const updated = await core.updateWorkspaceSettings(workspaceId, {
-          logo_vault_id: personalVault.id,
-          logo_attachment_id: uploaded.attachmentId,
+        await commitWorkspaceLogoReplacement({
+          ciphertext,
+          putCiphertext: async (body) => {
+            await core.putWorkspaceLogo(workspaceId, body);
+          },
+          deleteLegacy:
+            logoVaultId && logoAttachmentId && accessToken
+              ? () => removeExistingLogoAttachment()
+              : null,
         });
-        applySettingsResponse(updated);
+        applySettingsResponse(await core.getWorkspaceSettings(workspaceId));
       });
     } catch {
       /* toast handles error */
@@ -419,14 +460,23 @@ export default function WorkspaceSettingsGeneralSection({
     setLogoSaving(true);
     try {
       await runSaveWithToast(saveToastMessages, async () => {
-        if (logoVaultId && logoAttachmentId) {
-          await removeExistingLogoAttachment();
+        if (logoKeyVersion) {
+          await core.deleteWorkspaceLogo(workspaceId);
         }
-        const updated = await core.updateWorkspaceSettings(workspaceId, {
-          logo_vault_id: null,
-          logo_attachment_id: null,
-        });
-        applySettingsResponse(updated);
+        if (logoVaultId && logoAttachmentId) {
+          try {
+            await removeExistingLogoAttachment();
+          } catch {
+            // Legacy attachment may belong to another member. Never abort the save.
+          }
+        }
+        if (!logoKeyVersion) {
+          await core.updateWorkspaceSettings(workspaceId, {
+            logo_vault_id: null,
+            logo_attachment_id: null,
+          });
+        }
+        applySettingsResponse(await core.getWorkspaceSettings(workspaceId));
       });
     } catch {
       /* toast handles error */
@@ -435,7 +485,7 @@ export default function WorkspaceSettingsGeneralSection({
     }
   }
 
-  if (initialLoading) {
+  if (initialLoading && panel !== "mail") {
     if (panel === "items") {
       return <WorkspaceSettingsItemsSkeleton label={t("web.workspaceSettings.general.loading")} />;
     }
@@ -469,7 +519,7 @@ export default function WorkspaceSettingsGeneralSection({
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept="image/png,image/jpeg,image/webp,image/gif"
+                  accept="image/png,image/jpeg,image/webp"
                   className="hidden"
                   onChange={(event) => {
                     const file = event.target.files?.[0];
@@ -522,7 +572,12 @@ export default function WorkspaceSettingsGeneralSection({
               onBlur={() => void handleNameBlur()}
             />
           </div>
+
         </div>
+        ) : null}
+
+        {panel === "mail" ? (
+          <ServerMailSettingsBlock workspaceId={workspaceId} t={t} canPut={canEdit} />
         ) : null}
 
         {panel === "items" ? (
@@ -642,11 +697,22 @@ export default function WorkspaceSettingsGeneralSection({
             </p>
           </div>
           <div className="flex flex-col">
+            {capsuleAccess === "lapsed" ? (
+              <p className="mb-4 text-sm text-muted-foreground">
+                {t("web.plan.lapsedModulePrefix")}
+                <Link
+                  to={settingsPath("plan")}
+                  className="font-medium text-foreground underline decoration-border underline-offset-4"
+                >
+                  {t("web.plan.lapsedModuleLink")}
+                </Link>
+              </p>
+            ) : null}
             <SettingsFieldRow
               control={
                 <Select
                   value={capsulePolicies.allowMode}
-                  disabled={!canEdit}
+                  disabled={!canEditCapsules}
                   onValueChange={(value) => void handleCapsuleAllowModeChange(value as CapsuleAllowMode)}
                 >
                   <SelectTrigger id="capsule-allow-mode" className="h-9 w-full shrink-0 sm:w-[150px]">
@@ -680,7 +746,7 @@ export default function WorkspaceSettingsGeneralSection({
                   value={capsulePolicies.allowMemberIds}
                   onValueChange={(value) => void handleCapsuleAllowMembersChange(value)}
                   placeholder={t("web.workspaceSettings.capsules.allow.membersPlaceholder")}
-                  disabled={!canEdit}
+                  disabled={!canEditCapsules}
                 >
                   <MultiSelectTrigger className="font-normal" />
                   <MultiSelectContent className="min-w-[min(100vw-2rem,22rem)]">
@@ -714,7 +780,7 @@ export default function WorkspaceSettingsGeneralSection({
                   value={capsulePolicies.allowedCapsuleTypes}
                   onValueChange={(value) => void handleAllowedCapsuleTypesChange(value)}
                   placeholder={t("web.workspaceSettings.capsules.allowedTypes.placeholder")}
-                  disabled={!canEdit}
+                  disabled={!canEditCapsules}
                   displayMode="summary"
                   selectionSummaryText={
                     capsulePolicies.allowedCapsuleTypes.length === ALL_CAPSULE_TYPES.length
@@ -755,7 +821,7 @@ export default function WorkspaceSettingsGeneralSection({
                   inputMode="numeric"
                   className="w-full shrink-0 sm:w-[150px]"
                   value={forceMaxViewsInput}
-                  disabled={!canEdit}
+                  disabled={!canEditCapsules}
                   onChange={(event) => setForceMaxViewsInput(event.target.value.replace(/[^\d]/g, ""))}
                   onBlur={() => void handleForceMaxViewsBlur()}
                 />
@@ -772,7 +838,7 @@ export default function WorkspaceSettingsGeneralSection({
             {showCapsuleAccessSettings && CapsulesAdvancedPoliciesSection ? (
               <CapsulesAdvancedPoliciesSection
                 policies={capsulePolicies}
-                canEdit={canEdit}
+                canEdit={canEditCapsules && canManageCapsuleAccessSettings}
                 t={t}
                 onPersist={persistCapsulePolicies}
               />

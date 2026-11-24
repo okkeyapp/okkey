@@ -2,36 +2,67 @@
  * Client-side registration crypto: split-key VaultKey = A ⊕ B ⊕ C (32-byte XOR),
  * C = Argon2id(master_password, salt). Backend receives only A and encrypted artifacts.
  *
- * Q-Day #2 / q2-6: shares A/B/C (incl. new-device share B) stay opaque 32-byte
- * local material — not hybrid ECC+PQ KEM envelopes. PQ applies to identity keys
- * (`userPublicPqKey` / ML-KEM) at registration, not to share-B transport.
+ * Share B is sealed to a device wrap key with hybrid X25519 + ML-KEM-768 before
+ * it is stored or sent. The in-memory `deviceShare` stays the raw XOR term.
+ * Readers still accept a legacy 32-byte share.
  */
 import {
   b64_encode,
   ed25519_keypair,
   kdf_derive,
+  mldsa65_keypair,
+  mldsa65_public_key_len,
+  mldsa65_seed_len,
   random_bytes,
 } from "@okkey/crypto-wasm";
 import { ensureWasm } from "./wasm-init.js";
-import type { EncryptedBlobDto } from "@okkey/types";
+import { sealSplitKeyShareB, type SplitKeyShareWrapKey } from "./split-key-share-wrap.js";
 import {
+  MIN_MASTER_PASSWORD_LENGTH,
+  masterPasswordUtf8MeetsNewPasswordPolicy,
+  type EncryptedBlobDto,
+} from "@okkey/types";
+import {
+  MLDSA65_PUBLIC_KEY_LEN,
+  MLDSA65_SEED_LEN,
+  USER_IDENTITY_BUNDLE_IDENTITY_V2,
   encryptUserIdentityPrivateBundle,
-  encodeUserIdentityPrivateBundleV1,
+  encodeUserIdentityPrivateBundleV2,
   generateMlkem768KeypairMaterial,
   userIdentityEncryptedBlobDtoFromPayload,
 } from "./user-identity-bundle.js";
+import { wipeBytes } from "./secret-buffer.js";
 
 const SHARE_LEN = 32;
 const KDF_SALT_LEN = 16;
 
-/** Matches `rust/crypto-engine` default Argon2id params (version 1 on wire). */
+/** Argon2id parameters shared by password KDF wire versions 1 and 2. */
 export const OKKEY_PASSWORD_KDF_PARAMS_V1 = {
   mCost: 19456,
   tCost: 2,
   pCost: 1,
 } as const;
 
-export const OKKEY_PASSWORD_KDF_PARAMS_VERSION = 1 as const;
+/** New password KDF writes. Unlock still accepts stored version 1. */
+export const OKKEY_PASSWORD_KDF_PARAMS_VERSION = 2 as const;
+
+/**
+ * Reject a master password that is being set (registration or change).
+ * Unlock paths must not call this — existing shorter passwords stay valid.
+ */
+function assertNewMasterPasswordUtf8(masterPasswordUtf8: Uint8Array): void {
+  let meetsPolicy = false;
+  try {
+    meetsPolicy = masterPasswordUtf8MeetsNewPasswordPolicy(masterPasswordUtf8);
+  } catch {
+    throw new Error("master password must be valid UTF-8");
+  }
+  if (!meetsPolicy) {
+    throw new Error(
+      `master password must be at least ${MIN_MASTER_PASSWORD_LENGTH} characters`,
+    );
+  }
+}
 
 
 function xor32(a: Uint8Array, b: Uint8Array, c: Uint8Array): Uint8Array {
@@ -44,7 +75,12 @@ function xor32(a: Uint8Array, b: Uint8Array, c: Uint8Array): Uint8Array {
 
 export interface RegistrationSplitKeyMaterial {
   serverKeyShare: Uint8Array;
+  /** Raw 32-byte XOR term. Stay in memory; do not persist or send this. */
   deviceShare: Uint8Array;
+  /** Framed hybrid envelope of `deviceShare`. This is the stored / wire form. */
+  wrappedDeviceShare: Uint8Array;
+  /** Device wrap key for `wrappedDeviceShare`. Persist outside the vault bundle. */
+  shareWrap: SplitKeyShareWrapKey;
   passwordKdfSalt: Uint8Array;
   passwordKdfParamsVersion: typeof OKKEY_PASSWORD_KDF_PARAMS_VERSION;
 }
@@ -52,12 +88,14 @@ export interface RegistrationSplitKeyMaterial {
 export interface RegistrationUserKeyMaterial {
   userPublicKey: Uint8Array;
   userPublicPqKey: Uint8Array;
+  userPublicMlDsaKey: Uint8Array;
   encryptedPrivateKey: Uint8Array;
 }
 
 export async function buildRegistrationCryptoArtifacts(
   masterPasswordUtf8: Uint8Array,
 ): Promise<RegistrationSplitKeyMaterial & RegistrationUserKeyMaterial & { vaultKey: Uint8Array }> {
+  assertNewMasterPasswordUtf8(masterPasswordUtf8);
   await ensureWasm();
 
   const vaultKey = random_bytes(SHARE_LEN);
@@ -74,23 +112,46 @@ export async function buildRegistrationCryptoArtifacts(
   );
 
   const deviceShareB = xor32(serverShareA, passwordShareC, vaultKey);
+  const sealedShare = await sealSplitKeyShareB(deviceShareB);
 
   const edSeedPk = ed25519_keypair();
   const signingPrivateKey = edSeedPk.slice(0, 32);
   const userPublicKey = edSeedPk.slice(32, 64);
 
   const mlkem = await generateMlkem768KeypairMaterial();
-  const plaintextBundle = encodeUserIdentityPrivateBundleV1(signingPrivateKey, mlkem.decapsulationKey);
+  const mldsaMaterial = mldsa65_keypair();
+  const mldsaSeedLen = mldsa65_seed_len();
+  const mldsaPublicLen = mldsa65_public_key_len();
+  if (
+    mldsaSeedLen !== MLDSA65_SEED_LEN ||
+    mldsaPublicLen !== MLDSA65_PUBLIC_KEY_LEN ||
+    mldsaMaterial.length !== mldsaSeedLen + mldsaPublicLen
+  ) {
+    throw new Error("unexpected ml-dsa keypair output length");
+  }
+  const mldsaSeed = mldsaMaterial.slice(0, mldsaSeedLen);
+  const userPublicMlDsaKey = mldsaMaterial.slice(mldsaSeedLen);
+  const plaintextBundle = encodeUserIdentityPrivateBundleV2(
+    signingPrivateKey,
+    mlkem.decapsulationKey,
+    mldsaSeed,
+  );
   const encryptedPrivateKey = await encryptUserIdentityPrivateBundle(vaultKey, plaintextBundle);
+  wipeBytes(mldsaMaterial);
+  wipeBytes(mldsaSeed);
+  wipeBytes(plaintextBundle);
 
   return {
     vaultKey,
     serverKeyShare: serverShareA,
     deviceShare: deviceShareB,
+    wrappedDeviceShare: sealedShare.wrapped,
+    shareWrap: sealedShare.shareWrap,
     passwordKdfSalt,
     passwordKdfParamsVersion: OKKEY_PASSWORD_KDF_PARAMS_VERSION,
     userPublicKey,
     userPublicPqKey: mlkem.encapsulationKey,
+    userPublicMlDsaKey,
     encryptedPrivateKey,
   };
 }
@@ -164,6 +225,7 @@ export async function rebalanceServerShareForNewPassword(input: {
   deviceShare: Uint8Array;
   passwordKdfParamsVersion?: number;
 }): Promise<RebalanceServerShareForNewPasswordResult> {
+  assertNewMasterPasswordUtf8(input.newMasterPasswordUtf8);
   await ensureWasm();
   if (input.vaultKey.length !== SHARE_LEN || input.deviceShare.length !== SHARE_LEN) {
     throw new Error("vaultKey and deviceShare must be 32 bytes");
@@ -194,6 +256,7 @@ export function registrationArtifactsToWire(
 ): {
   user_public_key: string;
   user_public_pq_key: string;
+  user_public_mldsa_key: string;
   encrypted_private_key: EncryptedBlobDto;
   server_key_share: string;
   password_kdf_salt: string;
@@ -202,7 +265,10 @@ export function registrationArtifactsToWire(
   return {
     user_public_key: b64_encode(material.userPublicKey),
     user_public_pq_key: b64_encode(material.userPublicPqKey),
-    encrypted_private_key: userIdentityEncryptedBlobDtoFromPayload(material.encryptedPrivateKey),
+    user_public_mldsa_key: b64_encode(material.userPublicMlDsaKey),
+    encrypted_private_key: userIdentityEncryptedBlobDtoFromPayload(material.encryptedPrivateKey, {
+      identity: USER_IDENTITY_BUNDLE_IDENTITY_V2,
+    }),
     server_key_share: b64_encode(material.serverKeyShare),
     password_kdf_salt: b64_encode(material.passwordKdfSalt),
     password_kdf_params_version: material.passwordKdfParamsVersion,

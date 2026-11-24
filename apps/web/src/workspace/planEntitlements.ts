@@ -1,10 +1,13 @@
 import {
   hasPlanFeature,
+  normalizePlanTier,
   planEntitlementOptionsFromWorkspace,
+  planFeatureAccess,
   resolveEntitlementPlanTier,
   type DeploymentMode,
   type PlanEntitlementOptions,
   type PlanFeature,
+  type PlanFeatureAccess,
   type PlanFeatureOverrides,
   type PlanTier,
 } from "@okkey/types";
@@ -68,18 +71,46 @@ export function webPlanEntitlementOptions(workspace?: WorkspaceLike | null): Pla
 }
 
 /**
- * Catalog tier for plan labels /settings/plan on this client.
- * Self-hosted: modules off → FREE; modules on → ENTERPRISE (`plan_tier` ignored).
- * SaaS → workspace `plan_tier`.
+ * Catalog tier for plan labels and the settings plan page on this client.
+ * Self-hosted with modules → ENTERPRISE. Self-hosted without modules → FREE.
+ * Stored `plan_tier` is ignored on self-host. SaaS → workspace `plan_tier`.
+ * Feature writes follow the same resolution via {@link webPlanFeatureAccess}.
  */
 export function webDisplayPlanTier(workspace?: WorkspaceLike | null): PlanTier {
-  return resolveEntitlementPlanTier(workspace?.planTier, webPlanEntitlementOptions(workspace));
+  if (webDeploymentMode() === "self_hosted") {
+    return resolveEntitlementPlanTier(workspace?.planTier, webPlanEntitlementOptions(workspace));
+  }
+  return normalizePlanTier(workspace?.planTier);
 }
 
-/** Web feature gate: self-host modules on → ENTERPRISE; modules off → FREE (+ extras); SaaS → `plan_tier`. */
+/**
+ * Web feature gate for create and update.
+ * Self-hosted modules on → ENTERPRISE for every stored `plan_tier`.
+ * Self-hosted modules off → FREE for every stored `plan_tier`.
+ * SaaS → `plan_tier`.
+ */
 export function workspaceHasPlanFeature(
   workspace: WorkspaceLike | null | undefined,
   feature: PlanFeature,
 ): boolean {
   return hasPlanFeature(workspace?.planTier, feature, webPlanEntitlementOptions(workspace));
+}
+
+/** Granted, lapsed, or unavailable for this client. */
+export function webPlanFeatureAccess(
+  workspace: WorkspaceLike | null | undefined,
+  feature: PlanFeature,
+): PlanFeatureAccess {
+  return planFeatureAccess(workspace?.planTier, feature, webPlanEntitlementOptions(workspace));
+}
+
+/**
+ * Enterprise-module screens stay visible after a license lapses.
+ * `true` hides create and edit. List and delete stay available.
+ */
+export function webEnterpriseModuleReadOnly(
+  workspace: WorkspaceLike | null | undefined,
+  feature: PlanFeature,
+): boolean {
+  return webPlanFeatureAccess(workspace, feature) !== "granted";
 }

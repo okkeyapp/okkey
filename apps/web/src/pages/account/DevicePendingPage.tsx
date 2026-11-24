@@ -7,12 +7,17 @@ import {
   Spinner,
   Button,
 } from "@okkey/ui";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, Navigate, useSearchParams } from "react-router-dom";
+import { toast } from "sonner";
 
 import AccountUserBar from "../../components/account/AccountUserBar";
 import AppShellLayout from "../../components/app-shell/AppShellLayout";
-import { useAuthVault } from "../../auth/AuthVaultContext";
+import { useAuthenticatedCoreClient, useAuthVault } from "../../auth/AuthVaultContext";
+import {
+  approvePendingDeviceWithPasskey,
+  passkeyApprovalErrorMessageKey,
+} from "../../auth/passkeyDeviceApproval";
 import { useLocale } from "../../locale/LocaleContext";
 import {
   ACCOUNT_LOCK_PATH,
@@ -40,13 +45,18 @@ export default function DevicePendingPage() {
   const [searchParams] = useSearchParams();
   const {
     accessToken,
+    userId,
+    deviceApprovalWatch,
     deviceTrustStatus,
     deviceBlockedUntil,
     deviceApprovers,
     deviceNeedsRecovery,
+    deviceShareReapproval,
     refreshDeviceTrust,
     retryDeviceRegistration,
+    currentDeviceId,
   } = useAuthVault();
+  const core = useAuthenticatedCoreClient();
 
   const redirect = useMemo(() => {
     const raw = searchParams.get("redirect");
@@ -54,6 +64,55 @@ export default function DevicePendingPage() {
   }, [searchParams]);
 
   const [retrying, setRetrying] = useState(false);
+  const [passkeyBusy, setPasskeyBusy] = useState(false);
+  const passkeyAttemptRef = useRef(0);
+
+  // Clear stale passkey feedback whenever this waiting screen is shown again.
+  useEffect(() => {
+    if (deviceTrustStatus === "pending" || deviceTrustStatus === "checking") {
+      setPasskeyBusy(false);
+      passkeyAttemptRef.current += 1;
+    }
+  }, [deviceTrustStatus]);
+
+  const onPasskeyApprove = async () => {
+    if (passkeyBusy) {
+      return;
+    }
+    if (!currentDeviceId) {
+      return;
+    }
+    if (!core) {
+      toast.error(t("web.devicePending.passkey.session_required"));
+      return;
+    }
+    const attempt = ++passkeyAttemptRef.current;
+    setPasskeyBusy(true);
+    try {
+      // Fresh options every click: wrap keys and passkey permissions can change
+      // after a rejection, "Try again", reload, or a permission toggle elsewhere.
+      const result = await approvePendingDeviceWithPasskey(core, currentDeviceId, {
+        userId,
+      });
+      if (attempt !== passkeyAttemptRef.current) {
+        return;
+      }
+      if (!result.ok) {
+        const message = t(passkeyApprovalErrorMessageKey(result.code));
+        if (result.code === "cancelled") {
+          toast.message(message);
+        } else {
+          toast.error(message);
+        }
+        return;
+      }
+      await refreshDeviceTrust();
+    } finally {
+      if (attempt === passkeyAttemptRef.current) {
+        setPasskeyBusy(false);
+      }
+    }
+  };
 
   const onRetry = async () => {
     if (retrying) {
@@ -62,19 +121,23 @@ export default function DevicePendingPage() {
     setRetrying(true);
     try {
       await retryDeviceRegistration();
+      // Refetch trusted-device list and pending state for a clean attempt.
+      await refreshDeviceTrust();
     } finally {
       setRetrying(false);
     }
   };
 
   useEffect(() => {
-    if (!accessToken) {
+    if (!accessToken && !deviceApprovalWatch) {
       return;
     }
     if (
       deviceTrustStatus !== "pending" &&
       deviceTrustStatus !== "checking" &&
-      deviceTrustStatus !== "blocked"
+      deviceTrustStatus !== "blocked" &&
+      deviceTrustStatus !== "error" &&
+      deviceTrustStatus !== "rejected"
     ) {
       return;
     }
@@ -83,37 +146,46 @@ export default function DevicePendingPage() {
       void refreshDeviceTrust();
     }, 4_000);
     return () => window.clearInterval(timer);
-  }, [accessToken, deviceTrustStatus, refreshDeviceTrust]);
-
-  if (!accessToken) {
-    return <Navigate to={AUTH_EMAIL_PATH} replace />;
-  }
+  }, [accessToken, deviceApprovalWatch, deviceTrustStatus, refreshDeviceTrust]);
 
   if (deviceTrustStatus === "trusted") {
+    if (!accessToken) {
+      return <Navigate to={AUTH_EMAIL_PATH} replace />;
+    }
     const target = redirect
       ? accountLockWithRedirectQuery(encodeURIComponent(redirect))
       : ACCOUNT_LOCK_PATH;
     return <Navigate to={target} replace />;
   }
 
+  if (!accessToken && !deviceApprovalWatch) {
+    return <Navigate to={AUTH_EMAIL_PATH} replace />;
+  }
+
   const blocked = deviceTrustStatus === "blocked";
-  const rejected = deviceTrustStatus === "rejected" || deviceTrustStatus === "error";
+  // Only an actual denial/revocation uses the denied copy. `error` is a failed
+  // lookup or rebind, including a device that is still waiting for approval.
+  const denied = deviceTrustStatus === "rejected";
   const checking = deviceTrustStatus === "idle" || deviceTrustStatus === "checking";
+  const failed = deviceTrustStatus === "error";
 
   const title = blocked
     ? t("web.devicePending.blockedTitle")
-    : rejected
+    : denied
       ? t("web.devicePending.rejectedTitle")
       : t("web.devicePending.title");
   const description = blocked
     ? t("web.devicePending.blockedBody")
     : deviceNeedsRecovery
       ? t("web.devicePending.recoveryRequiredBody")
-      : rejected
+      : denied
         ? t("web.devicePending.rejectedBody")
-        : t("web.devicePending.body");
+        : deviceShareReapproval
+          ? t("web.devicePending.shareDeliveryReset")
+          : t("web.devicePending.body");
 
-  const mode = checking ? "checking" : blocked ? "blocked" : rejected ? "rejected" : "pending";
+  const mode = checking ? "checking" : blocked ? "blocked" : denied ? "rejected" : "pending";
+  const showRetry = (denied || failed) && !deviceNeedsRecovery;
 
   const approvers: DevicePendingApprover[] = deviceApprovers.map((device) => ({
     ...device,
@@ -126,7 +198,6 @@ export default function DevicePendingPage() {
       title={title}
       description={description}
       logo={<OkkeyLogoMark className="h-[60px] w-[61px]" />}
-      contentClassName="max-w-lg"
     >
       <div className="flex w-full flex-col gap-6">
         <AccountUserBar />
@@ -147,17 +218,35 @@ export default function DevicePendingPage() {
           }
           approvers={approvers}
           actions={
-            rejected ? (
-              deviceNeedsRecovery ? (
-                <Button type="button" asChild>
+            mode === "pending" && currentDeviceId ? (
+              <div className="flex flex-col gap-3">
+                <Button
+                  type="button"
+                  disabled={passkeyBusy}
+                  onClick={() => void onPasskeyApprove()}
+                >
+                  {passkeyBusy ? <Spinner data-icon="inline-start" /> : null}
+                  {passkeyBusy
+                    ? t("web.devicePending.passkeyBusy")
+                    : t("web.devicePending.passkeyApprove")}
+                </Button>
+                <Button type="button" variant="outline" asChild>
                   <Link to={ACCOUNT_RESTORE_PATH}>{t("web.devicePending.recoveryRequiredCta")}</Link>
                 </Button>
-              ) : (
-                <Button type="button" disabled={retrying} onClick={() => void onRetry()}>
-                  {retrying ? <Spinner data-icon="inline-start" /> : null}
-                  {t("web.devicePending.retry")}
-                </Button>
-              )
+              </div>
+            ) : showRetry ? (
+              <Button type="button" disabled={retrying} onClick={() => void onRetry()}>
+                {retrying ? <Spinner data-icon="inline-start" /> : null}
+                {t("web.devicePending.retry")}
+              </Button>
+            ) : denied && deviceNeedsRecovery ? (
+              <Button type="button" asChild>
+                <Link to={ACCOUNT_RESTORE_PATH}>{t("web.devicePending.recoveryRequiredCta")}</Link>
+              </Button>
+            ) : mode === "pending" ? (
+              <Button type="button" variant="outline" asChild>
+                <Link to={ACCOUNT_RESTORE_PATH}>{t("web.devicePending.recoveryRequiredCta")}</Link>
+              </Button>
             ) : null
           }
         />

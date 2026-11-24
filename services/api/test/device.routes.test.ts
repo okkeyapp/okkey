@@ -4,7 +4,11 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { createApiApp } from "../src/app.ts";
 import type { ApiConfig } from "../src/config.ts";
 import { createTestApiConfig } from "./test-api-config.ts";
-import { DeviceServiceError, type DeviceService } from "../src/device/service.ts";
+import {
+  DeviceServiceError,
+  type DeviceService,
+  type RegisterDeviceInput,
+} from "../src/device/service.ts";
 import type { SessionService } from "../src/session/service.ts";
 
 const DEVICE_A = "1234567890123456789";
@@ -279,10 +283,92 @@ test("POST /devices/register returns 409 when trusted fingerprint keys differ", 
   assert.equal(bound, false);
 });
 
+test("POST /devices/register returns DEVICE_PENDING_LIMIT", async () => {
+  let bound = false;
+  const res = await dispatch({
+    method: "POST",
+    url: "/devices/register",
+    headers: {
+      authorization: "Bearer tok-limit",
+      "x-user-id": "u1",
+      "x-forwarded-for": "10.0.0.1",
+    },
+    body: registerBody(),
+    deviceService: createDeviceServiceStub({
+      registerDevice: async () => {
+        throw new DeviceServiceError(
+          "DEVICE_PENDING_LIMIT",
+          409,
+          "pending device limit reached",
+          { limit: 20 },
+        );
+      },
+    }),
+    sessionService: createSessionServiceStub({
+      resolveAccessToken: async () => ({
+        userId: "u1",
+        deviceId: null,
+        scope: null,
+        tokenHash: "hash:tok-limit",
+      }),
+      bindAccessTokenDevice: async () => {
+        bound = true;
+        return true;
+      },
+    }),
+  });
+
+  assert.equal(res.statusCode, 409);
+  const payload = JSON.parse(res.body) as {
+    error: string;
+    message: string;
+    requestId: string;
+    details: { limit: number };
+  };
+  assert.equal(payload.error, "DEVICE_PENDING_LIMIT");
+  assert.equal(payload.message, "pending device limit reached");
+  assert.equal(payload.details.limit, 20);
+  assert.equal(typeof payload.requestId, "string");
+  assert.ok(payload.requestId.length > 0);
+  assert.equal(bound, false);
+});
+
+test("POST /devices/register forwards the caller token hash", async () => {
+  let seen: string | undefined;
+  const res = await dispatch({
+    method: "POST",
+    url: "/devices/register",
+    headers: {
+      authorization: "Bearer tok-register",
+      "x-user-id": "u1",
+    },
+    body: {
+      ...registerBody(),
+      metadata: { recovery_pending: true },
+    },
+    deviceService: createDeviceServiceStub({
+      registerDevice: async (_userId, _ip, input) => {
+        seen = input.preserveSessionTokenHash;
+        return { deviceId: "d-pending", status: "pending_approval", created: true };
+      },
+    }),
+    sessionService: createSessionServiceStub({
+      resolveAccessToken: async () => ({
+        userId: "u1",
+        deviceId: null,
+        scope: null,
+        tokenHash: "hash:tok-register",
+      }),
+    }),
+  });
+  assert.equal(res.statusCode, 200);
+  assert.equal(seen, "hash:tok-register");
+});
+
 test("POST /devices/:id/approve requires trusted approver headers", async () => {
   const res = await dispatch({
     method: "POST",
-    url: "/devices/d-pending/approve",
+    url: "/devices/1000000000000000001/approve",
     headers: { "x-user-id": "u1" },
   });
 
@@ -294,7 +380,7 @@ test("POST /devices/:id/approve requires trusted approver headers", async () => 
 test("POST /devices/:id/approve returns trusted status", async () => {
   const res = await dispatch({
     method: "POST",
-    url: "/devices/d-pending/approve",
+    url: "/devices/1000000000000000001/approve",
     headers: { "x-user-id": "u1", "x-device-id": "d-trusted" },
     deviceService: createDeviceServiceStub({
       approveDevice: async () => ({ deviceId: "d-pending", status: "trusted" }),
@@ -310,7 +396,7 @@ test("POST /devices/:id/approve returns trusted status", async () => {
 test("POST /devices/:id/reject returns revoked status", async () => {
   const res = await dispatch({
     method: "POST",
-    url: "/devices/d-pending/reject",
+    url: "/devices/1000000000000000001/reject",
     headers: { "x-user-id": "u1", "x-device-id": "d-trusted" },
     body: { reason: "unknown login" },
     deviceService: createDeviceServiceStub({
@@ -327,7 +413,7 @@ test("POST /devices/:id/reject returns revoked status", async () => {
 test("device approval routes map DEVICE_APPROVAL_EXPIRED", async () => {
   const res = await dispatch({
     method: "POST",
-    url: "/devices/d-pending/approve",
+    url: "/devices/1000000000000000001/approve",
     headers: { "x-user-id": "u1", "x-device-id": "d-trusted" },
     deviceService: createDeviceServiceStub({
       approveDevice: async () => {
@@ -450,7 +536,7 @@ test("GET /devices accepts device_fingerprint query when header is absent", asyn
 test("PATCH /devices/:id renames device", async () => {
   const res = await dispatch({
     method: "PATCH",
-    url: "/devices/d1",
+    url: "/devices/1000000000000000002",
     headers: { "x-user-id": "u1" },
     body: { device_name: "Office laptop" },
     deviceService: createDeviceServiceStub({
@@ -493,7 +579,7 @@ test("POST /devices/:id/revoke rejects invalid device id with 400", async () => 
   });
   assert.equal(res.statusCode, 400);
   const payload = JSON.parse(res.body) as { error: string };
-  assert.equal(payload.error, "DEVICE_BAD_REQUEST");
+  assert.equal(payload.error, "INVALID_DEVICE_ID");
   assert.equal(revoked, false);
 });
 
@@ -507,7 +593,7 @@ test("POST /devices/:id/revoke rejects oversized device id with 400", async () =
   });
   assert.equal(res.statusCode, 400);
   const payload = JSON.parse(res.body) as { error: string };
-  assert.equal(payload.error, "DEVICE_BAD_REQUEST");
+  assert.equal(payload.error, "INVALID_DEVICE_ID");
 });
 
 test("POST /devices/:id/revoke rejects revoking the caller device via header", async () => {
@@ -825,7 +911,11 @@ test("GET /devices for a non-trusted bound session returns only that device", as
   }
 
   const pending = await listAs("d-pending");
-  assert.deepEqual(pending.devices, []);
+  assert.deepEqual(
+    pending.devices.map((device) => device.device_id),
+    ["d-trusted"],
+  );
+  assert.equal(pending.devices[0]?.device_fingerprint, "");
   assert.deepEqual(
     pending.pending.map((device) => device.device_id),
     ["d-pending"],
@@ -933,6 +1023,77 @@ test("POST /devices/register binds the access-token session to the device", asyn
   assert.deepEqual(bound, [{ token: "tok-register", userId: "u1", deviceId: DEVICE_A }]);
 });
 
+test("POST /devices/register rebinds an unbound session on pending update (reject→retry)", async () => {
+  const bound: Array<{ token: string; userId: string; deviceId: string }> = [];
+  const res = await dispatch({
+    method: "POST",
+    url: "/devices/register",
+    headers: {
+      "x-user-id": "u1",
+      authorization: "Bearer tok-retry",
+      "x-forwarded-for": "10.0.0.1",
+    },
+    body: registerBody(),
+    deviceService: createDeviceServiceStub({
+      // Same pending row after reopenRejected: created stays false.
+      registerDevice: async () => ({
+        deviceId: DEVICE_A,
+        status: "pending_approval",
+        created: false,
+      }),
+    }),
+    sessionService: createSessionServiceStub({
+      resolveAccessToken: async () => ({
+        userId: "u1",
+        deviceId: null,
+        scope: null,
+        tokenHash: "hash:tok-retry",
+      }),
+      bindAccessTokenDevice: async (token, userId, deviceId) => {
+        bound.push({ token, userId, deviceId });
+        return true;
+      },
+    }),
+  });
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(bound, [{ token: "tok-retry", userId: "u1", deviceId: DEVICE_A }]);
+});
+
+test("POST /devices/register does not rebind a session already bound to another device", async () => {
+  let bound = false;
+  const res = await dispatch({
+    method: "POST",
+    url: "/devices/register",
+    headers: {
+      "x-user-id": "u1",
+      authorization: "Bearer tok-other",
+      "x-forwarded-for": "10.0.0.1",
+    },
+    body: registerBody(),
+    deviceService: createDeviceServiceStub({
+      registerDevice: async () => ({
+        deviceId: DEVICE_A,
+        status: "pending_approval",
+        created: false,
+      }),
+    }),
+    sessionService: createSessionServiceStub({
+      resolveAccessToken: async () => ({
+        userId: "u1",
+        deviceId: DEVICE_B,
+        scope: null,
+        tokenHash: "hash:tok-other",
+      }),
+      bindAccessTokenDevice: async () => {
+        bound = true;
+        return true;
+      },
+    }),
+  });
+  assert.equal(res.statusCode, 200);
+  assert.equal(bound, false);
+});
+
 test("POST /devices/:id/revoke rejects a leading-zero device id without revoking", async () => {
   let revoked = false;
   const res = await dispatch({
@@ -957,7 +1118,7 @@ test("POST /devices/:id/revoke rejects a leading-zero device id without revoking
   });
   assert.equal(res.statusCode, 400);
   const payload = JSON.parse(res.body) as { error: string };
-  assert.equal(payload.error, "DEVICE_BAD_REQUEST");
+  assert.equal(payload.error, "INVALID_DEVICE_ID");
   assert.equal(revoked, false);
 });
 
@@ -1009,6 +1170,260 @@ test("POST /devices/:id/reject ends sessions bound to the pending device", async
   assert.deepEqual(ended, [DEVICE_B]);
 });
 
+const NON_BOOLEAN_FLAG_VALUES: unknown[] = ["false", 1, {}, [], "", null];
+
+type RegisterFlagField = "recovery_pending" | "reclaim_sole_trusted" | "claim_after_recovery";
+
+function registerBodyWithFlag(
+  field: RegisterFlagField,
+  value: unknown,
+  place: "metadata" | "top",
+): Record<string, unknown> {
+  if (place === "metadata") {
+    return { ...registerBody(), metadata: { [field]: value } };
+  }
+  return { ...registerBody(), [field]: value };
+}
+
+interface RegisterCapture {
+  statusCode: number;
+  payload: { error?: string; message?: string; requestId?: string };
+  input?: RegisterDeviceInput;
+}
+
+async function registerAndCapture(body: unknown): Promise<RegisterCapture> {
+  let input: RegisterDeviceInput | undefined;
+  const res = await dispatch({
+    method: "POST",
+    url: "/devices/register",
+    headers: { "x-user-id": "u1" },
+    body,
+    deviceService: createDeviceServiceStub({
+      registerDevice: async (_userId, _ip, received) => {
+        input = received;
+        return { deviceId: "d1", status: "pending_approval" };
+      },
+    }),
+  });
+  return {
+    statusCode: res.statusCode,
+    payload: JSON.parse(res.body) as RegisterCapture["payload"],
+    input,
+  };
+}
+
+function assertBooleanFlagRejected(result: RegisterCapture, field: RegisterFlagField): void {
+  assert.equal(result.statusCode, 400);
+  assert.equal(result.payload.error, "DEVICE_BAD_REQUEST");
+  assert.equal(result.payload.message, `${field} must be a boolean`);
+  assert.equal(typeof result.payload.requestId, "string");
+  assert.equal((result.payload.requestId ?? "").length > 0, true);
+  assert.deepEqual(Object.keys(result.payload).sort(), ["error", "message", "requestId"]);
+  assert.equal(result.input, undefined);
+}
+
+test("POST /devices/register rejects non-boolean recovery_pending", async () => {
+  for (const value of NON_BOOLEAN_FLAG_VALUES) {
+    for (const place of ["metadata", "top"] as const) {
+      const result = await registerAndCapture(registerBodyWithFlag("recovery_pending", value, place));
+      assertBooleanFlagRejected(result, "recovery_pending");
+    }
+  }
+
+  const nullDoesNotFallThrough = await registerAndCapture({
+    ...registerBody(),
+    recovery_pending: true,
+    metadata: { recovery_pending: null },
+  });
+  assertBooleanFlagRejected(nullDoesNotFallThrough, "recovery_pending");
+
+  const invalidAlongsideClaim = await registerAndCapture({
+    ...registerBody(),
+    metadata: { claim_after_recovery: true, recovery_pending: "false" },
+  });
+  assertBooleanFlagRejected(invalidAlongsideClaim, "recovery_pending");
+
+  const unauthenticated = await dispatch({
+    method: "POST",
+    url: "/devices/register",
+    body: registerBodyWithFlag("recovery_pending", "false", "metadata"),
+  });
+  assert.equal(unauthenticated.statusCode, 400);
+  const unauthenticatedPayload = JSON.parse(unauthenticated.body) as { error: string; message: string };
+  assert.equal(unauthenticatedPayload.error, "DEVICE_BAD_REQUEST");
+  assert.equal(unauthenticatedPayload.message, "recovery_pending must be a boolean");
+});
+
+test("POST /devices/register keeps recovery_pending true, false, and omitted behaviour", async () => {
+  const metadataTrue = await registerAndCapture(
+    registerBodyWithFlag("recovery_pending", true, "metadata"),
+  );
+  assert.equal(metadataTrue.statusCode, 200);
+  assert.equal(metadataTrue.input?.recoveryPending, true);
+  assert.equal(metadataTrue.input?.claimAfterRecovery, false);
+  assert.equal(metadataTrue.input?.reclaimSoleTrusted, false);
+
+  const metadataFalse = await registerAndCapture(
+    registerBodyWithFlag("recovery_pending", false, "metadata"),
+  );
+  assert.equal(metadataFalse.statusCode, 200);
+  assert.equal(metadataFalse.input?.recoveryPending, false);
+
+  const topTrue = await registerAndCapture(registerBodyWithFlag("recovery_pending", true, "top"));
+  assert.equal(topTrue.statusCode, 200);
+  assert.equal(topTrue.input?.recoveryPending, true);
+
+  const topFalse = await registerAndCapture(registerBodyWithFlag("recovery_pending", false, "top"));
+  assert.equal(topFalse.statusCode, 200);
+  assert.equal(topFalse.input?.recoveryPending, false);
+
+  const omitted = await registerAndCapture(registerBody());
+  assert.equal(omitted.statusCode, 200);
+  assert.equal(omitted.input?.recoveryPending, false);
+  assert.equal(omitted.input?.claimAfterRecovery, false);
+  assert.equal(omitted.input?.reclaimSoleTrusted, false);
+
+  const metadataWins = await registerAndCapture({
+    ...registerBody(),
+    recovery_pending: true,
+    metadata: { recovery_pending: false },
+  });
+  assert.equal(metadataWins.statusCode, 200);
+  assert.equal(metadataWins.input?.recoveryPending, false);
+
+  const claimWithoutProof = await registerAndCapture({
+    ...registerBody(),
+    metadata: { claim_after_recovery: true, recovery_pending: true },
+  });
+  assert.equal(claimWithoutProof.statusCode, 403);
+  assert.equal(claimWithoutProof.payload.error, "RECOVERY_CLAIM_REQUIRES_PROVED_DEVICE");
+  assert.equal(claimWithoutProof.input, undefined);
+
+  let provedInput: RegisterDeviceInput | undefined;
+  const provedClaim = await dispatch({
+    method: "POST",
+    url: "/devices/register",
+    headers: { authorization: "Bearer proved-token", "x-user-id": "u1" },
+    body: {
+      ...registerBody(),
+      metadata: { claim_after_recovery: true, recovery_pending: true },
+    },
+    deviceService: createDeviceServiceStub({
+      registerDevice: async (_userId, _ip, received) => {
+        provedInput = received;
+        return { deviceId: "d-proved", status: "pending_approval" };
+      },
+    }),
+    sessionService: createSessionServiceStub({
+      resolveAccessToken: async () => ({
+        userId: "u1",
+        deviceId: "proved-device",
+        scope: null,
+        tokenHash: "hash",
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+        recoveryProvedAt: new Date().toISOString(),
+        recoveryChallenge: null,
+        recoveryChallengeExpiresAt: null,
+      }),
+    }),
+  });
+  assert.equal(provedClaim.statusCode, 200);
+  assert.equal(provedInput?.claimAfterRecovery, true);
+  assert.equal(provedInput?.recoveryPending, false);
+  assert.equal(provedInput?.provedDeviceId, "proved-device");
+});
+
+test("POST /devices/register rejects non-boolean reclaim_sole_trusted and claim_after_recovery", async () => {
+  for (const field of ["reclaim_sole_trusted", "claim_after_recovery"] as const) {
+    for (const value of NON_BOOLEAN_FLAG_VALUES) {
+      for (const place of ["metadata", "top"] as const) {
+        const result = await registerAndCapture(registerBodyWithFlag(field, value, place));
+        assertBooleanFlagRejected(result, field);
+      }
+    }
+  }
+});
+
+test("POST /devices/register rejects a non-string reclaim link field", async () => {
+  const result = await registerAndCapture({
+    ...registerBody(),
+    metadata: { reclaim_sole_trusted: true, previous_device_id: 1 },
+  });
+  assert.equal(result.statusCode, 400);
+  assert.equal(result.payload.error, "DEVICE_BAD_REQUEST");
+  assert.equal(result.payload.message, "previous_device_id must be a string");
+  assert.equal(result.input, undefined);
+});
+
+test("POST /devices/register forwards reclaim link fields and the bound session device", async () => {
+  let input: RegisterDeviceInput | undefined;
+  const res = await dispatch({
+    method: "POST",
+    url: "/devices/register",
+    headers: { authorization: "Bearer reclaim-token" },
+    body: {
+      ...registerBody(),
+      metadata: {
+        reclaim_sole_trusted: true,
+        previous_device_id: "42",
+        previous_device_fingerprint: "AB".repeat(32),
+      },
+    },
+    deviceService: createDeviceServiceStub({
+      registerDevice: async (_userId, _ip, received) => {
+        input = received;
+        return { deviceId: "42", status: "trusted", created: true };
+      },
+    }),
+    sessionService: createSessionServiceStub({
+      resolveAccessToken: async () => ({
+        userId: "u1",
+        deviceId: "42",
+        scope: null,
+        tokenHash: "hash",
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+        recoveryProvedAt: null,
+        recoveryChallenge: null,
+        recoveryChallengeExpiresAt: null,
+      }),
+    }),
+  });
+  assert.equal(res.statusCode, 200);
+  assert.equal(input?.reclaimSoleTrusted, true);
+  assert.equal(input?.previousDeviceId, "42");
+  assert.equal(input?.previousDeviceFingerprint, "AB".repeat(32));
+  assert.equal(input?.sessionDeviceId, "42");
+});
+
+test("POST /devices/register keeps reclaim and claim boolean behaviour", async () => {
+  const reclaimTrue = await registerAndCapture(
+    registerBodyWithFlag("reclaim_sole_trusted", true, "metadata"),
+  );
+  assert.equal(reclaimTrue.statusCode, 200);
+  assert.equal(reclaimTrue.input?.reclaimSoleTrusted, true);
+  assert.equal(reclaimTrue.input?.recoveryPending, false);
+
+  const reclaimFalse = await registerAndCapture(
+    registerBodyWithFlag("reclaim_sole_trusted", false, "metadata"),
+  );
+  assert.equal(reclaimFalse.statusCode, 200);
+  assert.equal(reclaimFalse.input?.reclaimSoleTrusted, false);
+
+  const reclaimOmitted = await registerAndCapture(registerBody());
+  assert.equal(reclaimOmitted.statusCode, 200);
+  assert.equal(reclaimOmitted.input?.reclaimSoleTrusted, false);
+
+  const claimFalse = await registerAndCapture(
+    registerBodyWithFlag("claim_after_recovery", false, "metadata"),
+  );
+  assert.equal(claimFalse.statusCode, 200);
+  assert.equal(claimFalse.input?.claimAfterRecovery, false);
+  assert.equal(claimFalse.input?.recoveryPending, false);
+
+  const claimOmitted = await registerAndCapture(registerBody());
+  assert.equal(claimOmitted.input?.claimAfterRecovery, false);
+});
+
 test("POST /devices/:id/block ends sessions bound to the pending device", async () => {
   const ended: string[] = [];
   const res = await dispatch({
@@ -1031,4 +1446,16 @@ test("POST /devices/:id/block ends sessions bound to the pending device", async 
   });
   assert.equal(res.statusCode, 200);
   assert.deepEqual(ended, [DEVICE_B]);
+});
+
+test("POST /devices/:id/block rejects the removed 1w duration", async () => {
+  const res = await dispatch({
+    method: "POST",
+    url: `/devices/${DEVICE_B}/block`,
+    headers: { "x-user-id": "u1", "x-device-id": DEVICE_A },
+    body: { duration: "1w" },
+  });
+  assert.equal(res.statusCode, 400);
+  const payload = JSON.parse(res.body) as { message?: string };
+  assert.match(payload.message ?? "", /1h, 1d, forever/);
 });

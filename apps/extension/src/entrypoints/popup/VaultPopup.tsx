@@ -1,7 +1,13 @@
 import { forwardRef, useCallback, useEffect, useMemo, useRef, useState, type ForwardedRef } from "react";
 import { ApiRequestError, type CoreApiClient } from "@okkey/api";
 import { getWebLocaleNativeName, WEB_LOCALES, type WebLocale } from "@okkey/i18n";
-import type { ItemPlaintextV2, MeVaultProfileEntryDto, Vault, Workspace } from "@okkey/types";
+import {
+  MIN_MASTER_PASSWORD_LENGTH,
+  type ItemPlaintextV2,
+  type MeVaultProfileEntryDto,
+  type Vault,
+  type Workspace,
+} from "@okkey/types";
 import {
   DEFAULT_DELETED_ITEMS_RETENTION_DAYS,
   createEmptyProfilePermissions,
@@ -75,6 +81,7 @@ import {
   buildNewCapsuleDeepLink,
   buildNewItemDeepLink,
   buildSettingsMainDeepLink,
+  buildVaultSettingsDeepLink,
   openWebDeepLink,
   readActiveTabUrl,
 } from "../../lib/deepLinks";
@@ -105,6 +112,9 @@ type VaultPopupProps = {
   idleLockMs: number;
   onIdleLockMsChange?: (ms: number) => void;
   onActivity?: () => void;
+  /** Shown only when this unlock typed a master password shorter than the current minimum. */
+  suggestLongerMasterPassword?: boolean;
+  onDismissLongerMasterPasswordHint?: () => void;
   t: (key: string, values?: Record<string, string | number | boolean>) => string;
 };
 
@@ -396,6 +406,8 @@ export function VaultPopup(props: VaultPopupProps) {
     idleLockMs,
     onIdleLockMsChange,
     onActivity,
+    suggestLongerMasterPassword = false,
+    onDismissLongerMasterPasswordHint,
     t,
   } = props;
 
@@ -1380,6 +1392,27 @@ export function VaultPopup(props: VaultPopupProps) {
         <ExtensionGeneratorPanel onBack={() => setGeneratorOpen(false)} t={t} />
       ) : (
       <div className="flex h-full min-h-0 w-full flex-col bg-background text-foreground">
+        {suggestLongerMasterPassword ? (
+          <div role="status" className="flex shrink-0 flex-col gap-2 border-b border-border bg-muted/50 px-3 py-2">
+            <p className="text-sm leading-5 text-foreground">
+              {t("unlock.shortMasterPasswordHint", { min: MIN_MASTER_PASSWORD_LENGTH })}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => {
+                  void openWebDeepLink(buildVaultSettingsDeepLink(webBaseUrl));
+                }}
+              >
+                {t("unlock.shortMasterPasswordHint.change")}
+              </Button>
+              <Button type="button" size="sm" variant="outline" onClick={onDismissLongerMasterPasswordHint}>
+                {t("unlock.shortMasterPasswordHint.dismiss")}
+              </Button>
+            </div>
+          </div>
+        ) : null}
         <header className="flex h-[52px] shrink-0 items-center gap-2 bg-gradient-to-r from-[var(--extension-shell-header-from)] to-[var(--extension-shell-header-to)] p-2">
           <OkkeyAppSidebarToolbar
             openMobileNavLabel={t("web.nav.openMobileNav")}

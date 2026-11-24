@@ -82,7 +82,9 @@ export async function renderAuthEmailCode(
   const messagePrefix =
     variables.purpose === "email_change"
       ? "email.auth.emailChangeCode"
-      : "email.auth.signInCode";
+      : variables.purpose === "registration"
+        ? "email.auth.registrationCode"
+        : "email.auth.signInCode";
   const subject = formatEmailMessage(locale, `${messagePrefix}.subject`, {
     code: variables.code,
   });
@@ -159,6 +161,8 @@ export async function renderWorkspaceInvite(
   locale: EmailLocale,
   variables: WorkspaceInviteVariables,
 ): Promise<RenderedEmail> {
+  // Detail fields (inviterEmail / role / expiry) are optional so Core can render
+  // invites without a companion caller upgrade; omit blank lines when absent.
   assertRequired("workspace_invite", variables as unknown as Record<string, unknown>, [
     "inviterDisplayName",
     "workspaceName",
@@ -175,14 +179,16 @@ export async function renderWorkspaceInvite(
   });
   const props = buildWorkspaceInviteEmailProps(locale, variables);
   const standard = buildEmailStandardFooterCopy(locale);
-  const plainText = appendStandardFooterPlain(
-    formatEmailMessage(locale, "email.workspaceInvite.plain", {
-      inviter: variables.inviterDisplayName,
-      workspaceName: variables.workspaceName,
-      inviteUrl,
-    }),
-    standard,
-  );
+  const plainBody = [
+    props.intro,
+    props.roleLine,
+    props.inviterEmailLine,
+    props.expiresLine,
+    formatEmailMessage(locale, "email.workspaceInvite.plainAccept", { inviteUrl }),
+  ]
+    .filter((line) => line.trim().length > 0)
+    .join("\n");
+  const plainText = appendStandardFooterPlain(plainBody, standard);
   const element = <WorkspaceInviteEmail {...props} />;
   const html = renderEmailHtml(element);
   const text = renderEmailPlainText(element);
@@ -387,10 +393,6 @@ export async function renderContactRecoveryReleaseRequest(
     });
   }
   const props = buildContactRecoveryReleaseEmailProps(locale, variables);
-  const helpUrl = variables.helpUrl.trim();
-  const footer = helpUrl
-    ? formatEmailMessage(locale, "email.contacts.recovery.textFooterWithUrl", { helpUrl })
-    : props.noteNoUrl;
   const standard = buildEmailStandardFooterCopy(locale);
   const plainText = appendStandardFooterPlain(
     formatEmailMessage(locale, "email.contacts.recovery.plain", {
@@ -398,7 +400,7 @@ export async function renderContactRecoveryReleaseRequest(
       detailLine: props.detailLine,
       requestLine: props.requestLine ?? "",
       expiresLine: props.expiresLine,
-      footer,
+      footer: props.noteNoUrl,
       noteIgnore: props.noteIgnore,
     }),
     standard,

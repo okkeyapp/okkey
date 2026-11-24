@@ -3,8 +3,10 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { testEntityId } from "./test-entity-id.ts";
 import test from "node:test";
 import { createApiApp } from "../src/app.ts";
+import type { AccountRecoveryService } from "../src/account-recovery/service.ts";
 import { CapsuleServiceError, type CapsuleService } from "../src/capsule/service.ts";
 import type { ApiConfig } from "../src/config.ts";
+import type { SessionService } from "../src/session/service.ts";
 import { createTestApiConfig } from "./test-api-config.ts";
 
 class MockResponse {
@@ -94,10 +96,16 @@ async function dispatch(input: {
   headers?: Record<string, string>;
   body?: unknown;
   capsuleService?: CapsuleService;
+  sessionService?: SessionService;
+  accountRecoveryService?: AccountRecoveryService;
   logs?: Array<Record<string, unknown>>;
 }) {
   const app = createApiApp(config, loggerStub(input.logs), {
     capsuleService: input.capsuleService ?? createCapsuleServiceStub(),
+    ...(input.sessionService ? { sessionService: input.sessionService } : {}),
+    ...(input.accountRecoveryService
+      ? { accountRecoveryService: input.accountRecoveryService }
+      : {}),
   });
   const req = {
     method: input.method,
@@ -164,7 +172,7 @@ test("GET /capsules/:capsuleId/owner returns owner detail", async () => {
 test("POST /workspaces/:workspaceId/capsules requires auth", async () => {
   const res = await dispatch({
     method: "POST",
-    url: "/workspaces/w1/capsules",
+    url: `/workspaces/${testEntityId()}/capsules`,
     body: { type: "item", encryptedPayload: mkBlob("x") },
   });
   assert.equal(res.statusCode, 401);
@@ -220,7 +228,6 @@ test("capsules routes reject unsafe key transport in URL query", async () => {
   const payload = JSON.parse(res.body) as { error: string };
   assert.equal(payload.error, "CAPSULE_UNSAFE_KEY_TRANSPORT");
 });
-
 test("request logger redacts sensitive key transport query values", async () => {
   const capsuleId = testEntityId();
   const logs: Array<Record<string, unknown>> = [];

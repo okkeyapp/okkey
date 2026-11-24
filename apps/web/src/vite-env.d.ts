@@ -20,29 +20,6 @@ declare module "@okkey-enterprise/workspace-profiles" {
   export default enterpriseProfilesModule;
 }
 
-declare module "@okkey-enterprise/workspace-members" {
-  import type { CoreApiClient } from "@okkey/api";
-  import type { WorkspacePermissionsMatrixDto } from "@okkey/types";
-  import type { WorkspaceSettingsMembersModule } from "./workspace-features/registry";
-  const workspaceMembersModule: WorkspaceSettingsMembersModule;
-  export default workspaceMembersModule;
-  export function canCompletePendingVaultWraps(
-    permissions: WorkspacePermissionsMatrixDto | null | undefined,
-  ): boolean;
-  export function tryCompletePendingVaultWraps(input: {
-    core: CoreApiClient;
-    workspaceId: string;
-    userId: string;
-    accountVaultKey: Uint8Array;
-  }): Promise<{ skippedInvalidKeys: number }>;
-}
-
-declare module "@okkey-enterprise/workspace-shared-vaults" {
-  import type { WorkspaceSettingsSharedVaultsModule } from "./workspace-features/registry";
-  const enterpriseSharedVaultsModule: WorkspaceSettingsSharedVaultsModule;
-  export default enterpriseSharedVaultsModule;
-}
-
 declare module "@okkey-enterprise/workspace-capsules" {
   import type { WorkspaceSettingsCapsulesModule } from "./workspace-features/registry";
   const enterpriseCapsulesModule: WorkspaceSettingsCapsulesModule;
@@ -67,6 +44,12 @@ declare module "@okkey-enterprise/account-recovery" {
   export default accountRecoveryModule;
 }
 
+declare module "@okkey-enterprise/monitoring" {
+  import type { PasswordMonitoringModule } from "./monitoring-features/registry";
+  const passwordMonitoringModule: PasswordMonitoringModule;
+  export default passwordMonitoringModule;
+}
+
 declare module "@okkey-enterprise/recovery-crypto";
 declare module "@okkey-enterprise/recovery-crypto-wasm";
 
@@ -89,11 +72,6 @@ interface ImportMetaEnv {
   readonly VITE_DOMAIN_CAPABILITIES_BRANCH?: string;
   readonly VITE_DOMAIN_CAPABILITIES_MANIFEST_URL?: string;
   readonly VITE_DOMAIN_CAPABILITIES_CATALOG_URL?: string;
-  /**
-   * Browser e2e only: skip personal-data bootstrap edit popup so smoke can
-   * create Login items without racing `#editItem`.
-   */
-  readonly VITE_E2E_DISABLE_PERSONAL_DATA_BOOTSTRAP?: string;
 }
 
 interface ImportMeta {

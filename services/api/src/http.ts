@@ -1,5 +1,10 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { generateEntityId } from "./entity-id.ts";
+import {
+  findInvalidEntityIdPathParam,
+  invalidEntityIdErrorCode,
+  normalizeEntityIdPathParams,
+} from "./http-params.ts";
 
 export interface RequestContext {
   requestId: string;
@@ -19,6 +24,32 @@ interface RouteRecord {
   method: string;
   pathPattern: string;
   handler: RouteHandler;
+}
+
+/** Typed request failure that maps to an HTTP response without crashing the process. */
+export class HttpRequestError extends Error {
+  readonly statusCode: number;
+  readonly code: string;
+
+  constructor(statusCode: number, code: string, message: string) {
+    super(message);
+    this.name = "HttpRequestError";
+    this.statusCode = statusCode;
+    this.code = code;
+  }
+}
+
+/** Decode one URI path segment; invalid percent-encoding becomes a 400. */
+export function decodePathSegment(segment: string): string {
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    throw new HttpRequestError(
+      400,
+      "BAD_REQUEST",
+      "Invalid URI encoding in path",
+    );
+  }
 }
 
 export class HttpApp {
@@ -46,27 +77,48 @@ export class HttpApp {
         params: {},
       };
 
-      const route = this.matchRoute(req.method, req.url);
-      if (route) {
-        ctx.params = route.params;
+      try {
+        await this.dispatch(ctx);
+      } catch (error) {
+        // Last-resort guard: never let a single request take down the process.
+        respondWithRequestError(ctx, error);
+      }
+    };
+  }
+
+  private async dispatch(ctx: RequestContext): Promise<void> {
+    const route = this.matchRoute(ctx.req.method, ctx.req.url);
+    if (route) {
+      ctx.params = route.params;
+    }
+
+    const chain = [...this.middlewares];
+    chain.push(async (innerCtx) => {
+      if (!route) {
+        json(innerCtx.res, 404, {
+          error: "NOT_FOUND",
+          message: "Route not found",
+          requestId: innerCtx.requestId,
+        });
+        return;
       }
 
-      const chain = [...this.middlewares];
-      chain.push(async (innerCtx) => {
-        if (!route) {
-          json(innerCtx.res, 404, {
-            error: "NOT_FOUND",
-            message: "Route not found",
-            requestId: innerCtx.requestId,
-          });
-          return;
-        }
+      const invalidId = findInvalidEntityIdPathParam(innerCtx.params);
+      if (invalidId) {
+        json(innerCtx.res, 400, {
+          error: invalidEntityIdErrorCode(invalidId.name),
+          message: `${invalidId.name} must be a snowflake entity id`,
+          requestId: innerCtx.requestId,
+        });
+        return;
+      }
+      // Pass trimmed entity ids to handlers so whitespace cannot bypass validation.
+      innerCtx.params = normalizeEntityIdPathParams(innerCtx.params);
 
-        await route.handler(innerCtx);
-      });
+      await route.handler(innerCtx);
+    });
 
-      await this.runMiddlewares(ctx, chain, 0);
-    };
+    await this.runMiddlewares(ctx, chain, 0);
   }
 
   private matchRoute(method: string | undefined, url: string | undefined):
@@ -74,12 +126,18 @@ export class HttpApp {
     | null {
     const normalizedMethod = (method ?? "GET").toUpperCase();
     const pathname = new URL(url ?? "/", "http://localhost").pathname;
+    // Validate encoding for every path segment up front so bad input never
+    // reaches route handlers and always yields a stable 400 for all routes.
+    const pathSegments = pathname
+      .split("/")
+      .filter(Boolean)
+      .map(decodePathSegment);
 
     for (const route of this.routes) {
       if (route.method !== normalizedMethod) {
         continue;
       }
-      const params = matchPath(route.pathPattern, pathname);
+      const params = matchPath(route.pathPattern, pathSegments);
       if (params) {
         return {
           handler: route.handler,
@@ -108,20 +166,19 @@ export class HttpApp {
 
 function matchPath(
   pattern: string,
-  pathname: string,
+  pathSegments: string[],
 ): Record<string, string> | null {
   const patternParts = pattern.split("/").filter(Boolean);
-  const pathParts = pathname.split("/").filter(Boolean);
-  if (patternParts.length !== pathParts.length) {
+  if (patternParts.length !== pathSegments.length) {
     return null;
   }
 
   const params: Record<string, string> = {};
   for (let i = 0; i < patternParts.length; i += 1) {
     const patternPart = patternParts[i];
-    const pathPart = pathParts[i];
+    const pathPart = pathSegments[i];
     if (patternPart.startsWith(":")) {
-      params[patternPart.slice(1)] = decodeURIComponent(pathPart);
+      params[patternPart.slice(1)] = pathPart;
       continue;
     }
     if (patternPart !== pathPart) {
@@ -130,6 +187,30 @@ function matchPath(
   }
 
   return params;
+}
+
+export function respondWithRequestError(
+  ctx: RequestContext,
+  error: unknown,
+): void {
+  if (ctx.res.writableEnded) {
+    return;
+  }
+
+  if (error instanceof HttpRequestError) {
+    json(ctx.res, error.statusCode, {
+      error: error.code,
+      message: error.message,
+      requestId: ctx.requestId,
+    });
+    return;
+  }
+
+  json(ctx.res, 500, {
+    error: "INTERNAL_SERVER_ERROR",
+    message: "Internal server error",
+    requestId: ctx.requestId,
+  });
 }
 
 export function json(
@@ -147,23 +228,49 @@ export function json(
 }
 
 export async function readJsonBody<T>(req: IncomingMessage): Promise<T> {
+  return readJsonBodyLimited(req);
+}
+
+/**
+ * Read a JSON body and reject when the raw byte length exceeds `maxBytes`.
+ * Pass `maxBytes` for routes that accept large offline update documents.
+ */
+export async function readJsonBodyLimited<T>(
+  req: IncomingMessage,
+  maxBytes?: number,
+): Promise<T> {
   const mockedBody = (req as IncomingMessage & { body?: unknown }).body;
   if (mockedBody !== undefined) {
     if (typeof mockedBody === "string") {
+      if (maxBytes !== undefined && Buffer.byteLength(mockedBody) > maxBytes) {
+        throw new HttpRequestError(400, "PACKAGE_TOO_LARGE", "Request body exceeds the size limit");
+      }
       return JSON.parse(mockedBody) as T;
+    }
+    if (maxBytes !== undefined) {
+      const encoded = JSON.stringify(mockedBody);
+      if (Buffer.byteLength(encoded) > maxBytes) {
+        throw new HttpRequestError(400, "PACKAGE_TOO_LARGE", "Request body exceeds the size limit");
+      }
     }
     return mockedBody as T;
   }
 
-  let raw = "";
+  const chunks: Buffer[] = [];
+  let size = 0;
   for await (const chunk of req) {
-    raw += chunk.toString();
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    size += buffer.length;
+    if (maxBytes !== undefined && size > maxBytes) {
+      throw new HttpRequestError(400, "PACKAGE_TOO_LARGE", "Request body exceeds the size limit");
+    }
+    chunks.push(buffer);
   }
 
-  if (!raw) {
+  if (chunks.length === 0) {
     return {} as T;
   }
-  return JSON.parse(raw) as T;
+  return JSON.parse(Buffer.concat(chunks).toString("utf8")) as T;
 }
 
 export function getHeader(req: IncomingMessage, name: string): string | undefined {

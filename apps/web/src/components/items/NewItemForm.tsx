@@ -9,7 +9,7 @@ import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRe
 import { getDatePickerLocale } from "../../lib/datePickerLocale";
 import { NO_FOLDER_VALUE } from "../../folders/workspaceFolderTree";
 import { collectWebsiteUrlsFromSections, suggestedRecordTitleFromWebsiteUrls } from "../../lib/domainRecordTitle";
-import { keyFormSectionsToItemPlaintext } from "../../items/keyFormToItemPlaintext";
+import { keyFormSectionsToItemPlaintext, omitBlankExtraWebsiteUrls } from "../../items/keyFormToItemPlaintext";
 import { useItemFormFavicon, type ItemFormFaviconSyncInput } from "../../items/useItemFormFavicon";
 import { websiteUrlsLookupKey } from "../../items/useItemFormFaviconPreview";
 import type { ItemTemplateFormSnapshot } from "../../items/itemTemplateHelpers";
@@ -145,6 +145,8 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
   );
   const recordNameEditedRef = useRef(Boolean(initialValues ?? (isCopyMode && prefillValues)));
   const recordNameInputRef = useRef<HTMLInputElement>(null);
+  const committedRecordNameRef = useRef(recordName.trim());
+  const [nameFetchRevision, setNameFetchRevision] = useState(0);
   const [formSections, setFormSections] = useState<KeyFormEditorSection[] | null>(
     initialValues?.sections ?? prefillValues?.sections ?? null,
   );
@@ -249,7 +251,21 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
   const trimmedRecordName = recordName.trim();
   const recordNameInvalid = showValidation && trimmedRecordName.length === 0;
   const currentSections = formSections ?? initialSections;
-  // Favicon preview only on website URL change/focusout (committed list), never on every keystroke.
+  const sectionsForCommit = useMemo(
+    () => omitBlankExtraWebsiteUrls(currentSections),
+    [currentSections],
+  );
+  const commitRecordNameForFavicon = useCallback((nextRaw: string) => {
+    const next = nextRaw.trim();
+    if (next === committedRecordNameRef.current) {
+      return;
+    }
+    committedRecordNameRef.current = next;
+    // Re-fetch favicon only when the committed name actually changed (Sasha: name + website URL).
+    setNameFetchRevision((value) => value + 1);
+  }, []);
+
+  // Favicon preview only on committed name / website URL change (change or focusout), never keystrokes in other fields.
   const faviconState = useItemFormFavicon({
     accessToken,
     categoryId,
@@ -258,6 +274,7 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
     initialFaviconItemId: initialValues?.faviconItemId ?? prefillValues?.faviconItemId ?? initialValues?.itemId,
     initialFaviconSource: initialValues?.faviconSource ?? prefillValues?.faviconSource,
     initialUrlsKey: initialValues?.faviconId ? initialWebsiteUrlsKey : null,
+    nameFetchRevision,
   });
   const {
     previewImageSrc,
@@ -286,6 +303,8 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
     }
     setRecordName("");
     recordNameEditedRef.current = false;
+    committedRecordNameRef.current = "";
+    setNameFetchRevision(0);
     setFormSections(null);
     setTags([]);
     setCommittedWebsiteUrls([]);
@@ -296,20 +315,47 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
       return;
     }
     setRecordName(suggestedRecordName);
+    committedRecordNameRef.current = suggestedRecordName.trim();
   }, [suggestedRecordName]);
+
+  // Autofocus the title once per form instance. Never steal focus from another
+  // control in the dialog — Playwright (and users) can already be filling Login
+  // before a late rAF runs; select()+focus() then dumps keystrokes into the name.
+  const didAutofocusRecordNameRef = useRef(false);
+  useEffect(() => {
+    didAutofocusRecordNameRef.current = false;
+  }, [categoryId, isEditMode, isCopyMode, isTemplateMode]);
 
   useEffect(() => {
     if (isEditMode || isCopyMode) {
       return;
     }
+    if (didAutofocusRecordNameRef.current) {
+      return;
+    }
 
     const frameId = window.requestAnimationFrame(() => {
       const input = recordNameInputRef.current;
-      if (!input) {
+      if (!input || didAutofocusRecordNameRef.current) {
         return;
       }
+
+      const active = document.activeElement;
+      if (
+        active instanceof HTMLElement &&
+        active !== document.body &&
+        active !== input
+      ) {
+        // Another field already has focus (user or automation) — do not steal it.
+        didAutofocusRecordNameRef.current = true;
+        return;
+      }
+
       input.focus();
-      input.select();
+      if (!input.value) {
+        input.select();
+      }
+      didAutofocusRecordNameRef.current = true;
     });
 
     return () => window.cancelAnimationFrame(frameId);
@@ -423,10 +469,10 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
       validateNewItemForm({
         recordName,
         vaultId,
-        sections: currentSections,
+        sections: sectionsForCommit,
         categoryId: category?.id,
       }).ok,
-    [recordName, vaultId, currentSections, category?.id],
+    [recordName, vaultId, sectionsForCommit, category?.id],
   );
 
   const canSave = useMemo(() => {
@@ -453,11 +499,11 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
         validateNewItemForm({
           recordName,
           vaultId,
-          sections: formSections ?? initialSections,
+          sections: sectionsForCommit,
           categoryId: category?.id,
         }),
       getSavePayload: () => {
-        const sections = formSections ?? initialSections;
+        const sections = sectionsForCommit;
         const validation = validateNewItemForm({ recordName, vaultId, sections, categoryId: category?.id });
         if (!validation.ok || !category) {
           return null;
@@ -602,7 +648,7 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
       hasUnsavedChanges: () => hasUnsavedChanges(),
       hasItemContentChanges: () => hasItemContentChanges(),
     }),
-    [folderId, formSections, getSyncInput, hasItemContentChanges, hasUnsavedChanges, initialSections, category, trimmedRecordName, initialValues, prefillValues, tags, resolveAttachmentContext, vaultId],
+    [folderId, formSections, sectionsForCommit, getSyncInput, hasItemContentChanges, hasUnsavedChanges, initialSections, category, trimmedRecordName, initialValues, prefillValues, tags, resolveAttachmentContext, vaultId],
   );
 
   if (!category) {
@@ -635,6 +681,18 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
           onChange={(event) => {
             recordNameEditedRef.current = true;
             setRecordName(event.target.value);
+          }}
+          // Prevent Chromium password-manager autofill from writing the login
+          // email into the item title while sibling key fields are filled.
+          autoComplete="off"
+          name="okkey-item-record-name"
+          onBlur={(event) => {
+            commitRecordNameForFavicon(event.currentTarget.value);
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              commitRecordNameForFavicon(event.currentTarget.value);
+            }
           }}
           placeholder={t("web.newItemPopup.recordNamePlaceholder", { category: categoryLabel })}
           className={cn(

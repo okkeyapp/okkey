@@ -7,6 +7,7 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import {
   assertBeta2TagSet,
+  DEV_CHANNEL_IMAGE_VERSION,
   resolveImageVersion,
   tagsForImage,
 } from "../resolve-publish-image-tags.mjs";
@@ -182,6 +183,136 @@ test("workflow_dispatch :latest only when push_latest=true", () => {
     `${IMAGE}:1.0.0-beta.2`,
     `${IMAGE}:latest`,
   ]);
+});
+
+test("v9.9.9 OCI version and image tag drop the leading v", () => {
+  const tagPush = {
+    eventName: "push",
+    refType: "tag",
+    refName: "v9.9.9",
+    ref: "refs/tags/v9.9.9",
+    sha: "abc1234567890",
+  };
+  assert.equal(resolveImageVersion(tagPush), "9.9.9");
+  assert.deepEqual(tagsForImage(IMAGE, tagPush), [
+    `${IMAGE}:9.9.9`,
+    `${IMAGE}:9.9`,
+    `${IMAGE}:9`,
+  ]);
+  // Tag pushes are recognized from refs/tags/ even when refType is omitted.
+  assert.equal(
+    resolveImageVersion({
+      eventName: "push",
+      ref: "refs/tags/v9.9.9",
+      refName: "v9.9.9",
+    }),
+    "9.9.9",
+  );
+  assert.equal(
+    resolveImageVersion({
+      eventName: "workflow_dispatch",
+      ref: "refs/heads/dev",
+      dispatchTag: "v9.9.9",
+    }),
+    "9.9.9",
+  );
+  assert.deepEqual(
+    tagsForImage(IMAGE, {
+      eventName: "workflow_dispatch",
+      ref: "refs/heads/dev",
+      dispatchTag: "v9.9.9",
+    }),
+    [`${IMAGE}:9.9.9`],
+  );
+});
+
+test("v1.0.0-beta.3 image version is SemVer without the leading v", () => {
+  assert.equal(
+    resolveImageVersion({
+      eventName: "push",
+      refType: "tag",
+      refName: "v1.0.0-beta.3",
+      ref: "refs/tags/v1.0.0-beta.3",
+    }),
+    "1.0.0-beta.3",
+  );
+  assert.deepEqual(
+    tagsForImage(IMAGE, {
+      eventName: "push",
+      refType: "tag",
+      refName: "v1.0.0-beta.3",
+      ref: "refs/tags/v1.0.0-beta.3",
+    }),
+    [`${IMAGE}:1.0.0-beta.3`],
+  );
+});
+
+test("dev channel OCI version is 0.0.0-dev when dispatched on refs/heads/dev", () => {
+  assert.equal(DEV_CHANNEL_IMAGE_VERSION, "0.0.0-dev");
+  assert.equal(
+    resolveImageVersion({
+      eventName: "workflow_dispatch",
+      ref: "refs/heads/dev",
+    }),
+    "0.0.0-dev",
+  );
+  assert.equal(
+    resolveImageVersion({
+      eventName: "workflow_dispatch",
+      ref: "refs/heads/dev",
+      dispatchTag: "dev",
+    }),
+    "0.0.0-dev",
+  );
+  assert.deepEqual(
+    tagsForImage(IMAGE, {
+      eventName: "workflow_dispatch",
+      ref: "refs/heads/dev",
+    }),
+    [`${IMAGE}:dev`],
+  );
+});
+
+test("workflow_dispatch :dev from any other ref fails closed", () => {
+  for (const ref of ["refs/heads/main", "refs/heads/release/1.0.0-beta.2", ""]) {
+    assert.throws(
+      () =>
+        tagsForImage(IMAGE, {
+          eventName: "workflow_dispatch",
+          ref,
+          dispatchTag: "dev",
+        }),
+      /refusing to publish or sign the :dev channel/,
+    );
+    assert.throws(
+      () =>
+        resolveImageVersion({
+          eventName: "workflow_dispatch",
+          ref,
+          dispatchTag: "dev",
+        }),
+      /refusing to publish or sign the :dev channel/,
+    );
+  }
+});
+
+test("workflow_dispatch of a non-dev tag is allowed from other branches", () => {
+  assert.deepEqual(
+    tagsForImage(IMAGE, {
+      eventName: "workflow_dispatch",
+      ref: "refs/heads/main",
+      dispatchTag: "1.2.3",
+    }),
+    [`${IMAGE}:1.2.3`],
+  );
+  assert.equal(
+    resolveImageVersion({
+      eventName: "workflow_dispatch",
+      ref: "refs/heads/main",
+      dispatchTag: "1.2.3",
+    }),
+    "1.2.3",
+  );
 });
 
 test("CLI writes GITHUB_OUTPUT for v1.0.0-beta.2", () => {

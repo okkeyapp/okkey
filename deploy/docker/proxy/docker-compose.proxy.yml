@@ -4,8 +4,11 @@
 # From the install dir that already has docker-compose.prod.yml (e.g. ~/okkey
 # or a repo checkout of deploy/docker/). Keep proxy/ as a sibling of that compose:
 #
-#   docker compose -f docker-compose.prod.yml -f proxy/docker-compose.proxy.yml \
-#     --env-file .env up -d --build proxy
+# docker compose -f docker-compose.prod.yml -f proxy/docker-compose.proxy.yml \
+# --env-file .env up -d --build proxy
+#
+# Compat classical port : do NOT publish 8443 here. When OKKEY_COMPAT_ENABLED=1,
+# also include proxy/docker-compose.compat.yml (see compat.env.example / README).
 #
 # Bind/build paths below are relative to the Compose project directory (the dir
 # of docker-compose.prod.yml), NOT to this overlay file — so they use ./proxy/…
@@ -20,8 +23,10 @@ services:
       context: ./proxy/nginx
       dockerfile: Dockerfile
       args:
-        OPENSSL_VERSION: ${OKKEY_PROXY_OPENSSL_VERSION:-3.5.0}
+        OPENSSL_VERSION: ${OKKEY_PROXY_OPENSSL_VERSION:-3.5.9}
         NGINX_VERSION: ${OKKEY_PROXY_NGINX_VERSION:-1.28.0}
+    # Built by the block above. Local tag, not a third-party registry base
+    # and not ghcr.io/okkeyapp/*, so there is no upstream digest to pin.
     image: ${OKKEY_PROXY_IMAGE:-okkey-edge-nginx:openssl35}
     restart: unless-stopped
     depends_on:
@@ -35,12 +40,14 @@ services:
       OKKEY_API_HOST: ${OKKEY_API_HOST:-api.example.com}
       OKKEY_WEB_UPSTREAM: ${OKKEY_WEB_UPSTREAM:-web:80}
       OKKEY_API_UPSTREAM: ${OKKEY_API_UPSTREAM:-api:4000}
-      # Compat classical listeners (q3-4): off by default. See compat.env.example.
+      # Compat classical listeners : off by default. See compat.env.example.
+      # Publish compat port only via docker-compose.compat.yml when ENABLED=1 .
       OKKEY_COMPAT_ENABLED: ${OKKEY_COMPAT_ENABLED:-0}
       OKKEY_COMPAT_WEB_HOST: ${OKKEY_COMPAT_WEB_HOST:-}
       OKKEY_COMPAT_API_HOST: ${OKKEY_COMPAT_API_HOST:-}
       OKKEY_COMPAT_SUNSET: ${OKKEY_COMPAT_SUNSET:-}
       OKKEY_COMPAT_OWNER: ${OKKEY_COMPAT_OWNER:-}
       OKKEY_COMPAT_ALLOW_CIDRS: ${OKKEY_COMPAT_ALLOW_CIDRS:-}
+      OKKEY_COMPAT_HTTPS_PORT: ${OKKEY_COMPAT_HTTPS_PORT:-8443}
     volumes:
       - ./proxy/certs:/etc/nginx/certs:ro

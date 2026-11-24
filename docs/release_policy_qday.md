@@ -4,10 +4,11 @@ This document defines release gates for the first production release with `Q-Day
 
 ## Policy Statement
 
-- First production release accepts only `crypto_version=v2` for production encrypted write paths.
-- Silent downgrade and legacy fallback are prohibited in production.
+- Vault items accept only crypto profile `v2` (`qday_default`) for read and write in `dev`, `stage`, and `prod`.
+- Crypto profile `v1` is forbidden for vault items. There is no migration of existing profile `v1` vault item payloads.
+- Silent downgrade and legacy fallback are prohibited.
 - Legacy client-data compatibility is not a first-release production obligation.
-- `v1` is allowed only in explicitly scoped dev/test fixtures.
+- `CRYPTO_ALLOWED_PROFILE_VERSIONS` can only narrow the environment allowlist. It cannot add profile `v1`.
 - Enterprise extensions cannot override or weaken this policy.
 - Internal-only migration tooling for pre-prod/test is documented in
   `docs/security/6.23-preprod-migration-tooling.md` and is not part of production launch flow.
@@ -19,7 +20,8 @@ This document defines release gates for the first production release with `Q-Day
 
 ### Gate 1: Crypto Profile Enforcement
 
-- `stage` and `prod` accept only `v2` for new encrypted writes.
+- `dev`, `stage`, and `prod` accept only `v2` for vault item reads and writes.
+- Deprecation dates for profile `v1` stay `announcedOn` `2026-03-29`, `startsOn` `2026-03-29`, `graceEndsOn` `2026-09-30`, `removalTarget` `2026-12-31`.
 - Downgrade attempts are rejected (`CRYPTO_PROFILE_NOT_ALLOWED`, `CRYPTO_DOWNGRADE_NOT_ALLOWED`).
 - `EncryptedBlob` validation is mandatory for all critical encrypted artifacts.
 - Crypto profile selection in SDK must go through the versioned registry resolver (`getCryptoConfig`), not ad-hoc version branching.

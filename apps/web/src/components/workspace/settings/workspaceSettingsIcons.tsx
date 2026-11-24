@@ -52,6 +52,25 @@ export function GeneralIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
+export function MailIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg width={16} height={16} viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" {...iconProps(props.className)} {...props}>
+      <path
+        d="M2 4.66683C2 4.31321 2.14048 3.97407 2.39052 3.72402C2.64057 3.47397 2.97971 3.3335 3.33333 3.3335H12.6667C13.0203 3.3335 13.3594 3.47397 13.6095 3.72402C13.8595 3.97407 14 4.31321 14 4.66683V11.3335C14 11.6871 13.8595 12.0263 13.6095 12.2763C13.3594 12.5264 13.0203 12.6668 12.6667 12.6668H3.33333C2.97971 12.6668 2.64057 12.5264 2.39052 12.2763C2.14048 12.0263 2 11.6871 2 11.3335V4.66683Z"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M2 4.6665L8 8.6665L14 4.6665"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 /** Same glyph as shell sidebar Records (`NavRecordsIcon`). */
 export function ItemsIcon(props: SVGProps<SVGSVGElement>) {
   return (

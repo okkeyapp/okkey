@@ -13,7 +13,12 @@ import {
 } from "@okkey/ui";
 
 import { deleteKeyFieldFileAttachment, uploadEncryptedAttachment } from "../api/key-field-files";
-import { applyFaviconToItem, syncItemFaviconForPlaintext } from "../items/syncItemFavicon";
+import { VaultItemsAppendIncompleteError } from "../items/workspaceVaultItemsSync";
+import {
+  applyFaviconToItem,
+  seedFaviconUrlCacheAfterUpload,
+  syncItemFaviconForPlaintext,
+} from "../items/syncItemFavicon";
 
 export type ImportOrchestratorProgress = {
   phase: "parsing" | "importing" | "done";
@@ -39,6 +44,8 @@ export async function runVaultImport(params: {
   vaultKey: Uint8Array;
   exportPassword?: string;
   createItem: (item: ItemPlaintextV2) => Promise<string>;
+  /** Prefer when available — one drain and a few batch POSTs for the whole import. */
+  createItems?: (items: ItemPlaintextV2[]) => Promise<string[]>;
   updateItem?: (item: ItemPlaintextV2) => Promise<string>;
   assignItemToFolder: (itemId: string, folderId: string | null) => Promise<void>;
   createFolder?: (label: string, parentFolderId?: string | null) => Promise<string>;
@@ -80,8 +87,18 @@ export async function runVaultImport(params: {
     cipherFolderIndex.set(cipherIndex, folderIndex);
   }
 
+  type PreparedImport = {
+    draftIndex: number;
+    item: ItemPlaintextV2;
+    uploadedFiles: KeyFieldFileValue[];
+    attachmentWarnings: string[];
+    favorite: boolean;
+  };
+
+  const prepared: PreparedImport[] = [];
+
   for (let index = 0; index < drafts.length; index += 1) {
-    const draft = drafts[index];
+    const draft = drafts[index]!;
     params.onProgress?.({
       phase: "importing",
       processed: index,
@@ -90,38 +107,91 @@ export async function runVaultImport(params: {
     });
 
     try {
-      const imported = await importDraftItem({
+      const next = await prepareImportDraftItem({
         draft,
         vaultId: params.vaultId,
         accessToken: params.accessToken,
         vaultKey: params.vaultKey,
-        createItem: params.createItem,
-        updateItem: params.updateItem,
       });
-      const itemId = imported.itemId;
-      for (const warning of imported.attachmentWarnings) {
+      for (const warning of next.attachmentWarnings) {
         errors.push(warning);
       }
+      prepared.push({
+        draftIndex: index,
+        item: next.item,
+        uploadedFiles: next.uploadedFiles,
+        attachmentWarnings: next.attachmentWarnings,
+        favorite: Boolean(draft.favorite),
+      });
+    } catch (error) {
+      errors.push(error instanceof Error ? error.message : "Import item failed");
+    }
+  }
 
-      const importFolderIndex = cipherFolderIndex.get(index);
-      const mappedFolderId =
-        importFolderIndex != null ? folderIdByImportIndex.get(importFolderIndex) : undefined;
-      const assignTo =
-        params.importFolders && mappedFolderId
-          ? mappedFolderId
-          : params.targetFolderId;
+  if (prepared.length === 0) {
+    params.onProgress?.({
+      phase: "done",
+      processed: drafts.length,
+      total: drafts.length,
+    });
+    return {
+      createdCount: 0,
+      skippedCount: drafts.length,
+      errors,
+    };
+  }
 
+  let committed = prepared;
+  const itemsToCreate = prepared.map((entry) => entry.item);
+  try {
+    if (params.createItems && itemsToCreate.length > 1) {
+      await params.createItems(itemsToCreate);
+    } else {
+      for (const entry of prepared) {
+        await params.createItem(entry.item);
+      }
+    }
+  } catch (error) {
+    const createdIds =
+      error instanceof VaultItemsAppendIncompleteError ? error.createdItemIds : [];
+    const createdSet = new Set(createdIds);
+    await Promise.allSettled(
+      prepared
+        .filter((entry) => !createdSet.has(entry.item.itemId))
+        .flatMap((entry) =>
+          entry.uploadedFiles.map((file) =>
+            deleteKeyFieldFileAttachment({
+              accessToken: params.accessToken,
+              vaultId: params.vaultId,
+              itemId: entry.item.itemId,
+              file,
+            }),
+          ),
+        ),
+    );
+    errors.push(error instanceof Error ? error.message : "Import batch create failed");
+    committed = prepared.filter((entry) => createdSet.has(entry.item.itemId));
+  }
+
+  for (const entry of committed) {
+    const itemId = entry.item.itemId;
+    const importFolderIndex = cipherFolderIndex.get(entry.draftIndex);
+    const mappedFolderId =
+      importFolderIndex != null ? folderIdByImportIndex.get(importFolderIndex) : undefined;
+    const assignTo =
+      params.importFolders && mappedFolderId ? mappedFolderId : params.targetFolderId;
+
+    try {
       if (assignTo) {
         await params.assignItemToFolder(itemId, assignTo);
       }
-
-      if (draft.favorite && params.setItemFavorite) {
+      if (entry.favorite && params.setItemFavorite) {
         await params.setItemFavorite(itemId, true);
       }
-
       createdCount += 1;
     } catch (error) {
-      errors.push(error instanceof Error ? error.message : "Import item failed");
+      errors.push(error instanceof Error ? error.message : "Import post-create failed");
+      createdCount += 1;
     }
   }
 
@@ -221,14 +291,20 @@ function normalizeImportFolderPath(name: string): string {
   return name.replace(/\\/g, "/").replace(/^\/+/g, "").replace(/\/+$/g, "").trim();
 }
 
-async function importDraftItem(params: {
+/**
+ * Upload attachments and favicon before ITEM_CREATE so import does not need a
+ * follow-up ITEM_UPDATE for icons.
+ */
+async function prepareImportDraftItem(params: {
   draft: OkkeyImportItemDraft;
   vaultId: string;
   accessToken: string;
   vaultKey: Uint8Array;
-  createItem: (item: ItemPlaintextV2) => Promise<string>;
-  updateItem?: (item: ItemPlaintextV2) => Promise<string>;
-}): Promise<{ itemId: string; attachmentWarnings: string[] }> {
+}): Promise<{
+  item: ItemPlaintextV2;
+  uploadedFiles: KeyFieldFileValue[];
+  attachmentWarnings: string[];
+}> {
   let item: ItemPlaintextV2 = { ...params.draft.item, vaultId: params.vaultId };
   const attachmentWarnings: string[] = [];
   const uploadedFiles: KeyFieldFileValue[] = [];
@@ -240,8 +316,6 @@ async function importDraftItem(params: {
         }
       : undefined;
 
-  // Upload regular attachments before createItem so the first persisted plaintext
-  // already includes file fields. Favicons require the item to exist first.
   for (const attachment of params.draft.attachments) {
     try {
       const mimeType = resolveKeyFieldFileMimeType(attachment.fileName, attachment.mimeType);
@@ -268,24 +342,8 @@ async function importDraftItem(params: {
   }
 
   const itemWithoutFavicon = applyFaviconToItem(item, undefined, undefined);
-  let itemId: string;
   try {
-    itemId = await params.createItem(itemWithoutFavicon);
-  } catch (error) {
-    await Promise.allSettled(
-      uploadedFiles.map((file) =>
-        deleteKeyFieldFileAttachment({
-          accessToken: params.accessToken,
-          vaultId: params.vaultId,
-          itemId: item.itemId,
-          file,
-        }),
-      ),
-    );
-    throw error;
-  }
-
-  try {
+    // New import rows have no previous icon. Website fetch runs only for new URLs.
     const faviconSync = await syncItemFaviconForPlaintext(
       params.accessToken,
       params.vaultKey,
@@ -298,14 +356,18 @@ async function importDraftItem(params: {
     if (faviconSync.uploadedFavicon) {
       uploadedFiles.push(faviconSync.uploadedFavicon);
     }
-    if ((item.faviconId || item.faviconSource) && params.updateItem) {
-      await params.updateItem(item);
-    }
+    seedFaviconUrlCacheAfterUpload({
+      vaultId: item.vaultId,
+      itemId: item.itemId,
+      uploadedFavicon: faviconSync.uploadedFavicon,
+      uploadedPngBytes: faviconSync.uploadedPngBytes,
+    });
   } catch {
     // Favicon fetch/upload is best-effort; import should still succeed without it.
+    item = itemWithoutFavicon;
   }
 
-  return { itemId, attachmentWarnings };
+  return { item, uploadedFiles, attachmentWarnings };
 }
 
 const IMPORT_ATTACHMENTS_SECTION_ID = "attachments";

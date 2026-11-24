@@ -15,6 +15,11 @@
       "types": "./dist/lib/key-field-address.d.ts",
       "import": "./dist/lib/key-field-address.js",
       "default": "./src/lib/key-field-address.ts"
+    },
+    "./lib/favicon-mode": {
+      "types": "./dist/lib/favicon-mode.d.ts",
+      "import": "./dist/lib/favicon-mode.js",
+      "default": "./src/lib/favicon-mode.ts"
     }
   },
   "files": [

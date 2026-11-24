@@ -9,8 +9,8 @@ export type SharedVaultItemCreateGateResult =
   | { ok: false; code: "PLAN_FEATURE_REQUIRED" | "WORKSPACE_NOT_FOUND"; statusCode: number; message: string };
 
 /**
- * After EE→FREE, existing shared vaults stay readable/editable, but ITEM_CREATE
- * (including move-into shared) requires the `sharedVaults` plan feature.
+ * When `sharedVaults` is off, existing shared vaults stay readable/editable, but ITEM_CREATE
+ * (including move-into shared) requires the feature.
  */
 export function evaluateSharedVaultItemCreateGate(input: {
   vault: VaultRecord;
@@ -33,7 +33,7 @@ export function evaluateSharedVaultItemCreateGate(input: {
       ok: false,
       code: "PLAN_FEATURE_REQUIRED",
       statusCode: 403,
-      message: "shared vaults require a paid plan",
+      message: "shared vaults are not available on this plan",
     };
   }
   return { ok: true };

@@ -6,7 +6,8 @@
 # Image builds and signing run on:
 #   push to release/** and hotfix/**
 #   push of version tags (v*)
-#   workflow_dispatch — the only way to publish the floating :dev image
+#   workflow_dispatch — the only way to publish the floating :dev image,
+#     and only when the workflow ref is refs/heads/dev
 # The daily schedule is GHCR TTL cleanup only (no image build).
 #
 # Tag scheme:
@@ -17,6 +18,8 @@
 #   tag vX.Y.Z-prerelease  → :X.Y.Z-prerelease  (no rolling / :latest)
 #     e.g. v1.0.0-beta.2   → :1.0.0-beta.2 only (spelling: beta, never betta)
 #   workflow_dispatch      → explicit tag (default dev; + :latest when push_latest=true)
+#                            :dev fails unless github.ref is refs/heads/dev
+#                            OCI version for :dev is 0.0.0-dev (tag stays :dev)
 #
 # Tag resolution: scripts/resolve-publish-image-tags.mjs (unit-tested in supply-chain).
 #
@@ -25,10 +28,28 @@
 #   dev-<sha>  → keep if age ≤ 30 days OR among the newest 20; else delete
 #   :<version>-candidate and :<version>-<sha7> match the SemVer keeper (not deleted)
 #
-# Multi-arch: linux/amd64 + linux/arm64 via native runners (no QEMU), then
-# manifest-list merge. BuildKit yarn/cargo cache mounts + GHA buildx cache.
+# Multi-arch: linux/amd64 + linux/arm64 via native runners (no QEMU).
+# Each pushed digest is scanned with Trivy (CRITICAL,HIGH) before the
+# manifest tags are created and before cosign signs. Buildx push-by-digest
+# with attestations yields an OCI index (platform + attestation), so each
+# scan job sets TRIVY_PLATFORM to that arch — trivy-action v0.36.0 has no
+# platform input; without TRIVY_PLATFORM, Trivy defaults to linux/amd64 and
+# fails on arm64 indexes. A finding fails the job unless
+# .github/security/cve-exceptions.yaml has a valid unexpired record for that
+# CVE and image. Tag/sign needs the scan jobs.
+# The cleanup cron does not scan.
+# BuildKit yarn/cargo cache mounts + GHA buildx cache.
 # Cosign: keyless GitHub OIDC only (no COSIGN_KEY path).
 # GHCR Core packages are public for anonymous pull; pr-* deletion uses GITHUB_TOKEN only.
+# Version tags also publish a signed core offline package and feed.json
+# as GitHub Release assets (job publish-core-update-feed).
+#
+# Optional air-gap archive (workflow_dispatch only):
+#   Set enterprise_package_path to a signed enterprise package and
+#   core_package_path to a signed core package. The offline-bundle job packs
+#   them with scripts/build-offline-bundle.mjs. Leave enterprise_package_path
+#   empty for a core-only image publish. That job is skipped and image publish
+#   does not depend on it. Push and schedule runs never pack an archive.
 name: Publish container images
 
 on:
@@ -44,7 +65,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Image tag to push (default: dev). This is the only way to publish :dev."
+        description: "Image tag to push (default: dev). :dev is published only from refs/heads/dev."
         required: false
         default: "dev"
       push_latest:
@@ -61,6 +82,14 @@ on:
         required: false
         type: boolean
         default: false
+      core_package_path:
+        description: "Signed core package. Used only when enterprise_package_path is set."
+        required: false
+        default: ""
+      enterprise_package_path:
+        description: "Signed enterprise package. When set, also write an .okbundle archive. Empty keeps the core-only publish."
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -71,9 +100,12 @@ permissions:
   pull-requests: read
 
 # Parallel matrix images share GHCR/cache; serialize per-ref so runs do not fight.
+# Cancel only a superseded build of a release/* or hotfix/* branch.
+# A version-tag publish (refs/tags/v*) is never cancelled. Schedule (GHCR
+# cleanup on the default branch) and other refs stay non-cancellable too.
 concurrency:
   group: okkey-publish-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: ${{ github.ref_type == 'branch' && (startsWith(github.ref_name, 'release/') || startsWith(github.ref_name, 'hotfix/')) }}
 
 env:
   REGISTRY: ghcr.io
@@ -133,6 +165,18 @@ jobs:
           OWNER: ${{ env.OWNER }}
         run: |
           set -euo pipefail
+          # Do not build, push, or sign :dev unless this run is refs/heads/dev.
+          if [[ "${EVENT_NAME}" == "workflow_dispatch" ]]; then
+            DEV_TAG="${DISPATCH_TAG:-dev}"
+            if [[ -z "${DEV_TAG}" ]]; then
+              DEV_TAG="dev"
+            fi
+            if [[ "${DEV_TAG}" == "dev" && "${REF}" != "refs/heads/dev" ]]; then
+              echo "refusing to publish or sign the :dev channel from ${REF:-an unknown ref}; workflow_dispatch for :dev must run on refs/heads/dev" >&2
+              exit 1
+            fi
+          fi
+
           PLATFORMS="${DEFAULT_PLATFORMS}"
 
           if [[ "${EVENT_NAME}" == "pull_request" ]]; then
@@ -158,9 +202,26 @@ jobs:
 
           # Shared resolver (unit-tested): v1.0.0-beta.2 → :1.0.0-beta.2 only
           # (no :latest / :1 / :1.0). Spelling: beta, never betta.
+          # image_version is SemVer without a leading v (git tag v1.0.0-beta.3 → 1.0.0-beta.3).
+          # The :dev channel uses 0.0.0-dev. The image tag stays :dev.
           node scripts/resolve-publish-image-tags.mjs
 
+          # OCI created annotation: RFC 3339 date-time (UTC).
           IMAGE_CREATED="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          IMAGE_VERSION="$(grep '^image_version=' "$GITHUB_OUTPUT" | tail -1 | cut -d= -f2-)"
+          if [[ -z "${IMAGE_VERSION}" ]]; then
+            echo "resolver did not emit image_version" >&2
+            exit 1
+          fi
+          # v9.9.9 must be stored as 9.9.9. A leading v is the git tag, not the OCI version.
+          if [[ "${IMAGE_VERSION}" == v[0-9]* ]]; then
+            echo "OCI version must not keep a leading v (got ${IMAGE_VERSION})" >&2
+            exit 1
+          fi
+          if [[ ! "${IMAGE_CREATED}" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]]; then
+            echo "image_created is not RFC 3339: ${IMAGE_CREATED}" >&2
+            exit 1
+          fi
           {
             echo "platforms=${PLATFORMS}"
             echo "image_created=${IMAGE_CREATED}"
@@ -168,6 +229,7 @@ jobs:
             echo "want_arm64=${WANT_ARM64}"
           } >> "$GITHUB_OUTPUT"
 
+          echo "OCI version: ${IMAGE_VERSION}"
           echo "OCI created: ${IMAGE_CREATED}"
           echo "Platforms: ${PLATFORMS} (amd64=${WANT_AMD64} arm64=${WANT_ARM64})"
 
@@ -245,6 +307,18 @@ jobs:
             org.opencontainers.image.version=${{ needs.prep.outputs.image_version }}
             org.opencontainers.image.created=${{ needs.prep.outputs.image_created }}
             org.opencontainers.image.licenses=AGPL-3.0-or-later
+          # OCI image-spec annotations on the manifest and per-arch index.
+          # The merge step references these manifests by digest and sets the
+          # same keys on the new multi-arch index.
+          annotations: |
+            index,manifest:org.opencontainers.image.title=okkey-${{ matrix.image }}
+            index,manifest:org.opencontainers.image.description=Okkey Core ${{ matrix.image }} image
+            index,manifest:org.opencontainers.image.vendor=okkeyapp
+            index,manifest:org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            index,manifest:org.opencontainers.image.revision=${{ needs.prep.outputs.revision }}
+            index,manifest:org.opencontainers.image.version=${{ needs.prep.outputs.image_version }}
+            index,manifest:org.opencontainers.image.created=${{ needs.prep.outputs.image_created }}
+            index,manifest:org.opencontainers.image.licenses=AGPL-3.0-or-later
           provenance: mode=max
           sbom: true
           cache-from: type=gha,scope=${{ matrix.cache_scope }}-linux-amd64
@@ -253,7 +327,29 @@ jobs:
             NODE_VERSION=25
             RUST_TOOLCHAIN=1.86.0
             WASM_PACK_VERSION=0.13.1
+            # This repository's commit (prep.revision). Downstream rebuilds must pass it through unchanged.
+            OKKEY_GIT_SHA=${{ needs.prep.outputs.revision }}
           outputs: type=image,name=${{ steps.img.outputs.name }},push-by-digest=true,name-canonical=true,push=true
+
+      - name: Assert OKKEY_GIT_SHA is baked into api/worker image
+        if: matrix.image == 'api' || matrix.image == 'worker'
+        shell: bash
+        env:
+          IMAGE: ${{ steps.img.outputs.name }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+          EXPECTED_SHA: ${{ needs.prep.outputs.revision }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${DIGEST}" || -z "${EXPECTED_SHA}" ]]; then
+            echo "missing image digest or expected git SHA" >&2
+            exit 1
+          fi
+          REF="${IMAGE}@${DIGEST}"
+          docker pull "${REF}"
+          ENV_JSON="$(docker image inspect "${REF}" --format '{{json .Config.Env}}')"
+          echo "${ENV_JSON}" | grep -F "OKKEY_GIT_SHA=${EXPECTED_SHA}" >/dev/null \
+            || { echo "OKKEY_GIT_SHA=${EXPECTED_SHA} not found in image Env: ${ENV_JSON}" >&2; exit 1; }
+          echo "OKKEY_GIT_SHA baked into ${REF}"
 
       - name: Export digest
         shell: bash
@@ -341,6 +437,18 @@ jobs:
             org.opencontainers.image.version=${{ needs.prep.outputs.image_version }}
             org.opencontainers.image.created=${{ needs.prep.outputs.image_created }}
             org.opencontainers.image.licenses=AGPL-3.0-or-later
+          # OCI image-spec annotations on the manifest and per-arch index.
+          # The merge step references these manifests by digest and sets the
+          # same keys on the new multi-arch index.
+          annotations: |
+            index,manifest:org.opencontainers.image.title=okkey-${{ matrix.image }}
+            index,manifest:org.opencontainers.image.description=Okkey Core ${{ matrix.image }} image
+            index,manifest:org.opencontainers.image.vendor=okkeyapp
+            index,manifest:org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            index,manifest:org.opencontainers.image.revision=${{ needs.prep.outputs.revision }}
+            index,manifest:org.opencontainers.image.version=${{ needs.prep.outputs.image_version }}
+            index,manifest:org.opencontainers.image.created=${{ needs.prep.outputs.image_created }}
+            index,manifest:org.opencontainers.image.licenses=AGPL-3.0-or-later
           provenance: mode=max
           sbom: true
           cache-from: type=gha,scope=${{ matrix.cache_scope }}-linux-arm64
@@ -349,7 +457,29 @@ jobs:
             NODE_VERSION=25
             RUST_TOOLCHAIN=1.86.0
             WASM_PACK_VERSION=0.13.1
+            # This repository's commit (prep.revision). Downstream rebuilds must pass it through unchanged.
+            OKKEY_GIT_SHA=${{ needs.prep.outputs.revision }}
           outputs: type=image,name=${{ steps.img.outputs.name }},push-by-digest=true,name-canonical=true,push=true
+
+      - name: Assert OKKEY_GIT_SHA is baked into api/worker image
+        if: matrix.image == 'api' || matrix.image == 'worker'
+        shell: bash
+        env:
+          IMAGE: ${{ steps.img.outputs.name }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+          EXPECTED_SHA: ${{ needs.prep.outputs.revision }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${DIGEST}" || -z "${EXPECTED_SHA}" ]]; then
+            echo "missing image digest or expected git SHA" >&2
+            exit 1
+          fi
+          REF="${IMAGE}@${DIGEST}"
+          docker pull "${REF}"
+          ENV_JSON="$(docker image inspect "${REF}" --format '{{json .Config.Env}}')"
+          echo "${ENV_JSON}" | grep -F "OKKEY_GIT_SHA=${EXPECTED_SHA}" >/dev/null \
+            || { echo "OKKEY_GIT_SHA=${EXPECTED_SHA} not found in image Env: ${ENV_JSON}" >&2; exit 1; }
+          echo "OKKEY_GIT_SHA baked into ${REF}"
 
       - name: Export digest
         shell: bash
@@ -367,17 +497,209 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+  # Vulnerability gate for the amd64 digests pushed above. Skipped when amd64
+  # was not built. The cleanup cron never reaches this job.
+  scan-amd64:
+    name: scan (amd64)
+    needs: [prep, build-amd64]
+    if: needs.build-amd64.result == 'success' && needs.prep.outputs.want_amd64 == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [api, worker, web]
+    steps:
+      - name: Checkout scan policy
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ needs.prep.outputs.revision }}
+          sparse-checkout: |
+            scripts/render-trivy-ignore.mjs
+            .github/security/cve-exceptions.yaml
+          sparse-checkout-cone-mode: false
+
+      - name: Render Trivy ignore list
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/render-trivy-ignore.mjs \
+            --exceptions .github/security/cve-exceptions.yaml \
+            --image "${{ matrix.image }}" \
+            --out .trivyignore
+
+      - name: Download digest
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: digests-${{ matrix.image }}-linux-amd64
+          path: /tmp/digests
+
+      - name: Resolve pushed digest
+        id: digest
+        shell: bash
+        env:
+          IMAGE_KEY: ${{ matrix.image }}
+          IMAGE_API: ${{ needs.prep.outputs.image_api }}
+          IMAGE_WORKER: ${{ needs.prep.outputs.image_worker }}
+          IMAGE_WEB: ${{ needs.prep.outputs.image_web }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(/tmp/digests/*)
+          if [[ ${#files[@]} -ne 1 || ! -f "${files[0]}" ]]; then
+            echo "expected exactly one digest file for ${IMAGE_KEY}" >&2
+            exit 1
+          fi
+          hex="$(basename "${files[0]}")"
+          if [[ ! "${hex}" =~ ^[a-f0-9]{64}$ ]]; then
+            echo "digest file is not sha256 hex" >&2
+            exit 1
+          fi
+          case "${IMAGE_KEY}" in
+            api) image="${IMAGE_API}" ;;
+            worker) image="${IMAGE_WORKER}" ;;
+            web) image="${IMAGE_WEB}" ;;
+            *) echo "unknown image ${IMAGE_KEY}" >&2; exit 1 ;;
+          esac
+          if [[ -z "${image}" ]]; then
+            echo "empty image name for ${IMAGE_KEY}" >&2
+            exit 1
+          fi
+          echo "ref=${image}@sha256:${hex}" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Scan pushed digest
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        env:
+          # Digest refs are OCI indexes (image + attestation). Pin the child
+          # platform; trivy-action v0.36.0 has no platform input.
+          TRIVY_PLATFORM: linux/amd64
+        with:
+          image-ref: ${{ steps.digest.outputs.ref }}
+          format: table
+          exit-code: "1"
+          ignore-unfixed: "false"
+          vuln-type: os,library
+          scanners: vuln
+          severity: CRITICAL,HIGH
+          timeout: 10m
+          trivyignores: .trivyignore
+
+  # Vulnerability gate for the arm64 digests pushed above. Skipped when arm64
+  # was not built. The cleanup cron never reaches this job.
+  scan-arm64:
+    name: scan (arm64)
+    needs: [prep, build-arm64]
+    if: needs.build-arm64.result == 'success' && needs.prep.outputs.want_arm64 == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [api, worker, web]
+    steps:
+      - name: Checkout scan policy
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ needs.prep.outputs.revision }}
+          sparse-checkout: |
+            scripts/render-trivy-ignore.mjs
+            .github/security/cve-exceptions.yaml
+          sparse-checkout-cone-mode: false
+
+      - name: Render Trivy ignore list
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/render-trivy-ignore.mjs \
+            --exceptions .github/security/cve-exceptions.yaml \
+            --image "${{ matrix.image }}" \
+            --out .trivyignore
+
+      - name: Download digest
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: digests-${{ matrix.image }}-linux-arm64
+          path: /tmp/digests
+
+      - name: Resolve pushed digest
+        id: digest
+        shell: bash
+        env:
+          IMAGE_KEY: ${{ matrix.image }}
+          IMAGE_API: ${{ needs.prep.outputs.image_api }}
+          IMAGE_WORKER: ${{ needs.prep.outputs.image_worker }}
+          IMAGE_WEB: ${{ needs.prep.outputs.image_web }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(/tmp/digests/*)
+          if [[ ${#files[@]} -ne 1 || ! -f "${files[0]}" ]]; then
+            echo "expected exactly one digest file for ${IMAGE_KEY}" >&2
+            exit 1
+          fi
+          hex="$(basename "${files[0]}")"
+          if [[ ! "${hex}" =~ ^[a-f0-9]{64}$ ]]; then
+            echo "digest file is not sha256 hex" >&2
+            exit 1
+          fi
+          case "${IMAGE_KEY}" in
+            api) image="${IMAGE_API}" ;;
+            worker) image="${IMAGE_WORKER}" ;;
+            web) image="${IMAGE_WEB}" ;;
+            *) echo "unknown image ${IMAGE_KEY}" >&2; exit 1 ;;
+          esac
+          if [[ -z "${image}" ]]; then
+            echo "empty image name for ${IMAGE_KEY}" >&2
+            exit 1
+          fi
+          echo "ref=${image}@sha256:${hex}" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Scan pushed digest
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        env:
+          # Digest refs are OCI indexes (image + attestation). Pin the child
+          # platform; without this, Trivy defaults to linux/amd64 and fails
+          # with "no child with platform linux/amd64" on arm64 indexes.
+          # trivy-action v0.36.0 has no platform input — use TRIVY_PLATFORM.
+          TRIVY_PLATFORM: linux/arm64
+        with:
+          image-ref: ${{ steps.digest.outputs.ref }}
+          format: table
+          exit-code: "1"
+          ignore-unfixed: "false"
+          vuln-type: os,library
+          scanners: vuln
+          severity: CRITICAL,HIGH
+          timeout: 10m
+          trivyignores: .trivyignore
+
   # Merge per-arch digests into multi-arch manifests and apply channel tags.
+  # Tags and cosign run only after the scan for every built arch succeeded.
   merge:
     name: merge-manifests
-    needs: [prep, build-amd64, build-arm64]
-    # Run when prep succeeded and every requested arch build succeeded (skipped arch = ok).
+    needs: [prep, build-amd64, build-arm64, scan-amd64, scan-arm64]
+    # A skipped arch stays skipped (build and scan both skipped). A built arch
+    # must have a successful scan. At least one arch must have been scanned.
     if: >
       always() &&
       needs.prep.result == 'success' &&
-      (needs.build-amd64.result == 'success' || needs.build-amd64.result == 'skipped') &&
-      (needs.build-arm64.result == 'success' || needs.build-arm64.result == 'skipped') &&
-      !(needs.build-amd64.result == 'skipped' && needs.build-arm64.result == 'skipped')
+      needs.scan-amd64.result == needs.build-amd64.result &&
+      needs.scan-arm64.result == needs.build-arm64.result &&
+      (needs.scan-amd64.result == 'success' || needs.scan-arm64.result == 'success')
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
@@ -440,6 +762,11 @@ jobs:
         env:
           IMAGE: ${{ steps.meta.outputs.image }}
           TAGS_CSV: ${{ steps.meta.outputs.tags }}
+          OCI_VERSION: ${{ needs.prep.outputs.image_version }}
+          OCI_CREATED: ${{ needs.prep.outputs.image_created }}
+          OCI_REVISION: ${{ needs.prep.outputs.revision }}
+          OCI_SOURCE: ${{ github.server_url }}/${{ github.repository }}
+          OCI_IMAGE: ${{ matrix.image }}
         run: |
           set -euo pipefail
           cd /tmp/digests
@@ -454,6 +781,16 @@ jobs:
             exit 1
           fi
 
+          if [[ -z "${OCI_VERSION}" || -z "${OCI_CREATED}" || -z "${OCI_REVISION}" || -z "${OCI_SOURCE}" ]]; then
+            echo "missing OCI version, created, revision, or source" >&2
+            exit 1
+          fi
+          # created annotation must be RFC 3339 (UTC, Zulu).
+          if [[ ! "${OCI_CREATED}" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]]; then
+            echo "OCI created is not RFC 3339: ${OCI_CREATED}" >&2
+            exit 1
+          fi
+
           TAG_ARGS=()
           IFS=',' read -ra TAGS <<< "${TAGS_CSV}"
           for t in "${TAGS[@]}"; do
@@ -462,7 +799,24 @@ jobs:
             TAG_ARGS+=("-t" "$t")
           done
 
-          docker buildx imagetools create "${TAG_ARGS[@]}" "${DIGEST_ARGS[@]}"
+          # imagetools create builds a new index and does not copy annotations
+          # onto it. Set the OCI image-spec keys on that index. Child manifests
+          # keep the annotations from the per-arch build (referenced by digest),
+          # so SBOM and provenance attestations stay attached to those digests.
+          ANN_ARGS=()
+          add_ann() {
+            ANN_ARGS+=(--annotation "index:${1}=${2}")
+          }
+          add_ann org.opencontainers.image.title "okkey-${OCI_IMAGE}"
+          add_ann org.opencontainers.image.description "Okkey Core ${OCI_IMAGE} image"
+          add_ann org.opencontainers.image.vendor "okkeyapp"
+          add_ann org.opencontainers.image.source "${OCI_SOURCE}"
+          add_ann org.opencontainers.image.revision "${OCI_REVISION}"
+          add_ann org.opencontainers.image.version "${OCI_VERSION}"
+          add_ann org.opencontainers.image.created "${OCI_CREATED}"
+          add_ann org.opencontainers.image.licenses "AGPL-3.0-or-later"
+
+          docker buildx imagetools create "${ANN_ARGS[@]}" "${TAG_ARGS[@]}" "${DIGEST_ARGS[@]}"
 
           FIRST_TAG="$(echo "${TAGS_CSV}" | cut -d, -f1 | xargs)"
           # Digest of the multi-arch index (not a child platform manifest).
@@ -508,24 +862,162 @@ jobs:
         uses: sigstore/cosign-installer@v3
 
       # Keyless GitHub OIDC only — no COSIGN_KEY / password path.
+      # Same step for v* tag pushes and workflow_dispatch (:dev). A failed
+      # sign fails the job. SBOM and provenance stay on the build jobs.
       - name: Sign images (cosign keyless OIDC)
         if: github.event_name != 'pull_request'
         env:
           COSIGN_YES: "true"
           DIGEST: ${{ steps.manifest.outputs.digest }}
           IMAGE: ${{ steps.meta.outputs.image }}
-          FIRST_TAG: ${{ steps.manifest.outputs.first_tag }}
         shell: bash
         run: |
           set -euo pipefail
-          if [[ -n "${DIGEST}" ]]; then
-            REF="${IMAGE}@${DIGEST}"
-          else
-            REF="${FIRST_TAG}"
-            echo "::warning::No index digest resolved; signing tag ref ${REF}"
+          if [[ -z "${DIGEST}" ]]; then
+            echo "refusing to sign without an index digest for ${IMAGE}" >&2
+            exit 1
           fi
+          REF="${IMAGE}@${DIGEST}"
           cosign sign "${REF}"
           echo "Signed ${REF}"
+
+  # Signed core update feed for the version tag. Runs only after image tags exist.
+  # Beta tags (v1.0.0-beta.N) are published as normal releases, not GitHub
+  # pre-releases: releases/latest skips pre-releases, and the API rejects
+  # make_latest on a pre-release. The core feed URL is
+  # https://github.com/okkeyapp/okkey/releases/latest/download/feed.json
+  # so a beta must be able to become that latest release.
+  # OKKEY_CORE_RELEASE_SIGNING_KEY is the ed25519 PKCS#8 PEM private key.
+  publish-core-update-feed:
+    name: publish-core-update-feed
+    needs: [prep, merge]
+    if: github.event_name == 'push' && github.ref_type == 'tag' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      # Fail before checkout, image lookups, or any Release API call.
+      # An empty or whitespace secret must not produce feed.json or a package.
+      - name: Require core release signing key
+        env:
+          OKKEY_CORE_RELEASE_SIGNING_KEY: ${{ secrets.OKKEY_CORE_RELEASE_SIGNING_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${OKKEY_CORE_RELEASE_SIGNING_KEY//[[:space:]]/}" ]]; then
+            echo "::error::Secret OKKEY_CORE_RELEASE_SIGNING_KEY is not set. Refusing to build or publish an unsigned core update package or feed.json."
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "25"
+
+      - name: Build and sign the core offline package
+        env:
+          OKKEY_CORE_RELEASE_SIGNING_KEY: ${{ secrets.OKKEY_CORE_RELEASE_SIGNING_KEY }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          IMAGE_VERSION: ${{ needs.prep.outputs.image_version }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${OKKEY_CORE_RELEASE_SIGNING_KEY//[[:space:]]/}" ]]; then
+            echo "::error::Secret OKKEY_CORE_RELEASE_SIGNING_KEY is not set. Refusing to build or publish an unsigned core update package or feed.json."
+            exit 1
+          fi
+          OUT="${RUNNER_TEMP}/core-update"
+          mkdir -p "${OUT}"
+          SERVER="${GITHUB_SERVER_URL:-https://github.com}"
+          PACKAGE_URL="${SERVER}/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/okkey-${IMAGE_VERSION}.okpkg"
+          ERR_FILE="${RUNNER_TEMP}/gh-latest.err"
+          CURRENT_LATEST=""
+          if CURRENT_LATEST="$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq .tag_name 2>"${ERR_FILE}")"; then
+            :
+          elif grep -Eq 'HTTP 404|Not Found' "${ERR_FILE}"; then
+            CURRENT_LATEST=""
+          else
+            cat "${ERR_FILE}" >&2
+            echo "failed to read the current latest release" >&2
+            exit 1
+          fi
+          node --experimental-strip-types services/api/src/system-updates/build-core-release-package.ts \
+            --version "${IMAGE_VERSION}" \
+            --package-url "${PACKAGE_URL}" \
+            --repository "${GITHUB_REPOSITORY}" \
+            --current-latest "${CURRENT_LATEST}" \
+            --out "${OUT}"
+          echo "core_update_dir=${OUT}" >> "$GITHUB_ENV"
+
+      - name: Upload feed.json and the core package
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          IMAGE_VERSION: ${{ needs.prep.outputs.image_version }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT="${core_update_dir}"
+          latest="$(grep '^latest=' "${OUT}/release-flags" | cut -d= -f2-)"
+          prerelease="$(grep '^prerelease=' "${OUT}/release-flags" | cut -d= -f2-)"
+          if [[ "${latest}" != "true" && "${latest}" != "false" ]]; then
+            echo "release-flags latest must be true or false" >&2
+            exit 1
+          fi
+          if [[ "${prerelease}" != "false" ]]; then
+            echo "core releases are not GitHub pre-releases" >&2
+            exit 1
+          fi
+          FEED="${OUT}/feed.json"
+          PKG="${OUT}/okkey-${IMAGE_VERSION}.okpkg"
+          if [[ ! -f "${FEED}" || ! -f "${PKG}" ]]; then
+            echo "core update assets are missing" >&2
+            exit 1
+          fi
+          # Do not upload unless the package carries a signature. The feed is
+          # published in the same step, so a missing signature publishes neither.
+          python3 - "${PKG}" "${FEED}" <<'PY'
+          import json, sys
+          package_path, feed_path = sys.argv[1], sys.argv[2]
+          package = json.load(open(package_path))
+          signature = package.get("signature")
+          payload = package.get("payload")
+          if not isinstance(signature, str) or not signature.strip() or not isinstance(payload, dict):
+              print("Refusing to publish an unsigned core package.", file=sys.stderr)
+              sys.exit(1)
+          if payload.get("format") != "okkey-offline-package" or payload.get("component") != "okkey":
+              print("Refusing to publish a package that is not a signed core offline package.", file=sys.stderr)
+              sys.exit(1)
+          feed = json.load(open(feed_path))
+          packages = feed.get("packages")
+          if feed.get("schema") != "okkey.update-feed.v1" or not isinstance(packages, list) or len(packages) == 0:
+              print("Refusing to publish a core feed without a signed package entry.", file=sys.stderr)
+              sys.exit(1)
+          PY
+          if gh release view "${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            gh release upload "${RELEASE_TAG}" "${FEED}" "${PKG}" --clobber --repo "${GITHUB_REPOSITORY}"
+            # Clear pre-release before make_latest. GitHub rejects latest on a pre-release.
+            RELEASE_ID="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}" --jq .id)"
+            gh api --method PATCH "repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}" -F prerelease=false
+            gh api --method PATCH "repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}" -f "make_latest=${latest}"
+          else
+            gh release create "${RELEASE_TAG}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --verify-tag \
+              --target "${GITHUB_SHA}" \
+              --title "Okkey ${IMAGE_VERSION}" \
+              --notes-file "${OUT}/release-notes.md" \
+              --latest="${latest}" \
+              "${FEED}" "${PKG}"
+          fi
 
   # Reminder only — do not delete on close. TTL GC runs on schedule (14d after closed_at).
   note-pr-closed:
@@ -734,3 +1226,44 @@ jobs:
                       file=sys.stderr,
                   )
           PY
+
+  # Skipped unless a dispatch supplies an enterprise package. Image jobs do not need it.
+  offline-bundle:
+    name: offline-bundle
+    needs: prep
+    if: >
+      github.event_name == 'workflow_dispatch' &&
+      github.event.inputs.enterprise_package_path != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "25"
+
+      - name: Build offline bundle
+        shell: bash
+        env:
+          CORE_PACKAGE: ${{ github.event.inputs.core_package_path }}
+          ENTERPRISE_PACKAGE: ${{ github.event.inputs.enterprise_package_path }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${CORE_PACKAGE}" || -z "${ENTERPRISE_PACKAGE}" ]]; then
+            echo "core_package_path and enterprise_package_path are both required to build the archive" >&2
+            exit 1
+          fi
+          node --experimental-strip-types scripts/build-offline-bundle.mjs \
+            --core "${CORE_PACKAGE}" \
+            --enterprise "${ENTERPRISE_PACKAGE}" \
+            --out dist/okkey-offline.okbundle
+
+      - name: Upload offline bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: okkey-offline-bundle
+          path: dist/okkey-offline.okbundle
+          if-no-files-found: error

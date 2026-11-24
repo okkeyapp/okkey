@@ -45,6 +45,45 @@ function redisCommand(urlString: string, args: string[]): Promise<void> {
 }
 
 /**
+ * Self-hosted OTP is sent only after SMTP is verified (`smtp_verified_at`).
+ * Env seeding leaves that column null, so Mailpit is configured but not deliverable.
+ * Mark the singleton row verified and fill host/from when the API has not seeded yet.
+ * Setting `updated_by` stops a later env seed from clearing the verification.
+ */
+export async function markE2eSmtpDeliverable(): Promise<void> {
+  const host = (process.env.EMAIL_SMTP_HOST ?? "127.0.0.1").trim();
+  const port = Number(process.env.EMAIL_SMTP_PORT ?? "1025");
+  const tls = process.env.EMAIL_SMTP_SECURE === "true" ? "tls" : "starttls";
+  const from = (process.env.EMAIL_FROM ?? "no-reply@okkey.local").trim();
+  const publicUrl = (process.env.PUBLIC_APP_BASE_URL ?? "http://127.0.0.1:4173").trim().replace(/\/$/, "");
+  const client = new pg.Client({ connectionString: E2E_DATABASE_URL });
+  client.on("error", () => {});
+  await client.connect();
+  try {
+    const updated = await client.query(
+      `
+        UPDATE server_mail_settings
+        SET
+          smtp_host = COALESCE(NULLIF(btrim(smtp_host), ''), $1),
+          smtp_port = COALESCE(smtp_port, $2),
+          smtp_tls_mode = COALESCE(smtp_tls_mode, $3),
+          email_from = COALESCE(NULLIF(btrim(email_from), ''), $4),
+          public_app_url = COALESCE(NULLIF(btrim(public_app_url), ''), $5),
+          smtp_verified_at = now(),
+          updated_by = COALESCE(updated_by, 'e2e:smtp-verified')
+        WHERE id = TRUE
+      `,
+      [host, port, tls, from, publicUrl],
+    );
+    if (updated.rowCount !== 1) {
+      throw new Error(`expected server_mail_settings row, updated ${updated.rowCount ?? 0}`);
+    }
+  } finally {
+    await client.end();
+  }
+}
+
+/**
  * Each browser spec starts and ends on an empty account catalog.
  * Bootstrap registration is only offered when no user exists, and the first-run
  * claim lives in Redis, so both stores are cleared. Specs do not share users.

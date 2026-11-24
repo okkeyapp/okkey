@@ -11,6 +11,7 @@ import {
 } from "@okkey/types";
 
 import { remintItemIds } from "../utils/okkey-item-ids.js";
+import { ensureTotpField } from "../utils/totp.js";
 import { CipherType, FieldType } from "../types/enums.js";
 import type { ImportResult } from "../types/import-result.js";
 import type { OkkeyNativeImportEntry } from "../types/okkey-export.js";
@@ -375,23 +376,6 @@ function setLoginUris(
       value: { kind: "url", url: cleaned[index] ?? "" },
     });
   }
-}
-
-function ensureTotpField(item: ItemPlaintextV2, totp: string) {
-  const secretBase32 = totp.replace(/^otpauth:\/\/[^\s]*secret=([^&]+).*$/i, "$1");
-  const existing = item.fields.find((field) => field.id === "totp");
-  if (existing && existing.value.kind === "totp") {
-    existing.value.secretBase32 = secretBase32;
-    return;
-  }
-  item.fields.push({
-    id: "totp",
-    type: "totp",
-    sectionId: "credentials",
-    order: item.fields.filter((field) => field.sectionId === "credentials").length,
-    label: "Authenticator",
-    value: { kind: "totp", secretBase32, periodSeconds: 30, digits: 6 },
-  });
 }
 
 function appendNotes(item: ItemPlaintextV2, notes: string | null | undefined) {

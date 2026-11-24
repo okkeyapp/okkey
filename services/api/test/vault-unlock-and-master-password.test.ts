@@ -4,6 +4,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { dirname, join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+import { MASTER_PASSWORD_POLICY_VERSION } from "@okkey/types";
 import { initSync } from "@okkey/crypto-wasm";
 import { createApiApp } from "../src/app.ts";
 import type { SessionService } from "../src/session/service.ts";
@@ -122,6 +123,7 @@ test("recovery key unwrap then master-password change round-trips the vault key"
       server_key_share: bytesToBase64(rebalanced.serverKeyShare),
       password_kdf_salt: bytesToBase64(rebalanced.passwordKdfSalt),
       password_kdf_params_version: rebalanced.passwordKdfParamsVersion,
+      master_password_policy_version: MASTER_PASSWORD_POLICY_VERSION,
     },
   } as IncomingMessage;
   const res = new MockResponse();

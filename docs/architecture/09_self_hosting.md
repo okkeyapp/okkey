@@ -8,10 +8,11 @@ Client-side encryption is unchanged: the server administrator **cannot read vaul
 
 ## Self-host in 5 minutes
 
-Preferred path — **no monorepo clone**:
+Preferred path — **no monorepo clone**. Pin the release. Cosign signature verification stays on (the installer default):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/okkeyapp/okkey/dev/deploy/docker/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/okkeyapp/okkey/v1.0.0-beta.2/deploy/docker/install.sh \
+  | OKKEY_REF=v1.0.0-beta.2 OKKEY_IMAGE_TAG=1.0.0-beta.2 bash
 ```
 
 Full guide, manual compose, TLS notes, and image tags:
@@ -20,7 +21,7 @@ Full guide, manual compose, TLS notes, and image tags:
 
 **First-run:** on self-hosted installs with an empty `users` table, email login may skip OTP for one exclusive first-admin claim (`bootstrapRequired` on `POST /auth/email/start`) so that admin can register without SMTP. Overlapping empty-catalog starts still require OTP for non-claimants. Once any user exists, normal email OTP applies.
 
-**Crypto policy:** self-host compose defaults to `DEPLOY_ENV=dev` and `CRYPTO_ALLOWED_PROFILE_VERSIONS=1,2` so web registration (`password_kdf_params_version=1`) succeeds. `DEPLOY_ENV=prod` only allows profile `2` and returns `CRYPTO_PROFILE_NOT_ALLOWED`. See [`deploy/docker/README.md`](../../deploy/docker/README.md).
+**Crypto policy:** self-host compose defaults to `DEPLOY_ENV=dev` and `CRYPTO_ALLOWED_PROFILE_VERSIONS=2`. Vault items require profile `v2` for read and write. Profile `v1` is forbidden in every environment, and `CRYPTO_ALLOWED_PROFILE_VERSIONS` can only narrow that allowlist. New registration uses `password_kdf_params_version=2`. See [`deploy/docker/README.md`](../../deploy/docker/README.md).
 
 ---
 
@@ -28,8 +29,9 @@ Full guide, manual compose, TLS notes, and image tags:
 
 Supported:
 
-- Docker / Docker Compose (MVP install artifact under `deploy/docker/`)
-- Kubernetes (planned; not in this MVP)
+- Docker Compose (`deploy/docker/`)
+
+Kubernetes and Helm are planned and are not part of v1.0.0. Only Docker Compose is supported.
 
 ### Requirements (Docker Compose)
 
@@ -111,6 +113,12 @@ Set `FAVICON_PROVIDER=off` to disable remote preview (clients fall back to monog
 `FAVICON_PROVIDER=google` is an explicit opt-in that sends login-item website domains
 to Google's favicon service. Prefer `direct` or `off` for self-hosted deployments.
 
+`POST /favicon/preview` status codes:
+
+- `200` — favicon image bytes
+- `404` — site reachable, no favicon found (clients may clear a previous icon)
+- `503 FAVICON_UNAVAILABLE` — DNS / refused / timeout / upstream 5xx (clients keep a previous icon)
+
 Record favicon attachments (upload purpose `item-favicon`) are stored on any plan and are
 not gated by the workspace `filesInItems` entitlement or attachment size limits. The API keeps
 at most one `item-favicon` attachment per record/template (new upload replaces the previous
@@ -174,11 +182,11 @@ Images:
 
 Tag scheme (see [`deploy/docker/README.md`](../../deploy/docker/README.md) and `.github/workflows/publish-images.yml`):
 
-- `workflow_dispatch` → floating `:dev` (installer tracking default; not published on push to `dev`)
+- `workflow_dispatch` → floating `:dev` (published only by that manual run; not on push to `dev`)
 - push to `release/<version>` or `hotfix/<version>` → `:<version>-candidate`, `:<version>-<sha7>` (no `:latest`, no final SemVer pin)
 - pre-release tag e.g. `v1.0.0-beta.2` → `:1.0.0-beta.2` only (first image-backed release pin)
 - clean SemVer tag `vX.Y.Z` on `main` → `:X.Y.Z`, `:X.Y`, `:X` (`:latest` only via manual `workflow_dispatch` + `push_latest=true`)
-- production installs must **pin** a SemVer (default prod pin `1.0.0-beta.2`; never floating `:latest`)
+- installs pin `OKKEY_REF=v1.0.0-beta.2` and `OKKEY_IMAGE_TAG=1.0.0-beta.2` (never an unpinned ref or floating `:latest`)
 - Core images only (`api` / `web` / `worker`); browser extension is not part of this publish path
 - Cosign keyless GitHub OIDC on non-PR publishes; GHCR Core packages are public for pull
 

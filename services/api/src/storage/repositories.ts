@@ -8,16 +8,14 @@ import type {
   PlanFeatureOverrides,
   PlanTier,
   WorkspaceCapsulePolicies,
-  WorkspaceMonitoringCardSettings,
 } from "@okkey/types";
 import {
+  canReclaimSoleTrustedDevice,
+  normalizePlanTier,
   sanitizePlanFeatureOverrides,
   workspaceCapsulePoliciesFromDto,
   workspaceCapsulePoliciesToDto,
-  workspaceMonitoringCardSettingsFromDto,
-  workspaceMonitoringCardSettingsToDto,
   type WorkspaceCapsulePoliciesDto,
-  type WorkspaceMonitoringCardSettingsDto,
 } from "@okkey/types";
 import type { QueryExecutor } from "./postgres.ts";
 import { lockUserDevices, withUserDeviceLock } from "./user-device-lock.ts";
@@ -51,6 +49,8 @@ export interface UserRecord {
   publicKey: string;
   /** ML-KEM-768 encapsulation key (base64 text); null for legacy rows */
   publicPqKey: string | null;
+  /** ML-DSA-65 verifying key (base64 text); null until the account publishes one */
+  publicMldsaKey?: string | null;
   /** Preferred language for email (`en` | `ru`); null if unset */
   locale: string | null;
   createdAt: string;
@@ -76,7 +76,7 @@ export class UsersRepository {
     try {
       const id = generateEntityId();
       const rows = await this.db.query<
-        BaseRow & { email: string; public_key: string; public_pq_key: string | null }
+        BaseRow & { email: string; public_key: string; public_pq_key: string | null; public_mldsa_key?: string | null }
       >(
         `
           INSERT INTO users (
@@ -90,7 +90,7 @@ export class UsersRepository {
             password_kdf_params_version
           )
           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-          RETURNING id, email, public_key, public_pq_key, locale, created_at, updated_at
+          RETURNING id, email, public_key, public_pq_key, public_mldsa_key, locale, created_at, updated_at
         `,
         [
           id,
@@ -114,7 +114,7 @@ export class UsersRepository {
     const rows = await this.db.query<
       BaseRow & { email: string; public_key: string; public_pq_key: string | null; locale: string | null }
     >(
-      "SELECT id, email, public_key, public_pq_key, locale, created_at, updated_at FROM users WHERE id = $1",
+      "SELECT id, email, public_key, public_pq_key, public_mldsa_key, locale, created_at, updated_at FROM users WHERE id = $1",
       [id],
     );
     return rows[0] ? mapUser(rows[0]) : null;
@@ -124,7 +124,7 @@ export class UsersRepository {
     const rows = await this.db.query<
       BaseRow & { email: string; public_key: string; public_pq_key: string | null; locale: string | null }
     >(
-      "SELECT id, email, public_key, public_pq_key, locale, created_at, updated_at FROM users WHERE lower(email) = lower($1)",
+      "SELECT id, email, public_key, public_pq_key, public_mldsa_key, locale, created_at, updated_at FROM users WHERE lower(email) = lower($1)",
       [email],
     );
     return rows[0] ? mapUser(rows[0]) : null;
@@ -145,9 +145,14 @@ export class UsersRepository {
       >(
         `
           UPDATE users
-          SET email = $2::text, updated_at = now()
+          SET
+            email = $2::text,
+            login_verifier = NULL,
+            login_verifier_salt = NULL,
+            login_verifier_params_version = NULL,
+            updated_at = now()
           WHERE id = $1::bigint
-          RETURNING id, email, public_key, public_pq_key, locale, created_at, updated_at
+          RETURNING id, email, public_key, public_pq_key, public_mldsa_key, locale, created_at, updated_at
         `,
         [userId, email],
       );
@@ -289,8 +294,21 @@ export class UsersRepository {
       serverKeyShare: Uint8Array;
       passwordKdfSalt: Uint8Array;
       passwordKdfParamsVersion: number;
+      /**
+       * New login-key verifier. `null` clears a stale verifier so the previous
+       * password cannot keep authenticating. Omit to leave the verifier as-is.
+       */
+      loginVerifier?: {
+        verifier: Uint8Array;
+        salt: Uint8Array;
+        paramsVersion: number;
+      } | null;
     },
   ): Promise<string | null> {
+    const replaceVerifier = input.loginVerifier !== undefined;
+    const verifier = input.loginVerifier?.verifier ?? null;
+    const verifierSalt = input.loginVerifier?.salt ?? null;
+    const verifierVersion = input.loginVerifier?.paramsVersion ?? null;
     const rows = await this.db.query<{ master_password_changed_at: Date }>(
       `
         UPDATE users
@@ -298,6 +316,12 @@ export class UsersRepository {
           server_key_share = $2::bytea,
           password_kdf_salt = $3::bytea,
           password_kdf_params_version = $4::smallint,
+          login_verifier = CASE WHEN $5::boolean THEN $6::bytea ELSE login_verifier END,
+          login_verifier_salt = CASE WHEN $5::boolean THEN $7::bytea ELSE login_verifier_salt END,
+          login_verifier_params_version = CASE
+            WHEN $5::boolean THEN $8::smallint
+            ELSE login_verifier_params_version
+          END,
           master_password_changed_at = now(),
           updated_at = now()
         WHERE id = $1::bigint
@@ -308,10 +332,48 @@ export class UsersRepository {
         Buffer.from(input.serverKeyShare),
         Buffer.from(input.passwordKdfSalt),
         input.passwordKdfParamsVersion,
+        replaceVerifier,
+        verifier ? Buffer.from(verifier) : null,
+        verifierSalt ? Buffer.from(verifierSalt) : null,
+        verifierVersion,
       ],
     );
     const row = rows[0];
     return row ? row.master_password_changed_at.toISOString() : null;
+  }
+
+  /**
+   * Store an ML-DSA-65 verifying key and the re-encrypted identity bundle.
+   * Returns "stored" when the key is new or already equal, "conflict" when a different key is set,
+   * or null when the user does not exist.
+   */
+  async setMlDsaIdentityKey(
+    userId: string,
+    input: { publicMldsaKey: string; encryptedPrivateKey: Uint8Array },
+  ): Promise<"stored" | "conflict" | null> {
+    const rows = await this.db.query<{ public_mldsa_key: string }>(
+      `
+        UPDATE users
+        SET public_mldsa_key = $2::text,
+            encrypted_private_key = $3::bytea,
+            updated_at = now()
+        WHERE id = $1::bigint
+          AND (public_mldsa_key IS NULL OR public_mldsa_key = $2::text)
+        RETURNING public_mldsa_key
+      `,
+      [userId, input.publicMldsaKey, Buffer.from(input.encryptedPrivateKey)],
+    );
+    if (rows[0]) {
+      return "stored";
+    }
+    const existing = await this.db.query<{ id: string; public_mldsa_key: string | null }>(
+      "SELECT id, public_mldsa_key FROM users WHERE id = $1::bigint",
+      [userId],
+    );
+    if (!existing[0]) {
+      return null;
+    }
+    return "conflict";
   }
 
   async isTwoFactorEnabled(userId: string): Promise<boolean> {
@@ -320,6 +382,70 @@ export class UsersRepository {
       [userId],
     );
     return Boolean(rows[0]?.enabled);
+  }
+
+  /**
+   * Login verifier for master-password sign-in. Null verifier means the account
+   * exists but has not enrolled yet (email OTP remains the path until enroll).
+   * Returns null when no user matches (callers must not distinguish that case).
+   */
+  async findLoginVerifierByEmail(email: string): Promise<{
+    userId: string;
+    verifier: Uint8Array | null;
+    salt: Uint8Array | null;
+    paramsVersion: number | null;
+  } | null> {
+    const rows = await this.db.query<{
+      id: string;
+      login_verifier: Buffer | null;
+      login_verifier_salt: Buffer | null;
+      login_verifier_params_version: number | null;
+    }>(
+      `
+        SELECT id, login_verifier, login_verifier_salt, login_verifier_params_version
+        FROM users
+        WHERE lower(email) = lower($1)
+      `,
+      [email],
+    );
+    const row = rows[0];
+    if (!row) {
+      return null;
+    }
+    return {
+      userId: row.id,
+      verifier: row.login_verifier ? Uint8Array.from(row.login_verifier) : null,
+      salt: row.login_verifier_salt ? Uint8Array.from(row.login_verifier_salt) : null,
+      paramsVersion: row.login_verifier_params_version,
+    };
+  }
+
+  async setLoginVerifier(
+    userId: string,
+    input: { verifier: Uint8Array; salt: Uint8Array; paramsVersion: number },
+  ): Promise<boolean> {
+    const rows = await this.db.query<{ id: string }>(
+      `
+        UPDATE users
+        SET
+          login_verifier = $2::bytea,
+          login_verifier_salt = $3::bytea,
+          login_verifier_params_version = $4::smallint,
+          updated_at = now()
+        WHERE id = $1::bigint
+        RETURNING id
+      `,
+      [userId, Buffer.from(input.verifier), Buffer.from(input.salt), input.paramsVersion],
+    );
+    return Boolean(rows[0]);
+  }
+
+  async isLoginVerifierEnrolled(userId: string): Promise<boolean> {
+    const rows = await this.db.query<{ enrolled: boolean }>(
+      "SELECT (login_verifier IS NOT NULL) AS enrolled FROM users WHERE id = $1::bigint",
+      [userId],
+    );
+    return Boolean(rows[0]?.enrolled);
   }
 
   /** Split-key + identity blob for re-hydrating a client after local storage was cleared (Bearer required). */
@@ -381,21 +507,28 @@ export interface WorkspaceRecord {
   maxFileSizeMb: number;
   filesInItemsEnabled: boolean;
   capsulePolicies: WorkspaceCapsulePolicies;
-  monitoringCardSettings: WorkspaceMonitoringCardSettings;
   tileColor: string | null;
   logoVaultId: string | null;
   logoAttachmentId: string | null;
+  logoKeyVersion: number | null;
+  logoUpdatedAt: string | null;
+  clientSettingsKeyVersion: number | null;
+  clientSettingsCiphertext: string | null;
   /** ISO timestamp when a plan-change / license request email was sent; null if never. */
   planChangeRequestSentAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
 
+/**
+ * `workspaces.monitoring_card_settings` is left in place for optional modules.
+ * Core does not select or update that column.
+ */
 const WORKSPACE_SELECT_COLUMNS =
-  "id, name, owner_id, plan_tier, plan_custom_override, plan_feature_overrides, deleted_items_retention_days, allowed_file_extensions, max_file_size_mb, files_in_items_enabled, capsule_policies, monitoring_card_settings, tile_color, logo_vault_id, logo_attachment_id, plan_change_request_sent_at, created_at, updated_at";
+  "id, name, owner_id, plan_tier, plan_custom_override, plan_feature_overrides, deleted_items_retention_days, allowed_file_extensions, max_file_size_mb, files_in_items_enabled, capsule_policies, tile_color, logo_vault_id, logo_attachment_id, logo_key_version, logo_updated_at, client_settings_key_version, client_settings_ciphertext, plan_change_request_sent_at, created_at, updated_at";
 
 const WORKSPACE_SELECT_COLUMNS_W =
-  "w.id, w.name, w.owner_id, w.plan_tier, w.plan_custom_override, w.plan_feature_overrides, w.deleted_items_retention_days, w.allowed_file_extensions, w.max_file_size_mb, w.files_in_items_enabled, w.capsule_policies, w.monitoring_card_settings, w.tile_color, w.logo_vault_id, w.logo_attachment_id, w.plan_change_request_sent_at, w.created_at, w.updated_at";
+  "w.id, w.name, w.owner_id, w.plan_tier, w.plan_custom_override, w.plan_feature_overrides, w.deleted_items_retention_days, w.allowed_file_extensions, w.max_file_size_mb, w.files_in_items_enabled, w.capsule_policies, w.tile_color, w.logo_vault_id, w.logo_attachment_id, w.logo_key_version, w.logo_updated_at, w.client_settings_key_version, w.client_settings_ciphertext, w.plan_change_request_sent_at, w.created_at, w.updated_at";
 
 type WorkspaceRow = BaseRow & {
   name: string;
@@ -408,10 +541,13 @@ type WorkspaceRow = BaseRow & {
   max_file_size_mb: number;
   files_in_items_enabled: boolean;
   capsule_policies: unknown;
-  monitoring_card_settings: unknown;
   tile_color: string | null;
   logo_vault_id: string | null;
   logo_attachment_id: string | null;
+  logo_key_version?: number | null;
+  logo_updated_at?: string | Date | null;
+  client_settings_key_version?: number | null;
+  client_settings_ciphertext?: unknown;
   plan_change_request_sent_at?: string | Date | null;
 };
 
@@ -434,7 +570,7 @@ export class WorkspacesRepository {
         VALUES ($1, $2, $3, $4)
         RETURNING ${WORKSPACE_SELECT_COLUMNS}
       `,
-      [id, input.name, input.ownerId, input.planTier ?? "FREE"],
+      [id, input.name, input.ownerId, normalizePlanTier(input.planTier ?? "FREE")],
     );
     return mapWorkspace(rows[0]);
   }
@@ -455,6 +591,7 @@ export class WorkspacesRepository {
     return rows[0] ? mapWorkspace(rows[0]) : null;
   }
 
+  /** Headcount of `workspace_members`, including the owner. Not the additional-seat quota. */
   async countMembers(workspaceId: string): Promise<number> {
     const rows = await this.db.query<{ count: string }>(
       `SELECT COUNT(*)::text AS count FROM workspace_members WHERE workspace_id = $1`,
@@ -592,7 +729,6 @@ export class WorkspacesRepository {
       maxFileSizeMb?: number;
       filesInItemsEnabled?: boolean;
       capsulePolicies?: WorkspaceCapsulePolicies;
-      monitoringCardSettings?: WorkspaceMonitoringCardSettings;
     },
   ): Promise<WorkspaceRecord> {
     const sets: string[] = ["updated_at = now()"];
@@ -634,12 +770,6 @@ export class WorkspacesRepository {
     if (input.capsulePolicies !== undefined) {
       sets.push(`capsule_policies = $${paramIndex++}::jsonb`);
       values.push(JSON.stringify(workspaceCapsulePoliciesToDto(input.capsulePolicies)));
-    }
-    if (input.monitoringCardSettings !== undefined) {
-      sets.push(`monitoring_card_settings = $${paramIndex++}::jsonb`);
-      values.push(
-        JSON.stringify(workspaceMonitoringCardSettingsToDto(input.monitoringCardSettings)),
-      );
     }
 
     const rows = await this.db.query<WorkspaceRow>(
@@ -959,7 +1089,7 @@ export interface DeviceRecord {
   deviceFingerprint: string;
   deviceName: string;
   devicePublicKey: string;
-  deviceShare: Uint8Array;
+  deviceShare: Uint8Array | null;
   platform: string;
   osName: string;
   osVersion: string;
@@ -987,16 +1117,26 @@ export interface DeviceApprovalState {
     | "already_trusted"
     | "already_revoked"
     | "not_found"
-    | "access_denied";
+    | "access_denied"
+    | "share_required";
   device: DeviceRecord | null;
 }
 
 async function deleteSessionsForDevices(
   db: Pick<QueryExecutor, "query">,
   deviceIds: string[],
+  options?: { exceptTokenHash?: string },
 ): Promise<void> {
   const ids = [...new Set(deviceIds.filter((id) => id.length > 0))];
   if (ids.length === 0) {
+    return;
+  }
+  const exceptTokenHash = options?.exceptTokenHash?.trim();
+  if (exceptTokenHash) {
+    await db.query(
+      `DELETE FROM sessions WHERE device_id = ANY($1::bigint[]) AND token_hash IS DISTINCT FROM $2`,
+      [ids, exceptTokenHash],
+    );
     return;
   }
   await db.query(`DELETE FROM sessions WHERE device_id = ANY($1::bigint[])`, [ids]);
@@ -1007,6 +1147,115 @@ export class TrustedDeviceKeyConflictError extends Error {
   constructor() {
     super("trusted device keys cannot be replaced");
     this.name = "TrustedDeviceKeyConflictError";
+  }
+}
+
+/**
+ * Cap on `devices.status = 'pending'` rows for one account.
+ * Trusted, blocked, and revoked rows do not count. Replacing the pending row
+ * for a fingerprint that already has one does not consume another slot.
+ */
+export const MAX_PENDING_DEVICES_PER_ACCOUNT = 20;
+
+/** Account already has {@link MAX_PENDING_DEVICES_PER_ACCOUNT} pending device rows. */
+export class PendingDeviceLimitError extends Error {
+  readonly limit: number;
+
+  constructor(limit: number = MAX_PENDING_DEVICES_PER_ACCOUNT) {
+    super("pending device limit reached");
+    this.name = "PendingDeviceLimitError";
+    this.limit = limit;
+  }
+}
+
+/**
+ * Drop pending rows for this fingerprint whose public key differs.
+ * Sessions on those rows are deleted first: removing the device would only
+ * detach them (`sessions.device_id` is `ON DELETE SET NULL`). The caller's
+ * session is left so that delete detaches it and register can bind the new row.
+ * Returns whether a same-key pending row was kept, and how many other pending rows were removed.
+ */
+async function replacePendingRowsForFingerprint(
+  tx: Pick<QueryExecutor, "query">,
+  input: {
+    userId: string;
+    deviceFingerprint: string;
+    devicePublicKey: string;
+    preserveSessionTokenHash?: string;
+  },
+): Promise<{ keptSameKey: boolean; removed: number }> {
+  const pending = await tx.query<{ id: string; device_public_key: string }>(
+    `
+      SELECT id, device_public_key
+      FROM devices
+      WHERE user_id = $1::bigint
+        AND device_fingerprint = $2
+        AND status = 'pending'
+      FOR UPDATE
+    `,
+    [input.userId, input.deviceFingerprint],
+  );
+  const nextKey = input.devicePublicKey.trim();
+  const keptSameKey = pending.some((row) => row.device_public_key.trim() === nextKey);
+  const doomed = pending
+    .filter((row) => row.device_public_key.trim() !== nextKey)
+    .map((row) => row.id);
+  await deleteSessionsForDevices(tx, doomed, {
+    exceptTokenHash: input.preserveSessionTokenHash,
+  });
+  if (doomed.length > 0) {
+    await tx.query(
+      `
+        DELETE FROM devices
+        WHERE id = ANY($1::bigint[])
+          AND user_id = $2::bigint
+          AND status = 'pending'
+      `,
+      [doomed, input.userId],
+    );
+  }
+  return { keptSameKey, removed: doomed.length };
+}
+
+/**
+ * Reject another pending insert once the account is at the cap.
+ * The first device on an account is trusted, so a miss with no trusted row
+ * does not consume a pending slot.
+ */
+async function assertCanInsertPendingDevice(
+  tx: Pick<QueryExecutor, "query">,
+  userId: string,
+  options?: { trustedDeviceKnown?: boolean },
+): Promise<void> {
+  const rows = await tx.query<{ pending_n: string; trusted_n: string }>(
+    `
+      SELECT
+        COUNT(*) FILTER (WHERE status = 'pending')::text AS pending_n,
+        COUNT(*) FILTER (WHERE status = 'trusted')::text AS trusted_n
+      FROM devices
+      WHERE user_id = $1::bigint
+    `,
+    [userId],
+  );
+  const pending = Number(rows[0]?.pending_n ?? 0);
+  const trusted = Number(rows[0]?.trusted_n ?? 0);
+  const accountHasTrusted = options?.trustedDeviceKnown === true || trusted > 0;
+  if (accountHasTrusted && pending >= MAX_PENDING_DEVICES_PER_ACCOUNT) {
+    throw new PendingDeviceLimitError(MAX_PENDING_DEVICES_PER_ACCOUNT);
+  }
+}
+
+function sameDeviceId(left: string, right: string): boolean {
+  if (left === right) {
+    return true;
+  }
+  if (!/^\d+$/.test(left) || !/^\d+$/.test(right)) {
+    return false;
+  }
+  try {
+    return BigInt(left) === BigInt(right);
+  } catch {
+    return false;
   }
 }
 
@@ -1025,7 +1274,8 @@ export class DevicesRepository {
 
   /**
    * Rebind the user's only trusted device to a new fingerprint/public key
-   * (keeps device_share B). Returns null when the user does not have exactly one trusted device.
+   * and keep device_share. Returns null, without writing, when reclaim
+   * preconditions are not met.
    */
   async reclaimSoleTrusted(input: {
     userId: string;
@@ -1040,17 +1290,53 @@ export class DevicesRepository {
     userAgent: string;
     requestIp: string;
     now: string;
+    /** Id of the trusted row the caller claims to be rebinding. */
+    previousDeviceId: string;
+    /** Stored fingerprint the caller claims belongs to that row. */
+    previousDeviceFingerprint: string;
+    /** Device id bound to the caller's session, when the session has one. */
+    sessionDeviceId: string;
   }): Promise<DeviceRecord | null> {
-    return this.db.transaction(async (tx) => {
-      const countRows = await tx.query<{ n: string }>(
+    return withUserDeviceLock(input.userId, () => this.db.transaction(async (tx) => {
+      await lockUserDevices(tx, input.userId);
+      const trusted = await tx.query<{
+        id: string;
+        device_fingerprint: string;
+        client_type: string;
+      }>(
         `
-          SELECT COUNT(*)::text AS n
+          SELECT id, device_fingerprint, client_type
           FROM devices
           WHERE user_id = $1::bigint AND status = 'trusted'
+          FOR UPDATE
         `,
         [input.userId],
       );
-      if (Number(countRows[0]?.n ?? 0) !== 1) {
+      if (trusted.length !== 1) {
+        return null;
+      }
+      const current = trusted[0];
+      if (!current) {
+        return null;
+      }
+      const previousDeviceId = input.previousDeviceId.trim();
+      const sessionDeviceId = input.sessionDeviceId.trim();
+      const previousFingerprint = input.previousDeviceFingerprint.trim().toLowerCase();
+      const storedFingerprint = current.device_fingerprint.trim().toLowerCase();
+      if (
+        previousDeviceId === "" ||
+        sessionDeviceId === "" ||
+        previousFingerprint === "" ||
+        !sameDeviceId(previousDeviceId, current.id) ||
+        !sameDeviceId(sessionDeviceId, current.id) ||
+        previousFingerprint !== storedFingerprint ||
+        !canReclaimSoleTrustedDevice({
+          storedFingerprint: current.device_fingerprint,
+          storedClientType: current.client_type,
+          nextFingerprint: input.deviceFingerprint,
+          nextClientType: input.clientType,
+        })
+      ) {
         return null;
       }
 
@@ -1107,6 +1393,7 @@ export class DevicesRepository {
             rejection_reason = NULL,
             revoked_at = NULL
           WHERE user_id = $1::bigint
+            AND id = $13::bigint
             AND status = 'trusted'
           RETURNING
             id,
@@ -1145,11 +1432,12 @@ export class DevicesRepository {
           input.userAgent,
           input.requestIp,
           input.now,
+          current.id,
         ],
       );
 
       return rows[0] ? mapDevice(rows[0]) : null;
-    });
+    }));
   }
 
   /**
@@ -1178,7 +1466,8 @@ export class DevicesRepository {
           UPDATE devices
           SET
             status = 'revoked',
-            revoked_at = $2::timestamptz
+            revoked_at = $2::timestamptz,
+            device_share = NULL
           WHERE user_id = $1::bigint
             AND status = 'trusted'
             AND device_fingerprint <> $3
@@ -1357,9 +1646,15 @@ export class DevicesRepository {
     now: string;
     /**
      * Recovery restore on a browser that lost its signing key. Insert a pending
-     * row for the new public key without changing the trusted row.
+     * row for the new public key without changing the trusted row. A previous
+     * pending row for this fingerprint with a different public key is replaced.
      */
     allowPendingAlongsideTrusted?: boolean;
+    /**
+     * Token hash of the caller. Sessions on a replaced pending row are deleted
+     * except this one, which the device delete detaches so register can bind it.
+     */
+    preserveSessionTokenHash?: string;
   }): Promise<DeviceRecord & { sendApprovalEmail: boolean; created: boolean }> {
     try {
       return await withUserDeviceLock(input.userId, () => this.db.transaction(async (tx) => {
@@ -1450,6 +1745,19 @@ export class DevicesRepository {
           if (current.device_public_key.trim() !== input.devicePublicKey.trim()) {
             if (!input.allowPendingAlongsideTrusted) {
               throw new TrustedDeviceKeyConflictError();
+            }
+            const replaced = await replacePendingRowsForFingerprint(tx, {
+              userId: input.userId,
+              deviceFingerprint: input.deviceFingerprint,
+              devicePublicKey: input.devicePublicKey,
+              preserveSessionTokenHash: input.preserveSessionTokenHash,
+            });
+            // Replacing an existing pending row does not consume another slot,
+            // including when the account is already at the cap.
+            if (!replaced.keptSameKey && replaced.removed === 0) {
+              await assertCanInsertPendingDevice(tx, input.userId, {
+                trustedDeviceKnown: true,
+              });
             }
             const siblingId = generateEntityId();
             const sibling = await tx.query<{
@@ -1579,6 +1887,84 @@ export class DevicesRepository {
               sendApprovalEmail: false,
               created: row.inserted === true,
             };
+          }
+          const storedShare = current.device_share as Buffer | null;
+          if (storedShare == null) {
+            const filled = await tx.query<{
+              id: string;
+              user_id: string;
+              device_fingerprint: string;
+              device_name: string;
+              device_public_key: string;
+              device_share: Buffer | null;
+              platform: string;
+              os_name: string;
+              os_version: string;
+              app_version: string;
+              client_type: string;
+              user_agent: string;
+              ip_first: string;
+              ip_last: string;
+              status: "trusted" | "pending" | "revoked" | "blocked";
+              created_at: string | Date;
+              last_seen_at: string | Date | null;
+              approved_by: string | null;
+              approved_at: string | Date | null;
+              rejected_at: string | Date | null;
+              rejection_reason: string | null;
+              revoked_at: string | Date | null;
+              blocked_until: string | Date | null;
+            }>(
+              `
+                UPDATE devices
+                SET
+                  device_share = $3,
+                  last_seen_at = $4::timestamptz,
+                  ip_last = $5
+                WHERE id = $1
+                  AND user_id = $2::bigint
+                  AND status = 'trusted'
+                  AND device_share IS NULL
+                RETURNING
+                  id,
+                  user_id,
+                  device_fingerprint,
+                  device_name,
+                  device_public_key,
+                  device_share,
+                  platform,
+                  os_name,
+                  os_version,
+                  app_version,
+                  client_type,
+                  user_agent,
+                  ip_first,
+                  ip_last,
+                  status,
+                  created_at,
+                  last_seen_at,
+                  approved_by,
+                  approved_at,
+                  rejected_at,
+                  rejection_reason,
+                  revoked_at,
+                  blocked_until
+              `,
+              [
+                current.id,
+                input.userId,
+                Buffer.from(input.deviceShare),
+                input.now,
+                input.requestIp,
+              ],
+            );
+            if (filled[0]) {
+              return {
+                ...mapDevice(filled[0]),
+                sendApprovalEmail: false,
+                created: false,
+              };
+            }
           }
           await tx.query(
             `
@@ -1719,6 +2105,8 @@ export class DevicesRepository {
           created: false,
         };
       }
+
+      await assertCanInsertPendingDevice(tx, input.userId);
 
       const id = generateEntityId();
       const rows = await tx.query<{
@@ -1917,19 +2305,26 @@ export class DevicesRepository {
       };
       }));
     } catch (error) {
-      if (error instanceof TrustedDeviceKeyConflictError) {
+      if (
+        error instanceof TrustedDeviceKeyConflictError ||
+        error instanceof PendingDeviceLimitError
+      ) {
         throw error;
       }
       throw toUniqueError(error);
     }
   }
 
-  /** Share of the trusted device bound to the session. Does not search by fingerprint. */
+  /**
+   * Share of the trusted device bound to the session. Does not search by fingerprint.
+   * `null` means the device is missing. `{ share: null }` means the row is trusted
+   * and its stored share was cleared.
+   */
   async findTrustedDeviceShareById(
     userId: string,
     deviceId: string,
-  ): Promise<Uint8Array | null> {
-    const rows = await this.db.query<{ device_share: Buffer }>(
+  ): Promise<{ share: Uint8Array | null } | null> {
+    const rows = await this.db.query<{ device_share: Buffer | null }>(
       `
         SELECT device_share
         FROM devices
@@ -1940,8 +2335,100 @@ export class DevicesRepository {
       `,
       [deviceId, userId],
     );
-    const row = rows[0];
-    return row ? Uint8Array.from(row.device_share) : null;
+    if (rows.length === 0) {
+      return null;
+    }
+    const share = rows[0]?.device_share;
+    return { share: share ? Uint8Array.from(share) : null };
+  }
+
+  /** Stored share bytes for every device of the user, including pending rows. */
+  async listDeviceShares(userId: string): Promise<Uint8Array[]> {
+    const rows = await this.db.query<{ device_share: Buffer }>(
+      `
+        SELECT device_share
+        FROM devices
+        WHERE user_id = $1::bigint
+          AND device_share IS NOT NULL
+      `,
+      [userId],
+    );
+    return rows.map((row) => Uint8Array.from(row.device_share));
+  }
+
+  /**
+   * Mark a pending device trusted with the share the client unwrapped locally.
+   * Does not read or copy any other row's device_share.
+   */
+  async approvePendingWithClientShare(input: {
+    userId: string;
+    deviceId: string;
+    deviceShare: Uint8Array;
+    now: string;
+    /** Pending rows created before this instant are expired. */
+    pendingCreatedBefore: string;
+  }): Promise<"approved" | "not_found" | "not_pending" | "expired"> {
+    return withUserDeviceLock(input.userId, () => this.db.transaction(async (tx) => {
+      await lockUserDevices(tx, input.userId);
+      const rows = await tx.query<{
+        user_id: string;
+        status: string;
+        created_at: string | Date;
+      }>(
+        `
+          SELECT user_id, status, created_at
+          FROM devices
+          WHERE id = $1
+          FOR UPDATE
+        `,
+        [input.deviceId],
+      );
+      const current = rows[0];
+      if (!current || current.user_id !== input.userId) {
+        return "not_found";
+      }
+      if (current.status !== "pending") {
+        return "not_pending";
+      }
+      if (new Date(current.created_at).getTime() < new Date(input.pendingCreatedBefore).getTime()) {
+        await tx.query(
+          `
+            UPDATE devices
+            SET
+              status = 'revoked',
+              rejected_at = COALESCE(rejected_at, $2::timestamptz),
+              rejection_reason = COALESCE(rejection_reason, 'approval expired'),
+              revoked_at = COALESCE(revoked_at, $2::timestamptz),
+              device_share = NULL
+            WHERE id = $1
+          `,
+          [input.deviceId, input.now],
+        );
+        await deleteSessionsForDevices(tx, [input.deviceId]);
+        return "expired";
+      }
+      const updated = await tx.query<{ id: string }>(
+        `
+          UPDATE devices
+          SET
+            status = 'trusted',
+            device_share = $4,
+            approval_method = 'passkey',
+            approved_by = $2,
+            approved_at = $3::timestamptz,
+            last_seen_at = $3::timestamptz,
+            rejected_at = NULL,
+            rejection_reason = NULL,
+            revoked_at = NULL
+          WHERE id = $1
+            AND user_id = $2::bigint
+            AND status = 'pending'
+          RETURNING id
+        `,
+        [input.deviceId, input.userId, input.now, Buffer.from(input.deviceShare)],
+      );
+      return updated[0] ? "approved" : "not_pending";
+    }));
   }
 
   async isTrustedDevice(userId: string, deviceId: string): Promise<boolean> {
@@ -1967,8 +2454,10 @@ export class DevicesRepository {
     now: string;
     expiresAt: string;
     approvedBy: string;
-    /** Trusted device that performs approval; its device_share (B) is copied onto the pending row. */
+    /** Trusted device that performs approval. */
     approverDeviceId?: string;
+    /** Hybrid share envelope to store on the pending device. Required when action is approve. */
+    deviceShare?: Uint8Array;
     rejectReason?: string;
   }): Promise<DeviceApprovalState> {
     return withUserDeviceLock(input.userId, () => this.db.transaction(async (tx) => {
@@ -2074,7 +2563,8 @@ export class DevicesRepository {
               status = 'revoked',
               rejected_at = COALESCE(rejected_at, $2::timestamptz),
               rejection_reason = COALESCE(rejection_reason, 'approval expired'),
-              revoked_at = COALESCE(revoked_at, $2::timestamptz)
+              revoked_at = COALESCE(revoked_at, $2::timestamptz),
+              device_share = NULL
             WHERE id = $1
             RETURNING
               id,
@@ -2110,6 +2600,10 @@ export class DevicesRepository {
         if (!input.approverDeviceId) {
           return { kind: "access_denied", device: mapDevice(current) };
         }
+        const deviceShare = input.deviceShare;
+        if (!deviceShare || deviceShare.length === 0) {
+          return { kind: "share_required", device: mapDevice(current) };
+        }
         const approvedRows = await tx.query<{
           id: string;
           user_id: string;
@@ -2138,7 +2632,8 @@ export class DevicesRepository {
             UPDATE devices AS pending
             SET
               status = 'trusted',
-              device_share = approver.device_share,
+              device_share = $5,
+              approval_method = 'device',
               approved_by = $2,
               approved_at = $3::timestamptz,
               last_seen_at = $3::timestamptz,
@@ -2174,7 +2669,7 @@ export class DevicesRepository {
               pending.rejection_reason,
               pending.revoked_at
           `,
-          [input.deviceId, input.approvedBy, input.now, input.approverDeviceId],
+          [input.deviceId, input.approvedBy, input.now, input.approverDeviceId, Buffer.from(deviceShare)],
         );
         if (!approvedRows[0]) {
           return { kind: "access_denied", device: mapDevice(current) };
@@ -2240,7 +2735,18 @@ export class DevicesRepository {
         `,
         [input.deviceId, input.now, input.rejectReason ?? "rejected by user"],
       );
-      await deleteSessionsForDevices(tx, [input.deviceId]);
+      // Keep the placeholder share (wrap public keys) and the Bearer, but unbind
+      // the session from this revoked row so "Try again" can rebind to the
+      // reopened pending device. Deleting the session forced a full sign-out;
+      // leaving it bound made block/approve invisible to GET /devices.
+      await tx.query(
+        `
+          UPDATE sessions
+          SET device_id = NULL
+          WHERE device_id = $1::bigint
+        `,
+        [input.deviceId],
+      );
       return { kind: "rejected", device: mapDevice(rejectedRows[0]) };
     }));
   }
@@ -2252,14 +2758,14 @@ export class DevicesRepository {
     id: string;
     status: string;
     devicePublicKey: string;
-    deviceShare: Uint8Array;
+    deviceShare: Uint8Array | null;
     deviceFingerprint: string;
   } | null> {
     const rows = await this.db.query<{
       id: string;
       status: string;
       device_public_key: string;
-      device_share: Buffer;
+      device_share: Buffer | null;
       device_fingerprint: string;
     }>(
       `
@@ -2278,7 +2784,7 @@ export class DevicesRepository {
       id: row.id,
       status: row.status,
       devicePublicKey: row.device_public_key,
-      deviceShare: Uint8Array.from(row.device_share),
+      deviceShare: row.device_share ? Uint8Array.from(row.device_share) : null,
       deviceFingerprint: row.device_fingerprint,
     };
   }
@@ -2759,7 +3265,8 @@ export class DevicesRepository {
             rejection_reason,
             CASE WHEN status = 'pending' THEN 'dismissed by user' ELSE 'revoked by user' END
           ),
-          revoked_at = COALESCE(revoked_at, $3::timestamptz)
+          revoked_at = COALESCE(revoked_at, $3::timestamptz),
+          device_share = NULL
         WHERE id = $1
           AND user_id = $2
           AND status IN ('trusted', 'pending')
@@ -3047,6 +3554,305 @@ export class DevicesRepository {
       [userId, now],
     );
   }
+
+  async savePendingOneTimeKeys(input: {
+    userId: string;
+    deviceId: string;
+    x25519PublicKey: Uint8Array;
+    mlkemPublicKey: Uint8Array;
+  }): Promise<boolean> {
+    const rows = await this.db.query<{ id: string }>(
+      `
+        UPDATE devices
+        SET
+          one_time_x25519_public = $3,
+          one_time_mlkem_public = $4,
+          share_delivery_envelope = NULL,
+          share_delivery_expires_at = NULL,
+          approved_by = NULL,
+          approved_at = NULL
+        WHERE id = $1::bigint
+          AND user_id = $2::bigint
+          AND status = 'pending'
+        RETURNING id
+      `,
+      [
+        input.deviceId,
+        input.userId,
+        Buffer.from(input.x25519PublicKey),
+        Buffer.from(input.mlkemPublicKey),
+      ],
+    );
+    return Boolean(rows[0]);
+  }
+
+  async listPendingOneTimeKeys(userId: string): Promise<
+    Array<{
+      deviceId: string;
+      x25519PublicKey: Uint8Array;
+      mlkemPublicKey: Uint8Array;
+    }>
+  > {
+    const rows = await this.db.query<{
+      id: string;
+      one_time_x25519_public: Buffer;
+      one_time_mlkem_public: Buffer;
+    }>(
+      `
+        SELECT id, one_time_x25519_public, one_time_mlkem_public
+        FROM devices
+        WHERE user_id = $1::bigint
+          AND status = 'pending'
+          AND one_time_x25519_public IS NOT NULL
+          AND one_time_mlkem_public IS NOT NULL
+      `,
+      [userId],
+    );
+    return rows.map((row) => ({
+      deviceId: row.id,
+      x25519PublicKey: Uint8Array.from(row.one_time_x25519_public),
+      mlkemPublicKey: Uint8Array.from(row.one_time_mlkem_public),
+    }));
+  }
+
+  /**
+   * Store a hybrid envelope for a pending device that published a one-time key.
+   * Does not copy share B and does not mark the device trusted.
+   */
+  async storeShareDelivery(input: {
+    userId: string;
+    deviceId: string;
+    approverUserId: string;
+    envelope: Uint8Array;
+    now: string;
+    pendingCreatedBefore: string;
+    expiresAt: string;
+  }): Promise<
+    | { kind: "stored" }
+    | { kind: "not_found" }
+    | { kind: "expired" }
+    | { kind: "not_pending" }
+    | { kind: "missing_one_time_key" }
+  > {
+    return this.db.transaction(async (tx) => {
+      const rows = await tx.query<{
+        id: string;
+        status: string;
+        created_at: string | Date;
+        has_one_time_key: boolean;
+      }>(
+        `
+          SELECT
+            id,
+            status,
+            created_at,
+            (
+              one_time_x25519_public IS NOT NULL
+              AND one_time_mlkem_public IS NOT NULL
+            ) AS has_one_time_key
+          FROM devices
+          WHERE id = $1::bigint
+            AND user_id = $2::bigint
+          FOR UPDATE
+        `,
+        [input.deviceId, input.userId],
+      );
+      const row = rows[0];
+      if (!row) {
+        return { kind: "not_found" };
+      }
+      if (row.status !== "pending") {
+        return { kind: "not_pending" };
+      }
+      const createdMs = new Date(row.created_at).getTime();
+      if (createdMs < new Date(input.pendingCreatedBefore).getTime()) {
+        await tx.query(
+          `
+            UPDATE devices
+            SET
+              status = 'revoked',
+              rejected_at = COALESCE(rejected_at, $2::timestamptz),
+              rejection_reason = COALESCE(rejection_reason, 'approval expired'),
+              revoked_at = COALESCE(revoked_at, $2::timestamptz),
+              device_share = NULL,
+              share_delivery_envelope = NULL,
+              share_delivery_expires_at = NULL,
+              one_time_x25519_public = NULL,
+              one_time_mlkem_public = NULL
+            WHERE id = $1::bigint
+          `,
+          [input.deviceId, input.now],
+        );
+        await deleteSessionsForDevices(tx, [input.deviceId]);
+        return { kind: "expired" };
+      }
+      if (!row.has_one_time_key) {
+        return { kind: "missing_one_time_key" };
+      }
+      await tx.query(
+        `
+          UPDATE devices
+          SET
+            share_delivery_envelope = $3,
+            share_delivery_expires_at = $4::timestamptz,
+            approved_by = $5::bigint,
+            approved_at = $6::timestamptz
+          WHERE id = $1::bigint
+            AND user_id = $2::bigint
+            AND status = 'pending'
+        `,
+        [
+          input.deviceId,
+          input.userId,
+          Buffer.from(input.envelope),
+          input.expiresAt,
+          input.approverUserId,
+          input.now,
+        ],
+      );
+      return { kind: "stored" };
+    });
+  }
+
+  async deleteExpiredShareDeliveries(userId: string, now: string): Promise<void> {
+    await this.db.query(
+      `
+        UPDATE devices
+        SET
+          share_delivery_envelope = NULL,
+          share_delivery_expires_at = NULL
+        WHERE user_id = $1::bigint
+          AND share_delivery_envelope IS NOT NULL
+          AND share_delivery_expires_at IS NOT NULL
+          AND share_delivery_expires_at <= $2::timestamptz
+      `,
+      [userId, now],
+    );
+  }
+
+  /** Drop a stored envelope and the one-time public key. Share B is left as-is. */
+  async clearShareDelivery(userId: string, deviceId: string): Promise<void> {
+    await this.db.query(
+      `
+        UPDATE devices
+        SET
+          share_delivery_envelope = NULL,
+          share_delivery_expires_at = NULL,
+          one_time_x25519_public = NULL,
+          one_time_mlkem_public = NULL
+        WHERE id = $1::bigint
+          AND user_id = $2::bigint
+      `,
+      [deviceId, userId],
+    );
+  }
+
+  async readShareDelivery(input: {
+    userId: string;
+    deviceId: string;
+    now: string;
+  }): Promise<{ envelope: Uint8Array; expiresAt: string } | null> {
+    const rows = await this.db.query<{
+      share_delivery_envelope: Buffer | null;
+      share_delivery_expires_at: string | Date | null;
+      status: string;
+    }>(
+      `
+        SELECT share_delivery_envelope, share_delivery_expires_at, status
+        FROM devices
+        WHERE id = $1::bigint
+          AND user_id = $2::bigint
+      `,
+      [input.deviceId, input.userId],
+    );
+    const row = rows[0];
+    if (!row || row.status !== "pending" || !row.share_delivery_envelope) {
+      return null;
+    }
+    const expiresAt = row.share_delivery_expires_at instanceof Date
+      ? row.share_delivery_expires_at.toISOString()
+      : row.share_delivery_expires_at
+        ? new Date(row.share_delivery_expires_at).toISOString()
+        : null;
+    if (!expiresAt || new Date(expiresAt).getTime() <= new Date(input.now).getTime()) {
+      await this.deleteExpiredShareDeliveries(input.userId, input.now);
+      return null;
+    }
+    return {
+      envelope: Uint8Array.from(row.share_delivery_envelope),
+      expiresAt,
+    };
+  }
+
+  /**
+   * Install the delivered share B and delete the envelope so it cannot be read again.
+   */
+  async confirmShareDelivery(input: {
+    userId: string;
+    deviceId: string;
+    deviceShare: Uint8Array;
+    now: string;
+  }): Promise<"confirmed" | "not_found" | "expired"> {
+    return this.db.transaction(async (tx) => {
+      const rows = await tx.query<{
+        share_delivery_expires_at: string | Date | null;
+      }>(
+        `
+          SELECT share_delivery_expires_at
+          FROM devices
+          WHERE id = $1::bigint
+            AND user_id = $2::bigint
+            AND status = 'pending'
+            AND share_delivery_envelope IS NOT NULL
+          FOR UPDATE
+        `,
+        [input.deviceId, input.userId],
+      );
+      const row = rows[0];
+      if (!row) {
+        return "not_found";
+      }
+      const expiresMs = row.share_delivery_expires_at
+        ? new Date(row.share_delivery_expires_at).getTime()
+        : Number.NaN;
+      if (!Number.isFinite(expiresMs) || expiresMs <= new Date(input.now).getTime()) {
+        await tx.query(
+          `
+            UPDATE devices
+            SET
+              share_delivery_envelope = NULL,
+              share_delivery_expires_at = NULL
+            WHERE id = $1::bigint
+              AND user_id = $2::bigint
+          `,
+          [input.deviceId, input.userId],
+        );
+        return "expired";
+      }
+      await tx.query(
+        `
+          UPDATE devices
+          SET
+            device_share = $3,
+            status = 'trusted',
+            approved_at = COALESCE(approved_at, $4::timestamptz),
+            last_seen_at = $4::timestamptz,
+            rejected_at = NULL,
+            rejection_reason = NULL,
+            revoked_at = NULL,
+            share_delivery_envelope = NULL,
+            share_delivery_expires_at = NULL,
+            one_time_x25519_public = NULL,
+            one_time_mlkem_public = NULL
+          WHERE id = $1::bigint
+            AND user_id = $2::bigint
+            AND status = 'pending'
+        `,
+        [input.deviceId, input.userId, Buffer.from(input.deviceShare), input.now],
+      );
+      return "confirmed";
+    });
+  }
 }
 
 export class ItemsRepository {
@@ -3288,6 +4094,186 @@ export class EventsRepository {
       );
 
       return mapEvent(rows[0]);
+    });
+  }
+
+  /**
+   * Append many events in one transaction (vault row locked). Idempotent keys
+   * short-circuit to the existing row without advancing the tip — same as
+   * {@link append}. Non-idempotent inserts require contiguous `baseVersion`
+   * values against the live tip as each row is written. A failure rolls the
+   * whole batch back.
+   */
+  async appendBatch(
+    inputs: Array<{
+      vaultId: string;
+      actorId?: string | null;
+      eventType: string;
+      encryptedPayload: Uint8Array;
+      baseVersion: number;
+      payloadSchemaVersion?: number;
+      idempotencyKey?: string | null;
+      clientCreatedAt?: string | null;
+      referencedItemId?: string | null;
+      itemSoftDeleted?: boolean | null;
+    }>,
+  ): Promise<EventRecord[]> {
+    if (inputs.length === 0) {
+      return [];
+    }
+    const vaultId = inputs[0]!.vaultId;
+    for (const input of inputs) {
+      if (input.vaultId !== vaultId) {
+        throw new Error("appendBatch requires a single vaultId");
+      }
+    }
+
+    return this.db.transaction(async (tx) => {
+      const vaultRows = await tx.query<{ id: string; crypto_version: number }>(
+        "SELECT id, crypto_version FROM vaults WHERE id = $1 FOR UPDATE",
+        [vaultId],
+      );
+      if (!vaultRows[0]) {
+        throw new EntityNotFoundError("vault", vaultId);
+      }
+      let vaultCryptoVersion = vaultRows[0].crypto_version;
+
+      const versionRows = await tx.query<{ current_version: number }>(
+        "SELECT COALESCE(MAX(version), 0) AS current_version FROM events WHERE vault_id = $1",
+        [vaultId],
+      );
+      let currentVersion = Number(versionRows[0]?.current_version ?? 0);
+      // A conflict rolls the whole batch back, so callers must rebase against the
+      // tip that is actually committed. Using the in-transaction cursor would
+      // advertise a version this batch inserted and then aborted.
+      const committedVersion = currentVersion;
+
+      const maxSchemaRows = await tx.query<{ m: number | null }>(
+        "SELECT MAX(payload_schema_version) AS m FROM events WHERE vault_id = $1",
+        [vaultId],
+      );
+      let establishedMax = maxSchemaRows[0]?.m ?? null;
+
+      type EventRow = {
+        id: string;
+        vault_id: string;
+        actor_id: string | null;
+        event_type: string;
+        encrypted_payload: Buffer;
+        payload_schema_version: number;
+        idempotency_key: string | null;
+        client_created_at: string | null;
+        referenced_item_id: string | null;
+        item_soft_deleted: boolean | null;
+        version: number;
+        created_at: string;
+      };
+
+      const out: EventRecord[] = [];
+      let maxPayloadSchemaWritten = vaultCryptoVersion;
+      let insertedAny = false;
+
+      const selectByIdempotency = (idempotencyKey: string) =>
+        tx.query<EventRow>(
+          `
+            SELECT id, vault_id, actor_id, event_type, encrypted_payload,
+                   payload_schema_version, idempotency_key, client_created_at,
+                   referenced_item_id::text AS referenced_item_id, item_soft_deleted, version, created_at
+            FROM events
+            WHERE vault_id = $1 AND idempotency_key = $2::bigint
+            FOR UPDATE
+          `,
+          [vaultId, idempotencyKey],
+        );
+
+      for (const input of inputs) {
+        if (input.idempotencyKey) {
+          const existingRows = await selectByIdempotency(input.idempotencyKey);
+          if (existingRows[0]) {
+            out.push(mapEvent(existingRows[0]));
+            continue;
+          }
+        }
+
+        if (input.baseVersion !== currentVersion) {
+          throw new VersionConflictError(input.baseVersion, committedVersion);
+        }
+
+        const nextVersion = currentVersion + 1;
+        const payloadSchemaVersion = input.payloadSchemaVersion ?? 2;
+        assertVaultCryptoFloor(vaultId, vaultCryptoVersion, payloadSchemaVersion);
+        assertPayloadSchemaMonotonic(vaultId, establishedMax, payloadSchemaVersion);
+
+        const eventId = generateEntityId();
+        let rows: EventRow[];
+        try {
+          rows = await tx.query<EventRow>(
+            `
+            INSERT INTO events (
+              id, vault_id, actor_id, event_type, encrypted_payload, version,
+              payload_schema_version, idempotency_key, client_created_at, referenced_item_id,
+              item_soft_deleted
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            RETURNING id, vault_id, actor_id, event_type, encrypted_payload,
+                      payload_schema_version, idempotency_key, client_created_at,
+                      referenced_item_id::text AS referenced_item_id, item_soft_deleted, version, created_at
+          `,
+            [
+              eventId,
+              vaultId,
+              input.actorId ?? null,
+              input.eventType,
+              Buffer.from(input.encryptedPayload),
+              nextVersion,
+              payloadSchemaVersion,
+              input.idempotencyKey ?? null,
+              input.clientCreatedAt ?? null,
+              input.referencedItemId ?? null,
+              input.itemSoftDeleted ?? false,
+            ],
+          );
+        } catch (error) {
+          if (
+            input.idempotencyKey &&
+            typeof error === "object" &&
+            error !== null &&
+            "code" in error &&
+            (error as { code?: string }).code === "23505"
+          ) {
+            const retryRows = await selectByIdempotency(input.idempotencyKey);
+            if (retryRows[0]) {
+              out.push(mapEvent(retryRows[0]));
+              continue;
+            }
+          }
+          throw error;
+        }
+
+        currentVersion = nextVersion;
+        establishedMax =
+          establishedMax == null
+            ? payloadSchemaVersion
+            : Math.max(establishedMax, payloadSchemaVersion);
+        vaultCryptoVersion = Math.max(vaultCryptoVersion, payloadSchemaVersion);
+        maxPayloadSchemaWritten = Math.max(maxPayloadSchemaWritten, payloadSchemaVersion);
+        insertedAny = true;
+        out.push(mapEvent(rows[0]!));
+      }
+
+      if (insertedAny) {
+        await tx.query(
+          `
+            UPDATE vaults
+            SET crypto_version = GREATEST(crypto_version, $2),
+                updated_at = now()
+            WHERE id = $1
+          `,
+          [vaultId, maxPayloadSchemaWritten],
+        );
+      }
+
+      return out;
     });
   }
 
@@ -3757,6 +4743,11 @@ export class SessionsRepository {
     return Boolean(rows[0]);
   }
 
+  /**
+   * Replace this session's single-use recovery challenge.
+   * A session that already proved may start another restore on the same
+   * access token. The proof grant and device binding are left in place.
+   */
   async setRecoveryChallenge(input: {
     tokenHash: string;
     userId: string;
@@ -3772,7 +4763,6 @@ export class SessionsRepository {
           AND user_id = $2
           AND device_id IS NOT NULL
           AND expires_at > now()
-          AND recovery_proved_at IS NULL
         RETURNING id
       `,
       [input.tokenHash, input.userId, input.challenge, input.expiresAtIso],
@@ -3821,6 +4811,7 @@ function mapUser(
     email: string;
     public_key: string;
     public_pq_key?: string | null;
+    public_mldsa_key?: string | null;
     locale?: string | null;
   },
 ): UserRecord {
@@ -3829,10 +4820,27 @@ function mapUser(
     email: row.email,
     publicKey: row.public_key,
     publicPqKey: row.public_pq_key ?? null,
+    publicMldsaKey: row.public_mldsa_key ?? null,
     locale: row.locale ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at ?? row.created_at,
   };
+}
+
+function byteaToBase64(value: unknown): string | null {
+  if (value == null) {
+    return null;
+  }
+  if (typeof value === "string") {
+    return value;
+  }
+  if (Buffer.isBuffer(value)) {
+    return value.toString("base64");
+  }
+  if (value instanceof Uint8Array) {
+    return Buffer.from(value).toString("base64");
+  }
+  return null;
 }
 
 function mapWorkspace(row: WorkspaceRow): WorkspaceRecord {
@@ -3841,7 +4849,7 @@ function mapWorkspace(row: WorkspaceRow): WorkspaceRecord {
     id: row.id,
     name: row.name,
     ownerId: row.owner_id,
-    planTier: row.plan_tier,
+    planTier: normalizePlanTier(row.plan_tier),
     planCustomOverride: Boolean(row.plan_custom_override),
     planFeatureOverrides: sanitizePlanFeatureOverrides(row.plan_feature_overrides),
     deletedItemsRetentionDays: row.deleted_items_retention_days,
@@ -3851,14 +4859,19 @@ function mapWorkspace(row: WorkspaceRow): WorkspaceRecord {
     capsulePolicies: workspaceCapsulePoliciesFromDto(
       (row.capsule_policies ?? undefined) as Partial<WorkspaceCapsulePoliciesDto> | undefined,
     ),
-    monitoringCardSettings: workspaceMonitoringCardSettingsFromDto(
-      (row.monitoring_card_settings ?? undefined) as
-        | Partial<WorkspaceMonitoringCardSettingsDto>
-        | undefined,
-    ),
     tileColor: row.tile_color,
     logoVaultId: row.logo_vault_id,
     logoAttachmentId: row.logo_attachment_id,
+    logoKeyVersion: row.logo_key_version == null ? null : Number(row.logo_key_version),
+    logoUpdatedAt:
+      row.logo_updated_at == null
+        ? null
+        : typeof row.logo_updated_at === "string"
+          ? row.logo_updated_at
+          : row.logo_updated_at.toISOString(),
+    clientSettingsKeyVersion:
+      row.client_settings_key_version == null ? null : Number(row.client_settings_key_version),
+    clientSettingsCiphertext: byteaToBase64(row.client_settings_ciphertext),
     planChangeRequestSentAt:
       sentAt == null
         ? null
@@ -3916,7 +4929,7 @@ function mapDevice(row: {
   device_fingerprint: string;
   device_name: string;
   device_public_key: string;
-  device_share: Buffer;
+  device_share: Buffer | null;
   platform: string;
   os_name: string;
   os_version: string;
@@ -3941,7 +4954,7 @@ function mapDevice(row: {
     deviceFingerprint: row.device_fingerprint,
     deviceName: row.device_name,
     devicePublicKey: row.device_public_key,
-    deviceShare: Uint8Array.from(row.device_share),
+    deviceShare: row.device_share ? Uint8Array.from(row.device_share) : null,
     platform: row.platform,
     osName: row.os_name,
     osVersion: row.os_version,

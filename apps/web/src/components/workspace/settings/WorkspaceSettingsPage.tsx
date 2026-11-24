@@ -87,7 +87,9 @@ export default function WorkspaceSettingsPage({
   const activeSection = requestedSection;
   const sectionPermissions = settingsSectionPermissionCell(workspacePermissions, activeSection);
   const displayPlanTier = webDisplayPlanTier(workspace);
-  // Self-hosted without modules → Core FREE notice + sales; with modules → EE plan section.
+  // Self-hosted without modules → FREE display and the license request.
+  // Self-hosted with modules → ENTERPRISE display (stored plan_tier is ignored).
+  // SaaS → catalog plan_tier. Paid sections use the enterprise plan package when it is loaded.
   const PlanSection =
     webDeploymentMode() === "self_hosted" && displayPlanTier === "FREE"
       ? SelfHostedFreePlanSection
@@ -160,6 +162,7 @@ export default function WorkspaceSettingsPage({
           />
           <main className="min-w-0 flex-1">
             {activeSection === "general" ||
+            activeSection === "mail" ||
             activeSection === "items" ||
             activeSection === "capsules" ? (
               <WorkspaceSettingsGeneralSection
@@ -167,7 +170,13 @@ export default function WorkspaceSettingsPage({
                 workspace={workspace}
                 vaults={vaults}
                 t={t}
-                panel={activeSection === "general" ? "general" : activeSection}
+                panel={
+                  activeSection === "general"
+                    ? "general"
+                    : activeSection === "mail"
+                      ? "mail"
+                      : activeSection
+                }
                 onSettingsChanged={onSettingsChanged}
                 canPut={Boolean(sectionPermissions && sectionPermissions.put >= 1)}
               />

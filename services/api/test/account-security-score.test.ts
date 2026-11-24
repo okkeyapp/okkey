@@ -179,6 +179,7 @@ test("vault factors: thresholds for idle / clipboard / MP age / deletion / bio|p
   assert.equal(bad.factorPoints.vaultBiometricOrPin, 0);
   // Six vault gaps (weight 5 each) → only top 4 CTAs shown; score still reflects all zeros.
   assert.equal(bad.recommendations.length, ACCOUNT_SECURITY_MAX_RECOMMENDATIONS);
+  assert.ok(bad.recommendations.some((r) => r.id === "enableVaultLockOnSleep"));
   assert.ok(
     bad.recommendations.every(
       (r) => r.target === "vault" || r.target === "deviceSecurity" || r.target === "deviceUnlock",
@@ -199,6 +200,48 @@ test("vault factors: thresholds for idle / clipboard / MP age / deletion / bio|p
     }),
   );
   assert.equal(pinOnly.factorPoints.vaultBiometricOrPin, 5);
+});
+
+test("lock on device sleep off is a scored gap and stays a recommendation", () => {
+  const ready = {
+    twoFactor: {
+      enabled: true,
+      backupCodesRemaining: 8,
+      backupCodesGeneratedAt: "2026-09-01T00:00:00.000Z",
+      backupCodesExportedAt: "2026-09-01T00:00:00.000Z",
+    },
+    recovery: {
+      entitlements: { trustedDevices: false, trustedContacts: false },
+      settings: { keyEnabled: true, devicesEnabled: false, contactsEnabled: false },
+      key: { enrolled: true, exportedAt: "2026-09-10T00:00:00.000Z" },
+      confirmedContactCount: 0,
+      minConfirmedContacts: 3,
+    },
+  };
+  const off = computeAccountSecurityScore(
+    baseInput({
+      ...ready,
+      vault: vaultOk({ lockOnDeviceSleep: false }),
+    }),
+  );
+  const on = computeAccountSecurityScore(
+    baseInput({
+      ...ready,
+      vault: vaultOk({ lockOnDeviceSleep: true }),
+    }),
+  );
+  assert.equal(off.factorPoints.vaultLockOnSleep, 0);
+  assert.deepEqual(
+    off.recommendations.map((r) => r.id),
+    ["enableVaultLockOnSleep"],
+  );
+  assert.equal(on.factorPoints.vaultLockOnSleep, ACCOUNT_SECURITY_FACTOR_WEIGHTS.vaultLockOnSleep);
+  assert.equal(
+    on.recommendations.some((r) => r.id === "enableVaultLockOnSleep"),
+    false,
+  );
+  assert.equal(on.score, 100);
+  assert.ok(on.score > off.score);
 });
 
 test("recommendations capped at 4 and sorted by factor weight", () => {

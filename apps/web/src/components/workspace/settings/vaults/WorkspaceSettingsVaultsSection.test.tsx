@@ -1,7 +1,10 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import type { ReactNode } from "react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 
+import { publicDocsUrl } from "../../../../docs/publicDocsUrl";
+import { LocaleProvider } from "../../../../locale/LocaleContext";
 import WorkspaceSettingsVaultsSection from "./WorkspaceSettingsVaultsSection";
 
 const deleteVault = vi.fn().mockResolvedValue({ deleted: true });
@@ -27,18 +30,29 @@ vi.mock("../../../../lib/saveWithToast", () => ({
 
 const personalPopupSpy = vi.fn();
 
-vi.mock("@okkey-enterprise/workspace-shared-vaults", () => ({
-  default: {
-    SharedVaultsSection: null,
-    PersonalVaultCardPopup: (props: { initialVault: { name: string }; mode: string }) => {
-      personalPopupSpy(props);
-      return (
-        <div data-testid="personal-vault-popup">
-          <span>{props.initialVault.name}</span>
-        </div>
-      );
-    },
-    SharedVaultCardPopup: null,
+vi.mock("./SharedVaultsSection", () => ({
+  default: ({
+    readOnly,
+    emptyFallback,
+  }: {
+    readOnly?: boolean;
+    emptyFallback?: ReactNode;
+  }) => (
+    <div data-testid="shared-vaults">
+      {readOnly ? "read-only" : "editable"}
+      {readOnly ? emptyFallback : null}
+    </div>
+  ),
+}));
+
+vi.mock("./VaultCardPopup", () => ({
+  default: (props: { initialVault: { name: string }; mode: string }) => {
+    personalPopupSpy(props);
+    return (
+      <div data-testid="personal-vault-popup">
+        <span>{props.initialVault.name}</span>
+      </div>
+    );
   },
 }));
 
@@ -47,7 +61,6 @@ const t = (key: string) => {
     "web.workspaceSettings.sections.vaults": "Сейфы",
     "web.workspaceSettings.vaults.intro": "Intro",
     "web.workspaceSettings.vaults.learnMore": "Подробнее",
-    "web.workspaceSettings.vaults.learnMoreUrl": "https://example.com",
     "web.workspaceSettings.vaults.personal.title": "Личный сейф",
     "web.workspaceSettings.vaults.personal.description": "Personal desc",
     "web.workspaceSettings.vaults.personal.onlyYou": "Доступен только Вам",
@@ -99,16 +112,6 @@ const freeWorkspace = {
     passwordAttemptLimit: 0,
     requireApproval: false,
   },
-  monitoringCardSettings: {
-    overall: true,
-    strength: true,
-    reused: true,
-    weak: true,
-    compromised: true,
-    stale: true,
-    passkeyGap: true,
-    twoFactorGap: true,
-  },
   createdAt: "",
   updatedAt: "",
 };
@@ -126,89 +129,39 @@ const personalVault = {
   updatedAt: "",
 };
 
-const sharedVault = {
-  id: "v2",
-  workspaceId: "w1",
-  name: "QA Shared W7",
-  description: "Legacy shared",
-  icon: "🔐",
-  isPersonal: false,
-  ownerId: "u1",
-  memberCount: 1,
-  cryptoVersion: 2,
-  createdAt: "",
-  updatedAt: "",
-};
-
 describe("WorkspaceSettingsVaultsSection", () => {
-  it("renders personal vault and shared vaults upsell on clean FREE", () => {
+  it("renders the personal vault and an editable shared vaults section on FREE", () => {
     render(
       <MemoryRouter>
+        <LocaleProvider>
         <WorkspaceSettingsVaultsSection
           workspaceId="w1"
           workspace={freeWorkspace}
           vaults={[personalVault]}
           t={t}
         />
+      </LocaleProvider>
       </MemoryRouter>,
     );
 
     expect(screen.getByText("Сейфы")).toBeInTheDocument();
+    const learnMore = screen.getByRole("link", { name: "Подробнее" });
+    expect(learnMore).toHaveAttribute("href", publicDocsUrl("workspaceVaults", "en"));
+    expect(learnMore).toHaveAttribute("target", "_blank");
+    expect(learnMore.getAttribute("rel")).toContain("noopener");
     expect(screen.getByText("Мой сейф")).toBeInTheDocument();
     expect(screen.getByText("Доступен только Вам")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Мой сейф/i })).toBeInTheDocument();
-    expect(screen.getByText("Общие сейфы")).toBeInTheDocument();
-    expect(screen.getByText("Note")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Создать/i })).not.toBeInTheDocument();
-  });
-
-  it("lists remnant shared vaults view-only with delete after downgrade", async () => {
-    deleteVault.mockClear();
-
-    render(
-      <MemoryRouter initialEntries={["/settings/vaults"]}>
-        <WorkspaceSettingsVaultsSection
-          workspaceId="w1"
-          workspace={freeWorkspace}
-          vaults={[personalVault, sharedVault]}
-          t={t}
-          resourcePermissions={{ get: 1, post: 0, put: 0, delete: 1 }}
-        />
-      </MemoryRouter>,
-    );
-
-    expect(screen.getByText("Общие сейфы")).toBeInTheDocument();
-    expect(screen.getByText("QA Shared W7")).toBeInTheDocument();
+    expect(screen.getByTestId("shared-vaults")).toHaveTextContent("editable");
     expect(screen.queryByText("Note")).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Создать/i })).not.toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: /QA Shared W7/i }));
-
-    const editDialog = document.getElementById("editVault|v2");
-    expect(editDialog).not.toBeNull();
-    const editScope = within(editDialog as HTMLElement);
-    expect(editScope.getAllByText("Edit vault").length).toBeGreaterThan(0);
-    expect(editScope.getAllByText("Shared vault").length).toBeGreaterThan(0);
-    expect(editScope.getAllByText("QA Shared W7").length).toBeGreaterThan(0);
-
-    fireEvent.click(editScope.getAllByRole("button", { name: /^Delete$/i })[0]!);
-
-    const confirmDialog = document.getElementById("delete-vault-confirm");
-    expect(confirmDialog).not.toBeNull();
-    fireEvent.click(
-      within(confirmDialog as HTMLElement).getAllByRole("button", { name: /^Delete$/i })[0]!,
-    );
-
-    await waitFor(() => {
-      expect(deleteVault).toHaveBeenCalledWith("v2");
-    });
   });
 
-  it("opens personal vault edit on FREE without sharedVaults and keeps stored name", () => {
+  it("opens personal vault edit on FREE and keeps the stored name", () => {
     personalPopupSpy.mockClear();
 
     render(
       <MemoryRouter initialEntries={["/settings/vaults"]}>
+        <LocaleProvider>
         <WorkspaceSettingsVaultsSection
           workspaceId="w1"
           workspace={freeWorkspace}
@@ -216,6 +169,7 @@ describe("WorkspaceSettingsVaultsSection", () => {
           t={t}
           resourcePermissions={{ get: 1, post: 0, put: 1, delete: 0 }}
         />
+      </LocaleProvider>
       </MemoryRouter>,
     );
 

@@ -1,7 +1,11 @@
 import { ITEM_CATEGORY_LOGIN } from "@okkey/types";
+import { resolveWebsiteIconDisplay } from "@okkey/ui";
 import { useEffect, useRef, useState } from "react";
 
 import { previewItemFavicon } from "../api/item-favicons";
+import { isFaviconImageNormalizeError } from "../lib/faviconImageError";
+import { normalizeFaviconImageBytesToPng } from "../lib/resizeFaviconImage";
+import { useFaviconProviderMode } from "./faviconMode";
 
 const DEBOUNCE_MS = 400;
 
@@ -53,8 +57,15 @@ export function useItemFormFaviconPreview(input: {
    * diverges from this key (edit dialog with an already-saved favicon).
    */
   skipFetchForUrlsKey?: string | null;
+  /**
+   * Bumped only on a committed record-name change (change/focusout with a new value).
+   * Typing other fields must not change this — favicon re-fetch is limited to name + website URL.
+   */
+  nameFetchRevision?: number;
 }): ItemFormFaviconPreviewState {
   const urlsKey = websiteUrlsLookupKey(input.urls);
+  const nameFetchRevision = input.nameFetchRevision ?? 0;
+  const iconMode = useFaviconProviderMode();
   const [previewImageSrc, setPreviewImageSrc] = useState<string | undefined>();
   const [previewPngBytes, setPreviewPngBytes] = useState<Uint8Array | null>(null);
   const [previewUrlsKey, setPreviewUrlsKey] = useState<string | null>(null);
@@ -64,6 +75,7 @@ export function useItemFormFaviconPreview(input: {
   const previewUrlsKeyRef = useRef<string | null>(null);
   const requestSeqRef = useRef(0);
   const lastFetchedUrlsKeyRef = useRef<string | null>(null);
+  const lastFetchedNameRevisionRef = useRef(0);
 
   const clearPreview = () => {
     revokeBlobUrl(blobUrlRef.current);
@@ -97,6 +109,38 @@ export function useItemFormFaviconPreview(input: {
       setIsLoading(false);
       return;
     }
+    if (iconMode === null) {
+      // Mode is unknown: keep the monogram / stored icon and do not call /favicon/preview.
+      setIsLoading(false);
+      return;
+    }
+    const display = resolveWebsiteIconDisplay(iconMode, input.urls);
+    if (display.kind !== "server") {
+      requestSeqRef.current += 1;
+      if (display.kind === "client") {
+        const keepStored =
+          input.skipFetchForUrlsKey != null &&
+          input.skipFetchForUrlsKey === urlsKey &&
+          nameFetchRevision === 0;
+        if (keepStored) {
+          clearPreview();
+        } else {
+          revokeBlobUrl(blobUrlRef.current);
+          blobUrlRef.current = null;
+          previewPngBytesRef.current = null;
+          previewUrlsKeyRef.current = null;
+          setPreviewPngBytes(null);
+          setPreviewUrlsKey(null);
+          setPreviewImageSrc(display.src);
+        }
+      } else {
+        clearPreview();
+      }
+      setIsLoading(false);
+      lastFetchedUrlsKeyRef.current = urlsKey;
+      lastFetchedNameRevisionRef.current = nameFetchRevision;
+      return;
+    }
     if (!urlsKey) {
       requestSeqRef.current += 1;
       clearPreview();
@@ -108,25 +152,34 @@ export function useItemFormFaviconPreview(input: {
     if (
       input.skipFetchForUrlsKey != null &&
       input.skipFetchForUrlsKey === urlsKey &&
-      lastFetchedUrlsKeyRef.current === null
+      lastFetchedUrlsKeyRef.current === null &&
+      nameFetchRevision === 0
     ) {
       // Keep showing the stored attachment; do not hit /favicon/preview on dialog open.
       setIsLoading(false);
       lastFetchedUrlsKeyRef.current = urlsKey;
+      lastFetchedNameRevisionRef.current = nameFetchRevision;
       return;
     }
 
-    // Stable key already handled (skip or completed fetch) — ignore array identity churn.
-    if (lastFetchedUrlsKeyRef.current === urlsKey) {
+    // Stable URL key + name revision already handled — ignore array identity / unrelated typing.
+    if (
+      lastFetchedUrlsKeyRef.current === urlsKey &&
+      lastFetchedNameRevisionRef.current === nameFetchRevision
+    ) {
       setIsLoading(false);
       return;
     }
 
     const seq = ++requestSeqRef.current;
     const urlsSnapshot = [...input.urls];
-    // Drop stale preview immediately so Save cannot attach the previous URL's icon
-    // while the new lookup is in flight.
-    clearPreview();
+    const urlsChanged = lastFetchedUrlsKeyRef.current !== urlsKey;
+    // Drop stale preview when the website URL list changes so Save cannot attach the previous
+    // URL's icon while the new lookup is in flight. Name-only re-fetch keeps the current preview
+    // until the new bytes arrive (avoids flashing a monogram over a still-valid stored icon).
+    if (urlsChanged) {
+      clearPreview();
+    }
     setIsLoading(true);
 
     const controller = new AbortController();
@@ -141,7 +194,23 @@ export function useItemFormFaviconPreview(input: {
           }
 
           if (blob) {
-            const bytes = new Uint8Array(await blob.arrayBuffer());
+            const raw = new Uint8Array(await blob.arrayBuffer());
+            if (seq !== requestSeqRef.current) {
+              return;
+            }
+            let bytes: Uint8Array;
+            try {
+              bytes = await normalizeFaviconImageBytesToPng(raw);
+            } catch (error) {
+              if (!isFaviconImageNormalizeError(error)) {
+                throw error;
+              }
+              // Not a drawable icon (or SVG could not be rasterized). Letter tile.
+              clearPreview();
+              lastFetchedUrlsKeyRef.current = urlsKey;
+              lastFetchedNameRevisionRef.current = nameFetchRevision;
+              return;
+            }
             if (seq !== requestSeqRef.current) {
               return;
             }
@@ -154,18 +223,25 @@ export function useItemFormFaviconPreview(input: {
             setPreviewUrlsKey(urlsKey);
             setPreviewImageSrc(objectUrl);
             lastFetchedUrlsKeyRef.current = urlsKey;
+            lastFetchedNameRevisionRef.current = nameFetchRevision;
           } else {
+            // Positive absent: clear live preview bytes. Saved attachment is preserved on Save
+            // when website URLs are unchanged (see syncItemFaviconForPlaintext).
             clearPreview();
             lastFetchedUrlsKeyRef.current = urlsKey;
+            lastFetchedNameRevisionRef.current = nameFetchRevision;
           }
         } catch {
           if (controller.signal.aborted) {
             return;
           }
-          // Failed lookup for this URL key — never keep a previous URL's bytes.
+          // Failed lookup — do not keep bytes from a previous URL key; name-only failures keep UI.
           if (seq === requestSeqRef.current) {
-            clearPreview();
+            if (urlsChanged) {
+              clearPreview();
+            }
             lastFetchedUrlsKeyRef.current = urlsKey;
+            lastFetchedNameRevisionRef.current = nameFetchRevision;
           }
           /* monogram / category icon fallback in tile */
         } finally {
@@ -180,9 +256,17 @@ export function useItemFormFaviconPreview(input: {
       clearTimeout(timer);
       controller.abort();
     };
-    // Depend on urlsKey (content), not array identity — typing other fields must not re-fetch.
+    // Depend on urlsKey (content) + committed name revision — typing other fields must not re-fetch.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- input.urls covered by urlsKey
-  }, [urlsKey, input.accessToken, input.categoryId, input.disabled, input.skipFetchForUrlsKey]);
+  }, [
+    urlsKey,
+    nameFetchRevision,
+    input.accessToken,
+    input.categoryId,
+    input.disabled,
+    input.skipFetchForUrlsKey,
+    iconMode,
+  ]);
 
   return { previewImageSrc, isLoading, previewPngBytes, previewUrlsKey };
 }

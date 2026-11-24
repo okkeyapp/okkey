@@ -8,8 +8,8 @@ import {
   normalizeCapsuleKeyTransportMode,
 } from "../src/capsule/key-transport-policy.ts";
 
-test("q2-5: capsule guest key claim is OOB fragment, not hybrid KEM", () => {
-  assert.equal(CAPSULE_GUEST_KEY_TRANSPORT_CLAIM, "oob_fragment_not_kem");
+test("capsule guest API mode stays fragment; ephemeral hybrid is inside the link", () => {
+  assert.equal(CAPSULE_GUEST_KEY_TRANSPORT_CLAIM, "ephemeral_recipient_fragment");
   assert.deepEqual(listSafeCapsuleKeyTransportModes(), ["fragment", "out_of_band"]);
   assert.equal(DEFAULT_CAPSULE_KEY_TRANSPORT_MODE, "out_of_band");
 });
@@ -20,7 +20,7 @@ test("normalizeCapsuleKeyTransportMode accepts fragment and out_of_band", () => 
   assert.equal(normalizeCapsuleKeyTransportMode(undefined), "out_of_band");
 });
 
-test("normalizeCapsuleKeyTransportMode rejects hybrid-KEM guest modes", () => {
+test("normalizeCapsuleKeyTransportMode does not activate hybrid guest delivery", () => {
   for (const mode of [
     "hybrid",
     "hybrid_ecc_pq_v1",
@@ -32,7 +32,7 @@ test("normalizeCapsuleKeyTransportMode rejects hybrid-KEM guest modes", () => {
   ]) {
     assert.throws(
       () => normalizeCapsuleKeyTransportMode(mode),
-      /OOB fragment|not hybrid KEM/u,
+      /link fragment/u,
       `expected reject for mode=${mode}`,
     );
   }

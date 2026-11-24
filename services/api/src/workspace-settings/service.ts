@@ -1,7 +1,7 @@
-import type { WorkspacesRepository } from "../storage/repositories.ts";
+import type { VaultsRepository, WorkspacesRepository } from "../storage/repositories.ts";
 import type { QueryExecutor } from "../storage/postgres.ts";
 import type { ApiConfig } from "../config.ts";
-import { workspaceHasPlanFeature } from "../plan-entitlements.ts";
+import { workspacePlanFeatureWriteDecision } from "../plan-entitlements.ts";
 import {
   assertWorkspacePermission,
   resolveWorkspacePermissions,
@@ -15,13 +15,11 @@ import {
   normalizeAllowedFileExtensions,
   workspaceCapsulePoliciesFromDto,
   workspaceCapsulePoliciesToDto,
-  workspaceMonitoringCardSettingsFromDto,
-  workspaceMonitoringCardSettingsToDto,
   type WorkspaceCapsulePolicies,
   type WorkspaceCapsulePoliciesDto,
-  type WorkspaceMonitoringCardSettings,
-  type WorkspaceMonitoringCardSettingsDto,
+  type WorkspaceStorageQuotaStatus,
 } from "@okkey/types";
+import type { WorkspaceStorageQuotaService } from "../storage-quota/service.ts";
 
 export const DEFAULT_DELETED_ITEMS_RETENTION_DAYS = 30;
 export const DEFAULT_WORKSPACE_TILE_COLOR = "#3B82F6";
@@ -36,10 +34,15 @@ export type WorkspaceSettingsSnapshot = {
   maxFileSizeMb: number;
   filesInItemsEnabled: boolean;
   capsulePolicies: WorkspaceCapsulePolicies;
-  monitoringCardSettings: WorkspaceMonitoringCardSettings;
   tileColor: string | null;
   logoVaultId: string | null;
   logoAttachmentId: string | null;
+  logoKeyVersion: number | null;
+  logoUpdatedAt: string | null;
+  clientSettingsKeyVersion: number | null;
+  clientSettingsCiphertext: string | null;
+  /** Present when the API process wires storage quota measurement. */
+  storageQuota?: WorkspaceStorageQuotaStatus;
 };
 
 export type WorkspaceSettingsPatch = {
@@ -49,7 +52,6 @@ export type WorkspaceSettingsPatch = {
   maxFileSizeMb?: number;
   filesInItemsEnabled?: boolean;
   capsulePolicies?: WorkspaceCapsulePolicies;
-  monitoringCardSettings?: WorkspaceMonitoringCardSettings;
   tileColor?: string | null;
   logoVaultId?: string | null;
   logoAttachmentId?: string | null;
@@ -71,25 +73,31 @@ export interface WorkspaceSettingsServiceDeps {
     WorkspacesRepository,
     "findById" | "hasAccess" | "updateGeneralSettings" | "deleteOwnedWorkspace"
   >;
+  vaults: Pick<VaultsRepository, "findById">;
   db: QueryExecutor;
   config: Pick<ApiConfig, "deploymentMode" | "enterpriseModulesEnabled">;
+  storageQuota?: WorkspaceStorageQuotaService;
 }
 
 export class WorkspaceSettingsService {
   private readonly workspaces: WorkspaceSettingsServiceDeps["workspaces"];
+  private readonly vaults: WorkspaceSettingsServiceDeps["vaults"];
   private readonly db: QueryExecutor;
   private readonly config: WorkspaceSettingsServiceDeps["config"];
+  private readonly storageQuota: WorkspaceSettingsServiceDeps["storageQuota"];
 
   constructor(deps: WorkspaceSettingsServiceDeps) {
     this.workspaces = deps.workspaces;
+    this.vaults = deps.vaults;
     this.db = deps.db;
     this.config = deps.config;
+    this.storageQuota = deps.storageQuota;
   }
 
   async getSettings(workspaceId: string, userId: string): Promise<WorkspaceSettingsSnapshot> {
     const workspace = await this.requireAccessibleWorkspace(workspaceId, userId);
     await this.assertAnySettingsGet(workspaceId, userId);
-    return toSettingsSnapshot(workspace);
+    return this.withStorageQuota(workspace, toSettingsSnapshot(workspace));
   }
 
   async updateSettings(
@@ -118,24 +126,32 @@ export class WorkspaceSettingsService {
     }
     if (patch.capsulePolicies !== undefined) {
       const sanitized = sanitizeCapsulePolicies(patch.capsulePolicies);
-      const accessSettingsEnabled = workspaceHasPlanFeature(
+      const decision = workspacePlanFeatureWriteDecision(
         this.config,
         workspace,
         "capsuleAccessSettings",
       );
-      update.capsulePolicies = mergeCapsulePoliciesForPlan(
+      const merged = mergeCapsulePoliciesForPlan(
         workspace.capsulePolicies,
         sanitized,
-        accessSettingsEnabled,
+        decision.allowed,
       );
-    }
-    if (patch.monitoringCardSettings !== undefined) {
-      update.monitoringCardSettings = sanitizeMonitoringCardSettings(patch.monitoringCardSettings);
+      if (
+        !decision.allowed &&
+        decision.code === "PLAN_LICENSE_LAPSED" &&
+        JSON.stringify(merged) !== JSON.stringify(workspace.capsulePolicies)
+      ) {
+        throw new WorkspaceSettingsServiceError(decision.code, decision.status, decision.message);
+      }
+      update.capsulePolicies = merged;
     }
     if (patch.tileColor !== undefined) {
       update.tileColor = patch.tileColor === null ? null : sanitizeTileColor(patch.tileColor);
     }
     if (patch.logoVaultId !== undefined) {
+      if (patch.logoVaultId !== null) {
+        await this.requireWorkspaceLogoVault(workspaceId, patch.logoVaultId);
+      }
       update.logoVaultId = patch.logoVaultId;
     }
     if (patch.logoAttachmentId !== undefined) {
@@ -143,11 +159,11 @@ export class WorkspaceSettingsService {
     }
 
     if (Object.keys(update).length === 0) {
-      return toSettingsSnapshot(workspace);
+      return this.withStorageQuota(workspace, toSettingsSnapshot(workspace));
     }
 
     const updated = await this.workspaces.updateGeneralSettings(workspaceId, update);
-    return toSettingsSnapshot(updated);
+    return this.withStorageQuota(updated, toSettingsSnapshot(updated));
   }
 
   async deleteWorkspace(workspaceId: string, userId: string, confirmationName: string): Promise<void> {
@@ -163,6 +179,19 @@ export class WorkspaceSettingsService {
     if (!deleted) {
       throw new WorkspaceSettingsServiceError("WORKSPACE_NOT_FOUND", 404, "workspace not found");
     }
+  }
+
+  private async withStorageQuota(
+    workspace: { id: string; planTier?: string | null },
+    snapshot: WorkspaceSettingsSnapshot,
+  ): Promise<WorkspaceSettingsSnapshot> {
+    if (!this.storageQuota) {
+      return snapshot;
+    }
+    return {
+      ...snapshot,
+      storageQuota: await this.storageQuota.snapshot(workspace),
+    };
   }
 
   private async assertAnySettingsGet(workspaceId: string, userId: string): Promise<void> {
@@ -237,6 +266,18 @@ export class WorkspaceSettingsService {
     }
     return workspace;
   }
+
+  /** Reject missing / foreign vaults before the `logo_vault_id` FK can surface as a 500. */
+  private async requireWorkspaceLogoVault(workspaceId: string, logoVaultId: string): Promise<void> {
+    const vault = await this.vaults.findById(logoVaultId);
+    if (!vault || vault.workspaceId !== workspaceId) {
+      throw new WorkspaceSettingsServiceError(
+        "LOGO_VAULT_NOT_FOUND",
+        404,
+        "logo vault not found",
+      );
+    }
+  }
 }
 
 function toSettingsSnapshot(workspace: {
@@ -246,10 +287,13 @@ function toSettingsSnapshot(workspace: {
   maxFileSizeMb: number;
   filesInItemsEnabled: boolean;
   capsulePolicies: WorkspaceCapsulePolicies;
-  monitoringCardSettings: WorkspaceMonitoringCardSettings;
   tileColor: string | null;
   logoVaultId: string | null;
   logoAttachmentId: string | null;
+  logoKeyVersion?: number | null;
+  logoUpdatedAt?: string | null;
+  clientSettingsKeyVersion?: number | null;
+  clientSettingsCiphertext?: string | null;
 }): WorkspaceSettingsSnapshot {
   return {
     name: workspace.name,
@@ -258,10 +302,13 @@ function toSettingsSnapshot(workspace: {
     maxFileSizeMb: workspace.maxFileSizeMb,
     filesInItemsEnabled: workspace.filesInItemsEnabled,
     capsulePolicies: workspace.capsulePolicies,
-    monitoringCardSettings: workspace.monitoringCardSettings,
     tileColor: workspace.tileColor,
     logoVaultId: workspace.logoVaultId,
     logoAttachmentId: workspace.logoAttachmentId,
+    logoKeyVersion: workspace.logoKeyVersion ?? null,
+    logoUpdatedAt: workspace.logoUpdatedAt ?? null,
+    clientSettingsKeyVersion: workspace.clientSettingsKeyVersion ?? null,
+    clientSettingsCiphertext: workspace.clientSettingsCiphertext ?? null,
   };
 }
 
@@ -275,8 +322,7 @@ function settingsPatchResourceTouches(patch: WorkspaceSettingsPatch): {
       patch.name !== undefined ||
       patch.tileColor !== undefined ||
       patch.logoVaultId !== undefined ||
-      patch.logoAttachmentId !== undefined ||
-      patch.monitoringCardSettings !== undefined,
+      patch.logoAttachmentId !== undefined,
     settings_items:
       patch.deletedItemsRetentionDays !== undefined ||
       patch.allowedFileExtensions !== undefined ||
@@ -462,26 +508,6 @@ export function parseCapsulePoliciesPayload(
     }
     return null;
   }
-}
-
-export function sanitizeMonitoringCardSettings(
-  value: WorkspaceMonitoringCardSettings,
-): WorkspaceMonitoringCardSettings {
-  return workspaceMonitoringCardSettingsFromDto(workspaceMonitoringCardSettingsToDto(value));
-}
-
-export function parseMonitoringCardSettingsPayload(
-  value: unknown,
-): WorkspaceMonitoringCardSettings | null | undefined {
-  if (value === undefined) {
-    return undefined;
-  }
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
-    return null;
-  }
-  return sanitizeMonitoringCardSettings(
-    workspaceMonitoringCardSettingsFromDto(value as Partial<WorkspaceMonitoringCardSettingsDto>),
-  );
 }
 
 export function parseOptionalStringPayload(value: unknown): string | null | undefined {

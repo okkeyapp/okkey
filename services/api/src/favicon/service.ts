@@ -1,6 +1,8 @@
 import {
+  faviconProviderFetchesOnServer,
   fetchRemoteFaviconBytesFromUrls,
   type FaviconProvider,
+  type FaviconRemoteLookupResult,
 } from "./fetch-remote.ts";
 
 export class ItemFaviconServiceError extends Error {
@@ -15,19 +17,27 @@ export class ItemFaviconServiceError extends Error {
 }
 
 export type ItemFaviconServiceOptions = {
-  /** Default `direct`. Use `google` only as an explicit opt-in. */
+  /** Default `off`. `direct` and `google` fetch on the server; `client` does not. */
   provider?: FaviconProvider;
 };
 
 export class ItemFaviconService {
-  private readonly provider: FaviconProvider;
+  readonly provider: FaviconProvider;
 
   constructor(options: ItemFaviconServiceOptions = {}) {
-    this.provider = options.provider ?? "direct";
+    this.provider = options.provider ?? "off";
   }
 
-  /** Fetch favicon bytes for form preview; does not write to object storage. */
-  async previewFromUrls(urls: readonly string[]): Promise<Uint8Array | null> {
+  /** True when this process may contact a website or Google to resolve an icon. */
+  serverFetchesWebsiteIcons(): boolean {
+    return faviconProviderFetchesOnServer(this.provider);
+  }
+
+  /**
+   * Fetch favicon bytes for form preview; does not write to object storage.
+   * Distinguishes reachable absence from network unavailability.
+   */
+  async previewFromUrls(urls: readonly string[]): Promise<FaviconRemoteLookupResult> {
     return fetchRemoteFaviconBytesFromUrls(urls, { provider: this.provider });
   }
 }

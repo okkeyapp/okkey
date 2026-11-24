@@ -9,13 +9,36 @@ import type {
 export { bytesToBase64, base64ToBytes } from "./base64.js";
 export {
   mapVaultUnlockBootstrapToStored,
+  omitServerKeyShare,
   parseStoredVaultBundle,
   type StoredVaultBundle,
 } from "./vault-bundle.js";
 export {
+  acquireServerKeyShare,
+  beginServerKeyShareFetch,
+  clearRememberedServerKeyShares,
+  commitFetchedServerKeyShare,
+  readRememberedServerKeyShare,
+  rememberServerKeyShare,
+  type AcquiredServerKeyShare,
+  type ServerKeyShareSource,
+} from "./server-key-share-memory.js";
+export {
   unlockWithMasterPassword,
   type UnlockWithMasterPasswordResult,
 } from "./unlock-with-master-password.js";
+export { ensureMlDsaIdentityOnUnlock } from "./mldsa-identity-upgrade.js";
+export {
+  deviceShareB64ForRegister,
+  deviceShareRewriteB64,
+  envelopeB64ForPlaintextShare,
+  mergeDeviceShareFromServer,
+} from "./device-share-wire.js";
+export {
+  clearSplitKeyShareWrapKey,
+  loadSplitKeyShareWrapKey,
+  persistSplitKeyShareWrapKey,
+} from "./split-key-share-wrap-store.js";
 export {
   formatTagSearchQuery,
   itemRecordMatchesTagSearch,
@@ -88,15 +111,24 @@ export {
   CLIPBOARD_CLEAR_OPTIONS_SECONDS,
   DEFAULT_VAULT_DEVICE_PREFS,
   IDLE_LOCK_OPTIONS_SECONDS,
+  LEGACY_LOCK_ON_DEVICE_SLEEP,
+  LOCK_ON_DEVICE_SLEEP_MIGRATION_VERSION,
   SECTION_REAUTH_ZONE_IDS,
+  lockOnSleepMigrationMarkerValue,
+  markLockOnDeviceSleepDefaultForNewInstall,
+  needsFreshLockOnSleepDefaultMark,
   parseVaultDevicePrefs,
   patchVaultDevicePrefsAsync,
   readVaultDevicePrefsAsync,
+  readVaultDevicePrefsMigratingLockOnSleep,
+  resolveVaultDevicePrefsRead,
   serializeVaultDevicePrefs,
   vaultDevicePrefsKey,
+  vaultLockOnSleepMigrationKey,
   writeVaultDevicePrefsAsync,
   type SectionReauthZoneId,
   type VaultDevicePrefs,
+  type VaultDevicePrefsReadPlan,
   type VaultDevicePrefsStorage,
 } from "./vault-device-prefs.js";
 export {

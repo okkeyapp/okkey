@@ -2,9 +2,11 @@ import {
   getPlanQuotaLimits,
   hasPlanFeature,
   planEntitlementOptionsFromWorkspace,
+  planFeatureWriteDecision,
   type PlanEntitlementOptions,
   type PlanFeature,
   type PlanFeatureOverrides,
+  type PlanFeatureWriteDecision,
   type PlanQuotaLimits,
 } from "@okkey/types";
 
@@ -13,7 +15,13 @@ import type { ApiConfig } from "./config.ts";
 export type PlanEntitlementRuntimeConfig = Pick<
   ApiConfig,
   "deploymentMode" | "enterpriseModulesEnabled"
->;
+> & {
+  /**
+   * Self-hosted license lapse. The enterprise feed sets this when the license
+   * is expired and clears it when a later check is accepted. `plan_tier` is not a lapse.
+   */
+  enterpriseLicenseLapsed?: boolean;
+};
 
 export type WorkspacePlanEntitlementSource = {
   planTier?: string | null;
@@ -21,13 +29,17 @@ export type WorkspacePlanEntitlementSource = {
   planFeatureOverrides?: PlanFeatureOverrides | null;
 };
 
-/** Runtime entitlement context from API config (self-host: modules → ENTERPRISE / FREE; SaaS: plan_tier). */
+/** Runtime entitlement context from API config (deployment mode and whether modules loaded). */
 export function planEntitlementRuntimeFromConfig(
   config: PlanEntitlementRuntimeConfig,
-): Pick<PlanEntitlementOptions, "deploymentMode" | "enterpriseModulesActive"> {
+): Pick<
+  PlanEntitlementOptions,
+  "deploymentMode" | "enterpriseModulesActive" | "enterpriseLicenseLapsed"
+> {
   return {
     deploymentMode: config.deploymentMode,
     enterpriseModulesActive: config.enterpriseModulesEnabled,
+    ...(config.enterpriseLicenseLapsed === true ? { enterpriseLicenseLapsed: true } : {}),
   };
 }
 
@@ -41,7 +53,25 @@ export function workspacePlanEntitlementOptions(
   };
 }
 
-/** Feature gate: self-host modules on → ENTERPRISE; modules off → FREE; SaaS → `plan_tier`. */
+/** Runtime options for one workspace, including deployment mode and loaded modules. */
+export function workspacePlanFeatureWriteDecision(
+  config: PlanEntitlementRuntimeConfig,
+  workspace: WorkspacePlanEntitlementSource,
+  feature: PlanFeature,
+): PlanFeatureWriteDecision {
+  return planFeatureWriteDecision(
+    workspace.planTier,
+    feature,
+    workspacePlanEntitlementOptions(config, workspace),
+  );
+}
+
+/**
+ * Feature gate for create and update.
+ * Self-hosted modules on → ENTERPRISE for every stored `plan_tier`.
+ * Self-hosted modules off → FREE for every stored `plan_tier`.
+ * SaaS → `plan_tier`. A lapsed license is a separate signal and is not read from `plan_tier`.
+ */
 export function workspaceHasPlanFeature(
   config: PlanEntitlementRuntimeConfig,
   workspace: WorkspacePlanEntitlementSource,

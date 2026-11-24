@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type FormEvent, type SVGProps } f
 import { useNavigate } from "react-router-dom";
 import {
   buildRegistrationCryptoArtifacts,
+  deriveLoginKey,
   generateRecoverySecret,
   initCrypto,
   registrationArtifactsToWire,
@@ -9,7 +10,12 @@ import {
   recoveryPossessionPublicKey,
   wrapVaultKeyWithRecoverySecret,
 } from "@okkey/crypto";
-import type { RegisterCompleteRequestDto } from "@okkey/types";
+import {
+  MASTER_PASSWORD_POLICY_VERSION,
+  MIN_MASTER_PASSWORD_LENGTH,
+  masterPasswordMeetsNewPasswordPolicy,
+  type RegisterCompleteRequestDto,
+} from "@okkey/types";
 import {
   Alert,
   AlertDescription,
@@ -22,6 +28,7 @@ import {
 } from "@okkey/ui";
 import { Check, Copy, Download } from "lucide-react";
 import { toast } from "sonner";
+import { clearSplitKeyShareWrapKey, persistSplitKeyShareWrapKey } from "@okkey/vault";
 
 import AppShellLayout from "../../components/app-shell/AppShellLayout";
 import OkkeyLogoMark from "../../components/app-shell/OkkeyLogoMark";
@@ -45,7 +52,6 @@ import {
   type RegistrationStep,
 } from "./registrationRecoveryStep";
 
-const MIN_MASTER_PASSWORD_LENGTH = 4;
 /** Match KeyField copy-success feedback duration. */
 const RECOVERY_COPY_SUCCESS_MS = 3000;
 
@@ -141,7 +147,7 @@ export default function AuthRegistrationPage() {
       masterPassword.length > 0 &&
       repeatMasterPassword.length > 0;
 
-    const passwordLongEnough = masterPassword.length >= MIN_MASTER_PASSWORD_LENGTH;
+    const passwordLongEnough = masterPasswordMeetsNewPasswordPolicy(masterPassword);
 
     const passwordsMatch = repeatMasterPassword.length > 0 && masterPassword === repeatMasterPassword;
 
@@ -167,14 +173,28 @@ export default function AuthRegistrationPage() {
 
       saveVaultBundle({
         server_key_share_b64: wire.server_key_share,
-        device_share_b64: bytesToBase64(material.deviceShare),
+        device_share_b64: bytesToBase64(material.wrappedDeviceShare),
         password_kdf_salt_b64: wire.password_kdf_salt,
         password_kdf_params_version: wire.password_kdf_params_version,
         encrypted_private_key: wire.encrypted_private_key,
       });
+      await persistSplitKeyShareWrapKey("pending", material.shareWrap);
 
       // Non-extractable Ed25519 key in IndexedDB — keep seed across reload/re-login.
       const devicePublicKeyB64 = await ensureDeviceSigningPublicKey();
+
+      let loginKeyB64: string | undefined;
+      if (email.trim()) {
+        const loginKey = await deriveLoginKey({
+          masterPasswordUtf8: pwd,
+          email,
+        });
+        try {
+          loginKeyB64 = bytesToBase64(loginKey);
+        } finally {
+          wipeBytes(loginKey);
+        }
+      }
 
       const personalWorkspaceName = t("auth.registration.personalWorkspaceName");
       const personalVaultName = t("web.workspaceSettings.vaults.personal.title");
@@ -184,18 +204,21 @@ export default function AuthRegistrationPage() {
         auth_state_id: registrationAuthStateId,
         user_public_key: wire.user_public_key,
         user_public_pq_key: wire.user_public_pq_key,
+        user_public_mldsa_key: wire.user_public_mldsa_key,
         encrypted_private_key: wire.encrypted_private_key,
         server_key_share: wire.server_key_share,
         password_kdf_salt: wire.password_kdf_salt,
         password_kdf_params_version: wire.password_kdf_params_version,
+        master_password_policy_version: MASTER_PASSWORD_POLICY_VERSION,
         device_public_key: devicePublicKeyB64,
-        device_share: bytesToBase64(material.deviceShare),
+        device_share: bytesToBase64(material.wrappedDeviceShare),
         device_fingerprint: getOrCreateDeviceFingerprint(),
         device_name: browserEnv.deviceName,
         personal_workspace_name: personalWorkspaceName,
         personal_vault_name: personalVaultName,
         first_name: trimmedFirst,
         last_name: trimmedLast,
+        ...(loginKeyB64 ? { login_key: loginKeyB64 } : {}),
         platform: browserEnv.platform,
         os_name: browserEnv.osName,
         os_version: browserEnv.osVersion,
@@ -216,6 +239,8 @@ export default function AuthRegistrationPage() {
       setStep("enrolling");
       setPostRegAccessToken(reg.access_token);
       finalizePendingVaultBundle(reg.user_id);
+      await persistSplitKeyShareWrapKey(reg.user_id, material.shareWrap);
+      await clearSplitKeyShareWrapKey("pending");
       clearEmailLoginFlow();
 
       updateLocalProfile({
@@ -236,6 +261,8 @@ export default function AuthRegistrationPage() {
       wipeBytes(pwd);
       wipeBytes(material.serverKeyShare);
       wipeBytes(material.deviceShare);
+      wipeBytes(material.shareWrap.ed25519Seed);
+      wipeBytes(material.shareWrap.mlkemDecapsulationKey);
 
       try {
         const secret = await enrollAccountRecoveryKey(material.vaultKey, reg.access_token);

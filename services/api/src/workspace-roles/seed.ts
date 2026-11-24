@@ -3,6 +3,7 @@ import type { QueryExecutor } from "../storage/postgres.ts";
 
 const PERMISSION_RESOURCES = [
   "settings",
+  "settings_mail",
   "settings_items",
   "settings_capsules",
   "roles",
@@ -36,6 +37,7 @@ function buildPermissionsMatrix(value: 0 | 1): Record<(typeof PERMISSION_RESOURC
     settings: { ...cell },
     settings_items: { ...settingsNested },
     settings_capsules: { ...settingsNested },
+    settings_mail: { ...settingsNested },
     roles: { ...cell },
     profiles: { ...cell },
     members: { ...cell },

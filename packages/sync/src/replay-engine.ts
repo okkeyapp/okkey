@@ -17,6 +17,7 @@ type CoreEventType =
   | "DEVICE_ADD"
   | "DEVICE_REMOVE";
 
+/** Plaintext item schema versions. Not the crypto profile (vault items require qday v2). */
 const SUPPORTED_ITEM_SCHEMAS = new Set<number>([
   ITEM_PLAINTEXT_SCHEMA_VERSION,
   ITEM_PLAINTEXT_SCHEMA_VERSION_LATEST,

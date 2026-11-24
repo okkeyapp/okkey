@@ -2,6 +2,7 @@ import type { ApiConfig } from "../config.ts";
 import type { GeoIpLookup } from "../capsule/geoip.ts";
 import type { EmailTemplateService } from "../email/service.ts";
 import { buildEmailAppPathUrl } from "../email/service.ts";
+import { resolveLinkBaseUrl, type PublicAppUrlResolver } from "../mail-settings/public-url.ts";
 import type { Logger } from "../logger.ts";
 import type { UserRecord, UsersRepository } from "../storage/repositories.ts";
 import { UniqueConstraintError } from "../storage/errors.ts";
@@ -10,8 +11,18 @@ import type {
   DeviceRecord,
   DevicesRepository,
 } from "../storage/repositories.ts";
-import { TrustedDeviceKeyConflictError } from "../storage/repositories.ts";
-import { assertOpaqueSplitKeyShare } from "../registration/split-key-transport-policy.ts";
+import {
+  PendingDeviceLimitError,
+  TrustedDeviceKeyConflictError,
+} from "../storage/repositories.ts";
+import { splitKeyShareBWrapPublicKeys } from "@okkey/crypto";
+import { assertSplitKeyShareB } from "../registration/split-key-transport-policy.ts";
+import {
+  APPROVAL_SHARE_MUST_BE_NEW,
+  APPROVAL_SHARE_WRONG_RECIPIENT,
+  approvalShareRejection,
+  matchesStoredShare,
+} from "./approval-share.ts";
 import {
   DEVICE_BIND_CHALLENGE_TTL_SECONDS,
   deviceBindChallengeKey,
@@ -21,6 +32,10 @@ import {
   verifyDeviceBindSignature,
   type DeviceBindChallengeStore,
 } from "./bind-proof.ts";
+import type {
+  ApprovalStatusDevice,
+  DeviceApprovalStatusService,
+} from "./approval-status.ts";
 
 export class DeviceServiceError extends Error {
   readonly code: string;
@@ -55,16 +70,33 @@ export interface DeviceServiceDeps {
     | "unblockDevice"
     | "clearExpiredBlocks"
     | "findOwnedDeviceAuth"
+    | "listDeviceShares"
     | "updateActiveDeviceMetadata"
     | "rotateActiveDevicePublicKey"
     | "requestKeyRebind"
-  >;
+  > &
+    Partial<
+      Pick<
+        DevicesRepository,
+        | "savePendingOneTimeKeys"
+        | "listPendingOneTimeKeys"
+        | "storeShareDelivery"
+        | "deleteExpiredShareDeliveries"
+        | "clearShareDelivery"
+        | "readShareDelivery"
+        | "confirmShareDelivery"
+      >
+    >;
   config: Pick<ApiConfig, "deviceApprovalTtlSeconds" | "publicAppBaseUrl">;
+  /** Effective public origin at send time (database, otherwise env). */
+  resolvePublicAppBaseUrl?: PublicAppUrlResolver;
   users?: Pick<UsersRepository, "findById">;
   emailTemplates?: Pick<EmailTemplateService, "sendDeviceApprovalRequest">;
   geoIp?: Pick<GeoIpLookup, "lookup">;
   log?: Pick<Logger, "warn">;
   now?: () => Date;
+  /** Issues the narrow approval-status credential when a device stays pending. */
+  approvalStatus?: Pick<DeviceApprovalStatusService, "issue">;
   bindChallenges?: DeviceBindChallengeStore;
   verifyDeviceSignature?: (publicKeyB64: string, message: Uint8Array, signatureB64: string) => boolean;
 }
@@ -86,16 +118,38 @@ export interface RegisterDeviceInput {
   acceptLanguage?: string;
   /** Rebind sole trusted device instead of creating pending (local vault reclaim). */
   reclaimSoleTrusted?: boolean;
+  /** Trusted device id the caller says it is rebinding. Required when reclaiming. */
+  previousDeviceId?: string | null;
+  /** Stored fingerprint the caller says belongs to that device. Required when reclaiming. */
+  previousDeviceFingerprint?: string | null;
+  /** Device id on the caller's session. Required when reclaiming. */
+  sessionDeviceId?: string | null;
   /**
    * After account recovery on a fresh browser: become the sole trusted device
    * with a newly minted device_share (B), revoking other trusted devices.
    */
   claimAfterRecovery?: boolean;
   /**
+   * Device bound to this session when it proved the recovery key.
+   * Required when `claimAfterRecovery` is set. The claim fingerprint and
+   * public key must match this device.
+   */
+  provedDeviceId?: string;
+  /**
    * Unbound recovery session: add a pending device for a new public key when
    * this fingerprint is already trusted. Does not replace the trusted keys.
+   * A previous pending row for the same fingerprint is replaced.
    */
   recoveryPending?: boolean;
+  /**
+   * Caller access-token hash. Kept when a pending row for this fingerprint is
+   * replaced so the route can bind the session to the new row.
+   */
+  preserveSessionTokenHash?: string;
+  /** Base64 X25519 public key for this approval only. Both one-time keys are required together. */
+  oneTimeX25519PublicKey?: string;
+  /** Base64 ML-KEM-768 encapsulation key for this approval only. */
+  oneTimeMlkemPublicKey?: string;
 }
 
 export interface RegisterDeviceResult {
@@ -104,14 +158,17 @@ export interface RegisterDeviceResult {
   blockedUntil?: string | null;
   /** True only when this call inserted the device row. Existing devices need a signed bind. */
   created: boolean;
+  /** Raw credential returned once. Only its hash is stored. Absent when the device is not pending. */
+  approvalStatusToken?: string;
+  approvalStatusExpiresAt?: string;
 }
 
 export interface ResolveDeviceApprovalResult {
   deviceId: string;
-  status: "trusted" | "revoked";
+  status: "trusted" | "revoked" | "pending_approval";
 }
 
-export type DeviceBlockDuration = "1h" | "1d" | "1w" | "forever";
+export type DeviceBlockDuration = "1h" | "1d" | "forever";
 
 export interface BlockDeviceResult {
   deviceId: string;
@@ -144,6 +201,13 @@ export interface DeviceListItem {
   isCurrent: boolean;
   approvalExpiresAt: string | null;
   blockedUntil: string | null;
+  /** Base64. Present only while this pending device is waiting on a one-time delivery key. */
+  oneTimeX25519PublicKey?: string | null;
+  oneTimeMlkemPublicKey?: string | null;
+  /** Base64 Ed25519 public key of the share-B device wrap, when the row is framed. */
+  shareWrapEd25519PublicKey: string | null;
+  /** Base64 ML-KEM-768 encapsulation key of the share-B device wrap, when the row is framed. */
+  shareWrapPqPublicKey: string | null;
 }
 
 export interface DeviceListResult {
@@ -160,11 +224,13 @@ export interface RenameDeviceResult {
 export class DeviceService {
   private readonly devices: DeviceServiceDeps["devices"];
   private readonly config: DeviceServiceDeps["config"];
+  private readonly resolvePublicAppBaseUrl?: PublicAppUrlResolver;
   private readonly users?: Pick<UsersRepository, "findById">;
   private readonly emailTemplates?: Pick<EmailTemplateService, "sendDeviceApprovalRequest">;
   private readonly geoIp?: Pick<GeoIpLookup, "lookup">;
   private readonly log?: Pick<Logger, "warn">;
   private readonly now: () => Date;
+  private readonly approvalStatus?: Pick<DeviceApprovalStatusService, "issue">;
   private readonly bindChallenges: DeviceBindChallengeStore;
   private readonly verifyDeviceSignature: (
     publicKeyB64: string,
@@ -175,11 +241,13 @@ export class DeviceService {
   constructor(deps: DeviceServiceDeps) {
     this.devices = deps.devices;
     this.config = deps.config;
+    this.resolvePublicAppBaseUrl = deps.resolvePublicAppBaseUrl;
     this.users = deps.users;
     this.emailTemplates = deps.emailTemplates;
     this.geoIp = deps.geoIp;
     this.log = deps.log;
     this.now = deps.now ?? (() => new Date());
+    this.approvalStatus = deps.approvalStatus;
     this.bindChallenges =
       deps.bindChallenges ?? new MemoryDeviceBindChallengeStore(() => this.now().getTime());
     this.verifyDeviceSignature = deps.verifyDeviceSignature ?? verifyDeviceBindSignature;
@@ -210,8 +278,7 @@ export class DeviceService {
 
     const deviceShareBytes = Uint8Array.from(Buffer.from(input.deviceShare, "base64"));
     try {
-      // q2-6: share B is opaque 32-byte local material — reject hybrid envelopes.
-      assertOpaqueSplitKeyShare(deviceShareBytes, "device_share");
+      assertSplitKeyShareB(deviceShareBytes);
     } catch (error: unknown) {
       throw new DeviceServiceError(
         "DEVICE_BAD_REQUEST",
@@ -222,11 +289,15 @@ export class DeviceService {
 
     try {
       if (input.claimAfterRecovery) {
+        const provedDevice = await this.requireProvedRecoveryDevice(userId, input);
+        // Fingerprint and public key come from the device that proved recovery.
+        // device_share stays the request value: web restore mints share B after
+        // the pending registration and sends that share on this claim.
         const claimed = await this.devices.claimTrustedAfterRecovery({
           userId,
-          deviceFingerprint: input.deviceFingerprint.trim().toLowerCase(),
+          deviceFingerprint: provedDevice.deviceFingerprint,
           deviceName: cleanString(input.deviceName, "Unknown device"),
-          devicePublicKey: input.devicePublicKey.trim(),
+          devicePublicKey: provedDevice.devicePublicKey,
           deviceShare: deviceShareBytes,
           platform: cleanString(input.platform, "unknown"),
           osName: cleanString(input.osName, "unknown"),
@@ -258,14 +329,22 @@ export class DeviceService {
           userAgent: cleanString(input.userAgent, "unknown"),
           requestIp: cleanString(requestIp, "unknown"),
           now: this.now().toISOString(),
+          previousDeviceId: input.previousDeviceId?.trim() ?? "",
+          previousDeviceFingerprint: input.previousDeviceFingerprint?.trim().toLowerCase() ?? "",
+          sessionDeviceId: input.sessionDeviceId?.trim() ?? "",
         });
-        if (reclaimed) {
-          return {
-            deviceId: reclaimed.id,
-            status: "trusted",
-            created: true,
-          };
+        if (!reclaimed) {
+          throw new DeviceServiceError(
+            "DEVICE_RECLAIM_PRECONDITION_FAILED",
+            403,
+            "sole trusted device reclaim preconditions were not met",
+          );
         }
+        return {
+          deviceId: reclaimed.id,
+          status: "trusted",
+          created: true,
+        };
       }
 
       const record = await this.devices.registerOrUpdate({
@@ -283,6 +362,7 @@ export class DeviceService {
         requestIp: cleanString(requestIp, "unknown"),
         now: this.now().toISOString(),
         allowPendingAlongsideTrusted: input.recoveryPending === true,
+        preserveSessionTokenHash: input.preserveSessionTokenHash,
       });
 
       if (record.status === "blocked") {
@@ -299,6 +379,20 @@ export class DeviceService {
         status: record.status === "trusted" ? "trusted" : "pending_approval",
         created: record.created === true,
       };
+
+      if (result.status === "pending_approval") {
+        await this.saveOneTimeKeysIfPresent(userId, result.deviceId, input);
+      }
+
+      if (result.status === "pending_approval" && this.approvalStatus) {
+        const issued = await this.approvalStatus.issue({
+          userId,
+          deviceId: result.deviceId,
+          requestCreatedAt: record.createdAt,
+        });
+        result.approvalStatusToken = issued.token;
+        result.approvalStatusExpiresAt = issued.expiresAt;
+      }
 
       if (result.status === "pending_approval" && record.sendApprovalEmail !== false) {
         try {
@@ -319,6 +413,14 @@ export class DeviceService {
           "trusted device keys cannot be replaced",
         );
       }
+      if (error instanceof PendingDeviceLimitError) {
+        throw new DeviceServiceError(
+          "DEVICE_PENDING_LIMIT",
+          409,
+          "pending device limit reached",
+          { limit: error.limit },
+        );
+      }
       if (error instanceof UniqueConstraintError) {
         throw new DeviceServiceError(
           "DEVICE_DUPLICATE_CONFLICT",
@@ -336,11 +438,22 @@ export class DeviceService {
   ): Promise<DeviceListResult> {
     const nowIso = this.now().toISOString();
     await this.devices.clearExpiredBlocks(userId, nowIso);
+    await this.devices.deleteExpiredShareDeliveries?.(userId, nowIso);
     const records = await this.devices.listByUser(userId, ["trusted", "pending", "blocked"]);
     const normalizedFingerprint = normalizeFingerprint(currentFingerprint);
     const items = await Promise.all(
       records.map((record) => this.toListItem(record, normalizedFingerprint)),
     );
+    const oneTimeKeys = (await this.devices.listPendingOneTimeKeys?.(userId)) ?? [];
+    const oneTimeByDevice = new Map(oneTimeKeys.map((row) => [row.deviceId, row]));
+    for (const item of items) {
+      const keys = oneTimeByDevice.get(item.deviceId);
+      if (!keys || item.status !== "pending_approval") {
+        continue;
+      }
+      item.oneTimeX25519PublicKey = Buffer.from(keys.x25519PublicKey).toString("base64");
+      item.oneTimeMlkemPublicKey = Buffer.from(keys.mlkemPublicKey).toString("base64");
+    }
 
     return {
       devices: items.filter((item) => item.status === "trusted"),
@@ -395,6 +508,28 @@ export class DeviceService {
     };
   }
 
+  /** Best-effort notice when a rejected device asks for approval again. */
+  async notifyReopenedApproval(device: ApprovalStatusDevice, requestIp: string): Promise<void> {
+    try {
+      await this.notifyDeviceApprovalEmail(device.userId, requestIp, {
+        deviceFingerprint: device.deviceFingerprint,
+        devicePublicKey: "approval-retry",
+        deviceShare: "approval-retry",
+        deviceName: device.deviceName,
+        platform: device.platform,
+        osName: device.osName,
+        osVersion: device.osVersion,
+        appVersion: device.appVersion,
+        clientType: device.clientType,
+        userAgent: device.userAgent,
+      });
+    } catch (error: unknown) {
+      this.log?.warn("[device] approval retry email failed", {
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
   private async notifyDeviceApprovalEmail(
     userId: string,
     requestIp: string,
@@ -447,7 +582,7 @@ export class DeviceService {
         country,
         city,
         helpUrl: buildEmailAppPathUrl(
-          this.config.publicAppBaseUrl,
+          await resolveLinkBaseUrl(this.config.publicAppBaseUrl, this.resolvePublicAppBaseUrl),
           "/items?popup=settings|devices",
         ),
         requestedAtIso: requestedAt.toISOString(),
@@ -524,13 +659,102 @@ export class DeviceService {
     userId: string,
     approverDeviceId: string,
     pendingDeviceId: string,
+    shareDelivery?: Uint8Array,
+    deviceShare?: Uint8Array,
   ): Promise<ResolveDeviceApprovalResult> {
-    return this.resolveDeviceApproval({
+    if (shareDelivery && shareDelivery.length > 0) {
+      if (await this.shareMatchesStoredDeviceShare(userId, shareDelivery)) {
+        throw new DeviceServiceError("DEVICE_BAD_REQUEST", 400, APPROVAL_SHARE_MUST_BE_NEW);
+      }
+      return this.approveWithShareDelivery(userId, approverDeviceId, pendingDeviceId, shareDelivery);
+    }
+    if (!deviceShare || deviceShare.length === 0) {
+      throw new DeviceServiceError("DEVICE_BAD_REQUEST", 400, "device_share is required");
+    }
+    try {
+      assertSplitKeyShareB(deviceShare);
+    } catch (error: unknown) {
+      throw new DeviceServiceError(
+        "DEVICE_BAD_REQUEST",
+        400,
+        error instanceof Error ? error.message : "invalid device_share",
+      );
+    }
+    await this.assertApprovalShareForPending(userId, pendingDeviceId, deviceShare);
+    const approved = await this.resolveDeviceApproval({
       userId,
       approverDeviceId,
       pendingDeviceId,
       action: "approve",
+      deviceShare,
     });
+    if (approved.status === "trusted") {
+      await this.devices.clearShareDelivery?.(userId, pendingDeviceId);
+    }
+    return approved;
+  }
+
+  async readShareDelivery(
+    userId: string,
+    deviceId: string,
+  ): Promise<{ envelope: Uint8Array; expiresAt: string }> {
+    const nowIso = this.now().toISOString();
+    await this.devices.deleteExpiredShareDeliveries?.(userId, nowIso);
+    const row = await this.devices.readShareDelivery?.({
+      userId,
+      deviceId,
+      now: nowIso,
+    });
+    if (!row) {
+      throw new DeviceServiceError(
+        "DEVICE_SHARE_DELIVERY_NOT_FOUND",
+        404,
+        "share delivery envelope is not available",
+      );
+    }
+    return row;
+  }
+
+  async confirmShareDelivery(
+    userId: string,
+    deviceId: string,
+    deviceShareB64: string,
+  ): Promise<ResolveDeviceApprovalResult> {
+    if (!isValidBase64(deviceShareB64)) {
+      throw new DeviceServiceError("DEVICE_BAD_REQUEST", 400, "invalid device_share");
+    }
+    const deviceShare = Uint8Array.from(Buffer.from(deviceShareB64, "base64"));
+    try {
+      assertSplitKeyShareB(deviceShare);
+    } catch (error: unknown) {
+      throw new DeviceServiceError(
+        "DEVICE_BAD_REQUEST",
+        400,
+        error instanceof Error ? error.message : "invalid device_share",
+      );
+    }
+    const nowIso = this.now().toISOString();
+    const result = await this.devices.confirmShareDelivery?.({
+      userId,
+      deviceId,
+      deviceShare,
+      now: nowIso,
+    });
+    if (result === "confirmed") {
+      return { deviceId, status: "trusted" };
+    }
+    if (result === "expired") {
+      throw new DeviceServiceError(
+        "DEVICE_SHARE_DELIVERY_EXPIRED",
+        410,
+        "share delivery envelope expired",
+      );
+    }
+    throw new DeviceServiceError(
+      "DEVICE_SHARE_DELIVERY_NOT_FOUND",
+      404,
+      "share delivery envelope is not available",
+    );
   }
 
   async rejectDevice(
@@ -548,12 +772,158 @@ export class DeviceService {
     });
   }
 
+  private async saveOneTimeKeysIfPresent(
+    userId: string,
+    deviceId: string,
+    input: RegisterDeviceInput,
+  ): Promise<void> {
+    const x25519 = input.oneTimeX25519PublicKey?.trim() ?? "";
+    const mlkem = input.oneTimeMlkemPublicKey?.trim() ?? "";
+    if (!x25519 && !mlkem) {
+      return;
+    }
+    if (!x25519 || !mlkem || !isValidBase64(x25519) || !isValidBase64(mlkem)) {
+      throw new DeviceServiceError(
+        "DEVICE_BAD_REQUEST",
+        400,
+        "one-time delivery key must include both X25519 and ML-KEM public keys",
+      );
+    }
+    const x25519Bytes = Uint8Array.from(Buffer.from(x25519, "base64"));
+    const mlkemBytes = Uint8Array.from(Buffer.from(mlkem, "base64"));
+    if (x25519Bytes.length !== 32 || mlkemBytes.length !== 1184) {
+      throw new DeviceServiceError(
+        "DEVICE_BAD_REQUEST",
+        400,
+        "one-time delivery key has an unexpected length",
+      );
+    }
+    const saved = await this.devices.savePendingOneTimeKeys?.({
+      userId,
+      deviceId,
+      x25519PublicKey: x25519Bytes,
+      mlkemPublicKey: mlkemBytes,
+    });
+    if (saved !== true) {
+      throw new DeviceServiceError(
+        "DEVICE_BAD_REQUEST",
+        400,
+        "one-time delivery key was not stored",
+      );
+    }
+  }
+
+  private async shareMatchesStoredDeviceShare(
+    userId: string,
+    envelope: Uint8Array,
+  ): Promise<boolean> {
+    const stored = await this.devices.listDeviceShares(userId);
+    return matchesStoredShare(envelope, stored);
+  }
+
+  private async assertApprovalShareForPending(
+    userId: string,
+    pendingDeviceId: string,
+    deviceShare: Uint8Array,
+  ): Promise<void> {
+    const pending = await this.devices.findOwnedDeviceAuth(userId, pendingDeviceId);
+    if (!pending) {
+      return;
+    }
+    const stored = await this.devices.listDeviceShares(userId);
+    const problem = approvalShareRejection(deviceShare, pending.deviceShare, stored);
+    if (problem === "reused") {
+      throw new DeviceServiceError("DEVICE_BAD_REQUEST", 400, APPROVAL_SHARE_MUST_BE_NEW);
+    }
+    if (problem === "recipient") {
+      throw new DeviceServiceError("DEVICE_BAD_REQUEST", 400, APPROVAL_SHARE_WRONG_RECIPIENT);
+    }
+  }
+
+  private assertShareDeliveryEnvelope(envelope: Uint8Array): void {
+    // hybrid_envelope_v1 fixed header (1148) plus the AEAD tag (16).
+    const minimum = 1148 + 16;
+    if (
+      envelope.length < minimum ||
+      envelope[0] !== 1 ||
+      envelope[1] !== 1 ||
+      envelope[2] !== 1
+    ) {
+      throw new DeviceServiceError(
+        "DEVICE_SHARE_DELIVERY_INVALID",
+        400,
+        "share delivery envelope is not a hybrid envelope",
+      );
+    }
+  }
+
+  private async approveWithShareDelivery(
+    userId: string,
+    approverDeviceId: string,
+    pendingDeviceId: string,
+    envelope: Uint8Array,
+  ): Promise<ResolveDeviceApprovalResult> {
+    this.assertShareDeliveryEnvelope(envelope);
+    const trustedApprover = await this.devices.isTrustedDevice(userId, approverDeviceId);
+    if (!trustedApprover) {
+      throw new DeviceServiceError(
+        "DEVICE_APPROVAL_ACCESS_DENIED",
+        403,
+        "trusted approver device required",
+      );
+    }
+    if (!this.devices.storeShareDelivery) {
+      throw new DeviceServiceError("INTERNAL_SERVER_ERROR", 500, "share delivery storage is unavailable");
+    }
+    const now = this.now();
+    const ttlMs = this.config.deviceApprovalTtlSeconds * 1000;
+    const stored = await this.devices.storeShareDelivery({
+      userId,
+      deviceId: pendingDeviceId,
+      approverUserId: userId,
+      envelope,
+      now: now.toISOString(),
+      pendingCreatedBefore: new Date(now.getTime() - ttlMs).toISOString(),
+      expiresAt: new Date(now.getTime() + ttlMs).toISOString(),
+    });
+    if (stored.kind === "stored") {
+      return { deviceId: pendingDeviceId, status: "pending_approval" };
+    }
+    if (stored.kind === "expired") {
+      throw new DeviceServiceError(
+        "DEVICE_APPROVAL_EXPIRED",
+        410,
+        "device approval challenge expired",
+      );
+    }
+    if (stored.kind === "not_pending") {
+      throw new DeviceServiceError(
+        "DEVICE_APPROVAL_ALREADY_RESOLVED",
+        409,
+        "device approval already resolved",
+      );
+    }
+    if (stored.kind === "missing_one_time_key") {
+      throw new DeviceServiceError(
+        "DEVICE_SHARE_DELIVERY_INVALID",
+        400,
+        "pending device has no one-time delivery key",
+      );
+    }
+    throw new DeviceServiceError(
+      "DEVICE_APPROVAL_NOT_FOUND",
+      404,
+      "pending device approval not found",
+    );
+  }
+
   private async resolveDeviceApproval(input: {
     userId: string;
     approverDeviceId: string;
     pendingDeviceId: string;
     action: "approve" | "reject";
     reason?: string;
+    deviceShare?: Uint8Array;
   }): Promise<ResolveDeviceApprovalResult> {
     const trustedApprover = await this.devices.isTrustedDevice(
       input.userId,
@@ -580,6 +950,7 @@ export class DeviceService {
       expiresAt,
       approvedBy: input.userId,
       approverDeviceId: input.approverDeviceId,
+      deviceShare: input.deviceShare,
       rejectReason: input.reason ? cleanString(input.reason, "rejected by user") : undefined,
     });
 
@@ -614,6 +985,10 @@ export class DeviceService {
       );
     }
 
+    if (result.kind === "share_required") {
+      throw new DeviceServiceError("DEVICE_BAD_REQUEST", 400, "device_share is required");
+    }
+
     if (!result.device) {
       throw new DeviceServiceError(
         "DEVICE_APPROVAL_NOT_FOUND",
@@ -623,10 +998,11 @@ export class DeviceService {
     }
 
     if (action === "approve" && result.kind === "already_trusted") {
-      return {
-        deviceId: result.device.id,
-        status: "trusted",
-      };
+      throw new DeviceServiceError(
+        "DEVICE_APPROVAL_ALREADY_RESOLVED",
+        409,
+        "device approval already resolved",
+      );
     }
     if (action === "reject" && result.kind === "already_revoked") {
       return {
@@ -670,6 +1046,9 @@ export class DeviceService {
 
     const isPending = record.status === "pending";
     const isBlocked = record.status === "blocked";
+    const wrapPublic = record.deviceShare
+      ? splitKeyShareBWrapPublicKeys(record.deviceShare)
+      : null;
     return {
       deviceId: record.id,
       deviceName: record.deviceName,
@@ -698,6 +1077,12 @@ export class DeviceService {
           ).toISOString()
         : null,
       blockedUntil: isBlocked ? record.blockedUntil : null,
+      shareWrapEd25519PublicKey: wrapPublic
+        ? Buffer.from(wrapPublic.ed25519PublicKey).toString("base64")
+        : null,
+      shareWrapPqPublicKey: wrapPublic
+        ? Buffer.from(wrapPublic.mlkemEncapsulationKey).toString("base64")
+        : null,
     };
   }
 
@@ -796,7 +1181,10 @@ export class DeviceService {
         "challenge_id and a device proof are required",
       );
     }
-    if (!verifyDeviceBindShareProof(device.deviceShare, message, shareProof)) {
+    if (
+      !device.deviceShare ||
+      !verifyDeviceBindShareProof(device.deviceShare, message, shareProof)
+    ) {
       throw new DeviceServiceError(
         "DEVICE_BIND_PROOF_INVALID",
         403,
@@ -942,7 +1330,7 @@ export class DeviceService {
     }
     const deviceShareBytes = Uint8Array.from(Buffer.from(input.deviceShare, "base64"));
     try {
-      assertOpaqueSplitKeyShare(deviceShareBytes, "device_share");
+      assertSplitKeyShareB(deviceShareBytes);
     } catch (error: unknown) {
       throw new DeviceServiceError(
         "DEVICE_BAD_REQUEST",
@@ -995,6 +1383,50 @@ export class DeviceService {
     };
   }
 
+  /**
+   * The session device that passed `POST /account/recovery/key/prove`.
+   * Register does not move a session that is already bound, so this row is
+   * the device the possession signature was checked against.
+   * Pending when another trusted device exists; trusted when recovery
+   * registration was the account's only device.
+   */
+  private async requireProvedRecoveryDevice(
+    userId: string,
+    input: RegisterDeviceInput,
+  ): Promise<{ deviceFingerprint: string; devicePublicKey: string }> {
+    const deviceId = input.provedDeviceId?.trim() ?? "";
+    if (!deviceId || typeof this.devices.findOwnedDeviceAuth !== "function") {
+      throw new DeviceServiceError(
+        "RECOVERY_CLAIM_REQUIRES_PROVED_DEVICE",
+        403,
+        "recovery claim requires the pending device that proved the recovery key",
+      );
+    }
+    const device = await this.devices.findOwnedDeviceAuth(userId, deviceId);
+    if (!device || (device.status !== "pending" && device.status !== "trusted")) {
+      throw new DeviceServiceError(
+        "RECOVERY_CLAIM_REQUIRES_PROVED_DEVICE",
+        403,
+        "recovery claim requires the pending device that proved the recovery key",
+      );
+    }
+    const sameFingerprint =
+      input.deviceFingerprint.trim().toLowerCase() ===
+      device.deviceFingerprint.trim().toLowerCase();
+    const samePublicKey = input.devicePublicKey.trim() === device.devicePublicKey.trim();
+    if (!sameFingerprint || !samePublicKey) {
+      throw new DeviceServiceError(
+        "RECOVERY_CLAIM_DEVICE_MISMATCH",
+        403,
+        "recovery claim does not match the device that proved the recovery key",
+      );
+    }
+    return {
+      deviceFingerprint: device.deviceFingerprint.trim().toLowerCase(),
+      devicePublicKey: device.devicePublicKey.trim(),
+    };
+  }
+
   /** True only when this user's device row is trusted. */
   async isSessionDeviceTrusted(userId: string, deviceId: string): Promise<boolean> {
     return this.devices.isTrustedDevice(userId, deviceId);
@@ -1016,16 +1448,22 @@ export class DeviceService {
 }
 
 function resolveBlockedUntil(now: Date, duration: DeviceBlockDuration): string | null {
-  if (duration === "forever") {
-    return null;
+  switch (duration) {
+    case "forever":
+      return null;
+    case "1h":
+      return new Date(now.getTime() + 60 * 60 * 1000).toISOString();
+    case "1d":
+      return new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString();
+    default: {
+      const unexpected: never = duration;
+      throw new DeviceServiceError(
+        "DEVICE_BAD_REQUEST",
+        400,
+        `unsupported block duration: ${String(unexpected)}`,
+      );
+    }
   }
-  const ms =
-    duration === "1h"
-      ? 60 * 60 * 1000
-      : duration === "1d"
-        ? 24 * 60 * 60 * 1000
-        : 7 * 24 * 60 * 60 * 1000;
-  return new Date(now.getTime() + ms).toISOString();
 }
 
 function cleanString(value: string, fallback: string): string {

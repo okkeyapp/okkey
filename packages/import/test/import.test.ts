@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import { mapImportResultToOkkeyItems } from "../src/mappers/to-okkey-item.js";
 import { parseZipImport } from "../src/parse-import-input.js";
-import { runImport } from "../src/registry.js";
+import { getImportFormatOption, runImport } from "../src/registry.js";
 import {
   decryptBitwardenPasswordProtectedExport,
   isBitwardenPasswordProtected,
@@ -133,6 +133,9 @@ describe("okkey mapper", () => {
     });
     expect(login?.fields.find((field) => field.id === "totp")?.value).toMatchObject({
       kind: "totp",
+      secretBase32: "JBSWY3DPEHPK3PXP",
+      periodSeconds: 30,
+      digits: 6,
     });
     expect(login?.sections.some((section) => section.id === "additional")).toBe(true);
     expect(login?.sections.find((section) => section.id === "additional")?.title).toBe("");
@@ -232,6 +235,14 @@ describe("zip utils", () => {
     const deflated = await unzipToMap(readFixtureBytes("bitwarden/export-with-attachments.zip"));
     expect(deflated.has("data.json")).toBe(true);
     expect(deflated.has("attachments/att-1/demo.pdf")).toBe(true);
+  });
+});
+
+describe("import format options", () => {
+  it("does not require an export password for the Yandex Browser zip", () => {
+    const option = getImportFormatOption("yandexzip");
+    expect(option?.name).toBe("Yandex Browser (zip)");
+    expect(option?.requiresExportPassword).not.toBe(true);
   });
 });
 

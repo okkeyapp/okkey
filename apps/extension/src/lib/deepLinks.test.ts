@@ -5,6 +5,7 @@ import {
   buildEditItemDeepLink,
   buildNewCapsuleDeepLink,
   buildSettingsMainDeepLink,
+  buildVaultSettingsDeepLink,
   buildWorkspaceSettingsDeepLink,
   isUsableTabUrl,
 } from "./deepLinks.ts";
@@ -28,6 +29,10 @@ test("buildNewCapsuleDeepLink uses item + capsuleFromItem", () => {
 
 test("buildSettingsMainDeepLink opens settings|main", () => {
   assert.equal(buildSettingsMainDeepLink(WEB), `${WEB}/items?popup=settings|main`);
+});
+
+test("buildVaultSettingsDeepLink opens settings|vault", () => {
+  assert.equal(buildVaultSettingsDeepLink(WEB), `${WEB}/items?popup=settings|vault`);
 });
 
 test("buildWorkspaceSettingsDeepLink opens /settings/main", () => {

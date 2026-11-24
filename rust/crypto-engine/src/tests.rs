@@ -62,6 +62,65 @@ fn hybrid_signature_sign_verify() {
 }
 
 #[test]
+fn mldsa65_sign_verify_and_lengths() {
+  let (seed, pk) = sign::mldsa65_generate_keypair().expect("mldsa keygen");
+  assert_eq!(seed.len(), sign::MLDSA65_SEED_LEN);
+  assert_eq!(pk.len(), sign::MLDSA65_PUBLIC_KEY_LEN);
+  assert_eq!(sign::mldsa65_public_key(&seed).expect("pk"), pk);
+  let message = b"okkey-mldsa65";
+  let signature = sign::mldsa65_sign(&seed, message).expect("mldsa sign");
+  assert_eq!(signature.len(), sign::MLDSA65_SIGNATURE_LEN);
+  assert!(sign::mldsa65_verify(&pk, message, &signature).expect("mldsa verify"));
+  assert!(!sign::mldsa65_verify(&pk, b"other", &signature).expect("mldsa verify"));
+}
+
+#[test]
+fn hybrid_signature_v2_requires_both_halves() {
+  let (ed_sk, ed_pk) = sign::generate_keypair();
+  let (mldsa_seed, mldsa_pk) = sign::mldsa65_generate_keypair().expect("mldsa keygen");
+  let (_, pq_ek) = mlkem768::generate_keypair();
+  let context = b"sync.append";
+  let message = br#"{"eventType":"ITEM_CREATE","vaultId":"v1"}"#;
+
+  let signature = sign::hybrid_sign_v2(&ed_sk, &mldsa_seed, &pq_ek, context, message)
+    .expect("hybrid sign v2");
+  assert_eq!(signature.len(), sign::HYBRID_SIGNATURE_V2_LEN);
+  assert!(sign::hybrid_verify_v2(&ed_pk, &mldsa_pk, &pq_ek, context, message, &signature)
+    .expect("hybrid verify v2"));
+
+  let mut ed_tamper = signature.clone();
+  ed_tamper[0] ^= 0x01;
+  assert!(!sign::hybrid_verify_v2(&ed_pk, &mldsa_pk, &pq_ek, context, message, &ed_tamper)
+    .expect("ed25519 half"));
+
+  let mut mldsa_tamper = signature.clone();
+  mldsa_tamper[sign::ED25519_SIGNATURE_LEN] ^= 0x01;
+  assert!(!sign::hybrid_verify_v2(&ed_pk, &mldsa_pk, &pq_ek, context, message, &mldsa_tamper)
+    .expect("mldsa half"));
+
+  let mut tail_tamper = signature.clone();
+  let last = tail_tamper.len() - 1;
+  tail_tamper[last] ^= 0x01;
+  assert!(!sign::hybrid_verify_v2(&ed_pk, &mldsa_pk, &pq_ek, context, message, &tail_tamper)
+    .expect("mldsa tail"));
+
+  assert!(!sign::hybrid_verify_v2(&ed_pk, &mldsa_pk, &pq_ek, context, b"other", &signature)
+    .expect("message"));
+}
+
+#[test]
+fn hybrid_signature_v1_remains_verifiable() {
+  let (sk, pk) = sign::generate_keypair();
+  let (_, pq_ek) = mlkem768::generate_keypair();
+  let context = b"vault.share";
+  let message = br#"{"recipient":"u1"}"#;
+  let signature = sign::hybrid_sign_v1(&sk, &pq_ek, context, message).expect("v1 sign");
+  assert!(sign::hybrid_verify_v1(&pk, &pq_ek, context, message, &signature).expect("v1 verify"));
+  assert!(!sign::hybrid_verify_v2(&pk, &pq_ek, &pq_ek, context, message, &signature)
+    .expect("v1 bytes are not a v2 signature"));
+}
+
+#[test]
 fn hybrid_signature_rejects_tampered_message() {
   let (sk, pk) = sign::generate_keypair();
   let (_, pq_ek) = mlkem768::generate_keypair();
@@ -215,6 +274,61 @@ fn hybrid_decrypt_rejects_corrupted_envelope() {
   let err = hybrid::decrypt_hybrid(&recipient_sk, &recipient_pq_dk, aad, &envelope)
     .expect_err("must fail on tampered envelope");
   assert!(!err.is_empty());
+}
+
+fn count_len(log: &[usize], len: usize) -> usize {
+  log.iter().filter(|value| **value == len).count()
+}
+
+#[test]
+fn hybrid_encrypt_wipes_ephemeral_secrets() {
+  let (recipient_sk, recipient_pk) = x25519::generate_keypair();
+  let (recipient_pq_dk, recipient_pq_ek) = mlkem768::generate_keypair();
+  let aad = b"okkey-hybrid-aad";
+
+  crate::secret::start_wipe_record();
+  let envelope = hybrid::encrypt_hybrid(&[], &recipient_pk, &recipient_pq_ek, aad, b"share")
+    .expect("encrypt");
+  let encrypt_wipes = crate::secret::take_wipe_record();
+  // ephemeral X25519 secret, ECC shared secret, ML-KEM shared secret, AEAD key
+  assert_eq!(count_len(&encrypt_wipes, 32), 4);
+
+  crate::secret::start_wipe_record();
+  let _ = hybrid::decrypt_hybrid(&recipient_sk, &recipient_pq_dk, aad, &envelope).expect("decrypt");
+  let decrypt_wipes = crate::secret::take_wipe_record();
+  // ECC shared secret, ML-KEM shared secret, AEAD key. Recipient private keys stay.
+  assert_eq!(count_len(&decrypt_wipes, 32), 3);
+  assert_eq!(recipient_sk.iter().filter(|byte| **byte != 0).count() > 0, true);
+}
+
+#[test]
+fn hybrid_encrypt_wipes_secrets_on_error() {
+  crate::secret::start_wipe_record();
+  let err = hybrid::encrypt_hybrid(&[], &[0u8; 32], &[0u8; 8], b"aad", b"share");
+  assert!(err.is_err());
+  let wipes = crate::secret::take_wipe_record();
+  // Ephemeral private key and ECC shared secret exist before ML-KEM rejects the key.
+  assert!(count_len(&wipes, 32) >= 2);
+
+  crate::secret::start_wipe_record();
+  let err = hybrid::encrypt_hybrid(&[], &[], &[], b"aad", b"");
+  assert!(err.is_err());
+  assert!(crate::secret::take_wipe_record().is_empty());
+}
+
+#[test]
+fn hybrid_decrypt_wipes_derived_secrets_when_envelope_is_tampered() {
+  let (recipient_sk, recipient_pk) = x25519::generate_keypair();
+  let (recipient_pq_dk, recipient_pq_ek) = mlkem768::generate_keypair();
+  let mut envelope = hybrid::encrypt_hybrid(&[], &recipient_pk, &recipient_pq_ek, b"aad", b"share")
+    .expect("encrypt");
+  let last = envelope.len() - 1;
+  envelope[last] ^= 0x01;
+
+  crate::secret::start_wipe_record();
+  let err = hybrid::decrypt_hybrid(&recipient_sk, &recipient_pq_dk, b"aad", &envelope);
+  assert!(err.is_err());
+  assert_eq!(count_len(&crate::secret::take_wipe_record(), 32), 3);
 }
 
 #[test]

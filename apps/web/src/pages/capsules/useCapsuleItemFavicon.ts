@@ -1,10 +1,11 @@
 import type { ItemPlaintextV2 } from "@okkey/types";
 import { ITEM_CATEGORY_LOGIN } from "@okkey/types";
-import { buildYandexCompositeFaviconUrl, hostsFromUrls, urlsForRemoteFavicon } from "@okkey/ui";
+import { clientSideFaviconUrlFromUrls, faviconProviderUsesServerPreview, urlsForRemoteFavicon } from "@okkey/ui";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { previewItemFavicon } from "../../api/item-favicons";
 import { useAuthVault } from "../../auth/AuthVaultContext";
+import { useFaviconProviderMode } from "../../items/faviconMode";
 import { useItemFaviconAttachmentUrl } from "../../items/useItemFaviconAttachmentUrl";
 
 function collectWebsiteUrlsFromItem(item: ItemPlaintextV2): string[] {
@@ -19,8 +20,10 @@ export function useCapsuleItemFavicon(item: ItemPlaintextV2): {
   previewLoading: boolean;
 } {
   const { accessToken, vaultKey } = useAuthVault();
+  const iconMode = useFaviconProviderMode();
   const websiteUrls = useMemo(() => collectWebsiteUrlsFromItem(item), [item]);
   const remoteUrls = useMemo(() => urlsForRemoteFavicon(websiteUrls), [websiteUrls]);
+  const serverPreview = iconMode !== null && faviconProviderUsesServerPreview(iconMode);
 
   const stored = useItemFaviconAttachmentUrl({
     accessToken,
@@ -31,17 +34,12 @@ export function useCapsuleItemFavicon(item: ItemPlaintextV2): {
     enabled: Boolean(item.faviconId && accessToken && vaultKey),
   });
 
-  const websiteFaviconSrc = useMemo(() => {
-    if (item.categoryId !== ITEM_CATEGORY_LOGIN || item.faviconSource === "manual") {
+  const clientFaviconSrc = useMemo(() => {
+    if (iconMode !== "client" || item.categoryId !== ITEM_CATEGORY_LOGIN || item.faviconSource === "manual") {
       return undefined;
     }
-    const hosts = hostsFromUrls(remoteUrls);
-    if (hosts.length === 0) {
-      return undefined;
-    }
-    const url = buildYandexCompositeFaviconUrl(hosts);
-    return url || undefined;
-  }, [item.categoryId, item.faviconSource, remoteUrls]);
+    return clientSideFaviconUrlFromUrls(websiteUrls) ?? undefined;
+  }, [iconMode, item.categoryId, item.faviconSource, websiteUrls]);
 
   const [apiPreviewSrc, setApiPreviewSrc] = useState<string | undefined>();
   const [apiLoading, setApiLoading] = useState(false);
@@ -67,7 +65,7 @@ export function useCapsuleItemFavicon(item: ItemPlaintextV2): {
       setApiLoading(false);
       return;
     }
-    if (!accessToken || item.categoryId !== ITEM_CATEGORY_LOGIN || remoteUrls.length === 0) {
+    if (!accessToken || !serverPreview || item.categoryId !== ITEM_CATEGORY_LOGIN || remoteUrls.length === 0) {
       if (apiPreviewBlobRef.current) {
         URL.revokeObjectURL(apiPreviewBlobRef.current);
         apiPreviewBlobRef.current = null;
@@ -110,10 +108,10 @@ export function useCapsuleItemFavicon(item: ItemPlaintextV2): {
     return () => {
       cancelled = true;
     };
-  }, [accessToken, item.categoryId, item.faviconSource, remoteUrls, stored.imageSrc]);
+  }, [accessToken, item.categoryId, item.faviconSource, remoteUrls, serverPreview, stored.imageSrc]);
 
   return {
-    previewImageSrc: stored.imageSrc ?? apiPreviewSrc ?? websiteFaviconSrc,
+    previewImageSrc: stored.imageSrc ?? apiPreviewSrc ?? clientFaviconSrc,
     previewLoading: stored.loading || apiLoading,
   };
 }

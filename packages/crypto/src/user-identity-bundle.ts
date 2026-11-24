@@ -26,10 +26,35 @@ export const MLKEM768_ENCAPSULATION_KEY_LEN = 1184;
 export const MLKEM768_DECAPSULATION_KEY_LEN = 2400;
 
 const BUNDLE_VERSION_V1 = 1;
+const BUNDLE_VERSION_V2 = 2;
 
-/** Plaintext: version || ed25519_sk (32) || mlkem768_dk */
+/** AEAD opened, but the plaintext is not a bundle version this client can read. */
+export class UnsupportedIdentityBundleError extends Error {
+  readonly code = "UNSUPPORTED_IDENTITY_BUNDLE";
+
+  constructor() {
+    super("unsupported user identity bundle version");
+    this.name = "UnsupportedIdentityBundleError";
+  }
+}
+
+/** ML-DSA-65 private seed length (FIPS 204 ξ). */
+export const MLDSA65_SEED_LEN = 32;
+/** ML-DSA-65 verifying key length. */
+export const MLDSA65_PUBLIC_KEY_LEN = 1952;
+/** ML-DSA-65 signature length. */
+export const MLDSA65_SIGNATURE_LEN = 3309;
+
+export const USER_IDENTITY_BUNDLE_IDENTITY_V1 = "ed25519_mlkem768_v1" as const;
+export const USER_IDENTITY_BUNDLE_IDENTITY_V2 = "ed25519_mlkem768_mldsa65_v2" as const;
+
+/** Plaintext v1: version || ed25519_sk (32) || mlkem768_dk */
 export const USER_IDENTITY_PRIVATE_BUNDLE_V1_LEN =
   1 + 32 + MLKEM768_DECAPSULATION_KEY_LEN;
+
+/** Plaintext v2: v1 layout || mldsa65 seed (32). */
+export const USER_IDENTITY_PRIVATE_BUNDLE_V2_LEN =
+  USER_IDENTITY_PRIVATE_BUNDLE_V1_LEN + MLDSA65_SEED_LEN;
 
 /** Minimum `EncryptedBlob.payload` (base64-decoded) size: nonce + AEAD( bundle ). */
 export const USER_IDENTITY_ENCRYPTED_PRIVATE_MIN_PAYLOAD_BYTES =
@@ -89,6 +114,46 @@ export function decodeUserIdentityPrivateBundleV1(plaintext: Uint8Array): {
   };
 }
 
+export function encodeUserIdentityPrivateBundleV2(
+  ed25519SecretKey32: Uint8Array,
+  mlkem768DecapsulationKey: Uint8Array,
+  mldsa65Seed: Uint8Array,
+): Uint8Array {
+  if (mldsa65Seed.length !== MLDSA65_SEED_LEN) {
+    throw new Error(`ml-dsa-65 seed must be ${MLDSA65_SEED_LEN} bytes`);
+  }
+  const out = new Uint8Array(USER_IDENTITY_PRIVATE_BUNDLE_V2_LEN);
+  out.set(encodeUserIdentityPrivateBundleV1(ed25519SecretKey32, mlkem768DecapsulationKey), 0);
+  out[0] = BUNDLE_VERSION_V2;
+  out.set(mldsa65Seed, USER_IDENTITY_PRIVATE_BUNDLE_V1_LEN);
+  return out;
+}
+
+export interface DecodedUserIdentityPrivateBundle {
+  ed25519SecretKey: Uint8Array;
+  mlkem768DecapsulationKey: Uint8Array;
+  /** Present for bundle version 2. Null for version 1 bundles. */
+  mldsa65Seed: Uint8Array | null;
+}
+
+/** Accepts plaintext bundle version 1 and version 2. */
+export function decodeUserIdentityPrivateBundle(plaintext: Uint8Array): DecodedUserIdentityPrivateBundle {
+  if (plaintext.length === USER_IDENTITY_PRIVATE_BUNDLE_V1_LEN && plaintext[0] === BUNDLE_VERSION_V1) {
+    const decoded = decodeUserIdentityPrivateBundleV1(plaintext);
+    return { ...decoded, mldsa65Seed: null };
+  }
+  if (plaintext.length !== USER_IDENTITY_PRIVATE_BUNDLE_V2_LEN || plaintext[0] !== BUNDLE_VERSION_V2) {
+    throw new UnsupportedIdentityBundleError();
+  }
+  const v1Prefix = plaintext.slice(0, USER_IDENTITY_PRIVATE_BUNDLE_V1_LEN);
+  v1Prefix[0] = BUNDLE_VERSION_V1;
+  const decoded = decodeUserIdentityPrivateBundleV1(v1Prefix);
+  return {
+    ...decoded,
+    mldsa65Seed: plaintext.slice(USER_IDENTITY_PRIVATE_BUNDLE_V1_LEN),
+  };
+}
+
 /** Random ML-KEM-768 keypair; returns `[decapsulation_key || encapsulation_key]`. */
 export async function generateMlkem768KeypairMaterial(): Promise<{
   decapsulationKey: Uint8Array;
@@ -134,10 +199,7 @@ export async function encryptUserIdentityPrivateBundle(
 export async function decryptUserIdentityPrivateBundle(
   vaultKey: Uint8Array,
   blobBytes: Uint8Array,
-): Promise<{
-  ed25519SecretKey: Uint8Array;
-  mlkem768DecapsulationKey: Uint8Array;
-}> {
+): Promise<DecodedUserIdentityPrivateBundle> {
   await ensureWasm();
   if (blobBytes.length <= NONCE_LEN) {
     throw new Error("encrypted user identity bundle too short");
@@ -152,22 +214,26 @@ export async function decryptUserIdentityPrivateBundle(
     ciphertext,
   );
   try {
-    return decodeUserIdentityPrivateBundleV1(plaintext);
+    return decodeUserIdentityPrivateBundle(plaintext);
   } finally {
     // decoded secret keys are copied out; wipe intermediate plaintext bundle bytes
     wipeBytes(plaintext);
   }
 }
 
-export function userIdentityEncryptedBlobDtoFromPayload(payloadBytes: Uint8Array): EncryptedBlobDto {
+export function userIdentityEncryptedBlobDtoFromPayload(
+  payloadBytes: Uint8Array,
+  options?: { identity?: typeof USER_IDENTITY_BUNDLE_IDENTITY_V1 | typeof USER_IDENTITY_BUNDLE_IDENTITY_V2 },
+): EncryptedBlobDto {
+  const identity = options?.identity ?? USER_IDENTITY_BUNDLE_IDENTITY_V2;
   return {
     crypto_version: OKKEY_CRYPTO_PROFILE_V2,
     algorithm: USER_IDENTITY_WRITE_CONFIG.encryptedBlobAlgorithm,
     payload: uint8ToStandardBase64(payloadBytes),
     meta: {
       entity: "user_private_key_bundle",
-      bundle_version: 2,
-      identity: "ed25519_mlkem768_v1",
+      bundle_version: identity === USER_IDENTITY_BUNDLE_IDENTITY_V1 ? 2 : 3,
+      identity,
       key_scope: "account",
     },
   };
@@ -177,10 +243,7 @@ export function userIdentityEncryptedBlobDtoFromPayload(payloadBytes: Uint8Array
 export async function decryptUserIdentityFromEncryptedBlob(
   vaultKey: Uint8Array,
   encryptedPayloadBase64: string,
-): Promise<{
-  ed25519SecretKey: Uint8Array;
-  mlkem768DecapsulationKey: Uint8Array;
-}> {
+): Promise<DecodedUserIdentityPrivateBundle> {
   await ensureWasm();
   const blobBytes = standardBase64ToUint8(encryptedPayloadBase64);
   try {

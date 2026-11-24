@@ -8,23 +8,14 @@ Run Okkey Core on your own machine with Docker Compose - **no monorepo clone or 
 
 ## One-command install
 
-On tag v1.0.0-beta.2 the installer defaults `OKKEY_REF` to `v1.0.0-beta.2`.
-
-**Tracking / QA** (floating `:dev` images, published only by a manual run of the publish workflow):
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/okkeyapp/okkey/v1.0.0-beta.2/deploy/docker/install.sh \
-  | OKKEY_REF=v1.0.0-beta.2 OKKEY_IMAGE_TAG=dev bash
-```
-
-**Production:** pin full SemVer (never floating `:latest`). `.env.example` on tag v1.0.0-beta.2 defaults to `1.0.0-beta.2`:
+Install the pinned release. Put `OKKEY_REF` and `OKKEY_IMAGE_TAG` on the right of `|`. Cosign signature verification stays on (the installer default).
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/okkeyapp/okkey/v1.0.0-beta.2/deploy/docker/install.sh \
   | OKKEY_REF=v1.0.0-beta.2 OKKEY_IMAGE_TAG=1.0.0-beta.2 bash
 ```
 
-`:1.0.0-beta.2` is published when git tag `v1.0.0-beta.2` lands. Until then, tracking installs must pass `OKKEY_IMAGE_TAG=dev`. Pushes to `release/1.0.0-beta.2` publish `:1.0.0-beta.2-candidate` and `:1.0.0-beta.2-<sha>` and do not move that pin or `:latest`. `OKKEY_CHANNEL=prod` stays gated until the SemVer exists in GHCR (or `OKKEY_PROD_CHANNEL_FORCE=1`).
+`:1.0.0-beta.2` is published when git tag `v1.0.0-beta.2` lands. Pushes to `release/1.0.0-beta.2` publish `:1.0.0-beta.2-candidate` and `:1.0.0-beta.2-<sha>` and do not move that pin or `:latest`. `OKKEY_CHANNEL=prod` stays gated until the SemVer exists in GHCR (or `OKKEY_PROD_CHANNEL_FORCE=1`).
 
 Note: `OKKEY_REF=…` / `OKKEY_IMAGE_TAG=…` / `OKKEY_CHANNEL=…` must be on the **right** of `|` so the installer process sees them - `VAR=x curl | bash` does **not** pass `VAR` into `bash`.
 
@@ -89,14 +80,13 @@ On a fresh install the `users` table is empty. Open the web UI, enter an email, 
 
 ## Crypto profiles (registration)
 
-The web client registers with `password_kdf_params_version: 1` (identity blob is crypto v2). API policy:
+New registration sends `password_kdf_params_version` 2. Vault items require crypto profile 2 for read and write.
 
-| `DEPLOY_ENV` | Default allowed profiles | Notes |
-|--------------|--------------------------|--------|
-| `dev` (self-host default) | `1,2` | Required for current web registration |
-| `stage` / `prod` | `2` only | Rejects kdf v1 with `CRYPTO_PROFILE_NOT_ALLOWED` |
+| `DEPLOY_ENV` | Allowed write profiles | Notes |
+|--------------|------------------------|--------|
+| `dev`, `stage`, `prod` | `2` | Profile 1 is forbidden. `CRYPTO_ALLOWED_PROFILE_VERSIONS` can only narrow that set. Including `1` stops the process at startup. |
 
-Compose passes `DEPLOY_ENV`, `CRYPTO_ALLOWED_PROFILE_VERSIONS`, and `CRYPTO_ROLLOUT_MODE` from `.env` (defaults `dev` / `1,2` / `compat`). You cannot set `CRYPTO_ALLOWED_PROFILE_VERSIONS=1,2` with `DEPLOY_ENV=prod` - the process exits on boot.
+Compose reads `DEPLOY_ENV`, `CRYPTO_ALLOWED_PROFILE_VERSIONS`, and `CRYPTO_ROLLOUT_MODE` from `.env`. The defaults in `deploy/docker/.env.example` and `docker-compose.prod.yml` are `dev`, `2`, and `compat`.
 
 ### Workaround (existing install showing "This encryption profile is not allowed in the current environment.")
 
@@ -112,7 +102,7 @@ curl -fsSL -o ~/okkey/docker-compose.prod.yml \
 
 ```bash
 DEPLOY_ENV=dev
-CRYPTO_ALLOWED_PROFILE_VERSIONS=1,2
+CRYPTO_ALLOWED_PROFILE_VERSIONS=2
 CRYPTO_ROLLOUT_MODE=compat
 ```
 
@@ -144,12 +134,7 @@ Retention (scheduled GC; release SemVer tags and floating `:dev` are never delet
 
 Ephemeral `pr-*` versions are deleted only by CI (`GITHUB_TOKEN` + `packages:write`), not by hand. Prod never uses floating `:latest`.
 
-Installer defaults:
-
-| Channel | `OKKEY_IMAGE_TAG` |
-|---------|-------------------|
-| Production (`.env.example` default) | `1.0.0-beta.2` - **never** `:latest` |
-| Tracking / QA | override `OKKEY_IMAGE_TAG=dev`; `OKKEY_CHANNEL=prod` gated until SemVer exists in GHCR |
+Install pin: `OKKEY_REF=v1.0.0-beta.2` and `OKKEY_IMAGE_TAG=1.0.0-beta.2` (never `:latest`).
 
 Multi-arch (`linux/amd64` + `linux/arm64`), OCI labels, SBOM, and build provenance are enabled in CI. Cosign **keyless GitHub OIDC** signing runs on every non-PR publish (no key-based override).
 
@@ -162,8 +147,7 @@ curl -fsSL -O "https://raw.githubusercontent.com/okkeyapp/okkey/${REF}/deploy/do
 curl -fsSL -O "https://raw.githubusercontent.com/okkeyapp/okkey/${REF}/deploy/docker/.env.example"
 cp .env.example .env
 # edit secrets and PUBLIC_APP_URL / OKKEY_API_PUBLIC_URL
-# production pin (default): OKKEY_IMAGE_TAG=1.0.0-beta.2 - never :latest
-# tracking: set OKKEY_IMAGE_TAG=dev until / alongside tip images
+# pin: OKKEY_IMAGE_TAG=1.0.0-beta.2 — never :latest
 docker compose -f docker-compose.prod.yml --env-file .env up -d
 ```
 
@@ -184,6 +168,10 @@ API runs with `RUN_BACKGROUND_JOBS=false` and `EMAIL_DELIVERY_MODE=queue`; the w
 ## Email
 
 Default `EMAIL_PROVIDER=logger` (codes appear in **worker** logs when queued). For real mail set SMTP vars in `.env` (see `.env.example` and [`docs/backend-email.md`](../../docs/backend-email.md)).
+
+On a self-hosted install the workspace owner can also set SMTP, the sender address, and the public app URL in the web UI: workspace settings → **Server mail**. Saved values apply to the whole server. A saved host, port, encryption mode, username, password, sender address, or public app URL overrides the matching value from `.env`. When that value is not saved, the server uses `.env`. Leaving the password box blank keeps the saved password. The API uses the public app URL in server-generated links. The API and the worker use the saved SMTP settings when sending mail. `OKKEY_API_PUBLIC_URL`, `CORS_ORIGIN`, and `WEBAUTHN_*` stay in `.env`.
+
+The saved SMTP password is encrypted with `SESSION_SECRET`. After `SESSION_SECRET` changes, that password cannot be decrypted. Enter it again, or use **Clear saved password** to drop the saved password and use `EMAIL_SMTP_PASSWORD` with the other saved fields. While the saved password cannot be decrypted and `EMAIL_SMTP_PASSWORD` is set, outbound mail uses the SMTP host, port, encryption, username, and password from `.env` together. The sender address and the public app URL stay on the saved values when those are set.
 
 Self-host uses Redis keys `okkey:email:queue` / `okkey:email:delayed` / `okkey:email:dead`. Keep the worker up or mail will sit in the queue.
 
@@ -217,7 +205,7 @@ docker compose -f docker-compose.prod.yml -f proxy/docker-compose.proxy.yml \
 
 Then set in `.env`:
 
-- `PUBLIC_APP_URL=https://app.example.com`
+- `PUBLIC_APP_URL=https://app.example.com` (the workspace owner can also set this public app URL under **Server mail**; a saved value overrides `PUBLIC_APP_URL` for server-generated links)
 - `OKKEY_API_PUBLIC_URL=https://api.example.com`
 - `CORS_ORIGIN` / `WEBAUTHN_ORIGINS` / `WEBAUTHN_RP_ID` accordingly
 - `OKKEY_WEB_HOST` / `OKKEY_API_HOST` (proxy server_name values)

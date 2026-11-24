@@ -17,6 +17,10 @@ export interface WebAuthnCredentialRecord {
   backedUp: boolean;
   createdAt: string;
   lastUsedAt: string | null;
+  /** Set when this credential holds a PRF wrap of share B. */
+  shareWrap?: Uint8Array | null;
+  shareWrapSalt?: Uint8Array | null;
+  shareWrapVersion?: number | null;
 }
 
 export interface WebAuthnCredentialPublicDto {
@@ -24,6 +28,7 @@ export interface WebAuthnCredentialPublicDto {
   name: string;
   createdAt: string;
   lastUsedAt: string | null;
+  hasShareWrap: boolean;
 }
 
 type CredentialRow = {
@@ -39,6 +44,9 @@ type CredentialRow = {
   backed_up: boolean;
   created_at: Date;
   last_used_at: Date | null;
+  share_wrap: Buffer | null;
+  share_wrap_salt: Buffer | null;
+  share_wrap_version: number | null;
 };
 
 function parseTransports(raw: unknown): string[] {
@@ -72,6 +80,9 @@ function mapCredential(row: CredentialRow): WebAuthnCredentialRecord {
     backedUp: row.backed_up,
     createdAt: row.created_at.toISOString(),
     lastUsedAt: row.last_used_at ? row.last_used_at.toISOString() : null,
+    shareWrap: row.share_wrap ? Uint8Array.from(row.share_wrap) : null,
+    shareWrapSalt: row.share_wrap_salt ? Uint8Array.from(row.share_wrap_salt) : null,
+    shareWrapVersion: row.share_wrap_version,
   };
 }
 
@@ -98,7 +109,8 @@ export class WebAuthnCredentialsRepository {
     const rows = await this.db.query<CredentialRow>(
       `
         SELECT id, user_id, credential_id, public_key, sign_count, transports,
-               authenticator_attachment, aaguid, name, backed_up, created_at, last_used_at
+               authenticator_attachment, aaguid, name, backed_up, created_at, last_used_at,
+               share_wrap, share_wrap_salt, share_wrap_version
         FROM user_webauthn_credentials
         WHERE user_id = $1::bigint
         ORDER BY created_at ASC
@@ -115,7 +127,8 @@ export class WebAuthnCredentialsRepository {
     const rows = await this.db.query<CredentialRow>(
       `
         SELECT id, user_id, credential_id, public_key, sign_count, transports,
-               authenticator_attachment, aaguid, name, backed_up, created_at, last_used_at
+               authenticator_attachment, aaguid, name, backed_up, created_at, last_used_at,
+               share_wrap, share_wrap_salt, share_wrap_version
         FROM user_webauthn_credentials
         WHERE user_id = $1::bigint AND authenticator_attachment = $2
         ORDER BY created_at ASC
@@ -129,7 +142,8 @@ export class WebAuthnCredentialsRepository {
     const rows = await this.db.query<CredentialRow>(
       `
         SELECT id, user_id, credential_id, public_key, sign_count, transports,
-               authenticator_attachment, aaguid, name, backed_up, created_at, last_used_at
+               authenticator_attachment, aaguid, name, backed_up, created_at, last_used_at,
+               share_wrap, share_wrap_salt, share_wrap_version
         FROM user_webauthn_credentials
         WHERE credential_id = $1
       `,
@@ -145,7 +159,8 @@ export class WebAuthnCredentialsRepository {
     const rows = await this.db.query<CredentialRow>(
       `
         SELECT id, user_id, credential_id, public_key, sign_count, transports,
-               authenticator_attachment, aaguid, name, backed_up, created_at, last_used_at
+               authenticator_attachment, aaguid, name, backed_up, created_at, last_used_at,
+               share_wrap, share_wrap_salt, share_wrap_version
         FROM user_webauthn_credentials
         WHERE id = $1::bigint AND user_id = $2::bigint
       `,
@@ -174,7 +189,8 @@ export class WebAuthnCredentialsRepository {
         )
         VALUES ($1, $2::bigint, $3, $4, $5, $6::jsonb, $7, $8, $9, $10)
         RETURNING id, user_id, credential_id, public_key, sign_count, transports,
-                  authenticator_attachment, aaguid, name, backed_up, created_at, last_used_at
+                  authenticator_attachment, aaguid, name, backed_up, created_at, last_used_at,
+                  share_wrap, share_wrap_salt, share_wrap_version
       `,
       [
         id,
@@ -190,6 +206,19 @@ export class WebAuthnCredentialsRepository {
       ],
     );
     return mapCredential(rows[0]);
+  }
+
+  async updateName(userId: string, credentialRowId: string, name: string): Promise<boolean> {
+    const rows = await this.db.query<{ id: string }>(
+      `
+        UPDATE user_webauthn_credentials
+        SET name = $3
+        WHERE id = $1::bigint AND user_id = $2::bigint
+        RETURNING id
+      `,
+      [credentialRowId, userId, name],
+    );
+    return rows.length > 0;
   }
 
   async updateSignCount(credentialRowId: string, signCount: number): Promise<void> {
@@ -252,6 +281,51 @@ export class WebAuthnCredentialsRepository {
       [userId, primary],
     );
   }
+
+  /** Store a client-built PRF wrap. Does not accept or persist the PRF output. */
+  async saveShareWrap(input: {
+    userId: string;
+    credentialRowId: string;
+    shareWrap: Uint8Array;
+    shareWrapSalt: Uint8Array;
+  }): Promise<boolean> {
+    const rows = await this.db.query<{ id: string }>(
+      `
+        UPDATE user_webauthn_credentials
+        SET share_wrap = $3,
+            share_wrap_salt = $4,
+            share_wrap_version = 1
+        WHERE id = $1::bigint
+          AND user_id = $2::bigint
+        RETURNING id
+      `,
+      [
+        input.credentialRowId,
+        input.userId,
+        Buffer.from(input.shareWrap),
+        Buffer.from(input.shareWrapSalt),
+      ],
+    );
+    return Boolean(rows[0]);
+  }
+
+  /** Drop the PRF wrap so this credential can no longer approve a device. */
+  async clearShareWrap(userId: string, credentialRowId: string): Promise<boolean> {
+    const rows = await this.db.query<{ id: string }>(
+      `
+        UPDATE user_webauthn_credentials
+        SET share_wrap = NULL,
+            share_wrap_salt = NULL,
+            share_wrap_version = NULL
+        WHERE id = $1::bigint
+          AND user_id = $2::bigint
+          AND share_wrap IS NOT NULL
+        RETURNING id
+      `,
+      [credentialRowId, userId],
+    );
+    return Boolean(rows[0]);
+  }
 }
 
 export function toPublicCredentialDto(
@@ -262,5 +336,6 @@ export function toPublicCredentialDto(
     name: record.name,
     createdAt: record.createdAt,
     lastUsedAt: record.lastUsedAt,
+    hasShareWrap: Boolean(record.shareWrap && record.shareWrapSalt && record.shareWrapVersion === 1),
   };
 }

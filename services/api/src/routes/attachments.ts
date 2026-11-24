@@ -110,6 +110,7 @@ function sendServiceError(ctx: Parameters<RouteHandler>[0], error: unknown, fall
       error: error.code,
       message: error.message,
       requestId: ctx.requestId,
+      ...(error.details ? { details: error.details } : {}),
     });
     return;
   }
@@ -193,6 +194,7 @@ export function createAttachmentDownloadRoute(
       const encodedName = encodeURIComponent(result.name);
       sendBinary(ctx.res, 200, result.encryptedBody, {
         "Content-Type": "application/octet-stream",
+        "X-Content-Type-Options": "nosniff",
         "Content-Length": String(result.encryptedBody.byteLength),
         "Content-Disposition": `attachment; filename="${encodedName}"; filename*=UTF-8''${encodedName}`,
         "Cache-Control": "private, no-store",

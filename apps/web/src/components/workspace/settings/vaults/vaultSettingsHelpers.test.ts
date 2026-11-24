@@ -34,8 +34,8 @@ describe("vaultAccessHelpers", () => {
     ).toBe("Alex Zorin");
     expect(memberDisplayName({ firstName: null, lastName: null, email: "a@okkey.app" })).toBe("a");
     expect(
-      memberDisplayName({ firstName: null, lastName: null, email: "aleksandrzoryn@gmail.com" }),
-    ).toBe("aleksandrzoryn");
+      memberDisplayName({ firstName: null, lastName: null, email: "member@example.com" }),
+    ).toBe("member");
     expect(memberInitials("Alex Zorin")).toBe("AZ");
   });
 });

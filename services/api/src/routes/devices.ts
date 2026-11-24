@@ -76,6 +76,8 @@ interface RegisterDeviceMetadataBody {
   claim_after_recovery?: boolean;
   /** Pending sibling for recovery proof. Does not replace a trusted device. */
   recovery_pending?: boolean;
+  previous_device_id?: string;
+  previous_device_fingerprint?: string;
 }
 
 interface RegisterDeviceBody extends RegisterDeviceMetadataBody {
@@ -83,11 +85,15 @@ interface RegisterDeviceBody extends RegisterDeviceMetadataBody {
   device_share?: string;
   device_fingerprint?: string;
   device_name?: string;
+  one_time_x25519_public_key?: string;
+  one_time_mlkem_public_key?: string;
   challenge_id?: string;
   signature?: string;
   share_proof?: string;
   /** UI locale for approval email templates (`en` | `ru`). */
   locale?: string;
+  previous_device_id?: string;
+  previous_device_fingerprint?: string;
   metadata?: RegisterDeviceMetadataBody;
 }
 
@@ -137,6 +143,98 @@ function resolveMetadata(body: RegisterDeviceBody): RegisterDeviceMetadataBody {
   };
 }
 
+type RegisterBooleanField =
+  | "reclaim_sole_trusted"
+  | "claim_after_recovery"
+  | "recovery_pending";
+
+interface RegisterBooleanFlags {
+  reclaimSoleTrusted: boolean;
+  claimAfterRecovery: boolean;
+  recoveryPending: boolean;
+}
+
+function isJsonObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Device-register flags accept only JSON booleans.
+ * An omitted flag is false. When `metadata` is an object and contains the key,
+ * that value is used (including `null`, which is rejected). Otherwise the same
+ * top-level field is used. `claim_after_recovery` still suppresses `recovery_pending`.
+ */
+function readRegisterBooleanFlags(
+  body: RegisterDeviceBody,
+): { ok: true; flags: RegisterBooleanFlags } | { ok: false; field: RegisterBooleanField } {
+  const record = body as unknown as Record<string, unknown>;
+
+  const read = (field: RegisterBooleanField): { ok: true; value: boolean } | { ok: false } => {
+    const metadata = record.metadata;
+    const source =
+      isJsonObject(metadata) && Object.prototype.hasOwnProperty.call(metadata, field)
+        ? metadata
+        : record;
+    if (!Object.prototype.hasOwnProperty.call(source, field)) {
+      return { ok: true, value: false };
+    }
+    const value = source[field];
+    if (typeof value === "boolean") {
+      return { ok: true, value };
+    }
+    return { ok: false };
+  };
+
+  const reclaimSoleTrusted = read("reclaim_sole_trusted");
+  if (!reclaimSoleTrusted.ok) {
+    return { ok: false, field: "reclaim_sole_trusted" };
+  }
+  const claimAfterRecovery = read("claim_after_recovery");
+  if (!claimAfterRecovery.ok) {
+    return { ok: false, field: "claim_after_recovery" };
+  }
+  const recoveryPending = read("recovery_pending");
+  if (!recoveryPending.ok) {
+    return { ok: false, field: "recovery_pending" };
+  }
+
+  return {
+    ok: true,
+    flags: {
+      reclaimSoleTrusted: reclaimSoleTrusted.value,
+      claimAfterRecovery: claimAfterRecovery.value,
+      recoveryPending: !claimAfterRecovery.value && recoveryPending.value,
+    },
+  };
+}
+
+type RegisterLinkField = "previous_device_id" | "previous_device_fingerprint";
+
+/**
+ * Link fields are optional strings. Metadata wins when the key is present.
+ * An omitted key is null. A present non-string is rejected.
+ */
+function readRegisterLinkField(
+  body: RegisterDeviceBody,
+  field: RegisterLinkField,
+): { ok: true; value: string | null } | { ok: false } {
+  const record = body as unknown as Record<string, unknown>;
+  const metadata = record.metadata;
+  const source =
+    isJsonObject(metadata) && Object.prototype.hasOwnProperty.call(metadata, field)
+      ? metadata
+      : record;
+  if (!Object.prototype.hasOwnProperty.call(source, field)) {
+    return { ok: true, value: null };
+  }
+  const value = source[field];
+  if (typeof value !== "string") {
+    return { ok: false };
+  }
+  const trimmed = value.trim();
+  return { ok: true, value: trimmed.length > 0 ? trimmed : null };
+}
+
 function getApproverDeviceId(ctx: Parameters<RouteHandler>[0]): string {
   const deviceId = getHeader(ctx.req, "x-device-id");
   if (!deviceId) {
@@ -170,6 +268,41 @@ function toWireDevice(item: DeviceListItem) {
     is_current: item.isCurrent,
     approval_expires_at: item.approvalExpiresAt,
     blocked_until: item.blockedUntil ?? null,
+    ...(item.oneTimeX25519PublicKey && item.oneTimeMlkemPublicKey
+      ? {
+          one_time_x25519_public_key: item.oneTimeX25519PublicKey,
+          one_time_mlkem_public_key: item.oneTimeMlkemPublicKey,
+        }
+      : {}),
+    share_wrap_ed25519_public_key: item.shareWrapEd25519PublicKey,
+    share_wrap_pq_public_key: item.shareWrapPqPublicKey,
+  };
+}
+
+/**
+ * Display-only trusted rows for a pending/blocked session: enough for the
+ * "confirm from device" UI, without fingerprints, network, or share keys.
+ */
+function toApproverWireDevice(item: DeviceListItem) {
+  return {
+    device_id: item.deviceId,
+    device_name: item.deviceName,
+    device_fingerprint: "",
+    status: item.status,
+    platform: item.platform,
+    os_name: item.osName,
+    os_version: item.osVersion,
+    app_version: item.appVersion,
+    client_type: item.clientType,
+    ip_address: "",
+    country: null,
+    city: null,
+    created_at: item.createdAt,
+    last_seen_at: item.lastSeenAt,
+    approved_at: item.approvedAt,
+    is_current: false,
+    approval_expires_at: item.approvalExpiresAt,
+    blocked_until: item.blockedUntil ?? null,
   };
 }
 
@@ -177,8 +310,12 @@ export function createRegisterDeviceRoute(
   deviceService: DeviceService,
   resolveUserId: (req: IncomingMessage) => Promise<string | null>,
   trustedProxyHops = 0,
-  sessionService?: Pick<SessionDeviceBinding, "bindAccessTokenDevice">,
+  sessionService?: Pick<SessionDeviceBinding, "bindAccessTokenDevice"> &
+    Partial<Pick<SessionDeviceBinding, "hashAccessToken" | "resolveAccessToken">>,
   mayClaimAfterRecovery?: (req: IncomingMessage) => Promise<boolean>,
+  resolveProvedRecoveryDevice?: (
+    req: IncomingMessage,
+  ) => Promise<{ userId: string; deviceId: string } | null>,
 ): RouteHandler {
   return async (ctx) => {
     let body: RegisterDeviceBody;
@@ -207,6 +344,43 @@ export function createRegisterDeviceRoute(
       return;
     }
 
+    const parsedFlags = readRegisterBooleanFlags(body);
+    if (!parsedFlags.ok) {
+      json(
+        ctx.res,
+        400,
+        errorPayload(
+          "DEVICE_BAD_REQUEST",
+          `${parsedFlags.field} must be a boolean`,
+          ctx.requestId,
+        ),
+      );
+      return;
+    }
+    const { reclaimSoleTrusted, claimAfterRecovery, recoveryPending } = parsedFlags.flags;
+    const previousDeviceId = readRegisterLinkField(body, "previous_device_id");
+    if (!previousDeviceId.ok) {
+      json(
+        ctx.res,
+        400,
+        errorPayload("DEVICE_BAD_REQUEST", "previous_device_id must be a string", ctx.requestId),
+      );
+      return;
+    }
+    const previousDeviceFingerprint = readRegisterLinkField(body, "previous_device_fingerprint");
+    if (!previousDeviceFingerprint.ok) {
+      json(
+        ctx.res,
+        400,
+        errorPayload(
+          "DEVICE_BAD_REQUEST",
+          "previous_device_fingerprint must be a string",
+          ctx.requestId,
+        ),
+      );
+      return;
+    }
+
     try {
       const userId = await resolveUserId(ctx.req);
       if (!userId) {
@@ -214,18 +388,6 @@ export function createRegisterDeviceRoute(
         return;
       }
       const metadata = resolveMetadata(body);
-      const reclaimSoleTrusted = Boolean(
-        body.metadata?.reclaim_sole_trusted ?? body.reclaim_sole_trusted,
-      );
-      const claimAfterRecovery = Boolean(
-        body.metadata?.claim_after_recovery ?? (body as { claim_after_recovery?: boolean }).claim_after_recovery,
-      );
-      const recoveryPending =
-        !claimAfterRecovery &&
-        Boolean(
-          body.metadata?.recovery_pending ??
-            (body as { recovery_pending?: boolean }).recovery_pending,
-        );
       if (claimAfterRecovery && mayClaimAfterRecovery) {
         const allowed = await mayClaimAfterRecovery(ctx.req);
         if (!allowed) {
@@ -241,7 +403,42 @@ export function createRegisterDeviceRoute(
           return;
         }
       }
+      let provedDeviceId: string | undefined;
+      if (claimAfterRecovery) {
+        const proved = resolveProvedRecoveryDevice
+          ? await resolveProvedRecoveryDevice(ctx.req)
+          : null;
+        if (!proved || proved.userId !== userId || proved.deviceId.trim() === "") {
+          json(
+            ctx.res,
+            403,
+            errorPayload(
+              "RECOVERY_CLAIM_REQUIRES_PROVED_DEVICE",
+              "recovery claim requires the pending device that proved the recovery key",
+              ctx.requestId,
+            ),
+          );
+          return;
+        }
+        provedDeviceId = proved.deviceId.trim();
+      }
       const requestIp = await getRequestIp(ctx.req, { trustedProxyHops });
+      const accessToken = getBearerToken(ctx.req);
+      let sessionDeviceId: string | null = null;
+      let sessionUnbound = false;
+      if (accessToken && sessionService?.resolveAccessToken) {
+        const resolved = await sessionService.resolveAccessToken(accessToken);
+        if (resolved && resolved.userId === userId) {
+          const bound = resolved.deviceId?.trim() ?? "";
+          sessionDeviceId = bound.length > 0 ? bound : null;
+          sessionUnbound = bound.length === 0;
+        }
+      }
+      // Kept across a pending-row replacement so this session can bind to the new row.
+      const preserveSessionTokenHash =
+        accessToken && typeof sessionService?.hashAccessToken === "function"
+          ? sessionService.hashAccessToken(accessToken)
+          : undefined;
       const result = await deviceService.registerDevice(userId, requestIp, {
         deviceFingerprint: body.device_fingerprint,
         devicePublicKey: body.device_public_key,
@@ -256,17 +453,38 @@ export function createRegisterDeviceRoute(
         locale: typeof body.locale === "string" ? body.locale : undefined,
         acceptLanguage: getHeader(ctx.req, "accept-language"),
         reclaimSoleTrusted,
+        previousDeviceId: previousDeviceId.value,
+        previousDeviceFingerprint: previousDeviceFingerprint.value,
+        // Sole-trusted reclaim still needs the previous bound device id when present.
+        sessionDeviceId: reclaimSoleTrusted ? sessionDeviceId : undefined,
         claimAfterRecovery,
+        provedDeviceId,
         recoveryPending,
+        preserveSessionTokenHash,
+        oneTimeX25519PublicKey:
+          typeof body.one_time_x25519_public_key === "string"
+            ? body.one_time_x25519_public_key
+            : undefined,
+        oneTimeMlkemPublicKey:
+          typeof body.one_time_mlkem_public_key === "string"
+            ? body.one_time_mlkem_public_key
+            : undefined,
       });
-
-      const accessToken = getBearerToken(ctx.req);
       const bindCreated =
         result.created &&
         (result.status === "trusted" || result.status === "pending_approval");
       // Rebind only the new pending row. Never attach this session to the existing trusted device.
       const bindRecoveryPending = recoveryPending && result.status === "pending_approval";
-      if (accessToken && sessionService && (bindCreated || bindRecoveryPending)) {
+      // Reject unbinds the Bearer (device_id NULL). "Request approval again" reopens the
+      // same pending row (created=false); without a rebind, GET /devices stays fingerprint-
+      // only and passkey approval options return 403.
+      const bindUnboundPending =
+        sessionUnbound && result.status === "pending_approval";
+      if (
+        accessToken &&
+        sessionService &&
+        (bindCreated || bindRecoveryPending || bindUnboundPending)
+      ) {
         await sessionService.bindAccessTokenDevice(accessToken, userId, result.deviceId, {
           replaceExistingDevice: claimAfterRecovery,
         });
@@ -277,6 +495,12 @@ export function createRegisterDeviceRoute(
         status: result.status,
         ...(result.status === "blocked"
           ? { blocked_until: result.blockedUntil ?? null }
+          : {}),
+        ...(result.approvalStatusToken
+          ? {
+              approval_status_token: result.approvalStatusToken,
+              approval_status_expires_at: result.approvalStatusExpiresAt,
+            }
           : {}),
       });
     } catch (error) {
@@ -631,8 +855,15 @@ export function createListDevicesRoute(
         }
         return rows;
       };
+      // A pending session may list redacted trusted approvers for the wait UI,
+      // but still only sees its own pending/blocked row (no other fingerprints).
+      const pendingApproverView =
+        ownDeviceOnly &&
+        result.pending.some((row) => sameDeviceId(row.deviceId, sessionDeviceId));
       json(ctx.res, 200, {
-        devices: visible(result.devices).map(toWireDevice),
+        devices: pendingApproverView
+          ? result.devices.map(toApproverWireDevice)
+          : visible(result.devices).map(toWireDevice),
         pending: visible(result.pending).map(toWireDevice),
         blocked: visible(result.blocked ?? []).map(toWireDevice),
       });
@@ -801,6 +1032,14 @@ export function createApproveDeviceRoute(
       return;
     }
 
+    let body: { share_delivery_envelope?: string; device_share?: string } = {};
+    try {
+      body = await readOptionalJsonObject(ctx.req);
+    } catch {
+      json(ctx.res, 400, errorPayload("DEVICE_BAD_REQUEST", "invalid json", ctx.requestId));
+      return;
+    }
+
     try {
       const userId = await resolveUserId(ctx.req);
       if (!userId) {
@@ -808,7 +1047,39 @@ export function createApproveDeviceRoute(
         return;
       }
       const approverDeviceId = getApproverDeviceId(ctx);
-      const result = await deviceService.approveDevice(userId, approverDeviceId, deviceId);
+      const envelopeB64 = body.share_delivery_envelope?.trim() ?? "";
+      let envelope: Uint8Array | undefined;
+      if (envelopeB64) {
+        if (!isBase64(envelopeB64)) {
+          json(
+            ctx.res,
+            400,
+            errorPayload("DEVICE_BAD_REQUEST", "share_delivery_envelope must be base64", ctx.requestId),
+          );
+          return;
+        }
+        envelope = Uint8Array.from(Buffer.from(envelopeB64, "base64"));
+      }
+      let deviceShare: Uint8Array | undefined;
+      const shareB64 = body.device_share?.trim() ?? "";
+      if (shareB64) {
+        if (!isBase64(shareB64)) {
+          json(
+            ctx.res,
+            400,
+            errorPayload("DEVICE_BAD_REQUEST", "device_share must be base64", ctx.requestId),
+          );
+          return;
+        }
+        deviceShare = Uint8Array.from(Buffer.from(shareB64, "base64"));
+      }
+      const result = await deviceService.approveDevice(
+        userId,
+        approverDeviceId,
+        deviceId,
+        envelope,
+        deviceShare,
+      );
       json(ctx.res, 200, {
         device_id: result.deviceId,
         status: result.status,
@@ -817,6 +1088,133 @@ export function createApproveDeviceRoute(
       handleDeviceError(ctx.requestId, ctx.res, error);
     }
   };
+}
+
+function isBase64(value: string): boolean {
+  if (!value || value.length % 4 !== 0) {
+    return false;
+  }
+  return /^[A-Za-z0-9+/]+={0,2}$/.test(value);
+}
+
+async function readOptionalJsonObject(
+  req: IncomingMessage,
+): Promise<{ share_delivery_envelope?: string; device_share?: string }> {
+  const mocked = (req as IncomingMessage & { body?: unknown }).body;
+  if (mocked !== undefined) {
+    if (mocked === null || typeof mocked !== "object" || Array.isArray(mocked)) {
+      throw new Error("invalid json");
+    }
+    return mocked as { share_delivery_envelope?: string; device_share?: string };
+  }
+  const asyncIterator = (req as AsyncIterable<unknown>)[Symbol.asyncIterator];
+  if (typeof asyncIterator !== "function") {
+    return {};
+  }
+  return readJsonBody(req);
+}
+
+export function createGetShareDeliveryRoute(
+  deviceService: DeviceService,
+  resolveUserId: (req: IncomingMessage) => Promise<string | null>,
+  resolveSession?: (req: IncomingMessage) => Promise<{ deviceId: string | null } | null>,
+): RouteHandler {
+  return async (ctx) => {
+    const deviceId = ctx.params.deviceId;
+    if (!deviceId) {
+      json(ctx.res, 400, errorPayload("DEVICE_BAD_REQUEST", "deviceId is required", ctx.requestId));
+      return;
+    }
+    try {
+      const userId = await resolveUserId(ctx.req);
+      if (!userId) {
+        json(ctx.res, 401, errorPayload("AUTH_REQUIRED", "auth required", ctx.requestId));
+        return;
+      }
+      assertOwnDevice(ctx, deviceId, await resolveCallerDeviceId(ctx.req, resolveSession));
+      const delivery = await deviceService.readShareDelivery(userId, deviceId);
+      json(ctx.res, 200, {
+        share_delivery_envelope: Buffer.from(delivery.envelope).toString("base64"),
+        expires_at: delivery.expiresAt,
+      });
+    } catch (error) {
+      handleDeviceError(ctx.requestId, ctx.res, error);
+    }
+  };
+}
+
+export function createConfirmShareDeliveryRoute(
+  deviceService: DeviceService,
+  resolveUserId: (req: IncomingMessage) => Promise<string | null>,
+  resolveSession?: (req: IncomingMessage) => Promise<{ deviceId: string | null } | null>,
+): RouteHandler {
+  return async (ctx) => {
+    const deviceId = ctx.params.deviceId;
+    if (!deviceId) {
+      json(ctx.res, 400, errorPayload("DEVICE_BAD_REQUEST", "deviceId is required", ctx.requestId));
+      return;
+    }
+    let body: { device_share?: string };
+    try {
+      body = await readJsonBody(ctx.req);
+    } catch {
+      json(ctx.res, 400, errorPayload("DEVICE_BAD_REQUEST", "invalid json", ctx.requestId));
+      return;
+    }
+    if (typeof body.device_share !== "string" || !body.device_share.trim()) {
+      json(
+        ctx.res,
+        400,
+        errorPayload("DEVICE_BAD_REQUEST", "device_share is required", ctx.requestId),
+      );
+      return;
+    }
+    try {
+      const userId = await resolveUserId(ctx.req);
+      if (!userId) {
+        json(ctx.res, 401, errorPayload("AUTH_REQUIRED", "auth required", ctx.requestId));
+        return;
+      }
+      assertOwnDevice(ctx, deviceId, await resolveCallerDeviceId(ctx.req, resolveSession));
+      const result = await deviceService.confirmShareDelivery(
+        userId,
+        deviceId,
+        body.device_share.trim(),
+      );
+      json(ctx.res, 200, {
+        device_id: result.deviceId,
+        status: result.status,
+      });
+    } catch (error) {
+      handleDeviceError(ctx.requestId, ctx.res, error);
+    }
+  };
+}
+
+async function resolveCallerDeviceId(
+  req: IncomingMessage,
+  resolveSession?: (req: IncomingMessage) => Promise<{ deviceId: string | null } | null>,
+): Promise<string> {
+  const session = resolveSession ? await resolveSession(req) : null;
+  const sessionDeviceId = session?.deviceId?.trim() ?? "";
+  if (sessionDeviceId) {
+    return sessionDeviceId;
+  }
+  return getHeader(req, "x-device-id")?.trim() ?? "";
+}
+
+function assertOwnDevice(
+  ctx: Parameters<RouteHandler>[0],
+  deviceId: string,
+  callerDeviceId: string,
+): void {
+  if (!callerDeviceId || !sameDeviceId(callerDeviceId, deviceId)) {
+    throw new DeviceServiceError(
+      "DEVICE_SHARE_DELIVERY_FORBIDDEN",
+      403,
+      "only the pending device can read its share delivery",
+    );
+  }
 }
 
 export function createRejectDeviceRoute(
@@ -872,7 +1270,7 @@ export function createRejectDeviceRoute(
   };
 }
 
-const BLOCK_DURATIONS = new Set(["1h", "1d", "1w", "forever"]);
+const BLOCK_DURATIONS = new Set(["1h", "1d", "forever"]);
 
 export function createBlockDeviceRoute(
   deviceService: DeviceService,
@@ -905,7 +1303,7 @@ export function createBlockDeviceRoute(
         400,
         errorPayload(
           "DEVICE_BAD_REQUEST",
-          "duration must be one of 1h, 1d, 1w, forever",
+          "duration must be one of 1h, 1d, forever",
           ctx.requestId,
         ),
       );
@@ -923,7 +1321,7 @@ export function createBlockDeviceRoute(
         userId,
         approverDeviceId,
         deviceId,
-        duration as "1h" | "1d" | "1w" | "forever",
+        duration as "1h" | "1d" | "forever",
         body.reason,
       );
       if (sessionService) {

@@ -37,11 +37,24 @@ test("allows ITEM_CREATE in personal vault on FREE", () => {
   assert.equal(result.ok, true);
 });
 
-test("denies ITEM_CREATE in shared vault when modules off", () => {
+test("allows ITEM_CREATE in shared vault on self-hosted FREE", () => {
   const result = evaluateSharedVaultItemCreateGate({
     vault: sharedVault,
     workspace,
     config: { deploymentMode: "self_hosted", enterpriseModulesEnabled: false },
+  });
+  assert.equal(result.ok, true);
+});
+
+test("denies ITEM_CREATE in shared vault when sharedVaults is overridden off", () => {
+  const result = evaluateSharedVaultItemCreateGate({
+    vault: sharedVault,
+    workspace: {
+      ...workspace,
+      planCustomOverride: true,
+      planFeatureOverrides: { sharedVaults: false },
+    },
+    config: { deploymentMode: "saas", enterpriseModulesEnabled: false },
   });
   assert.equal(result.ok, false);
   if (!result.ok) {
@@ -50,11 +63,22 @@ test("denies ITEM_CREATE in shared vault when modules off", () => {
   }
 });
 
-test("allows ITEM_CREATE in shared vault when modules on even if plan_tier is FREE", () => {
+test("allows ITEM_CREATE in a shared vault on self-host for every plan_tier when modules are on", () => {
+  for (const planTier of ["FREE", "PREMIUM", "TEAM", "ENTERPRISE"] as const) {
+    const result = evaluateSharedVaultItemCreateGate({
+      vault: sharedVault,
+      workspace: { ...workspace, planTier },
+      config: { deploymentMode: "self_hosted", enterpriseModulesEnabled: true },
+    });
+    assert.equal(result.ok, true, planTier);
+  }
+});
+
+test("allows ITEM_CREATE in a shared vault on self-host without modules even when plan_tier is ENTERPRISE", () => {
   const result = evaluateSharedVaultItemCreateGate({
     vault: sharedVault,
-    workspace,
-    config: { deploymentMode: "self_hosted", enterpriseModulesEnabled: true },
+    workspace: { ...workspace, planTier: "ENTERPRISE" },
+    config: { deploymentMode: "self_hosted", enterpriseModulesEnabled: false },
   });
   assert.equal(result.ok, true);
 });

@@ -2,7 +2,9 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const tryUnlockWithMasterPassword = vi.hoisted(() => vi.fn(async () => false));
+const tryUnlockWithMasterPassword = vi.hoisted(() =>
+  vi.fn(async () => ({ ok: false as const, reason: "rejected" as const })),
+);
 
 vi.mock("../../locale/LocaleContext", () => ({
   useLocale: () => ({
@@ -55,7 +57,7 @@ import UnlockPasswordPage from "./UnlockPasswordPage";
 describe("UnlockPasswordPage master password", () => {
   beforeEach(() => {
     tryUnlockWithMasterPassword.mockClear();
-    tryUnlockWithMasterPassword.mockResolvedValue(false);
+    tryUnlockWithMasterPassword.mockResolvedValue({ ok: false, reason: "rejected" });
     clearMasterPasswordFailures("42");
   });
 

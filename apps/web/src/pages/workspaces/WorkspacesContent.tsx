@@ -49,8 +49,6 @@ function planDescriptionKey(planTier: string): string {
   switch (planTier) {
     case "PREMIUM":
       return "plan.premium";
-    case "FAMILY":
-      return "plan.family";
     case "TEAM":
       return "plan.team";
     case "ENTERPRISE":

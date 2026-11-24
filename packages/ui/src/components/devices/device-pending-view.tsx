@@ -90,7 +90,9 @@ export function DevicePendingView({
         </div>
       ) : null}
 
-      {mode === "rejected" && actions ? <div className="flex flex-col gap-3">{actions}</div> : null}
+      {(mode === "pending" || mode === "rejected") && actions ? (
+        <div className="flex flex-col gap-3">{actions}</div>
+      ) : null}
 
       {footer}
     </div>

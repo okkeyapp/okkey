@@ -1,5 +1,8 @@
 import type { WebMessageValues } from "@okkey/i18n";
 
+import { publicDocsUrl } from "../../../../docs/publicDocsUrl";
+import { useLocale } from "../../../../locale/LocaleContext";
+
 type VaultsSectionHeaderProps = {
   t: (messageKey: string, values?: WebMessageValues) => string;
 };
@@ -26,13 +29,14 @@ function ExternalLinkIcon() {
 }
 
 export default function VaultsSectionHeader({ t }: VaultsSectionHeaderProps) {
+  const { locale } = useLocale();
   return (
     <div className="flex flex-col gap-4">
       <h2 className="text-lg font-semibold text-foreground">{t("web.workspaceSettings.sections.vaults")}</h2>
       <p className="text-sm leading-5 text-muted-foreground">
         {t("web.workspaceSettings.vaults.intro")}{" "}
         <a
-          href={t("web.workspaceSettings.vaults.learnMoreUrl")}
+          href={publicDocsUrl("workspaceVaults", locale)}
           target="_blank"
           rel="noopener noreferrer"
           className="inline-flex items-center gap-1 font-medium text-foreground hover:underline"

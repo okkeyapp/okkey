@@ -4,6 +4,8 @@
  *
  * New writes bind `itemId` into AEAD AAD. Decrypt prefers the bound AAD, then falls back to the
  * legacy static AAD so historical ciphertext remains readable.
+ *
+ * Profile v1 and any non-qday profile are rejected on both read and write.
  */
 import {
   aead_decrypt,
@@ -22,6 +24,19 @@ const NONCE_LEN = 24;
 export type VaultItemCryptoContext = {
   itemId: string;
 };
+
+function assertVaultItemQdayProfile(
+  profileVersion: number,
+  direction: "read" | "write",
+): void {
+  const config = getCryptoConfig(profileVersion);
+  if (config.runtimeMode !== "qday_default") {
+    throw new CryptoSdkError(
+      "UNSUPPORTED_ALGORITHM",
+      `vault item ${direction} path requires qday profile, got v${config.version}`,
+    );
+  }
+}
 
 function encodeVaultItemAad(itemId: string): Uint8Array {
   return new TextEncoder().encode(
@@ -57,13 +72,7 @@ export async function encryptVaultItemPayload(
   context?: VaultItemCryptoContext,
 ): Promise<Uint8Array> {
   await ensureWasm();
-  const config = getCryptoConfig(profileVersion);
-  if (config.runtimeMode !== "qday_default") {
-    throw new CryptoSdkError(
-      "UNSUPPORTED_ALGORITHM",
-      `vault item write path requires qday profile, got v${config.version}`,
-    );
-  }
+  assertVaultItemQdayProfile(profileVersion, "write");
   const aad = context?.itemId
     ? encodeVaultItemAad(context.itemId)
     : VAULT_ITEM_AAD_LEGACY;
@@ -77,7 +86,7 @@ export async function decryptVaultItemPayload(
   context?: { itemId?: string | null },
 ): Promise<Uint8Array> {
   await ensureWasm();
-  getCryptoConfig(profileVersion);
+  assertVaultItemQdayProfile(profileVersion, "read");
   if (blob.length <= NONCE_LEN) {
     throw new Error("invalid vault item ciphertext: too short");
   }

@@ -52,11 +52,19 @@ vi.mock("@okkey/crypto", () => ({
   buildRegistrationCryptoArtifacts: vi.fn(async () => ({
     vaultKey: new Uint8Array(32),
     deviceShare: new Uint8Array(32),
+    wrappedDeviceShare: new Uint8Array([9, 9, 9, 9]),
+    shareWrap: {
+      ed25519Seed: new Uint8Array(32),
+      ed25519PublicKey: new Uint8Array(32),
+      mlkemDecapsulationKey: new Uint8Array(8),
+      mlkemEncapsulationKey: new Uint8Array(8),
+    },
     serverKeyShare: new Uint8Array(32),
   })),
   registrationArtifactsToWire: vi.fn(() => ({
     user_public_key: "pk",
     user_public_pq_key: "pq",
+    user_public_mldsa_key: "mldsa",
     encrypted_private_key: {
       crypto_version: 2,
       algorithm: "opaque",
@@ -76,6 +84,7 @@ vi.mock("@okkey/crypto", () => ({
     meta: {},
   })),
   wipeBytes: vi.fn(),
+  deriveLoginKey: vi.fn(async () => new Uint8Array(32)),
 }));
 
 vi.mock("../../api/client", () => ({
@@ -99,6 +108,11 @@ vi.mock("../../auth/localVaultBundle", () => ({
 
 vi.mock("../../auth/deviceSigningKey", () => ({
   ensureDeviceSigningPublicKey: vi.fn(async () => btoa("pub-key-32-bytes-pad!!!!!!")),
+}));
+
+vi.mock("@okkey/vault", () => ({
+  persistSplitKeyShareWrapKey: vi.fn(async () => undefined),
+  clearSplitKeyShareWrapKey: vi.fn(async () => undefined),
 }));
 
 vi.mock("./registrationErrors", () => ({
@@ -139,6 +153,39 @@ async function submitRegistration() {
   });
   fireEvent.click(screen.getByRole("button", { name: "auth.registration.submit" }));
 }
+
+describe("AuthRegistrationPage master password length", () => {
+  beforeEach(() => {
+    navigate.mockReset();
+  });
+
+  it("keeps Register disabled until the master password has 12 characters", () => {
+    renderPage();
+    fireEvent.change(screen.getByLabelText("auth.registration.firstName"), {
+      target: { value: "Ada" },
+    });
+    fireEvent.change(screen.getByLabelText("auth.registration.lastName"), {
+      target: { value: "Lovelace" },
+    });
+    fireEvent.change(screen.getByLabelText("auth.registration.masterPassword"), {
+      target: { value: "12345678901" },
+    });
+    fireEvent.change(screen.getByLabelText("auth.registration.repeatMasterPassword"), {
+      target: { value: "12345678901" },
+    });
+    const submit = screen.getByRole("button", { name: "auth.registration.submit" });
+    expect(submit).toBeDisabled();
+    expect(screen.getByText("auth.registration.reqPasswordLength")).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText("auth.registration.masterPassword"), {
+      target: { value: "123456789012" },
+    });
+    fireEvent.change(screen.getByLabelText("auth.registration.repeatMasterPassword"), {
+      target: { value: "123456789012" },
+    });
+    expect(submit).toBeEnabled();
+  });
+});
 
 describe("AuthRegistrationPage recovery key", () => {
   beforeEach(() => {
@@ -204,5 +251,23 @@ describe("AuthRegistrationPage recovery key", () => {
     await waitFor(() => {
       expect(next).toBeEnabled();
     });
+  });
+
+  it("acks the recovery export once when the key is copied and then downloaded", async () => {
+    enrollAccountRecoveryKey.mockResolvedValue({});
+    renderPage();
+    await submitRegistration();
+    const next = await screen.findByRole("button", { name: "auth.registration.recovery.next" });
+    fireEvent.click(screen.getByRole("button", { name: "auth.registration.recovery.copy" }));
+    await waitFor(() => {
+      expect(next).toBeEnabled();
+    });
+    expect(ackAccountRecoveryKeyExport).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "auth.registration.recovery.downloadPdf" }));
+    await waitFor(() => {
+      expect(downloadRecoveryKeyPdf).toHaveBeenCalledTimes(1);
+    });
+    expect(ackAccountRecoveryKeyExport).toHaveBeenCalledTimes(1);
   });
 });

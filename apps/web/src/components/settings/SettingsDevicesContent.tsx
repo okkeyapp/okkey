@@ -21,6 +21,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { useAuthenticatedCoreClient, useAuthVault } from "../../auth/AuthVaultContext";
+import { replacementDeviceShareForApproval } from "../../auth/approveDeviceShare";
+import { sealLocalShareForPendingDevice } from "../../auth/deviceShareDelivery";
+import { readVaultBundle } from "../../auth/localVaultBundle";
 import { formatDeviceClientOs, formatDeviceTitle } from "../../auth/browserEnvironment";
 import { getOrCreateDeviceFingerprint } from "../../auth/deviceFingerprint";
 import ListScrollSentinel from "../../lists/ListScrollSentinel";
@@ -35,6 +38,7 @@ import {
 } from "../items/itemCategoryIcons";
 import { calendarDaysBetween } from "../../lib/calendarDaysBetween";
 import { useLocale } from "../../locale/LocaleContext";
+import { approvalResponseGrantsTrust } from "../devices/deviceApprovalPopup";
 import { DEVICES_CHANGED_EVENT, emitDevicesChanged } from "../devices/devicesEvents";
 import {
   DeviceTypeIcon,
@@ -147,7 +151,7 @@ export { parseOsFromDeviceName } from "../../auth/browserEnvironment";
 
 export default function SettingsDevicesContent({ t }: SettingsDevicesContentProps) {
   const core = useAuthenticatedCoreClient();
-  const { currentDeviceId: sessionDeviceId } = useAuthVault();
+  const { currentDeviceId: sessionDeviceId, userId } = useAuthVault();
   const { locale } = useLocale();
   const fingerprint = useMemo(() => getOrCreateDeviceFingerprint(), []);
   const mapDevicesError = useCallback((err: unknown) => devicesErrorMessage(err, t), [t]);
@@ -180,15 +184,15 @@ export default function SettingsDevicesContent({ t }: SettingsDevicesContentProp
   const [renameValue, setRenameValue] = useState("");
 
   const load = useCallback(
-    async (opts?: { quiet?: boolean }) => {
-      await refresh({ quiet: opts?.quiet });
+    async (opts?: { quiet?: boolean; force?: boolean }) => {
+      await refresh({ quiet: opts?.quiet, force: opts?.force });
     },
     [refresh],
   );
 
   useEffect(() => {
     const onChanged = () => {
-      void load({ quiet: true });
+      void load({ quiet: true, force: true });
     };
     window.addEventListener(DEVICES_CHANGED_EVENT, onChanged);
     return () => window.removeEventListener(DEVICES_CHANGED_EVENT, onChanged);
@@ -266,14 +270,13 @@ export default function SettingsDevicesContent({ t }: SettingsDevicesContentProp
         });
         toast.success(t("web.settingsPopup.devices.toast.revoked"));
         emitDevicesChanged();
-        await load({ quiet: true });
       } catch (err) {
         toast.error(devicesErrorMessage(err, t));
       } finally {
         setBusyId(null);
       }
     },
-    [busyId, core, currentDeviceId, load, patchDevicesCache, pending, t],
+    [busyId, core, currentDeviceId, patchDevicesCache, pending, t],
   );
 
   const blockPending = useCallback(
@@ -317,22 +320,56 @@ export default function SettingsDevicesContent({ t }: SettingsDevicesContentProp
       return;
     }
     setBusyId(device.device_id);
-    // Optimistic: move into trusted list immediately.
-    patchDevicesCache({
-      pending: pending.filter((item) => item.device_id !== device.device_id),
-      devices: [
-        { ...device, status: "trusted", is_current: false, approval_expires_at: null },
-        ...devices.filter((item) => item.device_id !== device.device_id),
-      ],
-    });
     try {
-      await core.approveDevice(device.device_id, currentDeviceId);
+      const bundle = userId ? readVaultBundle(userId) : null;
+      const envelope = userId
+        ? await sealLocalShareForPendingDevice({
+            userId,
+            deviceId: device.device_id,
+            oneTimeX25519PublicKey: device.one_time_x25519_public_key,
+            oneTimeMlkemPublicKey: device.one_time_mlkem_public_key,
+          })
+        : null;
+      let deviceShareB64: string | undefined;
+      if (!envelope) {
+        if (!userId || !bundle?.device_share_b64) {
+          throw new Error("pending device has no share wrap keys");
+        }
+        deviceShareB64 = await replacementDeviceShareForApproval({
+          userId,
+          localShareB64: bundle.device_share_b64,
+          pending: device,
+        });
+      }
+      const approved = await core.approveDevice(
+        device.device_id,
+        currentDeviceId,
+        envelope ?? undefined,
+        deviceShareB64,
+      );
+      if (!approvalResponseGrantsTrust(approved.status)) {
+        await load({ quiet: true, force: true });
+        return;
+      }
+      patchDevicesCache({
+        pending: pending.filter((item) => item.device_id !== device.device_id),
+        devices: [
+          { ...device, status: "trusted", is_current: false, approval_expires_at: null },
+          ...devices.filter((item) => item.device_id !== device.device_id),
+        ],
+      });
       toast.success(t("web.settingsPopup.devices.toast.trusted"));
       emitDevicesChanged();
-      await load({ quiet: true });
     } catch (err) {
-      toast.error(devicesErrorMessage(err, t));
-      await load({ quiet: true });
+      if (
+        err instanceof ApiRequestError &&
+        err.body.error === "DEVICE_APPROVAL_ALREADY_RESOLVED"
+      ) {
+        toast.success(t("web.settingsPopup.devices.toast.trusted"));
+      } else {
+        toast.error(devicesErrorMessage(err, t));
+      }
+      await load({ quiet: true, force: true });
     } finally {
       setBusyId(null);
     }

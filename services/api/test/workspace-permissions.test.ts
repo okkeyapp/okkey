@@ -20,6 +20,8 @@ test("parsePermissionsMatrix inherits nested settings from settings when missing
   assert.equal(matrix.settings_items.post, 0);
   assert.equal(matrix.settings_capsules.get, 1);
   assert.equal(matrix.settings_capsules.put, 1);
+  assert.equal(matrix.settings_mail.get, 1);
+  assert.equal(matrix.settings_mail.put, 1);
   assert.equal(matrix.members.delete, 2);
 });
 
@@ -39,8 +41,11 @@ test("full and empty permission matrices", () => {
   const empty = emptyPermissionsMatrix();
   assert.equal(full.members.get, 1);
   assert.equal(full.members.post, 1);
+  assert.equal(full.settings_mail.get, 1);
+  assert.equal(full.settings_mail.post, 0);
   assert.equal(empty.members.get, 0);
   assert.equal(empty.members.post, 0);
+  assert.equal(empty.settings_mail.get, 0);
 });
 
 test("permissionAllowsObject honors all vs own vs none", () => {

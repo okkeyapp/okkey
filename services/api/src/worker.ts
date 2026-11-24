@@ -12,12 +12,15 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { AttachmentService } from "./attachments/service.ts";
+import { WorkspaceStorageQuotaService } from "./storage-quota/service.ts";
 import { CapsuleService } from "./capsule/service.ts";
 import { MmdbGeoIpLookup } from "./capsule/geoip.ts";
 import { loadConfig } from "./config.ts";
 import { initEntityIdGenerator } from "./entity-id.ts";
 import { resolveDeadLetterSealKey, startEmailQueueConsumer } from "./email/queue.ts";
 import { createTransportEmailSender } from "./email/service.ts";
+import { MailSettingsService } from "./mail-settings/service.ts";
+import { PostgresServerMailSettingsStore } from "./mail-settings/store.ts";
 import { ItemPurgeService } from "./item-purge/service.ts";
 import { startBackgroundJobs } from "./jobs/background-jobs.ts";
 import { createLogger } from "./logger.ts";
@@ -26,6 +29,7 @@ import {
   KeyFieldFileStorage,
   loadKeyFieldFileStorageConfigFromEnv,
 } from "./storage/key-field-file-storage.ts";
+import { backfillLegacyDeviceShares } from "./device/legacy-device-share-backfill.ts";
 import { applySqlMigrations } from "./storage/migrate.ts";
 
 const workerDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../worker");
@@ -62,13 +66,19 @@ async function main(): Promise<void> {
 
   // Worker can apply migrations if it starts before API (compose race); idempotent.
   await applySqlMigrations(storage.postgres, { logger });
+  await backfillLegacyDeviceShares(storage.postgres, {
+    approvalTtlMs: config.deviceApprovalTtlSeconds * 1000,
+    logger,
+  });
 
   const geoIp = new MmdbGeoIpLookup(config.geoIpEnabled, config.geoIpDbPath, logger);
+  const storageQuota = new WorkspaceStorageQuotaService({ db: storage.postgres, config });
   const capsuleService = new CapsuleService({
     db: storage.postgres,
     redis: storage.redis,
     users: storage.repositories.users,
     objectStorage: storage.objectStorage,
+    storageQuota,
     geoIp,
     config,
     log: logger,
@@ -92,6 +102,7 @@ async function main(): Promise<void> {
         softDeletes: storage.repositories.vaultItemSoftDeletes,
         templates: storage.repositories.workspaceItemTemplates,
         config,
+        storageQuota,
         // Worker only purges attachments; branding checks are unused on this path.
         canUpdateWorkspaceBranding: async () => false,
       })
@@ -105,7 +116,15 @@ async function main(): Promise<void> {
 
   // Validate/create transport before starting jobs so a bad EMAIL_* env exits
   // instead of leaving purge/capsule timers + open Redis/Postgres sockets alive.
-  const emailTransport = await createTransportEmailSender(config, logger);
+  const mailSettings = new MailSettingsService({
+    store: new PostgresServerMailSettingsStore(storage.postgres),
+    config,
+    users: storage.repositories.users,
+    workspaces: storage.repositories.workspaces,
+    logger,
+  });
+  await mailSettings.probeLegacySmtpOnce();
+  const emailTransport = await createTransportEmailSender(config, logger, mailSettings);
 
   const jobs = startBackgroundJobs({
     itemPurgeService,

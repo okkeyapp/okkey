@@ -30,6 +30,21 @@ export function buildOnePassword1PuxExport(items: ExportSourceItem[]): Uint8Arra
           ],
           notesPlain: login.notes || undefined,
           password: login.password || undefined,
+          ...(login.totp
+            ? {
+                sections: [
+                  {
+                    title: "",
+                    fields: [
+                      {
+                        title: "one-time password",
+                        value: { totp: login.totp },
+                      },
+                    ],
+                  },
+                ],
+              }
+            : {}),
         },
       };
     });

@@ -14,6 +14,8 @@ const BASE64_LINE_LENGTH = 76;
 /** RFC 2047 §2: each encoded-word ≤75; each header line with encoded-words ≤76. */
 const ENCODED_WORD_MAX = 75;
 const HEADER_LINE_MAX = 76;
+/** RFC 5322 §2.1.1 recommended limit (excluding CRLF), used when folding is possible. */
+const HEADER_LINE_RECOMMENDED_MAX = 78;
 /** RFC 5322 §2.1.1 hard limit per physical line (excluding CRLF). */
 const HEADER_LINE_HARD_MAX = 998;
 
@@ -213,6 +215,62 @@ export function formatHeaderField(
 }
 
 /**
+ * Fold header parts on the spaces between them (RFC 5322 §2.2.3).
+ * Prefer ≤78 octets. A single part with no break inside it may run past 78
+ * up to the 998-octet hard limit (quoted-strings must not be split).
+ */
+function formatSoftFoldedHeader(name: string, parts: string[]): string {
+  if (parts.length === 0) {
+    return `${name}:`;
+  }
+  const physical: string[] = [];
+  let line = `${name}:`;
+  for (const part of parts) {
+    const separator = " ";
+    if (line.length + separator.length + part.length <= HEADER_LINE_RECOMMENDED_MAX) {
+      line += separator + part;
+      continue;
+    }
+    if (line !== `${name}:`) {
+      physical.push(line);
+      line = `${separator}${part}`;
+    } else {
+      line = `${line}${separator}${part}`;
+    }
+    if (line.length > HEADER_LINE_HARD_MAX) {
+      throw new Error(
+        `header line exceeds ${HEADER_LINE_HARD_MAX} octets (${name}: ${line.length})`,
+      );
+    }
+  }
+  physical.push(line);
+  return physical.join("\r\n");
+}
+
+/**
+ * True when an ASCII value has a token that cannot fit even on the 998-octet
+ * hard limit (first token shares the `Name: ` line; later tokens need a
+ * leading fold space).
+ */
+function asciiHeaderExceedsHardLimit(name: string, value: string): boolean {
+  const tokens = value.split(/ +/).filter((token) => token.length > 0);
+  if (tokens.length === 0) {
+    return false;
+  }
+  const firstBudget = HEADER_LINE_HARD_MAX - (name.length + 2);
+  if (tokens[0]!.length > firstBudget) {
+    return true;
+  }
+  const continuationBudget = HEADER_LINE_HARD_MAX - 1;
+  for (let i = 1; i < tokens.length; i += 1) {
+    if (tokens[i]!.length > continuationBudget) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
  * Fold an ASCII header value on whitespace (RFC 5322 §2.2.3), preferring ≤76
  * octets per line. A single token with no break opportunity may use the full
  * 998-octet hard limit instead of throwing.
@@ -256,8 +314,9 @@ export function formatUnstructuredHeader(name: string, value: string): string {
   }
   if (isAsciiPrintable(cleaned)) {
     // Literal text that looks like an encoded-word must itself be encoded,
-    // otherwise MUAs decode it as RFC 2047.
-    if (looksLikeEncodedWord(cleaned)) {
+    // otherwise MUAs decode it as RFC 2047. A single token longer than the
+    // 998-octet hard limit cannot be sent raw; encode and split it instead.
+    if (looksLikeEncodedWord(cleaned) || asciiHeaderExceedsHardLimit(name, cleaned)) {
       return formatHeaderField(name, encodeRfc2047WordsForField(name, cleaned));
     }
     return formatAsciiHeaderField(name, cleaned);
@@ -295,7 +354,7 @@ export function formatMailboxHeader(name: string, value: string): string {
     return formatAsciiHeaderField(name, `<${addr}>`);
   }
 
-  if (!isAsciiPrintable(display)) {
+  if (!isAsciiPrintable(display) || looksLikeEncodedWord(display)) {
     const words = encodeRfc2047WordsForField(name, display);
     const addrPart = `<${addr}>`;
     // Try to keep ` <addr>` on the last encoded-word line; else fold it.
@@ -317,8 +376,9 @@ export function formatMailboxHeader(name: string, value: string): string {
 
   if (/[^A-Za-z0-9!#$%&'*+\-/=?^_`{|}~ ]/.test(display)) {
     const quoted = `"${display.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
-    // Do not split inside the quoted-string; allow the hard 998 limit.
-    return formatHeaderField(name, [`${quoted} <${addr}>`], HEADER_LINE_HARD_MAX);
+    // Do not split inside the quoted-string. Fold before <addr> so each
+    // physical line stays within 78 when a break exists (RFC 5322).
+    return formatSoftFoldedHeader(name, [quoted, `<${addr}>`]);
   }
   return formatAsciiHeaderField(name, `${display} <${addr}>`);
 }
@@ -335,7 +395,7 @@ export function encodeMailboxHeader(value: string): string {
   if (!display) {
     return `<${addr}>`;
   }
-  if (!isAsciiPrintable(display)) {
+  if (!isAsciiPrintable(display) || looksLikeEncodedWord(display)) {
     return `${encodeRfc2047(display)} <${addr}>`;
   }
   if (/[^A-Za-z0-9!#$%&'*+\-/=?^_`{|}~ ]/.test(display)) {
@@ -387,9 +447,11 @@ export type BuildRawMimeEmailOptions = {
  * Build a multipart/related MIME message suitable for SES Raw and similar APIs.
  * Inline attachments are referenced from HTML via `cid:` Content-IDs.
  *
- * Headers follow RFC 2047 for non-ASCII Subject/display-name (character-boundary
- * splits, folded ≤76); ASCII headers fold on whitespace or stay ≤998 (RFC 5322);
- * Base64 bodies wrap at 76 (RFC 2045).
+ * Headers follow RFC 2047 for non-ASCII Subject/display-name and for ASCII that
+ * looks like an encoded-word (character-boundary splits, folded ≤76). A single
+ * subject token that cannot fit in 998 octets is encoded and split the same way.
+ * Quoted display-names fold before the angle-addr at 78 where possible (RFC 5322).
+ * Other ASCII headers fold on whitespace or stay ≤998. Base64 bodies wrap at 76.
  */
 export function buildRawMimeEmail(
   message: EmailMessage,

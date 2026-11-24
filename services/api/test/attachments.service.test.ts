@@ -30,7 +30,6 @@ function workspaceStub(overrides: Partial<WorkspaceRecord> = {}): WorkspaceRecor
       forceMaxViews: 0,
       passwordAttemptLimit: 0,
     },
-    monitoringCardSettings: {},
     tileColor: null,
     logoVaultId: null,
     logoAttachmentId: null,

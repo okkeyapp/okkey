@@ -2,15 +2,28 @@ import { ApiRequestError } from "@okkey/api";
 import {
   generateRecoverySecret,
   initCrypto,
+  openStoredSplitKeyShareB,
   rebalanceServerShareForNewPassword,
   recoveryPossessionPublicKey,
+  sealSplitKeyShareB,
   signRecoveryPossessionProof,
   unwrapVaultKeyWithRecoverySecret,
   wipeBytes,
   wrapVaultKeyWithRecoverySecret,
 } from "@okkey/crypto";
-import { createWorkspaceFoldersSyncController } from "@okkey/vault";
-import type { AccountRecoveryStatusResponseDto, EncryptedBlobDto } from "@okkey/types";
+import {
+  createWorkspaceFoldersSyncController,
+  loadSplitKeyShareWrapKey,
+  persistSplitKeyShareWrapKey,
+  rememberServerKeyShare,
+} from "@okkey/vault";
+import {
+  MASTER_PASSWORD_POLICY_VERSION,
+  MIN_MASTER_PASSWORD_LENGTH,
+  masterPasswordMeetsNewPasswordPolicy,
+  type AccountRecoveryStatusResponseDto,
+  type EncryptedBlobDto,
+} from "@okkey/types";
 import {
   Alert,
   AlertDescription,
@@ -40,12 +53,16 @@ import { downloadRecoveryKeyPdf } from "../../components/settings/recoveryKeyPdf
 import { RecoveryInfoTriangleIcon } from "../../components/settings/RecoveryInfoTriangleIcon";
 import { useAuthVault } from "../../auth/AuthVaultContext";
 import { base64ToBytes, bytesToBase64 } from "../../auth/base64";
+import { loginKeyBase64 } from "../../auth/loginKeyWire";
+import { readLocalProfile } from "../../auth/localProfileStorage";
 import { parseBrowserEnvironment } from "../../auth/browserEnvironment";
 import { registerCurrentBrowserDevice } from "../../auth/deviceTrust";
 import { getOrCreateDeviceFingerprint } from "../../auth/deviceFingerprint";
 import { readVaultBundle, writeVaultBundle } from "../../auth/localVaultBundle";
 import { safeRedirectPath } from "../../auth/safeRedirect";
+import type { AccountRestoreApproval } from "../../account-recovery-features/registry";
 import { useLocale } from "../../locale/LocaleContext";
+import { completeApprovedRecoveryRequest } from "./completeApprovedRecoveryRequest";
 import {
   ACCOUNT_DEVICE_PENDING_PATH,
   ACCOUNT_LOCK_PATH,
@@ -55,8 +72,6 @@ import {
 
 type RestoreMethod = "key" | "devices" | "contacts";
 type RestoreStep = "methods" | "newRecoveryKey";
-
-const MIN_MASTER_PASSWORD_LENGTH = 4;
 
 const DevicesRestorePanel = accountRecoveryModule.DevicesRestorePanel;
 const ContactsRestorePanel = accountRecoveryModule.ContactsRestorePanel;
@@ -201,10 +216,15 @@ export default function AccountRestorePage() {
   const anyMethod =
     keyAvailable || devicesAvailable || contactsAvailable;
 
+  const newPasswordTooShort =
+    newPassword.length > 0 && !masterPasswordMeetsNewPasswordPolicy(newPassword);
   const passwordValid =
-    newPassword.length >= MIN_MASTER_PASSWORD_LENGTH && newPassword === repeatPassword;
+    masterPasswordMeetsNewPasswordPolicy(newPassword) && newPassword === repeatPassword;
 
-  async function completeRestoreFromVaultKey(vaultKey: Uint8Array) {
+  async function completeRestoreFromVaultKey(
+    vaultKey: Uint8Array,
+    approval?: { channel: "devices" | "contacts"; requestId: string },
+  ) {
     if (!accessToken || !userId || !passwordValid) {
       throw new Error("invalid restore state");
     }
@@ -219,17 +239,36 @@ export default function AccountRestorePage() {
     let passwordChanged = false;
     let ownedVaultKey: Uint8Array | null = vaultKey;
     let mintedFreshShare = false;
+    let approvalCompleted = false;
 
     try {
       await initCrypto();
       const core = createAuthenticatedCoreClient(accessToken);
 
       if (existingBundle) {
-        deviceB = base64ToBytes(existingBundle.device_share_b64);
+        const stored = base64ToBytes(existingBundle.device_share_b64);
+        const keys = await loadSplitKeyShareWrapKey(userId);
+        deviceB = await openStoredSplitKeyShareB({
+          stored,
+          recipientEd25519Seed: keys?.ed25519Seed,
+          recipientMlkemDecapsulationKey: keys?.mlkemDecapsulationKey,
+        });
       } else {
         // Fresh browser: mint a new device share B' and claim sole trusted device after MP change.
         deviceB = crypto.getRandomValues(new Uint8Array(32));
         mintedFreshShare = true;
+      }
+
+      let storedShareB64 = existingBundle?.device_share_b64 ?? "";
+      if (mintedFreshShare && deviceB) {
+        const sealed = await sealSplitKeyShareB(deviceB);
+        try {
+          await persistSplitKeyShareWrapKey(userId, sealed.shareWrap);
+        } finally {
+          wipeBytes(sealed.shareWrap.ed25519Seed);
+          wipeBytes(sealed.shareWrap.mlkemDecapsulationKey);
+        }
+        storedShareB64 = bytesToBase64(sealed.wrapped);
       }
 
       rebalanced = await rebalanceServerShareForNewPassword({
@@ -239,10 +278,22 @@ export default function AccountRestorePage() {
         passwordKdfParamsVersion: existingBundle?.password_kdf_params_version ?? 2,
       });
 
+      if (approval) {
+        const outcome = await completeApprovedRecoveryRequest(
+          core.getHttpClient(),
+          approval.channel,
+          approval.requestId,
+        );
+        approvalCompleted = outcome === "completed";
+      }
+
+      const loginKey = userId ? await loginKeyBase64(readLocalProfile(userId)?.email ?? "", newPwd) : null;
       await core.changeMasterPassword({
         server_key_share: bytesToBase64(rebalanced.serverKeyShare),
         password_kdf_salt: bytesToBase64(rebalanced.passwordKdfSalt),
         password_kdf_params_version: rebalanced.passwordKdfParamsVersion,
+        master_password_policy_version: MASTER_PASSWORD_POLICY_VERSION,
+        ...(loginKey ? { login_key: loginKey } : {}),
       });
       passwordChanged = true;
 
@@ -252,10 +303,11 @@ export default function AccountRestorePage() {
         encryptedPrivateKey = identity.encrypted_private_key;
       }
 
+      const nextServerShareB64 = bytesToBase64(rebalanced.serverKeyShare);
+      rememberServerKeyShare(userId, nextServerShareB64);
       writeVaultBundle(
         {
-          server_key_share_b64: bytesToBase64(rebalanced.serverKeyShare),
-          device_share_b64: bytesToBase64(deviceB),
+          device_share_b64: storedShareB64,
           password_kdf_salt_b64: bytesToBase64(rebalanced.passwordKdfSalt),
           password_kdf_params_version: rebalanced.passwordKdfParamsVersion,
           encrypted_private_key: encryptedPrivateKey,
@@ -286,6 +338,15 @@ export default function AccountRestorePage() {
       }
 
       if (freshBrowser || mintedFreshShare) {
+        // Key restore already bound a pending device before the possession proof.
+        // Device and contact approval mark a session that may still be unbound, so
+        // bind this browser before claim. Claim still requires that proved device.
+        if (approvalCompleted) {
+          await registerCurrentBrowserDevice(core, getOrCreateDeviceFingerprint(), {
+            userId,
+            recoveryPending: true,
+          });
+        }
         await registerCurrentBrowserDevice(core, getOrCreateDeviceFingerprint(), {
           userId,
           claimAfterRecovery: true,
@@ -339,6 +400,16 @@ export default function AccountRestorePage() {
     }
   }
 
+  function restoreFromApproval(channel: "devices" | "contacts") {
+    return (vaultKey: Uint8Array, approval?: AccountRestoreApproval) => {
+      const requestId = approval?.requestId.trim() ?? "";
+      return completeRestoreFromVaultKey(
+        vaultKey,
+        requestId ? { channel, requestId } : undefined,
+      );
+    };
+  }
+
   function restoreErrorMessage(err: unknown): string | null {
     if (!(err instanceof ApiRequestError)) {
       return null;
@@ -357,6 +428,9 @@ export default function AccountRestorePage() {
     }
     if (err.body.error === "RECOVERY_KEY_NOT_AVAILABLE") {
       return t("account.restore.error.keyUnavailable");
+    }
+    if (err.body.error === "MASTER_PASSWORD_POLICY_REJECTED") {
+      return t("auth.masterPassword.policyRejected");
     }
     return null;
   }
@@ -630,8 +704,14 @@ export default function AccountRestorePage() {
                     type="password"
                     autoComplete="new-password"
                     value={newPassword}
+                    aria-invalid={newPasswordTooShort || undefined}
                     onChange={(e) => setNewPassword(e.target.value)}
                   />
+                  {newPasswordTooShort ? (
+                    <p className="okkey-small text-destructive" role="alert">
+                      {t("account.restore.passwordTooShort", { min: MIN_MASTER_PASSWORD_LENGTH })}
+                    </p>
+                  ) : null}
                 </div>
                 <div className="flex flex-col gap-2">
                   <label htmlFor="restore-repeat-password" className="okkey-small font-medium text-copy-primary">
@@ -662,7 +742,7 @@ export default function AccountRestorePage() {
                   accessToken={accessToken}
                   userId={userId}
                   t={t}
-                  onVaultKeyRecovered={completeRestoreFromVaultKey}
+                  onVaultKeyRecovered={restoreFromApproval("devices")}
                   formError={formError}
                   setFormError={setFormError}
                   newPassword={newPassword}
@@ -698,7 +778,7 @@ export default function AccountRestorePage() {
                   accessToken={accessToken}
                   userId={userId}
                   t={t}
-                  onVaultKeyRecovered={completeRestoreFromVaultKey}
+                  onVaultKeyRecovered={restoreFromApproval("contacts")}
                   formError={formError}
                   setFormError={setFormError}
                   newPassword={newPassword}

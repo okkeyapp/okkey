@@ -16,6 +16,7 @@ import { Favicon } from "./favicon.js";
 import { PersonalWorkspaceMark } from "./workspace-tile.js";
 import {
   OkkeySidebarFoldersMenu,
+  OkkeySidebarPlainLink,
   OkkeySidebarPlainLinksMenu,
   OkkeySidebarVaultsMenu,
   OkkeySidebarWorkspaceMenu,
@@ -37,6 +38,7 @@ import {
   useSidebar,
 } from "./sidebar.js";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./tooltip.js";
+import { publicDocsUrl, type PublicDocsLocale } from "../../lib/public-docs-url.js";
 import { cn } from "../../lib/utils.js";
 
 /** Viewport width strictly below 991px — mobile workspace shell (drawer nav). */
@@ -213,7 +215,7 @@ function NavCapsulesIcon({ className, ...props }: React.SVGProps<SVGSVGElement>)
   );
 }
 
-function NavMonitoringIcon({ className, ...props }: React.SVGProps<SVGSVGElement>) {
+export function OkkeyNavMonitoringIcon({ className, ...props }: React.SVGProps<SVGSVGElement>) {
   return (
     <svg
       viewBox="0 0 16 16"
@@ -840,7 +842,6 @@ function demoVaultLeading(emoji: string) {
 export type OkkeyWorkspaceShellNavPaths = {
   items: string;
   capsules: string;
-  monitoring: string;
   tools: string;
   settings: string;
 };
@@ -848,7 +849,6 @@ export type OkkeyWorkspaceShellNavPaths = {
 export type OkkeyWorkspaceShellNavLabels = Partial<{
   allItems: string;
   capsules: string;
-  monitoring: string;
   tools: string;
   settings: string;
   addRecords: string;
@@ -858,7 +858,6 @@ export type OkkeyWorkspaceShellNavLabels = Partial<{
 const defaultShellNavLabels: Required<OkkeyWorkspaceShellNavLabels> = {
   allItems: "All items",
   capsules: "Capsules",
-  monitoring: "Monitoring",
   tools: "Tools",
   settings: "Settings",
   addRecords: "Add records",
@@ -891,12 +890,6 @@ export function okkeyWorkspaceShellNavItems(
       label: L.capsules,
       trailingPlus: true,
       addAriaLabel: L.addCapsule,
-    },
-    {
-      id: "mon",
-      to: p?.monitoring,
-      icon: <NavMonitoringIcon />,
-      label: L.monitoring,
     },
     {
       id: "tools",
@@ -970,11 +963,28 @@ const DEMO_FOLDER_TREE: OkkeySidebarFolderTreeNode[] = [
   { id: "company", label: "Company" },
 ];
 
-function demoPlainLinkItems(): OkkeySidebarPlainLinkItem[] {
-  return [
-    { id: "doc", icon: <NavDocumentationIcon />, label: "Documentation" },
-    { id: "help", icon: <NavHelpIcon />, label: "Help" },
+/**
+ * Help stays defined for a future assistant entry. Until that exists, the sidebar
+ * does not render it (Documentation already opens the docs home).
+ */
+const SHOW_SIDEBAR_HELP_LINK = false;
+
+function demoPlainLinkItems(locale: PublicDocsLocale): OkkeySidebarPlainLinkItem[] {
+  // The public docs site has no separate help page. The Help item uses the same docs home as Documentation.
+  const href = publicDocsUrl("home", locale);
+  const items: OkkeySidebarPlainLinkItem[] = [
+    { id: "doc", icon: <NavDocumentationIcon />, label: "Documentation", href },
   ];
+  const helpItem: OkkeySidebarPlainLinkItem = {
+    id: "help",
+    icon: <NavHelpIcon />,
+    label: "Help",
+    href,
+  };
+  if (SHOW_SIDEBAR_HELP_LINK) {
+    items.push(helpItem);
+  }
+  return items;
 }
 
 /** When passed from the host app (e.g. web shell), footer user block + account menu use real identity and logout. */
@@ -1092,6 +1102,14 @@ export type OkkeyAppSidebarProps = {
   accountMenu?: OkkeyAppSidebarAccountMenu;
   /** When set, footer Documentation / Help use these strings (e.g. i18n); otherwise English gallery labels. */
   footerPlainLinkLabels?: { documentation: string; help: string };
+  /** Host-rendered block above Documentation / Help. Self-host passes the version button. */
+  beforeFooter?: React.ReactNode;
+  /**
+   * UI locale for the Documentation and Help footer links.
+   * Russian opens the unprefixed docs home; English opens `/en/`.
+   * Defaults to English (gallery).
+   */
+  docsLocale?: PublicDocsLocale;
   /**
    * When false, hide Documentation / Help footer links entirely (e.g. extension popup).
    * Default true for gallery / web.
@@ -1345,6 +1363,8 @@ function OkkeyAppSidebarInner({
   folderEmptyLabel,
   accountMenu,
   footerPlainLinkLabels,
+  beforeFooter,
+  docsLocale = "en",
   showFooterPlainLinks = true,
   vaultHeaderPlusAriaLabel = "Add vault",
   folderHeaderPlusAriaLabel = "Add folder",
@@ -1372,6 +1392,8 @@ function OkkeyAppSidebarInner({
   | "folderEmptyLabel"
   | "accountMenu"
   | "footerPlainLinkLabels"
+  | "beforeFooter"
+  | "docsLocale"
   | "showFooterPlainLinks"
   | "vaultHeaderPlusAriaLabel"
   | "folderHeaderPlusAriaLabel"
@@ -1421,14 +1443,14 @@ function OkkeyAppSidebarInner({
     if (!showFooterPlainLinks) {
       return [];
     }
-    const base = demoPlainLinkItems();
+    const base = demoPlainLinkItems(docsLocale);
     if (!footerPlainLinkLabels) return base;
     return base.map((item) => {
       if (item.id === "doc") return { ...item, label: footerPlainLinkLabels.documentation };
       if (item.id === "help") return { ...item, label: footerPlainLinkLabels.help };
       return item;
     });
-  }, [footerPlainLinkLabels, showFooterPlainLinks]);
+  }, [docsLocale, footerPlainLinkLabels, showFooterPlainLinks]);
   const primaryNav = workspaceNavItems ?? okkeyWorkspaceShellNavItems();
   const groupLabel = workspaceNavGroupLabel ?? "Workspace";
   const vaultData = vaultItems ?? demoVaultItems();
@@ -1646,24 +1668,28 @@ function OkkeyAppSidebarInner({
         </ScrollArea>
 
         <div className="mt-auto shrink-0 p-2">
-          {showFooterPlain ? (
-            !showExpanded ? (
-              <SidebarMenu>
-                {footerPlainItems.map((link) => (
-                  <SidebarMenuItem key={link.id}>
-                    <SidebarCollapsedTooltip label={link.label}>
-                      <SidebarMenuButton type="button" className="h-9 min-h-9 justify-center px-0">
-                        {link.icon}
-                        <span className="sr-only">{link.label}</span>
-                      </SidebarMenuButton>
-                    </SidebarCollapsedTooltip>
-                  </SidebarMenuItem>
-                ))}
-              </SidebarMenu>
-            ) : (
-              <OkkeySidebarPlainLinksMenu items={footerPlainItems} />
-            )
-          ) : null}
+          <div className="flex flex-col gap-1">
+            {beforeFooter}
+            {showFooterPlain ? (
+              !showExpanded ? (
+                <SidebarMenu>
+                  {footerPlainItems.map((link) => (
+                    <SidebarMenuItem key={link.id}>
+                      <SidebarCollapsedTooltip label={link.label}>
+                        <OkkeySidebarPlainLink
+                          item={link}
+                          collapsed
+                          className="h-9 min-h-9 justify-center px-0"
+                        />
+                      </SidebarCollapsedTooltip>
+                    </SidebarMenuItem>
+                  ))}
+                </SidebarMenu>
+              ) : (
+                <OkkeySidebarPlainLinksMenu items={footerPlainItems} />
+              )
+            ) : null}
+          </div>
         </div>
       </SidebarContent>
 
@@ -1791,6 +1817,8 @@ export function OkkeyAppSidebar({
   folderEmptyLabel,
   accountMenu,
   footerPlainLinkLabels,
+  beforeFooter,
+  docsLocale,
   showFooterPlainLinks,
   vaultHeaderPlusAriaLabel,
   folderHeaderPlusAriaLabel,
@@ -1864,6 +1892,8 @@ export function OkkeyAppSidebar({
                   folderEmptyLabel={folderEmptyLabel}
                   accountMenu={accountMenu}
                   footerPlainLinkLabels={footerPlainLinkLabels}
+                  beforeFooter={beforeFooter}
+                  docsLocale={docsLocale}
                   showFooterPlainLinks={showFooterPlainLinks}
                   vaultHeaderPlusAriaLabel={vaultHeaderPlusAriaLabel}
                   folderHeaderPlusAriaLabel={folderHeaderPlusAriaLabel}
@@ -1906,6 +1936,8 @@ export function OkkeyAppSidebar({
                     folderEmptyLabel={folderEmptyLabel}
                     accountMenu={accountMenu}
                     footerPlainLinkLabels={footerPlainLinkLabels}
+                    beforeFooter={beforeFooter}
+                    docsLocale={docsLocale}
                     showFooterPlainLinks={showFooterPlainLinks}
                     vaultHeaderPlusAriaLabel={vaultHeaderPlusAriaLabel}
                     folderHeaderPlusAriaLabel={folderHeaderPlusAriaLabel}

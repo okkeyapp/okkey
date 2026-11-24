@@ -44,8 +44,8 @@ export function buildBuiltInProfileSummaries(
 }
 
 /**
- * Custom profiles: SaaS `plan_tier` (+ `planFeatureOverrides` when custom override is on)
- * / self-host enterprise modules.
+ * Custom profiles: SaaS `plan_tier` (+ `planFeatureOverrides` when custom override is on).
+ * Self-host follows loaded enterprise modules and ignores `plan_tier`.
  */
 export function canManageCustomWorkspaceProfiles(
   workspace: WorkspacePlanLike | null | undefined,

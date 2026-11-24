@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ComponentType, ReactNode } from "react";
 import { MemoryRouter } from "react-router-dom";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PlanTier, WorkspaceResourcePermissionDto, WorkspaceRoleListItemDto } from "@okkey/types";
 
 import { LocaleProvider } from "../../../../locale/LocaleContext";
@@ -54,6 +54,26 @@ beforeEach(() => {
   reauthMock.requestZoneUnlock.mockClear();
 });
 
+afterEach(() => {
+  vi.stubEnv("VITE_DEPLOYMENT_MODE", "saas");
+  vi.stubEnv("VITE_ENTERPRISE_MODULES_ACTIVE", "false");
+});
+
+function EnterpriseReadOnlyStub({
+  readOnly,
+  emptyFallback,
+}: {
+  readOnly?: boolean;
+  emptyFallback?: ReactNode;
+}) {
+  return (
+    <>
+      <p>{readOnly ? "Enterprise roles read-only" : "Enterprise roles editable"}</p>
+      {readOnly ? emptyFallback : null}
+    </>
+  );
+}
+
 function renderRolesSection(
   planTier: PlanTier = "FREE",
   resourcePermissions: WorkspaceResourcePermissionDto | null = null,
@@ -91,16 +111,6 @@ function renderRolesSection(
             passwordAttemptLimit: 0,
             requireApproval: false,
           },
-          monitoringCardSettings: {
-            overall: true,
-            strength: true,
-            reused: true,
-            weak: true,
-            compromised: true,
-            stale: true,
-            passkeyGap: true,
-            twoFactorGap: true,
-          },
           createdAt: "2026-01-01T00:00:00.000Z",
           updatedAt: "2026-01-01T00:00:00.000Z",
         }}
@@ -112,7 +122,6 @@ function renderRolesSection(
             "web.workspaceSettings.sections.roles": "Roles",
             "web.workspaceSettings.roles.intro": "Roles intro",
             "web.workspaceSettings.roles.learnMore": "Learn more",
-            "web.workspaceSettings.roles.learnMoreUrl": "https://example.com",
             "web.workspaceSettings.roles.builtIn.title": "Built-in roles",
             "web.workspaceSettings.roles.builtIn.subtitle": "Built-in roles are read-only",
             "web.workspaceSettings.roles.builtIn.owner": "Owner",
@@ -273,6 +282,40 @@ describe("WorkspaceSettingsRolesSection", () => {
     await waitFor(() => {
       expect(screen.queryByText("Auditors")).not.toBeInTheDocument();
     });
+  });
+
+  it("self-hosted enterprise modules and FREE keep custom roles editable", () => {
+    vi.stubEnv("VITE_DEPLOYMENT_MODE", "self_hosted");
+    vi.stubEnv("VITE_ENTERPRISE_MODULES_ACTIVE", "true");
+    enterpriseModuleMock.EnterpriseRolesSection = EnterpriseReadOnlyStub as ComponentType<unknown>;
+    enterpriseModuleMock.BuiltInRoleCardPopup = null;
+    renderRolesSection("FREE");
+
+    expect(screen.getByText("Enterprise roles editable")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Change your plan" })).not.toBeInTheDocument();
+  });
+
+  it("self-hosted without modules keeps custom roles read-only when plan_tier is ENTERPRISE", () => {
+    vi.stubEnv("VITE_DEPLOYMENT_MODE", "self_hosted");
+    vi.stubEnv("VITE_ENTERPRISE_MODULES_ACTIVE", "false");
+    enterpriseModuleMock.EnterpriseRolesSection = EnterpriseReadOnlyStub as ComponentType<unknown>;
+    enterpriseModuleMock.BuiltInRoleCardPopup = null;
+    renderRolesSection("ENTERPRISE");
+
+    expect(screen.getByText("Enterprise roles read-only")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Change your plan" })).toHaveAttribute("href", "/settings/plan");
+    expect(screen.queryByRole("button", { name: "Create" })).not.toBeInTheDocument();
+  });
+
+  it("self-hosted enterprise modules and a paid plan keep custom roles editable", () => {
+    vi.stubEnv("VITE_DEPLOYMENT_MODE", "self_hosted");
+    vi.stubEnv("VITE_ENTERPRISE_MODULES_ACTIVE", "true");
+    enterpriseModuleMock.EnterpriseRolesSection = EnterpriseReadOnlyStub as ComponentType<unknown>;
+    enterpriseModuleMock.BuiltInRoleCardPopup = null;
+    renderRolesSection("ENTERPRISE");
+
+    expect(screen.getByText("Enterprise roles editable")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Change your plan" })).not.toBeInTheDocument();
   });
 
   it("FREE + stub: hides delete for custom role without delete permission", async () => {

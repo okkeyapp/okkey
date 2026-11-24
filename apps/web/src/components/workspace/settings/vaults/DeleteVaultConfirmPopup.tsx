@@ -8,7 +8,6 @@ type DeleteVaultConfirmPopupProps = {
   deleting?: boolean;
 };
 
-/** Confirm dialog for deleting a remnant shared vault (modules off / plan without sharedVaults). */
 export default function DeleteVaultConfirmPopup({
   open,
   t,
@@ -45,9 +44,7 @@ export default function DeleteVaultConfirmPopup({
         </div>
       }
     >
-      <p className="text-sm text-muted-foreground">
-        {t("web.workspaceSettings.vaults.deleteConfirm.description")}
-      </p>
+      <p className="text-sm text-muted-foreground">{t("web.workspaceSettings.vaults.deleteConfirm.description")}</p>
     </Popup>
   );
 }

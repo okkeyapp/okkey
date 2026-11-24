@@ -33,7 +33,13 @@ import {
   type WebLocale,
   type WebMessageValues,
 } from "@okkey/i18n";
-import { buildVaultUnlockAttestation, unwrapUnlockMaterialWithPin, wipeBytes } from "@okkey/crypto";
+import { buildVaultUnlockAttestation, UnsupportedIdentityBundleError, unwrapUnlockMaterialWithPin, wipeBytes } from "@okkey/crypto";
+import { isClientUpgradeRequiredError } from "@okkey/api";
+import {
+  readShortMasterPasswordHintDismissed,
+  shouldSuggestLongerMasterPassword,
+  writeShortMasterPasswordHintDismissed,
+} from "@okkey/types";
 import { toast } from "sonner";
 
 import {
@@ -59,11 +65,20 @@ import {
   retryExtensionDeviceRegistration,
   revokeExtensionDeviceBestEffort,
 } from "../../lib/deviceTrust";
+import {
+  PASSKEY_HANDOFF_START,
+  PASSKEY_HANDOFF_STORAGE_KEY,
+  passkeyHandoffPageUrl,
+  type PasskeyHandoffStored,
+} from "../../lib/passkeyHandoffPoll";
 import { clearExtensionDeviceSigningKey } from "../../lib/deviceSigningKey";
 import { readExtensionPinUnlockWrap } from "../../lib/extensionDeviceUnlockStore";
 import {
+  clearExtensionServerKeyShareMemory,
   ensureExtensionVaultBundle,
+  rewriteExtensionClearedDeviceShare,
   unlockExtensionVault,
+  upgradeExtensionMlDsaIdentity,
   wipeUnlockSecrets,
 } from "../../lib/extensionUnlock";
 import { initExtensionCrypto } from "../../lib/initExtensionCrypto";
@@ -91,12 +106,14 @@ import {
 import {
   clearExtensionSessionArea,
   normalizeWebBaseUrl,
+  readAccountIdentity,
   readDeviceId,
   readLastServer,
   readProfile,
   readSession,
   resolveApiBaseFromWebBase,
   wipeAllExtensionData,
+  writeAccountIdentity,
   writeLastServer,
   writePkcePending,
   writeProfile,
@@ -185,6 +202,10 @@ export function PopupApp() {
   const [locale, setLocale] = useState<WebLocale>(() => readStoredExtensionLocale());
   const [profile, setProfile] = useState<ExtensionProfile | null>(null);
   const [session, setSession] = useState<ExtensionSession | null>(null);
+  const profileRef = useRef(profile);
+  const sessionRef = useRef(session);
+  profileRef.current = profile;
+  sessionRef.current = session;
   const [trust, setTrust] = useState<DeviceTrustSnapshot | null>(null);
   const [identity, setIdentity] = useState<AccountIdentity | null>(null);
   const [hostMode, setHostMode] = useState<ExtensionHostMode>(
@@ -196,7 +217,12 @@ export function PopupApp() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [retrying, setRetrying] = useState(false);
+  const [handoffNotice, setHandoffNotice] = useState<
+    "opening" | PasskeyHandoffStored["status"] | "error" | null
+  >(null);
+  const confirmedHandoffRef = useRef<string | null>(null);
   const [masterPassword, setMasterPassword] = useState("");
+  const [suggestLongerMasterPassword, setSuggestLongerMasterPassword] = useState(false);
   const [unlockBusy, setUnlockBusy] = useState(false);
   const [unlockMode, setUnlockMode] = useState<UnlockMode>("master");
   const [pinEnabled, setPinEnabled] = useState(false);
@@ -269,11 +295,13 @@ export function PopupApp() {
     try {
       const core = createCoreClient(apiBaseUrl, accessToken);
       const account = await core.getAccountProfile();
-      setIdentity({
-        email: account.email ?? "",
-        firstName: account.first_name ?? "",
-        lastName: account.last_name ?? "",
-      });
+      const nextIdentity = {
+        email: (account.email ?? "").trim(),
+        firstName: (account.first_name ?? "").trim(),
+        lastName: (account.last_name ?? "").trim(),
+      };
+      setIdentity(nextIdentity);
+      await writeAccountIdentity(nextIdentity);
       if (userId) {
         const idleMs = await resolveExtensionIdleLockMs({
           userId,
@@ -288,7 +316,7 @@ export function PopupApp() {
       if (isUnauthorizedApiError(err)) {
         throw err;
       }
-      setIdentity(null);
+      setIdentity(await readAccountIdentity());
       return null;
     }
   }, []);
@@ -319,7 +347,24 @@ export function PopupApp() {
     wipeUnlockSecrets(unlockSecretsRef.current);
     unlockSecretsRef.current = secrets;
     setUnlockSecrets(secrets);
-    setEncryptedPrivateKeyPayload(bundle.encrypted_private_key.payload);
+    let identityPayload = bundle.encrypted_private_key.payload;
+    const currentProfile = profileRef.current;
+    const currentSession = sessionRef.current;
+    if (currentProfile && currentSession?.access_token) {
+      try {
+        const core = createCoreClient(currentProfile.apiBaseUrl, currentSession.access_token);
+        const upgraded = await upgradeExtensionMlDsaIdentity({
+          core,
+          userId,
+          vaultKey: secrets.vaultKey,
+          bundle,
+        });
+        identityPayload = upgraded.encrypted_private_key.payload;
+      } catch {
+        /* Session restore stays unlocked if the identity upgrade cannot run. */
+      }
+    }
+    setEncryptedPrivateKeyPayload(identityPayload);
     setVaultIdleLockMs(fresh.idleLockMs);
     setMasterPassword("");
     void applyExtensionStoredTheme();
@@ -368,6 +413,7 @@ export function PopupApp() {
     unlockSecretsRef.current = null;
     setUnlockSecrets(null);
     setEncryptedPrivateKeyPayload(null);
+    clearExtensionServerKeyShareMemory();
     // Preserve device signing keys across 401 / account wipe so re-login can still
     // prove bind-session. Blocked/rejected paths clear keys inside deviceTrust.
     await wipeAllExtensionData();
@@ -434,7 +480,10 @@ export function PopupApp() {
         const shareB64 = userId
           ? (await readExtensionVaultBundle(userId))?.device_share_b64
           : undefined;
-        const snapshot = await resolveExtensionDeviceTrust(core, { deviceShareB64: shareB64 });
+        const snapshot = await resolveExtensionDeviceTrust(core, {
+          deviceShareB64: shareB64,
+          userId,
+        });
         await applyTrustSnapshot(snapshot, userId);
         void loadIdentity(apiBaseUrl, accessToken, userId).catch(async (err: unknown) => {
           if (!isUnauthorizedApiError(err)) {
@@ -457,6 +506,33 @@ export function PopupApp() {
     },
     [applyTrustSnapshot, loadIdentity, wipeLocalAndReset],
   );
+
+  const onPasskeyHandoff = useCallback(async () => {
+    if (!profile || !session || !trust?.deviceId) {
+      return;
+    }
+    if (handoffNotice === "opening" || handoffNotice === "waiting") {
+      return;
+    }
+    setHandoffNotice("opening");
+    try {
+      const core = createCoreClient(profile.apiBaseUrl, session.access_token);
+      const created = await core.createPasskeyHandoff(trust.deviceId);
+      await browser.tabs.create({
+        url: passkeyHandoffPageUrl(profile.webBaseUrl, created.request_id),
+      });
+      await browser.runtime.sendMessage({
+        type: PASSKEY_HANDOFF_START,
+        apiBaseUrl: profile.apiBaseUrl,
+        accessToken: session.access_token,
+        deviceId: trust.deviceId,
+        requestId: created.request_id,
+      });
+      setHandoffNotice("waiting");
+    } catch {
+      setHandoffNotice("error");
+    }
+  }, [handoffNotice, profile, session, trust?.deviceId]);
 
   useEffect(() => {
     void applyExtensionStoredTheme();
@@ -490,6 +566,11 @@ export function PopupApp() {
         );
       } else if (!ENABLE_SAAS_SIGNIN) {
         applyServerPreference("self-hosted", "");
+      }
+      const cachedIdentity = await readAccountIdentity();
+      if (cancelled) return;
+      if (cachedIdentity) {
+        setIdentity(cachedIdentity);
       }
       if (existingProfile && existingSession) {
         setSession(existingSession);
@@ -533,6 +614,7 @@ export function PopupApp() {
     const tick = () => {
       void extensionUnlockSessionExceededIdle(userId).then((exceeded) => {
         if (exceeded) {
+          clearExtensionServerKeyShareMemory();
           wipeUnlockSecrets(unlockSecretsRef.current);
           unlockSecretsRef.current = null;
           setUnlockSecrets(null);
@@ -561,6 +643,7 @@ export function PopupApp() {
       if (screen !== "vault") {
         return;
       }
+      clearExtensionServerKeyShareMemory();
       wipeUnlockSecrets(unlockSecretsRef.current);
       unlockSecretsRef.current = null;
       setUnlockSecrets(null);
@@ -652,6 +735,46 @@ export function PopupApp() {
     return () => window.clearInterval(timer);
   }, [screen, profile, session, trust?.deviceId, applyTrustSnapshot]);
 
+  useEffect(() => {
+    if (screen !== "pending" || !profile || !session) {
+      return;
+    }
+    const area = browser.storage?.session;
+    if (!area) {
+      return;
+    }
+    let cancelled = false;
+    const deviceId = trust?.deviceId ?? null;
+    const applyStored = (value: PasskeyHandoffStored | undefined) => {
+      if (!value || (deviceId && value.deviceId !== deviceId)) {
+        return;
+      }
+      setHandoffNotice(value.status);
+      if (value.status === "confirmed" && confirmedHandoffRef.current !== value.requestId) {
+        confirmedHandoffRef.current = value.requestId;
+        void refreshTrust(profile.apiBaseUrl, session.access_token, session.user_id);
+      }
+    };
+    void area.get(PASSKEY_HANDOFF_STORAGE_KEY).then((stored) => {
+      if (cancelled) {
+        return;
+      }
+      applyStored(stored[PASSKEY_HANDOFF_STORAGE_KEY] as PasskeyHandoffStored | undefined);
+    });
+    const onChanged: Parameters<typeof area.onChanged.addListener>[0] = (changes) => {
+      const change = changes[PASSKEY_HANDOFF_STORAGE_KEY];
+      if (!change) {
+        return;
+      }
+      applyStored(change.newValue as PasskeyHandoffStored | undefined);
+    };
+    area.onChanged.addListener(onChanged);
+    return () => {
+      cancelled = true;
+      area.onChanged.removeListener(onChanged);
+    };
+  }, [screen, profile, session, trust?.deviceId, refreshTrust]);
+
   const onSaveServerAndLogin = async (event?: FormEvent) => {
     event?.preventDefault();
     setBusy(true);
@@ -671,6 +794,7 @@ export function PopupApp() {
         const priorApiBase = previous.apiBaseUrl;
         const priorDeviceId = trust?.deviceId ?? (await readDeviceId());
         // Local wipe first so unlock / pending-save cannot survive a hung revoke.
+        clearExtensionServerKeyShareMemory();
         await wipeAllExtensionData();
         if (priorToken) {
           const core = createCoreClient(priorApiBase, priorToken);
@@ -720,14 +844,23 @@ export function PopupApp() {
   };
 
   const lockVault = useCallback(() => {
+    clearExtensionServerKeyShareMemory();
     wipeUnlockSecrets(unlockSecretsRef.current);
     unlockSecretsRef.current = null;
     setUnlockSecrets(null);
     setEncryptedPrivateKeyPayload(null);
     setMasterPassword("");
+    setSuggestLongerMasterPassword(false);
     void clearExtensionUnlockSession();
     setScreen("unlock");
   }, []);
+
+  const dismissLongerMasterPasswordHint = useCallback(() => {
+    if (session?.user_id) {
+      writeShortMasterPasswordHintDismissed(localStorage, session.user_id);
+    }
+    setSuggestLongerMasterPassword(false);
+  }, [session]);
 
   const onLogout = async () => {
     const priorProfile = profile;
@@ -737,6 +870,7 @@ export function PopupApp() {
     unlockSecretsRef.current = null;
     setUnlockSecrets(null);
     setEncryptedPrivateKeyPayload(null);
+    clearExtensionServerKeyShareMemory();
     // Wipe account/session state first; keep device signing keys unless revoke succeeds
     // so a failed revoke still allows proof-before-bind on the next login.
     await wipeAllExtensionData();
@@ -776,7 +910,11 @@ export function PopupApp() {
         return false;
       }
       const core = createCoreClient(profile.apiBaseUrl, session.access_token);
-      await ensureExtensionVaultBundle({ core, userId: session.user_id });
+      await ensureExtensionVaultBundle({
+        core,
+        userId: session.user_id,
+        rewriteClearedDeviceShare: rewriteExtensionClearedDeviceShare(core, session.user_id),
+      });
       const bundle = await readExtensionVaultBundle(session.user_id);
       if (!bundle?.encrypted_private_key?.payload) {
         wipeUnlockSecrets(secrets);
@@ -791,18 +929,32 @@ export function PopupApp() {
           serverIdleLockSeconds: account.vault_idle_lock_seconds,
         });
         setVaultIdleLockMs(idleMs);
-        setIdentity({
-          email: account.email ?? "",
-          firstName: account.first_name ?? "",
-          lastName: account.last_name ?? "",
-        });
+        const nextIdentity = {
+          email: (account.email ?? "").trim(),
+          firstName: (account.first_name ?? "").trim(),
+          lastName: (account.last_name ?? "").trim(),
+        };
+        setIdentity(nextIdentity);
+        await writeAccountIdentity(nextIdentity);
       } catch {
         /* keep previous idle / identity */
       }
       wipeUnlockSecrets(unlockSecretsRef.current);
       unlockSecretsRef.current = secrets;
       setUnlockSecrets(secrets);
-      setEncryptedPrivateKeyPayload(bundle.encrypted_private_key.payload);
+      let identityPayload = bundle.encrypted_private_key.payload;
+      try {
+        const upgraded = await upgradeExtensionMlDsaIdentity({
+          core,
+          userId: session.user_id,
+          vaultKey: secrets.vaultKey,
+          bundle,
+        });
+        identityPayload = upgraded.encrypted_private_key.payload;
+      } catch {
+        /* Unlock stays successful if the identity upgrade cannot run. */
+      }
+      setEncryptedPrivateKeyPayload(identityPayload);
       setMasterPassword("");
       setPinDigits(emptyPinDigits());
       setPinError(null);
@@ -819,7 +971,7 @@ export function PopupApp() {
       void buildVaultUnlockAttestation({
         userId: session.user_id,
         vaultKey: secrets.vaultKey,
-        encryptedPrivateKeyPayloadB64: bundle.encrypted_private_key.payload,
+        encryptedPrivateKeyPayloadB64: identityPayload,
       })
         .then((attestation) => core.recordVaultUnlock(attestation))
         .catch(() => {
@@ -915,6 +1067,7 @@ export function PopupApp() {
           vaultKey: unlocked.vaultKey,
           passwordShareC: unlocked.passwordShareC,
         };
+        setSuggestLongerMasterPassword(false);
         await finishUnlockWithSecrets(secrets);
       } catch {
         const result = recordPinFailure(session.user_id);
@@ -962,17 +1115,33 @@ export function PopupApp() {
     void (async () => {
       try {
         const core = createCoreClient(profile.apiBaseUrl, session.access_token);
-        const secrets = await unlockExtensionVault({
+        const unlocked = await unlockExtensionVault({
           core,
           userId: session.user_id,
           masterPassword,
         });
-        if (!secrets) {
-          toast.error(t("unlock.errorTitle"), { description: t("unlock.errorIncorrectPassword") });
+        if (!unlocked.ok) {
+          const description =
+            unlocked.reason === "server_share_unavailable"
+              ? t("unlock.errorServerShareUnavailable")
+              : unlocked.reason === "no_bundle"
+                ? t("unlock.errorNoLocalVault")
+                : t("unlock.errorIncorrectPassword");
+          toast.error(t("unlock.errorTitle"), { description });
           return;
         }
-        await finishUnlockWithSecrets(secrets);
+        setSuggestLongerMasterPassword(
+          shouldSuggestLongerMasterPassword({
+            passwordLength: masterPassword.length,
+            dismissed: readShortMasterPasswordHintDismissed(localStorage, session.user_id),
+          }),
+        );
+        await finishUnlockWithSecrets(unlocked.secrets);
       } catch (err: unknown) {
+        if (err instanceof UnsupportedIdentityBundleError || isClientUpgradeRequiredError(err)) {
+          toast.error(t("clientUpgrade.title"), { description: t("clientUpgrade.body") });
+          return;
+        }
         const message = err instanceof Error ? err.message : String(err);
         toast.error(t("unlock.errorTitle"), { description: message });
       } finally {
@@ -1175,6 +1344,7 @@ export function PopupApp() {
       : rejected
         ? t("web.devicePending.rejectedBody")
         : undefined;
+    const handoffNoticeKey = passkeyHandoffNoticeKey(handoffNotice);
 
     return (
       <PopupFrame>
@@ -1199,8 +1369,32 @@ export function PopupApp() {
                   <span>{t("web.devicePending.waiting")}</span>
                 </div>
                 <p className="okkey-body text-center text-sm text-muted-foreground">
-                  {t("web.devicePending.bodyCompact")}
+                  {trust?.needsShareReapproval
+                    ? t("web.devicePending.shareDeliveryReset")
+                    : t("web.devicePending.bodyCompact")}
                 </p>
+                {trust?.deviceId ? (
+                  <div className="flex w-full flex-col gap-3">
+                    <Button
+                      type="button"
+                      className="w-full"
+                      disabled={handoffNotice === "opening" || handoffNotice === "waiting"}
+                      onClick={() => void onPasskeyHandoff()}
+                    >
+                      {handoffNotice === "opening" || handoffNotice === "waiting" ? (
+                        <Spinner className="size-4" />
+                      ) : null}
+                      {handoffNotice === "opening" || handoffNotice === "waiting"
+                        ? t("web.devicePending.passkeyBusy")
+                        : t("web.devicePending.passkeyApprove")}
+                    </Button>
+                    {handoffNoticeKey ? (
+                      <p className="text-center text-sm text-muted-foreground" role="status">
+                        {t(handoffNoticeKey)}
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
               </div>
             ) : null}
 
@@ -1282,6 +1476,8 @@ export function PopupApp() {
               });
             }
           }}
+          suggestLongerMasterPassword={suggestLongerMasterPassword}
+          onDismissLongerMasterPasswordHint={dismissLongerMasterPasswordHint}
           t={t}
         />
       </PopupFrame>
@@ -1407,6 +1603,28 @@ export function PopupApp() {
       </AuthShell>
     </PopupFrame>
   );
+}
+
+function passkeyHandoffNoticeKey(
+  notice: "opening" | PasskeyHandoffStored["status"] | "error" | null,
+): string | null {
+  switch (notice) {
+    case "opening":
+    case "waiting":
+      return "web.devicePending.passkeyHandoff.waiting";
+    case "confirmed":
+      return "web.devicePending.passkeyHandoff.confirmed";
+    case "rejected":
+      return "web.devicePending.passkeyHandoff.rejected";
+    case "expired":
+      return "web.devicePending.passkeyHandoff.expired";
+    case "timeout":
+      return "web.devicePending.passkeyHandoff.timeout";
+    case "error":
+      return "web.devicePending.passkeyHandoff.openFailed";
+    default:
+      return null;
+  }
 }
 
 function PopupFrame({ children }: { children: React.ReactNode }) {

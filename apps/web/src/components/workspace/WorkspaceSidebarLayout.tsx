@@ -20,6 +20,7 @@ import { useLocale } from "../../locale/LocaleContext";
 import { ITEM_QUERY_PARAM, WORKSPACES_PATH } from "../../routes/paths";
 import ItemsListLeftPane, { type ItemsListRecord } from "./ItemsListLeftPane";
 import ItemsShellTopBar from "./ItemsShellTopBar";
+import SystemUpdateSidebarButton from "../../system-updates/SystemUpdateSidebarButton";
 
 const mainPanelChromeClassName = cn(
   "flex min-h-0 min-w-0 flex-col rounded-xl bg-background text-foreground",
@@ -80,8 +81,6 @@ export type WorkspaceSidebarLayoutProps = {
   itemsListRecords?: readonly ItemsListRecord[];
   /** False until workspace item sync bootstrap completes. */
   itemsListRecordsLoaded?: boolean;
-  /** Workspace monitoring card toggles for list filters / HIBP gating. */
-  monitoringCardSettings?: import("@okkey/types").WorkspaceMonitoringCardSettings;
 };
 
 function ShellMainHeader({
@@ -168,7 +167,6 @@ export default function WorkspaceSidebarLayout({
   itemsListFoldersLoaded,
   itemsListRecords = [],
   itemsListRecordsLoaded = true,
-  monitoringCardSettings,
 }: WorkspaceSidebarLayoutProps) {
   const { locale, setLocale, t } = useLocale();
   const [searchParams] = useSearchParams();
@@ -201,6 +199,8 @@ export default function WorkspaceSidebarLayout({
           folderEmptyLabel={folderEmptyLabel}
           accountMenu={accountMenu}
           footerPlainLinkLabels={footerPlainLinkLabels}
+          beforeFooter={<SystemUpdateSidebarButton />}
+          docsLocale={locale}
           vaultHeaderPlusAriaLabel={vaultHeaderPlusAriaLabel}
           folderHeaderPlusAriaLabel={folderHeaderPlusAriaLabel}
           showVaultHeaderPlus={showVaultHeaderPlus}
@@ -241,7 +241,6 @@ export default function WorkspaceSidebarLayout({
                     itemsListVaultsLoaded={itemsListVaultsLoaded}
                     itemsListFoldersLoaded={itemsListFoldersLoaded}
                     itemsListRecordsLoaded={itemsListRecordsLoaded}
-                    monitoringCardSettings={monitoringCardSettings}
                   />
                 </aside>
                 <div

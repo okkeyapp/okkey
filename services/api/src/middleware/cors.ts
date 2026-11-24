@@ -1,3 +1,4 @@
+import { DEVICE_APPROVAL_STATUS_HEADER } from "../device/approval-status.ts";
 import { getHeader, type Middleware } from "../http.ts";
 
 function resolveAllowOrigin(
@@ -51,6 +52,8 @@ export function createCorsMiddleware(corsOriginConfig: string): Middleware {
         "X-User-Id",
         "X-Device-Id",
         "X-Device-Fingerprint",
+        DEVICE_APPROVAL_STATUS_HEADER,
+        "X-Okkey-Client-Capabilities",
         "X-File-Name",
         "X-File-Mime-Type",
         "X-File-Size",

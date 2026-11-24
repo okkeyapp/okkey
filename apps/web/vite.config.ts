@@ -55,22 +55,6 @@ export default defineConfig(({ mode }) => {
     __dirname,
     "./src/workspace-features/stubs/workspace-tenancy-stub.ts",
   );
-  const enterpriseMembersPath = path.resolve(
-    enterpriseRoot,
-    "web/workspace-members/src/index.ts",
-  );
-  const enterpriseMembersStubPath = path.resolve(
-    __dirname,
-    "./src/workspace-features/stubs/enterprise-members-stub.ts",
-  );
-  const enterpriseSharedVaultsPath = path.resolve(
-    enterpriseRoot,
-    "web/workspace-shared-vaults/src/index.ts",
-  );
-  const enterpriseSharedVaultsStubPath = path.resolve(
-    __dirname,
-    "./src/workspace-features/stubs/enterprise-shared-vaults-stub.ts",
-  );
   const enterpriseCapsulesPath = path.resolve(
     enterpriseRoot,
     "web/workspace-capsules/src/index.ts",
@@ -88,6 +72,11 @@ export default defineConfig(({ mode }) => {
   const enterprisePlanStubPath = path.resolve(
     __dirname,
     "./src/workspace-features/stubs/enterprise-plan-stub.ts",
+  );
+  const enterpriseMonitoringPath = path.resolve(enterpriseRoot, "web/monitoring/src/index.ts");
+  const enterpriseMonitoringStubPath = path.resolve(
+    __dirname,
+    "./src/monitoring-features/stubs/enterprise-monitoring-stub.ts",
   );
   const enterpriseAccountRecoveryPath = path.resolve(
     enterpriseRoot,
@@ -171,12 +160,6 @@ export default defineConfig(({ mode }) => {
         "@okkey-enterprise/workspace-tenancy": enterpriseModules
           ? enterpriseTenancyPath
           : enterpriseTenancyStubPath,
-        "@okkey-enterprise/workspace-members": enterpriseModules
-          ? enterpriseMembersPath
-          : enterpriseMembersStubPath,
-        "@okkey-enterprise/workspace-shared-vaults": enterpriseModules
-          ? enterpriseSharedVaultsPath
-          : enterpriseSharedVaultsStubPath,
         "@okkey-enterprise/workspace-capsules": enterpriseModules
           ? enterpriseCapsulesPath
           : enterpriseCapsulesStubPath,
@@ -187,6 +170,9 @@ export default defineConfig(({ mode }) => {
         "@okkey-enterprise/account-recovery": enterpriseModules
           ? enterpriseAccountRecoveryPath
           : enterpriseAccountRecoveryStubPath,
+        "@okkey-enterprise/monitoring": enterpriseModules
+          ? enterpriseMonitoringPath
+          : enterpriseMonitoringStubPath,
         "@okkey-enterprise/recovery-crypto": enterpriseModules
           ? enterpriseRecoveryCryptoPath
           : enterpriseRecoveryCryptoStubPath,
@@ -195,6 +181,8 @@ export default defineConfig(({ mode }) => {
         "@okkey-enterprise/api": enterpriseModules ? enterpriseApiPath : enterpriseApiStubPath,
         "@okkey/popup-query": path.resolve(__dirname, "./src/routes/popupQuery.ts"),
         "date-fns": path.resolve(__dirname, "../../node_modules/date-fns"),
+        "lucide-react": path.resolve(__dirname, "../../node_modules/lucide-react"),
+        "sonner": path.resolve(__dirname, "../../node_modules/sonner"),
         "react-router-dom": path.resolve(__dirname, "../../node_modules/react-router-dom"),
       },
     },

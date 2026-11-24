@@ -153,3 +153,27 @@ test("GET /ready returns 503 when readiness check fails", async () => {
   const payload = JSON.parse(res.body) as { status: string };
   assert.equal(payload.status, "not_ready");
 });
+
+const invalidPathEncodingCases = [
+  "/vaults/%ZZ",
+  "/vaults/%",
+  "/vaults/%E0%A4%A",
+  "/%ZZ",
+] as const;
+
+for (const url of invalidPathEncodingCases) {
+  test(`rejects invalid URI path encoding with 400: ${url}`, async () => {
+    const { res } = await dispatch("GET", url);
+    assert.equal(res.statusCode, 400);
+    assert.equal(res.writableEnded, true);
+    const payload = JSON.parse(res.body) as {
+      error: string;
+      message: string;
+      requestId: string;
+    };
+    assert.equal(payload.error, "BAD_REQUEST");
+    assert.match(payload.message, /encoding/i);
+    assert.equal(typeof payload.requestId, "string");
+    assert.ok(payload.requestId.length > 0);
+  });
+}

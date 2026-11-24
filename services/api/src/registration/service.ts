@@ -19,16 +19,19 @@ import {
   startCryptoOperationTimer,
 } from "../observability/crypto-rollout.ts";
 import type { SessionService } from "../session/service.ts";
+import { createLoginVerifier, LOGIN_KEY_LEN } from "../crypto/login-verifier.ts";
 import { SESSION_SCOPE_REGISTRATION_RECOVERY } from "../session/scopes.ts";
 import type { PostgresDatabase } from "../storage/postgres.ts";
 import type { UsersRepository } from "../storage/repositories.ts";
 import { insertRegistrationBundle } from "./repository.ts";
-import { assertOpaqueSplitKeyShare } from "./split-key-transport-policy.ts";
+import { assertOpaqueSplitKeyShare, assertSplitKeyShareB } from "./split-key-transport-policy.ts";
 
 const KDF_SALT_LEN = 16;
 const ED25519_PK_LEN = 32;
 /** ML-KEM-768 encapsulation key (FIPS 203). */
 const MLKEM768_EK_LEN = 1184;
+/** ML-DSA-65 verifying key (FIPS 204). */
+const MLDSA65_PK_LEN = 1952;
 /** Min `EncryptedBlob.payload` bytes: 24-byte nonce + AEAD ciphertext of v1 hybrid private bundle. */
 const MIN_ENCRYPTED_USER_IDENTITY_PAYLOAD_LEN = 2473;
 const SUPPORTED_KDF_PARAMS_VERSIONS = new Set([1, 2]);
@@ -55,6 +58,7 @@ export interface RegisterCompleteInput {
   authStateId: string;
   userPublicKey: string;
   userPublicPqKey: string;
+  userPublicMldsaKey: string;
   encryptedPrivateKey: EncryptedBlob;
   serverKeyShare: Uint8Array;
   passwordKdfSalt: Uint8Array;
@@ -77,6 +81,8 @@ export interface RegisterCompleteInput {
   personalVaultName?: string;
   firstName?: string | null;
   lastName?: string | null;
+  /** 32-byte client login key. Hashed before storage. Never the master password. */
+  loginKey?: Uint8Array | null;
 }
 
 /** Public ids always returned; bootstrap token only on first successful completion. */
@@ -272,6 +278,7 @@ export class RegistrationService {
     }
 
     this.validateCryptoPayload(input);
+    const loginVerifier = this.loginVerifierFromKey(input.loginKey);
 
     const nowIso = this.now().toISOString();
 
@@ -282,6 +289,7 @@ export class RegistrationService {
           email: authState.email,
           publicKey: input.userPublicKey.trim(),
           publicPqKey: input.userPublicPqKey.trim(),
+          publicMldsaKey: input.userPublicMldsaKey.trim(),
           encryptedPrivateKey,
           serverKeyShare: input.serverKeyShare,
           passwordKdfSalt: input.passwordKdfSalt,
@@ -303,6 +311,9 @@ export class RegistrationService {
           firstName: input.firstName ?? null,
           lastName: input.lastName ?? null,
           planTier: this.config.defaultWorkspacePlanTier,
+          loginVerifier: loginVerifier?.verifier ?? null,
+          loginVerifierSalt: loginVerifier?.salt ?? null,
+          loginVerifierParamsVersion: loginVerifier?.paramsVersion ?? null,
         });
       });
 
@@ -372,10 +383,24 @@ export class RegistrationService {
     }
   }
 
+  private loginVerifierFromKey(loginKey: Uint8Array | null | undefined) {
+    if (!loginKey) {
+      return null;
+    }
+    if (loginKey.length !== LOGIN_KEY_LEN) {
+      throw new RegistrationError(
+        "CRYPTO_PAYLOAD_INVALID",
+        400,
+        "login_key must be 32 bytes",
+      );
+    }
+    return createLoginVerifier(loginKey);
+  }
+
   private validateCryptoPayload(input: RegisterCompleteInput): void {
     try {
       assertOpaqueSplitKeyShare(input.serverKeyShare, "server_key_share");
-      assertOpaqueSplitKeyShare(input.deviceShare, "device_share");
+      assertSplitKeyShareB(input.deviceShare);
     } catch (error: unknown) {
       throw new RegistrationError(
         "CRYPTO_PAYLOAD_INVALID",
@@ -430,6 +455,14 @@ export class RegistrationService {
         "CRYPTO_PAYLOAD_INVALID",
         400,
         "user_public_pq_key must decode to 1184 bytes (ML-KEM-768)",
+      );
+    }
+    const mldsaBytes = decodeBase64Key(input.userPublicMldsaKey, "user_public_mldsa_key");
+    if (mldsaBytes.length !== MLDSA65_PK_LEN) {
+      throw new RegistrationError(
+        "CRYPTO_PAYLOAD_INVALID",
+        400,
+        "user_public_mldsa_key must decode to 1952 bytes (ML-DSA-65)",
       );
     }
     const capabilityDecision = evaluateCapabilityDecision({
@@ -523,8 +556,8 @@ export class RegistrationService {
     }
     return mergeEncryptedBlobMeta(parsed.blob, {
       entity: "user_private_key_bundle",
-      bundle_version: 2,
-      identity: "ed25519_mlkem768_v1",
+      bundle_version: 3,
+      identity: "ed25519_mlkem768_mldsa65_v2",
       key_scope: "account",
     });
   }
