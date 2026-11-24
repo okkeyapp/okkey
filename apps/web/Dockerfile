@@ -64,7 +64,7 @@ RUN --mount=type=cache,target=/usr/local/share/.cache/yarn \
 # Trivy CRITICAL/HIGH gate stays clean without apk upgrades or CVE exceptions.
 # (Official alpine-slim world pins an exact nginx version, so an apk package
 # refresh of nginx alone is a no-op — bump the base digest instead.)
-FROM nginx:1.30.7-alpine-slim@sha256:8c950211a641ec5b23f265450517001f6bcca533666120ebe36cb4cff3d00a55 AS runtime
+FROM nginx:1.31.0-alpine-slim@sha256:241b0d0fe06250e026e7a35a008d022c9a1d3bec19442d65cc33b84d0b5dd64d AS runtime
 COPY apps/web/docker/nginx.conf /etc/nginx/conf.d/default.conf
 COPY apps/web/docker/docker-entrypoint.sh /docker-entrypoint.d/40-okkey-runtime-config.sh
 COPY --from=builder /src/apps/web/dist /usr/share/nginx/html
