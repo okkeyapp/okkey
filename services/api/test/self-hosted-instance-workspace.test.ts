@@ -277,7 +277,7 @@ test("self-hosted invite registration joins instance workspace without a persona
   const result = await service.completeRegistration(registerInput("s-ok-invite"));
   assert.equal(result.workspaceId, INSTANCE_WS);
   assert.equal(result.vaultId, "v-invitee");
-  assert.equal(result.acceptedWorkspaceId, undefined);
+  assert.equal(result.acceptedWorkspaceId, INSTANCE_WS);
   assert.equal(createdPersonalWorkspace, false);
 });
 

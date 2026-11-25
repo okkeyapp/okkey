@@ -385,12 +385,11 @@ export class RegistrationService {
               userId: created.userId,
               email: authState.email,
             });
+            acceptedWorkspaceId = accepted.workspaceId;
             if (skipPersonalWorkspace) {
               // Self-hosted: the instance workspace is the only workspace.
               workspaceId = accepted.workspaceId;
               vaultId = accepted.vaultId;
-            } else {
-              acceptedWorkspaceId = accepted.workspaceId;
             }
           } catch (error) {
             throw this.mapInviteRegistrationError(error);
