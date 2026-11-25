@@ -324,6 +324,13 @@ describe("generator field helpers", () => {
     assert.equal(shouldOpenPasswordGenerator("login", "password"), false);
     assert.equal(shouldOpenPasswordGenerator("unknown", "email"), false);
   });
+
+  it("does not open generator for current-password on change-password / register forms", () => {
+    // jsdom-free: hints-only path via a minimal input mock is covered in jsdom fixtures;
+    // without an input element, register+password still opens (create-account).
+    assert.equal(shouldOpenPasswordGenerator("register", "password", null), true);
+    assert.equal(shouldOpenPasswordGenerator("register", "password", undefined), true);
+  });
 });
 
 describe("isSaveOfferFormType", () => {

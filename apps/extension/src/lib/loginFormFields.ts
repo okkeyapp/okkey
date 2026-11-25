@@ -10,6 +10,8 @@ import {
   collectInputHints,
   isBackupOrRecoveryCodeField,
   queryAutofillInputs,
+  resolveFocusedAutofillKind,
+  type AutofillFieldKind,
   type AutofillInputHints,
 } from "./autofillFieldClassify.ts";
 import {
@@ -101,6 +103,34 @@ function collectDigitOtpGroups(inputs: HTMLInputElement[]): HTMLInputElement[] {
     }
   }
   return found;
+}
+
+/** True when the input is one cell of a segmented OTP group (fixture-derived N). */
+export function isSegmentedOtpDigitInput(
+  input: HTMLInputElement,
+  root?: ParentNode,
+): boolean {
+  const scope = root ?? input.ownerDocument;
+  const nodes = listLoginInputNodes(scope);
+  const candidates = nodes.filter(
+    (node) => isVisibleFillableElement(node) || isSingleDigitOtpCandidate(node),
+  );
+  return collectDigitOtpGroups(candidates).includes(input);
+}
+
+/**
+ * Resolve focused field kind for overlay / query, including segmented OTP groups.
+ * OTP digits must never be treated as username/password for suggestions or fill.
+ */
+export function resolveAutofillKindForElement(
+  input: HTMLInputElement,
+  pageUrl?: string,
+): AutofillFieldKind | null {
+  const fields = findLoginFields(input.ownerDocument);
+  if (fields.otp.includes(input)) {
+    return "otp";
+  }
+  return resolveFocusedAutofillKind(collectInputHints(input), pageUrl);
 }
 
 /**

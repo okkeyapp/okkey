@@ -651,6 +651,11 @@ function refineOtpHeuristics(
   if (OTP_HINT.test(blob)) {
     return "otp";
   }
+  // Segmented OTP digit boxes (owned fixtures: 4 / 6 / 8 cells) — with or without
+  // autocomplete=one-time-code on every cell.
+  if (input.maxLength === 1 && numericOtp) {
+    return "otp";
+  }
   if (numericOtp && (input.maxLength === 6 || input.maxLength === 8) && /code|pass/i.test(blob)) {
     return "otp";
   }

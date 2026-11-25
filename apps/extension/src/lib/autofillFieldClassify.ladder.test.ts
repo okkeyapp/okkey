@@ -93,6 +93,30 @@ describe("signal ladder steps", () => {
     assert.equal(classifyAutofillInput({ type: "password" }), "password");
   });
 
+  it("segmented OTP digit (maxLength=1 + numeric) is otp without autocomplete", () => {
+    assert.equal(
+      classifyAutofillInput({ type: "text", maxLength: 1, inputMode: "numeric" }),
+      "otp",
+    );
+    assert.equal(
+      classifyAutofillInput({
+        type: "text",
+        maxLength: 1,
+        inputMode: "numeric",
+        autocomplete: "one-time-code",
+      }),
+      "otp",
+    );
+    assert.notEqual(
+      classifyAutofillInput({ type: "text", maxLength: 1, inputMode: "numeric" }),
+      "username",
+    );
+    assert.notEqual(
+      classifyAutofillInput({ type: "text", maxLength: 1, inputMode: "numeric" }),
+      "password",
+    );
+  });
+
   it("step 4 label / aria (EN + RU)", () => {
     assert.equal(
       classifyAutofillInput({ type: "text", labelText: "Электронная почта" }),

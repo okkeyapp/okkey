@@ -605,7 +605,11 @@ export function isPasswordGeneratorField(kind: AutofillFieldKind | null): boolea
   return kind === "password";
 }
 
-/** True when the focused password field is a confirm/repeat password control. */
+/**
+ * True when the focused password field should open the generator.
+ * `current-password` (and login current role) always offers saved-login fill, never the generator.
+ * Generator is for new-password / confirm on register or change-password forms.
+ */
 export function shouldOpenPasswordGenerator(
   formType: AutofillFormType,
   kind: AutofillFieldKind | null,
@@ -614,11 +618,31 @@ export function shouldOpenPasswordGenerator(
   if (!isPasswordGeneratorField(kind)) {
     return false;
   }
-  if (formType === "register") {
-    return true;
+  if (input) {
+    const hints = collectInputHints(input);
+    const form = input.form ?? input.closest("form");
+    const siblings =
+      form != null
+        ? queryAutofillInputs(form)
+            .filter((el) => (el.type || "").toLowerCase() === "password")
+            .map((el) => collectInputHints(el))
+        : [];
+    if (isCurrentPasswordField(hints, siblings)) {
+      return false;
+    }
+    const role = resolvePasswordFieldRole(hints, siblings);
+    if (role === "current") {
+      return false;
+    }
+    if (role === "new" || role === "confirm") {
+      return true;
+    }
+    if (isConfirmPasswordField(input)) {
+      return true;
+    }
   }
-  // Confirm/repeat password is always a generator context, even if form type is ambiguous.
-  if (input && isConfirmPasswordField(input)) {
+  // Register without a resolvable current/new split → generator (create-account password).
+  if (formType === "register") {
     return true;
   }
   return false;

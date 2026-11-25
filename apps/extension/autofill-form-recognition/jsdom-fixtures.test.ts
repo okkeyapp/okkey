@@ -18,10 +18,16 @@ import { extractAutofillFieldGroups } from "../src/lib/autofillDomLayers.ts";
 import {
   findLoginFields,
   fillLoginForm,
+  resolveAutofillKindForElement,
   SEGMENTED_OTP_MIN_FIELDS,
   SEGMENTED_OTP_MAX_FIELDS,
 } from "../src/lib/loginFormFields.ts";
-import { isNewPasswordField, isCurrentPasswordField } from "../src/lib/autofillFormDetect.ts";
+import {
+  isNewPasswordField,
+  isCurrentPasswordField,
+  shouldOpenPasswordGenerator,
+  detectFormTypeForInput,
+} from "../src/lib/autofillFormDetect.ts";
 
 function loadHtmlIntoDocument(html: string): void {
   document.open();
@@ -144,10 +150,57 @@ describe("owned complex fixtures", () => {
       const fields = findLoginFields(document);
       expect(fields.otp.length).toBe(n);
       expect(fields.password.length).toBe(0);
+      expect(fields.username.length).toBe(0);
+      // Every cell resolves to otp — never username/password for suggestions/fill.
+      for (const el of fields.otp) {
+        expect(resolveAutofillKindForElement(el)).toBe("otp");
+        expect(classifyAutofillInput(collectInputHints(el))).toBe("otp");
+      }
     }
   });
 
-  it("open shadow login is discovered by queryAutofillInputs", () => {
+  it("8-cell OTP with one-time-code is otp-only (not login username/password offers)", () => {
+    loadHtmlIntoDocument(readFileSync(path.join(FIXTURES_DIR, "segmented-otp-8.html"), "utf8"));
+    for (const el of Array.from(document.querySelectorAll("input"))) {
+      Object.defineProperty(el, "getClientRects", {
+        value: () => [{ width: 24, height: 24, top: 0, left: 0, bottom: 24, right: 24 }],
+      });
+    }
+    const fields = findLoginFields(document);
+    expect(fields.otp.length).toBe(8);
+    expect(fields.username).toEqual([]);
+    expect(fields.password).toEqual([]);
+    const first = fields.otp[0]!;
+    expect(resolveAutofillKindForElement(first)).toBe("otp");
+    // Password must never be the fill target for these cells.
+    fillLoginForm(document, { username: "alice", password: "secret-password", totp: "12345678" });
+    for (const el of fields.otp) {
+      expect(el.value).not.toBe("secret-password");
+      expect(el.value).not.toBe("alice");
+    }
+    expect(fields.otp.map((el) => el.value).join("")).toBe("12345678");
+  });
+
+  it("change-password: current-password does not open generator; new/confirm do", () => {
+    loadHtmlIntoDocument(
+      readFileSync(path.join(FIXTURES_DIR, "change-password-roles.html"), "utf8"),
+    );
+    for (const el of Array.from(document.querySelectorAll("input"))) {
+      Object.defineProperty(el, "getClientRects", {
+        value: () => [{ width: 100, height: 20, top: 0, left: 0, bottom: 20, right: 100 }],
+      });
+    }
+    const current = document.querySelector("#current") as HTMLInputElement;
+    const neo = document.querySelector("#neo") as HTMLInputElement;
+    const confirm = document.querySelector("#confirm") as HTMLInputElement;
+    const formType = detectFormTypeForInput(current);
+    expect(formType).toBe("register");
+    expect(shouldOpenPasswordGenerator(formType, "password", current)).toBe(false);
+    expect(shouldOpenPasswordGenerator(formType, "password", neo)).toBe(true);
+    expect(shouldOpenPasswordGenerator(formType, "password", confirm)).toBe(true);
+  });
+
+  it("open shadow login is discovered and resolves login kinds for overlay/fill", () => {
     loadHtmlIntoDocument(readFileSync(path.join(FIXTURES_DIR, "shadow-login.html"), "utf8"));
     // Re-run shadow attach for jsdom (inline script may not execute on document.write).
     const host = document.getElementById("host");
@@ -163,6 +216,24 @@ describe("owned complex fixtures", () => {
     const inputs = queryAutofillInputs(document);
     expect(inputs.some((el) => el.id === "su")).toBe(true);
     expect(inputs.some((el) => el.id === "sp")).toBe(true);
+    for (const el of inputs) {
+      Object.defineProperty(el, "getClientRects", {
+        value: () => [{ width: 100, height: 20, top: 0, left: 0, bottom: 20, right: 100 }],
+      });
+    }
+    const fields = findLoginFields(document);
+    expect(fields.username.some((el) => el.id === "su")).toBe(true);
+    expect(fields.password.some((el) => el.id === "sp")).toBe(true);
+    const user = fields.username.find((el) => el.id === "su")!;
+    const pass = fields.password.find((el) => el.id === "sp")!;
+    expect(resolveAutofillKindForElement(user)).toBe("username");
+    expect(resolveAutofillKindForElement(pass)).toBe("password");
+    // Shadow nodes are connected but not document.contains — overlay must use isConnected.
+    expect(user.isConnected).toBe(true);
+    expect(document.contains(user)).toBe(false);
+    fillLoginForm(document, { username: "shadow-user", password: "shadow-pass" });
+    expect(user.value).toBe("shadow-user");
+    expect(pass.value).toBe("shadow-pass");
   });
 
   it("security: hidden password is not filled; OTP does not receive password", () => {
