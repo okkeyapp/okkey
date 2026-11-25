@@ -25,6 +25,11 @@ export type AuthenticatedSessionOptions = {
    * List/register stay open so the client can bind. Header-user auth is unchanged.
    */
   allowUnboundDevice?: boolean;
+  /**
+   * Self-hosted gate: return false when the account is blocked or not a member of
+   * the instance workspace. Applied to every resolved user (Bearer and header-user).
+   */
+  assertUserInstanceAccess?: (userId: string) => Promise<boolean>;
 };
 
 function fullSessionIsBound(resolved: ResolvedAccessToken): boolean {
@@ -63,12 +68,24 @@ export function createResolveAuthenticatedSession(
         ) {
           return null;
         }
+        if (
+          options.assertUserInstanceAccess &&
+          !(await options.assertUserInstanceAccess(resolved.userId))
+        ) {
+          return null;
+        }
         return resolved;
       }
     }
     if (config.allowHeaderUserIdAuth) {
       const headerUser = getHeader(req, "x-user-id")?.trim();
       if (headerUser) {
+        if (
+          options.assertUserInstanceAccess &&
+          !(await options.assertUserInstanceAccess(headerUser))
+        ) {
+          return null;
+        }
         return {
           userId: headerUser,
           deviceId: null,

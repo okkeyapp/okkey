@@ -8,6 +8,7 @@ import { RegistrationService } from "./registration/service.ts";
 import { createServer } from "node:http";
 import { createApiApp } from "./app.ts";
 import { isEnterpriseBackendLoadable, loadConfig } from "./config.ts";
+import { ensureSelfHostedInstanceWorkspace } from "./setup/ensure-instance-workspace.ts";
 import { hasSelfHostedInstanceAccess } from "./setup/instance-access.ts";
 import { RedisDeviceBindChallengeStore } from "./device/bind-challenge-store.ts";
 import { DeviceApprovalStatusService } from "./device/approval-status.ts";
@@ -119,6 +120,10 @@ async function main(): Promise<void> {
   let resolveInviteRegistration:
     | ((rawToken: string, email: string) => Promise<InviteRegistrationResolve>)
     | null = null;
+  // Bound after WorkspaceMembersService exists (email-invite OTP → instance token hash).
+  let resolvePendingInstanceInviteTokenHash:
+    | ((email: string) => Promise<string | null>)
+    | null = null;
   const authService = new AuthService({
     redis: storage.redis,
     users: storage.repositories.users,
@@ -132,6 +137,14 @@ async function main(): Promise<void> {
       }
       if (!setupServiceRef) {
         return true;
+      }
+      if (config.deploymentMode === "self_hosted") {
+        // Reject at email start unless there is exactly one pending invite to the
+        // instance workspace (email invites without the link).
+        if (!resolvePendingInstanceInviteTokenHash) {
+          return false;
+        }
+        return (await resolvePendingInstanceInviteTokenHash(email)) != null;
       }
       const mode = await setupServiceRef.getRegistrationMode();
       if (mode === "open") {
@@ -152,6 +165,12 @@ async function main(): Promise<void> {
         deploymentMode: config.deploymentMode,
         userId,
       }),
+    resolvePendingInstanceInviteTokenHash: async (email) => {
+      if (!resolvePendingInstanceInviteTokenHash) {
+        return null;
+      }
+      return resolvePendingInstanceInviteTokenHash(email);
+    },
   });
   const emailChangeService = new EmailChangeService({
     redis: storage.redis,
@@ -163,6 +182,11 @@ async function main(): Promise<void> {
   const sessionService = new SessionService({
     sessions: storage.repositories.sessions,
     config,
+    assertInstanceAccess: async (userId) =>
+      hasSelfHostedInstanceAccess(storage.postgres, {
+        deploymentMode: config.deploymentMode,
+        userId,
+      }),
   });
   const extensionAuthService = new ExtensionAuthService({
     redis: storage.redis,
@@ -336,6 +360,8 @@ async function main(): Promise<void> {
   });
   resolveInviteRegistration = (rawToken, email) =>
     workspaceMembersService.resolveInviteForRegistration(rawToken, email);
+  resolvePendingInstanceInviteTokenHash = (email) =>
+    workspaceMembersService.findSinglePendingInstanceInviteTokenHash(email);
   registrationService.setConsumeInviteDuringRegistration(async (tx, input) => {
     const accepted = await workspaceMembersService.acceptInvitationForRegistrationInTx(
       tx,
@@ -370,6 +396,11 @@ async function main(): Promise<void> {
     logger,
   });
   setupServiceRef = setupService;
+  await ensureSelfHostedInstanceWorkspace({
+    db: storage.postgres,
+    deploymentMode: config.deploymentMode,
+    logger,
+  });
   await setupService.ensureBootstrapCode();
   const vaultUnlockBootstrapService = new VaultUnlockBootstrapService({
     users: storage.repositories.users,

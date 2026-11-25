@@ -1,5 +1,4 @@
 import type { DeploymentMode } from "../config.ts";
-import type { WorkspacesRepository } from "../storage/repositories.ts";
 
 export class WorkspacePolicyError extends Error {
   readonly code: string;
@@ -20,14 +19,10 @@ export class WorkspacePolicyError extends Error {
  */
 export async function assertCanCreateWorkspace(input: {
   deploymentMode: DeploymentMode;
-  ownerId: string;
-  workspaces: Pick<WorkspacesRepository, "countOwnedByUser">;
 }): Promise<void> {
   if (input.deploymentMode !== "self_hosted") {
     return;
   }
-  // Keep the owned-count probe so callers/tests still exercise the repository contract.
-  await input.workspaces.countOwnedByUser(input.ownerId);
   throw new WorkspacePolicyError(
     "WORKSPACE_CREATE_DISABLED",
     403,

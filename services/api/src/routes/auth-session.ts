@@ -1,4 +1,5 @@
 import { json, readJsonBody, type RouteHandler } from "../http.ts";
+import { SessionServiceError } from "../session/service.ts";
 import { TwoFactorError, type TwoFactorService } from "../two-factor/service.ts";
 
 interface BootstrapBody {
@@ -53,6 +54,14 @@ function handleError(
       message: error.message,
       requestId,
       ...(error.details ? { details: error.details } : {}),
+    });
+    return;
+  }
+  if (error instanceof SessionServiceError) {
+    json(res, error.statusCode, {
+      error: error.code,
+      message: error.message,
+      requestId,
     });
     return;
   }

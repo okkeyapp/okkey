@@ -57,6 +57,7 @@ function membersService(overrides: {
   publicAppBaseUrl?: string;
 }): WorkspaceMembersService {
   return new WorkspaceMembersService({
+    deploymentMode: "saas",
     db: overrides.db ?? ({ query: baseQuery() } as never),
     workspaces: {
       findById: async () => ({

@@ -34,6 +34,7 @@ const selfHostedEnterprise = entitlementConfig({
 function membersService(planTier: "FREE" | "ENTERPRISE") {
   let memberUpdates = 0;
   const service = new WorkspaceMembersService({
+    deploymentMode: "saas",
     db: {
       query: async (sql: string) => {
         if (sql.includes("FROM roles")) {
@@ -98,6 +99,7 @@ test("paid self-hosted plan does not lapse custom role assignment", async () => 
 
 test("SaaS FREE still rejects a custom role as a missing plan feature", async () => {
   const service = new WorkspaceMembersService({
+    deploymentMode: "saas",
     db: {
       query: async (sql: string) => {
         if (sql.includes("FROM roles")) {
@@ -204,6 +206,7 @@ function memberVaultAccessService(input: {
     },
     publicAppBaseUrl: "http://localhost:5173",
     emailTemplates: { sendWorkspaceInvite: async () => {} },
+    deploymentMode: "self_hosted",
     config: input.enterpriseLicenseLapsed
       ? entitlementConfig({
           deploymentMode: "self_hosted",

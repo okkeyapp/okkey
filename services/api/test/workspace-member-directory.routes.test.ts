@@ -68,6 +68,7 @@ function memberRow(input: {
 function createMembersService() {
   const queried: string[] = [];
   const service = new WorkspaceMembersService({
+    deploymentMode: "saas",
     db: {
       async query<T>(_sql: string, params?: unknown[]): Promise<T[]> {
         queried.push(String(params?.[0] ?? ""));

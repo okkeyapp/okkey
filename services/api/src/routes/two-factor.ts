@@ -1,5 +1,6 @@
 import { getHeader, json, readJsonBody, type RouteHandler } from "../http.ts";
 import { requestClientIp } from "../request-ip.ts";
+import { SessionServiceError } from "../session/service.ts";
 import { TwoFactorError, type TwoFactorService } from "../two-factor/service.ts";
 
 function errorPayload(
@@ -27,6 +28,10 @@ function handleTwoFactorError(
       error.statusCode,
       errorPayload(error.code, error.message, requestId, error.details),
     );
+    return;
+  }
+  if (error instanceof SessionServiceError) {
+    json(res, error.statusCode, errorPayload(error.code, error.message, requestId));
     return;
   }
   json(res, 500, errorPayload("INTERNAL_SERVER_ERROR", "internal server error", requestId));

@@ -64,6 +64,7 @@ test("self-hosted modules ignore plan_tier: loaded modules are unlimited, none s
 test("self-hosted modules allow an invite far past FAMILY and TEAM seat caps on a paid plan", async () => {
   let inserts = 0;
   const service = new WorkspaceMembersService({
+    deploymentMode: "self_hosted",
     db: {
       query: async (sql: string) => {
         if (sql.includes("SELECT owner_id FROM workspaces")) {
@@ -124,6 +125,7 @@ test("self-hosted modules allow an invite far past FAMILY and TEAM seat caps on 
 test("self-hosted without modules applies the FREE seat cap even when plan_tier is ENTERPRISE", async () => {
   let inserts = 0;
   const service = new WorkspaceMembersService({
+    deploymentMode: "self_hosted",
     db: {
       query: async (sql: string) => {
         if (sql.includes("SELECT owner_id FROM workspaces")) {
@@ -179,6 +181,7 @@ test("self-hosted without modules applies the FREE seat cap even when plan_tier 
 test("self-hosted modules and plan_tier FREE allow an invite past the FREE seat cap", async () => {
   let inserts = 0;
   const service = new WorkspaceMembersService({
+    deploymentMode: "self_hosted",
     db: {
       query: async (sql: string) => {
         if (sql.includes("SELECT owner_id FROM workspaces")) {

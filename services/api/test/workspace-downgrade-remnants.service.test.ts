@@ -346,6 +346,7 @@ function createMembersService(handlers: QueryHandler[] = []) {
     handlers,
   );
   const service = new WorkspaceMembersService({
+    deploymentMode: "saas",
     db,
     workspaces: createWorkspaces() as unknown as ConstructorParameters<typeof WorkspaceMembersService>[0]["workspaces"],
   });

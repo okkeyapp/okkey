@@ -167,7 +167,7 @@ export interface WorkspaceMembersServiceDeps {
   logger?: { info(message: string, fields?: Record<string, unknown>): void };
   config?: PlanEntitlementRuntimeConfig;
   /** When self_hosted, removing a member from the instance workspace blocks the account. */
-  deploymentMode?: DeploymentMode;
+  deploymentMode: DeploymentMode;
   workspaceKeys?: {
     rotateOnRemoval(
       workspaceId: string,
@@ -262,7 +262,7 @@ export class WorkspaceMembersService {
     this.resolveOutboundMailActive = deps.resolveOutboundMailActive;
     this.logger = deps.logger;
     this.config = deps.config;
-    this.deploymentMode = deps.deploymentMode ?? "self_hosted";
+    this.deploymentMode = deps.deploymentMode;
     this.workspaceKeys = deps.workspaceKeys;
   }
 
@@ -341,6 +341,46 @@ export class WorkspaceMembersService {
       [normalized],
     );
     return Boolean(rows[0]);
+  }
+
+  /**
+   * Self-hosted email-invite path: return the token_hash when the email has exactly one
+   * pending invitation targeting the instance workspace. Null when none, ambiguous, or
+   * the instance workspace pointer is not set yet.
+   */
+  async findSinglePendingInstanceInviteTokenHash(email: string): Promise<string | null> {
+    const normalized = normalizeEmail(email);
+    if (!normalized) {
+      return null;
+    }
+    const settings = await this.db.query<{ workspace_id: string | null }>(
+      `
+        SELECT workspace_id
+        FROM server_instance_settings
+        WHERE id = TRUE
+        LIMIT 1
+      `,
+    );
+    const instanceWorkspaceId = settings[0]?.workspace_id;
+    if (instanceWorkspaceId == null) {
+      return null;
+    }
+    const rows = await this.db.query<{ token_hash: string }>(
+      `
+        SELECT token_hash
+        FROM workspace_invitations
+        WHERE lower(email) = $1
+          AND workspace_id = $2
+          AND status = 'pending'
+          AND expires_at > now()
+      `,
+      [normalized, instanceWorkspaceId],
+    );
+    if (rows.length !== 1) {
+      return null;
+    }
+    const hash = rows[0]?.token_hash?.trim() ?? "";
+    return hash || null;
   }
 
   /**

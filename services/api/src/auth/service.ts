@@ -113,6 +113,12 @@ export interface AuthServiceDeps {
    * or not a member of the instance workspace. Fail-closed login denial.
    */
   resolveInstanceLoginAllowed?: (userId: string) => Promise<boolean>;
+  /**
+   * Self-hosted email-invite path: return the SHA-256 hex of the single pending
+   * invitation to the instance workspace for this email, or null when none / ambiguous.
+   * Used by OTP verify so register/complete can consume the invite without the link.
+   */
+  resolvePendingInstanceInviteTokenHash?: (email: string) => Promise<string | null>;
   now?: () => Date;
   generateCode?: () => string;
   /** Challenge / other snowflake ids. */
@@ -241,6 +247,9 @@ export class AuthService {
   private readonly resolveRegistrationAllowed?: (email: string) => Promise<boolean>;
   private readonly resolveInviteRegistration?: AuthServiceDeps["resolveInviteRegistration"];
   private readonly resolveInstanceLoginAllowed?: (userId: string) => Promise<boolean>;
+  private readonly resolvePendingInstanceInviteTokenHash?: (
+    email: string,
+  ) => Promise<string | null>;
   private readonly now: () => Date;
   private readonly generateCode: () => string;
   private readonly generateId: () => string;
@@ -255,6 +264,7 @@ export class AuthService {
     this.resolveRegistrationAllowed = deps.resolveRegistrationAllowed;
     this.resolveInviteRegistration = deps.resolveInviteRegistration;
     this.resolveInstanceLoginAllowed = deps.resolveInstanceLoginAllowed;
+    this.resolvePendingInstanceInviteTokenHash = deps.resolvePendingInstanceInviteTokenHash;
     this.now = deps.now ?? (() => new Date());
     this.generateCode = deps.generateCode ?? createCode;
     this.generateId = deps.generateId ?? generateEntityId;
@@ -602,7 +612,24 @@ export class AuthService {
       challenge.email,
     );
     if (!existingUser) {
-      const authStateId = await this.createRegistrationAuthState(challenge.email);
+      let inviteTokenHash: string | undefined;
+      if (this.config.deploymentMode === "self_hosted") {
+        const hash = this.resolvePendingInstanceInviteTokenHash
+          ? await this.resolvePendingInstanceInviteTokenHash(challenge.email)
+          : null;
+        if (!hash) {
+          throw new AuthError(
+            "REGISTRATION_INVITE_REQUIRED",
+            403,
+            "registration requires an invitation to the instance workspace",
+          );
+        }
+        inviteTokenHash = hash;
+      }
+      const authStateId = await this.createRegistrationAuthState(
+        challenge.email,
+        inviteTokenHash,
+      );
       return {
         authStateId,
         userExists: false,
@@ -738,6 +765,7 @@ export class AuthService {
     userId: string;
     pendingTwoFactor: boolean;
   }): Promise<{ authStateId: string; nextStep: "device_check" | "two_factor" }> {
+    await this.assertInstanceLoginAllowed(params.userId);
     const authState: AuthStatePayload = {
       id: this.generateAuthStateIdFn(),
       email: params.email,

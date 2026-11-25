@@ -362,9 +362,14 @@ export function createApiApp(
   app.use(createCorsMiddleware(config.corsOrigin));
   app.use(createRequestLoggerMiddleware(logger));
 
+  const instanceAccessOptions = {
+    assertUserInstanceAccess: deps.assertUserInstanceAccess,
+  };
   const resolveSessionStrict =
     deps.sessionService !== undefined
-      ? createResolveAuthenticatedSession(config, deps.sessionService)
+      ? createResolveAuthenticatedSession(config, deps.sessionService, undefined, {
+          ...instanceAccessOptions,
+        })
       : null;
   const sessionIfDeviceTrusted = async (
     req: IncomingMessage,
@@ -383,6 +388,7 @@ export function createApiApp(
     if (!session) {
       return null;
     }
+    // Redundant with createResolveAuthenticatedSession; keep fail-closed for header-only path.
     if (deps.assertUserInstanceAccess && !(await deps.assertUserInstanceAccess(session.userId))) {
       return null;
     }
@@ -413,12 +419,14 @@ export function createApiApp(
     deps.sessionService !== undefined
       ? createResolveAuthenticatedUserId(config, deps.sessionService, undefined, {
           allowUnboundDevice: true,
+          ...instanceAccessOptions,
         })
       : resolveUserId;
   const resolveSessionAllowUnboundDevice =
     deps.sessionService !== undefined
       ? createResolveAuthenticatedSession(config, deps.sessionService, undefined, {
           allowUnboundDevice: true,
+          ...instanceAccessOptions,
         })
       : undefined;
   /**
@@ -498,6 +506,7 @@ export function createApiApp(
           config,
           deps.sessionService,
           REGISTRATION_RECOVERY_ALLOWED_SCOPES,
+          { ...instanceAccessOptions },
         )
       : resolveUserId;
   const resolveSessionForRegistrationRecovery =
@@ -506,6 +515,7 @@ export function createApiApp(
           config,
           deps.sessionService,
           REGISTRATION_RECOVERY_ALLOWED_SCOPES,
+          { ...instanceAccessOptions },
         )
       : undefined;
 

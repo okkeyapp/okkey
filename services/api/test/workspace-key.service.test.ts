@@ -385,6 +385,7 @@ test("removeMember asks for workspace-key rotation before deleting membership", 
   };
   let rotatedBeforeDelete = false;
   const service = new WorkspaceMembersService({
+    deploymentMode: "saas",
     db,
     workspaces: {
       async findById() {
@@ -421,6 +422,7 @@ test("removeMember keeps membership when workspace-key rotation is refused", asy
     },
   };
   const service = new WorkspaceMembersService({
+    deploymentMode: "saas",
     db,
     workspaces: {
       async findById() {
@@ -455,6 +457,7 @@ test("removeMemberWithoutKeyHolder queues the removal and drops wraps without a 
 
   const sql: string[] = [];
   const members = new WorkspaceMembersService({
+    deploymentMode: "saas",
     db: {
       async query<T>(statement: string): Promise<T[]> {
         sql.push(statement);

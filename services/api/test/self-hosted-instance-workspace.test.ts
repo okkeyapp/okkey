@@ -15,14 +15,19 @@ import {
   InstanceAccessError,
   readInstanceSettings,
 } from "../src/setup/instance-access.ts";
+import { ensureSelfHostedInstanceWorkspace } from "../src/setup/ensure-instance-workspace.ts";
 import { SetupError, SetupService } from "../src/setup/service.ts";
 import type { RegistrationMode, ServerInstanceSettingsRow } from "../src/setup/types.ts";
 import { applySqlMigrations } from "../src/storage/migrate.ts";
 import type { PostgresDatabase, QueryExecutor } from "../src/storage/postgres.ts";
+import { createResolveAuthenticatedSession } from "../src/routes/auth-context.ts";
+import { SessionService, SessionServiceError } from "../src/session/service.ts";
 import { WorkspaceMembersService } from "../src/workspace-members/service.ts";
 import { hybridDeviceShareBytes } from "./hybrid-share-fixture.ts";
 import { entitlementConfig } from "./entitlement-config.ts";
 import { createMockSessionService, createTestApiConfig } from "./test-api-config.ts";
+import { initEntityIdGenerator } from "../src/entity-id.ts";
+import { IncomingMessage } from "node:http";
 
 const migrationsDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../migrations");
 const databaseUrl = process.env.DATABASE_URL ?? "postgres://okkey:okkey@127.0.0.1:5432/okkey";
@@ -654,106 +659,122 @@ async function withSchema(
   }
 }
 
-test("migration 0063 backfills instance workspace and deletes extras", async (t) => {
+async function seedBeta3UpgradeFixture(query: SqlQuery): Promise<{
+  ownerId: string;
+  otherOwnerId: string;
+  memberId: string;
+  instanceWs: string;
+}> {
+  // Simulate v1.0.0-beta.3 → apply through 0059, seed users, then 0062+0063 DDL.
+  // Do not hand-set setup_completed_at: upgrades from beta.3 leave it NULL.
+  const files = readdirSync(migrationsDir)
+    .filter((name) => /^\d{4}_.+\.sql$/.test(name))
+    .sort((a, b) => a.localeCompare(b));
+  const through59 = files.filter((name) => name.localeCompare("0059_") < 0 || name.startsWith("0059_"));
+  for (const name of through59) {
+    await query(readFileSync(path.join(migrationsDir, name), "utf8"));
+  }
+
+  const ownerId = "1100000000000000001";
+  const otherOwnerId = "1100000000000000002";
+  const memberId = "1100000000000000003";
+  const instanceWs = "1200000000000000001";
+  const extraWs = "1200000000000000002";
+  const memberPersonalWs = "1200000000000000003";
+
+  await query(
+    `
+      INSERT INTO users (id, email, public_key, encrypted_private_key, server_key_share, created_at)
+      VALUES
+        ($1, 'owner@example.com', 'pk', decode('00', 'hex'), decode('00', 'hex'), '2024-01-01T00:00:00Z'),
+        ($2, 'other@example.com', 'pk', decode('00', 'hex'), decode('00', 'hex'), '2024-01-02T00:00:00Z'),
+        ($3, 'member@example.com', 'pk', decode('00', 'hex'), decode('00', 'hex'), '2024-01-03T00:00:00Z')
+    `,
+    [ownerId, otherOwnerId, memberId],
+  );
+  await query(
+    `
+      INSERT INTO workspaces (id, name, owner_id, plan_tier, created_at)
+      VALUES
+        ($1, 'Acme', $4, 'FREE', '2024-01-01T00:00:00Z'),
+        ($2, 'Personal', $5, 'FREE', '2024-01-02T00:00:00Z'),
+        ($3, 'Personal', $6, 'FREE', '2024-01-03T00:00:00Z')
+    `,
+    [instanceWs, extraWs, memberPersonalWs, ownerId, otherOwnerId, memberId],
+  );
+  const roleId = "1300000000000000001";
+  await query(
+    `
+      INSERT INTO roles (id, workspace_id, name, permissions_json, is_system, builtin_key)
+      VALUES ($1, $2, 'User', '{}'::jsonb, true, 'user')
+    `,
+    [roleId, instanceWs],
+  );
+  await query(
+    `
+      INSERT INTO workspace_members (id, workspace_id, user_id, role_id)
+      VALUES ($1, $2, $3, $4)
+    `,
+    ["1400000000000000001", instanceWs, memberId, roleId],
+  );
+  await query(
+    `
+      INSERT INTO vaults (id, workspace_id, name, is_personal, owner_id, crypto_version)
+      VALUES
+        ('1500000000000000001', $1, 'Personal vault', true, $2, 2),
+        ('1500000000000000002', $3, 'Extra vault', true, $4, 2),
+        ('1500000000000000003', $5, 'Member personal', true, $6, 2)
+    `,
+    [instanceWs, ownerId, extraWs, otherOwnerId, memberPersonalWs, memberId],
+  );
+  await query(
+    `
+      INSERT INTO items (id, vault_id, encrypted_data)
+      VALUES ('1600000000000000001', '1500000000000000002', decode('00', 'hex'))
+    `,
+  );
+
+  const from60 = files.filter((name) => name.localeCompare("0060_") >= 0);
+  for (const name of from60) {
+    await query(readFileSync(path.join(migrationsDir, name), "utf8"));
+  }
+
+  const settings = await query<{
+    setup_completed_at: string | Date | null;
+    workspace_id: string | null;
+    registration_mode: string;
+  }>(`SELECT setup_completed_at, workspace_id, registration_mode FROM server_instance_settings WHERE id = TRUE`);
+  assert.equal(settings[0]?.setup_completed_at ?? null, null);
+  assert.equal(settings[0]?.workspace_id ?? null, null);
+  assert.equal(settings[0]?.registration_mode, "invite_only");
+
+  return { ownerId, otherOwnerId, memberId, instanceWs };
+}
+
+test("self-hosted startup cleanup backfills instance workspace after beta.3 upgrade", async (t) => {
   if (await skipIfPostgresDown(t)) {
     return;
   }
+  initEntityIdGenerator(1);
 
   await withSchema(async ({ db, query }) => {
-    const files = readdirSync(migrationsDir)
-      .filter((name) => /^\d{4}_.+\.sql$/.test(name))
-      .sort((a, b) => a.localeCompare(b));
-    const through62 = files.filter((name) => name.localeCompare("0062_server_instance_settings.sql") <= 0);
-    const mig63 = files.find((name) => name.startsWith("0063_"));
-    assert.ok(mig63);
+    const seeded = await seedBeta3UpgradeFixture(query);
 
-    for (const name of through62) {
-      await query(readFileSync(path.join(migrationsDir, name), "utf8"));
-    }
-
-    const ownerId = "1100000000000000001";
-    const otherOwnerId = "1100000000000000002";
-    const memberId = "1100000000000000003";
-    const instanceWs = "1200000000000000001";
-    const extraWs = "1200000000000000002";
-    const memberPersonalWs = "1200000000000000003";
-
-    await query(
-      `
-        INSERT INTO users (id, email, public_key, encrypted_private_key, server_key_share)
-        VALUES
-          ($1, 'owner@example.com', 'pk', decode('00', 'hex'), decode('00', 'hex')),
-          ($2, 'other@example.com', 'pk', decode('00', 'hex'), decode('00', 'hex')),
-          ($3, 'member@example.com', 'pk', decode('00', 'hex'), decode('00', 'hex'))
-      `,
-      [ownerId, otherOwnerId, memberId],
-    );
-
-    await query(
-      `
-        INSERT INTO workspaces (id, name, owner_id, plan_tier, created_at)
-        VALUES
-          ($1, 'Acme', $4, 'FREE', '2024-01-01T00:00:00Z'),
-          ($2, 'Personal', $5, 'FREE', '2024-01-02T00:00:00Z'),
-          ($3, 'Personal', $6, 'FREE', '2024-01-03T00:00:00Z')
-      `,
-      [instanceWs, extraWs, memberPersonalWs, ownerId, otherOwnerId, memberId],
-    );
-
-    const roleId = "1300000000000000001";
-    await query(
-      `
-        INSERT INTO roles (id, workspace_id, name, permissions_json, is_system, builtin_key)
-        VALUES ($1, $2, 'User', '{}'::jsonb, true, 'user')
-      `,
-      [roleId, instanceWs],
-    );
-    await query(
-      `
-        INSERT INTO workspace_members (id, workspace_id, user_id, role_id)
-        VALUES ($1, $2, $3, $4)
-      `,
-      ["1400000000000000001", instanceWs, memberId, roleId],
-    );
-
-    await query(
-      `
-        INSERT INTO vaults (id, workspace_id, name, is_personal, owner_id, crypto_version)
-        VALUES
-          ('1500000000000000001', $1, 'Personal vault', true, $2, 2),
-          ('1500000000000000002', $3, 'Extra vault', true, $4, 2),
-          ('1500000000000000003', $5, 'Member personal', true, $6, 2)
-      `,
-      [instanceWs, ownerId, extraWs, otherOwnerId, memberPersonalWs, memberId],
-    );
-
-    // Non-empty extra workspace: add an item so cascade cleanup is exercised.
-    await query(
-      `
-        INSERT INTO items (id, vault_id, encrypted_data)
-        VALUES ('1600000000000000001', '1500000000000000002', decode('00', 'hex'))
-      `,
-    );
-
-    await query(
-      `
-        UPDATE server_instance_settings
-        SET setup_completed_at = '2024-02-01T00:00:00Z',
-            registration_mode = 'open'
-        WHERE id = TRUE
-      `,
-    );
-
-    await query(readFileSync(path.join(migrationsDir, mig63!), "utf8"));
+    const first = await ensureSelfHostedInstanceWorkspace({
+      db,
+      deploymentMode: "self_hosted",
+    });
+    assert.equal(first.ran, true);
+    assert.equal(first.workspaceId, seeded.instanceWs);
 
     const settings = await readInstanceSettings(db);
-    assert.equal(settings.workspaceId, instanceWs);
-    assert.equal(settings.registrationMode, "invite_only");
+    assert.equal(settings.workspaceId, seeded.instanceWs);
+    assert.ok(settings.setupCompletedAt);
 
     const workspaces = await query<{ id: string }>(`SELECT id FROM workspaces ORDER BY id`);
     assert.deepEqual(
       workspaces.map((w) => w.id),
-      [instanceWs],
+      [seeded.instanceWs],
     );
 
     const memberVaults = await query<{ id: string }>(
@@ -761,40 +782,41 @@ test("migration 0063 backfills instance workspace and deletes extras", async (t)
         SELECT id FROM vaults
         WHERE workspace_id = $1 AND is_personal = TRUE AND owner_id = $2
       `,
-      [instanceWs, memberId],
+      [seeded.instanceWs, seeded.memberId],
     );
     assert.equal(memberVaults.length, 1);
 
     const other = await query<{ blocked_at: string | Date | null }>(
       `SELECT blocked_at FROM users WHERE id = $1`,
-      [otherOwnerId],
+      [seeded.otherOwnerId],
     );
     assert.ok(other[0]?.blocked_at);
 
     const member = await query<{ blocked_at: string | Date | null }>(
       `SELECT blocked_at FROM users WHERE id = $1`,
-      [memberId],
+      [seeded.memberId],
     );
     assert.equal(member[0]?.blocked_at ?? null, null);
 
-    await query(readFileSync(path.join(migrationsDir, mig63!), "utf8"));
+    const second = await ensureSelfHostedInstanceWorkspace({
+      db,
+      deploymentMode: "self_hosted",
+    });
+    assert.equal(second.ran, false);
+    assert.equal(second.workspaceId, seeded.instanceWs);
     const again = await query<{ id: string }>(`SELECT id FROM workspaces`);
     assert.equal(again.length, 1);
   });
 });
 
-test("migration 0063 is a no-op when setup is incomplete (SaaS-safe)", async (t) => {
+test("saas startup leaves workspaces untouched even when setup_completed_at is set", async (t) => {
   if (await skipIfPostgresDown(t)) {
     return;
   }
   await withSchema(async ({ db, query }) => {
     await applySqlMigrations(db, {
       migrationsDir,
-      logger: {
-        info() {},
-        warn() {},
-        error() {},
-      },
+      logger: { info() {}, warn() {}, error() {} },
     });
 
     const ownerId = "2100000000000000001";
@@ -814,16 +836,282 @@ test("migration 0063 is a no-op when setup is incomplete (SaaS-safe)", async (t)
       `,
       [ws1, ws2, ownerId],
     );
+    // SaaS DB may have setup_completed_at set from shared schema; cleanup must still no-op.
     await query(
-      `UPDATE server_instance_settings SET setup_completed_at = NULL, workspace_id = NULL WHERE id = TRUE`,
+      `
+        UPDATE server_instance_settings
+        SET setup_completed_at = now(), workspace_id = NULL
+        WHERE id = TRUE
+      `,
     );
 
-    const mig63 = readdirSync(migrationsDir).find((n) => n.startsWith("0063_"))!;
-    await query(readFileSync(path.join(migrationsDir, mig63), "utf8"));
+    const result = await ensureSelfHostedInstanceWorkspace({
+      db,
+      deploymentMode: "saas",
+    });
+    assert.equal(result.ran, false);
 
     const workspaces = await query<{ id: string }>(`SELECT id FROM workspaces ORDER BY id`);
     assert.equal(workspaces.length, 2);
     const settings = await readInstanceSettings(db);
     assert.equal(settings.workspaceId, null);
   });
+});
+
+test("migration 0063 is DDL-only and does not delete workspaces", async (t) => {
+  if (await skipIfPostgresDown(t)) {
+    return;
+  }
+  await withSchema(async ({ db, query }) => {
+    await applySqlMigrations(db, {
+      migrationsDir,
+      logger: { info() {}, warn() {}, error() {} },
+    });
+    const ownerId = "3100000000000000001";
+    const ws1 = "3200000000000000001";
+    const ws2 = "3200000000000000002";
+    await query(
+      `
+        INSERT INTO users (id, email, public_key, encrypted_private_key, server_key_share)
+        VALUES ($1, 'ddl@example.com', 'pk', decode('00', 'hex'), decode('00', 'hex'))
+      `,
+      [ownerId],
+    );
+    await query(
+      `
+        INSERT INTO workspaces (id, name, owner_id, plan_tier)
+        VALUES ($1, 'A', $3, 'FREE'), ($2, 'B', $3, 'FREE')
+      `,
+      [ws1, ws2, ownerId],
+    );
+    await query(
+      `
+        UPDATE server_instance_settings
+        SET setup_completed_at = now(), workspace_id = NULL, registration_mode = 'open'
+        WHERE id = TRUE
+      `,
+    );
+
+    const mig63 = readdirSync(migrationsDir).find((n) => n.startsWith("0063_"))!;
+    await query(readFileSync(path.join(migrationsDir, mig63), "utf8"));
+
+    const workspaces = await query<{ id: string }>(`SELECT id FROM workspaces`);
+    assert.equal(workspaces.length, 2);
+    const settings = await readInstanceSettings(db);
+    assert.equal(settings.workspaceId, null);
+    assert.equal(settings.registrationMode, "invite_only");
+  });
+});
+
+test("createAuthStateForExistingUser denies blocked accounts (passkey path)", async () => {
+  const auth = new AuthServiceClass({
+    redis: memoryRedis(),
+    users: {
+      findByEmail: async () => null,
+      hasAnyUsers: async () => true,
+      isTwoFactorEnabled: async () => false,
+    },
+    emailTemplates: { sendAuthEmailCode: async () => {} },
+    config: createTestApiConfig({ deploymentMode: "self_hosted" }),
+    resolveEmailDeliverable: async () => true,
+    resolveInstanceLoginAllowed: async () => false,
+  });
+
+  await assert.rejects(
+    () =>
+      auth.createAuthStateForExistingUser({
+        email: "blocked@example.com",
+        userId: MEMBER_ID,
+        pendingTwoFactor: false,
+      }),
+    (error: unknown) => error instanceof AuthError && error.code === "ACCOUNT_BLOCKED",
+  );
+});
+
+test("SessionService.createSession refuses users without instance access", async () => {
+  const created: string[] = [];
+  const sessions = {
+    createSession: async (input: { userId: string }) => {
+      created.push(input.userId);
+    },
+    findValidByTokenHash: async () => null,
+    bindDevice: async () => false,
+    deleteByDeviceId: async () => 0,
+    deleteByTokenHash: async () => false,
+    markRecoveryProved: async () => false,
+    setRecoveryChallenge: async () => false,
+    consumeRecoveryChallenge: async () => false,
+  };
+  const service = new SessionService({
+    sessions: sessions as never,
+    config: { sessionTtlSeconds: 3600 },
+    assertInstanceAccess: async (userId) => userId !== MEMBER_ID,
+  });
+
+  await assert.rejects(
+    () => service.createSession(MEMBER_ID),
+    (error: unknown) =>
+      error instanceof SessionServiceError && error.code === "ACCOUNT_BLOCKED",
+  );
+  assert.deepEqual(created, []);
+
+  const ok = await service.createSession(OWNER_ID);
+  assert.ok(ok.accessToken);
+  assert.deepEqual(created, [OWNER_ID]);
+});
+
+test("auth resolvers deny blocked and non-member users including unbound sessions", async () => {
+  const denied = new Set([MEMBER_ID, "9990000000000000001"]);
+  const sessionService = {
+    resolveAccessToken: async (token: string) => {
+      if (token === "blocked-token") {
+        return {
+          userId: MEMBER_ID,
+          deviceId: null,
+          scope: null,
+          tokenHash: "h1",
+          expiresAt: new Date(Date.now() + 60_000).toISOString(),
+        };
+      }
+      if (token === "nonmember-token") {
+        return {
+          userId: "9990000000000000001",
+          deviceId: "d1",
+          scope: null,
+          tokenHash: "h2",
+          expiresAt: new Date(Date.now() + 60_000).toISOString(),
+        };
+      }
+      if (token === "ok-token") {
+        return {
+          userId: OWNER_ID,
+          deviceId: "d2",
+          scope: null,
+          tokenHash: "h3",
+          expiresAt: new Date(Date.now() + 60_000).toISOString(),
+        };
+      }
+      return null;
+    },
+  } as unknown as SessionService;
+
+  const resolve = createResolveAuthenticatedSession(
+    { allowHeaderUserIdAuth: true },
+    sessionService,
+    undefined,
+    {
+      allowUnboundDevice: true,
+      assertUserInstanceAccess: async (userId) => !denied.has(userId),
+    },
+  );
+
+  const blockedReq = {
+    headers: { authorization: "Bearer blocked-token" },
+  } as unknown as IncomingMessage;
+  const nonMemberReq = {
+    headers: { authorization: "Bearer nonmember-token" },
+  } as unknown as IncomingMessage;
+  const okReq = {
+    headers: { authorization: "Bearer ok-token" },
+  } as unknown as IncomingMessage;
+  const headerBlocked = {
+    headers: { "x-user-id": MEMBER_ID },
+  } as unknown as IncomingMessage;
+
+  assert.equal(await resolve(blockedReq), null);
+  assert.equal(await resolve(nonMemberReq), null);
+  assert.equal((await resolve(okReq))?.userId, OWNER_ID);
+  assert.equal(await resolve(headerBlocked), null);
+});
+
+test("OTP verify attaches instance invite token hash for email invitations", async () => {
+  const redis = memoryRedis();
+  const challengeId = "challenge-email-invite";
+  const code = "123456";
+  const codeHash = createHash("sha256").update(`${challengeId}:${code}`, "utf8").digest("hex");
+  const now = new Date();
+  await redis.setWithTtl(
+    `auth:challenge:${challengeId}`,
+    JSON.stringify({
+      id: challengeId,
+      email: "invitee@example.com",
+      codeHash,
+      attemptsLeft: 5,
+      expiresAt: new Date(now.getTime() + 60_000).toISOString(),
+      resendAvailableAt: new Date(now.getTime() + 30_000).toISOString(),
+      createdAt: now.toISOString(),
+    }),
+    60,
+  );
+
+  const auth = new AuthServiceClass({
+    redis,
+    users: {
+      findByEmail: async () => null,
+      hasAnyUsers: async () => true,
+      isTwoFactorEnabled: async () => false,
+    },
+    emailTemplates: { sendAuthEmailCode: async () => {} },
+    config: createTestApiConfig({ deploymentMode: "self_hosted" }),
+    resolveEmailDeliverable: async () => true,
+    resolvePendingInstanceInviteTokenHash: async (email) =>
+      email === "invitee@example.com" ? TOKEN_HASH : null,
+  });
+
+  const confirmed = await auth.confirmEmailCode({
+    challengeId,
+    code,
+    requestIp: "127.0.0.1",
+  });
+  assert.equal(confirmed.userExists, false);
+  assert.equal(confirmed.nextStep, "registration");
+  const stateRaw = await redis.get(`auth:state:${confirmed.authStateId}`);
+  assert.ok(stateRaw);
+  const state = JSON.parse(stateRaw) as { inviteTokenHash?: string };
+  assert.equal(state.inviteTokenHash, TOKEN_HASH);
+});
+
+test("OTP verify rejects registration without a single instance invite", async () => {
+  const redis = memoryRedis();
+  const challengeId = "challenge-no-invite";
+  const code = "654321";
+  const codeHash = createHash("sha256").update(`${challengeId}:${code}`, "utf8").digest("hex");
+  const now = new Date();
+  await redis.setWithTtl(
+    `auth:challenge:${challengeId}`,
+    JSON.stringify({
+      id: challengeId,
+      email: "stranger@example.com",
+      codeHash,
+      attemptsLeft: 5,
+      expiresAt: new Date(now.getTime() + 60_000).toISOString(),
+      resendAvailableAt: new Date(now.getTime() + 30_000).toISOString(),
+      createdAt: now.toISOString(),
+    }),
+    60,
+  );
+
+  const auth = new AuthServiceClass({
+    redis,
+    users: {
+      findByEmail: async () => null,
+      hasAnyUsers: async () => true,
+      isTwoFactorEnabled: async () => false,
+    },
+    emailTemplates: { sendAuthEmailCode: async () => {} },
+    config: createTestApiConfig({ deploymentMode: "self_hosted" }),
+    resolveEmailDeliverable: async () => true,
+    resolvePendingInstanceInviteTokenHash: async () => null,
+  });
+
+  await assert.rejects(
+    () =>
+      auth.confirmEmailCode({
+        challengeId,
+        code,
+        requestIp: "127.0.0.1",
+      }),
+    (error: unknown) =>
+      error instanceof AuthError && error.code === "REGISTRATION_INVITE_REQUIRED",
+  );
 });

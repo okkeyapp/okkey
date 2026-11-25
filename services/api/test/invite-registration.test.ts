@@ -44,6 +44,7 @@ function pendingInviteRow(overrides?: Partial<{
 
 function membersService(query: QueryExecutor["query"]): WorkspaceMembersService {
   return new WorkspaceMembersService({
+    deploymentMode: "saas",
     db: { query } as never,
     workspaces: {
       findById: async () => ({

@@ -2,6 +2,7 @@ import type { VaultsRepository, WorkspacesRepository } from "../storage/reposito
 import type { QueryExecutor } from "../storage/postgres.ts";
 import type { ApiConfig } from "../config.ts";
 import { workspacePlanFeatureWriteDecision } from "../plan-entitlements.ts";
+import { readInstanceSettings } from "../setup/instance-access.ts";
 import {
   assertWorkspacePermission,
   resolveWorkspacePermissions,
@@ -174,6 +175,16 @@ export class WorkspaceSettingsService {
         400,
         "confirmation name does not match workspace name",
       );
+    }
+    if (this.config.deploymentMode === "self_hosted") {
+      const settings = await readInstanceSettings(this.db);
+      if (settings.workspaceId != null && settings.workspaceId === workspaceId) {
+        throw new WorkspaceSettingsServiceError(
+          "INSTANCE_WORKSPACE_PROTECTED",
+          403,
+          "the instance workspace cannot be deleted",
+        );
+      }
     }
     const deleted = await this.workspaces.deleteOwnedWorkspace(workspaceId, userId);
     if (!deleted) {
