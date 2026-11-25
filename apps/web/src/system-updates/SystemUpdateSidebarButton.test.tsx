@@ -116,7 +116,27 @@ describe("system update version button", () => {
     status.currentVersion = "1.0.0-beta.3";
     status.commitSha = null;
     status.enterpriseCommitSha = null;
+    status.enterpriseInstalled = true;
+    status.enterpriseVersion = "1.0.0";
     status.releaseTag = "v1.0.0-beta.3";
+    status.updates = [
+      {
+        component: "okkey",
+        fromVersion: "1.0.0-beta.3",
+        toVersion: "1.1.0",
+        summary: "Security fixes",
+        releasedAt: "2026-11-01T00:00:00.000Z",
+        source: "feed",
+      },
+      {
+        component: "enterprise",
+        fromVersion: "1.0.0",
+        toVersion: "2.0.0",
+        summary: "Enterprise module",
+        releasedAt: "2026-11-01T00:00:00.000Z",
+        source: "feed",
+      },
+    ];
     status.updates[0].toVersion = "1.1.0";
     status.seen = {};
     status.enterpriseLicenseLapsed = false;
@@ -237,6 +257,7 @@ describe("system update version button", () => {
     status.releaseTag = null;
     status.currentVersion = "0.0.0-dev";
     status.commitSha = FULL_SHA;
+    status.enterpriseInstalled = true;
     status.enterpriseCommitSha = enterpriseSha;
     renderButton();
     const button = await screen.findByTestId("system-update-version");
@@ -245,6 +266,23 @@ describe("system update version button", () => {
     );
     expect(button).toHaveAttribute("data-commit-sha", FULL_SHA);
     expect(button).toHaveAttribute("data-enterprise-commit-sha", enterpriseSha);
+  });
+
+  it("hides a leftover enterprise SHA when enterprise modules are not installed", async () => {
+    const enterpriseSha = "abcdef0123456789abcdef0123456789abcdef01";
+    status.releaseTag = null;
+    status.currentVersion = "0.0.0-dev";
+    status.commitSha = FULL_SHA;
+    status.enterpriseInstalled = false;
+    status.enterpriseVersion = null;
+    status.enterpriseCommitSha = enterpriseSha;
+    status.updates = [status.updates[0]];
+    renderButton();
+    const button = await screen.findByTestId("system-update-version");
+    expect(button).toHaveTextContent(`v0.0.0-dev (${FULL_SHA.slice(0, 8)})`);
+    expect(button).not.toHaveTextContent("enterprise");
+    expect(button).toHaveAttribute("data-commit-sha", FULL_SHA);
+    expect(button).toHaveAttribute("data-enterprise-commit-sha", "");
   });
 
   it("shows an expired enterprise license on the sidebar instead of a generic feed error", async () => {

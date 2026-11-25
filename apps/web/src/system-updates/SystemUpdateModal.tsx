@@ -489,7 +489,7 @@ export default function SystemUpdateModal({
                           row.installedVersion,
                           row.component,
                           status.commitSha,
-                          status.enterpriseCommitSha ?? null,
+                          status.enterpriseInstalled ? (status.enterpriseCommitSha ?? null) : null,
                         ),
                       })}
                     </p>

@@ -219,6 +219,34 @@ describe("system update popup", () => {
     );
   });
 
+  it("ignores a leftover enterpriseCommitSha when enterprise modules are off", () => {
+    renderModal(
+      status({
+        updates: [],
+        currentVersion: "0.0.0-dev",
+        commitSha: "6e6ee86abcdef0123456789abcdef0123456789",
+        enterpriseCommitSha: "abcdef0123456789abcdef0123456789abcdef01",
+        enterpriseInstalled: false,
+        enterpriseVersion: null,
+        components: [
+          {
+            component: "okkey",
+            installedVersion: "0.0.0-dev",
+            update: null,
+            checkError: null,
+            feedConfigured: true,
+            minCoreVersion: null,
+            releaseNotesUrl: null,
+          },
+        ],
+      }),
+    );
+    const row = screen.getByTestId("system-update-row-okkey");
+    expect(row).toHaveTextContent("Current version 0.0.0-dev (6e6ee86)");
+    expect(row).not.toHaveTextContent("enterprise");
+    expect(screen.queryByTestId("system-update-row-enterprise")).not.toBeInTheDocument();
+  });
+
   it("hides the Enterprise row when enterprise modules are off", () => {
     const value = status({ enterpriseInstalled: false, enterpriseVersion: null });
     renderModal(value);

@@ -208,7 +208,9 @@ export function createSystemUpdateService(options: SystemUpdateServiceOptions) {
         releaseTag: emptyToNull(options.releaseTag),
         enterpriseInstalled: options.enterpriseInstalled,
         enterpriseVersion: installed.enterprise,
-        enterpriseCommitSha: emptyToNull(options.enterpriseCommitSha),
+        enterpriseCommitSha: options.enterpriseInstalled
+          ? emptyToNull(options.enterpriseCommitSha)
+          : null,
         feedConfigured: configuredFeedUrls(options).some((url) => url.trim() !== ""),
         isolated: options.isolated,
         canApply,

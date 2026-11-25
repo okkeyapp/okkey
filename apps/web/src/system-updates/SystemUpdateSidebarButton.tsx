@@ -93,7 +93,7 @@ export default function SystemUpdateSidebarButton() {
   const formatted = formatSidebarVersionLabel({
     version: status.currentVersion,
     commitSha: status.commitSha,
-    enterpriseCommitSha: status.enterpriseCommitSha,
+    enterpriseCommitSha: status.enterpriseInstalled ? status.enterpriseCommitSha : null,
     releaseTag: status.releaseTag,
   });
 
