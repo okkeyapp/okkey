@@ -1,5 +1,5 @@
 {
-  "sha256": "511ba10bb52e489eaba76ba1bfdaa58f2bd44ebb4763d238ccd8a05eb927d37b",
+  "sha256": "5ac7ebc727d7b178117b235dc23aee85701f92fd8724d7dc22191d6d3a0b01b3",
   "files": [
     {
       "path": "src/lib/autofillDictionaries.ts",
@@ -11,15 +11,15 @@
     },
     {
       "path": "src/lib/autofillFieldClassify.ts",
-      "sha256": "fe98d94de376b2a5c95281f59b1d437f21959fb8b84d8c797b30f741ad25a017"
+      "sha256": "b8bd64e95ecd58efe21202d5b4bbcf8d3beda087e34a9a37b786c8bdd66b8200"
     },
     {
       "path": "src/lib/autofillFormDetect.ts",
-      "sha256": "7e8691880464d7519fcf99eef9e4672510058e503f455d508553cc077b247958"
+      "sha256": "aafd264e166bf9608f132d42538037646f2146ef8a21bbe6ce303660afd327de"
     },
     {
       "path": "src/lib/loginFormFields.ts",
-      "sha256": "a11d30183916aa2d8190b033d7115d8a8a58fbe4d40097eee5f49554c25a4c55"
+      "sha256": "62181db3e2a588b31b6995e42a256bd2303f16fd9c64ce9a1b245e9fd2355f25"
     }
   ]
 }
