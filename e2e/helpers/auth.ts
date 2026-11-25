@@ -174,6 +174,62 @@ export async function registerWithEmailOtpAndUnlock(
   return { recoveryKey };
 }
 
+/**
+ * Self-hosted: register through a workspace invite link (no email code), then unlock.
+ * Ordinary sign-up without an invite is rejected by the instance.
+ */
+export async function registerViaInviteLinkAndUnlock(
+  page: Page,
+  input: {
+    inviteUrl: string;
+    email: string;
+    masterPassword?: string;
+    firstName?: string;
+    lastName?: string;
+  },
+): Promise<{ recoveryKey: string }> {
+  const masterPassword = input.masterPassword ?? E2E_MASTER_PASSWORD;
+  await page.goto(input.inviteUrl);
+  await expect(page.getByRole("button", { name: /^continue$/i })).toBeVisible({
+    timeout: 30_000,
+  });
+  await page.getByRole("button", { name: /^continue$/i }).click();
+
+  await expect(page.getByRole("heading", { name: /welcome to okkey/i })).toBeVisible({
+    timeout: 30_000,
+  });
+  await page.locator("#auth-email").fill(input.email);
+  await page.getByRole("button", { name: /^sign in$/i }).click();
+
+  await expect(page.getByRole("heading", { name: /register with okkey/i })).toBeVisible({
+    timeout: 30_000,
+  });
+  await expect(page.getByLabel(/digit 1 of 6/i)).toHaveCount(0);
+  await page.locator("#auth-reg-first-name").fill(input.firstName ?? "E2E");
+  await page.locator("#auth-reg-last-name").fill(input.lastName ?? "User");
+  await page.locator("#auth-reg-master-password").fill(masterPassword);
+  await page.locator("#auth-reg-repeat-master-password").fill(masterPassword);
+  await page.getByRole("button", { name: /^register$/i }).click();
+
+  await expect(page.getByRole("heading", { name: /save your recovery key/i })).toBeVisible({
+    timeout: 90_000,
+  });
+  const next = page.getByRole("button", { name: /^continue$/i });
+  await expect(next).toBeDisabled();
+  const recoveryKey = (await page.locator("p.font-mono").first().innerText()).trim();
+  expect(recoveryKey.length).toBeGreaterThan(16);
+  await page.getByRole("button", { name: /^copy$/i }).click();
+  await expect(next).toBeEnabled({ timeout: 15_000 });
+  await next.click();
+
+  await expect(page.getByRole("heading", { name: /welcome to okkey/i })).toBeVisible({
+    timeout: 30_000,
+  });
+  await signInWithEmailOtp(page, input.email);
+  await unlockWithMasterPassword(page, masterPassword);
+  return { recoveryKey };
+}
+
 export async function unlockWithMasterPassword(
   page: Page,
   masterPassword = E2E_MASTER_PASSWORD,

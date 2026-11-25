@@ -3,7 +3,7 @@ import { expect, test, type Browser, type BrowserContext, type Page } from "@pla
 import {
   gotoItemsUnlocked,
   registerBootstrapAndUnlock,
-  registerWithEmailOtpAndUnlock,
+  registerViaInviteLinkAndUnlock,
 } from "../helpers/auth";
 import { resetE2eCatalog } from "../helpers/db";
 import { E2E_MASTER_PASSWORD, uniqueEmail } from "../helpers/env";
@@ -75,7 +75,7 @@ test("1) owner creates an invite link and copies it in one click", async () => {
   await ownerPage.getByRole("button", { name: /^done$/i }).click();
 });
 
-test("2) invitee accepts the link without a matching invite email", async () => {
+test("2) invitee registers through the link without a matching invite email", async () => {
   test.skip(!inviteUrl, "invite link was not created");
   test.setTimeout(240_000);
 
@@ -85,16 +85,14 @@ test("2) invitee accepts the link without a matching invite email", async () => 
   });
   const inviteePage = await inviteeContext.newPage();
   try {
-    const inviteeEmail = uniqueEmail("invite-guest");
-    await registerWithEmailOtpAndUnlock(inviteePage, {
-      email: inviteeEmail,
+    await registerViaInviteLinkAndUnlock(inviteePage, {
+      inviteUrl,
+      email: uniqueEmail("invite-guest"),
       masterPassword: E2E_MASTER_PASSWORD,
       firstName: "Guest",
       lastName: "Invitee",
     });
     await dismissOpenItemDialog(inviteePage);
-
-    await inviteePage.goto(inviteUrl);
     await expect(inviteePage.getByTestId("items-shell-topbar")).toBeVisible({
       timeout: 90_000,
     });
