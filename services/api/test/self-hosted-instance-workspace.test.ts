@@ -70,23 +70,41 @@ function registerInput(authStateId: string) {
 
 function memoryRedis() {
   const values = new Map<string, string>();
+  /** Absolute expiry epoch ms; missing entry means no TTL (-1). */
+  const expirations = new Map<string, number>();
   return {
-    setWithTtl: async (k: string, v: string) => {
+    setWithTtl: async (k: string, v: string, ttlSeconds: number) => {
       values.set(k, v);
+      expirations.set(k, Date.now() + ttlSeconds * 1000);
     },
-    setIfNotExistsWithTtl: async (k: string, v: string) => {
+    setIfNotExistsWithTtl: async (k: string, v: string, ttlSeconds: number) => {
       if (values.has(k)) return false;
       values.set(k, v);
+      expirations.set(k, Date.now() + ttlSeconds * 1000);
       return true;
     },
     get: async (k: string) => values.get(k) ?? null,
-    del: async (k: string) => (values.delete(k) ? 1 : 0),
+    del: async (k: string) => {
+      const existed = values.delete(k);
+      expirations.delete(k);
+      return existed ? 1 : 0;
+    },
     incr: async (k: string) => {
       const next = Number(values.get(k) ?? "0") + 1;
       values.set(k, String(next));
       return next;
     },
-    expire: async () => true,
+    expire: async (k: string, seconds: number) => {
+      if (!values.has(k)) return false;
+      expirations.set(k, Date.now() + seconds * 1000);
+      return true;
+    },
+    ttl: async (k: string) => {
+      if (!values.has(k)) return -2;
+      const expiresAt = expirations.get(k);
+      if (expiresAt === undefined) return -1;
+      return Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000));
+    },
   };
 }
 
