@@ -67,7 +67,7 @@
     "check:sdk:import": "yarn tsc -p packages/import/tsconfig.json",
     "check:sdk:ui": "yarn tsc -p packages/ui/tsconfig.json",
     "check:sdk:vault": "yarn tsc -p packages/vault/tsconfig.json",
-    "check:i18n": "yarn --cwd packages/i18n build && yarn --cwd packages/i18n check:coverage && yarn --cwd packages/i18n test",
+    "check:i18n": "yarn --cwd packages/i18n build && yarn --cwd packages/i18n check:coverage && yarn --cwd packages/i18n check:style && yarn --cwd packages/i18n test",
     "check:email-templates": "yarn tsc -p packages/email-templates/tsconfig.json",
     "build:i18n": "yarn --cwd packages/i18n build",
     "build:email-templates": "yarn --cwd packages/email-templates build",
