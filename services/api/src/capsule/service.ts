@@ -48,6 +48,7 @@ import {
   serializeEncryptedBlobToStorage,
   type EncryptedBlob,
 } from "../crypto/encrypted-blob.ts";
+import { incrementFixedWindow } from "../storage/fixed-window-counter.ts";
 import type { QueryExecutor } from "../storage/postgres.ts";
 import type { ObjectStorage } from "../storage/object-storage.ts";
 import type { UsersRepository } from "../storage/repositories.ts";
@@ -86,8 +87,10 @@ export interface CapsuleServiceDeps {
     transaction<T>(fn: (tx: QueryExecutor) => Promise<T>): Promise<T>;
   };
   redis: {
+    setIfNotExistsWithTtl(key: string, value: string, ttlSeconds: number): Promise<boolean>;
     incr(key: string): Promise<number>;
     expire(key: string, seconds: number): Promise<boolean>;
+    ttl(key: string): Promise<number>;
   };
   config: Pick<
     ApiConfig,
@@ -1315,10 +1318,11 @@ export class CapsuleService {
 
   private async consumeOpenRateLimit(requestIp: string): Promise<void> {
     const key = `capsule:open:ip:${requestIp}`;
-    const count = await this.redis.incr(key);
-    if (count === 1) {
-      await this.redis.expire(key, this.config.capsuleRateLimitWindowSeconds);
-    }
+    const count = await incrementFixedWindow(
+      this.redis,
+      key,
+      this.config.capsuleRateLimitWindowSeconds,
+    );
     if (count > this.config.capsuleOpenRateLimitPerIp) {
       throw new CapsuleServiceError("RATE_LIMITED", 429, "rate limited");
     }
@@ -1476,13 +1480,11 @@ export class CapsuleService {
           error.code === "CAPSULE_PASSWORD_INVALID" &&
           capsule.password_attempt_limit
         ) {
-          const attempts = await this.redis.incr(`capsule:password:${capsule.id}:${input.requestIp}`);
-          if (attempts === 1) {
-            await this.redis.expire(
-              `capsule:password:${capsule.id}:${input.requestIp}`,
-              this.config.capsuleRateLimitWindowSeconds,
-            );
-          }
+          const attempts = await incrementFixedWindow(
+            this.redis,
+            `capsule:password:${capsule.id}:${input.requestIp}`,
+            this.config.capsuleRateLimitWindowSeconds,
+          );
           if (attempts >= capsule.password_attempt_limit) {
             throw new CapsuleServiceError(
               "CAPSULE_PASSWORD_ATTEMPTS_EXCEEDED",

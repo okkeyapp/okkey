@@ -3,6 +3,7 @@ import { generateEntityId } from "../entity-id.ts";
 import type { ApiConfig } from "../config.ts";
 import { loginVerifierMatches } from "../crypto/login-verifier.ts";
 import { isOutboundEmailDeliverable, type EmailTemplateService } from "../email/service.ts";
+import { incrementFixedWindow } from "../storage/fixed-window-counter.ts";
 import type { UserRecord, UsersRepository } from "../storage/repositories.ts";
 
 /** 128-bit CSPRNG hex id for intermediate auth states (not a snowflake entity id). */
@@ -75,6 +76,7 @@ export interface AuthServiceDeps {
     del(key: string): Promise<number>;
     incr(key: string): Promise<number>;
     expire(key: string, seconds: number): Promise<boolean>;
+    ttl(key: string): Promise<number>;
   };
   users: Pick<UsersRepository, "findByEmail" | "isTwoFactorEnabled" | "hasAnyUsers"> & {
     findLoginVerifierByEmail?(email: string): Promise<{
@@ -778,10 +780,7 @@ export class AuthService {
     limit: number,
     windowSeconds: number,
   ): Promise<void> {
-    const count = await this.redis.incr(key);
-    if (count === 1) {
-      await this.redis.expire(key, windowSeconds);
-    }
+    const count = await incrementFixedWindow(this.redis, key, windowSeconds);
     if (count > limit) {
       throw new AuthError("AUTH_RATE_LIMITED", 429, "rate limited");
     }

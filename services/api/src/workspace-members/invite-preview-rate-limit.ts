@@ -1,10 +1,12 @@
 import type { IncomingMessage } from "node:http";
 
 import { requestClientIp } from "../request-ip.ts";
+import {
+  incrementFixedWindow,
+  type FixedWindowCounterRedis,
+} from "../storage/fixed-window-counter.ts";
 
-export type InvitePreviewRateLimit = {
-  incr(key: string): Promise<number>;
-  expire(key: string, seconds: number): Promise<boolean>;
+export type InvitePreviewRateLimit = FixedWindowCounterRedis & {
   windowSeconds: number;
   maxPerIp: number;
   /** Honor X-Forwarded-For only when > 0 (same as core requestClientIp). */
@@ -25,10 +27,7 @@ export async function enforceInvitePreviewRateLimit(
 ): Promise<InvitePreviewRateLimitResult> {
   const ip = requestClientIp(req, rateLimit.trustedProxyHops);
   const key = `invite:preview:ip:${ip}`;
-  const count = await rateLimit.incr(key);
-  if (count === 1) {
-    await rateLimit.expire(key, rateLimit.windowSeconds);
-  }
+  const count = await incrementFixedWindow(rateLimit, key, rateLimit.windowSeconds);
   if (count > rateLimit.maxPerIp) {
     return { status: "limited", retryAfterSeconds: rateLimit.windowSeconds };
   }

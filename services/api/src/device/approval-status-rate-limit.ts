@@ -1,10 +1,12 @@
 import type { IncomingMessage } from "node:http";
 
 import { requestClientIp } from "../request-ip.ts";
+import {
+  incrementFixedWindow,
+  type FixedWindowCounterRedis,
+} from "../storage/fixed-window-counter.ts";
 
-export type ApprovalStatusRateLimit = {
-  incr(key: string): Promise<number>;
-  expire(key: string, seconds: number): Promise<boolean>;
+export type ApprovalStatusRateLimit = FixedWindowCounterRedis & {
   windowSeconds: number;
   pollMaxPerIp: number;
   pollMaxPerDevice: number;
@@ -23,20 +25,54 @@ export const APPROVAL_STATUS_POLL_MAX_PER_IP = 360;
 export const APPROVAL_STATUS_RETRY_MAX_PER_DEVICE = 5;
 export const APPROVAL_STATUS_RETRY_MAX_PER_IP = 10;
 
-export function createMemoryRateCounter(): Pick<ApprovalStatusRateLimit, "incr" | "expire"> {
+export function createMemoryRateCounter(): FixedWindowCounterRedis {
   const counts = new Map<string, number>();
+  const expirations = new Map<string, number>();
+
+  function purgeIfExpired(key: string): void {
+    const expiresAt = expirations.get(key);
+    if (expiresAt !== undefined && Date.now() >= expiresAt) {
+      counts.delete(key);
+      expirations.delete(key);
+    }
+  }
+
   return {
+    async setIfNotExistsWithTtl(key: string, value: string, ttlSeconds: number): Promise<boolean> {
+      purgeIfExpired(key);
+      if (counts.has(key)) {
+        return false;
+      }
+      counts.set(key, Number(value) || 0);
+      if (ttlSeconds > 0) {
+        expirations.set(key, Date.now() + ttlSeconds * 1000);
+      }
+      return true;
+    },
     async incr(key: string): Promise<number> {
+      purgeIfExpired(key);
       const next = (counts.get(key) ?? 0) + 1;
       counts.set(key, next);
       return next;
     },
+    async ttl(key: string): Promise<number> {
+      purgeIfExpired(key);
+      if (!counts.has(key)) {
+        return -2;
+      }
+      const expiresAt = expirations.get(key);
+      if (expiresAt === undefined) {
+        return -1;
+      }
+      return Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000));
+    },
     async expire(key: string, seconds: number): Promise<boolean> {
+      purgeIfExpired(key);
+      if (!counts.has(key)) {
+        return false;
+      }
       if (seconds > 0) {
-        const current = key;
-        setTimeout(() => {
-          counts.delete(current);
-        }, seconds * 1000).unref?.();
+        expirations.set(key, Date.now() + seconds * 1000);
       }
       return true;
     },
@@ -48,10 +84,7 @@ async function consume(
   key: string,
   max: number,
 ): Promise<ApprovalStatusRateLimitResult> {
-  const count = await rateLimit.incr(key);
-  if (count === 1) {
-    await rateLimit.expire(key, rateLimit.windowSeconds);
-  }
+  const count = await incrementFixedWindow(rateLimit, key, rateLimit.windowSeconds);
   if (count > max) {
     return { status: "limited", retryAfterSeconds: rateLimit.windowSeconds };
   }

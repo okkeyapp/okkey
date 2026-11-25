@@ -67,8 +67,10 @@ export type CapsuleAccessAssertOpenInput = {
   requestIp: string;
   sessionSecret: string;
   redis: {
+    setIfNotExistsWithTtl(key: string, value: string, ttlSeconds: number): Promise<boolean>;
     incr(key: string): Promise<number>;
     expire(key: string, seconds: number): Promise<boolean>;
+    ttl(key: string): Promise<number>;
   };
   passwordAttemptWindowSeconds: number;
 };

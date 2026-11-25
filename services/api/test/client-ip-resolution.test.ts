@@ -37,13 +37,21 @@ class InMemoryRedis {
   }
 
   async incr(key: string): Promise<number> {
-    const next = (this.counters.get(key) ?? 0) + 1;
+    const current = this.values.has(key)
+      ? Number(this.values.get(key) ?? "0")
+      : (this.counters.get(key) ?? 0);
+    const next = current + 1;
     this.counters.set(key, next);
+    this.values.set(key, String(next));
     return next;
   }
 
   async expire(_key: string, _seconds: number): Promise<boolean> {
     return true;
+  }
+
+  async ttl(key: string): Promise<number> {
+    return this.values.has(key) || this.counters.has(key) ? 60 : -2;
   }
 }
 

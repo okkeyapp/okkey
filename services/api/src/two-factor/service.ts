@@ -14,6 +14,7 @@ import { deriveAes256KeyFromSessionSecret, openSecret, sealSecret } from "../cry
 import { wipeSecretBytes } from "../crypto/secret-lifecycle.ts";
 import { base32Encode, verifyTotpCode } from "../crypto/totp-rfc6238.ts";
 import type { SessionService } from "../session/service.ts";
+import { incrementFixedWindow } from "../storage/fixed-window-counter.ts";
 import type { TwoFactorRepository, UsersRepository } from "../storage/repositories.ts";
 
 export class TwoFactorError extends Error {
@@ -37,10 +38,12 @@ export class TwoFactorError extends Error {
 export interface TwoFactorServiceDeps {
   redis: {
     setWithTtl(key: string, value: string, ttlSeconds: number): Promise<void>;
+    setIfNotExistsWithTtl(key: string, value: string, ttlSeconds: number): Promise<boolean>;
     get(key: string): Promise<string | null>;
     del(key: string): Promise<number>;
     incr(key: string): Promise<number>;
     expire(key: string, seconds: number): Promise<boolean>;
+    ttl(key: string): Promise<number>;
   };
   twoFactorRepo: TwoFactorRepository;
   users: Pick<UsersRepository, "findById" | "isTwoFactorEnabled" | "setTwoFactorEnabled">;
@@ -122,10 +125,11 @@ export class TwoFactorService {
 
   private async consumeRateLimitTwoFactorVerifyIp(requestIp: string): Promise<void> {
     const key = `auth:rate:2fa:verify:ip:${requestIp}`;
-    const count = await this.redis.incr(key);
-    if (count === 1) {
-      await this.redis.expire(key, this.config.authRateLimitWindowSeconds);
-    }
+    const count = await incrementFixedWindow(
+      this.redis,
+      key,
+      this.config.authRateLimitWindowSeconds,
+    );
     if (count > this.config.authRateLimitTwoFactorVerifyPerIp) {
       throw new TwoFactorError("AUTH_RATE_LIMITED", 429, "rate limited");
     }
@@ -133,10 +137,11 @@ export class TwoFactorService {
 
   private async registerFailedVerifyAttempt(authStateId: string): Promise<void> {
     const key = verifyAttemptsKey(authStateId);
-    const n = await this.redis.incr(key);
-    if (n === 1) {
-      await this.redis.expire(key, this.config.authPendingTwoFactorTtlSeconds);
-    }
+    const n = await incrementFixedWindow(
+      this.redis,
+      key,
+      this.config.authPendingTwoFactorTtlSeconds,
+    );
     if (n > this.config.twoFactorVerifyMaxAttemptsPerState) {
       throw new TwoFactorError(
         "TWO_FACTOR_ATTEMPTS_EXCEEDED",

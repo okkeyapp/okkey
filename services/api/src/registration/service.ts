@@ -21,6 +21,7 @@ import {
 import type { SessionService } from "../session/service.ts";
 import { createLoginVerifier, LOGIN_KEY_LEN } from "../crypto/login-verifier.ts";
 import { SESSION_SCOPE_REGISTRATION_RECOVERY } from "../session/scopes.ts";
+import { incrementFixedWindow } from "../storage/fixed-window-counter.ts";
 import type { PostgresDatabase, QueryExecutor } from "../storage/postgres.ts";
 import type { UsersRepository } from "../storage/repositories.ts";
 import {
@@ -129,9 +130,11 @@ export interface RegistrationServiceDeps {
   redis: {
     get(key: string): Promise<string | null>;
     setWithTtl(key: string, value: string, ttlSeconds: number): Promise<void>;
+    setIfNotExistsWithTtl(key: string, value: string, ttlSeconds: number): Promise<boolean>;
     del(key: string): Promise<number>;
     incr(key: string): Promise<number>;
     expire(key: string, seconds: number): Promise<boolean>;
+    ttl(key: string): Promise<number>;
   };
   sessionService: Pick<SessionService, "createSession">;
   config: ApiConfig;
@@ -181,10 +184,7 @@ export class RegistrationService {
     limit: number,
     windowSeconds: number,
   ): Promise<void> {
-    const count = await this.redis.incr(key);
-    if (count === 1) {
-      await this.redis.expire(key, windowSeconds);
-    }
+    const count = await incrementFixedWindow(this.redis, key, windowSeconds);
     if (count > limit) {
       throw new RegistrationError("AUTH_RATE_LIMITED", 429, "rate limited");
     }

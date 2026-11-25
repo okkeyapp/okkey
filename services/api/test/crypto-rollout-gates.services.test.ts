@@ -120,7 +120,9 @@ test("capsule gate blocks create path and emits blocked metric", async () => {
       },
     },
     redis: {
+      setIfNotExistsWithTtl: async () => true,
       incr: async () => 1,
+      ttl: async () => 60,
       expire: async () => true,
     },
     objectStorage: {

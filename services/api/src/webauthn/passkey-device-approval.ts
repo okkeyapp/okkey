@@ -12,6 +12,7 @@ import {
   assertSplitKeyShareB,
   SPLIT_KEY_SHARE_B_MAX_LEN,
 } from "../registration/split-key-transport-policy.ts";
+import { incrementFixedWindow } from "../storage/fixed-window-counter.ts";
 import type { DevicesRepository } from "../storage/repositories.ts";
 import {
   generateAuthenticationOptions,
@@ -66,6 +67,7 @@ type Redis = {
   del(key: string): Promise<number>;
   incr(key: string): Promise<number>;
   expire(key: string, seconds: number): Promise<boolean>;
+  ttl(key: string): Promise<number>;
   setIfNotExistsWithTtl(key: string, value: string, ttlSeconds: number): Promise<boolean>;
 };
 
@@ -773,10 +775,11 @@ export class PasskeyDeviceApprovalService {
     limit: number,
     audit: { userId: string; requestIp: string; deviceId?: string; credentialRowId?: string },
   ): Promise<void> {
-    const count = await this.redis.incr(key);
-    if (count === 1) {
-      await this.redis.expire(key, this.config.authRateLimitWindowSeconds);
-    }
+    const count = await incrementFixedWindow(
+      this.redis,
+      key,
+      this.config.authRateLimitWindowSeconds,
+    );
     if (count > limit) {
       this.audit("rate_limited", audit);
       throw new PasskeyDeviceApprovalError("PASSKEY_APPROVAL_RATE_LIMITED", 429, "rate limited");
@@ -799,10 +802,7 @@ export class PasskeyDeviceApprovalService {
     key: string,
     audit: { userId: string; requestIp: string; deviceId?: string; credentialRowId?: string },
   ): Promise<void> {
-    const count = await this.redis.incr(key);
-    if (count === 1) {
-      await this.redis.expire(key, this.config.authRateLimitWindowSeconds);
-    }
+    await incrementFixedWindow(this.redis, key, this.config.authRateLimitWindowSeconds);
     this.audit("verification_failed", audit);
   }
 

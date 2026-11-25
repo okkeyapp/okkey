@@ -8,6 +8,7 @@ import type { MailSettingsService } from "../mail-settings/service.ts";
 import type { ServerMailSettingsPatch, ServerMailSettingsPublic } from "../mail-settings/types.ts";
 import { parsePublicAppUrl } from "../mail-settings/validate.ts";
 import type { SessionService } from "../session/service.ts";
+import { incrementFixedWindow } from "../storage/fixed-window-counter.ts";
 import type { UsersRepository } from "../storage/repositories.ts";
 import type { WorkspaceMembersService } from "../workspace-members/service.ts";
 import type { WorkspaceSettingsService } from "../workspace-settings/service.ts";
@@ -91,6 +92,7 @@ export type SetupServiceDeps = {
     del(key: string): Promise<number>;
     incr(key: string): Promise<number>;
     expire(key: string, seconds: number): Promise<boolean>;
+    ttl(key: string): Promise<number>;
   };
   users: Pick<UsersRepository, "hasAnyUsers" | "findByEmail">;
   instanceSettings: ServerInstanceSettingsStore;
@@ -861,11 +863,7 @@ export class SetupService {
   }
 
   private async bumpAttempts(): Promise<number> {
-    const next = await this.redis.incr(SETUP_CODE_ATTEMPTS_KEY);
-    if (next === 1) {
-      await this.redis.expire(SETUP_CODE_ATTEMPTS_KEY, this.codeTtlSeconds());
-    }
-    return next;
+    return incrementFixedWindow(this.redis, SETUP_CODE_ATTEMPTS_KEY, this.codeTtlSeconds());
   }
 
   private async consumeSetupCode(): Promise<void> {

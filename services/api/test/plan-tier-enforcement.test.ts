@@ -38,7 +38,9 @@ function serviceForTier(planTier: "FREE" | "ENTERPRISE"): CapsuleService {
       },
     },
     redis: {
+      setIfNotExistsWithTtl: async () => true,
       incr: async () => 1,
+      ttl: async () => 60,
       expire: async () => true,
     },
     objectStorage: {
@@ -118,7 +120,9 @@ test("self_hosted without modules denies capsule access even when plan_tier is E
       },
     },
     redis: {
+      setIfNotExistsWithTtl: async () => true,
       incr: async () => 1,
+      ttl: async () => 60,
       expire: async () => true,
     },
     objectStorage: {
@@ -172,7 +176,9 @@ test("self_hosted modules on and FREE still allow capsule access settings", asyn
       },
     },
     redis: {
+      setIfNotExistsWithTtl: async () => true,
       incr: async () => 1,
+      ttl: async () => 60,
       expire: async () => true,
     },
     objectStorage: {
@@ -237,7 +243,9 @@ test("self_hosted modules on and a paid plan still allow capsule access settings
       },
     },
     redis: {
+      setIfNotExistsWithTtl: async () => true,
       incr: async () => 1,
+      ttl: async () => 60,
       expire: async () => true,
     },
     objectStorage: {
