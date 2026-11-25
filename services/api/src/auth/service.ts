@@ -108,6 +108,11 @@ export interface AuthServiceDeps {
     rawToken: string,
     email: string,
   ) => Promise<InviteRegistrationLookup>;
+  /**
+   * Self-hosted gate for existing users: return false when the account is blocked
+   * or not a member of the instance workspace. Fail-closed login denial.
+   */
+  resolveInstanceLoginAllowed?: (userId: string) => Promise<boolean>;
   now?: () => Date;
   generateCode?: () => string;
   /** Challenge / other snowflake ids. */
@@ -235,6 +240,7 @@ export class AuthService {
   private readonly resolveEmailDeliverable?: () => Promise<boolean>;
   private readonly resolveRegistrationAllowed?: (email: string) => Promise<boolean>;
   private readonly resolveInviteRegistration?: AuthServiceDeps["resolveInviteRegistration"];
+  private readonly resolveInstanceLoginAllowed?: (userId: string) => Promise<boolean>;
   private readonly now: () => Date;
   private readonly generateCode: () => string;
   private readonly generateId: () => string;
@@ -248,10 +254,25 @@ export class AuthService {
     this.resolveEmailDeliverable = deps.resolveEmailDeliverable;
     this.resolveRegistrationAllowed = deps.resolveRegistrationAllowed;
     this.resolveInviteRegistration = deps.resolveInviteRegistration;
+    this.resolveInstanceLoginAllowed = deps.resolveInstanceLoginAllowed;
     this.now = deps.now ?? (() => new Date());
     this.generateCode = deps.generateCode ?? createCode;
     this.generateId = deps.generateId ?? generateEntityId;
     this.generateAuthStateIdFn = deps.generateAuthStateId ?? generateAuthStateId;
+  }
+
+  private async assertInstanceLoginAllowed(userId: string): Promise<void> {
+    if (!this.resolveInstanceLoginAllowed) {
+      return;
+    }
+    const allowed = await this.resolveInstanceLoginAllowed(userId);
+    if (!allowed) {
+      throw new AuthError(
+        "ACCOUNT_BLOCKED",
+        403,
+        "account access to this instance has been revoked",
+      );
+    }
   }
 
   async startEmailLogin(input: EmailStartInput): Promise<EmailStartResult> {
@@ -287,6 +308,9 @@ export class AuthService {
     }
 
     const existingUser = await this.users.findByEmail(email);
+    if (existingUser) {
+      await this.assertInstanceLoginAllowed(existingUser.id);
+    }
     if (!existingUser && this.resolveRegistrationAllowed) {
       const allowed = await this.resolveRegistrationAllowed(email);
       if (!allowed) {
@@ -502,6 +526,8 @@ export class AuthService {
       throw new AuthError("AUTH_LOGIN_FAILED", 401, "sign-in failed");
     }
 
+    await this.assertInstanceLoginAllowed(lookup.userId);
+
     const pendingTwoFactor = await this.users.isTwoFactorEnabled(lookup.userId);
     const created = await this.createAuthStateForExistingUser({
       email,
@@ -583,6 +609,8 @@ export class AuthService {
         nextStep: "registration",
       };
     }
+
+    await this.assertInstanceLoginAllowed(existingUser.id);
 
     const pendingTwoFactor = await this.users.isTwoFactorEnabled(existingUser.id);
     const authState: AuthStatePayload = {

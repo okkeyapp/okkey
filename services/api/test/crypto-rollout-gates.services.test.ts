@@ -53,6 +53,7 @@ test("registration gate blocks write path and emits blocked metric", async () =>
     } as never,
     users: {
       findByEmail: async () => null,
+      hasAnyUsers: async () => false,
     },
     postgres: {
       transaction: async () => {

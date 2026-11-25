@@ -44,6 +44,7 @@ const APPROVAL_STATUS = "0059_device_approval_status_tokens.sql";
 const INVITE_LINK_DELIVERY = "0060_workspace_invitation_link_delivery.sql";
 const PRODUCT_TOUR = "0061_product_tour.sql";
 const INSTANCE_SETTINGS = "0062_server_instance_settings.sql";
+const INSTANCE_WORKSPACE = "0063_self_hosted_instance_workspace.sql";
 const FAMILY_TIER = "0047_retire_family_plan_tier.sql";
 
 test("duplicateMigrationNumbers reports shared prefixes only", () => {
@@ -99,6 +100,7 @@ test("migration numbers are unique and legacy filenames are aliases only", () =>
     INVITE_LINK_DELIVERY,
     PRODUCT_TOUR,
     INSTANCE_SETTINGS,
+    INSTANCE_WORKSPACE,
   ];
   const tail = files.slice(files.indexOf(ordered[0]));
   assert.deepEqual(tail, ordered);
@@ -129,6 +131,8 @@ test("clean database applies every migration once through the runner", async (t)
     assert.equal(await columnExists(query, "users", "login_verifier"), true);
     assert.equal(await columnExists(query, "users", "login_verifier_salt"), true);
     assert.equal(await columnExists(query, "devices", "one_time_x25519_public"), true);
+    assert.equal(await columnExists(query, "server_instance_settings", "workspace_id"), true);
+    assert.equal(await columnExists(query, "users", "blocked_at"), true);
 
     const again = await applySqlMigrations(db, { migrationsDir, logger: createLoggerStub() });
     assert.deepEqual(again.applied, []);
@@ -164,6 +168,7 @@ test("upgrade from v1.0.0-beta.2 applies migrations after 0043 once", async (t) 
     INVITE_LINK_DELIVERY,
     PRODUCT_TOUR,
     INSTANCE_SETTINGS,
+    INSTANCE_WORKSPACE,
   ]);
 
   await withSchema(async ({ db, query }) => {

@@ -444,17 +444,30 @@ export class SetupService {
       publicAppUrl = mail.publicAppUrl;
     }
 
-    let registrationMode: RegistrationMode = "open";
+    // Self-hosted registration is always invite-only; reject attempts to set open.
+    let registrationMode: RegistrationMode = "invite_only";
     if (input.registrationMode !== undefined) {
       if (input.registrationMode !== "open" && input.registrationMode !== "invite_only") {
         throw new SetupError("INVALID_REGISTRATION_MODE", 400, "invalid registration mode");
       }
-      registrationMode = input.registrationMode;
+      if (input.registrationMode === "open") {
+        throw new SetupError(
+          "REGISTRATION_MODE_LOCKED",
+          400,
+          "self-hosted instances only allow invite-only registration",
+        );
+      }
+      registrationMode = "invite_only";
       await this.instanceSettings.writeRegistrationMode(registrationMode);
       session.registrationMode = registrationMode;
       await this.saveSession(session);
     } else {
-      registrationMode = (await this.instanceSettings.read()).registrationMode;
+      registrationMode = "invite_only";
+      // Persist invite_only if an older row still says open.
+      const current = (await this.instanceSettings.read()).registrationMode;
+      if (current !== "invite_only") {
+        await this.instanceSettings.writeRegistrationMode("invite_only");
+      }
     }
 
     return { publicAppUrl, registrationMode };
@@ -463,10 +476,10 @@ export class SetupService {
   async getInstance(token: string): Promise<{ publicAppUrl: string; registrationMode: RegistrationMode }> {
     await this.requireSession(token);
     const mail = await this.mailSettings.getPublicSettings();
-    const instance = await this.instanceSettings.read();
     return {
       publicAppUrl: mail.publicAppUrl,
-      registrationMode: instance.registrationMode,
+      // Self-hosted product model: registration is always invite-only.
+      registrationMode: "invite_only",
     };
   }
 
@@ -739,15 +752,20 @@ export class SetupService {
         }
       }
 
-      const marked = await tx.query<{ setup_completed_at: string | Date | null }>(
+      const marked = await tx.query<{
+        setup_completed_at: string | Date | null;
+        workspace_id: string | null;
+      }>(
         `
           UPDATE server_instance_settings
           SET setup_completed_at = COALESCE(setup_completed_at, $1::timestamptz),
+              workspace_id = COALESCE(workspace_id, $2::bigint),
+              registration_mode = 'invite_only',
               updated_at = now()
           WHERE id = TRUE
-          RETURNING setup_completed_at
+          RETURNING setup_completed_at, workspace_id
         `,
-        [completedAt],
+        [completedAt, ownerIds.workspaceId],
       );
       if (!marked[0]?.setup_completed_at) {
         throw new SetupError("SETUP_INSTANCE_MISSING", 500, "server instance settings row missing");
@@ -755,7 +773,14 @@ export class SetupService {
     });
 
     // Mirror completion into the settings store view (same DB after commit; in-memory tests too).
-    await this.instanceSettings.markSetupCompleted(completedAt);
+    if (this.instanceSettings.markSetupCompletedWithWorkspace) {
+      await this.instanceSettings.markSetupCompletedWithWorkspace(
+        completedAt,
+        ownerIds.workspaceId,
+      );
+    } else {
+      await this.instanceSettings.markSetupCompleted(completedAt);
+    }
 
     // Same path as SMTP-activate hook: deliver pending email invites when mail is active.
     try {
@@ -850,12 +875,12 @@ export class SetupService {
     return cached;
   }
 
-  /** Used by AuthService to enforce invite-only after setup. */
+  /** Used by AuthService to enforce invite-only after setup. Self-hosted is always invite_only. */
   async getRegistrationMode(): Promise<RegistrationMode> {
     if (this.config.deploymentMode !== "self_hosted") {
       return "open";
     }
-    return (await this.instanceSettings.read()).registrationMode;
+    return "invite_only";
   }
 
   async hasPendingInvitation(email: string): Promise<boolean> {

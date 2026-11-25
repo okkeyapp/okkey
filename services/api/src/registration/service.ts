@@ -21,6 +21,7 @@ import {
 import type { SessionService } from "../session/service.ts";
 import { createLoginVerifier, LOGIN_KEY_LEN } from "../crypto/login-verifier.ts";
 import { SESSION_SCOPE_REGISTRATION_RECOVERY } from "../session/scopes.ts";
+import { readInstanceSettings } from "../setup/instance-access.ts";
 import { incrementFixedWindow } from "../storage/fixed-window-counter.ts";
 import type { PostgresDatabase, QueryExecutor } from "../storage/postgres.ts";
 import type { UsersRepository } from "../storage/repositories.ts";
@@ -33,7 +34,7 @@ import { assertOpaqueSplitKeyShare, assertSplitKeyShareB } from "./split-key-tra
 export type ConsumeInviteDuringRegistration = (
   tx: QueryExecutor,
   input: { tokenHash: string; userId: string; email: string },
-) => Promise<{ workspaceId: string }>;
+) => Promise<{ workspaceId: string; vaultId: string }>;
 
 const KDF_SALT_LEN = 16;
 const ED25519_PK_LEN = 32;
@@ -102,8 +103,10 @@ export interface RegisterCompleteResult {
   deviceId: string;
   deviceStatus: "trusted";
   /**
-   * Workspace joined via invite-link registration (when an invite was consumed
-   * in the same transaction). Distinct from the personal `workspaceId`.
+   * Workspace joined via invite during registration.
+   * On SaaS this is distinct from the personal `workspaceId`.
+   * On self-hosted invite registration, `workspaceId` is the instance workspace
+   * and this field is omitted (same id).
    */
   acceptedWorkspaceId?: string;
   accessToken?: string;
@@ -125,7 +128,7 @@ interface RegisterCompleteCachedIds {
 
 export interface RegistrationServiceDeps {
   authService: AuthService;
-  users: Pick<UsersRepository, "findByEmail">;
+  users: Pick<UsersRepository, "findByEmail" | "hasAnyUsers">;
   postgres: PostgresDatabase;
   redis: {
     get(key: string): Promise<string | null>;
@@ -314,6 +317,18 @@ export class RegistrationService {
     try {
       const encryptedPrivateKey = this.validateEncryptedPrivateKey(input.encryptedPrivateKey);
       const inviteTokenHash = authState.inviteTokenHash?.trim() || null;
+      const selfHosted = this.config.deploymentMode === "self_hosted";
+      const catalogHasUsers = await this.users.hasAnyUsers();
+
+      // Self-hosted: only the first owner (empty catalog / setup wizard) may create a workspace.
+      // Every later registration requires a valid invite to the instance workspace.
+      if (selfHosted && catalogHasUsers && !inviteTokenHash) {
+        throw new RegistrationError(
+          "REGISTRATION_INVITE_REQUIRED",
+          403,
+          "registration requires a valid invitation to the instance workspace",
+        );
+      }
       if (inviteTokenHash && !this.consumeInviteDuringRegistration) {
         throw new RegistrationError(
           "INVITE_ACCEPT_UNAVAILABLE",
@@ -321,7 +336,14 @@ export class RegistrationService {
           "invite registration is temporarily unavailable",
         );
       }
+
+      const skipPersonalWorkspace = selfHosted && Boolean(inviteTokenHash);
+
       const bundle = await this.postgres.transaction(async (tx) => {
+        if (selfHosted && inviteTokenHash) {
+          await this.assertInviteTargetsInstanceWorkspace(tx, inviteTokenHash);
+        }
+
         const created = await insertRegistrationBundle(tx, {
           email: authState.email,
           publicKey: input.userPublicKey.trim(),
@@ -351,8 +373,11 @@ export class RegistrationService {
           loginVerifier: loginVerifier?.verifier ?? null,
           loginVerifierSalt: loginVerifier?.salt ?? null,
           loginVerifierParamsVersion: loginVerifier?.paramsVersion ?? null,
+          skipPersonalWorkspace,
         });
         let acceptedWorkspaceId: string | undefined;
+        let workspaceId = created.workspaceId;
+        let vaultId = created.vaultId;
         if (inviteTokenHash) {
           try {
             const accepted = await this.consumeInviteDuringRegistration!(tx, {
@@ -360,12 +385,24 @@ export class RegistrationService {
               userId: created.userId,
               email: authState.email,
             });
-            acceptedWorkspaceId = accepted.workspaceId;
+            if (skipPersonalWorkspace) {
+              // Self-hosted: the instance workspace is the only workspace.
+              workspaceId = accepted.workspaceId;
+              vaultId = accepted.vaultId;
+            } else {
+              acceptedWorkspaceId = accepted.workspaceId;
+            }
           } catch (error) {
             throw this.mapInviteRegistrationError(error);
           }
         }
-        return { ...created, acceptedWorkspaceId };
+        return {
+          userId: created.userId,
+          workspaceId,
+          vaultId,
+          deviceId: created.deviceId,
+          acceptedWorkspaceId,
+        };
       });
 
       const session = await this.sessionService.createSession(bundle.userId, {
@@ -449,6 +486,41 @@ export class RegistrationService {
       500,
       "could not accept invitation during registration",
     );
+  }
+
+  /**
+   * Self-hosted invites must target the instance workspace only.
+   * Before setup finish writes workspace_id, reject all invites (fail-closed).
+   */
+  private async assertInviteTargetsInstanceWorkspace(
+    tx: QueryExecutor,
+    tokenHash: string,
+  ): Promise<void> {
+    const settings = await readInstanceSettings(tx);
+    if (!settings.workspaceId) {
+      throw new RegistrationError(
+        "INSTANCE_WORKSPACE_NOT_READY",
+        409,
+        "instance workspace is not ready for invitations",
+      );
+    }
+    const inviteRows = await tx.query<{ workspace_id: string }>(
+      `
+        SELECT workspace_id
+        FROM workspace_invitations
+        WHERE token_hash = $1
+        LIMIT 1
+      `,
+      [tokenHash],
+    );
+    const inviteWorkspaceId = inviteRows[0]?.workspace_id;
+    if (!inviteWorkspaceId || String(inviteWorkspaceId) !== settings.workspaceId) {
+      throw new RegistrationError(
+        "INVITE_WORKSPACE_NOT_INSTANCE",
+        403,
+        "invitation does not target the instance workspace",
+      );
+    }
   }
 
   private loginVerifierFromKey(loginKey: Uint8Array | null | undefined) {

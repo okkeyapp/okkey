@@ -61,6 +61,7 @@ test("overlapping empty-catalog claims grant bootstrap to only one registrant", 
     redis,
     users: {
       findByEmail: async () => null,
+      hasAnyUsers: async () => false,
       isTwoFactorEnabled: async () => false,
       hasAnyUsers: async () => {
         entered += 1;
@@ -103,6 +104,7 @@ test("startEmailLogin on empty self-host catalog requires setup (no OTP skip)", 
     redis,
     users: {
       findByEmail: async () => null,
+      hasAnyUsers: async () => false,
       isTwoFactorEnabled: async () => false,
       hasAnyUsers: async () => false,
     },

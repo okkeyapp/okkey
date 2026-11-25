@@ -6,17 +6,22 @@ import {
   WorkspacePolicyError,
 } from "../src/workspace/workspace-policy.ts";
 
-test("assertCanCreateWorkspace allows first workspace on self_hosted", async () => {
-  await assertCanCreateWorkspace({
-    deploymentMode: "self_hosted",
-    ownerId: "owner-1",
-    workspaces: {
-      countOwnedByUser: async () => 0,
-    },
-  });
+test("assertCanCreateWorkspace rejects any create on self_hosted", async () => {
+  await assert.rejects(
+    () =>
+      assertCanCreateWorkspace({
+        deploymentMode: "self_hosted",
+        ownerId: "owner-1",
+        workspaces: {
+          countOwnedByUser: async () => 0,
+        },
+      }),
+    (error: unknown) =>
+      error instanceof WorkspacePolicyError && error.code === "WORKSPACE_CREATE_DISABLED",
+  );
 });
 
-test("assertCanCreateWorkspace rejects second workspace on self_hosted", async () => {
+test("assertCanCreateWorkspace rejects when owner already has a workspace on self_hosted", async () => {
   await assert.rejects(
     () =>
       assertCanCreateWorkspace({
@@ -27,7 +32,7 @@ test("assertCanCreateWorkspace rejects second workspace on self_hosted", async (
         },
       }),
     (error: unknown) =>
-      error instanceof WorkspacePolicyError && error.code === "WORKSPACE_LIMIT_REACHED",
+      error instanceof WorkspacePolicyError && error.code === "WORKSPACE_CREATE_DISABLED",
   );
 });
 

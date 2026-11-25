@@ -222,7 +222,7 @@ test("completeRegistration maps invite consume failures and requires consumer wh
       }),
       removeAuthState: async () => {},
     } as unknown as AuthService,
-    users: { findByEmail: async () => null },
+    users: { findByEmail: async () => null, hasAnyUsers: async () => true },
     postgres: {
       transaction: async () => {
         throw new Error("should not reach postgres");

@@ -251,7 +251,14 @@ export function registerSetupRoutes(
         if (body.registration_mode !== "open" && body.registration_mode !== "invite_only") {
           throw new HttpRequestError(400, "INVALID_REGISTRATION_MODE", "invalid registration mode");
         }
-        patch.registrationMode = body.registration_mode;
+        if (body.registration_mode === "open") {
+          throw new HttpRequestError(
+            400,
+            "REGISTRATION_MODE_LOCKED",
+            "self-hosted instances only allow invite-only registration",
+          );
+        }
+        patch.registrationMode = "invite_only";
       }
       const instance = await setup.updateInstance(setupTokenFromRequest(ctx.req) ?? "", patch);
       json(ctx.res, 200, {

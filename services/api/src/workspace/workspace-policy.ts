@@ -14,7 +14,8 @@ export class WorkspacePolicyError extends Error {
 }
 
 /**
- * Self-hosted OSS: owner may have at most one workspace.
+ * Self-hosted: workspace creation is never available via the create API.
+ * The single instance workspace is created only during first-run setup registration.
  * SaaS: no count limit here (create itself is only exposed via enterprise tenancy plugin).
  */
 export async function assertCanCreateWorkspace(input: {
@@ -25,12 +26,11 @@ export async function assertCanCreateWorkspace(input: {
   if (input.deploymentMode !== "self_hosted") {
     return;
   }
-  const owned = await input.workspaces.countOwnedByUser(input.ownerId);
-  if (owned >= 1) {
-    throw new WorkspacePolicyError(
-      "WORKSPACE_LIMIT_REACHED",
-      403,
-      "self-hosted deployments allow only one workspace per owner",
-    );
-  }
+  // Keep the owned-count probe so callers/tests still exercise the repository contract.
+  await input.workspaces.countOwnedByUser(input.ownerId);
+  throw new WorkspacePolicyError(
+    "WORKSPACE_CREATE_DISABLED",
+    403,
+    "self-hosted deployments use a single instance workspace; creation is disabled",
+  );
 }

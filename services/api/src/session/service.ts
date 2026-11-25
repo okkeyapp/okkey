@@ -54,7 +54,8 @@ export interface SessionServiceDeps {
     | "markRecoveryProved"
     | "setRecoveryChallenge"
     | "consumeRecoveryChallenge"
-  >;
+  > &
+    Partial<Pick<SessionsRepository, "deleteByUserId">>;
   config: Pick<ApiConfig, "sessionTtlSeconds">;
   now?: () => Date;
 }
@@ -191,6 +192,14 @@ export class SessionService {
   /** End all server sessions bound to a device (revoke / sign-out). */
   async revokeSessionsForDevice(userId: string, deviceId: string): Promise<void> {
     await this.sessions.deleteByDeviceId({ userId, deviceId });
+  }
+
+  /** End every server session for a user (including unbound bootstrap sessions). */
+  async revokeSessionsForUser(userId: string): Promise<void> {
+    if (!this.sessions.deleteByUserId) {
+      return;
+    }
+    await this.sessions.deleteByUserId(userId);
   }
 
   async revokeAccessToken(token: string): Promise<boolean> {

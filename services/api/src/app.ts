@@ -338,6 +338,12 @@ export interface AppDeps {
   mailSettingsService?: MailSettingsService;
   /** Self-host first-run setup wizard (public routes). */
   setupService?: SetupService;
+  /**
+   * Self-hosted instance membership / blocked-account gate.
+   * Return false to treat the session as unauthenticated (fail-closed).
+   * SaaS callers should omit this (or always return true).
+   */
+  assertUserInstanceAccess?: (userId: string) => Promise<boolean>;
 }
 
 export function createApiApp(
@@ -365,10 +371,19 @@ export function createApiApp(
   ): Promise<{ userId: string; deviceId: string | null } | null> => {
     if (!resolveSessionStrict) {
       const header = getHeader(req, "x-user-id")?.trim();
-      return header ? { userId: header, deviceId: null } : null;
+      if (!header) {
+        return null;
+      }
+      if (deps.assertUserInstanceAccess && !(await deps.assertUserInstanceAccess(header))) {
+        return null;
+      }
+      return { userId: header, deviceId: null };
     }
     const session = await resolveSessionStrict(req);
     if (!session) {
+      return null;
+    }
+    if (deps.assertUserInstanceAccess && !(await deps.assertUserInstanceAccess(session.userId))) {
       return null;
     }
     if (session.deviceId && deps.deviceService?.isSessionDeviceTrusted) {

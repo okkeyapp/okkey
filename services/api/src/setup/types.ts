@@ -3,6 +3,8 @@ export type RegistrationMode = "open" | "invite_only";
 export type ServerInstanceSettingsRow = {
   registrationMode: RegistrationMode;
   setupCompletedAt: string | null;
+  /** Self-hosted instance workspace; null until first-run finish. */
+  workspaceId: string | null;
   updatedAt: string;
 };
 
@@ -85,4 +87,12 @@ export interface ServerInstanceSettingsStore {
   read(): Promise<ServerInstanceSettingsRow>;
   writeRegistrationMode(mode: RegistrationMode): Promise<ServerInstanceSettingsRow>;
   markSetupCompleted(completedAt: string): Promise<ServerInstanceSettingsRow>;
+  /**
+   * Atomically set setup_completed_at (once) and the instance workspace pointer.
+   * Used by first-run finish; idempotent when already completed.
+   */
+  markSetupCompletedWithWorkspace(
+    completedAt: string,
+    workspaceId: string,
+  ): Promise<ServerInstanceSettingsRow>;
 }

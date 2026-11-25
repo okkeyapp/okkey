@@ -8,6 +8,7 @@ import { RegistrationService } from "./registration/service.ts";
 import { createServer } from "node:http";
 import { createApiApp } from "./app.ts";
 import { isEnterpriseBackendLoadable, loadConfig } from "./config.ts";
+import { hasSelfHostedInstanceAccess } from "./setup/instance-access.ts";
 import { RedisDeviceBindChallengeStore } from "./device/bind-challenge-store.ts";
 import { DeviceApprovalStatusService } from "./device/approval-status.ts";
 import { DeviceService } from "./device/service.ts";
@@ -146,6 +147,11 @@ async function main(): Promise<void> {
       }
       return resolveInviteRegistration(rawToken, email);
     },
+    resolveInstanceLoginAllowed: async (userId) =>
+      hasSelfHostedInstanceAccess(storage.postgres, {
+        deploymentMode: config.deploymentMode,
+        userId,
+      }),
   });
   const emailChangeService = new EmailChangeService({
     redis: storage.redis,
@@ -325,6 +331,7 @@ async function main(): Promise<void> {
     resolveOutboundMailActive: () => mailSettings.isOutboundActive(),
     logger,
     config,
+    deploymentMode: config.deploymentMode,
     workspaceKeys: workspaceKeyService,
   });
   resolveInviteRegistration = (rawToken, email) =>
@@ -334,7 +341,7 @@ async function main(): Promise<void> {
       tx,
       input,
     );
-    return { workspaceId: accepted.workspaceId };
+    return { workspaceId: accepted.workspaceId, vaultId: accepted.vaultId };
   });
   deliverPendingInvites = async () => {
     const result = await workspaceMembersService.deliverPendingInvitationEmails();
@@ -514,6 +521,11 @@ async function main(): Promise<void> {
     itemFaviconService,
     mailSettingsService: mailSettings,
     setupService,
+    assertUserInstanceAccess: async (userId) =>
+      hasSelfHostedInstanceAccess(storage.postgres, {
+        deploymentMode: config.deploymentMode,
+        userId,
+      }),
   }, {
     enterprisePlugins,
     postgres: storage.postgres,

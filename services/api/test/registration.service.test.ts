@@ -51,6 +51,7 @@ function createService() {
     } as unknown as AuthService,
     users: {
       findByEmail: async () => null,
+      hasAnyUsers: async () => false,
     },
     postgres: {
       transaction: async () => {
@@ -136,6 +137,7 @@ test("completeRegistration rejects kdf profile blocked by policy", async () => {
     } as unknown as AuthService,
     users: {
       findByEmail: async () => null,
+      hasAnyUsers: async () => false,
     },
     postgres: {
       transaction: async () => {
@@ -180,6 +182,7 @@ test("completeRegistration strict mode rejects non PQ-capable device metadata", 
     } as unknown as AuthService,
     users: {
       findByEmail: async () => null,
+      hasAnyUsers: async () => false,
     },
     postgres: {
       transaction: async () => {
@@ -222,6 +225,7 @@ test("completeRegistration compat mode allows missing device capability hint", a
     } as unknown as AuthService,
     users: {
       findByEmail: async () => null,
+      hasAnyUsers: async () => false,
     },
     postgres: {
       transaction: async () => {
@@ -271,6 +275,7 @@ test("completeRegistration returns Redis registration:result without Postgres", 
       findByEmail: async () => {
         throw new Error("findByEmail must not run when registration result is cached");
       },
+      hasAnyUsers: async () => false,
     },
     postgres: {
       transaction: async () => {
@@ -322,6 +327,7 @@ test("completeRegistration cache hit emits success operation metric", async () =
       findByEmail: async () => {
         throw new Error("findByEmail must not run when registration result is cached");
       },
+      hasAnyUsers: async () => false,
     },
     postgres: {
       transaction: async () => {
