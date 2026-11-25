@@ -203,9 +203,9 @@ export const TRAVEL_TRIP =
 export const TRAVEL_DEPARTURE =
   /departure[-_\s]*(?:at|date|time)|depart(?:ure)?[-_\s]*datetime|дата\s*(?:и\s*время\s*)?отправлен|время\s*отправлен|дата\s*(?:и\s*время\s*)?вылет|время\s*вылет|abflug|date\s+de\s+d[ée]part|fecha\s+de\s+salida/iu;
 export const TRAVEL_FROM =
-  /^(?:\s*from\s*)+$|departure[-_\s]*(?:city|airport|station|point)|\borigin\b|\bfrom[-_\s]*(?:city|airport|station)\b|\b(?:travel|trip|flight|booking|route)[-_]?from\b|откуда|пункт\s*отправлен|город\s*отправлен|аэропорт\s*вылет|abflughafen|ville\s+de\s+d[ée]part|\borigen\b/iu;
+  /^\s*from(?:\s+from)*\s*$|departure[-_\s]*(?:city|airport|station|point)|\borigin\b|\bfrom[-_\s]*(?:city|airport|station)\b|\b(?:travel|trip|flight|booking|route)[-_]?from\b|откуда|пункт\s*отправлен|город\s*отправлен|аэропорт\s*вылет|abflughafen|ville\s+de\s+d[ée]part|\borigen\b/iu;
 export const TRAVEL_TO =
-  /^(?:\s*to\s*)+$|arrival[-_\s]*(?:city|airport|station|point)|\bdestination\b|\bto[-_\s]*(?:city|airport|station)\b|\b(?:travel|trip|flight|booking|route)[-_]?to\b|куда|пункт\s*назначен|город\s*прибыт|аэропорт\s*прил[её]т|zielflughafen|ville\s+d['’]arriv[ée]e|\bdestino\b/iu;
+  /^\s*to(?:\s+to)*\s*$|arrival[-_\s]*(?:city|airport|station|point)|\bdestination\b|\bto[-_\s]*(?:city|airport|station)\b|\b(?:travel|trip|flight|booking|route)[-_]?to\b|куда|пункт\s*назначен|город\s*прибыт|аэропорт\s*прил[её]т|zielflughafen|ville\s+d['’]arriv[ée]e|\bdestino\b/iu;
 export const TRAVEL_BOOKING_REF =
   /\bpnr\b|booking[-_\s]*(?:ref(?:erence)?|code|number|no|id)|reservation[-_\s]*(?:code|number|ref(?:erence)?|id)|(?:booking|flight|travel|trip|ticket)[-_\s]*confirmation[-_\s]*(?:code|number|ref)?|record[-_\s]*locator|код\s*бронирован|номер\s*брони(?:рован\p{L}*)?|(?<![\p{L}\p{N}_])бронь(?![\p{L}\p{N}_])|buchungsnummer|buchungscode|num[ée]ro\s+de\s+r[ée]servation|code\s+de\s+r[ée]servation|c[óo]digo\s+de\s+reserva|localizador/iu;
 export const TRAVEL_PASSENGERS =
