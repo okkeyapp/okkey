@@ -1018,16 +1018,12 @@ export default function SetupWizardPage() {
             </Alert>
           ) : null}
           <div className="flex w-full flex-col gap-3">
-            <span id="setup-code-label" className="okkey-small font-medium text-copy-primary">
+            <label htmlFor="setup-code" className="okkey-small font-medium text-copy-primary">
               {t("auth.setup.codeLabel")}
-            </span>
+            </label>
             <SetupCodeInput
               resetKey={codeResetKey}
               disabled={busy}
-              labelledBy="setup-code-label"
-              digitAriaLabel={(n, total) =>
-                t("auth.otp.digitAriaLabel", { n: String(n), total: String(total) })
-              }
               onChange={setCode}
             />
           </div>

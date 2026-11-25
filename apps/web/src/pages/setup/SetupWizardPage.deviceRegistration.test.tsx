@@ -163,11 +163,8 @@ const emptyMail = {
 };
 
 async function advanceToPasswordStep() {
-  await screen.findByTestId("setup-code-input");
-  // SetupCodeInput treats multi-char change on the first cell as a paste.
-  const firstDigit = document.getElementById("setup-code");
-  expect(firstDigit).toBeTruthy();
-  fireEvent.change(firstDigit!, { target: { value: "aaaabbbbccccdddd" } });
+  const setupCode = await screen.findByTestId("setup-code-input");
+  fireEvent.change(setupCode, { target: { value: "aaaabbbbccccdddd" } });
 
   const submitCode = await screen.findByRole("button", { name: "auth.setup.submitCode" });
   await waitFor(() => {
