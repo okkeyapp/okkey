@@ -174,6 +174,8 @@ describe("owned complex fixtures", () => {
     expect(fields.password).toEqual([]);
     const first = fields.otp[0]!;
     expect(resolveAutofillKindForElement(first)).toBe("otp");
+    expect(shouldOpenPasswordGenerator("login", "otp", first)).toBe(false);
+    expect(shouldOpenPasswordGenerator("register", "otp", first)).toBe(false);
     // Password must never be the fill target for these cells.
     fillLoginForm(document, { username: "alice", password: "secret-password", totp: "12345678" });
     for (const el of fields.otp) {
@@ -181,6 +183,41 @@ describe("owned complex fixtures", () => {
       expect(el.value).not.toBe("alice");
     }
     expect(fields.otp.map((el) => el.value).join("")).toBe("12345678");
+  });
+
+  it("multi-step login: current-password and one-time-code steps never open password generator", () => {
+    loadHtmlIntoDocument(`<!DOCTYPE html><html><body>
+      <form id="step-password">
+        <h2>Sign in</h2>
+        <input id="email" name="email" type="hidden" autocomplete="username" value="alice@example.com" />
+        <input id="pwd" name="password" type="password" autocomplete="current-password" />
+        <button type="submit">Continue</button>
+      </form>
+    </body></html>`);
+    const pwd = document.querySelector("#pwd") as HTMLInputElement;
+    Object.defineProperty(pwd, "getClientRects", {
+      value: () => [{ width: 100, height: 20, top: 0, left: 0, bottom: 20, right: 100 }],
+    });
+    const pwdFormType = detectFormTypeForInput(pwd);
+    expect(pwdFormType).toBe("login");
+    expect(shouldOpenPasswordGenerator(pwdFormType, "password", pwd)).toBe(false);
+    expect(shouldOpenPasswordGenerator("register", "password", pwd)).toBe(false);
+
+    loadHtmlIntoDocument(`<!DOCTYPE html><html><body>
+      <form id="step-otp">
+        <h2>Two-step verification</h2>
+        <input id="code" name="code" type="text" inputmode="numeric" autocomplete="one-time-code" />
+        <button type="submit">Verify</button>
+      </form>
+    </body></html>`);
+    const code = document.querySelector("#code") as HTMLInputElement;
+    Object.defineProperty(code, "getClientRects", {
+      value: () => [{ width: 100, height: 20, top: 0, left: 0, bottom: 20, right: 100 }],
+    });
+    const otpFormType = detectFormTypeForInput(code);
+    expect(resolveAutofillKindForElement(code)).toBe("otp");
+    expect(shouldOpenPasswordGenerator(otpFormType, "otp", code)).toBe(false);
+    expect(shouldOpenPasswordGenerator("register", "otp", code)).toBe(false);
   });
 
   it("change-password: current-password does not open generator; new/confirm do", () => {
@@ -264,7 +301,7 @@ describe("owned complex fixtures", () => {
     expect((document.querySelector("#otp") as HTMLInputElement).value).not.toBe("secret-password");
   });
 
-  it("loyalty-en: classifies loyalty kinds and never login/personal_data", () => {
+  it("loyalty-en: classifies loyalty kinds (not personal_data/identity) and fills all fields", () => {
     loadHtmlIntoDocument(readFileSync(path.join(FIXTURES_DIR, "loyalty-en.html"), "utf8"));
     for (const el of Array.from(document.querySelectorAll("input"))) {
       Object.defineProperty(el, "getClientRects", {
@@ -274,63 +311,96 @@ describe("owned complex fixtures", () => {
     const member = document.querySelector("#member") as HTMLInputElement;
     const program = document.querySelector("#program") as HTMLInputElement;
     const barcode = document.querySelector("#barcode") as HTMLInputElement;
+    const expiry = document.querySelector("#expiry") as HTMLInputElement;
     expect(classifyAutofillInput(collectInputHints(member))).toBe("loyalty-card-number");
     expect(classifyAutofillInput(collectInputHints(program))).toBe("loyalty-provider");
     expect(classifyAutofillInput(collectInputHints(barcode))).toBe("loyalty-barcode");
-    expect(categoriesAllowedForFormType("login", "loyalty-card-number")).toEqual(["loyalty_card"]);
-    expect(categoriesAllowedForFormType("unknown", "loyalty-card-number")).toEqual(["loyalty_card"]);
+    expect(classifyAutofillInput(collectInputHints(expiry))).toBe("loyalty-expiry");
+    expect(detectFormTypeForInput(member)).not.toBe("identity");
+    expect(detectFormTypeForInput(member)).not.toBe("search");
+    expect(categoriesAllowedForFormType("identity", "loyalty-card-number")).toEqual([
+      "loyalty_card",
+    ]);
+    expect(categoriesAllowedForFormType("login", "loyalty-provider")).toEqual(["loyalty_card"]);
+    expect(categoriesAllowedForFormType("unknown", "loyalty-card-number")).toEqual([
+      "loyalty_card",
+    ]);
     expect(predictVisibleRoles()).toEqual([]);
+    const filled = fillAutofillValues(document, {
+      "loyalty-provider": "Miles&More",
+      "loyalty-card-number": "99887766",
+      "loyalty-barcode": "BC-42",
+      "loyalty-expiry": "2028-12-31",
+    });
+    expect(filled).toBe(4);
+    expect(program.value).toBe("Miles&More");
+    expect(member.value).toBe("99887766");
+    expect(barcode.value).toBe("BC-42");
+    expect(expiry.value).toBe("2028-12-31");
   });
 
-  it("loyalty-ru: Russian labels classify and are overlay targets", () => {
+  it("loyalty-ru: Russian labels classify, are overlay targets, and fill all fields", () => {
     loadHtmlIntoDocument(readFileSync(path.join(FIXTURES_DIR, "loyalty-ru.html"), "utf8"));
     for (const el of Array.from(document.querySelectorAll("input"))) {
       Object.defineProperty(el, "getClientRects", {
         value: () => [{ width: 100, height: 20, top: 0, left: 0, bottom: 20, right: 100 }],
       });
     }
-    expect(classifyAutofillInput(collectInputHints(document.querySelector("#member") as HTMLInputElement))).toBe(
-      "loyalty-card-number",
-    );
-    expect(classifyAutofillInput(collectInputHints(document.querySelector("#program") as HTMLInputElement))).toBe(
-      "loyalty-provider",
-    );
-    expect(classifyAutofillInput(collectInputHints(document.querySelector("#barcode") as HTMLInputElement))).toBe(
-      "loyalty-barcode",
-    );
-    expect(resolveAutofillKindForElement(document.querySelector("#member") as HTMLInputElement)).toBe(
-      "loyalty-card-number",
-    );
+    const program = document.querySelector("#program") as HTMLInputElement;
+    const member = document.querySelector("#member") as HTMLInputElement;
+    const barcode = document.querySelector("#barcode") as HTMLInputElement;
+    const expiry = document.querySelector("#expiry") as HTMLInputElement;
+    expect(classifyAutofillInput(collectInputHints(program))).toBe("loyalty-provider");
+    expect(classifyAutofillInput(collectInputHints(member))).toBe("loyalty-card-number");
+    expect(classifyAutofillInput(collectInputHints(barcode))).toBe("loyalty-barcode");
+    expect(classifyAutofillInput(collectInputHints(expiry))).toBe("loyalty-expiry");
+    expect(resolveAutofillKindForElement(member)).toBe("loyalty-card-number");
+    expect(detectFormTypeForInput(member)).not.toBe("search");
+    expect(detectFormTypeForInput(member)).not.toBe("identity");
+    const filled = fillAutofillValues(document, {
+      "loyalty-provider": "Аэрофлот Бонус",
+      "loyalty-card-number": "55443322",
+      "loyalty-barcode": "QR-99",
+      "loyalty-expiry": "2029-01-01",
+    });
+    expect(filled).toBe(4);
+    expect(program.value).toBe("Аэрофлот Бонус");
+    expect(member.value).toBe("55443322");
+    expect(barcode.value).toBe("QR-99");
+    expect(expiry.value).toBe("2029-01-01");
   });
 
-  it("travel-booking: PNR / carrier / flight / from / to classify for overlay", () => {
+  it("travel-booking: PNR / carrier / flight / from / to classify even with Search booking CTA", () => {
     loadHtmlIntoDocument(readFileSync(path.join(FIXTURES_DIR, "travel-booking.html"), "utf8"));
     for (const el of Array.from(document.querySelectorAll("input"))) {
       Object.defineProperty(el, "getClientRects", {
         value: () => [{ width: 100, height: 20, top: 0, left: 0, bottom: 20, right: 100 }],
       });
     }
-    expect(classifyAutofillInput(collectInputHints(document.querySelector("#pnr") as HTMLInputElement))).toBe(
-      "travel-booking-reference",
-    );
-    expect(classifyAutofillInput(collectInputHints(document.querySelector("#carrier") as HTMLInputElement))).toBe(
-      "travel-carrier",
-    );
-    expect(classifyAutofillInput(collectInputHints(document.querySelector("#flight") as HTMLInputElement))).toBe(
-      "travel-trip-number",
-    );
-    expect(classifyAutofillInput(collectInputHints(document.querySelector("#from") as HTMLInputElement))).toBe(
-      "travel-from",
-    );
-    expect(classifyAutofillInput(collectInputHints(document.querySelector("#to") as HTMLInputElement))).toBe(
-      "travel-to",
-    );
+    const pnr = document.querySelector("#pnr") as HTMLInputElement;
+    const carrier = document.querySelector("#carrier") as HTMLInputElement;
+    const flight = document.querySelector("#flight") as HTMLInputElement;
+    const from = document.querySelector("#from") as HTMLInputElement;
+    const to = document.querySelector("#to") as HTMLInputElement;
+    expect(resolveAutofillKindForElement(pnr)).toBe("travel-booking-reference");
+    expect(resolveAutofillKindForElement(carrier)).toBe("travel-carrier");
+    expect(resolveAutofillKindForElement(flight)).toBe("travel-trip-number");
+    expect(resolveAutofillKindForElement(from)).toBe("travel-from");
+    expect(resolveAutofillKindForElement(to)).toBe("travel-to");
+    expect(detectFormTypeForInput(pnr)).not.toBe("search");
     expect(categoriesAllowedForFormType("unknown", "travel-booking-reference")).toEqual([
       "travel_booking",
     ]);
+    const filled = fillAutofillValues(document, {
+      "travel-booking-reference": "PNR42X",
+      "travel-carrier": "S7 Airlines",
+    });
+    expect(filled).toBe(2);
+    expect(pnr.value).toBe("PNR42X");
+    expect(carrier.value).toBe("S7 Airlines");
   });
 
-  it("vehicle-plate: License plate fills from vehicle-plate value", () => {
+  it("vehicle-plate: License plate and valid-until fill from vehicle semantic map", () => {
     loadHtmlIntoDocument(readFileSync(path.join(FIXTURES_DIR, "vehicle-plate.html"), "utf8"));
     for (const el of Array.from(document.querySelectorAll("input"))) {
       Object.defineProperty(el, "getClientRects", {
@@ -338,6 +408,7 @@ describe("owned complex fixtures", () => {
       });
     }
     const plate = document.querySelector("#plate") as HTMLInputElement;
+    const until = document.querySelector("#until") as HTMLInputElement;
     expect(classifyAutofillInput(collectInputHints(plate))).toBe("vehicle-plate");
     expect(classifyAutofillInput(collectInputHints(document.querySelector("#make") as HTMLInputElement))).toBe(
       "vehicle-make-model",
@@ -345,6 +416,7 @@ describe("owned complex fixtures", () => {
     expect(classifyAutofillInput(collectInputHints(document.querySelector("#vin") as HTMLInputElement))).toBe(
       "vehicle-vin",
     );
+    expect(classifyAutofillInput(collectInputHints(until))).toBe("vehicle-insurance-valid-until");
     const filled = fillAutofillValues(document, {
       "vehicle-plate": "A123BC77",
       "vehicle-make-model": "Toyota Camry",
@@ -354,10 +426,39 @@ describe("owned complex fixtures", () => {
       "vehicle-insurance-policy-number": "POL-1",
       "vehicle-insurance-valid-until": "2027-06-01",
     });
-    expect(filled).toBeGreaterThanOrEqual(7);
+    expect(filled).toBe(7);
     expect(plate.value).toBe("A123BC77");
     expect((document.querySelector("#make") as HTMLInputElement).value).toBe("Toyota Camry");
     expect((document.querySelector("#vin") as HTMLInputElement).value).toBe("JTDBR32E720123456");
+    expect(until.value).toBe("2027-06-01");
+  });
+
+  it("payment checkout keeps card number and expiry as credit_card (not loyalty)", () => {
+    loadHtmlIntoDocument(`<!DOCTYPE html><html><body>
+      <h2>Payment</h2>
+      <form id="pay">
+        <label for="cn">Card number</label>
+        <input id="cn" name="card_number" type="text" />
+        <label for="ce">Expiry date</label>
+        <input id="ce" name="expiry" type="text" />
+        <label for="cv">CVC</label>
+        <input id="cv" name="cvc" type="text" />
+      </form>
+    </body></html>`);
+    for (const el of Array.from(document.querySelectorAll("input"))) {
+      Object.defineProperty(el, "getClientRects", {
+        value: () => [{ width: 100, height: 20, top: 0, left: 0, bottom: 20, right: 100 }],
+      });
+    }
+    expect(classifyAutofillInput(collectInputHints(document.querySelector("#cn") as HTMLInputElement))).toBe(
+      "cc-number",
+    );
+    expect(classifyAutofillInput(collectInputHints(document.querySelector("#ce") as HTMLInputElement))).toBe(
+      "cc-exp",
+    );
+    expect(classifyAutofillInput(collectInputHints(document.querySelector("#cv") as HTMLInputElement))).toBe(
+      "cc-csc",
+    );
   });
 
   it("security: foreign-origin fill is refused", async () => {

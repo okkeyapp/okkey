@@ -393,13 +393,19 @@ export function detectAutofillFormType(signals: AutofillFormSignals): AutofillFo
   const hasUser = kinds.has("username") || kinds.has("email");
   const hasCard = [...kinds].some((k) => CC_KINDS.has(k));
   const hasIdentity = [...kinds].some((k) => IDENTITY_KINDS.has(k));
+  const hasSpecialty = [...kinds].some(
+    (k) =>
+      LOYALTY_FORM_FIELD_KINDS.has(k) ||
+      VEHICLE_FORM_FIELD_KINDS.has(k) ||
+      TRAVEL_FORM_FIELD_KINDS.has(k),
+  );
   const passwordCount = signals.passwordFields.length;
   const loginCue = textSuggestsLogin(text);
   const registerCue = REGISTER_TEXT.test(text);
   const classicLoginShape =
     hasPassword && hasUser && passwordCount === 1 && !signals.hasConfirmPassword;
 
-  if (SEARCH_TEXT.test(text) && !hasPassword && !hasCard) {
+  if (SEARCH_TEXT.test(text) && !hasPassword && !hasCard && !hasSpecialty) {
     return "search";
   }
 

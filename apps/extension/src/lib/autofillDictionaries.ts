@@ -112,7 +112,7 @@ export const PERSON_FULL_NAME_STRONG =
 export const BARE_NAME_TOKEN = /(?:^|[^a-z0-9])name(?:[^a-z0-9]|$)/i;
 
 export const NON_PERSON_NAME_CONTEXT =
-  /\b(?:ruleset|repositor(?:y|ies)|repos?|workflow|runner|organization|organisation|\borg\b|project|team|workspace|branch|label|tag|variable|secret|environment|service|server|host(?:name)?|cluster|namespace|package|module|app(?:lication)?|product|file|folder|director(?:y|ies)|group|role|policy|permission|channel|bot|webhook|job|pipeline|artifact|bucket|schema|table|column|token|certificate|domain|site|page|section|field|form|item|resource|instance|container|image|volume|queue|topic|subscription|campaign|event|meeting|invoice|order|sku|subject|title|репозитор|проект|организац|набор\s*правил|рабоч\w*\s*процесс)\b[-_\s]*(?:name|название|имя)\b|\b(?:name|название|имя)\b[-_\s]*(?:of\s+)?(?:the\s+)?(?:ruleset|repositor(?:y|ies)|repos?|workflow|runner|organization|organisation|\borg\b|project|team|workspace)\b/i;
+  /\b(?:ruleset|repositor(?:y|ies)|repos?|workflow|runner|organization|organisation|\borg\b|project|team|workspace|branch|label|tag|variable|secret|environment|service|server|host(?:name)?|cluster|namespace|package|module|app(?:lication)?|product|file|folder|director(?:y|ies)|group|role|policy|permission|channel|bot|webhook|job|pipeline|artifact|bucket|schema|table|column|token|certificate|domain|site|page|section|field|form|item|resource|instance|container|image|volume|queue|topic|subscription|campaign|event|meeting|invoice|order|sku|subject|title|loyalty|program(?:me)?|provider|store|merchant|brand|club|carrier|airline|insurer|vehicle|репозитор|проект|организац|программ\p{L}*|магазин|провайдер|бренд|перевозчик|страховщик|набор\s*правил|рабоч\p{L}*\s*процесс)\b[-_\s]*(?:name|название|имя)\b|\b(?:name|название|имя)\b[-_\s]*(?:of\s+)?(?:the\s+)?(?:ruleset|repositor(?:y|ies)|repos?|workflow|runner|organization|organisation|\borg\b|project|team|workspace|program(?:me)?|provider|store|merchant|brand|club|loyalty|carrier|airline|insurer|vehicle)\b/iu;
 
 export const TEL_HINT = /\b(phone|mobile|tel|cellphone|телефон|мобил)/i;
 export const BDAY_HINT = /bday|birth[-_]?date|date[-_]?of[-_]?birth|\bdob\b|дата\s*рожд/i;
@@ -168,46 +168,58 @@ export const CRYPTO_PHRASE = /passphrase|seed[-_]?phrase|mnemonic|сид[-_]?ф�
  * Loyalty rules must win over bare payment «card number» when loyalty cues are present.
  */
 export const LOYALTY_PROVIDER =
-  /loyalty[-_\s]+(?:program|provider|club)|membership[-_\s]+program|frequent[-_\s]+flyer|программа\s*лояльност|бонусн\w*\s*програм|клуб\s*лояльност|название\s*программ/i;
+  /(?:loyalty|rewards?|bonus|discount|club|membership)[-_\s]+(?:program(?:me)?|provider|club|brand|store|merchant|issuer|name)|frequent[-_\s]+flyer[-_\s]+(?:program(?:me)?|club)|программ\p{L}*\s*лояльност|бонусн\p{L}*\s*програм|скидочн\p{L}*\s*програм|клуб\s*лояльност|название\s*(?:карт\p{L}*\s*)?(?:лояльност|программ)|поставщик\s*(?:карты\s*)?лояльност|bonusprogramm|treueprogramm|programme\s+de\s+fid[ée]lit[ée]|programa\s+de\s+fidelidad/iu;
 export const LOYALTY_CARD_NUMBER =
-  /loyalty[-_\s]*card[-_\s]*number|loyalty[-_\s]*number|member(?:ship)?[-_\s]*(?:card|number|id|no)|frequent[-_\s]*flyer[-_\s]*(?:number|no|id)|номер\s*участник|карта\s*лояльност|номер\s*(?:карты|карт)\s*лояльност|членск\w*\s*(?:карт|номер)|loyalty[-_\s]*card(?!\s*holder)/i;
-export const LOYALTY_BARCODE = /\bbarcode\b|qr[-_\s]*code|qr[-_\s]*value|штрих[-_\s]*код|qr[-_\s]*код/i;
+  /loyalty[-_\s]*card[-_\s]*(?:number|no|id|code)|loyalty[-_\s]*(?:number|no|id)|(?:bonus|reward(?:s)?|club|discount)[-_\s]*card(?:[-_\s]*(?:number|no|id))?|member(?:ship)?[-_\s]*(?:card|number|id|no)|frequent[-_\s]*flyer[-_\s]*(?:number|no|id)|номер\s*(?:бонусн\p{L}*|скидочн\p{L}*|дисконтн\p{L}*|клубн\p{L}*)?\s*карт\p{L}*\s*лояльност|номер\s*(?:бонусн\p{L}*|скидочн\p{L}*|дисконтн\p{L}*|клубн\p{L}*)\s*карт|номер\s*участник|карт\p{L}*\s*лояльност|бонусн\p{L}*\s*карт|скидочн\p{L}*\s*карт|дисконтн\p{L}*\s*карт|членск\p{L}*\s*(?:карт|номер)|loyalty[-_\s]*card(?!\s*(?:holder|name))|kundenkarten?[-_\s]*nummer|num[ée]ro\s+de\s+carte\s+de\s+fid[ée]lit[ée]|n[úu]mero\s+de\s+tarjeta\s+de\s+fidelidad/iu;
+export const LOYALTY_BARCODE =
+  /\bbar[-_\s]?code\b|qr[-_\s]*code|qr[-_\s]*value|штрих[-_\s]*код|qr[-_\s]*код/iu;
 export const LOYALTY_EXPIRY =
-  /loyalty[-_\s]*expir|membership[-_\s]*expir|срок\s*действ\w*\s*(?:карты\s*)?лояльност|годен\s*до.*лояльност/i;
+  /loyalty[-_\s]*expir|membership[-_\s]*expir|срок\s*действ\p{L}*\s*(?:карты\s*)?лояльност|годен\s*до.*лояльност/iu;
 /** Soft loyalty form cue — remaps bare card-number when present in the same field blob. */
 export const LOYALTY_CONTEXT =
-  /loyalty|member(?:ship)?|frequent[-_\s]*flyer|лояльност|бонусн\w*\s*програм|участник|членск/i;
+  /loyalty|member(?:ship)?|frequent[-_\s]*flyer|лояльност|бонусн\p{L}*\s*(?:карт|програм)|скидочн\p{L}*\s*карт|дисконтн\p{L}*\s*карт|участник|членск|kundenkarte|treuekarte|fid[ée]lit[ée]|fidelidad/iu;
 
 export const VEHICLE_MAKE_MODEL =
-  /make[-_\s\/]*model|vehicle[-_\s]*(?:make|model)|car[-_\s]*(?:make|model)|марка(?:\s*[\/&]\s*|\s+и\s+|\s+)?модель|модель\s*авто|make\s*(?:\/|&|and)\s*model/i;
+  /make[-_\s\/]*model|vehicle[-_\s]*(?:make|model)|car[-_\s]*(?:make|model)|марк\p{L}*(?:\s*[\/&]\s*|\s+и\s+|\s+)?модел|модел\p{L}*\s*авто|make\s*(?:\/|&|and)\s*model|fahrzeugmodell|marque\s*(?:\/|et)\s*mod[èe]le|marca\s*(?:\/|y)\s*modelo/iu;
 export const VEHICLE_PLATE =
-  /licen[cs]e[-_\s]*plate|\breg(?:istration)?[-_\s]*plate\b|\bplate[-_\s]*number\b|\bnumber[-_\s]*plate\b|\bvehicle[-_\s]*plate\b|госномер|гос\.?\s*номер|регистрационн\w*\s*знак|номерн\w*\s*знак/i;
+  /licen[cs]e[-_\s]*plate|\breg(?:istration)?[-_\s]*plate\b|\bplate[-_\s]*(?:number|no)\b|\bnumber[-_\s]*plate\b|\bvehicle[-_\s]*plate\b|\bcar[-_\s]*plate\b|гос\.?\s*номер|госномер|регистрационн\p{L}*\s*знак|номерн\p{L}*\s*знак|номер\s*(?:авто|машин|тс)|kfz[-_\s]*kennzeichen|\bkennzeichen\b|plaque\s+d['’]immatriculation|matr[íi]cula/iu;
 export const VEHICLE_VIN =
-  /\bvin\b|vehicle[-_\s]*identification|идентификационн\w*\s*номер\s*транспорт|вин[-_\s]*код/i;
+  /\bvin\b|vehicle[-_\s]*identification|идентификационн\p{L}*\s*номер\s*транспорт|вин[-_\s]*код|fahrgestellnummer/iu;
 export const VEHICLE_INSPECTION =
-  /inspection[-_\s]*due|mot[-_\s]*due|mot[-_\s]*expiry|tech[-_\s]*inspection|техосмотр|техосмотр\w*\s*до|срок\s*техосмотр/i;
+  /inspection[-_\s]*(?:due|date|expiry)|mot[-_\s]*(?:due|date|expiry)|tech[-_\s]*inspection|техосмотр|срок\s*техосмотр|hauptuntersuchung|contr[ôo]le\s+technique/iu;
 export const VEHICLE_POLICY =
-  /insurance[-_\s]*policy|policy[-_\s]*number|полис|номер\s*полис|страховой\s*полис/i;
+  /insurance[-_\s]*policy|policy[-_\s]*(?:number|no)|полис\s*(?:осаго|каско)?|номер\s*полис|страхов\p{L}*\s*полис|versicherungsnummer|num[ée]ro\s+de\s+police|n[úu]mero\s+de\s+p[óo]liza/iu;
 export const VEHICLE_INSURER =
-  /\binsurer\b|insurance[-_\s]*company|страховщик|страховая\s*компани/i;
+  /\binsurer\b|insurance[-_\s]*(?:company|provider|carrier)|страховщик|страхов\p{L}*\s*компани|versicherer|assureur|aseguradora/iu;
 export const VEHICLE_INSURANCE_UNTIL =
-  /insurance[-_\s]*(?:valid|expir)|policy[-_\s]*expir|(?:insurance|policy).{0,40}valid[-_\s]*until|valid[-_\s]*until.{0,40}(?:insurance|policy)|страховк\w*\s*до|полис\s*действ|действует\s*до.*страхов/i;
+  /insurance[-_\s]*(?:valid|expir)|policy[-_\s]*(?:valid|expir)|(?:insurance|policy).{0,40}valid[-_\s]*until|valid[-_\s]*until.{0,40}(?:insurance|policy)|страховк\p{L}*\s*до|полис\s*действ|действует\s*до.*страхов/iu;
 
 export const TRAVEL_TRANSPORT =
-  /transport[-_\s]*type|travel[-_\s]*mode|mode[-_\s]*of[-_\s]*transport|тип\s*транспорт|вид\s*транспорт/i;
-export const TRAVEL_CARRIER = /\bcarrier\b|airline|railway|operator|перевозчик|авиакомпани/i;
+  /transport[-_\s]*type|travel[-_\s]*mode|mode[-_\s]*of[-_\s]*transport|тип\s*транспорт|вид\s*транспорт|verkehrsmittel|type\s+de\s+transport|tipo\s+de\s+transporte/iu;
+export const TRAVEL_CARRIER =
+  /\bcarrier\b|\bairline\b|\brailway\b|перевозчик|авиакомпани|fluggesellschaft|compagnie\s+a[ée]rienne|aerol[íi]nea/iu;
 export const TRAVEL_TRIP =
-  /flight[-_\s]*number|trip[-_\s]*number|train[-_\s]*number|voyage[-_\s]*number|рейс|номер\s*рейс|номер\s*поезд/i;
+  /flight[-_\s]*(?:number|no|code)|trip[-_\s]*(?:number|no)|train[-_\s]*(?:number|no)|voyage[-_\s]*(?:number|no)|flight\s*\/\s*trip|номер\s*рейс|номер\s*поезд|номер\s*поездк|(?<![\p{L}\p{N}_])рейс(?![\p{L}\p{N}_])|flugnummer|num[ée]ro\s+de\s+vol|n[úu]mero\s+de\s+vuelo/iu;
 export const TRAVEL_DEPARTURE =
-  /departure[-_\s]*(?:at|date|time)|depart(?:ure)?[-_\s]*datetime|дата\s*(?:и\s*время\s*)?отправлен|время\s*отправлен|отправлен/i;
+  /departure[-_\s]*(?:at|date|time)|depart(?:ure)?[-_\s]*datetime|дата\s*(?:и\s*время\s*)?отправлен|время\s*отправлен|дата\s*(?:и\s*время\s*)?вылет|время\s*вылет|abflug|date\s+de\s+d[ée]part|fecha\s+de\s+salida/iu;
 export const TRAVEL_FROM =
-  /(?:^|[^a-zа-яё])from(?:[^a-zа-яё]|$)|origin|departure[-_\s]*(?:city|airport|station)|откуда|пункт\s*отправлен|город\s*отправлен/i;
+  /^(?:\s*from\s*)+$|departure[-_\s]*(?:city|airport|station|point)|\borigin\b|\bfrom[-_\s]*(?:city|airport|station)\b|\b(?:travel|trip|flight|booking|route)[-_]?from\b|откуда|пункт\s*отправлен|город\s*отправлен|аэропорт\s*вылет|abflughafen|ville\s+de\s+d[ée]part|\borigen\b/iu;
 export const TRAVEL_TO =
-  /(?:^|[^a-zа-яё])to(?:[^a-zа-яё]|$)|destination|arrival[-_\s]*(?:city|airport|station)|куда|пункт\s*назначен|город\s*прибыт/i;
+  /^(?:\s*to\s*)+$|arrival[-_\s]*(?:city|airport|station|point)|\bdestination\b|\bto[-_\s]*(?:city|airport|station)\b|\b(?:travel|trip|flight|booking|route)[-_]?to\b|куда|пункт\s*назначен|город\s*прибыт|аэропорт\s*прил[её]т|zielflughafen|ville\s+d['’]arriv[ée]e|\bdestino\b/iu;
 export const TRAVEL_BOOKING_REF =
-  /\bpnr\b|booking[-_\s]*(?:ref(?:erence)?|code|number)|reservation[-_\s]*(?:code|number|ref)|confirmation[-_\s]*(?:code|number)|код\s*бронирован|номер\s*брони|бронь/i;
-export const TRAVEL_PASSENGERS = /passengers?|travellers?|пассажир/i;
-export const TRAVEL_SEATS = /\bseats?\b|\bseat[-_\s]*number\b|места|место\b|номер\s*места/i;
+  /\bpnr\b|booking[-_\s]*(?:ref(?:erence)?|code|number|no|id)|reservation[-_\s]*(?:code|number|ref(?:erence)?|id)|(?:booking|flight|travel|trip|ticket)[-_\s]*confirmation[-_\s]*(?:code|number|ref)?|record[-_\s]*locator|код\s*бронирован|номер\s*брони(?:рован\p{L}*)?|(?<![\p{L}\p{N}_])бронь(?![\p{L}\p{N}_])|buchungsnummer|buchungscode|num[ée]ro\s+de\s+r[ée]servation|code\s+de\s+r[ée]servation|c[óo]digo\s+de\s+reserva|localizador/iu;
+export const TRAVEL_PASSENGERS =
+  /\bpassengers?\b|\btravellers?\b|\btravelers?\b|пассажир|passagier|passager|pasajero/iu;
+export const TRAVEL_SEATS =
+  /\bseats?\b|\bseat[-_\s]*(?:number|no)\b|номер\s*мест|(?<![\p{L}\p{N}_])места(?![\p{L}\p{N}_])|место\s*в\s*(?:самол[её]т|поезд|салон)|sitzplatz|si[èe]ge|asiento/iu;
+
+/** Form/section headings that establish specialty form scope without polluting field labels. */
+export const LOYALTY_FORM_HEADING =
+  /(?:loyalty|bonus|reward(?:s)?|club|discount|membership)[-_\s]+(?:card|program(?:me)?)|карт\p{L}*\s*лояльност|бонусн\p{L}*\s*(?:карт|програм)|скидочн\p{L}*\s*карт|дисконтн\p{L}*\s*карт|клубн\p{L}*\s*карт|программ\p{L}*\s*лояльност|kundenkarte|treuekarte|carte\s+de\s+fid[ée]lit[ée]|tarjeta\s+de\s+fidelidad/iu;
+export const VEHICLE_FORM_HEADING =
+  /\bvehicle\b|\bcar[-_\s]+(?:info|details|registration|insurance)\b|\bauto[-_\s]+insurance\b|транспортн\p{L}*\s*средств|автомобил|данные\s*авто|(?<![\p{L}\p{N}_])транспорт(?![\p{L}\p{N}_])|\bfahrzeug\b|v[ée]hicule|veh[íi]culo/iu;
+export const TRAVEL_FORM_HEADING =
+  /travel[-_\s]*booking|flight[-_\s]*(?:booking|reservation|check[-_\s]?in|details|info)|manage[-_\s]*booking|booking[-_\s]*(?:details|lookup|search|info|reference)|trip[-_\s]*(?:details|booking|info)|бронирован\p{L}*|поездк\p{L}*|авиабилет|перел[её]т|reisebuchung|r[ée]servation\s+de\s+vol|reserva\s+de\s+vuelo/iu;
 
 /** Current / new / confirm password wording (EN + RU). */
 export const CONFIRM_PASSWORD_HINT =

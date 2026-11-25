@@ -420,6 +420,58 @@ describe("classifyAutofillInput non-login types", () => {
     );
   });
 
+  it("detects loyalty / vehicle / travel fields across EN, RU, and EU locales without false positives", () => {
+    // Space-separated EN labels without camelCase names
+    assert.equal(
+      classifyAutofillInput({ type: "text", name: "plate", labelText: "License plate" }),
+      "vehicle-plate",
+    );
+    assert.equal(
+      classifyAutofillInput({ type: "text", name: "ref", labelText: "Booking reference" }),
+      "travel-booking-reference",
+    );
+    assert.equal(
+      classifyAutofillInput({ type: "text", name: "f1", labelText: "Программа лояльности" }),
+      "loyalty-provider",
+    );
+    assert.equal(
+      classifyAutofillInput({ type: "text", name: "f2", labelText: "Номер бонусной карты" }),
+      "loyalty-card-number",
+    );
+    // DE / FR / ES specialty labels
+    assert.equal(
+      classifyAutofillInput({ type: "text", labelText: "Kundenkartennummer" }),
+      "loyalty-card-number",
+    );
+    assert.equal(
+      classifyAutofillInput({ type: "text", labelText: "Kennzeichen" }),
+      "vehicle-plate",
+    );
+    assert.equal(
+      classifyAutofillInput({ type: "text", labelText: "Buchungsnummer" }),
+      "travel-booking-reference",
+    );
+    assert.equal(
+      classifyAutofillInput({ type: "text", labelText: "Numéro de réservation" }),
+      "travel-booking-reference",
+    );
+    // Negative: Russian passport birth-place must not collide with travel-seats
+    assert.equal(
+      classifyAutofillInput({ type: "text", labelText: "Место рождения" }),
+      "birth-place",
+    );
+    // Negative: preposition «to» in a phrase must not trigger travel-to
+    assert.equal(
+      classifyAutofillInput({
+        type: "text",
+        id: "userName",
+        placeholder: "UserName",
+        labelText: "Register to Book Store",
+      }),
+      "username",
+    );
+  });
+
   it("never classifies login fields as loyalty / vehicle / travel", () => {
     assert.equal(classifyAutofillInput({ type: "password", name: "password" }), "password");
     assert.equal(classifyAutofillInput({ type: "text", autocomplete: "username" }), "username");

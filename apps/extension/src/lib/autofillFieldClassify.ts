@@ -72,6 +72,7 @@ import {
   LOYALTY_BARCODE,
   LOYALTY_EXPIRY,
   LOYALTY_CONTEXT,
+  LOYALTY_FORM_HEADING,
   VEHICLE_MAKE_MODEL,
   VEHICLE_PLATE,
   VEHICLE_VIN,
@@ -79,6 +80,7 @@ import {
   VEHICLE_POLICY,
   VEHICLE_INSURER,
   VEHICLE_INSURANCE_UNTIL,
+  VEHICLE_FORM_HEADING,
   TRAVEL_TRANSPORT,
   TRAVEL_CARRIER,
   TRAVEL_TRIP,
@@ -88,6 +90,7 @@ import {
   TRAVEL_BOOKING_REF,
   TRAVEL_PASSENGERS,
   TRAVEL_SEATS,
+  TRAVEL_FORM_HEADING,
 } from "./autofillDictionaries.ts";
 
 /** Semantic kinds for page input classification (aligned with vault extract keys + login/otp). */
@@ -159,6 +162,8 @@ export type AutofillFieldKind =
   | "travel-passengers"
   | "travel-seats";
 
+export type SpecialtyFormScope = "loyalty" | "vehicle" | "travel";
+
 export type AutofillInputHints = {
   type: string;
   name?: string;
@@ -172,6 +177,8 @@ export type AutofillInputHints = {
   role?: string;
   /** SAWF-style hint from `data-form-type` (read when present). */
   dataFormType?: string;
+  /** Containing form/section specialty scope (never concatenated into labelText). */
+  specialtyForm?: SpecialtyFormScope;
 };
 
 /** Optional DOM/context signals for ladder step 6 (position / context). */
@@ -380,7 +387,11 @@ export function isDeniedAutofillField(input: AutofillInputHints): boolean {
       acToken(ac, "username") ||
       acToken(ac, "current-password") ||
       acToken(ac, "new-password") ||
-      ac.includes("one-time")
+      ac.includes("one-time") ||
+      TRAVEL_BOOKING_REF.test(blob) ||
+      LOYALTY_CARD_NUMBER.test(blob) ||
+      VEHICLE_VIN.test(blob) ||
+      VEHICLE_PLATE.test(blob)
     ) {
       return false;
     }
@@ -416,11 +427,11 @@ function matchKeywordKind(blob: string): AutofillFieldKind | null {
     return "bday";
   }
   // Loyalty before payment card — «loyalty card number» / membership must not become cc-number.
-  if (LOYALTY_CARD_NUMBER.test(blob)) {
-    return "loyalty-card-number";
-  }
   if (LOYALTY_PROVIDER.test(blob)) {
     return "loyalty-provider";
+  }
+  if (LOYALTY_CARD_NUMBER.test(blob)) {
+    return "loyalty-card-number";
   }
   if (LOYALTY_BARCODE.test(blob)) {
     return "loyalty-barcode";
@@ -788,6 +799,142 @@ function refineOtpHeuristics(
   return null;
 }
 
+const LOYALTY_SCOPE_KINDS = new Set<AutofillFieldKind>([
+  "loyalty-provider",
+  "loyalty-card-number",
+  "loyalty-barcode",
+  "loyalty-expiry",
+]);
+const VEHICLE_SCOPE_KINDS = new Set<AutofillFieldKind>([
+  "vehicle-make-model",
+  "vehicle-plate",
+  "vehicle-vin",
+  "vehicle-inspection-due",
+  "vehicle-insurance-policy-number",
+  "vehicle-insurer",
+  "vehicle-insurance-valid-until",
+]);
+const TRAVEL_SCOPE_KINDS = new Set<AutofillFieldKind>([
+  "travel-transport-type",
+  "travel-carrier",
+  "travel-trip-number",
+  "travel-departure-at",
+  "travel-from",
+  "travel-to",
+  "travel-booking-reference",
+  "travel-passengers",
+  "travel-seats",
+]);
+
+/**
+ * Resolve ambiguous bare labels («Card number», «Expiry date», «Provider», «Plate»,
+ * «Valid until», «From», «To») when the containing form/section clearly belongs to a
+ * specialty category. Never runs on login/checkout forms (guarded in scope detection).
+ */
+function refineSpecialtyFormKind(
+  input: AutofillInputHints,
+  kind: AutofillFieldKind | null,
+): AutofillFieldKind | null {
+  const scope = input.specialtyForm;
+  if (!scope) {
+    return kind;
+  }
+  const blob = attrBlob(input);
+  if (scope === "loyalty") {
+    if (kind === "cc-number") {
+      return "loyalty-card-number";
+    }
+    if (kind === "cc-exp" || kind === "passport-expiry") {
+      return "loyalty-expiry";
+    }
+    if (kind === null || kind === "name" || kind === "organization") {
+      if (
+        /\bcard[-_\s]*(?:number|no|id)\b|\bmember(?:ship)?\b|номер\s*карт|номер\s*участник/iu.test(
+          blob,
+        )
+      ) {
+        return "loyalty-card-number";
+      }
+      if (
+        /\b(?:provider|program(?:me)?|store|merchant|brand|shop|retailer|issuer|company|organization)\b|провайдер|программ|магазин|сеть|бренд|компани|организац|название/iu.test(
+          blob,
+        )
+      ) {
+        return "loyalty-provider";
+      }
+      if (/\bqr\b|штрих|баркод/iu.test(blob)) {
+        return "loyalty-barcode";
+      }
+      if (
+        /expir|valid[-_\s]*(?:until|thru|to)|срок\s*действ|годен\s*до|действует\s*до/iu.test(blob)
+      ) {
+        return "loyalty-expiry";
+      }
+    }
+    return kind;
+  }
+  if (scope === "vehicle") {
+    if (kind === "cc-exp" || kind === "passport-expiry") {
+      return "vehicle-insurance-valid-until";
+    }
+    if (kind === null) {
+      if (/\bplate\b|\breg(?:istration)?[-_\s]*(?:number|no)\b|гос\.?\s*номер|номер\s*авто/iu.test(blob)) {
+        return "vehicle-plate";
+      }
+      if (/\bmake\b|\bmodel\b|марк|модел/iu.test(blob)) {
+        return "vehicle-make-model";
+      }
+      if (/inspection|\bmot\b|техосмотр/iu.test(blob)) {
+        return "vehicle-inspection-due";
+      }
+      if (/valid[-_\s]*(?:until|thru|to)|expir|действует\s*до|срок\s*действ|годен\s*до/iu.test(blob)) {
+        return "vehicle-insurance-valid-until";
+      }
+      if (/policy|полис/iu.test(blob)) {
+        return "vehicle-insurance-policy-number";
+      }
+      if (/insur|страхов/iu.test(blob)) {
+        return "vehicle-insurer";
+      }
+    }
+    return kind;
+  }
+  if (scope === "travel") {
+    if (kind === null) {
+      if (
+        /\b(?:ref(?:erence)?|pnr|confirmation|booking[-_\s]*code)\b|код\s*брон|номер\s*брон|бронь/iu.test(
+          blob,
+        )
+      ) {
+        return "travel-booking-reference";
+      }
+      if (/\boperator\b|\bcarrier\b|\bairline\b|перевозчик|авиакомпани/iu.test(blob)) {
+        return "travel-carrier";
+      }
+      if (/\bfrom\b|откуда/iu.test(blob)) {
+        return "travel-from";
+      }
+      if (/\bto\b|куда/iu.test(blob)) {
+        return "travel-to";
+      }
+      if (/\bdeparture\b|отправлен|вылет/iu.test(blob)) {
+        return "travel-departure-at";
+      }
+      if (/\bflight\b|\btrip\b|\btrain\b|рейс|поезд/iu.test(blob)) {
+        return "travel-trip-number";
+      }
+      if (/\bseat\b|место(?!\s*рожд)/iu.test(blob)) {
+        return "travel-seats";
+      }
+      if (/\bpassenger|\btraveller|\btraveler|пассажир/iu.test(blob)) {
+        return "travel-passengers";
+      }
+    }
+    return kind;
+  }
+  return kind;
+}
+
 /**
  * Classify a page input for autofill (login + personal / finance / docs / db / crypto).
  * Returns null when the field is not a known autofill target.
@@ -853,19 +1000,25 @@ export function classifyAutofillInput(
   // 4. label / aria
   kind = classifyFromLabelAria(input);
   if (kind) {
-    return kind;
+    return refineSpecialtyFormKind(input, kind);
   }
 
   // 5. name / id / placeholder
   kind = classifyFromNameIdPlaceholder(input);
   if (kind) {
-    return kind;
+    return refineSpecialtyFormKind(input, kind);
   }
 
   // 6. position / context
   kind = classifyFromPositionContext(input, context);
   if (kind) {
-    return kind;
+    return refineSpecialtyFormKind(input, kind);
+  }
+
+  // Specialty form scope fallback for bare labels (e.g. «Provider», «Plate», «Valid until»).
+  const specialty = refineSpecialtyFormKind(input, null);
+  if (specialty) {
+    return specialty;
   }
 
   // Residual OTP numeric heuristics when nothing else matched.
@@ -952,7 +1105,7 @@ export function queryAutofillInputs(root: ParentNode): HTMLInputElement[] {
   return found;
 }
 
-export function collectInputHints(el: HTMLInputElement): AutofillInputHints {
+function collectRawInputHints(el: HTMLInputElement): AutofillInputHints {
   let labelText = "";
   try {
     if (el.labels && el.labels.length > 0) {
@@ -974,19 +1127,6 @@ export function collectInputHints(el: HTMLInputElement): AutofillInputHints {
   const nearby = nearbyLabelText(el);
   if (nearby) {
     labelText = `${labelText} ${nearby}`.trim();
-  }
-  // Form / section headings give specialty context (e.g. «Loyalty card» + «Card number»).
-  try {
-    const form = el.closest("form") ?? el.closest("fieldset") ?? el.closest("section");
-    const heading = form?.querySelector?.(
-      "h1, h2, h3, h4, legend, [role='heading'], .form-title, .title",
-    );
-    const headingText = heading?.textContent?.trim() ?? "";
-    if (headingText && headingText.length < 160) {
-      labelText = `${labelText} ${headingText}`.trim();
-    }
-  } catch {
-    /* ignore */
   }
   const autocompleteAttr = el.getAttribute("autocomplete")?.trim() || undefined;
   const autocompleteIdl = el.autocomplete?.trim() || undefined;
@@ -1015,6 +1155,98 @@ export function collectInputHints(el: HTMLInputElement): AutofillInputHints {
     role: el.getAttribute("role") ?? undefined,
     dataFormType,
   };
+}
+
+function headingMetaForSpecialtyScope(scope: Element): string {
+  const parts: string[] = [];
+  const push = (text: string | null | undefined) => {
+    const trimmed = text?.trim() ?? "";
+    if (trimmed && trimmed.length < 160) {
+      parts.push(trimmed);
+    }
+  };
+  push(scope.id);
+  push(scope.getAttribute("name"));
+  push(scope.getAttribute("aria-label"));
+  try {
+    const headings = scope.querySelectorAll(
+      "h1, h2, h3, h4, h5, h6, legend, [role='heading'], .form-title",
+    );
+    for (const h of Array.from(headings).slice(0, 3)) {
+      push(h.textContent);
+    }
+    if (scope.tagName === "FORM") {
+      const prev = scope.previousElementSibling;
+      if (prev && (/^H[1-6]$/i.test(prev.tagName) || prev.getAttribute("role") === "heading")) {
+        push(prev.textContent);
+      }
+      const section = scope.closest("section, fieldset");
+      const sectionHeading = section?.querySelector(
+        ":scope > h1, :scope > h2, :scope > h3, :scope > h4, :scope > legend",
+      );
+      push(sectionHeading?.textContent);
+    }
+  } catch {
+    /* ignore */
+  }
+  return parts.join(" ");
+}
+
+function detectSpecialtyFormForElement(el: HTMLInputElement): SpecialtyFormScope | undefined {
+  try {
+    const scope =
+      el.form ?? el.closest("form") ?? el.closest("fieldset") ?? el.closest("section");
+    if (!scope || scope === el.ownerDocument.body || scope === el.ownerDocument.documentElement) {
+      return undefined;
+    }
+    const siblings = Array.from(scope.querySelectorAll("input")).filter(
+      (node): node is HTMLInputElement => node instanceof HTMLInputElement,
+    );
+    // Disqualify login/register and payment-card checkout forms from specialty remapping.
+    let siblingScope: SpecialtyFormScope | undefined;
+    for (const sib of siblings) {
+      if (sib.type.toLowerCase() === "password") {
+        return undefined;
+      }
+      const rawKind = classifyAutofillInput(collectRawInputHints(sib));
+      if (rawKind === "password" || rawKind === "cc-csc") {
+        return undefined;
+      }
+      if (!siblingScope && rawKind) {
+        if (LOYALTY_SCOPE_KINDS.has(rawKind)) {
+          siblingScope = "loyalty";
+        } else if (VEHICLE_SCOPE_KINDS.has(rawKind)) {
+          siblingScope = "vehicle";
+        } else if (TRAVEL_SCOPE_KINDS.has(rawKind)) {
+          siblingScope = "travel";
+        }
+      }
+    }
+    const meta = headingMetaForSpecialtyScope(scope);
+    if (meta) {
+      if (LOYALTY_FORM_HEADING.test(meta)) {
+        return "loyalty";
+      }
+      if (VEHICLE_FORM_HEADING.test(meta)) {
+        return "vehicle";
+      }
+      if (TRAVEL_FORM_HEADING.test(meta)) {
+        return "travel";
+      }
+    }
+    return siblingScope;
+  } catch {
+    return undefined;
+  }
+}
+
+export function collectInputHints(el: HTMLInputElement): AutofillInputHints {
+  const hints = collectRawInputHints(el);
+  const specialtyForm = detectSpecialtyFormForElement(el);
+  if (specialtyForm) {
+    hints.specialtyForm = specialtyForm;
+  }
+  return hints;
 }
 
 export function collectPageFieldKinds(root: ParentNode): AutofillFieldKind[] {

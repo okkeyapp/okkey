@@ -272,6 +272,29 @@ describe("detectAutofillFormType", () => {
     );
   });
 
+  it("does not treat travel/loyalty/vehicle forms with Search CTA as search forms", () => {
+    assert.notEqual(
+      detectAutofillFormType(
+        signals({
+          fieldKinds: ["travel-booking-reference", "travel-carrier"],
+          formTextBlob: "Search booking",
+          urlPath: "/manage-booking",
+        }),
+      ),
+      "search",
+    );
+    assert.notEqual(
+      detectAutofillFormType(
+        signals({
+          fieldKinds: ["loyalty-card-number", "loyalty-provider"],
+          formTextBlob: "Поиск карты лояльности",
+          urlPath: "/loyalty",
+        }),
+      ),
+      "search",
+    );
+  });
+
   it("register wording + password beats bare login shape", () => {
     assert.equal(
       detectAutofillFormType(
