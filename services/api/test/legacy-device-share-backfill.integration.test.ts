@@ -72,13 +72,14 @@ test("integration: device share migration clears inactive rows and backfill remo
     sessions: storage.repositories.sessions,
     config,
   });
+  // Two accounts are registered into one database; self-hosted invite gating is covered elsewhere.
   const registrationService = new RegistrationService({
     authService,
     users: storage.repositories.users,
     postgres: storage.postgres,
     redis: storage.redis,
     sessionService,
-    config,
+    config: { ...config, deploymentMode: "saas" },
   });
   const devices = new DeviceService({
     devices: storage.repositories.devices,
