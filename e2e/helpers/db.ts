@@ -95,12 +95,22 @@ export async function resetE2eCatalog(): Promise<void> {
   client.on("error", () => {});
   await client.connect();
   try {
+    // CASCADE also clears server_instance_settings (workspace_id references workspaces),
+    // so the singleton row must be re-seeded before setup can finish.
     await client.query("TRUNCATE TABLE users RESTART IDENTITY CASCADE");
+    await client.query(
+      `
+        INSERT INTO server_instance_settings (id)
+        VALUES (TRUE)
+        ON CONFLICT (id) DO NOTHING
+      `,
+    );
     await client.query(
       `
         UPDATE server_instance_settings
         SET setup_completed_at = NULL,
-            registration_mode = 'open',
+            workspace_id = NULL,
+            registration_mode = 'invite_only',
             updated_at = now()
         WHERE id = TRUE
       `,
