@@ -93,6 +93,7 @@ export default function SystemUpdateSidebarButton() {
   const formatted = formatSidebarVersionLabel({
     version: status.currentVersion,
     commitSha: status.commitSha,
+    enterpriseCommitSha: status.enterpriseInstalled ? status.enterpriseCommitSha : null,
     releaseTag: status.releaseTag,
   });
 
@@ -140,6 +141,7 @@ export default function SystemUpdateSidebarButton() {
       <SystemUpdateVersionMenu
         label={formatted.label}
         commitSha={formatted.tooltip}
+        enterpriseCommitSha={formatted.enterpriseTooltip}
         updateAvailable={updateAvailable}
         updateAvailableLabel={t("web.systemUpdate.notice")}
         licenseExpiredLabel={licenseExpired ? t("web.systemUpdate.error.LICENSE_EXPIRED") : null}
@@ -168,6 +170,7 @@ export default function SystemUpdateSidebarButton() {
 export function SystemUpdateVersionMenu({
   label,
   commitSha,
+  enterpriseCommitSha = null,
   updateAvailable,
   updateAvailableLabel,
   licenseExpiredLabel = null,
@@ -176,6 +179,7 @@ export function SystemUpdateVersionMenu({
 }: {
   label: string;
   commitSha: string | null;
+  enterpriseCommitSha?: string | null;
   updateAvailable: boolean;
   updateAvailableLabel: string;
   licenseExpiredLabel?: string | null;
@@ -190,6 +194,7 @@ export function SystemUpdateVersionMenu({
           data-testid="system-update-version"
           data-update={updateAvailable ? "available" : "current"}
           data-commit-sha={commitSha ?? ""}
+          data-enterprise-commit-sha={enterpriseCommitSha ?? ""}
           className={cn(collapsed && "relative h-9 min-h-9 justify-center px-0")}
           onClick={onClick}
         >

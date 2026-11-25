@@ -20,6 +20,7 @@ import {
 } from "./offline-files";
 import { readOfflineUpload } from "./read-offline-upload";
 import { planComponentUpdateOrder } from "./update-order";
+import { formatVersionWithCommitShas } from "./version-label";
 import { waitForRunningCore, type CoreRestartPoll } from "./wait-for-core";
 import type {
   SystemUpdateAvailable,
@@ -486,9 +487,9 @@ export default function SystemUpdateModal({
                       {t("web.systemUpdate.currentVersion", {
                         version: formatInstalledVersion(
                           row.installedVersion,
-                          row.component === "okkey"
-                            ? status.commitSha
-                            : (status.enterpriseCommitSha ?? null),
+                          row.component,
+                          status.commitSha,
+                          status.enterpriseInstalled ? (status.enterpriseCommitSha ?? null) : null,
                         ),
                       })}
                     </p>
@@ -735,13 +736,30 @@ function componentName(t: Translate, component: SystemUpdateComponent): string {
   );
 }
 
-/** Append a short commit SHA in parentheses when the API reports one. */
-function formatInstalledVersion(version: string, commitSha: string | null | undefined): string {
-  const sha = (commitSha ?? "").trim().toLowerCase();
-  if (!sha || !/^[0-9a-f]{7,64}$/.test(sha)) {
-    return version;
+/**
+ * Append short commit SHA(s) for the System update window.
+ * Okkey row: core only, or labeled core + enterprise when both are known.
+ * Enterprise row: enterprise SHA only (unlabeled parentheses, same as before).
+ */
+function formatInstalledVersion(
+  version: string,
+  component: SystemUpdateComponent,
+  commitSha: string | null | undefined,
+  enterpriseCommitSha: string | null | undefined,
+): string {
+  if (component === "enterprise") {
+    return formatVersionWithCommitShas({
+      version,
+      commitSha: enterpriseCommitSha,
+      shortShaLen: 7,
+    });
   }
-  return `${version} (${sha.slice(0, 7)})`;
+  return formatVersionWithCommitShas({
+    version,
+    commitSha,
+    enterpriseCommitSha,
+    shortShaLen: 7,
+  });
 }
 
 function safeHttpUrl(value: string | null | undefined): string | null {

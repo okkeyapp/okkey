@@ -496,12 +496,11 @@ export function loadConfig(): ApiConfig {
     gitSha: resolveGitSha(process.env.OKKEY_GIT_SHA, nodeEnv, path.resolve(serviceRoot, "..")),
     releaseTag: (process.env.OKKEY_RELEASE_TAG ?? "").trim(),
     enterpriseVersion: (process.env.OKKEY_ENTERPRISE_VERSION ?? "").trim(),
-    enterpriseGitSha: resolveGitSha(
-      process.env.OKKEY_ENTERPRISE_GIT_SHA,
-      nodeEnv,
-      // Sibling checkout next to Core: repositories/okkey-enterprise
-      path.resolve(serviceRoot, "../../../okkey-enterprise"),
-    ),
+    // Only when enterprise modules are actually loaded. A sibling checkout alone
+    // (or a leftover OKKEY_ENTERPRISE_GIT_SHA) must not surface an enterprise SHA.
+    enterpriseGitSha: enterpriseModulesEnabled
+      ? resolveGitSha(process.env.OKKEY_ENTERPRISE_GIT_SHA, nodeEnv, enterpriseModulesPath)
+      : "",
     updateCoreFeedUrl: resolveCoreUpdateFeedUrl(
       process.env.OKKEY_UPDATE_CORE_FEED_URL,
       process.env.OKKEY_UPDATE_FEED_URL,

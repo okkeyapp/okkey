@@ -10,36 +10,77 @@ export type SidebarVersionLabel = {
    * Comes from API `commitSha` / `OKKEY_GIT_SHA`, not a packaging revision.
    */
   tooltip: string | null;
+  /**
+   * Full enterprise-repo commit when known (also used for `data-enterprise-commit-sha`).
+   * Comes from API `enterpriseCommitSha` / `OKKEY_ENTERPRISE_GIT_SHA`.
+   */
+  enterpriseTooltip: string | null;
 };
 
 /**
- * Sidebar button text is the version, plus a short okkey commit SHA in parentheses
- * when known (first 8 chars of API `commitSha` / `OKKEY_GIT_SHA`).
+ * Sidebar button text is the version, plus short commit SHA(s) in parentheses
+ * when known. With only the core SHA: `v1.0.0 (2bf668f3)`.
+ * When an enterprise SHA is also present: `v1.0.0 (core 2bf668f3 · enterprise abcdef01)`.
  * A tagged build and a plain version string both show `v<semver>`.
  * A version that is only a commit SHA uses the dev-channel version `0.0.0-dev`.
- * When the SHA is empty or invalid, the label is the version only (no empty parentheses).
+ * When every SHA is empty or invalid, the label is the version only (no empty parentheses).
  */
 export function formatSidebarVersionLabel(input: {
   version: string;
   commitSha?: string | null;
+  enterpriseCommitSha?: string | null;
   releaseTag?: string | null;
 }): SidebarVersionLabel {
   const release = releaseSemver(input.releaseTag);
   const parsed = release
     ? { version: release, sha: normalizeSha(input.commitSha) }
     : splitVersionAndSha(input.version, input.commitSha);
+  const enterpriseSha = normalizeSha(input.enterpriseCommitSha);
 
   return {
-    label: withShortSha(displayVersion(parsed.version), parsed.sha),
+    label: formatVersionWithCommitShas({
+      version: displayVersion(parsed.version),
+      commitSha: parsed.sha,
+      enterpriseCommitSha: enterpriseSha,
+      shortShaLen: SHORT_SHA_LEN,
+    }),
     tooltip: parsed.sha,
+    enterpriseTooltip: enterpriseSha,
   };
 }
 
-function withShortSha(versionDisplay: string, sha: string | null): string {
-  if (!sha) {
-    return versionDisplay;
+/**
+ * Append short commit SHA(s) in parentheses when present.
+ * Core only → `version (abcdef01)`.
+ * Core + enterprise → `version (core abcdef01 · enterprise 12345678)`.
+ * Enterprise only → `version (enterprise 12345678)`.
+ * Neither → `version`.
+ */
+export function formatVersionWithCommitShas(input: {
+  version: string;
+  commitSha?: string | null;
+  enterpriseCommitSha?: string | null;
+  shortShaLen?: number;
+}): string {
+  const version = input.version;
+  const len = input.shortShaLen ?? SHORT_SHA_LEN;
+  const core = shortenSha(input.commitSha, len);
+  const enterprise = shortenSha(input.enterpriseCommitSha, len);
+  if (core && enterprise) {
+    return `${version} (core ${core} · enterprise ${enterprise})`;
   }
-  return `${versionDisplay} (${sha.slice(0, SHORT_SHA_LEN)})`;
+  if (core) {
+    return `${version} (${core})`;
+  }
+  if (enterprise) {
+    return `${version} (enterprise ${enterprise})`;
+  }
+  return version;
+}
+
+function shortenSha(value: string | null | undefined, len: number): string | null {
+  const sha = normalizeSha(value);
+  return sha ? sha.slice(0, len) : null;
 }
 
 function releaseSemver(releaseTag: string | null | undefined): string | null {

@@ -47,7 +47,10 @@ export type SystemUpdateStatus = {
   releaseTag: string | null;
   enterpriseInstalled: boolean;
   enterpriseVersion: string | null;
-  /** Full git commit for the installed enterprise sibling. Null when unknown. */
+  /**
+   * Full git commit for the installed enterprise sibling
+   * (`OKKEY_ENTERPRISE_GIT_SHA`). Null when unknown or not installed.
+   */
   enterpriseCommitSha?: string | null;
   feedConfigured: boolean;
   isolated: boolean;
