@@ -60,7 +60,6 @@ import {
   createSetupApiClient,
   type SetupSmtpProviderDto,
 } from "../../setup/setupApi";
-import { registrationStepAfterRecoveryEnroll } from "../auth/registrationRecoveryStep";
 import { SETUP_CODE_LENGTH, SetupCodeInput } from "./SetupCodeInput";
 import {
   SETUP_WIZARD_NAV_STEPS,
@@ -70,6 +69,7 @@ import {
 import { setupCodeErrorKind } from "./setupCodeErrors";
 import { setupFinishLockPath } from "./setupFinishLockPath";
 import { applySetupMailProvider } from "./setupMailProvider";
+import { wizardStepAfterRecoveryEnroll } from "./setupWizardRecoveryEnroll";
 import { smtpTestErrorKind, smtpTestErrorMessageKey } from "@/lib/smtpTestErrors";
 import {
   capturePendingLogoForFinish,
@@ -78,14 +78,29 @@ import {
   shouldWipeLogoMaterialsOnUnmount,
 } from "./setupLogoUpload";
 
-type WizardStep = "code" | "mail" | "server" | "owner" | "password" | "recovery" | "finishing";
+type WizardStep =
+  | "code"
+  | "mail"
+  | "server"
+  | "owner"
+  | "password"
+  | "enrolling"
+  | "enrollFailed"
+  | "registerFailed"
+  | "recovery"
+  | "finishing";
 
 function navStepIndex(step: WizardStep): number {
   if (step === "code") {
     return -1;
   }
-  if (step === "finishing") {
-    return SETUP_WIZARD_NAV_STEPS.indexOf("recovery");
+  if (
+    step === "finishing" ||
+    step === "enrolling" ||
+    step === "enrollFailed" ||
+    step === "registerFailed"
+  ) {
+    return SETUP_WIZARD_NAV_STEPS.indexOf(step === "registerFailed" ? "password" : "recovery");
   }
   return SETUP_WIZARD_NAV_STEPS.indexOf(step as SetupWizardNavStep);
 }
@@ -526,21 +541,7 @@ export default function SetupWizardPage() {
     return secret;
   }
 
-  async function handlePasswordSubmit(e: FormEvent) {
-    e.preventDefault();
-    if (!authStateId || busy) {
-      return;
-    }
-    if (masterPassword !== repeatMasterPassword) {
-      setError(t("auth.registration.reqPasswordsMatch"));
-      return;
-    }
-    if (!masterPasswordMeetsNewPasswordPolicy(masterPassword)) {
-      setError(t("auth.registration.reqPasswordLength", { min: MIN_MASTER_PASSWORD_LENGTH }));
-      return;
-    }
-    setBusy(true);
-    setError(null);
+  async function runOwnerDeviceRegistration(registrationAuthStateId: string): Promise<void> {
     const pwd = new TextEncoder().encode(masterPassword);
     masterPasswordRef.current = masterPassword;
     try {
@@ -573,7 +574,7 @@ export default function SetupWizardPage() {
       const personalVaultName = t("web.workspaceSettings.vaults.personal.title");
       const browserEnv = parseBrowserEnvironment(navigator.userAgent ?? "");
       const body: RegisterCompleteRequestDto = {
-        auth_state_id: authStateId,
+        auth_state_id: registrationAuthStateId,
         user_public_key: wire.user_public_key,
         user_public_pq_key: wire.user_public_pq_key,
         user_public_mldsa_key: wire.user_public_mldsa_key,
@@ -622,22 +623,134 @@ export default function SetupWizardPage() {
       wipeBytes(material.deviceShare);
       wipeBytes(material.shareWrap.ed25519Seed);
       wipeBytes(material.shareWrap.mlkemDecapsulationKey);
+
+      // Device/user registration succeeded; recovery enroll is required before finish.
+      // On failure stay on a blocking step with Try again (do not skip enroll).
+      setStep("enrolling");
+      setError(null);
       try {
         const secret = await enrollAccountRecoveryKey(material.vaultKey, reg.access_token);
         wipeBytes(material.vaultKey);
         vaultKeyPendingEnrollRef.current = null;
         setRecoverySecret(secret);
-        setStep(registrationStepAfterRecoveryEnroll(true) === "recoveryKey" ? "recovery" : "recovery");
-      } catch {
-        setError(t("auth.registration.recovery.errorEnroll"));
-        setStep("recovery");
+        setStep(wizardStepAfterRecoveryEnroll(true));
+      } catch (enrollErr) {
+        if (import.meta.env.DEV) {
+          console.error("[setup/register/recovery-enroll]", enrollErr);
+        }
+        setError(t("web.setupWizard.deviceRegistration.error"));
+        setStep(wizardStepAfterRecoveryEnroll(false));
       }
     } catch (err) {
       wipeBytes(pwd);
       if (import.meta.env.DEV) {
         console.error("[setup/register]", err);
       }
-      setError(t("auth.registration.errorGeneric"));
+      setError(t("web.setupWizard.deviceRegistration.error"));
+      setStep("registerFailed");
+    }
+  }
+
+  async function handlePasswordSubmit(e: FormEvent) {
+    e.preventDefault();
+    if (!authStateId || busy) {
+      return;
+    }
+    if (masterPassword !== repeatMasterPassword) {
+      setError(t("auth.registration.reqPasswordsMatch"));
+      return;
+    }
+    if (!masterPasswordMeetsNewPasswordPolicy(masterPassword)) {
+      setError(t("auth.registration.reqPasswordLength", { min: MIN_MASTER_PASSWORD_LENGTH }));
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      await runOwnerDeviceRegistration(authStateId);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /**
+   * Retry after a failed owner/device registration step.
+   * - If completeRegistration already succeeded: re-run recovery enroll only
+   *   (in-memory vault key + bootstrap token; never web storage).
+   * - Otherwise: mint a fresh auth_state via beginRegistration (do not reuse a
+   *   consumed/expired one-time token) and re-run device registration.
+   */
+  async function retryDeviceRegistration() {
+    if (busy) {
+      return;
+    }
+    const vaultKey = vaultKeyPendingEnrollRef.current;
+    const token = postRegAccessToken;
+    if (vaultKey && token) {
+      setBusy(true);
+      setError(null);
+      setStep("enrolling");
+      try {
+        const secret = await enrollAccountRecoveryKey(vaultKey, token);
+        wipeBytes(vaultKey);
+        vaultKeyPendingEnrollRef.current = null;
+        setRecoverySecret(secret);
+        setStep(wizardStepAfterRecoveryEnroll(true));
+      } catch (enrollErr) {
+        if (import.meta.env.DEV) {
+          console.error("[setup/register/device-registration-retry]", enrollErr);
+        }
+        setError(t("web.setupWizard.deviceRegistration.error"));
+        setStep(wizardStepAfterRecoveryEnroll(false));
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
+
+    if (!setupToken || !ownerEmail.trim()) {
+      setError(t("web.setupWizard.deviceRegistration.error"));
+      setStep("registerFailed");
+      return;
+    }
+    if (masterPassword !== repeatMasterPassword) {
+      setError(t("auth.registration.reqPasswordsMatch"));
+      setStep("password");
+      return;
+    }
+    if (!masterPasswordMeetsNewPasswordPolicy(masterPassword)) {
+      setError(t("auth.registration.reqPasswordLength", { min: MIN_MASTER_PASSWORD_LENGTH }));
+      setStep("password");
+      return;
+    }
+
+    setBusy(true);
+    setError(null);
+    setStep("enrolling");
+    try {
+      // Fresh auth_state — never reuse a consumed/expired one-time registration token.
+      const begun = await setupApi.beginRegistration(setupToken, ownerEmail.trim());
+      if (begun.already_registered) {
+        setAuthStateId(null);
+        setRegistrationAuthStateId(null);
+        setResumeMode(true);
+        setRecoveryExported(true);
+        setRecoverySecret(null);
+        setStep("recovery");
+        return;
+      }
+      if (!begun.auth_state_id) {
+        throw new Error("auth_state_id missing");
+      }
+      setAuthStateId(begun.auth_state_id);
+      setRegistrationAuthStateId(begun.auth_state_id);
+      await runOwnerDeviceRegistration(begun.auth_state_id);
+    } catch (err) {
+      if (import.meta.env.DEV) {
+        console.error("[setup/register/device-registration-retry]", err);
+      }
+      setError(t("web.setupWizard.deviceRegistration.error"));
+      setStep("registerFailed");
     } finally {
       setBusy(false);
     }
@@ -865,11 +978,13 @@ export default function SetupWizardPage() {
           ? t("web.setupWizard.ownerTitle")
           : step === "password"
             ? t("web.setupWizard.passwordTitle")
-            : step === "recovery" || step === "finishing"
-              ? resumeMode
-                ? t("web.setupWizard.resumeFinishTitle")
-                : t("auth.registration.recovery.title")
-              : t("auth.setup.title");
+            : step === "enrolling" || step === "enrollFailed" || step === "registerFailed"
+              ? t("web.setupWizard.step.password.title")
+              : step === "recovery" || step === "finishing"
+                ? resumeMode
+                  ? t("web.setupWizard.resumeFinishTitle")
+                  : t("auth.registration.recovery.title")
+                : t("auth.setup.title");
 
   const description =
     step === "mail"
@@ -880,11 +995,13 @@ export default function SetupWizardPage() {
           ? t("web.setupWizard.ownerDescription")
           : step === "password"
             ? t("web.setupWizard.passwordDescription")
-            : step === "code"
-              ? t("auth.setup.description")
-              : resumeMode
-                ? t("web.setupWizard.resumeFinishHint")
-                : undefined;
+            : step === "enrollFailed" || step === "registerFailed"
+              ? t("web.setupWizard.deviceRegistration.error")
+              : step === "code"
+                ? t("auth.setup.description")
+                : step === "recovery" && resumeMode
+                  ? t("web.setupWizard.resumeFinishHint")
+                  : undefined;
 
   const codeComplete = code.replace(/-/g, "").length >= SETUP_CODE_LENGTH;
 
@@ -926,7 +1043,11 @@ export default function SetupWizardPage() {
   }
 
   const activeNavStep: SetupWizardNavStep =
-    step === "finishing" ? "recovery" : (step as SetupWizardNavStep);
+    step === "finishing" || step === "enrolling" || step === "enrollFailed"
+      ? "recovery"
+      : step === "registerFailed"
+        ? "password"
+        : (step as SetupWizardNavStep);
   const reachableIndex = Math.max(0, navStepIndex(step));
 
   const stepBody = (
@@ -938,9 +1059,28 @@ export default function SetupWizardPage() {
         </Alert>
       ) : null}
 
-      {step === "finishing" ? (
+      {step === "finishing" || step === "enrolling" ? (
         <div className="flex w-full flex-col items-center gap-4 py-10" role="status" aria-busy="true">
-          <Spinner aria-label={t("auth.registration.recovery.preparing")} />
+          <Spinner
+            aria-label={
+              step === "enrolling"
+                ? t("web.setupWizard.deviceRegistration.preparing")
+                : t("auth.registration.recovery.preparing")
+            }
+          />
+        </div>
+      ) : null}
+
+      {step === "enrollFailed" || step === "registerFailed" ? (
+        <div className="flex w-full flex-col gap-6" data-testid="setup-device-registration-failed">
+          <Button
+            type="button"
+            className="w-full"
+            disabled={busy}
+            onClick={() => void retryDeviceRegistration()}
+          >
+            {t("web.setupWizard.deviceRegistration.retry")}
+          </Button>
         </div>
       ) : null}
 
@@ -1300,7 +1440,14 @@ export default function SetupWizardPage() {
       activeStep={activeNavStep}
       reachableIndex={reachableIndex}
       onSelectStep={(next) => {
-        if (busy || testing || step === "finishing") {
+        if (
+          busy ||
+          testing ||
+          step === "finishing" ||
+          step === "enrolling" ||
+          step === "enrollFailed" ||
+          step === "registerFailed"
+        ) {
           return;
         }
         setError(null);
