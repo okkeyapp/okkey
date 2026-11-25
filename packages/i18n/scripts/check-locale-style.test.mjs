@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import {
   checkKeyFormFieldLabelCasing,
   checkLinkGlueSpacing,
+  isFieldLabelCasingValid,
   runLocaleStyleCheck,
 } from "./check-locale-style.mjs";
 
@@ -20,6 +21,21 @@ test("BeforeLink / AfterLink glue keeps a space around the privacy link", () => 
 test("keyForm fieldLabels are lowercase in non-de locales except allow-listed abbreviations", () => {
   const errors = checkKeyFormFieldLabelCasing();
   assert.deepEqual(errors, []);
+});
+
+test("isFieldLabelCasingValid allows lowercase, brands, and acronyms while rejecting Title Case", () => {
+  assert.equal(isFieldLabelCasingValid("login"), true);
+  assert.equal(isFieldLabelCasingValid("endereço URL"), true);
+  assert.equal(isFieldLabelCasingValid("código SWIFT"), true);
+  assert.equal(isFieldLabelCasingValid("VIN"), true);
+  assert.equal(isFieldLabelCasingValid("CVC/CVV"), true);
+  assert.equal(isFieldLabelCasingValid("AirPort ID"), true);
+  assert.equal(isFieldLabelCasingValid("PNR"), true);
+
+  assert.equal(isFieldLabelCasingValid("Conecte-se"), false);
+  assert.equal(isFieldLabelCasingValid("Endereço URL"), false);
+  assert.equal(isFieldLabelCasingValid("Código Swift"), false);
+  assert.equal(isFieldLabelCasingValid("Número IBAN"), false);
 });
 
 test("locale style CLI exits 0 on current tree", () => {

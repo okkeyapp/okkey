@@ -12,7 +12,9 @@ const webDir = path.join(pkgRoot, "src", "locales", "web");
 const TITLECASE_NOUN_LOCALES = new Set(["de"]);
 
 /**
- * Field labels may start with these tokens (abbreviations / brands).
+ * Field labels may start with these mixed-case brands or explicit abbreviations.
+ * All-uppercase ASCII acronyms (2+ letters, e.g. URL, VIN, IBAN, SWIFT, CVC)
+ * are also allowed via `isAllowedFieldLabelStart`.
  * Matched as a whole first word (split on space, `/`, `-`).
  */
 const FIELD_LABEL_ALLOWED_START_TOKENS = new Set([
@@ -24,6 +26,7 @@ const FIELD_LABEL_ALLOWED_START_TOKENS = new Set([
   "SWIFT",
   "TOTP",
   "PIN",
+  "VIN",
   "ID",
   "IP",
   "AirPort",
@@ -40,6 +43,11 @@ const FIELD_LABEL_ALLOWED_START_TOKENS = new Set([
   "WPA2",
   "WPA3",
 ]);
+
+export function isAllowedFieldLabelStart(token) {
+  if (FIELD_LABEL_ALLOWED_START_TOKENS.has(token)) return true;
+  return /^[A-Z]{2,}[0-9]*$/u.test(token);
+}
 
 function loadJson(filePath) {
   return JSON.parse(fs.readFileSync(filePath, "utf8"));
@@ -105,6 +113,12 @@ export function checkLinkGlueSpacing(locales = listWebLocales()) {
   return errors;
 }
 
+export function isFieldLabelCasingValid(value) {
+  if (typeof value !== "string" || value.length === 0) return true;
+  if (!isLatinUpperStart(value)) return true;
+  return isAllowedFieldLabelStart(firstToken(value));
+}
+
 /**
  * Non-German keyForm field labels should be lowercase except allow-listed
  * abbreviations/brands at the start.
@@ -116,11 +130,7 @@ export function checkKeyFormFieldLabelCasing(locales = listWebLocales()) {
     const bundle = loadJson(path.join(webDir, `${code}.json`));
     for (const [key, value] of Object.entries(bundle)) {
       if (!key.startsWith("web.keyForm.fieldLabels.")) continue;
-      if (typeof value !== "string" || value.length === 0) continue;
-      if (!isLatinUpperStart(value)) continue;
-      const token = firstToken(value);
-      if (FIELD_LABEL_ALLOWED_START_TOKENS.has(token)) continue;
-      // Allow "CVC/CVV" style where firstToken is CVC
+      if (isFieldLabelCasingValid(value)) continue;
       errors.push({
         locale: code,
         key,
