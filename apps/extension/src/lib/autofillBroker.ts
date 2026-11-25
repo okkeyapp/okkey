@@ -295,8 +295,13 @@ function filterCategoriesByFormType(
     return categories.filter((id) => id === "login");
   }
   if (formType === "register") {
-    // Password → generator only (content script). Username → nickname from personal_data.
-    if (focused === "password") {
+    // current-password is remapped to formType=login in the content script before query.
+    // Bare password on register → generator only (content script). Username → personal_data.
+    if (focused === "password" || focused === "current-password") {
+      // Defensive: if a caller still sends register + current-password, offer logins.
+      if (focused === "current-password") {
+        return categories.filter((id) => id === "login");
+      }
       return [];
     }
     return categories.filter((id) => id === "personal_data");

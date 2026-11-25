@@ -49,6 +49,7 @@ import {
   isCurrentPasswordField,
   isSaveOfferFormType,
   isUsernameGeneratorField,
+  resolveAutofillQueryFormType,
   shouldOpenPasswordGenerator,
   type AutofillFormType,
 } from "../lib/autofillFormDetect";
@@ -84,6 +85,7 @@ import {
   findLoginFields,
   isVisibleFillableElement,
   resolveAutofillAnchorInput,
+  resolveAutofillFillRoot,
   resolveAutofillKindForElement,
   resolvePageAddressLocale,
   submitLoginFormIfReady,
@@ -2877,6 +2879,21 @@ export default defineContentScript({
       }
     }
 
+    /**
+     * Vault query form type: current-password on change-password/register maps to
+     * `login` so saved logins are offered (generators stay on new/confirm).
+     */
+    function resolveQueryFormType(
+      formType: AutofillFormType,
+      focused?: HTMLInputElement | null,
+    ): AutofillFormType {
+      try {
+        return resolveAutofillQueryFormType(formType, focused);
+      } catch {
+        return formType;
+      }
+    }
+
     function isRegisterUsernameField(
       input: HTMLInputElement,
       formType: AutofillFormType,
@@ -2986,7 +3003,10 @@ export default defineContentScript({
       const queryGen = ++overlayQueryGeneration;
       let response: AutofillQueryResponse;
       try {
-        response = await queryMatches(fieldKindsForQuery(activeInput), formType);
+        response = await queryMatches(
+          fieldKindsForQuery(activeInput),
+          resolveQueryFormType(formType, activeInput),
+        );
       } catch {
         return;
       }
@@ -3065,7 +3085,10 @@ export default defineContentScript({
       const queryGen = ++overlayQueryGeneration;
       let response: AutofillQueryResponse;
       try {
-        response = await queryMatches(fieldKindsForQuery(input), formType);
+        response = await queryMatches(
+          fieldKindsForQuery(input),
+          resolveQueryFormType(formType, input),
+        );
       } catch {
         // Do not repaint if focus left for Select / datepicker while the query failed.
         if (
@@ -3468,9 +3491,20 @@ export default defineContentScript({
       // Keep toggle on the filled field (do not hideOverlay).
       void paintOverlay({ showToggleOnly: true });
       // Focused field always overwrites; other form fields only when empty.
+      // Open shadow: fill inside the same shadow root the detector used (not light-DOM query).
+      const fillRoot = resolveAutofillFillRoot(activeInput, document);
+      const passwordHints =
+        activeInput && (activeInput.type || "").toLowerCase() === "password"
+          ? findLoginFields(fillRoot).password.map((el) => collectInputHints(el))
+          : [];
+      const currentPasswordOnly = Boolean(
+        activeInput &&
+          isCurrentPasswordField(collectInputHints(activeInput), passwordHints),
+      );
       const fillOpts = {
         onlyEmpty: true as const,
         forceFill: activeInput,
+        ...(currentPasswordOnly ? { currentPasswordOnly: true as const } : {}),
       };
       const isLogin = !result.fill.categoryId || result.fill.categoryId === "login";
       if (isLogin) {
@@ -3486,28 +3520,28 @@ export default defineContentScript({
             return;
           }
           fillLoginFormAndMaybeSubmit(
-            document,
+            fillRoot,
             { username: "", password: "", totp: result.fill.totp },
             fillOpts,
           );
           setTimeout(() => {
-            submitLoginFormIfReady(document);
+            submitLoginFormIfReady(fillRoot);
           }, 120);
           return;
         }
-        const outcome = fillLoginFormAndMaybeSubmit(document, result.fill, fillOpts);
+        const outcome = fillLoginFormAndMaybeSubmit(fillRoot, result.fill, fillOpts);
         if (outcome.submitted) {
           listOpen = false;
           overlayMode = "hidden";
           void paintOverlay({ showToggleOnly: true });
         }
         if (result.fill.totp) {
-          const fields = findLoginFields(document);
+          const fields = findLoginFields(fillRoot);
           if (fields.otp.length === 0) {
             watchForOtp(itemId, result.fill.totp);
           } else {
             setTimeout(() => {
-              submitLoginFormIfReady(document);
+              submitLoginFormIfReady(fillRoot);
             }, 120);
           }
         }

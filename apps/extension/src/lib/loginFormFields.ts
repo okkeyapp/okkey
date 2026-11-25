@@ -23,6 +23,7 @@ import {
   assertSameOriginFillAllowed,
   isElementVisiblyFillable,
 } from "./autofillDomLayers.ts";
+import { isCurrentPasswordField } from "./autofillFormDetect.ts";
 
 export type LoginFieldKind = "username" | "password" | "otp";
 
@@ -339,7 +340,8 @@ function dispatchFillEvents(el: HTMLInputElement | HTMLTextAreaElement, value: s
       data: value,
     }),
   );
-  el.dispatchEvent(new Event("change", { bubbles: true }));
+  // composed: true so open-shadow hosts / light-DOM listeners see the fill.
+  el.dispatchEvent(new Event("change", { bubbles: true, composed: true }));
 }
 
 /**
@@ -418,7 +420,82 @@ function fillOtpFields(
   }
 }
 
-export type FillLoginFormOptions = Pick<AutofillFillTargetOptions, "onlyEmpty" | "forceFill">;
+export type FillLoginFormOptions = Pick<AutofillFillTargetOptions, "onlyEmpty" | "forceFill"> & {
+  /**
+   * When true (change-password current field), only write the vault password into
+   * current-password role fields — never into new/confirm generator fields.
+   */
+  currentPasswordOnly?: boolean;
+};
+
+/**
+ * Fill scope for the focused field: open shadow root (same tree the detector used),
+ * else the owning `<form>`, else the document. Never re-resolve via light-DOM-only
+ * `document.querySelector` — shadow inputs are invisible to that API.
+ */
+export function resolveAutofillFillRoot(
+  active?: HTMLInputElement | HTMLTextAreaElement | null,
+  fallback: ParentNode = typeof document !== "undefined" ? document : (undefined as unknown as ParentNode),
+): ParentNode {
+  if (!active) {
+    return fallback;
+  }
+  try {
+    const rootNode = active.getRootNode();
+    if (typeof ShadowRoot !== "undefined" && rootNode instanceof ShadowRoot) {
+      return rootNode;
+    }
+  } catch {
+    /* ignore */
+  }
+  try {
+    if (active instanceof HTMLInputElement && active.form) {
+      return active.form;
+    }
+  } catch {
+    /* ignore */
+  }
+  return active.ownerDocument ?? fallback;
+}
+
+function isConnectedFillableTarget(el: HTMLInputElement): boolean {
+  try {
+    return Boolean(el.isConnected);
+  } catch {
+    return false;
+  }
+}
+
+/** True when `el` shares the focused field's open shadow / document tree. */
+function isSameFillTreeAsForce(
+  el: HTMLInputElement,
+  force: HTMLInputElement | HTMLTextAreaElement | null | undefined,
+): boolean {
+  if (!(force instanceof HTMLInputElement) || !isConnectedFillableTarget(el)) {
+    return false;
+  }
+  try {
+    return force.getRootNode() === el.getRootNode();
+  } catch {
+    return false;
+  }
+}
+
+function mayFillLoginTarget(
+  el: HTMLInputElement,
+  kind: "username" | "password",
+  options?: FillLoginFormOptions,
+): boolean {
+  if (isAutofillTargetElement(el, kind, options)) {
+    return true;
+  }
+  // Open-shadow / focus races: keep filling the focused ref and its same-tree siblings.
+  const force = options?.forceFill;
+  if (force === el && isConnectedFillableTarget(el)) {
+    return true;
+  }
+  return isSameFillTreeAsForce(el, force);
+}
 
 export function fillLoginForm(
   root: ParentNode,
@@ -433,6 +510,20 @@ export function fillLoginForm(
   }
 
   const fields = findLoginFields(root);
+  // Ensure the focused element (same reference the overlay used) is in the target lists
+  // even when a visibility race briefly drops it from the open-shadow walk.
+  const force = options?.forceFill;
+  if (force instanceof HTMLInputElement && isConnectedFillableTarget(force)) {
+    const forceKind = classifyLoginInput(collectInputHints(force));
+    if (forceKind === "username" && !fields.username.includes(force)) {
+      fields.username.push(force);
+    } else if (forceKind === "password" && !fields.password.includes(force)) {
+      fields.password.push(force);
+    } else if (forceKind === "otp" && !fields.otp.includes(force)) {
+      fields.otp.push(force);
+    }
+  }
+
   // OTP first — never let password fill touch OTP digit / one-time-code boxes.
   if (payload.totp) {
     fillOtpFields(fields.otp, payload.totp, options);
@@ -442,7 +533,7 @@ export function fillLoginForm(
       if (shouldSkipNonEmptyField(el, options)) {
         continue;
       }
-      if (!isAutofillTargetElement(el, "username", options)) {
+      if (!mayFillLoginTarget(el, "username", options)) {
         continue;
       }
       fillInputValue(el, payload.username);
@@ -451,6 +542,12 @@ export function fillLoginForm(
   if (payload.password) {
     // Security: never put a vault password into an OTP field.
     const otpSet = new Set(fields.otp);
+    const passwordHints = fields.password.map((el) => collectInputHints(el));
+    const focusedIsCurrent =
+      Boolean(options?.currentPasswordOnly) ||
+      (force instanceof HTMLInputElement &&
+        isCurrentPasswordField(collectInputHints(force), passwordHints));
+
     for (const el of fields.password) {
       if (otpSet.has(el)) {
         continue;
@@ -459,10 +556,20 @@ export function fillLoginForm(
       if (kind === "otp") {
         continue;
       }
+      if (focusedIsCurrent) {
+        // Change-password: only the focused current-password field gets the saved login.
+        if (force instanceof HTMLInputElement) {
+          if (el !== force) {
+            continue;
+          }
+        } else if (!isCurrentPasswordField(collectInputHints(el), passwordHints)) {
+          continue;
+        }
+      }
       if (shouldSkipNonEmptyField(el, options)) {
         continue;
       }
-      if (!isAutofillTargetElement(el, "password", options)) {
+      if (!mayFillLoginTarget(el, "password", options)) {
         continue;
       }
       fillInputValue(el, payload.password);

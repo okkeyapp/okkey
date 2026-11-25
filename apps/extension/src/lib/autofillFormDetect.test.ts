@@ -8,6 +8,7 @@ import {
   isNewPasswordField,
   isPasswordGeneratorField,
   isSaveOfferFormType,
+  resolveAutofillQueryFormType,
   shouldOpenPasswordGenerator,
   isUsernameGeneratorField,
   type AutofillFormSignals,
@@ -301,6 +302,13 @@ describe("categoriesAllowedForFormType", () => {
     assert.deepEqual(categoriesAllowedForFormType("register", "given-name"), ["personal_data"]);
   });
 
+  it("register + current password role allows login category", () => {
+    assert.deepEqual(
+      categoriesAllowedForFormType("register", "password", { passwordRole: "current" }),
+      ["login"],
+    );
+  });
+
   it("checkout maps card kinds to credit_card", () => {
     assert.deepEqual(categoriesAllowedForFormType("checkout", "cc-number"), ["credit_card"]);
     assert.deepEqual(categoriesAllowedForFormType("checkout", "email"), ["personal_data"]);
@@ -330,6 +338,14 @@ describe("generator field helpers", () => {
     // without an input element, register+password still opens (create-account).
     assert.equal(shouldOpenPasswordGenerator("register", "password", null), true);
     assert.equal(shouldOpenPasswordGenerator("register", "password", undefined), true);
+  });
+});
+
+describe("resolveAutofillQueryFormType", () => {
+  it("passes through without an input; login form type stays login", () => {
+    assert.equal(resolveAutofillQueryFormType("register", null), "register");
+    assert.equal(resolveAutofillQueryFormType("login", undefined), "login");
+    assert.equal(resolveAutofillQueryFormType("search", null), "search");
   });
 });
 

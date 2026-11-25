@@ -649,12 +649,47 @@ export function shouldOpenPasswordGenerator(
 }
 
 /**
+ * Query form type for vault suggestions.
+ * Change-password / register forms stay `register` for generators, but the focused
+ * `current-password` field must query as `login` so saved logins are offered.
+ */
+export function resolveAutofillQueryFormType(
+  formType: AutofillFormType,
+  input?: HTMLInputElement | null,
+): AutofillFormType {
+  if (!input || (formType !== "register" && formType !== "unknown")) {
+    return formType;
+  }
+  if (!isPasswordLikeInput(input)) {
+    return formType;
+  }
+  const hints = collectInputHints(input);
+  const form = input.form ?? input.closest("form");
+  const siblings =
+    form != null
+      ? queryAutofillInputs(form)
+          .filter((el) => (el.type || "").toLowerCase() === "password")
+          .map((el) => collectInputHints(el))
+      : [];
+  if (isCurrentPasswordField(hints, siblings) || resolvePasswordFieldRole(hints, siblings) === "current") {
+    return "login";
+  }
+  return formType;
+}
+
+function isPasswordLikeInput(input: HTMLInputElement): boolean {
+  return (input.type || "").toLowerCase() === "password" || classifyAutofillInput(collectInputHints(input)) === "password";
+}
+
+/**
  * Vault categories allowed for a form type + focused field kind.
  * Login never surfaces personal_data; register prefers personal_data for identity fields.
+ * `current-password` on register/change-password is remapped via {@link resolveAutofillQueryFormType}.
  */
 export function categoriesAllowedForFormType(
   formType: AutofillFormType,
   fieldKind: string | null | undefined,
+  options?: { passwordRole?: PasswordFieldRole | null },
 ): readonly string[] | null {
   // null = no restriction beyond categoriesForFieldKinds
   if (formType === "search") {
@@ -664,8 +699,11 @@ export function categoriesAllowedForFormType(
     return ["login"];
   }
   if (formType === "register") {
-    // Password → generator only. Username → nickname suggestions (personal_data) or generator.
+    // Current-password on change-password → saved logins; new/confirm → generator only.
     if (fieldKind === "password") {
+      if (options?.passwordRole === "current") {
+        return ["login"];
+      }
       return [];
     }
     return ["personal_data"];

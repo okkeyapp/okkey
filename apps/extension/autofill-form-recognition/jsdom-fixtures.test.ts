@@ -18,13 +18,16 @@ import { extractAutofillFieldGroups } from "../src/lib/autofillDomLayers.ts";
 import {
   findLoginFields,
   fillLoginForm,
+  resolveAutofillFillRoot,
   resolveAutofillKindForElement,
   SEGMENTED_OTP_MIN_FIELDS,
   SEGMENTED_OTP_MAX_FIELDS,
 } from "../src/lib/loginFormFields.ts";
 import {
+  categoriesAllowedForFormType,
   isNewPasswordField,
   isCurrentPasswordField,
+  resolveAutofillQueryFormType,
   shouldOpenPasswordGenerator,
   detectFormTypeForInput,
 } from "../src/lib/autofillFormDetect.ts";
@@ -200,6 +203,37 @@ describe("owned complex fixtures", () => {
     expect(shouldOpenPasswordGenerator(formType, "password", confirm)).toBe(true);
   });
 
+  it("change-password: current-password offers and fills saved logins only", () => {
+    loadHtmlIntoDocument(
+      readFileSync(path.join(FIXTURES_DIR, "change-password-roles.html"), "utf8"),
+    );
+    for (const el of Array.from(document.querySelectorAll("input"))) {
+      Object.defineProperty(el, "getClientRects", {
+        value: () => [{ width: 100, height: 20, top: 0, left: 0, bottom: 20, right: 100 }],
+      });
+    }
+    const current = document.querySelector("#current") as HTMLInputElement;
+    const neo = document.querySelector("#neo") as HTMLInputElement;
+    const confirm = document.querySelector("#confirm") as HTMLInputElement;
+    const formType = detectFormTypeForInput(current);
+    expect(formType).toBe("register");
+    // Vault query must remap to login so saved logins are offered (not empty / generator).
+    expect(resolveAutofillQueryFormType(formType, current)).toBe("login");
+    expect(resolveAutofillQueryFormType(formType, neo)).toBe("register");
+    expect(
+      categoriesAllowedForFormType("register", "password", { passwordRole: "current" }),
+    ).toEqual(["login"]);
+    // Selecting a login fills current only — new/confirm stay empty for the generator.
+    fillLoginForm(
+      document,
+      { username: "alice", password: "saved-login-pass" },
+      { forceFill: current, currentPasswordOnly: true },
+    );
+    expect(current.value).toBe("saved-login-pass");
+    expect(neo.value).toBe("");
+    expect(confirm.value).toBe("");
+  });
+
   it("open shadow login is discovered and resolves login kinds for overlay/fill", () => {
     loadHtmlIntoDocument(readFileSync(path.join(FIXTURES_DIR, "shadow-login.html"), "utf8"));
     // Re-run shadow attach for jsdom (inline script may not execute on document.write).
@@ -231,7 +265,14 @@ describe("owned complex fixtures", () => {
     // Shadow nodes are connected but not document.contains — overlay must use isConnected.
     expect(user.isConnected).toBe(true);
     expect(document.contains(user)).toBe(false);
-    fillLoginForm(document, { username: "shadow-user", password: "shadow-pass" });
+    // Fill must resolve the open shadow root (same tree as the detector), not light DOM.
+    const fillRoot = resolveAutofillFillRoot(user, document);
+    expect(fillRoot).toBe(host!.shadowRoot);
+    expect(document.querySelector("#su")).toBeNull();
+    expect(document.querySelector("#sp")).toBeNull();
+    fillLoginForm(fillRoot, { username: "shadow-user", password: "shadow-pass" }, {
+      forceFill: user,
+    });
     expect(user.value).toBe("shadow-user");
     expect(pass.value).toBe("shadow-pass");
   });

@@ -796,6 +796,11 @@ function nearbyLabelText(el: HTMLInputElement): string {
  * Same-origin iframes stay out of scope — routed by their own content script.
  * Closed shadow roots are not accessible from a content script and are not pierced.
  */
+function isHtmlInputElement(el: Element): el is HTMLInputElement {
+  // Prefer tagName — `instanceof` can fail across content-script / page Xray realms (Firefox).
+  return el instanceof HTMLInputElement || el.tagName === "INPUT";
+}
+
 export function queryAutofillInputs(root: ParentNode): HTMLInputElement[] {
   const found: HTMLInputElement[] = [];
   const visit = (node: ParentNode): void => {
@@ -804,7 +809,7 @@ export function queryAutofillInputs(root: ParentNode): HTMLInputElement[] {
         ? Array.from((node as ParentNode).querySelectorAll("input"))
         : [];
     for (const el of list) {
-      if (el instanceof HTMLInputElement) {
+      if (el instanceof Element && isHtmlInputElement(el)) {
         found.push(el);
       }
     }
@@ -813,10 +818,11 @@ export function queryAutofillInputs(root: ParentNode): HTMLInputElement[] {
         ? Array.from((node as ParentNode).querySelectorAll("*"))
         : [];
     for (const host of hosts) {
-      if (!(host instanceof Element)) {
+      if (!(host instanceof Element) && (host as { nodeType?: number }).nodeType !== 1) {
         continue;
       }
-      const shadow = (host as HTMLElement).shadowRoot;
+      const el = host as Element;
+      const shadow = (el as HTMLElement).shadowRoot;
       if (shadow) {
         visit(shadow);
       }
