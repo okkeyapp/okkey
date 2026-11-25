@@ -6,7 +6,17 @@ import { enforceInvitePreviewRateLimit } from "../src/workspace-members/invite-p
 
 class InMemoryRateLimit {
   private readonly counters = new Map<string, number>();
+  private readonly expirations = new Map<string, number>();
   readonly keys: string[] = [];
+
+  async setIfNotExistsWithTtl(key: string, value: string, ttlSeconds: number): Promise<boolean> {
+    if (this.counters.has(key)) {
+      return false;
+    }
+    this.counters.set(key, Number(value) || 0);
+    this.expirations.set(key, Date.now() + ttlSeconds * 1000);
+    return true;
+  }
 
   async incr(key: string): Promise<number> {
     this.keys.push(key);
@@ -15,7 +25,18 @@ class InMemoryRateLimit {
     return next;
   }
 
-  async expire(_key: string, _seconds: number): Promise<boolean> {
+  async ttl(key: string): Promise<number> {
+    if (!this.counters.has(key)) {
+      return -2;
+    }
+    return this.expirations.has(key) ? 60 : -1;
+  }
+
+  async expire(key: string, seconds: number): Promise<boolean> {
+    if (!this.counters.has(key)) {
+      return false;
+    }
+    this.expirations.set(key, Date.now() + seconds * 1000);
     return true;
   }
 }
@@ -35,7 +56,10 @@ test("invite preview rate limit uses TCP address when TRUSTED_PROXY_HOPS=0", asy
   const rateLimit = new InMemoryRateLimit();
   const peer = "203.0.113.50";
   const config = {
+    setIfNotExistsWithTtl: (key: string, value: string, ttlSeconds: number) =>
+      rateLimit.setIfNotExistsWithTtl(key, value, ttlSeconds),
     incr: (key: string) => rateLimit.incr(key),
+    ttl: (key: string) => rateLimit.ttl(key),
     expire: (key: string, seconds: number) => rateLimit.expire(key, seconds),
     windowSeconds: 600,
     maxPerIp: 2,
@@ -62,7 +86,10 @@ test("invite preview rate limit uses TCP address when TRUSTED_PROXY_HOPS=0", asy
 test("invite preview rate limit honors X-Forwarded-For when TRUSTED_PROXY_HOPS>0", async () => {
   const rateLimit = new InMemoryRateLimit();
   const config = {
+    setIfNotExistsWithTtl: (key: string, value: string, ttlSeconds: number) =>
+      rateLimit.setIfNotExistsWithTtl(key, value, ttlSeconds),
     incr: (key: string) => rateLimit.incr(key),
+    ttl: (key: string) => rateLimit.ttl(key),
     expire: (key: string, seconds: number) => rateLimit.expire(key, seconds),
     windowSeconds: 600,
     maxPerIp: 1,

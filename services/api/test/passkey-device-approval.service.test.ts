@@ -46,6 +46,10 @@ class MemoryRedis {
     return true;
   }
 
+  async ttl(key: string): Promise<number> {
+    return this.values.has(key) ? 60 : -2;
+  }
+
   async setIfNotExistsWithTtl(key: string, value: string): Promise<boolean> {
     if (this.values.has(key)) {
       return false;

@@ -14,7 +14,9 @@ test("createCapsule rejects disallowed crypto profile", async () => {
       },
     },
     redis: {
+      setIfNotExistsWithTtl: async () => true,
       incr: async () => 1,
+      ttl: async () => 60,
       expire: async () => true,
     },
     objectStorage: {
@@ -53,7 +55,9 @@ test("createCapsule rejects unsafe key transport mode", async () => {
       },
     },
     redis: {
+      setIfNotExistsWithTtl: async () => true,
       incr: async () => 1,
+      ttl: async () => 60,
       expire: async () => true,
     },
     objectStorage: {
@@ -93,7 +97,9 @@ test("createCapsule rejects hybrid-KEM guest key transport (q2-5 claim-reduce)",
       },
     },
     redis: {
+      setIfNotExistsWithTtl: async () => true,
       incr: async () => 1,
+      ttl: async () => 60,
       expire: async () => true,
     },
     objectStorage: {
@@ -133,7 +139,9 @@ test("openCapsule rejects unsafe key transport mode before storage access", asyn
       },
     },
     redis: {
+      setIfNotExistsWithTtl: async () => true,
       incr: async () => 1,
+      ttl: async () => 60,
       expire: async () => true,
     },
     objectStorage: {
@@ -179,7 +187,9 @@ test("createCapsule strict mode rejects actor without PQ capability", async () =
       }),
     },
     redis: {
+      setIfNotExistsWithTtl: async () => true,
       incr: async () => 1,
+      ttl: async () => 60,
       expire: async () => true,
     },
     objectStorage: {
@@ -230,7 +240,9 @@ test("createCapsule compat mode continues when actor has no PQ capability", asyn
       }),
     },
     redis: {
+      setIfNotExistsWithTtl: async () => true,
       incr: async () => 1,
+      ttl: async () => 60,
       expire: async () => true,
     },
     objectStorage: {

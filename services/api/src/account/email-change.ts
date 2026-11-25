@@ -4,6 +4,7 @@ import type { ApiConfig } from "../config.ts";
 import { buildEmailAppPathUrl, type EmailTemplateService } from "../email/service.ts";
 import { resolveLinkBaseUrl, type PublicAppUrlResolver } from "../mail-settings/public-url.ts";
 import { UniqueConstraintError } from "../storage/errors.ts";
+import { incrementFixedWindow } from "../storage/fixed-window-counter.ts";
 import type { UsersRepository } from "../storage/repositories.ts";
 
 interface EmailChangeChallenge {
@@ -68,10 +69,12 @@ export interface EmailChangeConfirmResult {
 export interface EmailChangeServiceDeps {
   redis: {
     setWithTtl(key: string, value: string, ttlSeconds: number): Promise<void>;
+    setIfNotExistsWithTtl(key: string, value: string, ttlSeconds: number): Promise<boolean>;
     get(key: string): Promise<string | null>;
     del(key: string): Promise<number>;
     incr(key: string): Promise<number>;
     expire(key: string, seconds: number): Promise<boolean>;
+    ttl(key: string): Promise<number>;
   };
   users: Pick<UsersRepository, "findById" | "findByEmail" | "updateEmail">;
   emailTemplates: Pick<
@@ -388,10 +391,7 @@ export class EmailChangeService {
     if (this.config.deployEnv === "dev" || this.config.nodeEnv !== "production") {
       return;
     }
-    const count = await this.redis.incr(key);
-    if (count === 1) {
-      await this.redis.expire(key, windowSeconds);
-    }
+    const count = await incrementFixedWindow(this.redis, key, windowSeconds);
     if (count > limit) {
       throw new EmailChangeError("EMAIL_CHANGE_RATE_LIMITED", 429, "rate limited");
     }

@@ -199,7 +199,12 @@ for (const variant of VARIANTS) {
           });
         },
       },
-      redis: { incr: async () => 1, expire: async () => true },
+      redis: {
+        setIfNotExistsWithTtl: async () => true,
+        incr: async () => 1,
+        ttl: async () => 60,
+        expire: async () => true,
+      },
       objectStorage: {
         putObject: async () => {},
         getObject: async () => null,

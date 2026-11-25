@@ -1232,7 +1232,10 @@ export function createApiApp(
   }
   const invitePreviewRateLimit = options.redis
     ? {
+        setIfNotExistsWithTtl: (key: string, value: string, ttlSeconds: number) =>
+          options.redis!.setIfNotExistsWithTtl(key, value, ttlSeconds),
         incr: (key: string) => options.redis!.incr(key),
+        ttl: (key: string) => options.redis!.ttl(key),
         expire: (key: string, seconds: number) => options.redis!.expire(key, seconds),
         windowSeconds: config.authRateLimitWindowSeconds,
         maxPerIp: config.invitePreviewRateLimitPerIp,
@@ -1280,7 +1283,10 @@ export function createApiApp(
     const memory = createMemoryRateCounter();
     const counter = options.redis
       ? {
+          setIfNotExistsWithTtl: (key: string, value: string, ttlSeconds: number) =>
+            options.redis!.setIfNotExistsWithTtl(key, value, ttlSeconds),
           incr: (key: string) => options.redis!.incr(key),
+          ttl: (key: string) => options.redis!.ttl(key),
           expire: (key: string, seconds: number) => options.redis!.expire(key, seconds),
         }
       : memory;

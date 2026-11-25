@@ -9,12 +9,11 @@ import type { HttpApp } from "../http.ts";
 import type { QueryExecutor } from "../storage/postgres.ts";
 import type { VaultsRepository, WorkspacesRepository } from "../storage/repositories.ts";
 import type { CapsuleAccessSettingsProvider } from "../capsule/access-settings-provider.ts";
+import type { FixedWindowCounterRedis } from "../storage/fixed-window-counter.ts";
 import type { VaultSharingService } from "../vault-sharing/service.ts";
 
-export type ApiEnterprisePluginRedis = {
-  incr(key: string): Promise<number>;
-  expire(key: string, seconds: number): Promise<boolean>;
-};
+/** Redis surface for fixed-window counters (and related enterprise rate limits). */
+export type ApiEnterprisePluginRedis = FixedWindowCounterRedis;
 
 export type ApiEnterprisePluginContext = {
   app: HttpApp;

@@ -1,4 +1,5 @@
 import { StorageConnectionError, StorageQueryError } from "./errors.ts";
+import { incrementFixedWindow } from "./fixed-window-counter.ts";
 
 type RedisClientLike = {
   connect(): Promise<void>;
@@ -163,6 +164,14 @@ export class RedisCache {
     } catch (error) {
       throw new StorageQueryError("redis ttl failed", error);
     }
+  }
+
+  /**
+   * Fixed-window counter: SET NX EX → INCR → self-heal TTL when missing.
+   * See {@link incrementFixedWindow}.
+   */
+  async incrementFixedWindow(key: string, windowSeconds: number): Promise<number> {
+    return incrementFixedWindow(this, key, windowSeconds);
   }
 
   async close(): Promise<void> {

@@ -38,6 +38,9 @@ test("SetupService getStatus is never required on SaaS", async () => {
     async expire() {
       return true;
     },
+    async ttl() {
+      return 60;
+    },
   };
   const service = new SetupService({
     redis,

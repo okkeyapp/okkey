@@ -104,7 +104,9 @@ function serviceFor(input: {
       },
     },
     redis: {
+      setIfNotExistsWithTtl: async () => true,
       incr: async () => 1,
+      ttl: async () => 60,
       expire: async () => true,
     },
     objectStorage: {

@@ -23,6 +23,20 @@ class InMemoryRedis {
     this.expirations.set(key, this.nowMs + ttlSeconds * 1000);
   }
 
+  async setIfNotExistsWithTtl(
+    key: string,
+    value: string,
+    ttlSeconds: number,
+  ): Promise<boolean> {
+    this.purgeIfExpired(key);
+    if (this.values.has(key) || this.counters.has(key)) {
+      return false;
+    }
+    this.values.set(key, value);
+    this.expirations.set(key, this.nowMs + ttlSeconds * 1000);
+    return true;
+  }
+
   async get(key: string): Promise<string | null> {
     this.purgeIfExpired(key);
     return this.values.get(key) ?? null;
@@ -37,14 +51,30 @@ class InMemoryRedis {
 
   async incr(key: string): Promise<number> {
     this.purgeIfExpired(key);
-    const next = (this.counters.get(key) ?? 0) + 1;
+    const current = this.values.has(key)
+      ? Number(this.values.get(key) ?? "0")
+      : (this.counters.get(key) ?? 0);
+    const next = current + 1;
     this.counters.set(key, next);
+    this.values.set(key, String(next));
     return next;
   }
 
   async expire(key: string, seconds: number): Promise<boolean> {
     this.expirations.set(key, this.nowMs + seconds * 1000);
     return true;
+  }
+
+  async ttl(key: string): Promise<number> {
+    this.purgeIfExpired(key);
+    if (!this.values.has(key) && !this.counters.has(key)) {
+      return -2;
+    }
+    const expiresAt = this.expirations.get(key);
+    if (expiresAt === undefined) {
+      return -1;
+    }
+    return Math.max(0, Math.ceil((expiresAt - this.nowMs) / 1000));
   }
 
   private purgeIfExpired(key: string): void {
