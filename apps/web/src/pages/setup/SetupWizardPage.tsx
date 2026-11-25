@@ -55,7 +55,7 @@ import { finalizePendingVaultBundle } from "../../auth/localVaultBundle";
 import { writeLastLoginMethodHint } from "../../auth/loginMethodStorage";
 import { writeStoredCurrentWorkspaceId } from "../../auth/workspaceStorage";
 import { useLocale } from "../../locale/LocaleContext";
-import { AUTH_EMAIL_PATH, ITEMS_PATH, WORKSPACE_QUERY_PARAM } from "../../routes/paths";
+import { AUTH_EMAIL_PATH } from "../../routes/paths";
 import {
   createSetupApiClient,
   type SetupSmtpProviderDto,
@@ -68,6 +68,7 @@ import {
   type SetupWizardNavStep,
 } from "./SetupWizardShell";
 import { setupCodeErrorKind } from "./setupCodeErrors";
+import { setupFinishLockPath } from "./setupFinishLockPath";
 import { applySetupMailProvider } from "./setupMailProvider";
 import { smtpTestErrorKind, smtpTestErrorMessageKey } from "@/lib/smtpTestErrors";
 import {
@@ -117,7 +118,7 @@ export default function SetupWizardPage() {
   const {
     authClient,
     applyAccessTokenResponse,
-    tryUnlockWithMasterPassword,
+    lockVault,
     updateLocalProfile,
     setRegistrationAuthStateId,
     clearEmailLoginFlow,
@@ -780,14 +781,20 @@ export default function SetupWizardPage() {
       writeStoredCurrentWorkspaceId(finished.user_id, finished.workspace_id);
       setRegistrationAuthStateId(null);
       setPostRegAccessToken(null);
-      const unlock = await tryUnlockWithMasterPassword(masterPasswordRef.current);
+      // Drop master password and any in-memory unlock/session vault key so the lock
+      // screen is a real lock (secrets stay out of localStorage / sessionStorage).
       masterPasswordRef.current = "";
       setMasterPassword("");
       setRepeatMasterPassword("");
+      if (vaultKeyPendingEnrollRef.current) {
+        wipeBytes(vaultKeyPendingEnrollRef.current);
+        vaultKeyPendingEnrollRef.current = null;
+      }
+      lockVault();
       // Use captured locals — page may already be unmounted; refs were detached above.
+      // Logo encrypt uses the registration vault-key copy only; do not unlock the vault.
       const logoDecision = setupLogoUploadDecision({
         hadPendingLogo: pendingLogo.hadPendingLogo,
-        unlockOk: unlock.ok,
         hasVaultKey: Boolean(pendingLogo.vaultKey),
         hasPlaintext: Boolean(pendingLogo.plaintext),
       });
@@ -820,9 +827,8 @@ export default function SetupWizardPage() {
       if (logoOutcome === "failed") {
         toast.error(t("web.setupWizard.logoUploadFailed"));
       }
-      navigate(`${ITEMS_PATH}?${WORKSPACE_QUERY_PARAM}=${encodeURIComponent(finished.workspace_id)}`, {
-        replace: true,
-      });
+      // Teach that the vault opens with the master password — existing unlock screen.
+      navigate(setupFinishLockPath(finished.workspace_id), { replace: true });
     } catch (err) {
       if (import.meta.env.DEV) {
         console.error("[setup/finish]", err);

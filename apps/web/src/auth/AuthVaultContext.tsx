@@ -934,7 +934,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
 
   const tryUnlockWithMasterPassword = useCallback(async (masterPassword: string): Promise<MasterPasswordUnlockResult> => {
     // Prefer refs so callers that applyAccessTokenResponse then unlock in the same turn
-    // (setup wizard finish) see the new session immediately.
+    // see the new session immediately (userId / accessToken state may lag one paint).
     const unlockUserId = userIdRef.current;
     const unlockAccessToken = accessTokenRef.current;
     const bundle = readVaultBundle(unlockUserId);
