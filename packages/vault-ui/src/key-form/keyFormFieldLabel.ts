@@ -1,6 +1,7 @@
 import { WEB_LOCALES } from "@okkey/i18n";
 
 import {
+  LOYALTY_CARD_SECTION_ID,
   PASSPORT_SECTION_ID,
   PERSONAL_DATA_SECTION_ID,
 } from "../items/itemCategoryDefaultSections.js";
@@ -72,6 +73,25 @@ const PRESET_FIELD_LABEL_KEYS: Record<string, string> = {
   "birth-place": "passportBirthPlace",
   "issue-date": "passportIssueDate",
   "expiry-date": "passportExpiryDate",
+  provider: "loyaltyProvider",
+  barcode: "loyaltyBarcode",
+  "make-model": "vehicleMakeModel",
+  plate: "vehiclePlate",
+  vin: "vehicleVin",
+  "inspection-due": "vehicleInspectionDue",
+  "insurance-policy-number": "vehicleInsurancePolicyNumber",
+  insurer: "vehicleInsurer",
+  "insurance-valid-until": "vehicleInsuranceValidUntil",
+  "transport-type": "travelTransportType",
+  carrier: "travelCarrier",
+  "trip-number": "travelTripNumber",
+  "departure-at": "travelDepartureAt",
+  from: "travelFrom",
+  to: "travelTo",
+  "booking-reference": "travelBookingReference",
+  passengers: "travelPassengers",
+  seats: "travelSeats",
+  notes: "notes",
   note: "secureNote",
   "secure-file": "file",
 };
@@ -88,6 +108,10 @@ const SECTION_FIELD_LABEL_KEYS: Record<string, Record<string, string>> = {
   [PASSPORT_SECTION_ID]: {
     gender: "passportGender",
     "birth-date": "passportBirthDate",
+  },
+  [LOYALTY_CARD_SECTION_ID]: {
+    "card-number": "loyaltyCardNumber",
+    "expiry-date": "loyaltyExpiryDate",
   },
 };
 

@@ -45,6 +45,10 @@ const DEFAULT_SECTION_TITLES: Record<string, string> = {
   "bank-details": "Bank details",
   "personal-data": "Personal data",
   "personal-data-work": "Work",
+  "loyalty-card": "Loyalty card",
+  vehicle: "Vehicle",
+  "vehicle-insurance": "Insurance",
+  "travel-booking": "Travel booking",
   wallet: "Wallet",
 };
 

@@ -505,6 +505,142 @@ describe("validateNewItemForm passport", () => {
   });
 });
 
+describe("validateNewItemForm loyalty_card", () => {
+  const baseInput = {
+    recordName: "Loyalty",
+    vaultId: "vault-1",
+    categoryId: "loyalty_card" as const,
+  };
+
+  it("requires at least one filled field in the loyalty card section", () => {
+    const result = validateNewItemForm({
+      ...baseInput,
+      sections: [
+        {
+          id: "loyalty-card",
+          variant: "primary" as const,
+          fields: [
+            { id: "provider", type: "text", label: "Program", value: "" },
+            { id: "card-number", type: "text", label: "Card number", value: "" },
+          ],
+        },
+      ],
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.issues).toEqual([
+      { kind: "field", fieldId: "provider", sectionId: "loyalty-card" },
+      { kind: "field", fieldId: "card-number", sectionId: "loyalty-card" },
+    ]);
+  });
+
+  it("passes when at least one loyalty field is filled", () => {
+    const result = validateNewItemForm({
+      ...baseInput,
+      sections: [
+        {
+          id: "loyalty-card",
+          variant: "primary" as const,
+          fields: [
+            { id: "provider", type: "text", label: "Program", value: "Bonus" },
+            { id: "card-number", type: "text", label: "Card number", value: "" },
+          ],
+        },
+      ],
+    });
+
+    expect(result.ok).toBe(true);
+  });
+});
+
+describe("validateNewItemForm vehicle", () => {
+  const baseInput = {
+    recordName: "Car",
+    vaultId: "vault-1",
+    categoryId: "vehicle" as const,
+  };
+
+  it("requires at least one filled field in the vehicle section", () => {
+    const result = validateNewItemForm({
+      ...baseInput,
+      sections: [
+        {
+          id: "vehicle",
+          variant: "primary" as const,
+          fields: [
+            { id: "plate", type: "text", label: "Plate", value: "" },
+            { id: "vin", type: "text", label: "VIN", value: "" },
+          ],
+        },
+      ],
+    });
+
+    expect(result.ok).toBe(false);
+  });
+
+  it("passes when a vehicle field is filled", () => {
+    const result = validateNewItemForm({
+      ...baseInput,
+      sections: [
+        {
+          id: "vehicle",
+          variant: "primary" as const,
+          fields: [
+            { id: "plate", type: "text", label: "Plate", value: "A111AA77" },
+            { id: "vin", type: "text", label: "VIN", value: "" },
+          ],
+        },
+      ],
+    });
+
+    expect(result.ok).toBe(true);
+  });
+});
+
+describe("validateNewItemForm travel_booking", () => {
+  const baseInput = {
+    recordName: "Trip",
+    vaultId: "vault-1",
+    categoryId: "travel_booking" as const,
+  };
+
+  it("requires at least one filled field in the travel booking section", () => {
+    const result = validateNewItemForm({
+      ...baseInput,
+      sections: [
+        {
+          id: "travel-booking",
+          variant: "primary" as const,
+          fields: [
+            { id: "carrier", type: "text", label: "Carrier", value: "" },
+            { id: "booking-reference", type: "text", label: "PNR", value: "" },
+          ],
+        },
+      ],
+    });
+
+    expect(result.ok).toBe(false);
+  });
+
+  it("passes when a travel field is filled", () => {
+    const result = validateNewItemForm({
+      ...baseInput,
+      sections: [
+        {
+          id: "travel-booking",
+          variant: "primary" as const,
+          fields: [
+            { id: "carrier", type: "text", label: "Carrier", value: "" },
+            { id: "booking-reference", type: "text", label: "PNR", value: "XYZ999" },
+          ],
+        },
+      ],
+    });
+
+    expect(result.ok).toBe(true);
+  });
+});
+
 describe("validateNewItemForm secure_note", () => {
   const baseInput = {
     recordName: "My note",
