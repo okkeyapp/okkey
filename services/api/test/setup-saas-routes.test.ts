@@ -51,8 +51,9 @@ test("SetupService getStatus is never required on SaaS", async () => {
     instanceSettings: {
       async read() {
         return {
-          registrationMode: "open",
+          registrationMode: "invite_only" as const,
           setupCompletedAt: null,
+          workspaceId: null,
           updatedAt: new Date().toISOString(),
         };
       },
@@ -60,6 +61,9 @@ test("SetupService getStatus is never required on SaaS", async () => {
         throw new Error("unused");
       },
       async markSetupCompleted() {
+        throw new Error("unused");
+      },
+      async markSetupCompletedWithWorkspace() {
         throw new Error("unused");
       },
     },

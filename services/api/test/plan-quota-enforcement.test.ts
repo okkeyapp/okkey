@@ -66,6 +66,7 @@ function membersService(options: {
   let memberInserts = 0;
   const seatSql: string[] = [];
   const service = new WorkspaceMembersService({
+    deploymentMode: "saas",
     db: {
       query: async (sql: string) => {
         if (isMemberSeatQuery(sql)) {
@@ -307,6 +308,7 @@ test("FREE rejects the invite that would exceed maxAdditionalMembers", async () 
   assert.equal(familyLimit, 3);
   let inserts = 0;
   const service = new WorkspaceMembersService({
+    deploymentMode: "saas",
     db: {
       query: async (sql: string) => {
         if (sql.includes("SELECT owner_id FROM workspaces")) {

@@ -44,8 +44,9 @@ class InMemoryRedis {
 
 class MemoryInstanceStore {
   row: ServerInstanceSettingsRow = {
-    registrationMode: "open",
+    registrationMode: "invite_only",
     setupCompletedAt: null,
+    workspaceId: null,
     updatedAt: new Date().toISOString(),
   };
 
@@ -54,6 +55,9 @@ class MemoryInstanceStore {
   }
 
   async writeRegistrationMode(mode: RegistrationMode) {
+    if (mode === "open") {
+      throw new Error("open registration is not available on self-hosted instances");
+    }
     this.row = { ...this.row, registrationMode: mode, updatedAt: new Date().toISOString() };
     return this.row;
   }
@@ -62,6 +66,18 @@ class MemoryInstanceStore {
     this.row = {
       ...this.row,
       setupCompletedAt: this.row.setupCompletedAt ?? completedAt,
+      registrationMode: "invite_only",
+      updatedAt: new Date().toISOString(),
+    };
+    return this.row;
+  }
+
+  async markSetupCompletedWithWorkspace(completedAt: string, workspaceId: string) {
+    this.row = {
+      ...this.row,
+      setupCompletedAt: this.row.setupCompletedAt ?? completedAt,
+      workspaceId: this.row.workspaceId ?? workspaceId,
+      registrationMode: "invite_only",
       updatedAt: new Date().toISOString(),
     };
     return this.row;
@@ -90,6 +106,7 @@ class MemoryPostgres {
   invitations: InvitationRow[] = [];
   workspaceUpdates: Array<{ name: string; tile_color: string; workspace_id: string }> = [];
   setupCompletedAt: string | null = null;
+  instanceWorkspaceId: string | null = null;
   failOnInviteInsert = false;
   ownerWorkspaceId = "ws-1";
   ownerVaultId = "vault-1";
@@ -155,7 +172,15 @@ class MemoryPostgres {
 
     if (normalized.includes("update server_instance_settings") && normalized.includes("setup_completed_at")) {
       this.setupCompletedAt = this.setupCompletedAt ?? String(params[0]);
-      return [{ setup_completed_at: this.setupCompletedAt }] as T[];
+      if (params[1] != null) {
+        this.instanceWorkspaceId = this.instanceWorkspaceId ?? String(params[1]);
+      }
+      return [
+        {
+          setup_completed_at: this.setupCompletedAt,
+          workspace_id: this.instanceWorkspaceId,
+        },
+      ] as T[];
     }
 
     if (normalized.includes("insert into workspace_member_item_category_preferences")) {
@@ -178,6 +203,7 @@ class MemoryPostgres {
       invitations: this.invitations.map((row) => ({ ...row })),
       workspaceUpdates: this.workspaceUpdates.map((row) => ({ ...row })),
       setupCompletedAt: this.setupCompletedAt,
+      instanceWorkspaceId: this.instanceWorkspaceId,
     };
     try {
       return await fn({
@@ -188,6 +214,7 @@ class MemoryPostgres {
       this.invitations = snapshot.invitations;
       this.workspaceUpdates = snapshot.workspaceUpdates;
       this.setupCompletedAt = snapshot.setupCompletedAt;
+      this.instanceWorkspaceId = snapshot.instanceWorkspaceId;
       throw error;
     }
   }
@@ -477,6 +504,9 @@ test("finish with invites creates pending invitations for the requested builtin 
   assert.equal(fixture.postgres.invitations[1]?.email, "member@example.com");
   assert.equal(fixture.postgres.invitations[1]?.role_id, "role-user");
   assert.ok(fixture.instanceSettings.row.setupCompletedAt);
+  assert.equal(fixture.instanceSettings.row.workspaceId, "ws-1");
+  assert.equal(fixture.postgres.instanceWorkspaceId, "ws-1");
+  assert.equal(fixture.instanceSettings.row.registrationMode, "invite_only");
   // Mail inactive: invitations stay pending and delivery is not attempted.
   assert.equal(fixture.deliverCalls.length, 0);
   // Unit fixture keeps hasAnyUsers=false; after consume the setup code hash is gone.

@@ -43,11 +43,18 @@ export interface RegistrationBundleInput {
   loginVerifier?: Uint8Array | null;
   loginVerifierSalt?: Uint8Array | null;
   loginVerifierParamsVersion?: number | null;
+  /**
+   * When set, skip creating a personal workspace/vault and only insert the user + device.
+   * Used on self-hosted invite registration (membership + vault live in the instance workspace).
+   */
+  skipPersonalWorkspace?: boolean;
 }
 
 export interface RegistrationBundleResult {
   userId: string;
+  /** Empty string when {@link RegistrationBundleInput.skipPersonalWorkspace} is true. */
   workspaceId: string;
+  /** Empty string when {@link RegistrationBundleInput.skipPersonalWorkspace} is true. */
   vaultId: string;
   deviceId: string;
 }
@@ -102,40 +109,6 @@ export async function insertRegistrationBundle(
     throw new Error("user insert returned no id");
   }
 
-  const workspaceLabel = input.personalWorkspaceName?.trim() || "Personal";
-  const vaultLabel = input.personalVaultName?.trim() || DEFAULT_PERSONAL_VAULT_NAME;
-  const workspaceId = generateEntityId();
-
-  const workspaceRows = await tx.query<{ id: string }>(
-    `
-      INSERT INTO workspaces (id, name, owner_id, plan_tier)
-      VALUES ($1, $2, $3, $4)
-      RETURNING id
-    `,
-    [workspaceId, workspaceLabel, insertedUserId, input.planTier ?? "FREE"],
-  );
-  const insertedWorkspaceId = workspaceRows[0]?.id;
-  if (!insertedWorkspaceId) {
-    throw new Error("workspace insert returned no id");
-  }
-
-  await ensureDefaultWorkspaceRoles(tx, insertedWorkspaceId, insertedUserId);
-  await ensureDefaultWorkspaceProfiles(tx, insertedWorkspaceId);
-
-  const vaultId = generateEntityId();
-  const vaultRows = await tx.query<{ id: string }>(
-    `
-      INSERT INTO vaults (id, workspace_id, name, is_personal, owner_id, crypto_version)
-      VALUES ($1, $2, $3, true, $4, $5)
-      RETURNING id
-    `,
-    [vaultId, insertedWorkspaceId, vaultLabel, insertedUserId, DEFAULT_NEW_VAULT_CRYPTO_VERSION],
-  );
-  const insertedVaultId = vaultRows[0]?.id;
-  if (!insertedVaultId) {
-    throw new Error("vault insert returned no id");
-  }
-
   const deviceId = generateEntityId();
   const deviceRows = await tx.query<{ id: string }>(
     `
@@ -188,6 +161,49 @@ export async function insertRegistrationBundle(
   const insertedDeviceId = deviceRows[0]?.id;
   if (!insertedDeviceId) {
     throw new Error("device insert returned no id");
+  }
+
+  if (input.skipPersonalWorkspace) {
+    return {
+      userId: insertedUserId,
+      workspaceId: "",
+      vaultId: "",
+      deviceId: insertedDeviceId,
+    };
+  }
+
+  const workspaceLabel = input.personalWorkspaceName?.trim() || "Personal";
+  const vaultLabel = input.personalVaultName?.trim() || DEFAULT_PERSONAL_VAULT_NAME;
+  const workspaceId = generateEntityId();
+
+  const workspaceRows = await tx.query<{ id: string }>(
+    `
+      INSERT INTO workspaces (id, name, owner_id, plan_tier)
+      VALUES ($1, $2, $3, $4)
+      RETURNING id
+    `,
+    [workspaceId, workspaceLabel, insertedUserId, input.planTier ?? "FREE"],
+  );
+  const insertedWorkspaceId = workspaceRows[0]?.id;
+  if (!insertedWorkspaceId) {
+    throw new Error("workspace insert returned no id");
+  }
+
+  await ensureDefaultWorkspaceRoles(tx, insertedWorkspaceId, insertedUserId);
+  await ensureDefaultWorkspaceProfiles(tx, insertedWorkspaceId);
+
+  const vaultId = generateEntityId();
+  const vaultRows = await tx.query<{ id: string }>(
+    `
+      INSERT INTO vaults (id, workspace_id, name, is_personal, owner_id, crypto_version)
+      VALUES ($1, $2, $3, true, $4, $5)
+      RETURNING id
+    `,
+    [vaultId, insertedWorkspaceId, vaultLabel, insertedUserId, DEFAULT_NEW_VAULT_CRYPTO_VERSION],
+  );
+  const insertedVaultId = vaultRows[0]?.id;
+  if (!insertedVaultId) {
+    throw new Error("vault insert returned no id");
   }
 
   return {

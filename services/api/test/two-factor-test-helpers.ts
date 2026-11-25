@@ -675,13 +675,16 @@ export async function registerUser(
     sessions: storage.repositories.sessions,
     config,
   });
+  // Fixtures register several accounts into one database. Self-hosted invite gating is
+  // covered by self-hosted-instance-workspace.test.ts, so this helper uses the multi-account
+  // registration path while keeping the rest of the config unchanged.
   const registrationService = new RegistrationService({
     authService,
     users: storage.repositories.users,
     postgres: storage.postgres,
     redis: storage.redis,
     sessionService,
-    config,
+    config: { ...config, deploymentMode: "saas" },
   });
 
   await storage.redis.setWithTtl(

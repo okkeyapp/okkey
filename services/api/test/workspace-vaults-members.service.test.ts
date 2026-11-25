@@ -274,6 +274,7 @@ test("WorkspaceSharedVaultsService.deleteVault rejects personal vault", async ()
 
 function freeMembersService(): WorkspaceMembersService {
   return new WorkspaceMembersService({
+    deploymentMode: "saas",
     db: {
       query: async (sql: string) => {
         if (sql.includes("COUNT") && sql.includes("workspace_members")) {
@@ -493,6 +494,7 @@ function paidMembersService(overrides: {
   resolvePublicAppBaseUrl?: () => Promise<string>;
 }): WorkspaceMembersService {
   return new WorkspaceMembersService({
+    deploymentMode: "saas",
     db: overrides.db ?? ({ query: async () => [] } as never),
     workspaces: {
       findById: async () => ({

@@ -101,7 +101,7 @@ async function boot(
     postgres: storage.postgres,
     redis: storage.redis,
     sessionService,
-    config,
+    config: { ...config, deploymentMode: "saas" },
   });
   const accountRecoveryService = new AccountRecoveryService({
     recovery: storage.repositories.accountRecovery,

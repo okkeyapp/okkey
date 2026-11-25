@@ -60,6 +60,7 @@ function membersService(overrides: {
   logger?: { info(message: string, fields?: Record<string, unknown>): void };
 }): WorkspaceMembersService {
   return new WorkspaceMembersService({
+    deploymentMode: "saas",
     db: overrides.db ?? ({ query: baseQuery() } as never),
     workspaces: {
       findById: async () => ({
@@ -206,6 +207,7 @@ test("copyInvitationLink requires members.post, rotates token, and never returns
   const memberWithoutPost = "1000000000000000008";
 
   const denied = new WorkspaceMembersService({
+    deploymentMode: "saas",
     db: {
       query: async (sql: string) => {
         if (sql.includes("SELECT owner_id FROM workspaces")) {

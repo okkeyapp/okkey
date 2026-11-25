@@ -108,6 +108,17 @@ export interface AuthServiceDeps {
     rawToken: string,
     email: string,
   ) => Promise<InviteRegistrationLookup>;
+  /**
+   * Self-hosted gate for existing users: return false when the account is blocked
+   * or not a member of the instance workspace. Fail-closed login denial.
+   */
+  resolveInstanceLoginAllowed?: (userId: string) => Promise<boolean>;
+  /**
+   * Self-hosted email-invite path: return the SHA-256 hex of the single pending
+   * invitation to the instance workspace for this email, or null when none / ambiguous.
+   * Used by OTP verify so register/complete can consume the invite without the link.
+   */
+  resolvePendingInstanceInviteTokenHash?: (email: string) => Promise<string | null>;
   now?: () => Date;
   generateCode?: () => string;
   /** Challenge / other snowflake ids. */
@@ -235,6 +246,10 @@ export class AuthService {
   private readonly resolveEmailDeliverable?: () => Promise<boolean>;
   private readonly resolveRegistrationAllowed?: (email: string) => Promise<boolean>;
   private readonly resolveInviteRegistration?: AuthServiceDeps["resolveInviteRegistration"];
+  private readonly resolveInstanceLoginAllowed?: (userId: string) => Promise<boolean>;
+  private readonly resolvePendingInstanceInviteTokenHash?: (
+    email: string,
+  ) => Promise<string | null>;
   private readonly now: () => Date;
   private readonly generateCode: () => string;
   private readonly generateId: () => string;
@@ -248,10 +263,26 @@ export class AuthService {
     this.resolveEmailDeliverable = deps.resolveEmailDeliverable;
     this.resolveRegistrationAllowed = deps.resolveRegistrationAllowed;
     this.resolveInviteRegistration = deps.resolveInviteRegistration;
+    this.resolveInstanceLoginAllowed = deps.resolveInstanceLoginAllowed;
+    this.resolvePendingInstanceInviteTokenHash = deps.resolvePendingInstanceInviteTokenHash;
     this.now = deps.now ?? (() => new Date());
     this.generateCode = deps.generateCode ?? createCode;
     this.generateId = deps.generateId ?? generateEntityId;
     this.generateAuthStateIdFn = deps.generateAuthStateId ?? generateAuthStateId;
+  }
+
+  private async assertInstanceLoginAllowed(userId: string): Promise<void> {
+    if (!this.resolveInstanceLoginAllowed) {
+      return;
+    }
+    const allowed = await this.resolveInstanceLoginAllowed(userId);
+    if (!allowed) {
+      throw new AuthError(
+        "ACCOUNT_BLOCKED",
+        403,
+        "account access to this instance has been revoked",
+      );
+    }
   }
 
   async startEmailLogin(input: EmailStartInput): Promise<EmailStartResult> {
@@ -287,6 +318,9 @@ export class AuthService {
     }
 
     const existingUser = await this.users.findByEmail(email);
+    if (existingUser) {
+      await this.assertInstanceLoginAllowed(existingUser.id);
+    }
     if (!existingUser && this.resolveRegistrationAllowed) {
       const allowed = await this.resolveRegistrationAllowed(email);
       if (!allowed) {
@@ -502,6 +536,8 @@ export class AuthService {
       throw new AuthError("AUTH_LOGIN_FAILED", 401, "sign-in failed");
     }
 
+    await this.assertInstanceLoginAllowed(lookup.userId);
+
     const pendingTwoFactor = await this.users.isTwoFactorEnabled(lookup.userId);
     const created = await this.createAuthStateForExistingUser({
       email,
@@ -576,13 +612,32 @@ export class AuthService {
       challenge.email,
     );
     if (!existingUser) {
-      const authStateId = await this.createRegistrationAuthState(challenge.email);
+      let inviteTokenHash: string | undefined;
+      if (this.config.deploymentMode === "self_hosted") {
+        const hash = this.resolvePendingInstanceInviteTokenHash
+          ? await this.resolvePendingInstanceInviteTokenHash(challenge.email)
+          : null;
+        if (!hash) {
+          throw new AuthError(
+            "REGISTRATION_INVITE_REQUIRED",
+            403,
+            "registration requires an invitation to the instance workspace",
+          );
+        }
+        inviteTokenHash = hash;
+      }
+      const authStateId = await this.createRegistrationAuthState(
+        challenge.email,
+        inviteTokenHash,
+      );
       return {
         authStateId,
         userExists: false,
         nextStep: "registration",
       };
     }
+
+    await this.assertInstanceLoginAllowed(existingUser.id);
 
     const pendingTwoFactor = await this.users.isTwoFactorEnabled(existingUser.id);
     const authState: AuthStatePayload = {
@@ -710,6 +765,7 @@ export class AuthService {
     userId: string;
     pendingTwoFactor: boolean;
   }): Promise<{ authStateId: string; nextStep: "device_check" | "two_factor" }> {
+    await this.assertInstanceLoginAllowed(params.userId);
     const authState: AuthStatePayload = {
       id: this.generateAuthStateIdFn(),
       email: params.email,

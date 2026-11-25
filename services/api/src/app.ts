@@ -338,6 +338,12 @@ export interface AppDeps {
   mailSettingsService?: MailSettingsService;
   /** Self-host first-run setup wizard (public routes). */
   setupService?: SetupService;
+  /**
+   * Self-hosted instance membership / blocked-account gate.
+   * Return false to treat the session as unauthenticated (fail-closed).
+   * SaaS callers should omit this (or always return true).
+   */
+  assertUserInstanceAccess?: (userId: string) => Promise<boolean>;
 }
 
 export function createApiApp(
@@ -356,19 +362,34 @@ export function createApiApp(
   app.use(createCorsMiddleware(config.corsOrigin));
   app.use(createRequestLoggerMiddleware(logger));
 
+  const instanceAccessOptions = {
+    assertUserInstanceAccess: deps.assertUserInstanceAccess,
+  };
   const resolveSessionStrict =
     deps.sessionService !== undefined
-      ? createResolveAuthenticatedSession(config, deps.sessionService)
+      ? createResolveAuthenticatedSession(config, deps.sessionService, undefined, {
+          ...instanceAccessOptions,
+        })
       : null;
   const sessionIfDeviceTrusted = async (
     req: IncomingMessage,
   ): Promise<{ userId: string; deviceId: string | null } | null> => {
     if (!resolveSessionStrict) {
       const header = getHeader(req, "x-user-id")?.trim();
-      return header ? { userId: header, deviceId: null } : null;
+      if (!header) {
+        return null;
+      }
+      if (deps.assertUserInstanceAccess && !(await deps.assertUserInstanceAccess(header))) {
+        return null;
+      }
+      return { userId: header, deviceId: null };
     }
     const session = await resolveSessionStrict(req);
     if (!session) {
+      return null;
+    }
+    // Redundant with createResolveAuthenticatedSession; keep fail-closed for header-only path.
+    if (deps.assertUserInstanceAccess && !(await deps.assertUserInstanceAccess(session.userId))) {
       return null;
     }
     if (session.deviceId && deps.deviceService?.isSessionDeviceTrusted) {
@@ -398,12 +419,14 @@ export function createApiApp(
     deps.sessionService !== undefined
       ? createResolveAuthenticatedUserId(config, deps.sessionService, undefined, {
           allowUnboundDevice: true,
+          ...instanceAccessOptions,
         })
       : resolveUserId;
   const resolveSessionAllowUnboundDevice =
     deps.sessionService !== undefined
       ? createResolveAuthenticatedSession(config, deps.sessionService, undefined, {
           allowUnboundDevice: true,
+          ...instanceAccessOptions,
         })
       : undefined;
   /**
@@ -483,6 +506,7 @@ export function createApiApp(
           config,
           deps.sessionService,
           REGISTRATION_RECOVERY_ALLOWED_SCOPES,
+          { ...instanceAccessOptions },
         )
       : resolveUserId;
   const resolveSessionForRegistrationRecovery =
@@ -491,6 +515,7 @@ export function createApiApp(
           config,
           deps.sessionService,
           REGISTRATION_RECOVERY_ALLOWED_SCOPES,
+          { ...instanceAccessOptions },
         )
       : undefined;
 

@@ -126,7 +126,7 @@ test("integration: registration + first unlock decrypts stored hybrid identity b
     postgres: storage.postgres,
     redis: storage.redis,
     sessionService,
-    config,
+    config: { ...config, deploymentMode: "saas" },
   });
 
   await storage.redis.setWithTtl(

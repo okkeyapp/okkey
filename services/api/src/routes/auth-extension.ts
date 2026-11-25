@@ -3,6 +3,7 @@ import {
   ExtensionAuthError,
   type ExtensionAuthService,
 } from "../extension-auth/service.ts";
+import { SessionServiceError } from "../session/service.ts";
 import type { IncomingMessage } from "node:http";
 
 interface IssueCodeBody {
@@ -35,7 +36,7 @@ function handleExtensionAuthError(
   res: Parameters<typeof json>[0],
   error: unknown,
 ): void {
-  if (error instanceof ExtensionAuthError) {
+  if (error instanceof ExtensionAuthError || error instanceof SessionServiceError) {
     json(res, error.statusCode, errorPayload(error.code, error.message, requestId));
     return;
   }

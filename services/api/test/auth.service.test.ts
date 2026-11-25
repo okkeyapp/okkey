@@ -425,7 +425,10 @@ test("resendEmailCode blocks resend before cooldown", async () => {
 });
 
 test("confirmEmailCode returns registration for unknown user", async () => {
-  const { service } = setupAuthService({ generatedCode: "111222" });
+  const { service } = setupAuthService({
+    generatedCode: "111222",
+    configOverrides: { deploymentMode: "saas" },
+  });
   const start = await service.startEmailLogin({
     email: "new@example.com",
     requestIp: "127.0.0.1",

@@ -1,4 +1,5 @@
 import type { RegistrationResponseJSON, AuthenticationResponseJSON } from "@simplewebauthn/server";
+import { AuthError } from "../auth/service.ts";
 import { getHeader, json, readJsonBody, type RouteHandler } from "../http.ts";
 import { requestClientIp } from "../request-ip.ts";
 import {
@@ -33,6 +34,10 @@ function handleWebAuthnError(
       error.statusCode,
       errorPayload(error.code, error.message, requestId, error.details),
     );
+    return;
+  }
+  if (error instanceof AuthError) {
+    json(res, error.statusCode, errorPayload(error.code, error.message, requestId, error.details));
     return;
   }
   json(res, 500, errorPayload("INTERNAL_SERVER_ERROR", "internal server error", requestId));

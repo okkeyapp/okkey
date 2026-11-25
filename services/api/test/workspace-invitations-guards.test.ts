@@ -20,6 +20,7 @@ function service(
   planTier = "ENTERPRISE",
 ) {
   return new WorkspaceMembersService({
+    deploymentMode: "saas",
     db: { query } as never,
     workspaces: {
       findById: async () => ({
@@ -92,6 +93,7 @@ test("createInvitations rejects an empty batch and a batch over 50", async () =>
 
 test("createInvitations checks access before empty-batch validation", async () => {
   const svc = new WorkspaceMembersService({
+    deploymentMode: "saas",
     db: {
       query: async () => {
         throw new Error("should not query after access denial");

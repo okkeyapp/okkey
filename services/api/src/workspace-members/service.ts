@@ -2,6 +2,7 @@ import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 
 import { DEFAULT_PERSONAL_VAULT_NAME } from "@okkey/types";
 
+import type { DeploymentMode } from "../config.ts";
 import { DEFAULT_NEW_VAULT_CRYPTO_VERSION } from "../crypto/downgrade.ts";
 import { generateEntityId, isEntityId } from "../entity-id.ts";
 import {
@@ -11,6 +12,10 @@ import {
   type PlanEntitlementRuntimeConfig,
   type WorkspacePlanEntitlementSource,
 } from "../plan-entitlements.ts";
+import {
+  blockAccountAndRevokeAccess,
+  readInstanceSettings,
+} from "../setup/instance-access.ts";
 import type { QueryExecutor } from "../storage/postgres.ts";
 import type { WorkspacesRepository } from "../storage/repositories.ts";
 import type { VaultAccessUpdateInput, WorkspaceSharedVaultsService } from "../workspace-shared-vaults/service.ts";
@@ -161,6 +166,8 @@ export interface WorkspaceMembersServiceDeps {
   /** Optional structured logger for invite resend / copy-link actions. */
   logger?: { info(message: string, fields?: Record<string, unknown>): void };
   config?: PlanEntitlementRuntimeConfig;
+  /** When self_hosted, removing a member from the instance workspace blocks the account. */
+  deploymentMode: DeploymentMode;
   workspaceKeys?: {
     rotateOnRemoval(
       workspaceId: string,
@@ -242,6 +249,7 @@ export class WorkspaceMembersService {
   private readonly resolveOutboundMailActive?: () => Promise<boolean>;
   private readonly logger?: WorkspaceMembersServiceDeps["logger"];
   private readonly config?: PlanEntitlementRuntimeConfig;
+  private readonly deploymentMode: DeploymentMode;
   private readonly workspaceKeys: WorkspaceMembersServiceDeps["workspaceKeys"];
 
   constructor(deps: WorkspaceMembersServiceDeps) {
@@ -254,6 +262,7 @@ export class WorkspaceMembersService {
     this.resolveOutboundMailActive = deps.resolveOutboundMailActive;
     this.logger = deps.logger;
     this.config = deps.config;
+    this.deploymentMode = deps.deploymentMode;
     this.workspaceKeys = deps.workspaceKeys;
   }
 
@@ -332,6 +341,46 @@ export class WorkspaceMembersService {
       [normalized],
     );
     return Boolean(rows[0]);
+  }
+
+  /**
+   * Self-hosted email-invite path: return the token_hash when the email has exactly one
+   * pending invitation targeting the instance workspace. Null when none, ambiguous, or
+   * the instance workspace pointer is not set yet.
+   */
+  async findSinglePendingInstanceInviteTokenHash(email: string): Promise<string | null> {
+    const normalized = normalizeEmail(email);
+    if (!normalized) {
+      return null;
+    }
+    const settings = await this.db.query<{ workspace_id: string | null }>(
+      `
+        SELECT workspace_id
+        FROM server_instance_settings
+        WHERE id = TRUE
+        LIMIT 1
+      `,
+    );
+    const instanceWorkspaceId = settings[0]?.workspace_id;
+    if (instanceWorkspaceId == null) {
+      return null;
+    }
+    const rows = await this.db.query<{ token_hash: string }>(
+      `
+        SELECT token_hash
+        FROM workspace_invitations
+        WHERE lower(email) = $1
+          AND workspace_id = $2
+          AND status = 'pending'
+          AND expires_at > now()
+      `,
+      [normalized, instanceWorkspaceId],
+    );
+    if (rows.length !== 1) {
+      return null;
+    }
+    const hash = rows[0]?.token_hash?.trim() ?? "";
+    return hash || null;
   }
 
   /**
@@ -1247,7 +1296,7 @@ export class WorkspaceMembersService {
       }
     }
 
-    await this.deleteMemberRecords(workspaceId, targetUserId);
+    await this.deleteMemberRecordsAndMaybeBlock(workspaceId, targetUserId);
   }
 
   /**
@@ -1268,7 +1317,7 @@ export class WorkspaceMembersService {
         throw this.asMembersKeyError(error);
       }
     }
-    await this.deleteMemberRecords(workspaceId, targetUserId);
+    await this.deleteMemberRecordsAndMaybeBlock(workspaceId, targetUserId);
   }
 
   async listPendingWorkspaceKeyRecipients(workspaceId: string, actorId: string): Promise<string[]> {
@@ -1356,10 +1405,39 @@ export class WorkspaceMembersService {
     );
   }
 
+  private async deleteMemberRecordsAndMaybeBlock(
+    workspaceId: string,
+    targetUserId: string,
+  ): Promise<void> {
+    const run = async (tx: QueryExecutor) => {
+      await this.deleteMemberRecordsInTx(tx, workspaceId, targetUserId);
+      if (this.deploymentMode !== "self_hosted") {
+        return;
+      }
+      const settings = await readInstanceSettings(tx);
+      if (settings.workspaceId && String(settings.workspaceId) === String(workspaceId)) {
+        await blockAccountAndRevokeAccess(tx, targetUserId, new Date().toISOString());
+      }
+    };
+    if (this.db.transaction) {
+      await this.db.transaction(run);
+      return;
+    }
+    await run(this.db);
+  }
+
   private async deleteMemberRecords(workspaceId: string, targetUserId: string): Promise<void> {
+    await this.deleteMemberRecordsInTx(this.db, workspaceId, targetUserId);
+  }
+
+  private async deleteMemberRecordsInTx(
+    tx: QueryExecutor,
+    workspaceId: string,
+    targetUserId: string,
+  ): Promise<void> {
     // Drop shared vault memberships/keys/profiles. Workspace-key rotation, when a key exists,
     // already installed the next version for the remaining members and deleted this member's wraps.
-    await this.db.query(
+    await tx.query(
       `
         DELETE FROM vault_keys
         WHERE user_id = $1
@@ -1369,7 +1447,7 @@ export class WorkspaceMembersService {
       `,
       [targetUserId, workspaceId],
     );
-    await this.db.query(
+    await tx.query(
       `
         DELETE FROM vault_profiles
         WHERE user_id = $1
@@ -1379,7 +1457,7 @@ export class WorkspaceMembersService {
       `,
       [targetUserId, workspaceId],
     );
-    await this.db.query(
+    await tx.query(
       `
         DELETE FROM vault_members
         WHERE user_id = $1
@@ -1390,7 +1468,7 @@ export class WorkspaceMembersService {
       [targetUserId, workspaceId],
     );
     // Drop staged invitation vault wraps for this accepted user (keep invitation row).
-    await this.db.query(
+    await tx.query(
       `
         DELETE FROM workspace_invitation_vault_access
         WHERE invitation_id IN (
@@ -1400,7 +1478,7 @@ export class WorkspaceMembersService {
       `,
       [workspaceId, targetUserId],
     );
-    await this.db.query(
+    await tx.query(
       `DELETE FROM workspace_members WHERE workspace_id = $1 AND user_id = $2`,
       [workspaceId, targetUserId],
     );

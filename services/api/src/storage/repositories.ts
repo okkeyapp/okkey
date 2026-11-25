@@ -4757,6 +4757,19 @@ export class SessionsRepository {
     return rows.length;
   }
 
+  /** Delete every session for a user (bound and unbound). */
+  async deleteByUserId(userId: string): Promise<number> {
+    const rows = await this.db.query<{ id: string }>(
+      `
+        DELETE FROM sessions
+        WHERE user_id = $1
+        RETURNING id
+      `,
+      [userId],
+    );
+    return rows.length;
+  }
+
   async markRecoveryProved(input: { tokenHash: string; userId: string }): Promise<boolean> {
     const rows = await this.db.query<{ id: string }>(
       `

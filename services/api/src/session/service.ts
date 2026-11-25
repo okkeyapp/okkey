@@ -54,19 +54,27 @@ export interface SessionServiceDeps {
     | "markRecoveryProved"
     | "setRecoveryChallenge"
     | "consumeRecoveryChallenge"
-  >;
+  > &
+    Partial<Pick<SessionsRepository, "deleteByUserId">>;
   config: Pick<ApiConfig, "sessionTtlSeconds">;
+  /**
+   * Self-hosted gate: return false when the account is blocked or not a member of
+   * the instance workspace. Fail-closed — no session is minted.
+   */
+  assertInstanceAccess?: (userId: string) => Promise<boolean>;
   now?: () => Date;
 }
 
 export class SessionService {
   private readonly sessions: SessionServiceDeps["sessions"];
   private readonly config: Pick<ApiConfig, "sessionTtlSeconds">;
+  private readonly assertInstanceAccess?: (userId: string) => Promise<boolean>;
   private readonly now: () => Date;
 
   constructor(deps: SessionServiceDeps) {
     this.sessions = deps.sessions;
     this.config = deps.config;
+    this.assertInstanceAccess = deps.assertInstanceAccess;
     this.now = deps.now ?? (() => new Date());
   }
 
@@ -82,6 +90,16 @@ export class SessionService {
     userId: string,
     options: CreateSessionOptions = {},
   ): Promise<{ accessToken: string; expiresAt: string; scope: SessionScope }> {
+    if (this.assertInstanceAccess) {
+      const allowed = await this.assertInstanceAccess(userId);
+      if (!allowed) {
+        throw new SessionServiceError(
+          "ACCOUNT_BLOCKED",
+          403,
+          "account access to this instance has been revoked",
+        );
+      }
+    }
     const accessToken = this.mintAccessToken();
     const now = this.now();
     const ttlSeconds = options.ttlSeconds ?? this.config.sessionTtlSeconds;
@@ -191,6 +209,14 @@ export class SessionService {
   /** End all server sessions bound to a device (revoke / sign-out). */
   async revokeSessionsForDevice(userId: string, deviceId: string): Promise<void> {
     await this.sessions.deleteByDeviceId({ userId, deviceId });
+  }
+
+  /** End every server session for a user (including unbound bootstrap sessions). */
+  async revokeSessionsForUser(userId: string): Promise<void> {
+    if (!this.sessions.deleteByUserId) {
+      return;
+    }
+    await this.sessions.deleteByUserId(userId);
   }
 
   async revokeAccessToken(token: string): Promise<boolean> {

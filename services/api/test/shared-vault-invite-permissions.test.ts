@@ -42,6 +42,7 @@ function matrix(overrides: Record<string, { get: number; post: number; put: numb
 test("createInvitations denies a non-owner whose role has members.post = 0", async () => {
   let inserts = 0;
   const service = new WorkspaceMembersService({
+    deploymentMode: "saas",
     db: {
       query: async (sql: string) => {
         if (sql.includes("SELECT owner_id FROM workspaces")) {

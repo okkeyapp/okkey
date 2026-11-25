@@ -168,7 +168,6 @@ export default function SetupWizardPage() {
   const [testFailedMessage, setTestFailedMessage] = useState<string | null>(null);
 
   const [publicAppUrl, setPublicAppUrl] = useState("");
-  const [registrationMode, setRegistrationMode] = useState<"open" | "invite_only">("open");
 
   const [ownerEmail, setOwnerEmail] = useState("");
   const [firstName, setFirstName] = useState("");
@@ -344,7 +343,6 @@ export default function SetupWizardPage() {
       applyMailSettings(mail);
       setProviders(providerList.providers);
       setPublicAppUrl(instance.public_app_url || mail.public_app_url || "");
-      setRegistrationMode(instance.registration_mode);
       setStep("mail");
     } catch (err) {
       const kind = setupCodeErrorKind(err);
@@ -475,7 +473,6 @@ export default function SetupWizardPage() {
     try {
       await setupApi.updateInstance(setupToken, {
         public_app_url: publicAppUrl.trim(),
-        registration_mode: registrationMode,
       });
       setStep("owner");
     } catch {
@@ -1206,22 +1203,6 @@ export default function SetupWizardPage() {
               placeholder="https://vault.example.com"
               disabled={busy}
             />
-          </div>
-          <div className="flex w-full flex-col gap-2">
-            <span className="okkey-small font-medium text-copy-primary">{t("web.setupWizard.registrationMode")}</span>
-            <Select
-              value={registrationMode}
-              onValueChange={(v) => setRegistrationMode(v as "open" | "invite_only")}
-              disabled={busy}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="open">{t("web.setupWizard.registrationOpen")}</SelectItem>
-                <SelectItem value="invite_only">{t("web.setupWizard.registrationInviteOnly")}</SelectItem>
-              </SelectContent>
-            </Select>
           </div>
           <Button type="submit" disabled={busy}>
             {t("web.setupWizard.ownerNext")}
