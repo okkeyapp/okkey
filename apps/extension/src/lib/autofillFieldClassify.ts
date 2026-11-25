@@ -67,6 +67,27 @@ import {
   NATIONALITY,
   ISSUING_AUTH,
   BIRTH_PLACE,
+  LOYALTY_PROVIDER,
+  LOYALTY_CARD_NUMBER,
+  LOYALTY_BARCODE,
+  LOYALTY_EXPIRY,
+  LOYALTY_CONTEXT,
+  VEHICLE_MAKE_MODEL,
+  VEHICLE_PLATE,
+  VEHICLE_VIN,
+  VEHICLE_INSPECTION,
+  VEHICLE_POLICY,
+  VEHICLE_INSURER,
+  VEHICLE_INSURANCE_UNTIL,
+  TRAVEL_TRANSPORT,
+  TRAVEL_CARRIER,
+  TRAVEL_TRIP,
+  TRAVEL_DEPARTURE,
+  TRAVEL_FROM,
+  TRAVEL_TO,
+  TRAVEL_BOOKING_REF,
+  TRAVEL_PASSENGERS,
+  TRAVEL_SEATS,
 } from "./autofillDictionaries.ts";
 
 /** Semantic kinds for page input classification (aligned with vault extract keys + login/otp). */
@@ -116,7 +137,27 @@ export type AutofillFieldKind =
   | "db-sid"
   | "crypto-address"
   | "crypto-pin"
-  | "crypto-passphrase";
+  | "crypto-passphrase"
+  | "loyalty-provider"
+  | "loyalty-card-number"
+  | "loyalty-barcode"
+  | "loyalty-expiry"
+  | "vehicle-make-model"
+  | "vehicle-plate"
+  | "vehicle-vin"
+  | "vehicle-inspection-due"
+  | "vehicle-insurance-policy-number"
+  | "vehicle-insurer"
+  | "vehicle-insurance-valid-until"
+  | "travel-transport-type"
+  | "travel-carrier"
+  | "travel-trip-number"
+  | "travel-departure-at"
+  | "travel-from"
+  | "travel-to"
+  | "travel-booking-reference"
+  | "travel-passengers"
+  | "travel-seats";
 
 export type AutofillInputHints = {
   type: string;
@@ -197,6 +238,26 @@ const KIND_SET = new Set<string>([
   "crypto-address",
   "crypto-pin",
   "crypto-passphrase",
+  "loyalty-provider",
+  "loyalty-card-number",
+  "loyalty-barcode",
+  "loyalty-expiry",
+  "vehicle-make-model",
+  "vehicle-plate",
+  "vehicle-vin",
+  "vehicle-inspection-due",
+  "vehicle-insurance-policy-number",
+  "vehicle-insurer",
+  "vehicle-insurance-valid-until",
+  "travel-transport-type",
+  "travel-carrier",
+  "travel-trip-number",
+  "travel-departure-at",
+  "travel-from",
+  "travel-to",
+  "travel-booking-reference",
+  "travel-passengers",
+  "travel-seats",
 ]);
 
 function asKind(value: string | undefined | null): AutofillFieldKind | null {
@@ -354,7 +415,72 @@ function matchKeywordKind(blob: string): AutofillFieldKind | null {
   if (BDAY_HINT.test(blob)) {
     return "bday";
   }
+  // Loyalty before payment card — «loyalty card number» / membership must not become cc-number.
+  if (LOYALTY_CARD_NUMBER.test(blob)) {
+    return "loyalty-card-number";
+  }
+  if (LOYALTY_PROVIDER.test(blob)) {
+    return "loyalty-provider";
+  }
+  if (LOYALTY_BARCODE.test(blob)) {
+    return "loyalty-barcode";
+  }
+  if (LOYALTY_EXPIRY.test(blob)) {
+    return "loyalty-expiry";
+  }
+  if (VEHICLE_VIN.test(blob)) {
+    return "vehicle-vin";
+  }
+  if (VEHICLE_PLATE.test(blob)) {
+    return "vehicle-plate";
+  }
+  if (VEHICLE_MAKE_MODEL.test(blob)) {
+    return "vehicle-make-model";
+  }
+  if (VEHICLE_INSPECTION.test(blob)) {
+    return "vehicle-inspection-due";
+  }
+  if (VEHICLE_POLICY.test(blob)) {
+    return "vehicle-insurance-policy-number";
+  }
+  if (VEHICLE_INSURER.test(blob)) {
+    return "vehicle-insurer";
+  }
+  if (VEHICLE_INSURANCE_UNTIL.test(blob)) {
+    return "vehicle-insurance-valid-until";
+  }
+  if (TRAVEL_BOOKING_REF.test(blob)) {
+    return "travel-booking-reference";
+  }
+  if (TRAVEL_TRIP.test(blob)) {
+    return "travel-trip-number";
+  }
+  if (TRAVEL_DEPARTURE.test(blob)) {
+    return "travel-departure-at";
+  }
+  if (TRAVEL_TRANSPORT.test(blob)) {
+    return "travel-transport-type";
+  }
+  if (TRAVEL_CARRIER.test(blob)) {
+    return "travel-carrier";
+  }
+  if (TRAVEL_FROM.test(blob)) {
+    return "travel-from";
+  }
+  if (TRAVEL_TO.test(blob)) {
+    return "travel-to";
+  }
+  if (TRAVEL_PASSENGERS.test(blob)) {
+    return "travel-passengers";
+  }
+  if (TRAVEL_SEATS.test(blob)) {
+    return "travel-seats";
+  }
   if (CC_NUMBER.test(blob)) {
+    // Soft remap when the same field blob also carries loyalty cues.
+    if (LOYALTY_CONTEXT.test(blob)) {
+      return "loyalty-card-number";
+    }
     return "cc-number";
   }
   if (CC_EXP.test(blob)) {
@@ -848,6 +974,19 @@ export function collectInputHints(el: HTMLInputElement): AutofillInputHints {
   const nearby = nearbyLabelText(el);
   if (nearby) {
     labelText = `${labelText} ${nearby}`.trim();
+  }
+  // Form / section headings give specialty context (e.g. «Loyalty card» + «Card number»).
+  try {
+    const form = el.closest("form") ?? el.closest("fieldset") ?? el.closest("section");
+    const heading = form?.querySelector?.(
+      "h1, h2, h3, h4, legend, [role='heading'], .form-title, .title",
+    );
+    const headingText = heading?.textContent?.trim() ?? "";
+    if (headingText && headingText.length < 160) {
+      labelText = `${labelText} ${headingText}`.trim();
+    }
+  } catch {
+    /* ignore */
   }
   const autocompleteAttr = el.getAttribute("autocomplete")?.trim() || undefined;
   const autocompleteIdl = el.autocomplete?.trim() || undefined;

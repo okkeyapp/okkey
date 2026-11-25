@@ -277,6 +277,34 @@ async function matchingLoginItems(userId: string, pageUrl: string) {
   );
 }
 
+
+const LOYALTY_FIELD_KINDS = new Set([
+  "loyalty-provider",
+  "loyalty-card-number",
+  "loyalty-barcode",
+  "loyalty-expiry",
+]);
+const VEHICLE_FIELD_KINDS = new Set([
+  "vehicle-make-model",
+  "vehicle-plate",
+  "vehicle-vin",
+  "vehicle-inspection-due",
+  "vehicle-insurance-policy-number",
+  "vehicle-insurer",
+  "vehicle-insurance-valid-until",
+]);
+const TRAVEL_FIELD_KINDS = new Set([
+  "travel-transport-type",
+  "travel-carrier",
+  "travel-trip-number",
+  "travel-departure-at",
+  "travel-from",
+  "travel-to",
+  "travel-booking-reference",
+  "travel-passengers",
+  "travel-seats",
+]);
+
 function filterCategoriesByFormType(
   categories: AutofillItemCategory[],
   formType: string | undefined,
@@ -287,6 +315,16 @@ function filterCategoriesByFormType(
   // Login items are further filtered to TOTP-capable only in matchingAutofillItems.
   if (focused === "otp") {
     return categories.filter((id) => id === "login");
+  }
+  // Specialty categories win over form-type buckets so login items never mix onto these fields.
+  if (focused && LOYALTY_FIELD_KINDS.has(focused)) {
+    return categories.filter((id) => id === "loyalty_card");
+  }
+  if (focused && VEHICLE_FIELD_KINDS.has(focused)) {
+    return categories.filter((id) => id === "vehicle");
+  }
+  if (focused && TRAVEL_FIELD_KINDS.has(focused)) {
+    return categories.filter((id) => id === "travel_booking");
   }
   if (formType === "search") {
     return [];
@@ -589,6 +627,17 @@ export async function handleAutofillFill(
       delete values.password;
       delete values["db-password"];
     }
+  }
+
+  // Specialty categories never carry login credentials into page fills.
+  if (
+    item.categoryId === "loyalty_card" ||
+    item.categoryId === "vehicle" ||
+    item.categoryId === "travel_booking"
+  ) {
+    delete values.password;
+    delete values["db-password"];
+    delete values.username;
   }
 
   // personal_data: nickname maps to username; prefer it over email for username fills.

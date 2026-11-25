@@ -652,10 +652,48 @@ export function shouldOpenPasswordGenerator(
  * Vault categories allowed for a form type + focused field kind.
  * Login never surfaces personal_data; register prefers personal_data for identity fields.
  */
+
+const LOYALTY_FORM_FIELD_KINDS = new Set([
+  "loyalty-provider",
+  "loyalty-card-number",
+  "loyalty-barcode",
+  "loyalty-expiry",
+]);
+const VEHICLE_FORM_FIELD_KINDS = new Set([
+  "vehicle-make-model",
+  "vehicle-plate",
+  "vehicle-vin",
+  "vehicle-inspection-due",
+  "vehicle-insurance-policy-number",
+  "vehicle-insurer",
+  "vehicle-insurance-valid-until",
+]);
+const TRAVEL_FORM_FIELD_KINDS = new Set([
+  "travel-transport-type",
+  "travel-carrier",
+  "travel-trip-number",
+  "travel-departure-at",
+  "travel-from",
+  "travel-to",
+  "travel-booking-reference",
+  "travel-passengers",
+  "travel-seats",
+]);
+
 export function categoriesAllowedForFormType(
   formType: AutofillFormType,
   fieldKind: string | null | undefined,
 ): readonly string[] | null {
+  // Specialty kinds never mix with login / personal_data buckets.
+  if (fieldKind && LOYALTY_FORM_FIELD_KINDS.has(fieldKind)) {
+    return ["loyalty_card"];
+  }
+  if (fieldKind && VEHICLE_FORM_FIELD_KINDS.has(fieldKind)) {
+    return ["vehicle"];
+  }
+  if (fieldKind && TRAVEL_FORM_FIELD_KINDS.has(fieldKind)) {
+    return ["travel_booking"];
+  }
   // null = no restriction beyond categoriesForFieldKinds
   if (formType === "search") {
     return [];

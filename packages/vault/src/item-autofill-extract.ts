@@ -50,7 +50,27 @@ export type AutofillValueKey =
   | "db-sid"
   | "crypto-address"
   | "crypto-pin"
-  | "crypto-passphrase";
+  | "crypto-passphrase"
+  | "loyalty-provider"
+  | "loyalty-card-number"
+  | "loyalty-barcode"
+  | "loyalty-expiry"
+  | "vehicle-make-model"
+  | "vehicle-plate"
+  | "vehicle-vin"
+  | "vehicle-inspection-due"
+  | "vehicle-insurance-policy-number"
+  | "vehicle-insurer"
+  | "vehicle-insurance-valid-until"
+  | "travel-transport-type"
+  | "travel-carrier"
+  | "travel-trip-number"
+  | "travel-departure-at"
+  | "travel-from"
+  | "travel-to"
+  | "travel-booking-reference"
+  | "travel-passengers"
+  | "travel-seats";
 
 export const AUTOFILL_ITEM_CATEGORIES = [
   "login",
@@ -58,6 +78,9 @@ export const AUTOFILL_ITEM_CATEGORIES = [
   "credit_card",
   "bank_account",
   "passport",
+  "loyalty_card",
+  "vehicle",
+  "travel_booking",
   "database",
   "crypto_wallet",
 ] as const;
@@ -109,6 +132,49 @@ const FIELD_ID_TO_KEY: Record<string, AutofillValueKey> = {
   "crypto-access-pin": "crypto-pin",
   "crypto-passphrase": "crypto-passphrase",
 };
+
+/** Category-scoped maps — avoid collisions (e.g. loyalty `card-number` vs credit card PAN). */
+const LOYALTY_FIELD_ID_TO_KEY: Record<string, AutofillValueKey> = {
+  provider: "loyalty-provider",
+  "card-number": "loyalty-card-number",
+  barcode: "loyalty-barcode",
+  "expiry-date": "loyalty-expiry",
+};
+
+const VEHICLE_FIELD_ID_TO_KEY: Record<string, AutofillValueKey> = {
+  "make-model": "vehicle-make-model",
+  plate: "vehicle-plate",
+  vin: "vehicle-vin",
+  "inspection-due": "vehicle-inspection-due",
+  "insurance-policy-number": "vehicle-insurance-policy-number",
+  insurer: "vehicle-insurer",
+  "insurance-valid-until": "vehicle-insurance-valid-until",
+};
+
+const TRAVEL_FIELD_ID_TO_KEY: Record<string, AutofillValueKey> = {
+  "transport-type": "travel-transport-type",
+  carrier: "travel-carrier",
+  "trip-number": "travel-trip-number",
+  "departure-at": "travel-departure-at",
+  from: "travel-from",
+  to: "travel-to",
+  "booking-reference": "travel-booking-reference",
+  passengers: "travel-passengers",
+  seats: "travel-seats",
+};
+
+function fieldIdToAutofillKey(categoryId: string, fieldId: string): AutofillValueKey | undefined {
+  if (categoryId === "loyalty_card") {
+    return LOYALTY_FIELD_ID_TO_KEY[fieldId];
+  }
+  if (categoryId === "vehicle") {
+    return VEHICLE_FIELD_ID_TO_KEY[fieldId];
+  }
+  if (categoryId === "travel_booking") {
+    return TRAVEL_FIELD_ID_TO_KEY[fieldId];
+  }
+  return FIELD_ID_TO_KEY[fieldId];
+}
 
 const LOGIN_KEYS = new Set<string>(["username", "password", "otp", "email"]);
 const PERSONAL_KEYS = new Set<string>([
@@ -164,6 +230,32 @@ const DATABASE_KEYS = new Set<string>([
   "db-sid",
 ]);
 const CRYPTO_KEYS = new Set<string>(["crypto-address", "crypto-pin", "crypto-passphrase"]);
+const LOYALTY_KEYS = new Set<string>([
+  "loyalty-provider",
+  "loyalty-card-number",
+  "loyalty-barcode",
+  "loyalty-expiry",
+]);
+const VEHICLE_KEYS = new Set<string>([
+  "vehicle-make-model",
+  "vehicle-plate",
+  "vehicle-vin",
+  "vehicle-inspection-due",
+  "vehicle-insurance-policy-number",
+  "vehicle-insurer",
+  "vehicle-insurance-valid-until",
+]);
+const TRAVEL_KEYS = new Set<string>([
+  "travel-transport-type",
+  "travel-carrier",
+  "travel-trip-number",
+  "travel-departure-at",
+  "travel-from",
+  "travel-to",
+  "travel-booking-reference",
+  "travel-passengers",
+  "travel-seats",
+]);
 
 function selectValueFromRaw(raw: unknown): string {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
@@ -339,7 +431,7 @@ export function extractAutofillValues(
       continue;
     }
 
-    const key = FIELD_ID_TO_KEY[field.id];
+    const key = fieldIdToAutofillKey(item.categoryId, field.id);
     if (key) {
       put(map, key, fieldPlainString(field));
       continue;
@@ -427,6 +519,25 @@ export function suggestionSubtitleFromValues(
   if (categoryId === "passport") {
     return values["passport-number"] || values.name || "";
   }
+  if (categoryId === "loyalty_card") {
+    return (
+      values["loyalty-card-number"] ||
+      values["loyalty-provider"] ||
+      values["loyalty-barcode"] ||
+      ""
+    );
+  }
+  if (categoryId === "vehicle") {
+    return values["vehicle-plate"] || values["vehicle-make-model"] || values["vehicle-vin"] || "";
+  }
+  if (categoryId === "travel_booking") {
+    return (
+      values["travel-booking-reference"] ||
+      values["travel-trip-number"] ||
+      values["travel-carrier"] ||
+      ""
+    );
+  }
   if (categoryId === "database") {
     return values["db-username"] || values["db-name"] || values["db-server"] || "";
   }
@@ -468,6 +579,15 @@ export function categoriesForFieldKinds(kinds: readonly string[]): AutofillItemC
     }
     if (PASSPORT_KEYS.has(kind)) {
       out.add("passport");
+    }
+    if (LOYALTY_KEYS.has(kind)) {
+      out.add("loyalty_card");
+    }
+    if (VEHICLE_KEYS.has(kind)) {
+      out.add("vehicle");
+    }
+    if (TRAVEL_KEYS.has(kind)) {
+      out.add("travel_booking");
     }
     if (DATABASE_KEYS.has(kind)) {
       out.add("database");

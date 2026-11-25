@@ -18,6 +18,7 @@ import { extractAutofillFieldGroups } from "../src/lib/autofillDomLayers.ts";
 import {
   findLoginFields,
   fillLoginForm,
+  fillAutofillValues,
   resolveAutofillKindForElement,
   SEGMENTED_OTP_MIN_FIELDS,
   SEGMENTED_OTP_MAX_FIELDS,
@@ -27,6 +28,7 @@ import {
   isCurrentPasswordField,
   shouldOpenPasswordGenerator,
   detectFormTypeForInput,
+  categoriesAllowedForFormType,
 } from "../src/lib/autofillFormDetect.ts";
 
 function loadHtmlIntoDocument(html: string): void {
@@ -260,6 +262,102 @@ describe("owned complex fixtures", () => {
     expect((document.querySelector("#hidden-pass") as HTMLInputElement).value).toBe("");
     expect((document.querySelector("#otp") as HTMLInputElement).value).toBe("123456");
     expect((document.querySelector("#otp") as HTMLInputElement).value).not.toBe("secret-password");
+  });
+
+  it("loyalty-en: classifies loyalty kinds and never login/personal_data", () => {
+    loadHtmlIntoDocument(readFileSync(path.join(FIXTURES_DIR, "loyalty-en.html"), "utf8"));
+    for (const el of Array.from(document.querySelectorAll("input"))) {
+      Object.defineProperty(el, "getClientRects", {
+        value: () => [{ width: 100, height: 20, top: 0, left: 0, bottom: 20, right: 100 }],
+      });
+    }
+    const member = document.querySelector("#member") as HTMLInputElement;
+    const program = document.querySelector("#program") as HTMLInputElement;
+    const barcode = document.querySelector("#barcode") as HTMLInputElement;
+    expect(classifyAutofillInput(collectInputHints(member))).toBe("loyalty-card-number");
+    expect(classifyAutofillInput(collectInputHints(program))).toBe("loyalty-provider");
+    expect(classifyAutofillInput(collectInputHints(barcode))).toBe("loyalty-barcode");
+    expect(categoriesAllowedForFormType("login", "loyalty-card-number")).toEqual(["loyalty_card"]);
+    expect(categoriesAllowedForFormType("unknown", "loyalty-card-number")).toEqual(["loyalty_card"]);
+    expect(predictVisibleRoles()).toEqual([]);
+  });
+
+  it("loyalty-ru: Russian labels classify and are overlay targets", () => {
+    loadHtmlIntoDocument(readFileSync(path.join(FIXTURES_DIR, "loyalty-ru.html"), "utf8"));
+    for (const el of Array.from(document.querySelectorAll("input"))) {
+      Object.defineProperty(el, "getClientRects", {
+        value: () => [{ width: 100, height: 20, top: 0, left: 0, bottom: 20, right: 100 }],
+      });
+    }
+    expect(classifyAutofillInput(collectInputHints(document.querySelector("#member") as HTMLInputElement))).toBe(
+      "loyalty-card-number",
+    );
+    expect(classifyAutofillInput(collectInputHints(document.querySelector("#program") as HTMLInputElement))).toBe(
+      "loyalty-provider",
+    );
+    expect(classifyAutofillInput(collectInputHints(document.querySelector("#barcode") as HTMLInputElement))).toBe(
+      "loyalty-barcode",
+    );
+    expect(resolveAutofillKindForElement(document.querySelector("#member") as HTMLInputElement)).toBe(
+      "loyalty-card-number",
+    );
+  });
+
+  it("travel-booking: PNR / carrier / flight / from / to classify for overlay", () => {
+    loadHtmlIntoDocument(readFileSync(path.join(FIXTURES_DIR, "travel-booking.html"), "utf8"));
+    for (const el of Array.from(document.querySelectorAll("input"))) {
+      Object.defineProperty(el, "getClientRects", {
+        value: () => [{ width: 100, height: 20, top: 0, left: 0, bottom: 20, right: 100 }],
+      });
+    }
+    expect(classifyAutofillInput(collectInputHints(document.querySelector("#pnr") as HTMLInputElement))).toBe(
+      "travel-booking-reference",
+    );
+    expect(classifyAutofillInput(collectInputHints(document.querySelector("#carrier") as HTMLInputElement))).toBe(
+      "travel-carrier",
+    );
+    expect(classifyAutofillInput(collectInputHints(document.querySelector("#flight") as HTMLInputElement))).toBe(
+      "travel-trip-number",
+    );
+    expect(classifyAutofillInput(collectInputHints(document.querySelector("#from") as HTMLInputElement))).toBe(
+      "travel-from",
+    );
+    expect(classifyAutofillInput(collectInputHints(document.querySelector("#to") as HTMLInputElement))).toBe(
+      "travel-to",
+    );
+    expect(categoriesAllowedForFormType("unknown", "travel-booking-reference")).toEqual([
+      "travel_booking",
+    ]);
+  });
+
+  it("vehicle-plate: License plate fills from vehicle-plate value", () => {
+    loadHtmlIntoDocument(readFileSync(path.join(FIXTURES_DIR, "vehicle-plate.html"), "utf8"));
+    for (const el of Array.from(document.querySelectorAll("input"))) {
+      Object.defineProperty(el, "getClientRects", {
+        value: () => [{ width: 100, height: 20, top: 0, left: 0, bottom: 20, right: 100 }],
+      });
+    }
+    const plate = document.querySelector("#plate") as HTMLInputElement;
+    expect(classifyAutofillInput(collectInputHints(plate))).toBe("vehicle-plate");
+    expect(classifyAutofillInput(collectInputHints(document.querySelector("#make") as HTMLInputElement))).toBe(
+      "vehicle-make-model",
+    );
+    expect(classifyAutofillInput(collectInputHints(document.querySelector("#vin") as HTMLInputElement))).toBe(
+      "vehicle-vin",
+    );
+    const filled = fillAutofillValues(document, {
+      "vehicle-plate": "A123BC77",
+      "vehicle-make-model": "Toyota Camry",
+      "vehicle-vin": "JTDBR32E720123456",
+      "vehicle-inspection-due": "2027-01-01",
+      "vehicle-insurer": "Ingospakh",
+      "vehicle-insurance-policy-number": "POL-1",
+      "vehicle-insurance-valid-until": "2027-06-01",
+    });
+    expect(filled).toBeGreaterThanOrEqual(7);
+    expect(plate.value).toBe("A123BC77");
+    expect((document.querySelector("#make") as HTMLInputElement).value).toBe("Toyota Camry");
+    expect((document.querySelector("#vin") as HTMLInputElement).value).toBe("JTDBR32E720123456");
   });
 
   it("security: foreign-origin fill is refused", async () => {

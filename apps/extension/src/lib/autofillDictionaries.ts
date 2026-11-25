@@ -162,6 +162,53 @@ export const CRYPTO_ADDR = /wallet[-_]?address|crypto[-_]?address|btc|eth[-_]?ad
 export const CRYPTO_PIN = /crypto[-_]?pin|access[-_]?pin|wallet[-_]?pin/i;
 export const CRYPTO_PHRASE = /passphrase|seed[-_]?phrase|mnemonic|сид[-_]?фраз|мнемоник/i;
 
+/**
+ * Loyalty / vehicle / travel — allow spaces between words so labels like
+ * «License plate» / «Membership number» / «Booking reference» match.
+ * Loyalty rules must win over bare payment «card number» when loyalty cues are present.
+ */
+export const LOYALTY_PROVIDER =
+  /loyalty[-_\s]+(?:program|provider|club)|membership[-_\s]+program|frequent[-_\s]+flyer|программа\s*лояльност|бонусн\w*\s*програм|клуб\s*лояльност|название\s*программ/i;
+export const LOYALTY_CARD_NUMBER =
+  /loyalty[-_\s]*card[-_\s]*number|loyalty[-_\s]*number|member(?:ship)?[-_\s]*(?:card|number|id|no)|frequent[-_\s]*flyer[-_\s]*(?:number|no|id)|номер\s*участник|карта\s*лояльност|номер\s*(?:карты|карт)\s*лояльност|членск\w*\s*(?:карт|номер)|loyalty[-_\s]*card(?!\s*holder)/i;
+export const LOYALTY_BARCODE = /\bbarcode\b|qr[-_\s]*code|qr[-_\s]*value|штрих[-_\s]*код|qr[-_\s]*код/i;
+export const LOYALTY_EXPIRY =
+  /loyalty[-_\s]*expir|membership[-_\s]*expir|срок\s*действ\w*\s*(?:карты\s*)?лояльност|годен\s*до.*лояльност/i;
+/** Soft loyalty form cue — remaps bare card-number when present in the same field blob. */
+export const LOYALTY_CONTEXT =
+  /loyalty|member(?:ship)?|frequent[-_\s]*flyer|лояльност|бонусн\w*\s*програм|участник|членск/i;
+
+export const VEHICLE_MAKE_MODEL =
+  /make[-_\s\/]*model|vehicle[-_\s]*(?:make|model)|car[-_\s]*(?:make|model)|марка(?:\s*[\/&]\s*|\s+и\s+|\s+)?модель|модель\s*авто|make\s*(?:\/|&|and)\s*model/i;
+export const VEHICLE_PLATE =
+  /licen[cs]e[-_\s]*plate|\breg(?:istration)?[-_\s]*plate\b|\bplate[-_\s]*number\b|\bnumber[-_\s]*plate\b|\bvehicle[-_\s]*plate\b|госномер|гос\.?\s*номер|регистрационн\w*\s*знак|номерн\w*\s*знак/i;
+export const VEHICLE_VIN =
+  /\bvin\b|vehicle[-_\s]*identification|идентификационн\w*\s*номер\s*транспорт|вин[-_\s]*код/i;
+export const VEHICLE_INSPECTION =
+  /inspection[-_\s]*due|mot[-_\s]*due|mot[-_\s]*expiry|tech[-_\s]*inspection|техосмотр|техосмотр\w*\s*до|срок\s*техосмотр/i;
+export const VEHICLE_POLICY =
+  /insurance[-_\s]*policy|policy[-_\s]*number|полис|номер\s*полис|страховой\s*полис/i;
+export const VEHICLE_INSURER =
+  /\binsurer\b|insurance[-_\s]*company|страховщик|страховая\s*компани/i;
+export const VEHICLE_INSURANCE_UNTIL =
+  /insurance[-_\s]*(?:valid|expir)|policy[-_\s]*expir|(?:insurance|policy).{0,40}valid[-_\s]*until|valid[-_\s]*until.{0,40}(?:insurance|policy)|страховк\w*\s*до|полис\s*действ|действует\s*до.*страхов/i;
+
+export const TRAVEL_TRANSPORT =
+  /transport[-_\s]*type|travel[-_\s]*mode|mode[-_\s]*of[-_\s]*transport|тип\s*транспорт|вид\s*транспорт/i;
+export const TRAVEL_CARRIER = /\bcarrier\b|airline|railway|operator|перевозчик|авиакомпани/i;
+export const TRAVEL_TRIP =
+  /flight[-_\s]*number|trip[-_\s]*number|train[-_\s]*number|voyage[-_\s]*number|рейс|номер\s*рейс|номер\s*поезд/i;
+export const TRAVEL_DEPARTURE =
+  /departure[-_\s]*(?:at|date|time)|depart(?:ure)?[-_\s]*datetime|дата\s*(?:и\s*время\s*)?отправлен|время\s*отправлен|отправлен/i;
+export const TRAVEL_FROM =
+  /(?:^|[^a-zа-яё])from(?:[^a-zа-яё]|$)|origin|departure[-_\s]*(?:city|airport|station)|откуда|пункт\s*отправлен|город\s*отправлен/i;
+export const TRAVEL_TO =
+  /(?:^|[^a-zа-яё])to(?:[^a-zа-яё]|$)|destination|arrival[-_\s]*(?:city|airport|station)|куда|пункт\s*назначен|город\s*прибыт/i;
+export const TRAVEL_BOOKING_REF =
+  /\bpnr\b|booking[-_\s]*(?:ref(?:erence)?|code|number)|reservation[-_\s]*(?:code|number|ref)|confirmation[-_\s]*(?:code|number)|код\s*бронирован|номер\s*брони|бронь/i;
+export const TRAVEL_PASSENGERS = /passengers?|travellers?|пассажир/i;
+export const TRAVEL_SEATS = /\bseats?\b|\bseat[-_\s]*number\b|места|место\b|номер\s*места/i;
+
 /** Current / new / confirm password wording (EN + RU). */
 export const CONFIRM_PASSWORD_HINT =
   /\b(confirm|repeat|re[-_]?type|re[-_]?enter|verify)\b.*\bpass|\bpass\w*\b.*\b(confirm|repeat)|подтверд\p{L}*\s*парол|повтор\p{L}*\s*парол|пароль\s*ещё|пароль\s*еще|ещё\s*раз|еще\s*раз/iu;

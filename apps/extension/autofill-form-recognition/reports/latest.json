@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-11-25T10:37:51.518Z",
-  "classifierSha": "5ac7ebc727d7b178117b235dc23aee85701f92fd8724d7dc22191d6d3a0b01b3",
+  "generatedAt": "2026-11-25T11:10:37.096Z",
+  "classifierSha": "90765b4fe3f9fecf10ba388cb98ca0588f9c64977add2d8eb43c3679a807ef35",
   "classifierFiles": [
     "autofillDictionaries.ts",
     "autofillDomLayers.ts",

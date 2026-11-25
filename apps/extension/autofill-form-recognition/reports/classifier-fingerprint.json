@@ -1,9 +1,9 @@
 {
-  "sha256": "5ac7ebc727d7b178117b235dc23aee85701f92fd8724d7dc22191d6d3a0b01b3",
+  "sha256": "90765b4fe3f9fecf10ba388cb98ca0588f9c64977add2d8eb43c3679a807ef35",
   "files": [
     {
       "path": "src/lib/autofillDictionaries.ts",
-      "sha256": "08190477e300962e99f0aef8d56238b12e05a656e3f344b43213e92c2330b60b"
+      "sha256": "2d262c6e87a057a46cf66f3a2dd52f81561d14ecb1dca59f1df542fe02924352"
     },
     {
       "path": "src/lib/autofillDomLayers.ts",
@@ -11,11 +11,11 @@
     },
     {
       "path": "src/lib/autofillFieldClassify.ts",
-      "sha256": "b8bd64e95ecd58efe21202d5b4bbcf8d3beda087e34a9a37b786c8bdd66b8200"
+      "sha256": "902cceda1747e8c5d8e4f9fcd30d245f8cffdc39c4211c3b5068bcc2652736d1"
     },
     {
       "path": "src/lib/autofillFormDetect.ts",
-      "sha256": "aafd264e166bf9608f132d42538037646f2146ef8a21bbe6ce303660afd327de"
+      "sha256": "c41715d28858ee305f9b9642259d282ac175ee715e0f0f21f9528673140bb850"
     },
     {
       "path": "src/lib/loginFormFields.ts",
