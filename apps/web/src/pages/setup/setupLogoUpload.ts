@@ -1,14 +1,16 @@
-/** Decide whether finish should upload a pending workspace logo. */
+/**
+ * Decide whether finish should upload a pending workspace logo.
+ * Uses the in-memory registration vault key only — finish must not unlock the vault session.
+ */
 export function setupLogoUploadDecision(input: {
   hadPendingLogo: boolean;
-  unlockOk: boolean;
   hasVaultKey: boolean;
   hasPlaintext: boolean;
 }): "upload" | "fail" | "skip" {
   if (!input.hadPendingLogo) {
     return "skip";
   }
-  if (!input.unlockOk || !input.hasVaultKey || !input.hasPlaintext) {
+  if (!input.hasVaultKey || !input.hasPlaintext) {
     return "fail";
   }
   return "upload";

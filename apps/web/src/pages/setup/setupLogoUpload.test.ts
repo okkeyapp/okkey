@@ -12,7 +12,6 @@ describe("setupLogoUploadDecision", () => {
     expect(
       setupLogoUploadDecision({
         hadPendingLogo: false,
-        unlockOk: true,
         hasVaultKey: true,
         hasPlaintext: true,
       }),
@@ -23,29 +22,26 @@ describe("setupLogoUploadDecision", () => {
     expect(
       setupLogoUploadDecision({
         hadPendingLogo: true,
-        unlockOk: true,
         hasVaultKey: false,
         hasPlaintext: true,
       }),
     ).toBe("fail");
   });
 
-  it("fails when unlock failed after a logo was selected", () => {
+  it("fails when plaintext is missing after a logo was selected", () => {
     expect(
       setupLogoUploadDecision({
         hadPendingLogo: true,
-        unlockOk: false,
         hasVaultKey: true,
-        hasPlaintext: true,
+        hasPlaintext: false,
       }),
     ).toBe("fail");
   });
 
-  it("uploads when unlock succeeded and logo material is present", () => {
+  it("uploads when in-memory logo material is present (no vault unlock required)", () => {
     expect(
       setupLogoUploadDecision({
         hadPendingLogo: true,
-        unlockOk: true,
         hasVaultKey: true,
         hasPlaintext: true,
       }),
@@ -115,7 +111,6 @@ describe("capturePendingLogoForFinish vs unmount wipe", () => {
     // 3) Decision / upload must use captured locals, not wiped refs.
     const decision = setupLogoUploadDecision({
       hadPendingLogo: captured.hadPendingLogo,
-      unlockOk: true,
       hasVaultKey: Boolean(captured.vaultKey),
       hasPlaintext: Boolean(captured.plaintext),
     });
@@ -135,7 +130,6 @@ describe("capturePendingLogoForFinish vs unmount wipe", () => {
     expect(
       setupLogoUploadDecision({
         hadPendingLogo: true,
-        unlockOk: true,
         hasVaultKey: Boolean(refs.vaultKey),
         hasPlaintext: Boolean(refs.plaintext),
       }),

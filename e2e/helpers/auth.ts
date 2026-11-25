@@ -9,7 +9,7 @@ function e2ePublicAppUrl(): string {
   return (process.env.PUBLIC_APP_BASE_URL ?? E2E_BASE_URL).trim().replace(/\/$/, "");
 }
 
-/** qa/web: empty-DB setup wizard → recovery export → full session unlock. */
+/** qa/web: empty-DB setup wizard → recovery export → lock screen → unlock. */
 export async function registerBootstrapAndUnlock(
   page: Page,
   input: {
@@ -87,8 +87,15 @@ export async function registerBootstrapAndUnlock(
   await expect(finish).toBeEnabled({ timeout: 15_000 });
   await finish.click();
 
-  // Full session + unlock in the same tab → items.
-  await expect(page).toHaveURL(/\/items/, { timeout: 90_000 });
+  // Finish applies a Bearer session but keeps the vault locked — unlock with master password.
+  await expect(page).toHaveURL(/\/account\/lock/, { timeout: 90_000 });
+  await expect(page.getByRole("heading", { name: /vault is locked/i })).toBeVisible({
+    timeout: 30_000,
+  });
+  // Wizard must not leave an unlocked tab session (F5 would reopen the vault).
+  const unlockTab = await page.evaluate(() => sessionStorage.getItem("okkey.vault.unlock.tab"));
+  expect(unlockTab).toBeNull();
+  await unlockWithMasterPassword(page, masterPassword);
   await expectNoPersistedServerKeyShare(page);
 
   return { recoveryKey };
