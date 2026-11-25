@@ -743,10 +743,19 @@ async function seedBeta3UpgradeFixture(query: SqlQuery): Promise<{
     setup_completed_at: string | Date | null;
     workspace_id: string | null;
     registration_mode: string;
-  }>(`SELECT setup_completed_at, workspace_id, registration_mode FROM server_instance_settings WHERE id = TRUE`);
+    legacy_upgrade_pending: boolean;
+  }>(
+    `
+      SELECT setup_completed_at, workspace_id, registration_mode, legacy_upgrade_pending
+      FROM server_instance_settings
+      WHERE id = TRUE
+    `,
+  );
   assert.equal(settings[0]?.setup_completed_at ?? null, null);
   assert.equal(settings[0]?.workspace_id ?? null, null);
   assert.equal(settings[0]?.registration_mode, "invite_only");
+  // Users existed before 0063 → one-shot legacy upgrade flag.
+  assert.equal(settings[0]?.legacy_upgrade_pending, true);
 
   return { ownerId, otherOwnerId, memberId, instanceWs };
 }
@@ -770,6 +779,10 @@ test("self-hosted startup cleanup backfills instance workspace after beta.3 upgr
     const settings = await readInstanceSettings(db);
     assert.equal(settings.workspaceId, seeded.instanceWs);
     assert.ok(settings.setupCompletedAt);
+    const flag = await query<{ legacy_upgrade_pending: boolean }>(
+      `SELECT legacy_upgrade_pending FROM server_instance_settings WHERE id = TRUE`,
+    );
+    assert.equal(flag[0]?.legacy_upgrade_pending, false);
 
     const workspaces = await query<{ id: string }>(`SELECT id FROM workspaces ORDER BY id`);
     assert.deepEqual(
@@ -809,6 +822,237 @@ test("self-hosted startup cleanup backfills instance workspace after beta.3 upgr
   });
 });
 
+test("mid-wizard restart does not complete setup when legacy_upgrade_pending is false", async (t) => {
+  if (await skipIfPostgresDown(t)) {
+    return;
+  }
+  await withSchema(async ({ db, query }) => {
+    await applySqlMigrations(db, {
+      migrationsDir,
+      logger: { info() {}, warn() {}, error() {} },
+    });
+
+    const flagBeforeUsers = await query<{ legacy_upgrade_pending: boolean }>(
+      `SELECT legacy_upgrade_pending FROM server_instance_settings WHERE id = TRUE`,
+    );
+    assert.equal(flagBeforeUsers[0]?.legacy_upgrade_pending, false);
+
+    const ownerId = "4100000000000000001";
+    const workspaceId = "4200000000000000001";
+    const vaultId = "4300000000000000001";
+    const deviceId = "4400000000000000001";
+    const ownerEmail = "wizard-owner@example.com";
+
+    await query(
+      `
+        INSERT INTO users (id, email, public_key, encrypted_private_key, server_key_share)
+        VALUES ($1, $2, 'pk', decode('00', 'hex'), decode('00', 'hex'))
+      `,
+      [ownerId, ownerEmail],
+    );
+    await query(
+      `
+        INSERT INTO workspaces (id, name, owner_id, plan_tier)
+        VALUES ($1, 'Pending Wizard', $2, 'FREE')
+      `,
+      [workspaceId, ownerId],
+    );
+    await query(
+      `
+        INSERT INTO vaults (id, workspace_id, name, is_personal, owner_id, crypto_version)
+        VALUES ($1, $2, 'Personal vault', true, $3, 2)
+      `,
+      [vaultId, workspaceId, ownerId],
+    );
+    await query(
+      `
+        INSERT INTO devices (
+          id, user_id, device_fingerprint, device_name, device_public_key, device_share,
+          platform, os_name, os_version, app_version, client_type, user_agent,
+          ip_first, ip_last, status
+        )
+        VALUES (
+          $1, $2, 'fp', 'Owner device', 'dpk', decode('00', 'hex'),
+          'web', 'linux', '1', '1', 'web', 'ua',
+          '127.0.0.1', '127.0.0.1', 'trusted'
+        )
+      `,
+      [deviceId, ownerId],
+    );
+    await query(
+      `
+        INSERT INTO user_vault_recovery_wrap (user_id, encrypted_blob, exported_at)
+        VALUES ($1, '{}'::jsonb, now())
+      `,
+      [ownerId],
+    );
+
+    // Owner registered, finish not called — fresh install flag stays FALSE.
+    await query(
+      `
+        UPDATE server_instance_settings
+        SET setup_completed_at = NULL, workspace_id = NULL, legacy_upgrade_pending = FALSE
+        WHERE id = TRUE
+      `,
+    );
+
+    const result = await ensureSelfHostedInstanceWorkspace({
+      db,
+      deploymentMode: "self_hosted",
+    });
+    assert.equal(result.ran, false);
+    assert.equal(result.workspaceId, null);
+
+    const settings = await query<{
+      setup_completed_at: string | Date | null;
+      workspace_id: string | null;
+      legacy_upgrade_pending: boolean;
+    }>(
+      `
+        SELECT setup_completed_at, workspace_id, legacy_upgrade_pending
+        FROM server_instance_settings
+        WHERE id = TRUE
+      `,
+    );
+    assert.equal(settings[0]?.setup_completed_at ?? null, null);
+    assert.equal(settings[0]?.workspace_id ?? null, null);
+    assert.equal(settings[0]?.legacy_upgrade_pending, false);
+
+    const { PostgresServerInstanceSettingsStore } = await import("../src/setup/store.ts");
+    const redis = memoryRedis();
+    const setupService = new SetupService({
+      redis,
+      users: {
+        hasAnyUsers: async () => true,
+        findByEmail: async (email) =>
+          email === ownerEmail
+            ? ({ id: ownerId, email: ownerEmail } as never)
+            : null,
+      },
+      instanceSettings: new PostgresServerInstanceSettingsStore(db),
+      mailSettings: {
+        getPublicSettings: async () => ({
+          smtpHost: "",
+          smtpPort: 587,
+          smtpTlsMode: "starttls" as const,
+          smtpUsername: "",
+          emailFrom: "",
+          publicAppUrl: "https://app.example",
+          passwordSet: false,
+          passwordUnreadable: false,
+          smtpActive: false,
+          smtpVerifiedAt: null,
+        }),
+        updateForSetup: async () => {
+          throw new Error("not used");
+        },
+        sendTestEmailForSetup: async () => {
+          throw new Error("not used");
+        },
+        skipMailForSetup: async () => {
+          throw new Error("not used");
+        },
+        updatePublicAppUrlPreservingVerification: async () => {
+          throw new Error("not used");
+        },
+      },
+      authService: {
+        claimEmptyCatalogBootstrap: async () => false,
+        createRegistrationAuthStateForTrustedEmail: async () => "unused",
+      },
+      sessionService: createMockSessionService(),
+      workspaceSettings: {
+        updateSettings: async () => {
+          throw new Error("not used");
+        },
+      },
+      workspaceMembers: {
+        createInvitations: async () => {
+          throw new Error("not used");
+        },
+        hasPendingInvitationForEmail: async () => false,
+        deliverPendingInvitationEmails: async () => ({ delivered: 0 }),
+      },
+      postgres: db,
+      config: {
+        deploymentMode: "self_hosted",
+        nodeEnv: "test",
+        registrationAuthStateTtlSeconds: 3600,
+        sessionTtlSeconds: 3600,
+        setupCodePlaintext: "aaaa-bbbb-cccc-dddd",
+      },
+    });
+
+    await setupService.ensureBootstrapCode();
+    const verified = await setupService.verifyCode("aaaa-bbbb-cccc-dddd");
+    const begun = await setupService.beginRegistration(verified.setupToken, ownerEmail);
+    assert.equal(begun.alreadyRegistered, true);
+    assert.equal(begun.authStateId, undefined);
+
+    // Resume finish still works after the no-op cleanup.
+    const finished = await setupService.finish(verified.setupToken, {
+      workspaceName: "Resumed Wizard",
+      tileColor: "#112233",
+      invitations: [],
+    });
+    assert.equal(finished.workspaceId, workspaceId);
+    assert.equal(finished.signInRequired, true);
+    const after = await readInstanceSettings(db);
+    assert.equal(after.workspaceId, workspaceId);
+    assert.ok(after.setupCompletedAt);
+  });
+});
+
+test("completed wizard without workspace_id still gets cleanup", async (t) => {
+  if (await skipIfPostgresDown(t)) {
+    return;
+  }
+  initEntityIdGenerator(1);
+  await withSchema(async ({ db, query }) => {
+    await applySqlMigrations(db, {
+      migrationsDir,
+      logger: { info() {}, warn() {}, error() {} },
+    });
+
+    const ownerId = "5100000000000000001";
+    const workspaceId = "5200000000000000001";
+    await query(
+      `
+        INSERT INTO users (id, email, public_key, encrypted_private_key, server_key_share)
+        VALUES ($1, 'finished@example.com', 'pk', decode('00', 'hex'), decode('00', 'hex'))
+      `,
+      [ownerId],
+    );
+    await query(
+      `
+        INSERT INTO workspaces (id, name, owner_id, plan_tier)
+        VALUES ($1, 'Finished', $2, 'FREE')
+      `,
+      [workspaceId, ownerId],
+    );
+    // Finished before this PR: setup_completed_at set, workspace_id still null.
+    await query(
+      `
+        UPDATE server_instance_settings
+        SET setup_completed_at = now(),
+            workspace_id = NULL,
+            legacy_upgrade_pending = FALSE
+        WHERE id = TRUE
+      `,
+    );
+
+    const result = await ensureSelfHostedInstanceWorkspace({
+      db,
+      deploymentMode: "self_hosted",
+    });
+    assert.equal(result.ran, true);
+    assert.equal(result.workspaceId, workspaceId);
+    const settings = await readInstanceSettings(db);
+    assert.equal(settings.workspaceId, workspaceId);
+    assert.ok(settings.setupCompletedAt);
+  });
+});
+
 test("saas startup leaves workspaces untouched even when setup_completed_at is set", async (t) => {
   if (await skipIfPostgresDown(t)) {
     return;
@@ -840,7 +1084,9 @@ test("saas startup leaves workspaces untouched even when setup_completed_at is s
     await query(
       `
         UPDATE server_instance_settings
-        SET setup_completed_at = now(), workspace_id = NULL
+        SET setup_completed_at = now(),
+            workspace_id = NULL,
+            legacy_upgrade_pending = TRUE
         WHERE id = TRUE
       `,
     );
@@ -855,6 +1101,10 @@ test("saas startup leaves workspaces untouched even when setup_completed_at is s
     assert.equal(workspaces.length, 2);
     const settings = await readInstanceSettings(db);
     assert.equal(settings.workspaceId, null);
+    const flag = await query<{ legacy_upgrade_pending: boolean }>(
+      `SELECT legacy_upgrade_pending FROM server_instance_settings WHERE id = TRUE`,
+    );
+    assert.equal(flag[0]?.legacy_upgrade_pending, true);
   });
 });
 
@@ -887,7 +1137,10 @@ test("migration 0063 is DDL-only and does not delete workspaces", async (t) => {
     await query(
       `
         UPDATE server_instance_settings
-        SET setup_completed_at = now(), workspace_id = NULL, registration_mode = 'open'
+        SET setup_completed_at = now(),
+            workspace_id = NULL,
+            registration_mode = 'open',
+            legacy_upgrade_pending = FALSE
         WHERE id = TRUE
       `,
     );
@@ -900,6 +1153,11 @@ test("migration 0063 is DDL-only and does not delete workspaces", async (t) => {
     const settings = await readInstanceSettings(db);
     assert.equal(settings.workspaceId, null);
     assert.equal(settings.registrationMode, "invite_only");
+    const flag = await query<{ legacy_upgrade_pending: boolean }>(
+      `SELECT legacy_upgrade_pending FROM server_instance_settings WHERE id = TRUE`,
+    );
+    // setup_completed_at already set → migration does not force the legacy flag.
+    assert.equal(flag[0]?.legacy_upgrade_pending, false);
   });
 });
 

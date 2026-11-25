@@ -50,9 +50,10 @@ async function runSelfHostedInstanceWorkspaceCleanup(
   const settingsRows = await tx.query<{
     workspace_id: string | null;
     setup_completed_at: string | Date | null;
+    legacy_upgrade_pending: boolean;
   }>(
     `
-      SELECT workspace_id, setup_completed_at
+      SELECT workspace_id, setup_completed_at, legacy_upgrade_pending
       FROM server_instance_settings
       WHERE id = TRUE
       FOR UPDATE
@@ -76,6 +77,14 @@ async function runSelfHostedInstanceWorkspaceCleanup(
     return { ran: false, workspaceId: null };
   }
 
+  // Mid-wizard restart: users exist, setup incomplete, and this is not a legacy upgrade.
+  // Leave setup_completed_at NULL so the wizard can resume.
+  const setupDone = settings.setup_completed_at != null;
+  const legacyPending = settings.legacy_upgrade_pending === true;
+  if (!setupDone && !legacyPending) {
+    return { ran: false, workspaceId: null };
+  }
+
   const picked = await tx.query<{ id: string }>(
     `
       SELECT w.id
@@ -96,6 +105,7 @@ async function runSelfHostedInstanceWorkspaceCleanup(
       UPDATE server_instance_settings
       SET workspace_id = $1::bigint,
           setup_completed_at = COALESCE(setup_completed_at, now()),
+          legacy_upgrade_pending = FALSE,
           registration_mode = 'invite_only',
           updated_at = now()
       WHERE id = TRUE
