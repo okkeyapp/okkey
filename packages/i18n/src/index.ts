@@ -34,3 +34,10 @@ export {
   WEB_LOCALES,
   webBundles,
 } from "./web-format.js";
+export {
+  detectAppLocaleFromLanguages,
+  detectWebLocaleFromLanguages,
+  matchAppLocaleTag,
+  matchWebLocaleTag,
+  normalizeLocaleTag,
+} from "./locale-match.js";

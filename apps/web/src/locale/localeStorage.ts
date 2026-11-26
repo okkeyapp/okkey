@@ -1,4 +1,10 @@
-import { isWebLocale, localeTextDirection, type WebLocale } from "@okkey/i18n";
+import {
+  detectWebLocaleFromLanguages,
+  isWebLocale,
+  localeTextDirection,
+  matchWebLocaleTag,
+  type WebLocale,
+} from "@okkey/i18n";
 
 export const LOCALE_STORAGE_KEY = "okkey.locale";
 /** Query param used by email deep-links (`buildEmailAppPathUrl` / `lng`). */
@@ -81,12 +87,12 @@ export function readExplicitStoredLocale(): WebLocale | null {
 }
 
 /**
- * Map a BCP 47 tag to a supported UI locale by primary subtag (`ru-RU` → `ru`).
+ * Map a BCP 47 tag to a supported UI locale.
+ * `ru-RU` → `ru`, `nl-BE` → `nl`, `pt-BR` → `pt-BR`; bare `pt` / `pt-PT` do not select `pt-BR`.
  * Returns null when the language is not shipped.
  */
 export function matchLocalePrimarySubtag(tag: string): WebLocale | null {
-  const primary = tag.trim().toLowerCase().split(/[-_]/)[0] ?? "";
-  return primary.length > 0 && isWebLocale(primary) ? primary : null;
+  return matchWebLocaleTag(tag);
 }
 
 /**
@@ -94,12 +100,7 @@ export function matchLocalePrimarySubtag(tag: string): WebLocale | null {
  * Does not write storage.
  */
 export function detectLocaleFromLanguages(languages: readonly string[]): WebLocale {
-  for (const tag of languages) {
-    if (typeof tag !== "string" || tag.length === 0) continue;
-    const match = matchLocalePrimarySubtag(tag);
-    if (match) return match;
-  }
-  return "en";
+  return detectWebLocaleFromLanguages(languages, "en");
 }
 
 /**

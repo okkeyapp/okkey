@@ -6,7 +6,7 @@ import type { WebLocale } from "./web-bundles.gen.js";
 /** Shared locale code for web UI and email (same discovered set). */
 export type AppLocale = WebLocale & EmailLocale;
 
-export const APP_LOCALES = ["en","ru"] as readonly AppLocale[];
+export const APP_LOCALES = ["de","en","es","fr","nl","pt-BR","ru"] as readonly AppLocale[];
 
 export const FALLBACK_LOCALE = "en" as AppLocale;
 
@@ -36,7 +36,17 @@ export type LocaleMeta = {
 };
 
 export const LOCALE_META: Record<AppLocale, LocaleMeta> = {
-  en: {
+  "de": {
+    intl: "de-DE",
+    dir: "ltr",
+    dateFns: "de",
+    docsPathPrefix: "/en",
+    yearMonthOrder: "month-year",
+    ready: true,
+    webCoveragePercent: 100,
+    emailCoveragePercent: 100,
+  },
+  "en": {
     intl: "en-US",
     dir: "ltr",
     dateFns: "enUS",
@@ -46,7 +56,47 @@ export const LOCALE_META: Record<AppLocale, LocaleMeta> = {
     webCoveragePercent: 100,
     emailCoveragePercent: 100,
   },
-  ru: {
+  "es": {
+    intl: "es-ES",
+    dir: "ltr",
+    dateFns: "es",
+    docsPathPrefix: "/en",
+    yearMonthOrder: "month-year",
+    ready: true,
+    webCoveragePercent: 100,
+    emailCoveragePercent: 100,
+  },
+  "fr": {
+    intl: "fr-FR",
+    dir: "ltr",
+    dateFns: "fr",
+    docsPathPrefix: "/en",
+    yearMonthOrder: "month-year",
+    ready: true,
+    webCoveragePercent: 100,
+    emailCoveragePercent: 100,
+  },
+  "nl": {
+    intl: "nl-NL",
+    dir: "ltr",
+    dateFns: "nl",
+    docsPathPrefix: "/en",
+    yearMonthOrder: "month-year",
+    ready: true,
+    webCoveragePercent: 100,
+    emailCoveragePercent: 100,
+  },
+  "pt-BR": {
+    intl: "pt-BR",
+    dir: "ltr",
+    dateFns: "ptBR",
+    docsPathPrefix: "/en",
+    yearMonthOrder: "month-year",
+    ready: true,
+    webCoveragePercent: 100,
+    emailCoveragePercent: 100,
+  },
+  "ru": {
     intl: "ru-RU",
     dir: "ltr",
     dateFns: "ru",
@@ -59,5 +109,5 @@ export const LOCALE_META: Record<AppLocale, LocaleMeta> = {
 };
 
 /** Locales shown in language switchers (ready flag + coverage ≥ threshold). */
-export const READY_LOCALES = ["en","ru"] as readonly AppLocale[];
+export const READY_LOCALES = ["de","en","es","fr","nl","pt-BR","ru"] as readonly AppLocale[];
 

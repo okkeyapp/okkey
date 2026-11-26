@@ -610,13 +610,21 @@ test("resolveEmailLocaleForRecipient uses Accept-Language when user locale unset
 
 test("parsePrimaryLocaleFromAcceptLanguage reads first supported tag", () => {
   assert.equal(parsePrimaryLocaleFromAcceptLanguage("ru-RU,en;q=0.8"), "ru");
-  assert.equal(parsePrimaryLocaleFromAcceptLanguage("fr-FR,en;q=0.9"), "en");
+  assert.equal(parsePrimaryLocaleFromAcceptLanguage("fr-FR,en;q=0.9"), "fr");
+  assert.equal(parsePrimaryLocaleFromAcceptLanguage("nl-BE,en;q=0.8"), "nl");
+  assert.equal(parsePrimaryLocaleFromAcceptLanguage("pt-BR,en;q=0.8"), "pt-BR");
+  assert.equal(parsePrimaryLocaleFromAcceptLanguage("pt-PT,en;q=0.9"), "en");
+  assert.equal(parsePrimaryLocaleFromAcceptLanguage("zh-CN,en;q=0.9"), "en");
 });
 
-test("normalizeSupportedLocaleTag maps BCP-47 base language only", () => {
+test("normalizeSupportedLocaleTag maps BCP-47 tags onto shipped locales", () => {
   assert.equal(normalizeSupportedLocaleTag("RU-ru"), "ru");
   assert.equal(normalizeSupportedLocaleTag("EN-us"), "en");
-  assert.equal(normalizeSupportedLocaleTag("de-DE"), null);
+  assert.equal(normalizeSupportedLocaleTag("de-DE"), "de");
+  assert.equal(normalizeSupportedLocaleTag("pt-BR"), "pt-BR");
+  assert.equal(normalizeSupportedLocaleTag("pt"), null);
+  assert.equal(normalizeSupportedLocaleTag("pt-PT"), null);
+  assert.equal(normalizeSupportedLocaleTag("zh-CN"), null);
 });
 
 test("EmailTemplateService sendAuthEmailCode uses mock transport without leftover placeholders", async () => {

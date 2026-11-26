@@ -58,11 +58,12 @@ export function listStoreListingLocaleFiles(extensionRoot: string): string[] {
   }
   return readdirSync(storeDir)
     .map((name) => {
-      const m = /^LISTING\.([a-z0-9-]+)\.md$/i.exec(name);
-      return m?.[1]?.toLowerCase() ?? null;
+      // Preserve filename casing (Chrome package codes use `pt_BR`).
+      const m = /^LISTING\.([A-Za-z0-9_-]+)\.md$/.exec(name);
+      return m?.[1] ?? null;
     })
     .filter((code): code is string => code != null)
-    .sort();
+    .sort((a, b) => a.localeCompare(b));
 }
 
 /**

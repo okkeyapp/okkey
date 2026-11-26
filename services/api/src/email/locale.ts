@@ -1,20 +1,25 @@
 import type { EmailLocale } from "@okkey/i18n";
-import { EMAIL_LOCALES, FALLBACK_LOCALE, isEmailLocale } from "@okkey/i18n";
+import {
+  EMAIL_LOCALES,
+  FALLBACK_LOCALE,
+  isEmailLocale,
+  matchAppLocaleTag,
+} from "@okkey/i18n";
 
 export type { EmailLocale };
 
 export const EMAIL_SUPPORTED_LOCALES: EmailLocale[] = [...EMAIL_LOCALES];
 
-/** Normalize `ru-RU`, `EN` → supported tag or null */
+/**
+ * Normalize BCP-47 / POSIX tags to a shipped email locale (`ru-RU` → `ru`,
+ * `nl-BE` → `nl`, `pt-BR` → `pt-BR`). Bare `pt` / `pt-PT` do not select `pt-BR`.
+ */
 export function normalizeSupportedLocaleTag(raw: string | undefined | null): EmailLocale | null {
   if (raw === undefined || raw === null) {
     return null;
   }
-  const base = raw.trim().toLowerCase().split("-")[0] ?? "";
-  if (base.length > 0 && isEmailLocale(base)) {
-    return base;
-  }
-  return null;
+  const match = matchAppLocaleTag(raw);
+  return match != null && isEmailLocale(match) ? match : null;
 }
 
 /**

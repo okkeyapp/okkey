@@ -20,7 +20,7 @@ describe("readLocaleFromSearch", () => {
   it("ignores missing or unsupported values", () => {
     expect(readLocaleFromSearch("")).toBeNull();
     expect(readLocaleFromSearch("?foo=bar")).toBeNull();
-    expect(readLocaleFromSearch(`?${LOCALE_QUERY_PARAM}=de`)).toBeNull();
+    expect(readLocaleFromSearch(`?${LOCALE_QUERY_PARAM}=zz-unsupported`)).toBeNull();
   });
 });
 
@@ -56,7 +56,7 @@ describe("resolveInitialWebLocale", () => {
   });
 
   it("falls back to English when no language is supported", () => {
-    expect(resolveInitialWebLocale({ stored: "de", languages: ["de-DE", "fr-FR"] })).toBe("en");
+    expect(resolveInitialWebLocale({ stored: "zz", languages: ["zh-Hans", "ja"] })).toBe("en");
     expect(detectLocaleFromLanguages(["zh-Hans", "ja"])).toBe("en");
   });
 
@@ -67,6 +67,18 @@ describe("resolveInitialWebLocale", () => {
 
   it("matches en-GB by primary subtag", () => {
     expect(detectLocaleFromLanguages(["en-GB"])).toBe("en");
+  });
+
+  it("maps nl-BE to nl and keeps pt-BR distinct from bare pt when shipped", async () => {
+    const { isWebLocale } = await import("@okkey/i18n");
+    if (isWebLocale("nl")) {
+      expect(detectLocaleFromLanguages(["nl-BE", "en"])).toBe("nl");
+    }
+    if (isWebLocale("pt-BR")) {
+      expect(detectLocaleFromLanguages(["pt-BR"])).toBe("pt-BR");
+      expect(detectLocaleFromLanguages(["pt", "en"])).toBe("en");
+      expect(detectLocaleFromLanguages(["pt-PT", "en"])).toBe("en");
+    }
   });
 });
 

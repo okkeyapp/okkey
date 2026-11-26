@@ -11,6 +11,9 @@
   },
   "scripts": {
     "build": "node scripts/gen-locale-bundles.mjs && tsc -p tsconfig.json && node scripts/copy-locale-json.mjs",
+    "check:coverage": "node scripts/check-locale-coverage.mjs",
+    "check:style": "node scripts/check-locale-style.mjs",
+    "report:long-strings": "node scripts/report-long-strings.mjs",
     "test": "node --test dist/*.test.js scripts/*.test.mjs"
   }
 }
