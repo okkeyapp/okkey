@@ -607,11 +607,14 @@ async function main(): Promise<void> {
   // Public capability probe for web/UI flag sync (registered here to avoid touching app.ts).
   // Fail-closed: modules active only after the plugin confirms a verified license.
   // deploymentMode is the effective mode (hosted only after plugin confirmation).
+  // enterpriseLicenseManagementAvailable = sibling plugin loaded (does not unlock modules).
   const enterpriseModulesActive = () => isEnterpriseModulesEntitlementActive(config);
+  const enterpriseLicenseManagementAvailable = () => config.enterpriseModulesEnabled === true;
   const publicDeploymentMode = () => effectiveDeploymentMode(config);
   app.route("GET", "/public/features", async (ctx) => {
     json(ctx.res, 200, {
       enterpriseModulesActive: enterpriseModulesActive(),
+      enterpriseLicenseManagementAvailable: enterpriseLicenseManagementAvailable(),
       deploymentMode: publicDeploymentMode(),
       requestId: ctx.requestId,
     });

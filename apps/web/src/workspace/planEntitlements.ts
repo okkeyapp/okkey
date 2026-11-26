@@ -26,6 +26,14 @@ type WorkspaceLike = {
 let backendEnterpriseModulesActive: boolean | null = null;
 
 /**
+ * Backend license-management flag from GET /public/features.
+ * True when the sibling enterprise plugin is loaded (license UI available).
+ * Independent of {@link backendEnterpriseModulesActive}; does not unlock modules.
+ * `null` = not probed yet.
+ */
+let backendEnterpriseLicenseManagementAvailable: boolean | null = null;
+
+/**
  * Effective deployment mode from GET /public/features.
  * `null` = not probed yet. Hosted is never taken from Vite alone.
  */
@@ -36,6 +44,14 @@ export function setBackendEnterpriseModulesActive(active: boolean): void {
   backendEnterpriseModulesActive = active;
 }
 
+/**
+ * Apply API probe: sibling plugin loaded → license management UI may be shown.
+ * Does not enable gated features.
+ */
+export function setBackendEnterpriseLicenseManagementAvailable(available: boolean): void {
+  backendEnterpriseLicenseManagementAvailable = available;
+}
+
 /** Apply API effective deployment mode (hosted only after plugin confirmation). */
 export function setBackendDeploymentMode(mode: DeploymentMode): void {
   backendDeploymentMode = mode === "saas" ? "saas" : "self_hosted";
@@ -44,6 +60,7 @@ export function setBackendDeploymentMode(mode: DeploymentMode): void {
 /** Test helper — reset probe cache between vitest cases. */
 export function resetBackendEnterpriseModulesActiveForTests(): void {
   backendEnterpriseModulesActive = null;
+  backendEnterpriseLicenseManagementAvailable = null;
   backendDeploymentMode = null;
 }
 
@@ -68,6 +85,15 @@ export function webEnterpriseModulesActive(): boolean {
     return false;
   }
   return true;
+}
+
+/**
+ * Whether self-hosted license management UI is available (plugin installed).
+ * Requires an explicit API `true` from `/public/features`. Does not unlock modules.
+ * A Vite sibling alias alone is not enough — wait for the probe.
+ */
+export function webEnterpriseLicenseManagementAvailable(): boolean {
+  return backendEnterpriseLicenseManagementAvailable === true;
 }
 
 /**

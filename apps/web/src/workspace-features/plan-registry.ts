@@ -12,9 +12,12 @@ export type WorkspaceSettingsPlanSectionProps = {
 
 /**
  * Enterprise may replace Core’s self-hosted FREE plan notice.
- * - SaaS: full catalog + change-plan popup (`plan_tier`)
- * - Self-hosted with modules loaded: EE plan section (stored `plan_tier` is ignored)
- * - Self-hosted without modules: Core license request (FREE), for every stored `plan_tier`
+ * Props stay backward compatible ({@link WorkspaceSettingsPlanSectionProps}).
+ * - Confirmed hosted: full catalog + change-plan popup (`plan_tier`)
+ * - Self-hosted with license management available (plugin loaded): EE license
+ *   panel for every license state (absent / invalid / expired / active).
+ *   `planTier` is still passed; the panel owns status / fingerprint / upload UI.
+ * - Self-hosted without the plugin: Core sales request (FREE)
  */
 export type WorkspaceSettingsPlanModule = {
   PlanSection: ComponentType<WorkspaceSettingsPlanSectionProps> | null;
