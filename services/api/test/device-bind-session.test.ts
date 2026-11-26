@@ -266,7 +266,8 @@ test("bind-session accepts a share-wrap signature and rotates only the signing k
     return { status: res.statusCode, body: res.body ? JSON.parse(res.body) : null };
   }
 
-  const nextPublic = b64(deviceKeys().publicKey);
+  const nextKeys = deviceKeys();
+  const nextPublic = b64(nextKeys.publicKey);
   const issued = await call("POST", `/devices/${DEVICE_ID}/bind-challenge`, {});
   const challenge = issued.body as { challenge_id: string; challenge: string };
   const message = Buffer.from(challenge.challenge, "base64");
@@ -312,6 +313,27 @@ test("bind-session accepts a share-wrap signature and rotates only the signing k
   assert.equal(bound, true);
   assert.equal(publicKey, nextPublic);
   assert.notEqual(publicKey, b64(storedSigning.publicKey));
+
+  const replayed = await call("POST", `/devices/${DEVICE_ID}/bind-session`, {
+    challenge_id: okChallenge.challenge_id,
+    share_proof: b64(deviceBindWrapSign(wrap.secret, okMessage)),
+    new_device_public_key: nextPublic,
+  });
+  assert.equal(replayed.status, 401);
+  assert.equal(replayed.body.error, "DEVICE_BIND_CHALLENGE_INVALID");
+
+  bound = false;
+  const fourth = await call("POST", `/devices/${DEVICE_ID}/bind-challenge`, {});
+  const rotatedChallenge = fourth.body as { challenge_id: string; challenge: string };
+  const rotatedSig = b64(
+    ed25519Sign(nextKeys.secret, Buffer.from(rotatedChallenge.challenge, "base64")),
+  );
+  const afterUpgrade = await call("POST", `/devices/${DEVICE_ID}/bind-session`, {
+    challenge_id: rotatedChallenge.challenge_id,
+    signature: rotatedSig,
+  });
+  assert.equal(afterUpgrade.status, 200);
+  assert.equal(bound, true);
 });
 
 test("bind-session rejects a wrap proof when the stored share has no wrap public key", async () => {

@@ -7,7 +7,7 @@ import {
   wipeBytes,
 } from "@okkey/crypto";
 import { deviceShareB64ForRegister } from "@okkey/vault/device-share-wire";
-import { loadSplitKeyShareWrapKey } from "@okkey/vault";
+import { loadSplitKeyShareWrapKey } from "@okkey/vault/split-key-share-wrap-store";
 import type { DeviceListItemDto, DeviceRegisterResponseDto } from "@okkey/types";
 
 import { isUnauthorizedApiError } from "./apiErrors.ts";
@@ -89,52 +89,55 @@ async function bindExtensionDeviceWithWrapProof(
 ): Promise<void> {
   await initCrypto();
   const share = base64ToBytes(shareB64);
-  const kind = classifySplitKeyShareBWire(share);
-  if (kind !== "hybrid") {
-    wipeBytes(share);
-    throw new Error("DEVICE_REBIND_REQUIRES_RECOVERY");
-  }
-  const wrap = await loadSplitKeyShareWrapKey(userId);
-  if (!wrap) {
-    wipeBytes(share);
-    throw new Error("DEVICE_REBIND_REQUIRES_RECOVERY");
-  }
-  const publicKeyB64 = await rotateExtensionDeviceSigningKey();
-  const env = parseBrowserEnvironment(
-    typeof navigator !== "undefined" ? navigator.userAgent : "",
-    { channel: "Extension" },
-  );
+  let wrap: Awaited<ReturnType<typeof loadSplitKeyShareWrapKey>> = null;
   try {
+    const kind = classifySplitKeyShareBWire(share);
+    if (kind !== "hybrid") {
+      throw new Error("DEVICE_REBIND_REQUIRES_RECOVERY");
+    }
+    wrap = await loadSplitKeyShareWrapKey(userId);
+    if (!wrap) {
+      throw new Error("DEVICE_REBIND_REQUIRES_RECOVERY");
+    }
     const opened = await openStoredSplitKeyShareB({
       stored: share,
       recipientEd25519Seed: wrap.ed25519Seed,
       recipientMlkemDecapsulationKey: wrap.mlkemDecapsulationKey,
     });
     wipeBytes(opened);
-    wipeBytes(share);
-    const challenge = await core.createDeviceBindChallenge(deviceId);
-    const message = Uint8Array.from(atob(challenge.challenge), (c) => c.charCodeAt(0));
-    const proof = deviceBindWrapSign(wrap.ed25519Seed, message);
-    await core.bindDeviceSession(deviceId, {
-      challenge_id: challenge.challenge_id,
-      share_proof: bytesToBase64(proof),
-      new_device_public_key: publicKeyB64,
-      device_name: env.deviceName,
-      platform: env.platform,
-      os_name: env.osName,
-      os_version: env.osVersion,
-      app_version: "extension",
-      client_type: env.clientType,
-      user_agent: env.userAgent,
-    });
-  } catch (error) {
-    await clearExtensionDeviceSigningKey();
-    throw error;
+    const publicKeyB64 = await rotateExtensionDeviceSigningKey();
+    const env = parseBrowserEnvironment(
+      typeof navigator !== "undefined" ? navigator.userAgent : "",
+      { channel: "Extension" },
+    );
+    try {
+      const challenge = await core.createDeviceBindChallenge(deviceId);
+      const message = Uint8Array.from(atob(challenge.challenge), (c) => c.charCodeAt(0));
+      const proof = deviceBindWrapSign(wrap.ed25519Seed, message);
+      await core.bindDeviceSession(deviceId, {
+        challenge_id: challenge.challenge_id,
+        share_proof: bytesToBase64(proof),
+        new_device_public_key: publicKeyB64,
+        device_name: env.deviceName,
+        platform: env.platform,
+        os_name: env.osName,
+        os_version: env.osVersion,
+        app_version: "extension",
+        client_type: env.clientType,
+        user_agent: env.userAgent,
+      });
+    } catch (error) {
+      await clearExtensionDeviceSigningKey();
+      throw error;
+    }
   } finally {
-    wipeBytes(wrap.ed25519Seed);
-    wipeBytes(wrap.mlkemDecapsulationKey);
-    wipeBytes(wrap.ed25519PublicKey);
-    wipeBytes(wrap.mlkemEncapsulationKey);
+    wipeBytes(share);
+    if (wrap) {
+      wipeBytes(wrap.ed25519Seed);
+      wipeBytes(wrap.mlkemDecapsulationKey);
+      wipeBytes(wrap.ed25519PublicKey);
+      wipeBytes(wrap.mlkemEncapsulationKey);
+    }
   }
 }
 
@@ -341,11 +344,13 @@ export async function resolveExtensionDeviceTrust(
             approverDevices: listed.devices,
           };
         } catch (error: unknown) {
+          const errorMessage = error instanceof Error ? error.message : String(error);
           return {
             status: "error",
             deviceId: trustedMatch.device_id,
             approverDevices: listed.devices,
-            errorMessage: error instanceof Error ? error.message : String(error),
+            needsRecovery: errorMessage === "DEVICE_REBIND_REQUIRES_RECOVERY" ? true : undefined,
+            errorMessage,
           };
         }
       }

@@ -15,6 +15,21 @@ const ensureDeviceSigningPublicKey = vi.fn(async () => btoa("pub-key-32-bytes-pa
 const signDeviceBindChallenge = vi.fn(async (message: Uint8Array) => message);
 const rotateDeviceSigningKey = vi.fn(async () => btoa("new-pub-key-32-bytes-pad!!!!"));
 const clearDeviceSigningKey = vi.fn(async () => undefined);
+const loadSplitKeyShareWrapKey = vi.fn(
+  async (
+    _userId: string,
+  ): Promise<{
+    ed25519Seed: Uint8Array;
+    ed25519PublicKey: Uint8Array;
+    mlkemDecapsulationKey: Uint8Array;
+    mlkemEncapsulationKey: Uint8Array;
+  } | null> => ({
+    ed25519Seed: new Uint8Array(32).fill(2),
+    ed25519PublicKey: new Uint8Array(32).fill(3),
+    mlkemDecapsulationKey: new Uint8Array(64).fill(4),
+    mlkemEncapsulationKey: new Uint8Array(1184).fill(5),
+  }),
+);
 
 vi.mock("./deviceFingerprint", async () => {
   const actual = await vi.importActual<typeof import("./deviceFingerprint")>("./deviceFingerprint");
@@ -62,12 +77,7 @@ vi.mock("@okkey/crypto", () => ({
 }));
 
 vi.mock("@okkey/vault", () => ({
-  loadSplitKeyShareWrapKey: vi.fn(async () => ({
-    ed25519Seed: new Uint8Array(32).fill(2),
-    ed25519PublicKey: new Uint8Array(32).fill(3),
-    mlkemDecapsulationKey: new Uint8Array(64).fill(4),
-    mlkemEncapsulationKey: new Uint8Array(1184).fill(5),
-  })),
+  loadSplitKeyShareWrapKey: (userId: string) => loadSplitKeyShareWrapKey(userId),
 }));
 
 import { clearBoundDeviceSession, pollDeviceTrust, resolveDeviceTrust } from "./deviceTrust";
@@ -285,6 +295,30 @@ describe("resolveDeviceTrust", () => {
     expect(snapshot.status).toBe("trusted");
     expect(snapshot.deviceId).toBe("d-me");
     expect(snapshot.needsRecovery).toBeUndefined();
+  });
+
+  it("requires recovery when local bundle has a share but no wrap key is stored", async () => {
+    hasDeviceSigningKey.mockResolvedValue(false);
+    readVaultBundle.mockReturnValue(vaultBundle());
+    loadSplitKeyShareWrapKey.mockResolvedValueOnce(null);
+    listDevices.mockResolvedValue({
+      devices: [
+        {
+          device_id: "d-me",
+          device_fingerprint: fingerprint,
+          status: "trusted",
+        },
+      ],
+      pending: [],
+    });
+
+    const snapshot = await resolveDeviceTrust(coreClient(), "u1");
+
+    expect(rotateDeviceSigningKey).not.toHaveBeenCalled();
+    expect(bindDeviceSession).not.toHaveBeenCalled();
+    expect(snapshot.status).toBe("error");
+    expect(snapshot.needsRecovery).toBe(true);
+    expect(snapshot.errorMessage).toBe("DEVICE_REBIND_REQUIRES_RECOVERY");
   });
 
   it("requires recovery when sole trusted device has no local seed", async () => {
