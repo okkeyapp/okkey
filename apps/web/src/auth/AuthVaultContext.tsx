@@ -16,7 +16,6 @@ import {
   useCallback,
   useContext,
   useEffect,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -98,11 +97,8 @@ import { scheduleClipboardClearAfterCopy } from "./vaultClipboardClear";
 import { DEFAULT_VAULT_IDLE_LOCK_MS, vaultIdleLockMsFromServerSeconds } from "./vaultIdleLockMs";
 import {
   clearVaultUnlockSession,
-  persistVaultUnlockSession,
   readInitialTabVaultSession,
-  readVaultUnlockSessionIfFresh,
-  touchVaultUnlockSession,
-  vaultUnlockSessionExceededIdle,
+  vaultIdleExceeded,
 } from "./vaultUnlockSessionStorage";
 import { useLocale } from "../locale/LocaleContext";
 
@@ -320,7 +316,7 @@ function IdleLockWatcher({
       return;
     }
     const id = window.setInterval(() => {
-      if (Date.now() - lastActivityRef.current >= idleMs) {
+      if (vaultIdleExceeded(lastActivityRef.current, idleMs)) {
         onIdle();
       }
     }, 3000);
@@ -475,32 +471,6 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
     }
     setVaultKey(null);
   }, []);
-
-  useLayoutEffect(() => {
-    if (!accessToken || !userId) {
-      return;
-    }
-    if (vaultUnlockedRef.current && vaultKeyRef.current) {
-      return;
-    }
-    const restored = readVaultUnlockSessionIfFresh(userId, vaultIdleLockMs);
-    if (!restored) {
-      return;
-    }
-    if (vaultKeyRef.current) {
-      wipeBytes(vaultKeyRef.current);
-    }
-    vaultKeyRef.current = restored.vaultKey;
-    setVaultKey(restored.vaultKey);
-    if (passwordShareCRef.current) {
-      wipeBytes(passwordShareCRef.current);
-    }
-    passwordShareCRef.current = restored.passwordShareC;
-    setPasswordShareC(restored.passwordShareC);
-    lastActivityRef.current = restored.lastActivityAt;
-    vaultUnlockedRef.current = true;
-    setVaultUnlocked(true);
-  }, [accessToken, userId, vaultIdleLockMs]);
 
   useEffect(() => {
     if (!accessToken || !userId) {
@@ -837,16 +807,13 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
 
   const touchActivity = useCallback(() => {
     lastActivityRef.current = Date.now();
-    if (userIdRef.current && vaultUnlockedRef.current) {
-      touchVaultUnlockSession(userIdRef.current);
-    }
   }, []);
 
   useEffect(() => {
     if (!accessToken || !userId || !vaultUnlocked) {
       return;
     }
-    if (vaultUnlockSessionExceededIdle(userId, vaultIdleLockMs)) {
+    if (vaultIdleExceeded(lastActivityRef.current, vaultIdleLockMs)) {
       lockVault();
     }
   }, [accessToken, userId, vaultUnlocked, vaultIdleLockMs, lockVault]);
@@ -990,7 +957,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       vaultUnlockedRef.current = true;
       setVaultUnlocked(true);
       lastActivityRef.current = Date.now();
-      persistVaultUnlockSession(unlockUserId, vaultKey, shareC);
+      clearVaultUnlockSession();
       setSuggestLongerMasterPassword(
         shouldSuggestLongerMasterPassword({
           passwordLength: masterPassword.length,
@@ -1054,9 +1021,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       vaultUnlockedRef.current = true;
       setVaultUnlocked(true);
       lastActivityRef.current = Date.now();
-      if (userId) {
-        persistVaultUnlockSession(userId, nextVaultKey, nextShareC);
-      }
+      clearVaultUnlockSession();
       void upgradeMlDsaIdentity(nextVaultKey);
       const token = accessToken;
       const bundle = userId ? readVaultBundle(userId) : null;
@@ -1093,8 +1058,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
           passwordKdfSalt: salt,
           passwordKdfParamsVersion: bundle.password_kdf_params_version,
         });
-        // Unlocked session already holds C. Comparing it avoids another fetch of A
-        // and still works after a reload that restored C from this tab's session.
+        // Unlocked session already holds C in memory. Comparing it avoids another fetch of A.
         if (passwordShareCRef.current && bytesEqual(derived, passwordShareCRef.current)) {
           if (vaultKeyRef.current) {
             await decryptUserIdentityFromEncryptedBlob(
@@ -1251,7 +1215,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
         }
         passwordShareCRef.current = rebalanced.passwordShareC;
         setPasswordShareC(rebalanced.passwordShareC);
-        persistVaultUnlockSession(userId, vaultKeyRef.current, rebalanced.passwordShareC);
+        clearVaultUnlockSession();
         setMasterPasswordChangedAt(response.master_password_changed_at);
         setSuggestLongerMasterPassword(false);
         clearDeviceUnlockSecrets(userId);

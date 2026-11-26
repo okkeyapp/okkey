@@ -3,7 +3,11 @@ import type { ReactElement } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
-import { PROFILE_STORAGE_KEY, SESSION_STORAGE_KEY } from "./auth/storageKeys";
+import {
+  PROFILE_STORAGE_KEY,
+  SESSION_STORAGE_KEY,
+  VAULT_UNLOCK_TAB_KEY,
+} from "./auth/storageKeys";
 import {
   ACCOUNT_LOCK_PATH,
   ACCOUNT_NEW_PATH,
@@ -93,6 +97,30 @@ describe("App", () => {
     await waitFor(() => {
       expect(screen.getByTestId("app-shell-title")).toHaveTextContent("Vault is locked");
     });
+    clearBearerAndSession();
+  });
+
+  it("ignores legacy cleartext unlock sessionStorage and stays locked", async () => {
+    seedBearerSession();
+    const randomB64 = () => btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32))));
+    sessionStorage.setItem(
+      VAULT_UNLOCK_TAB_KEY,
+      JSON.stringify({
+        v: 1,
+        user_id: "1156820912149601",
+        vault_key_b64: randomB64(),
+        password_share_c_b64: randomB64(),
+        last_activity_at: Date.now(),
+      }),
+    );
+    renderWithRouter(<App />, [DEFAULT_AUTHENTICATED_PATH]);
+    await waitFor(() => {
+      expect(screen.getByTestId("app-shell-title")).toHaveTextContent("Vault is locked");
+    });
+    expect(sessionStorage.getItem(VAULT_UNLOCK_TAB_KEY)).toBeNull();
+    expect(sessionStorage.getItem(VAULT_UNLOCK_TAB_KEY)?.includes("vault_key_b64") ?? false).toBe(
+      false,
+    );
     clearBearerAndSession();
   });
 

@@ -3,6 +3,7 @@ import { devices, expect, test, type BrowserContext, type Page } from "@playwrig
 import {
   clearTabVaultUnlock,
   gotoItemsUnlocked,
+  gotoUnlocked,
   registerBootstrapAndUnlock,
   unlockWithMasterPassword,
 } from "../helpers/auth";
@@ -103,7 +104,7 @@ test("settings sheet does not force document taller than viewport", async () => 
   await gotoItemsUnlocked(page, E2E_MASTER_PASSWORD);
   await dismissOpenItemDialog(page);
 
-  await page.goto("/items?popup=settings");
+  await gotoUnlocked(page, "/items?popup=settings", E2E_MASTER_PASSWORD);
   const settings = page.locator("#settings");
   await expect(settings).toBeVisible({ timeout: 20_000 });
   await assertDocumentHeightFitsViewport(page);
