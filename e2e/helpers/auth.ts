@@ -92,11 +92,11 @@ export async function registerBootstrapAndUnlock(
   await expect(page.getByRole("heading", { name: /vault is locked/i })).toBeVisible({
     timeout: 30_000,
   });
-  // Wizard must not leave an unlocked tab session (F5 would reopen the vault).
-  const unlockTab = await page.evaluate(() => sessionStorage.getItem("okkey.vault.unlock.tab"));
-  expect(unlockTab).toBeNull();
+  // Wizard must not leave cleartext vault unlock material in Web Storage.
+  await expectNoVaultUnlockSecretsInWebStorage(page);
   await unlockWithMasterPassword(page, masterPassword);
   await expectNoPersistedServerKeyShare(page);
+  await expectNoVaultUnlockSecretsInWebStorage(page);
 
   return { recoveryKey };
 }
@@ -241,6 +241,32 @@ export async function unlockWithMasterPassword(
   await page.getByRole("button", { name: /^unlock$/i }).click();
   await expect(page).toHaveURL(/\/items/, { timeout: 60_000 });
   await expectNoPersistedServerKeyShare(page);
+  await expectNoVaultUnlockSecretsInWebStorage(page);
+}
+
+/**
+ * Vault key / password share C must never appear in sessionStorage or localStorage
+ * (memory-only unlock on web; F5 returns to the lock screen).
+ */
+export async function expectNoVaultUnlockSecretsInWebStorage(page: Page): Promise<void> {
+  const found = await page.evaluate(() => {
+    const markers = ["vault_key_b64", "password_share_c_b64", "okkey.vault.unlock.tab"];
+    const bags = [sessionStorage, localStorage];
+    for (const storage of bags) {
+      for (let i = 0; i < storage.length; i += 1) {
+        const key = storage.key(i);
+        if (!key) continue;
+        const value = storage.getItem(key) ?? "";
+        for (const marker of markers) {
+          if (key === marker || key.includes(marker) || value.includes(marker)) {
+            return { key, marker };
+          }
+        }
+      }
+    }
+    return null;
+  });
+  expect(found).toBeNull();
 }
 
 /** Device storage may keep the device share. It must not keep the server share. */
@@ -301,17 +327,18 @@ export async function completeEmailOtpOnPage(page: Page, email: string): Promise
 }
 
 /**
- * Drop the tab unlock record so the next full navigation starts locked.
- * Hiding the page no longer locks the vault for a new account (sleep lock defaults off).
+ * Best-effort cleanup of any legacy cleartext unlock key (older clients).
+ * Web unlock is memory-only now: a full reload already starts locked.
  */
 export async function clearTabVaultUnlock(page: Page): Promise<void> {
   await page.evaluate(() => {
     sessionStorage.removeItem("okkey.vault.unlock.tab");
+    localStorage.removeItem("okkey.vault.unlock.tab");
   });
 }
 
 /**
- * Full navigation to /items reloads the SPA — vault session is locked again.
+ * Full navigation to /items reloads the SPA — vault is locked again (memory-only unlock).
  * Wait for either lock or items shell (avoid racing isVisible on a still-loading page).
  */
 export async function gotoItemsUnlocked(
