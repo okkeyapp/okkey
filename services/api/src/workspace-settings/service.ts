@@ -76,7 +76,13 @@ export interface WorkspaceSettingsServiceDeps {
   >;
   vaults: Pick<VaultsRepository, "findById">;
   db: QueryExecutor;
-  config: Pick<ApiConfig, "deploymentMode" | "enterpriseModulesEnabled">;
+  config: Pick<
+    ApiConfig,
+    | "deploymentMode"
+    | "enterpriseModulesEnabled"
+    | "enterpriseLicenseVerified"
+    | "enterpriseLicenseLapsed"
+  >;
   storageQuota?: WorkspaceStorageQuotaService;
 }
 

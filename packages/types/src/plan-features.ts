@@ -145,12 +145,15 @@ export type PlanEntitlementOptions = {
    * SaaS / omitted mode: catalog `plan_tier`.
    */
   deploymentMode?: DeploymentMode | null;
-  /** True only when enterprise modules were requested and successfully loaded. */
+  /**
+   * True only when optional modules are entitlement-active (plugin loaded and
+   * license verified). Env flags alone must not set this on self-host.
+   */
   enterpriseModulesActive?: boolean | null;
   /**
    * Explicit self-hosted license-lapsed signal. Not derived from `plan_tier`.
-   * Only applies when `deploymentMode` is `self_hosted` and modules are loaded.
-   * Leave unset until a license check exists; then create/update of
+   * Only applies when `deploymentMode` is `self_hosted` and modules are active.
+   * Leave unset until a verified license later lapses; then create/update of
    * {@link ENTERPRISE_MODULE_FEATURES} is lapsed and quotas fall back to self-hosted FREE.
    */
   enterpriseLicenseLapsed?: boolean | null;
@@ -231,9 +234,9 @@ const BUSINESS_FEATURES = {
  * - Self-hosted modules off → FREE matrix plus {@link SELF_HOSTED_FREE_EXTRA}
  *   (`filesInItems`, `filesInCapsules`) and {@link SELF_HOSTED_FREE_QUOTA_OVERRIDES},
  *   with `storageQuotas` forced off, for every stored `plan_tier`.
- *   Self-hosted modules on → ENTERPRISE matrix and quotas, again for every stored
- *   `plan_tier`. A future license check may set {@link PlanEntitlementOptions.enterpriseLicenseLapsed};
- *   until then that flag stays unset and self-host with modules is never
+ *   Self-hosted modules on (license verified) → ENTERPRISE matrix and quotas, again for every stored
+ *   `plan_tier`. After verification, a lapse may set {@link PlanEntitlementOptions.enterpriseLicenseLapsed};
+ *   until modules are active that flag stays unset and self-host is never
  *   {@link PlanFeatureAccess} `"lapsed"`. Storage ceilings stay off for every self-hosted tier.
  * - PREMIUM: FREE plus files in items and capsules, monitoring, recovery, trusted contacts,
  *   and the paid badge.

@@ -8,6 +8,7 @@ import { RegistrationService } from "./registration/service.ts";
 import { createServer } from "node:http";
 import { createApiApp } from "./app.ts";
 import { isEnterpriseBackendLoadable, loadConfig } from "./config.ts";
+import { isEnterpriseModulesEntitlementActive } from "./plan-entitlements.ts";
 import { ensureSelfHostedInstanceWorkspace } from "./setup/ensure-instance-workspace.ts";
 import { hasSelfHostedInstanceAccess } from "./setup/instance-access.ts";
 import { RedisDeviceBindChallengeStore } from "./device/bind-challenge-store.ts";
@@ -283,9 +284,19 @@ async function main(): Promise<void> {
     storage.repositories.workspaces,
     storage.postgres,
   );
+  if (config.enterpriseModulesRequested) {
+    logger.warn(
+      "ENTERPRISE_MODULES is set; it no longer enables optional modules on its own. Modules stay off until the loaded plugin confirms a verified license",
+      {
+        enterpriseModulesPath: config.enterpriseModulesPath,
+        loadable: isEnterpriseBackendLoadable(config.enterpriseModulesPath),
+        pluginLoadable: config.enterpriseModulesEnabled,
+      },
+    );
+  }
   if (config.enterpriseModulesRequested && !config.enterpriseModulesEnabled) {
     logger.warn(
-      "ENTERPRISE_MODULES=true but enterprise backend is not loadable; continuing as FREE",
+      "ENTERPRISE_MODULES=true but enterprise backend is not loadable; continuing without optional modules",
       {
         enterpriseModulesPath: config.enterpriseModulesPath,
         loadable: isEnterpriseBackendLoadable(config.enterpriseModulesPath),
@@ -571,10 +582,11 @@ async function main(): Promise<void> {
   await whenCapsuleAccessSettingsBound();
 
   // Public capability probe for web/UI flag sync (registered here to avoid touching app.ts).
-  const enterpriseModulesActive = config.enterpriseModulesEnabled;
+  // Fail-closed: active only after the plugin confirms a verified license.
+  const enterpriseModulesActive = () => isEnterpriseModulesEntitlementActive(config);
   app.route("GET", "/public/features", async (ctx) => {
     json(ctx.res, 200, {
-      enterpriseModulesActive,
+      enterpriseModulesActive: enterpriseModulesActive(),
       deploymentMode: config.deploymentMode,
       requestId: ctx.requestId,
     });
@@ -586,8 +598,9 @@ async function main(): Promise<void> {
       nodeEnv: config.nodeEnv,
       port: config.port,
       logLevel: config.logLevel,
-      enterpriseModulesActive,
+      enterpriseModulesActive: enterpriseModulesActive(),
       enterpriseModulesRequested: config.enterpriseModulesRequested,
+      enterpriseLicenseVerified: config.enterpriseLicenseVerified,
     });
   });
 

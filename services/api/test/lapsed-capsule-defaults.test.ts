@@ -77,7 +77,11 @@ function defaultsService(planTier: string, enterpriseModulesEnabled: boolean, de
       findById: async () => workspace(planTier) as never,
       hasAccess: async () => true,
     },
-    config: createTestApiConfig({ deploymentMode, enterpriseModulesEnabled }),
+    config: createTestApiConfig({
+      deploymentMode,
+      enterpriseModulesEnabled,
+      enterpriseLicenseVerified: enterpriseModulesEnabled,
+    }),
   });
   return { service, writes: () => writes };
 }
@@ -176,6 +180,7 @@ test("EE + FREE saves a capsule policy change", async () => {
     config: createTestApiConfig({
       deploymentMode: "self_hosted",
       enterpriseModulesEnabled: true,
+      enterpriseLicenseVerified: true,
     }),
   });
 

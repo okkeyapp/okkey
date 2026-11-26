@@ -10,7 +10,11 @@ type EnterprisePluginModule = {
 
 export type LoadEnterprisePluginsResult = {
   plugins: ApiEnterprisePlugin[];
-  /** True only when config requested modules and the plugin entry imported successfully. */
+  /**
+   * True when the plugin entry imported successfully.
+   * Does **not** mean optional-module entitlements are on; those require
+   * `setEnterpriseLicenseVerified(true)` on the plugin context.
+   */
   enterpriseModulesActive: boolean;
   /** Present when the plugin entry failed to import. */
   loadError?: string;
@@ -18,8 +22,9 @@ export type LoadEnterprisePluginsResult = {
 
 /**
  * Load enterprise backend plugins.
- * Fail closed: missing/unloadable sibling → no plugins and modules inactive
- * (even if ENTERPRISE_MODULES=true or DB plan_tier=ENTERPRISE).
+ * Fail closed: missing/unloadable sibling → no plugins.
+ * `ENTERPRISE_MODULES` alone never enables entitlements; the plugin must
+ * confirm a verified license after load.
  */
 export async function loadEnterprisePlugins(
   config: ApiConfig,

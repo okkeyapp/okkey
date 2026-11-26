@@ -136,7 +136,11 @@ test("shared-vault ITEM_CREATE follows granted sharedVaults and cannot return PL
   const allowed = evaluateSharedVaultItemCreateGate({
     vault: sharedVault,
     workspace,
-    config: { deploymentMode: "self_hosted", enterpriseModulesEnabled: true },
+    config: {
+      deploymentMode: "self_hosted",
+      enterpriseModulesEnabled: true,
+      enterpriseLicenseVerified: true,
+    },
   });
   assert.equal(allowed.ok, true);
 
@@ -148,7 +152,11 @@ test("shared-vault ITEM_CREATE follows granted sharedVaults and cannot return PL
       planCustomOverride: true,
       planFeatureOverrides: { sharedVaults: false },
     },
-    config: { deploymentMode: "self_hosted", enterpriseModulesEnabled: true },
+    config: {
+      deploymentMode: "self_hosted",
+      enterpriseModulesEnabled: true,
+      enterpriseLicenseVerified: true,
+    },
   });
   assert.equal(denied.ok, false);
   if (!denied.ok) {
@@ -194,9 +202,22 @@ test("SaaS ignores enterpriseLicenseLapsed and keeps using plan_tier", () => {
   assert.equal(getPlanQuotaLimits("FREE", flagged).storageQuota.baseMb, 100);
 });
 
-test("API runtime helpers do not carry enterpriseLicenseLapsed", () => {
-  const config = { deploymentMode: "self_hosted" as const, enterpriseModulesEnabled: true };
+test("API runtime helpers require license verification for module entitlements", () => {
+  const unverified = {
+    deploymentMode: "self_hosted" as const,
+    enterpriseModulesEnabled: true,
+  };
+  const unverifiedOptions = workspacePlanEntitlementOptions(unverified, { planTier: "FREE" });
+  assert.equal(unverifiedOptions.enterpriseModulesActive, false);
+  assert.equal(unverifiedOptions.enterpriseLicenseLapsed, undefined);
+
+  const config = {
+    deploymentMode: "self_hosted" as const,
+    enterpriseModulesEnabled: true,
+    enterpriseLicenseVerified: true,
+  };
   const options = workspacePlanEntitlementOptions(config, { planTier: "FREE" });
+  assert.equal(options.enterpriseModulesActive, true);
   assert.equal(options.enterpriseLicenseLapsed, undefined);
 
   const roles = workspacePlanFeatureWriteDecision(config, { planTier: "FREE" }, "customWorkspaceRoles");

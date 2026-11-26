@@ -68,7 +68,11 @@ test("allows ITEM_CREATE in a shared vault on self-host for every plan_tier when
     const result = evaluateSharedVaultItemCreateGate({
       vault: sharedVault,
       workspace: { ...workspace, planTier },
-      config: { deploymentMode: "self_hosted", enterpriseModulesEnabled: true },
+      config: {
+        deploymentMode: "self_hosted",
+        enterpriseModulesEnabled: true,
+        enterpriseLicenseVerified: true,
+      },
     });
     assert.equal(result.ok, true, planTier);
   }
@@ -87,7 +91,11 @@ test("allows ITEM_CREATE in shared vault when modules on and plan_tier is ENTERP
   const result = evaluateSharedVaultItemCreateGate({
     vault: sharedVault,
     workspace: { ...workspace, planTier: "ENTERPRISE" },
-    config: { deploymentMode: "self_hosted", enterpriseModulesEnabled: true },
+    config: {
+      deploymentMode: "self_hosted",
+      enterpriseModulesEnabled: true,
+      enterpriseLicenseVerified: true,
+    },
   });
   assert.equal(result.ok, true);
 });

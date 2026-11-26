@@ -122,14 +122,30 @@ export interface ApiConfig {
   twoFactorBackupCodesCount: number;
   /** In production, only Bearer sessions authenticate; X-User-Id is ignored */
   allowHeaderUserIdAuth: boolean;
-  /** Raw env request: `ENTERPRISE_MODULES=true` (may still fail closed if path unloadable). */
+  /**
+   * Raw env request: `ENTERPRISE_MODULES=true`.
+   * Loads the sibling plugin when the path is loadable; does **not** enable
+   * optional-module entitlements by itself (fail-closed until the plugin
+   * confirms a verified license via `setEnterpriseLicenseVerified`).
+   */
   enterpriseModulesRequested: boolean;
-  /** Load enterprise backend plugins from `enterpriseModulesPath`. */
+  /**
+   * Sibling plugin path is loadable and modules were requested.
+   * Plugin code may register; entitlements stay off until
+   * {@link enterpriseLicenseVerified} is set.
+   */
   enterpriseModulesEnabled: boolean;
   enterpriseModulesPath: string;
   /**
-   * Self-hosted license lapse. Set only when the enterprise update feed reports
-   * an expired license. Not read from the environment.
+   * License confirmation from the loaded enterprise plugin.
+   * Default `false` (fail-closed). Optional modules / ENTERPRISE entitlements
+   * on self-host require this to be `true`. Not read from the environment.
+   */
+  enterpriseLicenseVerified: boolean;
+  /**
+   * Self-hosted license lapse after a prior verification.
+   * Set only when the enterprise plugin (or update feed) reports an expired
+   * license. Not read from the environment.
    */
   enterpriseLicenseLapsed: boolean;
   defaultEmailLocale: string;
@@ -448,7 +464,8 @@ export function loadConfig(): ApiConfig {
   const deployEnv = resolveDeployEnv(nodeEnv, process.env.DEPLOY_ENV);
   const enterpriseModulesRequested = parseBoolean(process.env.ENTERPRISE_MODULES, false);
   const enterpriseModulesPath = resolveEnterpriseModulesPath(process.env.ENTERPRISE_MODULES_PATH);
-  // Fail closed: env alone is not enough — sibling (or ENTERPRISE_MODULES_PATH) must be loadable.
+  // Env + loadable path only allow loading the plugin. Entitlements stay off until
+  // the plugin confirms a verified license (enterpriseLicenseVerified).
   const enterpriseModulesEnabled =
     enterpriseModulesRequested && isEnterpriseBackendLoadable(enterpriseModulesPath);
 
@@ -507,6 +524,7 @@ export function loadConfig(): ApiConfig {
     ),
     updateEnterpriseFeedUrl: (process.env.OKKEY_UPDATE_ENTERPRISE_FEED_URL ?? "").trim(),
     enterpriseLicenseKey: (process.env.OKKEY_LICENSE_KEY ?? "").trim(),
+    enterpriseLicenseVerified: false,
     enterpriseLicenseLapsed: false,
     updateIsolated: parseBoolean(process.env.OKKEY_UPDATE_ISOLATED, false),
     updateAgentUrl: (process.env.OKKEY_UPDATE_AGENT_URL ?? "").trim(),

@@ -41,6 +41,7 @@ export function createTestApiConfig(overrides: Partial<ApiConfig> = {}): ApiConf
     enterpriseModulesRequested: false,
     enterpriseModulesEnabled: false,
     enterpriseModulesPath: "",
+    enterpriseLicenseVerified: false,
     enterpriseLicenseLapsed: false,
     snowflakeNodeId: 1,
     port: 4000,

@@ -1645,6 +1645,12 @@ export function createApiApp(
         },
         assertEnterpriseModuleWrite: (workspace, feature) =>
           workspacePlanFeatureWriteDecision(config, workspace, feature),
+        setEnterpriseLicenseVerified: (verified) => {
+          config.enterpriseLicenseVerified = verified;
+          if (verified) {
+            config.enterpriseLicenseLapsed = false;
+          }
+        },
         setEnterpriseLicenseLapsed: (lapsed) => {
           config.enterpriseLicenseLapsed = lapsed;
         },

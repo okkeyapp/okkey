@@ -89,8 +89,18 @@ export type ApiEnterprisePluginContext = {
     feature: PlanFeature,
   ): PlanFeatureWriteDecision;
   /**
-   * Record the enterprise feed's license decision.
-   * Expired sets the lapse flag (plan writes return 402). A later accepted feed clears it.
+   * Confirm or clear a verified enterprise license.
+   * Default state is not licensed: optional modules stay off until the plugin
+   * calls this with `verified: true` (at register/startup after verification,
+   * and again whenever license state changes). `verified: false` turns modules
+   * off again (invalid / missing license). Does not log license contents.
+   */
+  setEnterpriseLicenseVerified(verified: boolean): void;
+  /**
+   * Record a license lapse after a prior verification (soft-lock).
+   * Expired sets the lapse flag (plan writes return 402). A later accepted
+   * check clears it. Prefer `setEnterpriseLicenseVerified(false)` when the
+   * license is invalid or missing entirely.
    */
   setEnterpriseLicenseLapsed(lapsed: boolean): void;
 };

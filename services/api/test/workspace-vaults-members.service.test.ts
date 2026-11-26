@@ -419,6 +419,7 @@ test("self_hosted: modules active unlocks shared vaults even when plan_tier is F
     config: entitlementConfig({
       deploymentMode: "self_hosted",
       enterpriseModulesEnabled: true,
+      enterpriseLicenseVerified: true,
     }),
   });
 
@@ -469,6 +470,7 @@ test("self_hosted: modules active unlocks invitations even when plan_tier is FRE
     config: entitlementConfig({
       deploymentMode: "self_hosted",
       enterpriseModulesEnabled: true,
+      enterpriseLicenseVerified: true,
     }),
   });
 

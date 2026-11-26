@@ -142,6 +142,8 @@ export interface SyncServiceDeps {
       | "cryptoRolloutStopWritePaths"
       | "deploymentMode"
       | "enterpriseModulesEnabled"
+      | "enterpriseLicenseVerified"
+      | "enterpriseLicenseLapsed"
     >
   >;
   log?: Logger;
@@ -191,6 +193,8 @@ export class SyncService {
     | "cryptoRolloutStopWritePaths"
     | "deploymentMode"
     | "enterpriseModulesEnabled"
+    | "enterpriseLicenseVerified"
+    | "enterpriseLicenseLapsed"
   >;
   private readonly log: Logger | undefined;
 
@@ -210,6 +214,8 @@ export class SyncService {
       cryptoRolloutStopWritePaths: [],
       deploymentMode: "self_hosted",
       enterpriseModulesEnabled: false,
+      enterpriseLicenseVerified: false,
+      enterpriseLicenseLapsed: false,
       ...deps.config,
     };
     this.log = deps.log;
@@ -798,6 +804,10 @@ export class SyncService {
     const planConfig: PlanEntitlementRuntimeConfig = {
       deploymentMode: this.config.deploymentMode,
       enterpriseModulesEnabled: this.config.enterpriseModulesEnabled,
+      enterpriseLicenseVerified: this.config.enterpriseLicenseVerified,
+      ...(this.config.enterpriseLicenseLapsed === true
+        ? { enterpriseLicenseLapsed: true }
+        : {}),
     };
     const workspace = await this.workspaces.findById(vault.workspaceId);
     const decision = evaluateSharedVaultItemCreateGate({
