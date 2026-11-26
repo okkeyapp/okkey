@@ -8,9 +8,22 @@ import {
   classifyAutofillInput,
   classifyLoginInput as classifyLoginInputImpl,
   collectInputHints,
+  isBackupOrRecoveryCodeField,
   queryAutofillInputs,
+  resolveFocusedAutofillKind,
+  type AutofillFieldKind,
   type AutofillInputHints,
 } from "./autofillFieldClassify.ts";
+import {
+  OTP_HINT,
+  SEGMENTED_OTP_MAX_FIELDS,
+  SEGMENTED_OTP_MIN_FIELDS,
+} from "./autofillDictionaries.ts";
+import {
+  assertSameOriginFillAllowed,
+  isElementVisiblyFillable,
+} from "./autofillDomLayers.ts";
+import { isCurrentPasswordField } from "./autofillFormDetect.ts";
 
 export type LoginFieldKind = "username" | "password" | "otp";
 
@@ -24,25 +37,29 @@ export {
   type AutofillInputHints,
 } from "./autofillFieldClassify.ts";
 
-const OTP_NAME = /one[-_]?time|otp|totp|2fa|mfa|authenticator|verification[-_]?code|auth[-_]?code|^code$/i;
+export {
+  extractAutofillFieldGroups,
+  isElementVisiblyFillable,
+  isForeignOriginFrame,
+  assertSameOriginFillAllowed,
+} from "./autofillDomLayers.ts";
+
+export { SEGMENTED_OTP_MIN_FIELDS, SEGMENTED_OTP_MAX_FIELDS } from "./autofillDictionaries.ts";
 
 export function classifyLoginInput(input: AutofillInputHints): LoginFieldKind | null {
   return classifyLoginInputImpl(input);
 }
 
 export function isVisibleFillableElement(el: HTMLInputElement | HTMLTextAreaElement): boolean {
-  if (el.disabled || el.readOnly) {
-    return false;
-  }
-  const style = el.ownerDocument.defaultView?.getComputedStyle(el);
-  if (style && (style.visibility === "hidden" || style.display === "none")) {
-    return false;
-  }
-  return el.getClientRects().length > 0;
+  return isElementVisiblyFillable(el);
 }
 
 function isSingleDigitOtpCandidate(input: HTMLInputElement): boolean {
   if (input.maxLength !== 1) {
+    return false;
+  }
+  const hints = collectInputHints(input);
+  if (isBackupOrRecoveryCodeField(hints)) {
     return false;
   }
   const type = input.type.toLowerCase();
@@ -56,10 +73,13 @@ function isSingleDigitOtpCandidate(input: HTMLInputElement): boolean {
   if (pattern === "\\d" || pattern === "[0-9]" || pattern === "[0-9]*") {
     return true;
   }
-  return OTP_NAME.test(attrBlob(collectInputHints(input)));
+  return OTP_HINT.test(attrBlob(hints));
 }
 
-/** Collect adjacent maxlength=1 boxes (typical 4–8 OTP digits) under the same parent. */
+/**
+ * Collect adjacent maxlength=1 boxes under the same parent.
+ * Length bounds come from owned segmented-OTP fixtures (see SEGMENTED_OTP_*).
+ */
 function collectDigitOtpGroups(inputs: HTMLInputElement[]): HTMLInputElement[] {
   const byParent = new Map<ParentNode, HTMLInputElement[]>();
   for (const input of inputs) {
@@ -76,11 +96,42 @@ function collectDigitOtpGroups(inputs: HTMLInputElement[]): HTMLInputElement[] {
   }
   const found: HTMLInputElement[] = [];
   for (const group of byParent.values()) {
-    if (group.length >= 4 && group.length <= 8) {
+    if (
+      group.length >= SEGMENTED_OTP_MIN_FIELDS &&
+      group.length <= SEGMENTED_OTP_MAX_FIELDS
+    ) {
       found.push(...group);
     }
   }
   return found;
+}
+
+/** True when the input is one cell of a segmented OTP group (fixture-derived N). */
+export function isSegmentedOtpDigitInput(
+  input: HTMLInputElement,
+  root?: ParentNode,
+): boolean {
+  const scope = root ?? input.ownerDocument;
+  const nodes = listLoginInputNodes(scope);
+  const candidates = nodes.filter(
+    (node) => isVisibleFillableElement(node) || isSingleDigitOtpCandidate(node),
+  );
+  return collectDigitOtpGroups(candidates).includes(input);
+}
+
+/**
+ * Resolve focused field kind for overlay / query, including segmented OTP groups.
+ * OTP digits must never be treated as username/password for suggestions or fill.
+ */
+export function resolveAutofillKindForElement(
+  input: HTMLInputElement,
+  pageUrl?: string,
+): AutofillFieldKind | null {
+  const fields = findLoginFields(input.ownerDocument);
+  if (fields.otp.includes(input)) {
+    return "otp";
+  }
+  return resolveFocusedAutofillKind(collectInputHints(input), pageUrl);
 }
 
 /**
@@ -163,7 +214,7 @@ export function findLoginFields(
   const digitGroup = collectDigitOtpGroups(
     nodes.filter((node) => isVisibleFillableElement(node)),
   );
-  if (digitGroup.length >= 4) {
+  if (digitGroup.length >= SEGMENTED_OTP_MIN_FIELDS) {
     for (const node of digitGroup) {
       otp.push(node);
       classified.add(node);
@@ -289,7 +340,8 @@ function dispatchFillEvents(el: HTMLInputElement | HTMLTextAreaElement, value: s
       data: value,
     }),
   );
-  el.dispatchEvent(new Event("change", { bubbles: true }));
+  // composed: true so open-shadow hosts / light-DOM listeners see the fill.
+  el.dispatchEvent(new Event("change", { bubbles: true, composed: true }));
 }
 
 /**
@@ -368,14 +420,110 @@ function fillOtpFields(
   }
 }
 
-export type FillLoginFormOptions = Pick<AutofillFillTargetOptions, "onlyEmpty" | "forceFill">;
+export type FillLoginFormOptions = Pick<AutofillFillTargetOptions, "onlyEmpty" | "forceFill"> & {
+  /**
+   * When true (change-password current field), only write the vault password into
+   * current-password role fields — never into new/confirm generator fields.
+   */
+  currentPasswordOnly?: boolean;
+};
+
+/**
+ * Fill scope for the focused field: open shadow root (same tree the detector used),
+ * else the owning `<form>`, else the document. Never re-resolve via light-DOM-only
+ * `document.querySelector` — shadow inputs are invisible to that API.
+ */
+export function resolveAutofillFillRoot(
+  active?: HTMLInputElement | HTMLTextAreaElement | null,
+  fallback: ParentNode = typeof document !== "undefined" ? document : (undefined as unknown as ParentNode),
+): ParentNode {
+  if (!active) {
+    return fallback;
+  }
+  try {
+    const rootNode = active.getRootNode();
+    if (typeof ShadowRoot !== "undefined" && rootNode instanceof ShadowRoot) {
+      return rootNode;
+    }
+  } catch {
+    /* ignore */
+  }
+  try {
+    if (active instanceof HTMLInputElement && active.form) {
+      return active.form;
+    }
+  } catch {
+    /* ignore */
+  }
+  return active.ownerDocument ?? fallback;
+}
+
+function isConnectedFillableTarget(el: HTMLInputElement): boolean {
+  try {
+    return Boolean(el.isConnected);
+  } catch {
+    return false;
+  }
+}
+
+/** True when `el` shares the focused field's open shadow / document tree. */
+function isSameFillTreeAsForce(
+  el: HTMLInputElement,
+  force: HTMLInputElement | HTMLTextAreaElement | null | undefined,
+): boolean {
+  if (!(force instanceof HTMLInputElement) || !isConnectedFillableTarget(el)) {
+    return false;
+  }
+  try {
+    return force.getRootNode() === el.getRootNode();
+  } catch {
+    return false;
+  }
+}
+
+function mayFillLoginTarget(
+  el: HTMLInputElement,
+  kind: "username" | "password",
+  options?: FillLoginFormOptions,
+): boolean {
+  if (isAutofillTargetElement(el, kind, options)) {
+    return true;
+  }
+  // Open-shadow / focus races: keep filling the focused ref and its same-tree siblings.
+  const force = options?.forceFill;
+  if (force === el && isConnectedFillableTarget(el)) {
+    return true;
+  }
+  return isSameFillTreeAsForce(el, force);
+}
 
 export function fillLoginForm(
   root: ParentNode,
   payload: { username: string; password: string; totp?: string },
   options?: FillLoginFormOptions,
 ): void {
+  // Foreign-origin iframe: never write values (allFrames content script must no-op).
+  const doc = root instanceof Document ? root : (root as Node).ownerDocument;
+  const win = doc?.defaultView ?? (typeof window !== "undefined" ? window : undefined);
+  if (!assertSameOriginFillAllowed(win)) {
+    return;
+  }
+
   const fields = findLoginFields(root);
+  // Ensure the focused element (same reference the overlay used) is in the target lists
+  // even when a visibility race briefly drops it from the open-shadow walk.
+  const force = options?.forceFill;
+  if (force instanceof HTMLInputElement && isConnectedFillableTarget(force)) {
+    const forceKind = classifyLoginInput(collectInputHints(force));
+    if (forceKind === "username" && !fields.username.includes(force)) {
+      fields.username.push(force);
+    } else if (forceKind === "password" && !fields.password.includes(force)) {
+      fields.password.push(force);
+    } else if (forceKind === "otp" && !fields.otp.includes(force)) {
+      fields.otp.push(force);
+    }
+  }
+
   // OTP first — never let password fill touch OTP digit / one-time-code boxes.
   if (payload.totp) {
     fillOtpFields(fields.otp, payload.totp, options);
@@ -385,12 +533,43 @@ export function fillLoginForm(
       if (shouldSkipNonEmptyField(el, options)) {
         continue;
       }
+      if (!mayFillLoginTarget(el, "username", options)) {
+        continue;
+      }
       fillInputValue(el, payload.username);
     }
   }
   if (payload.password) {
+    // Security: never put a vault password into an OTP field.
+    const otpSet = new Set(fields.otp);
+    const passwordHints = fields.password.map((el) => collectInputHints(el));
+    const focusedIsCurrent =
+      Boolean(options?.currentPasswordOnly) ||
+      (force instanceof HTMLInputElement &&
+        isCurrentPasswordField(collectInputHints(force), passwordHints));
+
     for (const el of fields.password) {
+      if (otpSet.has(el)) {
+        continue;
+      }
+      const kind = classifyLoginInput(collectInputHints(el));
+      if (kind === "otp") {
+        continue;
+      }
+      if (focusedIsCurrent) {
+        // Change-password: only the focused current-password field gets the saved login.
+        if (force instanceof HTMLInputElement) {
+          if (el !== force) {
+            continue;
+          }
+        } else if (!isCurrentPasswordField(collectInputHints(el), passwordHints)) {
+          continue;
+        }
+      }
       if (shouldSkipNonEmptyField(el, options)) {
+        continue;
+      }
+      if (!mayFillLoginTarget(el, "password", options)) {
         continue;
       }
       fillInputValue(el, payload.password);
@@ -561,6 +740,12 @@ export function fillAutofillValues(
   values: Partial<Record<string, string>>,
   options?: FillAutofillValuesOptions,
 ): number {
+  const doc = root instanceof Document ? root : (root as Node).ownerDocument;
+  const win = doc?.defaultView ?? (typeof window !== "undefined" ? window : undefined);
+  if (!assertSameOriginFillAllowed(win)) {
+    return 0;
+  }
+
   let filled = 0;
   const nodes = queryAutofillInputs(root);
   const addressKindsOnPage = new Set<string>();

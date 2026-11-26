@@ -46,8 +46,10 @@ import {
   detectFormTypeForInput,
   detectFormTypeForRoot,
   isAuthCredentialSubmitControl,
+  isCurrentPasswordField,
   isSaveOfferFormType,
   isUsernameGeneratorField,
+  resolveAutofillQueryFormType,
   shouldOpenPasswordGenerator,
   type AutofillFormType,
 } from "../lib/autofillFormDetect";
@@ -65,13 +67,13 @@ import {
   updateUsernameGeneratorSettings,
   type GeneratorOverlayState,
 } from "../lib/autofillGeneratorOverlay";
-import { resolveFocusedAutofillKind } from "../lib/autofillFieldClassify";
 import {
   captureFormPageUrl,
   websiteUrlForSaveOffer,
 } from "../lib/autofillSaveUrls";
 import {
   applyPageLocaleAddressFormat,
+  assertSameOriginFillAllowed,
   captureLoginCredentials,
   classifyAutofillInput,
   suggestionFieldKindsForFocus,
@@ -83,6 +85,8 @@ import {
   findLoginFields,
   isVisibleFillableElement,
   resolveAutofillAnchorInput,
+  resolveAutofillFillRoot,
+  resolveAutofillKindForElement,
   resolvePageAddressLocale,
   submitLoginFormIfReady,
   watchAndFillAutofillValues,
@@ -392,11 +396,30 @@ export default defineContentScript({
       return "closed";
     }
 
+    /** Connected in document or open shadow tree (document.contains is false inside shadow). */
+    function isPageConnected(el: Element | null | undefined): boolean {
+      return Boolean(el && el.isConnected);
+    }
+
+    /** Real event target for open shadow (focus retargets to host; composedPath keeps the input). */
+    function eventComposedInputTarget(event: Event): HTMLInputElement | null {
+      const path = typeof event.composedPath === "function" ? event.composedPath() : [];
+      const first = path[0];
+      if (first instanceof HTMLInputElement) {
+        return first;
+      }
+      return event.target instanceof HTMLInputElement ? event.target : null;
+    }
+
+    function isDeepFocusedInput(input: HTMLInputElement): boolean {
+      return deepActiveElement() === input;
+    }
+
     function keepPageFieldFocused(): void {
-      if (!activeInput || !document.contains(activeInput)) {
+      if (!activeInput || !isPageConnected(activeInput)) {
         return;
       }
-      if (document.activeElement === activeInput) {
+      if (isDeepFocusedInput(activeInput)) {
         return;
       }
       try {
@@ -608,7 +631,12 @@ export default defineContentScript({
       if (!(focused instanceof HTMLInputElement) || !isPageVisibleAutofillInput(focused)) {
         return null;
       }
-      if (!classifyAutofillInput(collectInputHints(focused))) {
+      if (
+        !resolveAutofillKindForElement(
+          focused,
+          `${location.pathname}${location.search}`,
+        )
+      ) {
         return null;
       }
       return focused;
@@ -636,7 +664,10 @@ export default defineContentScript({
       if (!isPageVisibleAutofillInput(input)) {
         return;
       }
-      const kind = classifyAutofillInput(collectInputHints(input));
+      const kind = resolveAutofillKindForElement(
+        input,
+        `${location.pathname}${location.search}`,
+      );
       if (!kind) {
         return;
       }
@@ -678,8 +709,25 @@ export default defineContentScript({
           readonly: input.readOnly,
         });
       }
-      if (kind === "password" || kind === "db-password" || kind === "crypto-pin" || kind === "crypto-passphrase") {
+      const hints = collectInputHints(input);
+      const isCurrentPassword =
+        kind === "password" &&
+        isCurrentPasswordField(
+          hints,
+          findLoginFields(input.ownerDocument).password.map((el) => collectInputHints(el)),
+        );
+      if (isCurrentPassword) {
+        // Keep current-password so generators / heuristics still see the login role.
+        input.setAttribute("autocomplete", "current-password");
+      } else if (
+        kind === "password" ||
+        kind === "db-password" ||
+        kind === "crypto-pin" ||
+        kind === "crypto-passphrase"
+      ) {
         input.setAttribute("autocomplete", "new-password");
+      } else if (kind === "otp") {
+        input.setAttribute("autocomplete", "one-time-code");
       } else {
         input.setAttribute("autocomplete", "off");
       }
@@ -700,7 +748,7 @@ export default defineContentScript({
           if (isOverlayUpdateFrozen()) {
             return;
           }
-          if (document.activeElement !== input) {
+          if (!isDeepFocusedInput(input)) {
             return;
           }
           try {
@@ -1993,7 +2041,7 @@ export default defineContentScript({
       input: HTMLElement,
       kind: AutofillToggleKind = resolveToggleKind(),
     ): { left: number; top: number; width: number; height: number } | null {
-      if (!document.contains(input)) {
+      if (!isPageConnected(input)) {
         return null;
       }
       const rect = input.getBoundingClientRect();
@@ -2623,7 +2671,7 @@ export default defineContentScript({
         const showToggleOnly = Boolean(opts?.showToggleOnly) && !generatorOpen;
         const toggleKind = resolveToggleKind();
         const anchorInput =
-          activeInput && document.contains(activeInput) ? toggleAnchorInput(activeInput) : null;
+          activeInput && isPageConnected(activeInput) ? toggleAnchorInput(activeInput) : null;
         const togglePos = anchorInput ? toggleRectForInput(anchorInput, toggleKind) : null;
         // After dialog close, activeInput may still be set but no longer a valid anchor —
         // drop the orphan instead of leaving a floating toggle (often at prior center coords).
@@ -2774,7 +2822,7 @@ export default defineContentScript({
             overlayMode === "save-form"
           ) {
             positionSavePanel(panel);
-          } else if (anchorInput && document.contains(anchorInput)) {
+          } else if (anchorInput && isPageConnected(anchorInput)) {
             positionPanelNearInput(panel, anchorInput);
           }
         }
@@ -2805,9 +2853,14 @@ export default defineContentScript({
 
     function fieldKindsForQuery(focused?: HTMLInputElement | null): string[] {
       const pageKinds = collectPageFieldKinds(document);
+      const loginFields = findLoginFields(document);
+      // Segmented OTP digits may lack per-cell hints — still surface otp for the page.
+      if (loginFields.otp.length > 0 && !pageKinds.includes("otp")) {
+        pageKinds.push("otp");
+      }
       const focusedKind = focused
-        ? resolveFocusedAutofillKind(
-            collectInputHints(focused),
+        ? resolveAutofillKindForElement(
+            focused,
             `${location.pathname}${location.search}`,
           )
         : null;
@@ -2823,6 +2876,21 @@ export default defineContentScript({
         return detectFormTypeForInput(focused, { urlPath: location.pathname });
       } catch {
         return "unknown";
+      }
+    }
+
+    /**
+     * Vault query form type: current-password on change-password/register maps to
+     * `login` so saved logins are offered (generators stay on new/confirm).
+     */
+    function resolveQueryFormType(
+      formType: AutofillFormType,
+      focused?: HTMLInputElement | null,
+    ): AutofillFormType {
+      try {
+        return resolveAutofillQueryFormType(formType, focused);
+      } catch {
+        return formType;
       }
     }
 
@@ -2842,7 +2910,14 @@ export default defineContentScript({
      * Returns true when a generator was opened (caller should skip vault query).
      */
     function maybeOpenRegisterGenerator(input: HTMLInputElement, formType: AutofillFormType): boolean {
-      const kind = classifyAutofillInput(collectInputHints(input));
+      const kind = resolveAutofillKindForElement(
+        input,
+        `${location.pathname}${location.search}`,
+      );
+      // OTP must never open the password generator or login password flow.
+      if (kind === "otp") {
+        return false;
+      }
       if (shouldOpenPasswordGenerator(formType, kind, input)) {
         openGeneratorForField("password");
         return true;
@@ -2928,7 +3003,10 @@ export default defineContentScript({
       const queryGen = ++overlayQueryGeneration;
       let response: AutofillQueryResponse;
       try {
-        response = await queryMatches(fieldKindsForQuery(activeInput), formType);
+        response = await queryMatches(
+          fieldKindsForQuery(activeInput),
+          resolveQueryFormType(formType, activeInput),
+        );
       } catch {
         return;
       }
@@ -3007,13 +3085,16 @@ export default defineContentScript({
       const queryGen = ++overlayQueryGeneration;
       let response: AutofillQueryResponse;
       try {
-        response = await queryMatches(fieldKindsForQuery(input), formType);
+        response = await queryMatches(
+          fieldKindsForQuery(input),
+          resolveQueryFormType(formType, input),
+        );
       } catch {
         // Do not repaint if focus left for Select / datepicker while the query failed.
         if (
           queryGen === overlayQueryGeneration &&
           activeInput === input &&
-          document.activeElement === input &&
+          isDeepFocusedInput(input) &&
           !isOverlayUpdateFrozen()
         ) {
           listOpen = false;
@@ -3029,7 +3110,7 @@ export default defineContentScript({
       if (
         queryGen !== overlayQueryGeneration ||
         activeInput !== input ||
-        document.activeElement !== input ||
+        !isDeepFocusedInput(input) ||
         isOverlayUpdateFrozen()
       ) {
         return;
@@ -3393,6 +3474,10 @@ export default defineContentScript({
       itemId: string,
       fillOverrides?: Record<string, string>,
     ): Promise<void> {
+      // allFrames content script: never write into a foreign-origin iframe.
+      if (!assertSameOriginFillAllowed(window)) {
+        return;
+      }
       const result = await fillItem(itemId, fillOverrides);
       if (result.status !== "ok") {
         if (result.status === "locked") {
@@ -3406,15 +3491,26 @@ export default defineContentScript({
       // Keep toggle on the filled field (do not hideOverlay).
       void paintOverlay({ showToggleOnly: true });
       // Focused field always overwrites; other form fields only when empty.
+      // Open shadow: fill inside the same shadow root the detector used (not light-DOM query).
+      const fillRoot = resolveAutofillFillRoot(activeInput, document);
+      const passwordHints =
+        activeInput && (activeInput.type || "").toLowerCase() === "password"
+          ? findLoginFields(fillRoot).password.map((el) => collectInputHints(el))
+          : [];
+      const currentPasswordOnly = Boolean(
+        activeInput &&
+          isCurrentPasswordField(collectInputHints(activeInput), passwordHints),
+      );
       const fillOpts = {
         onlyEmpty: true as const,
         forceFill: activeInput,
+        ...(currentPasswordOnly ? { currentPasswordOnly: true as const } : {}),
       };
       const isLogin = !result.fill.categoryId || result.fill.categoryId === "login";
       if (isLogin) {
         const focusedKind = activeInput
-          ? resolveFocusedAutofillKind(
-              collectInputHints(activeInput),
+          ? resolveAutofillKindForElement(
+              activeInput,
               `${location.pathname}${location.search}`,
             )
           : null;
@@ -3424,28 +3520,28 @@ export default defineContentScript({
             return;
           }
           fillLoginFormAndMaybeSubmit(
-            document,
+            fillRoot,
             { username: "", password: "", totp: result.fill.totp },
             fillOpts,
           );
           setTimeout(() => {
-            submitLoginFormIfReady(document);
+            submitLoginFormIfReady(fillRoot);
           }, 120);
           return;
         }
-        const outcome = fillLoginFormAndMaybeSubmit(document, result.fill, fillOpts);
+        const outcome = fillLoginFormAndMaybeSubmit(fillRoot, result.fill, fillOpts);
         if (outcome.submitted) {
           listOpen = false;
           overlayMode = "hidden";
           void paintOverlay({ showToggleOnly: true });
         }
         if (result.fill.totp) {
-          const fields = findLoginFields(document);
+          const fields = findLoginFields(fillRoot);
           if (fields.otp.length === 0) {
             watchForOtp(itemId, result.fill.totp);
           } else {
             setTimeout(() => {
-              submitLoginFormIfReady(document);
+              submitLoginFormIfReady(fillRoot);
             }, 120);
           }
         }
@@ -3620,7 +3716,7 @@ export default defineContentScript({
             formEl: form,
           });
         }
-        if (activeInput && document.contains(activeInput)) {
+        if (activeInput && isPageConnected(activeInput)) {
           return detectFormTypeForInput(activeInput, { urlPath: location.pathname });
         }
         if (activeFormType === "login" || activeFormType === "register") {
@@ -3736,10 +3832,11 @@ export default defineContentScript({
           clearActiveInputAndHide();
           return;
         }
-        const target = event.target;
-        if (!(target instanceof HTMLInputElement) || !isPageVisibleAutofillInput(target)) {
+        const target = eventComposedInputTarget(event);
+        if (!target || !isPageVisibleAutofillInput(target)) {
           // Focus moved to body/main/non-input (e.g. dialog closed) — drop any orphan toggle.
-          if (target instanceof Element && isNonFieldFocusTarget(target)) {
+          const raw = event.target;
+          if (raw instanceof Element && isNonFieldFocusTarget(raw)) {
             window.clearTimeout(hideTimer);
             clearActiveInputAndHide();
           }
@@ -3767,14 +3864,16 @@ export default defineContentScript({
             clearActiveInputAndHide();
             return;
           }
-          const focused = document.activeElement instanceof Element ? document.activeElement : null;
+          const focused = deepActiveElement();
+          const lightFocused =
+            document.activeElement instanceof Element ? document.activeElement : null;
           // Still on the autofill field (focus moved to another field whose focusin already ran,
           // or focus never left) — keep list / generator panels open.
-          if (focused === activeInput) {
+          if (focused === activeInput || lightFocused === activeInput) {
             return;
           }
           // Interacting with overlay controls (closed shadow → activeElement is the host).
-          if (host && focused && (focused === host || host.contains(focused))) {
+          if (host && lightFocused && (lightFocused === host || host.contains(lightFocused))) {
             if (isGeneratorOverlayOpen()) {
               keepPageFieldFocused();
             }
@@ -3795,14 +3894,14 @@ export default defineContentScript({
             return;
           }
           // Dialog close / save: focus lands on body or main — never keep a floating toggle.
-          if (isNonFieldFocusTarget(focused)) {
+          if (isNonFieldFocusTarget(lightFocused) && isNonFieldFocusTarget(focused)) {
             clearActiveInputAndHide();
             return;
           }
           // Anchor removed with the dialog — hide instead of painting at stale center coords.
           // Use page-visible check (not isVisibleFillableElement) so brief readOnly suppress
           // does not tear down an open password generator.
-          if (!activeInput || !document.contains(activeInput) || !isPageVisibleAutofillInput(activeInput)) {
+          if (!activeInput || !isPageConnected(activeInput) || !isPageVisibleAutofillInput(activeInput)) {
             clearActiveInputAndHide();
             return;
           }
@@ -3812,7 +3911,7 @@ export default defineContentScript({
           if (
             overlayMode === "list" ||
             overlayMode === "unlock-tooltip" ||
-            (activeInput && document.contains(activeInput))
+            (activeInput && isPageConnected(activeInput))
           ) {
             overlayMode = "hidden";
             void paintOverlay({ showToggleOnly: true });
@@ -3825,20 +3924,23 @@ export default defineContentScript({
     );
 
     const onAutofillFieldEdited = (event: Event): void => {
-      const target = event.target;
-      if (!(target instanceof HTMLInputElement)) {
+      const target = eventComposedInputTarget(event);
+      if (!target) {
         return;
       }
-      if (document.activeElement !== target) {
+      if (!isDeepFocusedInput(target)) {
         return;
       }
       if (isOverlayUpdateFrozen()) {
         return;
       }
-      if (!isVisibleFillableElement(target)) {
+      if (!isVisibleFillableElement(target) && !isPageVisibleAutofillInput(target)) {
         return;
       }
-      const kind = classifyAutofillInput(collectInputHints(target));
+      const kind = resolveAutofillKindForElement(
+        target,
+        `${location.pathname}${location.search}`,
+      );
       if (!kind) {
         return;
       }
@@ -3997,7 +4099,7 @@ export default defineContentScript({
           const detection = detectOauthFromControl(control);
           const form =
             control.closest("form") ??
-            (activeInput?.form && document.contains(activeInput) ? activeInput.form : null);
+            (activeInput?.form && isPageConnected(activeInput) ? activeInput.form : null);
           const captureUrl = captureFormPageUrl(location);
           const snapshot = {
             username: "",
@@ -4015,7 +4117,7 @@ export default defineContentScript({
         }
         const form =
           control.closest("form") ??
-          (activeInput?.form && document.contains(activeInput) ? activeInput.form : null);
+          (activeInput?.form && isPageConnected(activeInput) ? activeInput.form : null);
         // Capture + persist NOW (capture phase, before demoqa/AJAX / navigation).
         const snapshot = snapshotCredentialsForOffer(form);
         if (!snapshot) {
@@ -4040,14 +4142,14 @@ export default defineContentScript({
           return undefined;
         }
         if (suggestionsListSuppressed()) {
-          if (activeInput && document.contains(activeInput)) {
+          if (activeInput && isPageConnected(activeInput)) {
             void paintOverlay({ showToggleOnly: true });
           }
           return undefined;
         }
         // Prefer retained field; else whatever is focused now (autofocus before CS ready).
         const unlockTarget =
-          activeInput && document.contains(activeInput)
+          activeInput && isPageConnected(activeInput)
             ? activeInput
             : resolveFocusedAutofillInput();
         if (unlockTarget && !isOverlayUpdateFrozen()) {
