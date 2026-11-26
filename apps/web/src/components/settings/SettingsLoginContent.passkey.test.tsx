@@ -45,12 +45,13 @@ const copy: Record<string, string> = {
   "web.settingsLogin.deleteCredential": "Remove key",
   "web.settingsLogin.rename.action": "Rename passkey",
   "web.settingsLogin.rename.title": "Rename passkey",
+  "web.settingsLogin.rename.nameLabel": "Passkey name",
   "web.settingsLogin.rename.save": "Save",
   "web.settingsLogin.rename.cancel": "Cancel",
   "web.settingsLogin.rename.saved": "Passkey renamed",
   "web.settingsLogin.rename.failed": "Could not rename this passkey. Try again.",
   "web.settingsPopup.close": "Close",
-  "web.settingsLogin.passkeyWrap.action": "Allow this passkey to approve new devices",
+  "web.settingsLogin.passkeyWrap.action": "Allow passkey to approve new devices",
   "web.settingsLogin.passkeyWrap.ready": "This passkey can approve a new device",
   "web.settingsLogin.passkeyWrap.revoke": "Remove device approval from this passkey",
 };
@@ -95,7 +96,7 @@ describe("SettingsLoginContent passkey approval row", () => {
     render(<SettingsLoginContent t={t} />);
 
     const allow = await screen.findAllByRole("button", {
-      name: "Allow this passkey to approve new devices",
+      name: "Allow passkey to approve new devices",
     });
     expect(allow).toHaveLength(2);
     expect(screen.queryByText("This passkey can approve a new device")).toBeNull();
@@ -109,7 +110,7 @@ describe("SettingsLoginContent passkey approval row", () => {
     expect(await screen.findByText("This passkey can approve a new device")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Remove device approval from this passkey" })).toBeTruthy();
     expect(
-      screen.getAllByRole("button", { name: "Allow this passkey to approve new devices" }),
+      screen.getAllByRole("button", { name: "Allow passkey to approve new devices" }),
     ).toHaveLength(1);
     expect(screen.getByRole("button", { name: "Add" })).toBeTruthy();
   });
@@ -130,7 +131,7 @@ describe("SettingsLoginContent passkey approval row", () => {
     expect(core.deletePasskeyShareWrap).toHaveBeenCalledWith("11");
     await waitFor(() => {
       expect(
-        screen.getAllByRole("button", { name: "Allow this passkey to approve new devices" }),
+        screen.getAllByRole("button", { name: "Allow passkey to approve new devices" }),
       ).toHaveLength(2);
     });
     expect(screen.queryByText("This passkey can approve a new device")).toBeNull();

@@ -18,6 +18,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
+  PlusIcon,
   Skeleton,
   Switch,
 } from "@okkey/ui";
@@ -25,7 +26,7 @@ import {
   startRegistration,
   type PublicKeyCredentialCreationOptionsJSON,
 } from "@simplewebauthn/browser";
-import { CheckCircle2, Pencil, Plus, Trash2, X } from "lucide-react";
+import { X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -46,6 +47,9 @@ import {
   establishPasskeyShareWrap,
   passkeyWrapErrorMessageKey,
 } from "../../auth/passkeyDeviceApproval";
+import { IconDelete16, IconEdit16 } from "../items/itemCategoryIcons";
+import { CheckSuccessIcon } from "./CheckSuccessIcon";
+import { DevicesIcon } from "./DevicesIcon";
 import { SettingsRow } from "./SettingsRows";
 import { useSettingsPopupCacheEntry } from "./useSettingsPopupCache";
 
@@ -90,43 +94,43 @@ function PasskeyCard({
   onRevoke: () => void;
 }) {
   return (
-    <div className="flex w-full flex-col overflow-hidden rounded-xl bg-secondary">
+    <div className="flex w-full flex-col rounded-xl bg-secondary">
       <div className="flex items-center gap-1.5 px-4 py-3">
-        <CheckCircle2 className="size-4 shrink-0 text-green-600" aria-hidden />
+        <CheckSuccessIcon />
         <p className="min-w-0 flex-1 text-sm font-normal leading-5 text-foreground">
           {credential.name}
         </p>
         <Button
           type="button"
           variant="ghost"
-          size="icon"
-          className="size-6 shrink-0 text-muted-foreground"
+          size="iconSm"
+          className="size-8 min-h-8 min-w-8 shrink-0 text-muted-foreground hover:!bg-card hover:text-foreground"
           disabled={busy}
           onClick={onRename}
           aria-label={renameLabel}
         >
-          <Pencil className="size-4" />
+          <IconEdit16 className="size-4" />
         </Button>
         <Button
           type="button"
           variant="ghost"
-          size="icon"
-          className="size-6 shrink-0 text-destructive hover:text-destructive"
+          size="iconSm"
+          className="size-8 min-h-8 min-w-8 shrink-0 text-destructive hover:!bg-card hover:text-destructive"
           disabled={busy}
           onClick={onDelete}
           aria-label={deleteLabel}
         >
-          <Trash2 className="size-4" />
+          <IconDelete16 className="size-4" />
         </Button>
       </div>
       {credential.has_share_wrap ? (
-        <div className="flex items-center gap-2 border-t border-border px-4 py-3">
+        <div className="flex items-center gap-2 border-t border-border px-4 py-2">
           <p className="min-w-0 flex-1 text-sm text-muted-foreground">{readyLabel}</p>
           <Button
             type="button"
             variant="ghost"
-            size="icon"
-            className="size-6 shrink-0 text-muted-foreground"
+            size="iconSm"
+            className="size-8 min-h-8 min-w-8 shrink-0 text-muted-foreground hover:!bg-card hover:text-foreground"
             disabled={busy}
             onClick={onRevoke}
             aria-label={revokeLabel}
@@ -135,15 +139,16 @@ function PasskeyCard({
           </Button>
         </div>
       ) : (
-        <button
+        <Button
           type="button"
-          className="flex w-full items-center gap-2 border-t border-border px-4 py-3 text-left text-sm text-foreground disabled:opacity-50"
+          variant="secondary"
+          className="w-full justify-center rounded-t-none rounded-b-xl border-t border-border"
           disabled={busy}
           onClick={onAllow}
         >
-          <Plus className="size-4 shrink-0" aria-hidden />
-          <span>{allowLabel}</span>
-        </button>
+          <DevicesIcon className="size-4" />
+          {allowLabel}
+        </Button>
       )}
     </div>
   );
@@ -164,7 +169,7 @@ function CredentialCard({
 }) {
   return (
     <div className="flex w-full items-center gap-1.5 rounded-xl bg-secondary px-4 py-3">
-      <CheckCircle2 className="size-4 shrink-0 text-foreground" aria-hidden />
+      <CheckSuccessIcon />
       <p className="min-w-0 flex-1 text-sm font-normal leading-5 text-foreground">
         {credential.name}
       </p>
@@ -172,13 +177,13 @@ function CredentialCard({
         <Button
           type="button"
           variant="ghost"
-          size="icon"
-          className="size-6 shrink-0 text-destructive hover:text-destructive"
+          size="iconSm"
+          className="size-8 min-h-8 min-w-8 shrink-0 text-destructive hover:!bg-card hover:text-destructive"
           disabled={busy}
           onClick={onDelete}
           aria-label={deleteLabel}
         >
-          <Trash2 className="size-4" />
+          <IconDelete16 className="size-4" />
         </Button>
       ) : null}
     </div>
@@ -188,7 +193,7 @@ function CredentialCard({
 function EmailCredentialCard({ email }: { email: string }) {
   return (
     <div className="flex min-h-12 w-full items-center gap-1.5 rounded-xl bg-secondary px-4 py-3">
-      <CheckCircle2 className="size-4 shrink-0 text-foreground" aria-hidden />
+      <CheckSuccessIcon />
       <p className="min-w-0 flex-1 text-sm font-normal leading-5 text-foreground">{email}</p>
     </div>
   );
@@ -602,7 +607,7 @@ export default function SettingsLoginContent({ t }: SettingsLoginContentProps) {
             disabled={busy}
             onClick={() => void enroll("platform")}
           >
-            <Plus className="size-4" />
+            <PlusIcon className="size-4" />
             {t("web.settingsLogin.add")}
           </Button>
         ) : null}
@@ -633,7 +638,7 @@ export default function SettingsLoginContent({ t }: SettingsLoginContentProps) {
             disabled={busy}
             onClick={() => void enroll("platform")}
           >
-            <Plus className="size-4" />
+            <PlusIcon className="size-4" />
             {t("web.settingsLogin.add")}
           </Button>
         ) : null}
@@ -676,7 +681,7 @@ export default function SettingsLoginContent({ t }: SettingsLoginContentProps) {
             disabled={busy}
             onClick={() => void enroll("cross-platform")}
           >
-            <Plus className="size-4" />
+            <PlusIcon className="size-4" />
             {t("web.settingsLogin.add")}
           </Button>
         ) : null}
@@ -698,7 +703,7 @@ export default function SettingsLoginContent({ t }: SettingsLoginContentProps) {
             disabled={busy}
             onClick={() => void enroll("cross-platform")}
           >
-            <Plus className="size-4" />
+            <PlusIcon className="size-4" />
             {t("web.settingsLogin.add")}
           </Button>
         ) : null}
@@ -718,36 +723,53 @@ export default function SettingsLoginContent({ t }: SettingsLoginContentProps) {
       {renameTarget ? (
         <Popup
           id="settings-login-passkey-rename"
+          className="z-popup-nested-high"
           width={420}
           header={t("web.settingsLogin.rename.title")}
           closeLabel={t("web.settingsPopup.close")}
           onClose={() => setRenameTarget(null)}
-        >
-          <div className="flex flex-col gap-4 p-4">
-            <Input
-              value={renameValue}
-              maxLength={WEBAUTHN_CREDENTIAL_NAME_MAX_LEN}
-              onChange={(event) => setRenameValue(event.target.value)}
-              aria-label={t("web.settingsLogin.rename.title")}
-              autoFocus
-            />
-            <div className="flex justify-end gap-2">
-              <Button type="button" variant="secondary" onClick={() => setRenameTarget(null)}>
+          closeDisabled={busy}
+          panelClassName="min-h-0"
+          contentClassName="py-1"
+          footer={
+            <>
+              <Button type="button" variant="outline" onClick={() => setRenameTarget(null)} disabled={busy}>
                 {t("web.settingsLogin.rename.cancel")}
               </Button>
               <Button
-                type="button"
+                type="submit"
+                form="settings-login-passkey-rename-form"
                 disabled={
                   busy ||
                   !renameValue.trim() ||
                   renameValue.trim().length > WEBAUTHN_CREDENTIAL_NAME_MAX_LEN
                 }
-                onClick={() => void renamePasskey()}
               >
                 {t("web.settingsLogin.rename.save")}
               </Button>
-            </div>
-          </div>
+            </>
+          }
+        >
+          <form
+            id="settings-login-passkey-rename-form"
+            className="w-full"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void renamePasskey();
+            }}
+          >
+            <label className="flex w-full flex-col gap-3 text-sm font-medium text-foreground">
+              {t("web.settingsLogin.rename.nameLabel")}
+              <Input
+                value={renameValue}
+                maxLength={WEBAUTHN_CREDENTIAL_NAME_MAX_LEN}
+                onChange={(event) => setRenameValue(event.target.value)}
+                className="font-normal"
+                autoFocus
+                disabled={busy}
+              />
+            </label>
+          </form>
         </Popup>
       ) : null}
     </div>

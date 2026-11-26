@@ -17,12 +17,12 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
   Input,
+  PlusIcon,
   Skeleton,
   buttonVariants,
   cn,
   segmentedControlTabClassName,
 } from "@okkey/ui";
-import { PlusIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";

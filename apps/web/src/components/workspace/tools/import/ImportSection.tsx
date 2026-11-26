@@ -356,7 +356,7 @@ export default function ImportSection({
       </div>
 
       <div className="flex flex-col gap-6">
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-3">
           <label className="text-sm font-medium text-foreground">{t("web.tools.import.vaultLabel")}</label>
           <NewItemSaveLocationSection
             t={t}
@@ -371,7 +371,7 @@ export default function ImportSection({
           />
         </div>
 
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-3">
           <label className="text-sm font-medium text-foreground">{t("web.tools.import.formatLabel")}</label>
           <SearchableSelect
             value={formatId}
