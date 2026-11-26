@@ -284,6 +284,14 @@ async function main(): Promise<void> {
     storage.repositories.workspaces,
     storage.postgres,
   );
+  if (config.enterpriseModulesUnknownTokens.length > 0) {
+    logger.warn(
+      "ENTERPRISE_MODULES contains unknown module ids; they are ignored and do not enable anything extra",
+      {
+        unknownTokens: config.enterpriseModulesUnknownTokens,
+      },
+    );
+  }
   if (config.enterpriseModulesRequested) {
     logger.warn(
       "ENTERPRISE_MODULES is set; it no longer enables optional modules on its own. Modules stay off until the loaded plugin confirms a verified license",
@@ -296,7 +304,7 @@ async function main(): Promise<void> {
   }
   if (config.enterpriseModulesRequested && !config.enterpriseModulesEnabled) {
     logger.warn(
-      "ENTERPRISE_MODULES=true but enterprise backend is not loadable; continuing without optional modules",
+      "ENTERPRISE_MODULES is set but enterprise backend is not loadable; continuing without optional modules",
       {
         enterpriseModulesPath: config.enterpriseModulesPath,
         loadable: isEnterpriseBackendLoadable(config.enterpriseModulesPath),

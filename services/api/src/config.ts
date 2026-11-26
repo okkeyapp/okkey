@@ -15,6 +15,11 @@ import {
   applyEnterpriseBackendEnvToProcess,
   loadEnterpriseBackendEnv,
 } from "./enterpriseEnv.ts";
+import {
+  enterpriseModulesUnknownTokens,
+  isEnterpriseModulesRequested,
+  parseEnterpriseModulesEnv,
+} from "./enterprise-modules-env.ts";
 import { resolveEmailDeliveryMode, type EmailDeliveryMode } from "./email/queue.ts";
 import {
   normalizeEmailLogoUrl,
@@ -123,12 +128,22 @@ export interface ApiConfig {
   /** In production, only Bearer sessions authenticate; X-User-Id is ignored */
   allowHeaderUserIdAuth: boolean;
   /**
-   * Raw env request: `ENTERPRISE_MODULES=true`.
-   * Loads the sibling plugin when the path is loadable; does **not** enable
-   * optional-module entitlements by itself (fail-closed until the plugin
-   * confirms a verified license via `setEnterpriseLicenseVerified`).
+   * Raw `ENTERPRISE_MODULES` value (pass-through for the loaded plugin).
+   * Grammar: `true` / `all` / comma-separated module ids → requested;
+   * empty / `false` / `0` → off. Unknown tokens are ignored for enablement.
+   * Does **not** enable optional-module entitlements by itself.
+   */
+  enterpriseModulesEnv: string;
+  /**
+   * Parsed request: load the sibling plugin when the path is loadable.
+   * Fail-closed for entitlements until the plugin confirms a verified license
+   * via `setEnterpriseLicenseVerified`.
    */
   enterpriseModulesRequested: boolean;
+  /**
+   * Unknown tokens from `ENTERPRISE_MODULES` (logged at startup; never enable extras).
+   */
+  enterpriseModulesUnknownTokens: readonly string[];
   /**
    * Sibling plugin path is loadable and modules were requested.
    * Plugin code may register; entitlements stay off until
@@ -143,9 +158,11 @@ export interface ApiConfig {
    */
   enterpriseLicenseVerified: boolean;
   /**
-   * Self-hosted license lapse after a prior verification.
-   * Set only when the enterprise plugin (or update feed) reports an expired
-   * license. Not read from the environment.
+   * Self-hosted license lapse reported by the plugin (soft-lock).
+   * Independent of {@link enterpriseLicenseVerified}: expired licenses may clear
+   * verification while setting this so enterprise-module reads stay allowed and
+   * writes return 402. Default `false` (fail-closed when an older plugin never
+   * calls `setEnterpriseLicenseLapsed`). Not read from the environment.
    */
   enterpriseLicenseLapsed: boolean;
   defaultEmailLocale: string;
@@ -462,7 +479,10 @@ export function loadConfig(): ApiConfig {
 
   const nodeEnv = (process.env.NODE_ENV ?? "development") as NodeEnv;
   const deployEnv = resolveDeployEnv(nodeEnv, process.env.DEPLOY_ENV);
-  const enterpriseModulesRequested = parseBoolean(process.env.ENTERPRISE_MODULES, false);
+  const enterpriseModulesEnv = process.env.ENTERPRISE_MODULES ?? "";
+  const enterpriseModulesParsed = parseEnterpriseModulesEnv(process.env.ENTERPRISE_MODULES);
+  const enterpriseModulesRequested = isEnterpriseModulesRequested(enterpriseModulesParsed);
+  const enterpriseModulesUnknown = enterpriseModulesUnknownTokens(enterpriseModulesParsed);
   const enterpriseModulesPath = resolveEnterpriseModulesPath(process.env.ENTERPRISE_MODULES_PATH);
   // Env + loadable path only allow loading the plugin. Entitlements stay off until
   // the plugin confirms a verified license (enterpriseLicenseVerified).
@@ -628,7 +648,9 @@ export function loadConfig(): ApiConfig {
     allowHeaderUserIdAuth:
       nodeEnv !== "production" ||
       parseBoolean(process.env.ALLOW_HEADER_USER_ID_AUTH, false),
+    enterpriseModulesEnv,
     enterpriseModulesRequested,
+    enterpriseModulesUnknownTokens: enterpriseModulesUnknown,
     enterpriseModulesEnabled,
     enterpriseModulesPath,
     defaultEmailLocale: process.env.EMAIL_DEFAULT_LOCALE ?? "en",

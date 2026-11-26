@@ -22,9 +22,10 @@ export type PlanEntitlementRuntimeConfig = Pick<
    */
   enterpriseLicenseVerified?: boolean;
   /**
-   * Self-hosted license lapse after a prior verification.
-   * The enterprise plugin / feed sets this when the license is expired and
-   * clears it when a later check is accepted. `plan_tier` is not a lapse.
+   * Self-hosted license lapse reported by the plugin (soft-lock).
+   * Independent of {@link enterpriseLicenseVerified}: expired licenses may clear
+   * verification while keeping this set so enterprise-module writes return 402.
+   * Default unset/false → not lapsed. `plan_tier` is not a lapse.
    */
   enterpriseLicenseLapsed?: boolean;
 };

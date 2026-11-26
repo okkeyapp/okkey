@@ -239,3 +239,44 @@ test("API runtime helpers require license verification for module entitlements",
   assert.equal(injected.maxAdditionalMembers, 10);
   assert.equal(injected.maxSharedVaults, 1);
 });
+
+test("lapsed soft-lock works when verification is cleared (expired license path)", () => {
+  const expired = {
+    deploymentMode: "self_hosted" as const,
+    enterpriseModulesEnabled: true,
+    enterpriseLicenseVerified: false,
+    enterpriseLicenseLapsed: true,
+  };
+  const options = workspacePlanEntitlementOptions(expired, { planTier: "ENTERPRISE" });
+  assert.equal(options.enterpriseModulesActive, false);
+  assert.equal(options.enterpriseLicenseLapsed, true);
+  assert.equal(isSelfHostedEnterpriseLicenseLapsed(options), true);
+
+  for (const feature of ENTERPRISE_MODULE_FEATURES) {
+    assert.equal(planFeatureAccess("ENTERPRISE", feature, options), "lapsed", feature);
+    assert.equal(planFeatureReadable("ENTERPRISE", feature, options), true, feature);
+    const write = workspacePlanFeatureWriteDecision(expired, { planTier: "ENTERPRISE" }, feature);
+    assert.equal(write.allowed, false, feature);
+    if (!write.allowed) {
+      assert.equal(write.code, PLAN_LICENSE_LAPSED, feature);
+      assert.equal(write.status, 402, feature);
+    }
+  }
+
+  const neverVerified = {
+    deploymentMode: "self_hosted" as const,
+    enterpriseModulesEnabled: true,
+    enterpriseLicenseVerified: false,
+    enterpriseLicenseLapsed: false,
+  };
+  const off = workspacePlanFeatureWriteDecision(
+    neverVerified,
+    { planTier: "ENTERPRISE" },
+    "customWorkspaceRoles",
+  );
+  assert.equal(off.allowed, false);
+  if (!off.allowed) {
+    assert.equal(off.code, "PLAN_FEATURE_REQUIRED");
+    assert.equal(off.status, 403);
+  }
+});

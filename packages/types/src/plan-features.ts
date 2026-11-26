@@ -152,8 +152,9 @@ export type PlanEntitlementOptions = {
   enterpriseModulesActive?: boolean | null;
   /**
    * Explicit self-hosted license-lapsed signal. Not derived from `plan_tier`.
-   * Only applies when `deploymentMode` is `self_hosted` and modules are active.
-   * Leave unset until a verified license later lapses; then create/update of
+   * Applies when `deploymentMode` is `self_hosted` and the plugin reported a
+   * lapse — independent of {@link enterpriseModulesActive} / verification.
+   * Leave unset by default (fail-closed). When set, create/update of
    * {@link ENTERPRISE_MODULE_FEATURES} is lapsed and quotas fall back to self-hosted FREE.
    */
   enterpriseLicenseLapsed?: boolean | null;
@@ -235,9 +236,10 @@ const BUSINESS_FEATURES = {
  *   (`filesInItems`, `filesInCapsules`) and {@link SELF_HOSTED_FREE_QUOTA_OVERRIDES},
  *   with `storageQuotas` forced off, for every stored `plan_tier`.
  *   Self-hosted modules on (license verified) → ENTERPRISE matrix and quotas, again for every stored
- *   `plan_tier`. After verification, a lapse may set {@link PlanEntitlementOptions.enterpriseLicenseLapsed};
- *   until modules are active that flag stays unset and self-host is never
- *   {@link PlanFeatureAccess} `"lapsed"`. Storage ceilings stay off for every self-hosted tier.
+ *   `plan_tier`. A plugin-reported lapse may set {@link PlanEntitlementOptions.enterpriseLicenseLapsed}
+ *   independently of verification; enterprise-module features then use
+ *   {@link PlanFeatureAccess} `"lapsed"` (reads allowed, writes soft-locked). Storage ceilings stay
+ *   off for every self-hosted tier.
  * - PREMIUM: FREE plus files in items and capsules, monitoring, recovery, trusted contacts,
  *   and the paid badge.
  * - TEAM / ENTERPRISE: PREMIUM plus capsule access settings, custom roles, and custom profiles.
@@ -375,9 +377,11 @@ export function sanitizePlanFeatureOverrides(
 }
 
 /**
- * Installed enterprise modules whose license check reported a lapse.
- * `workspaces.plan_tier` is not read. SaaS and self-host without modules are not lapsed.
- * Callers leave `enterpriseLicenseLapsed` unset until an enterprise feed check reports expiry.
+ * Self-hosted install whose plugin reported a license lapse (soft-lock).
+ * Independent of {@link PlanEntitlementOptions.enterpriseModulesActive}: an expired
+ * license may clear verification while still setting the lapse flag so reads stay
+ * allowed and writes return {@link PLAN_LICENSE_LAPSED}.
+ * `workspaces.plan_tier` is not read. SaaS ignores this flag. Default unset → not lapsed.
  */
 export function isSelfHostedEnterpriseLicenseLapsed(
   options?: Pick<
@@ -386,9 +390,7 @@ export function isSelfHostedEnterpriseLicenseLapsed(
   >,
 ): boolean {
   return (
-    options?.deploymentMode === "self_hosted" &&
-    options.enterpriseModulesActive === true &&
-    options.enterpriseLicenseLapsed === true
+    options?.deploymentMode === "self_hosted" && options.enterpriseLicenseLapsed === true
   );
 }
 
@@ -396,7 +398,8 @@ export function isSelfHostedEnterpriseLicenseLapsed(
  * Effective catalog tier used for feature / quota checks.
  * Self-hosted modules off → FREE, for every stored `plan_tier`.
  * Self-hosted modules on → ENTERPRISE, for every stored `plan_tier`.
- * Self-hosted modules on and `enterpriseLicenseLapsed` → FREE (license signal, not `plan_tier`).
+ * Self-hosted `enterpriseLicenseLapsed` → FREE (license signal, not `plan_tier`;
+ * independent of whether modules are currently verified/active).
  * SaaS / omitted mode: workspace `plan_tier` (legacy FAMILY reads as PREMIUM).
  */
 export function resolveEntitlementPlanTier(

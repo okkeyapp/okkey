@@ -93,14 +93,19 @@ export type ApiEnterprisePluginContext = {
    * Default state is not licensed: optional modules stay off until the plugin
    * calls this with `verified: true` (at register/startup after verification,
    * and again whenever license state changes). `verified: false` turns modules
-   * off again (invalid / missing license). Does not log license contents.
+   * off again (invalid / missing license) without clearing the lapse flag.
+   * Confirming `true` clears lapse. Does not log license contents.
    */
   setEnterpriseLicenseVerified(verified: boolean): void;
   /**
-   * Record a license lapse after a prior verification (soft-lock).
-   * Expired sets the lapse flag (plan writes return 402). A later accepted
-   * check clears it. Prefer `setEnterpriseLicenseVerified(false)` when the
-   * license is invalid or missing entirely.
+   * Record a license lapse (soft-lock). Independent of verification:
+   * enterprise requested + plugin loaded + `lapsed: true` → enterprise-module
+   * reads stay allowed and writes return 402 `PLAN_LICENSE_LAPSED`, even when
+   * `setEnterpriseLicenseVerified(false)` was also called for an expired license.
+   * Default `false` (fail-closed when an older plugin never calls this).
+   * A later accepted check clears it via `lapsed: false` (or via verify `true`).
+   * For never-verified / invalid licenses without a lapse report, leave this
+   * false so modules stay fully off (403), not soft-locked.
    */
   setEnterpriseLicenseLapsed(lapsed: boolean): void;
 };
