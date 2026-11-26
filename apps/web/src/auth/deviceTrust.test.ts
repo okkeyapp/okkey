@@ -55,8 +55,19 @@ vi.mock("./deviceShareWire", () => ({
 
 vi.mock("@okkey/crypto", () => ({
   initCrypto: vi.fn(async () => undefined),
-  deviceBindShareProof: () => new Uint8Array([9, 9, 9, 9]),
+  classifySplitKeyShareBWire: () => "hybrid",
+  openStoredSplitKeyShareB: vi.fn(async () => new Uint8Array(32).fill(1)),
+  deviceBindWrapSign: () => new Uint8Array([9, 9, 9, 9]),
   wipeBytes: vi.fn(),
+}));
+
+vi.mock("@okkey/vault", () => ({
+  loadSplitKeyShareWrapKey: vi.fn(async () => ({
+    ed25519Seed: new Uint8Array(32).fill(2),
+    ed25519PublicKey: new Uint8Array(32).fill(3),
+    mlkemDecapsulationKey: new Uint8Array(64).fill(4),
+    mlkemEncapsulationKey: new Uint8Array(1184).fill(5),
+  })),
 }));
 
 import { clearBoundDeviceSession, pollDeviceTrust, resolveDeviceTrust } from "./deviceTrust";
@@ -242,7 +253,7 @@ describe("resolveDeviceTrust", () => {
     expect(snapshot.deviceId).toBe("d-me");
   });
 
-  it("binds a sole trusted browser that still has the vault share and no seed", async () => {
+  it("binds a sole trusted browser that still has the wrap key and no signing seed", async () => {
     hasDeviceSigningKey.mockResolvedValue(false);
     readVaultBundle.mockReturnValue(vaultBundle());
     rotateDeviceSigningKey.mockResolvedValue(btoa("new-pub-key-32-bytes-pad!!!!"));

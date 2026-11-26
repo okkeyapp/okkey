@@ -1174,7 +1174,7 @@ export class CoreApiClient {
     );
   }
 
-  /** Attach the current session after a device-key signature or a legacy share proof. */
+  /** Attach the current session after a device-key or share-wrap signature. */
   bindDeviceSession(
     deviceId: string,
     body: DeviceBindSessionRequestDto,

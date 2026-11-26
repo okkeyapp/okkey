@@ -626,7 +626,7 @@ export function createRequestDeviceKeyRebindRoute(
         400,
         errorPayload(
           "DEVICE_BAD_REQUEST",
-          "device key rebind requires a signature or share_proof",
+          "device key rebind requires a signature or share-wrap proof",
           ctx.requestId,
         ),
       );

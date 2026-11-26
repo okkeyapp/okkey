@@ -1838,14 +1838,14 @@ export interface DeviceBindChallengeResponseDto {
 export interface DeviceBindSessionRequestDto {
   challenge_id: string;
   /**
-   * Base64 Ed25519 signature of `challenge` by the device private key.
+   * Base64 Ed25519 signature of `challenge` by the registered device signing key.
    * Required unless `share_proof` and `new_device_public_key` are both set.
    */
   signature?: string;
   /**
-   * Base64 SHA-256 of `okkey-device-bind-share-v1\\n || device_share || challenge`.
-   * Browsers that never stored a signing seed prove the local vault share and
-   * install a new signing key. Does not replace `device_share` and does not register.
+   * Base64 Ed25519 signature of `challenge` by the device share-wrap private key.
+   * Used when a signing key is missing: proves wrap-key possession and installs
+   * `new_device_public_key`. Not a digest of stored `device_share` bytes.
    */
   share_proof?: string;
   /** Base64 32-byte Ed25519 public key installed when `share_proof` succeeds. */
