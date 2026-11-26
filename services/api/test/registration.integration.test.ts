@@ -141,6 +141,12 @@ test("integration: registration completes user, workspace, vault, trusted device
   assert.equal(nameRows[0]?.first_name, "Alice");
   assert.equal(nameRows[0]?.last_name, "Tester");
 
+  const localeRows = await storage.postgres.query<{ locale: string | null }>(
+    "SELECT locale FROM users WHERE email = $1",
+    [email],
+  );
+  assert.equal(localeRows[0]?.locale, null);
+
   const devRows = await storage.postgres.query<{ status: string }>(
     "SELECT status FROM devices WHERE id = $1",
     [result.deviceId],
@@ -169,6 +175,138 @@ test("integration: registration completes user, workspace, vault, trusted device
     requestIp: "127.0.0.1",
   });
   assert.equal(again.userId, result.userId);
+});
+
+test("integration: registration stores supported locale and leaves invalid/absent as null", async (t) => {
+  const config = loadConfig();
+  const storage = await createIntegrationStorage(t, config);
+  if (!storage) {
+    return;
+  }
+  await applyMigrations(storage);
+
+  const emailTemplates = new EmailTemplateService({ send: async () => {} }, {
+    from: config.emailFrom,
+    defaultLocale: config.defaultEmailLocale,
+    publicAppBaseUrl: config.publicAppBaseUrl,
+  });
+  const authService = new AuthService({
+    redis: storage.redis,
+    users: storage.repositories.users,
+    emailTemplates,
+    config,
+  });
+  const sessionService = new SessionService({
+    sessions: storage.repositories.sessions,
+    config,
+  });
+  const registrationService = new RegistrationService({
+    authService,
+    users: storage.repositories.users,
+    postgres: storage.postgres,
+    redis: storage.redis,
+    sessionService,
+    config: { ...config, deploymentMode: "saas" },
+  });
+
+  const share32 = new Uint8Array(32).fill(11);
+  const salt16 = new Uint8Array(16).fill(22);
+  const encPriv = mkEncryptedPrivateKeyBlob(33);
+  const pkB64 = Buffer.alloc(32, 5).toString("base64");
+
+  async function registerWithLocale(
+    email: string,
+    authStateId: string,
+    locale: string | null | undefined,
+  ) {
+    await storage.redis.setWithTtl(
+      authStateRedisKey(authStateId),
+      JSON.stringify({
+        id: authStateId,
+        email,
+        userId: null,
+        createdAt: new Date().toISOString(),
+      }),
+      3600,
+    );
+    const result = await registrationService.completeRegistration({
+      authStateId,
+      userPublicKey: pkB64,
+      userPublicPqKey: SAMPLE_PQ_PK_B64,
+      userPublicMldsaKey: SAMPLE_MLDSA_PK_B64,
+      encryptedPrivateKey: encPriv,
+      serverKeyShare: share32,
+      passwordKdfSalt: salt16,
+      passwordKdfParamsVersion: 2,
+      deviceFingerprint: "a".repeat(64),
+      deviceName: "Locale device",
+      devicePublicKey: Buffer.from("device-pk").toString("base64"),
+      deviceShare: hybridDeviceShareBytes(),
+      platform: "desktop",
+      osName: "macOS",
+      osVersion: "14.0",
+      appVersion: "1.0.0",
+      clientType: "desktop",
+      userAgent: "test",
+      requestIp: "127.0.0.1",
+      ...(locale !== undefined ? { locale } : {}),
+    });
+    const rows = await storage.postgres.query<{ locale: string | null }>(
+      "SELECT locale FROM users WHERE email = $1",
+      [email],
+    );
+    return { result, locale: rows[0]?.locale ?? null };
+  }
+
+  const emails: string[] = [];
+  const authStateIds: string[] = [];
+  t.after(async () => {
+    try {
+      for (const email of emails) {
+        await storage.postgres.query(
+          "DELETE FROM devices WHERE user_id IN (SELECT id FROM users WHERE email = $1)",
+          [email],
+        );
+        await storage.postgres.query(
+          "DELETE FROM vaults WHERE workspace_id IN (SELECT id FROM workspaces WHERE owner_id IN (SELECT id FROM users WHERE email = $1))",
+          [email],
+        );
+        await storage.postgres.query(
+          "DELETE FROM workspaces WHERE owner_id IN (SELECT id FROM users WHERE email = $1)",
+          [email],
+        );
+        await storage.postgres.query("DELETE FROM users WHERE email = $1", [email]);
+      }
+    } finally {
+      for (const authStateId of authStateIds) {
+        await storage.redis.del(authStateRedisKey(authStateId));
+        await storage.redis.del(`registration:result:${authStateId}`);
+      }
+      await storage.close();
+    }
+  });
+
+  const ruEmail = `reg-locale-ru-${testEntityId()}@okkey.local`;
+  const ruAuth = testEntityId();
+  emails.push(ruEmail);
+  authStateIds.push(ruAuth);
+  const ru = await registerWithLocale(ruEmail, ruAuth, "ru");
+  assert.equal(ru.locale, "ru");
+
+  const badEmail = `reg-locale-bad-${testEntityId()}@okkey.local`;
+  const badAuth = testEntityId();
+  emails.push(badEmail);
+  authStateIds.push(badAuth);
+  // Service stores whatever the route already normalized; invalid → null at the route.
+  const bad = await registerWithLocale(badEmail, badAuth, null);
+  assert.equal(bad.locale, null);
+
+  const absentEmail = `reg-locale-absent-${testEntityId()}@okkey.local`;
+  const absentAuth = testEntityId();
+  emails.push(absentEmail);
+  authStateIds.push(absentAuth);
+  const absent = await registerWithLocale(absentEmail, absentAuth, undefined);
+  assert.equal(absent.locale, null);
 });
 
 test("integration: parallel completeRegistration creates single user", async (t) => {

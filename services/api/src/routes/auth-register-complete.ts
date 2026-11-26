@@ -6,6 +6,7 @@ import {
   CLIENT_UPGRADE_REQUIRED_MESSAGE,
   CLIENT_UPGRADE_REQUIRED_STATUS,
 } from "../crypto/client-upgrade.ts";
+import { normalizeSupportedLocaleTag } from "../email/locale.ts";
 import { getHeader, json, readJsonBody, type RouteHandler } from "../http.ts";
 import { RegistrationError, type RegistrationService } from "../registration/service.ts";
 import type { EncryptedBlob } from "../crypto/encrypted-blob.ts";
@@ -40,6 +41,8 @@ interface RegisterCompleteBody {
   /** Optional; persisted for UI when client storage is cleared. */
   first_name?: string;
   last_name?: string;
+  /** Optional UI locale; only supported tags are persisted. */
+  locale?: unknown;
   /** Base64 32-byte login key. Not the master password. */
   login_key?: string;
   metadata?: {
@@ -103,6 +106,17 @@ function parseOptionalProfileName(raw: string | undefined): string | null {
     return null;
   }
   return t;
+}
+
+/**
+ * Persist only supported locales. Unknown / non-string / empty → null
+ * (registration still succeeds; never store arbitrary strings).
+ */
+function parseOptionalLocale(raw: unknown): string | null {
+  if (typeof raw !== "string") {
+    return null;
+  }
+  return normalizeSupportedLocaleTag(raw);
 }
 
 function resolveMetadata(body: RegisterCompleteBody): {
@@ -348,6 +362,7 @@ export function createRegisterCompleteRoute(
     const meta = resolveMetadata(body);
     const userAgent =
       meta.userAgent.trim() || getHeader(ctx.req, "user-agent") || "unknown";
+    const locale = parseOptionalLocale(body.locale);
 
     try {
       const result = await registrationService.completeRegistration({
@@ -375,6 +390,7 @@ export function createRegisterCompleteRoute(
         personalVaultName: personalVaultName ?? undefined,
         firstName: firstNameForDb,
         lastName: lastNameForDb,
+        locale,
         loginKey,
       });
 

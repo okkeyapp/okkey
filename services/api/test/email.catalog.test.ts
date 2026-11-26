@@ -608,6 +608,19 @@ test("resolveEmailLocaleForRecipient uses Accept-Language when user locale unset
   );
 });
 
+test("resolveEmailLocaleForRecipient uses saved owner locale without Accept-Language", () => {
+  // Background owner mail has no request context / Accept-Language; profile locale wins.
+  assert.equal(
+    resolveEmailLocaleForRecipient({
+      userLocale: "ru",
+      explicitLocale: null,
+      acceptLanguage: null,
+      instanceDefault: "en",
+    }),
+    "ru",
+  );
+});
+
 test("parsePrimaryLocaleFromAcceptLanguage reads first supported tag", () => {
   assert.equal(parsePrimaryLocaleFromAcceptLanguage("ru-RU,en;q=0.8"), "ru");
   assert.equal(parsePrimaryLocaleFromAcceptLanguage("fr-FR,en;q=0.9"), "fr");

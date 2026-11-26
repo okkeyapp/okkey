@@ -91,6 +91,11 @@ export interface RegisterCompleteInput {
   personalVaultName?: string;
   firstName?: string | null;
   lastName?: string | null;
+  /**
+   * Preferred UI/email locale. Caller must pass a normalized supported tag or null.
+   * Unknown/absent values are stored as NULL.
+   */
+  locale?: string | null;
   /** 32-byte client login key. Hashed before storage. Never the master password. */
   loginKey?: Uint8Array | null;
 }
@@ -369,6 +374,7 @@ export class RegistrationService {
           personalVaultName: input.personalVaultName,
           firstName: input.firstName ?? null,
           lastName: input.lastName ?? null,
+          locale: input.locale ?? null,
           planTier: this.config.defaultWorkspacePlanTier,
           loginVerifier: loginVerifier?.verifier ?? null,
           loginVerifierSalt: loginVerifier?.salt ?? null,
