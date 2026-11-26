@@ -38,14 +38,23 @@ function installMemoryStorage(): void {
   vi.stubGlobal("sessionStorage", memoryStorage());
 }
 
+function randomBase64Key(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(32));
+  let bin = "";
+  for (const byte of bytes) {
+    bin += String.fromCharCode(byte);
+  }
+  return btoa(bin);
+}
+
 function seedLegacyUnlockRecord(storage: Storage, key: string): void {
   storage.setItem(
     key,
     JSON.stringify({
       v: 1,
       user_id: userId,
-      vault_key_b64: "AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA=",
-      password_share_c_b64: "ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8=",
+      vault_key_b64: randomBase64Key(),
+      password_share_c_b64: randomBase64Key(),
       last_activity_at: Date.now(),
     }),
   );

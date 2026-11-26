@@ -102,13 +102,14 @@ describe("App", () => {
 
   it("ignores legacy cleartext unlock sessionStorage and stays locked", async () => {
     seedBearerSession();
+    const randomB64 = () => btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32))));
     sessionStorage.setItem(
       VAULT_UNLOCK_TAB_KEY,
       JSON.stringify({
         v: 1,
         user_id: "1156820912149601",
-        vault_key_b64: "AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA=",
-        password_share_c_b64: "ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8=",
+        vault_key_b64: randomB64(),
+        password_share_c_b64: randomB64(),
         last_activity_at: Date.now(),
       }),
     );

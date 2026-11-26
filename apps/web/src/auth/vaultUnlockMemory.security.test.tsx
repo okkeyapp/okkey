@@ -5,9 +5,10 @@
 import { act, render, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { AuthVaultProvider, useAuthVault } from "./AuthVaultContext";
+import { AuthVaultProvider, DEFAULT_IDLE_MS, useAuthVault } from "./AuthVaultContext";
 import { LocaleProvider } from "../locale/LocaleContext";
 import { SESSION_STORAGE_KEY, VAULT_UNLOCK_TAB_KEY } from "./storageKeys";
+import { patchVaultDevicePrefs } from "./vaultDevicePrefs";
 import { vaultIdleExceeded } from "./vaultUnlockSessionStorage";
 
 const FORBIDDEN = ["vault_key_b64", "password_share_c_b64"] as const;
@@ -85,6 +86,7 @@ describe("web vault unlock memory-only security", () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.unstubAllGlobals();
   });
 
@@ -105,12 +107,14 @@ describe("web vault unlock memory-only security", () => {
   }
 
   it("starts locked, unlock stays out of Web Storage, lock clears leftovers, idle needs no storage", async () => {
+    const legacyKeyBytes = crypto.getRandomValues(new Uint8Array(32));
+    const legacyKeyB64 = btoa(String.fromCharCode(...legacyKeyBytes));
     sessionStorage.setItem(
       VAULT_UNLOCK_TAB_KEY,
       JSON.stringify({
         v: 1,
         user_id: "1156820912149601",
-        vault_key_b64: "AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA=",
+        vault_key_b64: legacyKeyB64,
         last_activity_at: Date.now(),
       }),
     );
@@ -179,5 +183,101 @@ describe("web vault unlock memory-only security", () => {
       }
       expect(key).not.toBe(VAULT_UNLOCK_TAB_KEY);
     }
+  });
+
+  it("remounting provider (simulating reload) starts locked after unlock", async () => {
+    const first = renderProvider();
+    await waitFor(() => expect(latest).not.toBeNull());
+
+    await act(async () => {
+      latest!.applyUnlockedSecrets(
+        crypto.getRandomValues(new Uint8Array(32)),
+        crypto.getRandomValues(new Uint8Array(32)),
+      );
+    });
+    await waitFor(() => expect(latest!.vaultUnlocked).toBe(true));
+
+    first.unmount();
+    latest = null;
+
+    renderProvider();
+    await waitFor(() => {
+      expect(latest).not.toBeNull();
+      expect(latest!.vaultUnlocked).toBe(false);
+      expect(latest!.vaultKey).toBeNull();
+    });
+    expect(storageHasForbiddenSecrets()).toBe(false);
+  });
+
+  it("locks automatically after idle timeout using in-memory activity tracking", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-01T12:00:00Z"));
+
+    renderProvider();
+    expect(latest).not.toBeNull();
+
+    await act(async () => {
+      latest!.applyUnlockedSecrets(
+        crypto.getRandomValues(new Uint8Array(32)),
+        crypto.getRandomValues(new Uint8Array(32)),
+      );
+    });
+    expect(latest!.vaultUnlocked).toBe(true);
+    expect(storageHasForbiddenSecrets()).toBe(false);
+
+    // Activity before idle limit keeps the vault unlocked.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(DEFAULT_IDLE_MS - 10_000);
+    });
+    expect(latest!.vaultUnlocked).toBe(true);
+
+    // Passing idle limit triggers the 3s interval watcher and locks in memory.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(15_000);
+    });
+    expect(latest!.vaultUnlocked).toBe(false);
+    expect(latest!.vaultKey).toBeNull();
+    expect(storageHasForbiddenSecrets()).toBe(false);
+  });
+
+  it("locks on visibilitychange hidden when lockOnDeviceSleep is enabled", async () => {
+    patchVaultDevicePrefs("1156820912149601", { lockOnDeviceSleep: true });
+
+    renderProvider();
+    await waitFor(() => expect(latest).not.toBeNull());
+
+    await act(async () => {
+      latest!.applyUnlockedSecrets(
+        crypto.getRandomValues(new Uint8Array(32)),
+        crypto.getRandomValues(new Uint8Array(32)),
+      );
+    });
+    await waitFor(() => expect(latest!.vaultUnlocked).toBe(true));
+
+    const prevVisibility = Object.getOwnPropertyDescriptor(document, "visibilityState");
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      get: () => "hidden",
+    });
+    try {
+      await act(async () => {
+        document.dispatchEvent(new Event("visibilitychange"));
+      });
+    } finally {
+      if (prevVisibility) {
+        Object.defineProperty(document, "visibilityState", prevVisibility);
+      } else {
+        Object.defineProperty(document, "visibilityState", {
+          configurable: true,
+          get: () => "visible",
+        });
+      }
+    }
+
+    await waitFor(() => {
+      expect(latest!.vaultUnlocked).toBe(false);
+      expect(latest!.vaultKey).toBeNull();
+    });
+    expect(storageHasForbiddenSecrets()).toBe(false);
   });
 });
