@@ -28,8 +28,8 @@ import {
   deviceBindChallengeKey,
   issueDeviceBindChallenge,
   MemoryDeviceBindChallengeStore,
-  verifyDeviceBindShareProof,
   verifyDeviceBindSignature,
+  verifyDeviceBindWrapProof,
   type DeviceBindChallengeStore,
 } from "./bind-proof.ts";
 import type {
@@ -1114,8 +1114,8 @@ export class DeviceService {
   }
 
   /**
-   * Consume a one-time bind challenge and check a device-key signature or a
-   * vault-share proof. Does not change keys or session binding.
+   * Consume a one-time bind challenge and check a device signing-key signature
+   * or a share-wrap signature. Does not change keys or session binding.
    */
   async proveDevicePossession(input: {
     userId: string;
@@ -1124,7 +1124,7 @@ export class DeviceService {
     challengeId: string;
     signatureB64?: string;
     shareProofB64?: string;
-  }): Promise<{ deviceId: string; status: "trusted" | "pending"; proof: "signature" | "share" }> {
+  }): Promise<{ deviceId: string; status: "trusted" | "pending"; proof: "signature" | "wrap" }> {
     const device = await this.requireActiveDevice(input.userId, input.deviceId);
     const raw = await this.bindChallenges.take(
       deviceBindChallengeKey(input.tokenHash, device.id, input.challengeId),
@@ -1185,20 +1185,17 @@ export class DeviceService {
         "challenge_id and a device proof are required",
       );
     }
-    if (
-      !device.deviceShare ||
-      !verifyDeviceBindShareProof(device.deviceShare, message, shareProof)
-    ) {
+    if (!verifyDeviceBindWrapProof(device.deviceShare, message, shareProof)) {
       throw new DeviceServiceError(
         "DEVICE_BIND_PROOF_INVALID",
         403,
-        "device share proof is invalid",
+        "device wrap proof is invalid",
       );
     }
     return {
       deviceId: device.id,
       status: device.status === "pending" ? "pending" : "trusted",
-      proof: "share",
+      proof: "wrap",
     };
   }
 

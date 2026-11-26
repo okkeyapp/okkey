@@ -1,13 +1,20 @@
 import { ApiRequestError, type CoreApiClient } from "@okkey/api";
-import { deviceBindShareProof, initCrypto, wipeBytes } from "@okkey/crypto";
+import {
+  classifySplitKeyShareBWire,
+  deviceBindWrapSign,
+  initCrypto,
+  openStoredSplitKeyShareB,
+  wipeBytes,
+} from "@okkey/crypto";
 import {
   canReclaimSoleTrustedDevice,
   type DeviceListItemDto,
   type DeviceRegisterResponseDto,
 } from "@okkey/types";
+import { loadSplitKeyShareWrapKey } from "@okkey/vault";
 
 import { readStoredLocale } from "../locale/localeStorage";
-import { bytesToBase64 } from "./base64";
+import { bytesToBase64, base64ToBytes } from "./base64";
 import { parseBrowserEnvironment } from "./browserEnvironment";
 import {
   clearDeviceSigningKey,
@@ -165,32 +172,58 @@ function browserBindMetadata() {
 }
 
 /**
- * Same browser, seed never stored: prove the vault device share and install a
+ * Same browser, signing key missing: prove possession of the share-wrap key
+ * (by opening the hybrid share and signing the challenge) and install a
  * signing key. Does not call register, so a trusted fingerprint cannot 409.
  */
-async function bindDeviceWithShareProof(
+async function bindDeviceWithWrapProof(
   core: CoreApiClient,
   deviceId: string,
+  userId: string,
   shareB64: string,
 ): Promise<void> {
   await initCrypto();
-  const publicKeyB64 = await rotateDeviceSigningKey();
+  const share = base64ToBytes(shareB64);
+  let wrap: Awaited<ReturnType<typeof loadSplitKeyShareWrapKey>> = null;
   try {
-    const challenge = await core.createDeviceBindChallenge(deviceId);
-    const message = Uint8Array.from(atob(challenge.challenge), (c) => c.charCodeAt(0));
-    const share = Uint8Array.from(atob(shareB64), (c) => c.charCodeAt(0));
-    const proof = deviceBindShareProof(share, message);
-    wipeBytes(share);
-    await core.bindDeviceSession(deviceId, {
-      challenge_id: challenge.challenge_id,
-      share_proof: bytesToBase64(proof),
-      new_device_public_key: publicKeyB64,
-      ...browserBindMetadata(),
+    const kind = classifySplitKeyShareBWire(share);
+    if (kind !== "hybrid") {
+      throw new Error("DEVICE_REBIND_REQUIRES_RECOVERY");
+    }
+    wrap = await loadSplitKeyShareWrapKey(userId);
+    if (!wrap) {
+      throw new Error("DEVICE_REBIND_REQUIRES_RECOVERY");
+    }
+    const opened = await openStoredSplitKeyShareB({
+      stored: share,
+      recipientEd25519Seed: wrap.ed25519Seed,
+      recipientMlkemDecapsulationKey: wrap.mlkemDecapsulationKey,
     });
-    boundSessionDeviceId = deviceId;
-  } catch (error) {
-    await clearDeviceSigningKey();
-    throw error;
+    wipeBytes(opened);
+    const publicKeyB64 = await rotateDeviceSigningKey();
+    try {
+      const challenge = await core.createDeviceBindChallenge(deviceId);
+      const message = Uint8Array.from(atob(challenge.challenge), (c) => c.charCodeAt(0));
+      const proof = deviceBindWrapSign(wrap.ed25519Seed, message);
+      await core.bindDeviceSession(deviceId, {
+        challenge_id: challenge.challenge_id,
+        share_proof: bytesToBase64(proof),
+        new_device_public_key: publicKeyB64,
+        ...browserBindMetadata(),
+      });
+      boundSessionDeviceId = deviceId;
+    } catch (error) {
+      await clearDeviceSigningKey();
+      throw error;
+    }
+  } finally {
+    wipeBytes(share);
+    if (wrap) {
+      wipeBytes(wrap.ed25519Seed);
+      wipeBytes(wrap.mlkemDecapsulationKey);
+      wipeBytes(wrap.ed25519PublicKey);
+      wipeBytes(wrap.mlkemEncapsulationKey);
+    }
   }
 }
 
@@ -315,18 +348,20 @@ export async function resolveDeviceTrust(
       const shareB64 = bundle?.device_share_b64?.trim() ?? "";
       if (shareB64) {
         try {
-          await bindDeviceWithShareProof(core, trustedMatch.device_id, shareB64);
+          await bindDeviceWithWrapProof(core, trustedMatch.device_id, userId, shareB64);
           return {
             status: "trusted",
             deviceId: trustedMatch.device_id,
             approverDevices: listed.devices,
           };
         } catch (error: unknown) {
+          const errorMessage = error instanceof Error ? error.message : String(error);
           return {
             status: "error",
             deviceId: trustedMatch.device_id,
             approverDevices: listed.devices,
-            errorMessage: error instanceof Error ? error.message : String(error),
+            needsRecovery: errorMessage === "DEVICE_REBIND_REQUIRES_RECOVERY" ? true : undefined,
+            errorMessage,
           };
         }
       }
@@ -366,7 +401,7 @@ export async function resolveDeviceTrust(
       const shareB64 = bundle?.device_share_b64?.trim() ?? "";
       if (shareB64) {
         try {
-          await bindDeviceWithShareProof(core, pendingMatch.device_id, shareB64);
+          await bindDeviceWithWrapProof(core, pendingMatch.device_id, userId, shareB64);
           return {
             status: "pending",
             deviceId: pendingMatch.device_id,
@@ -609,20 +644,22 @@ export async function pollDeviceTrust(
     if (!(await hasDeviceSigningKey())) {
       const shareB64 =
         (userId ? readVaultBundle(userId)?.device_share_b64?.trim() : "") ?? "";
-      if (shareB64) {
+      if (shareB64 && userId) {
         try {
-          await bindDeviceWithShareProof(core, trustedMatch.device_id, shareB64);
+          await bindDeviceWithWrapProof(core, trustedMatch.device_id, userId, shareB64);
           return {
             status: "trusted",
             deviceId: trustedMatch.device_id,
             approverDevices: listed.devices,
           };
         } catch (error: unknown) {
+          const errorMessage = error instanceof Error ? error.message : String(error);
           return {
             status: "error",
             deviceId: trustedMatch.device_id,
             approverDevices: listed.devices,
-            errorMessage: error instanceof Error ? error.message : String(error),
+            needsRecovery: errorMessage === "DEVICE_REBIND_REQUIRES_RECOVERY" ? true : undefined,
+            errorMessage,
           };
         }
       }
@@ -676,9 +713,9 @@ export async function pollDeviceTrust(
       } else {
         const shareB64 =
           (userId ? readVaultBundle(userId)?.device_share_b64?.trim() : "") ?? "";
-        if (shareB64) {
+        if (shareB64 && userId) {
           try {
-            await bindDeviceWithShareProof(core, pendingMatch.device_id, shareB64);
+            await bindDeviceWithWrapProof(core, pendingMatch.device_id, userId, shareB64);
             return {
               status: "pending",
               deviceId: pendingMatch.device_id,

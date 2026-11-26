@@ -1,6 +1,13 @@
 import type { CoreApiClient } from "@okkey/api";
-import { deviceBindShareProof, initCrypto, wipeBytes } from "@okkey/crypto";
+import {
+  classifySplitKeyShareBWire,
+  deviceBindWrapSign,
+  initCrypto,
+  openStoredSplitKeyShareB,
+  wipeBytes,
+} from "@okkey/crypto";
 import { deviceShareB64ForRegister } from "@okkey/vault/device-share-wire";
+import { loadSplitKeyShareWrapKey } from "@okkey/vault/split-key-share-wrap-store";
 import type { DeviceListItemDto, DeviceRegisterResponseDto } from "@okkey/types";
 
 import { isUnauthorizedApiError } from "./apiErrors.ts";
@@ -62,38 +69,75 @@ function bytesToBase64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
-async function bindExtensionDeviceWithShareProof(
+function base64ToBytes(value: string): Uint8Array {
+  const binary = atob(value.trim());
+  const out = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) {
+    out[i] = binary.charCodeAt(i);
+  }
+  return out;
+}
+
+/**
+ * Signing key missing: prove share-wrap possession and install a signing key.
+ */
+async function bindExtensionDeviceWithWrapProof(
   core: CoreApiClient,
   deviceId: string,
+  userId: string,
   shareB64: string,
 ): Promise<void> {
   await initCrypto();
-  const publicKeyB64 = await rotateExtensionDeviceSigningKey();
-  const env = parseBrowserEnvironment(
-    typeof navigator !== "undefined" ? navigator.userAgent : "",
-    { channel: "Extension" },
-  );
+  const share = base64ToBytes(shareB64);
+  let wrap: Awaited<ReturnType<typeof loadSplitKeyShareWrapKey>> = null;
   try {
-    const challenge = await core.createDeviceBindChallenge(deviceId);
-    const message = Uint8Array.from(atob(challenge.challenge), (c) => c.charCodeAt(0));
-    const share = Uint8Array.from(atob(shareB64), (c) => c.charCodeAt(0));
-    const proof = deviceBindShareProof(share, message);
-    wipeBytes(share);
-    await core.bindDeviceSession(deviceId, {
-      challenge_id: challenge.challenge_id,
-      share_proof: bytesToBase64(proof),
-      new_device_public_key: publicKeyB64,
-      device_name: env.deviceName,
-      platform: env.platform,
-      os_name: env.osName,
-      os_version: env.osVersion,
-      app_version: "extension",
-      client_type: env.clientType,
-      user_agent: env.userAgent,
+    const kind = classifySplitKeyShareBWire(share);
+    if (kind !== "hybrid") {
+      throw new Error("DEVICE_REBIND_REQUIRES_RECOVERY");
+    }
+    wrap = await loadSplitKeyShareWrapKey(userId);
+    if (!wrap) {
+      throw new Error("DEVICE_REBIND_REQUIRES_RECOVERY");
+    }
+    const opened = await openStoredSplitKeyShareB({
+      stored: share,
+      recipientEd25519Seed: wrap.ed25519Seed,
+      recipientMlkemDecapsulationKey: wrap.mlkemDecapsulationKey,
     });
-  } catch (error) {
-    await clearExtensionDeviceSigningKey();
-    throw error;
+    wipeBytes(opened);
+    const publicKeyB64 = await rotateExtensionDeviceSigningKey();
+    const env = parseBrowserEnvironment(
+      typeof navigator !== "undefined" ? navigator.userAgent : "",
+      { channel: "Extension" },
+    );
+    try {
+      const challenge = await core.createDeviceBindChallenge(deviceId);
+      const message = Uint8Array.from(atob(challenge.challenge), (c) => c.charCodeAt(0));
+      const proof = deviceBindWrapSign(wrap.ed25519Seed, message);
+      await core.bindDeviceSession(deviceId, {
+        challenge_id: challenge.challenge_id,
+        share_proof: bytesToBase64(proof),
+        new_device_public_key: publicKeyB64,
+        device_name: env.deviceName,
+        platform: env.platform,
+        os_name: env.osName,
+        os_version: env.osVersion,
+        app_version: "extension",
+        client_type: env.clientType,
+        user_agent: env.userAgent,
+      });
+    } catch (error) {
+      await clearExtensionDeviceSigningKey();
+      throw error;
+    }
+  } finally {
+    wipeBytes(share);
+    if (wrap) {
+      wipeBytes(wrap.ed25519Seed);
+      wipeBytes(wrap.mlkemDecapsulationKey);
+      wipeBytes(wrap.ed25519PublicKey);
+      wipeBytes(wrap.mlkemEncapsulationKey);
+    }
   }
 }
 
@@ -288,9 +332,10 @@ export async function resolveExtensionDeviceTrust(
     await discardExtensionShareDeliveryKey(fingerprint);
     if (!(await hasExtensionDeviceSigningKey())) {
       const shareB64 = options?.deviceShareB64?.trim() ?? "";
-      if (shareB64) {
+      const userId = options?.userId?.trim() ?? "";
+      if (shareB64 && userId) {
         try {
-          await bindExtensionDeviceWithShareProof(core, trustedMatch.device_id, shareB64);
+          await bindExtensionDeviceWithWrapProof(core, trustedMatch.device_id, userId, shareB64);
           await writeDeviceId(trustedMatch.device_id);
           await clearDeviceDeferred();
           return {
@@ -299,11 +344,13 @@ export async function resolveExtensionDeviceTrust(
             approverDevices: listed.devices,
           };
         } catch (error: unknown) {
+          const errorMessage = error instanceof Error ? error.message : String(error);
           return {
             status: "error",
             deviceId: trustedMatch.device_id,
             approverDevices: listed.devices,
-            errorMessage: error instanceof Error ? error.message : String(error),
+            needsRecovery: errorMessage === "DEVICE_REBIND_REQUIRES_RECOVERY" ? true : undefined,
+            errorMessage,
           };
         }
       }
@@ -370,9 +417,10 @@ export async function resolveExtensionDeviceTrust(
     const needsShareReapproval = await extensionShareDeliveryReapproval();
     if (!(await hasExtensionDeviceSigningKey())) {
       const shareB64 = options?.deviceShareB64?.trim() ?? "";
-      if (shareB64) {
+      const userId = options?.userId?.trim() ?? "";
+      if (shareB64 && userId) {
         try {
-          await bindExtensionDeviceWithShareProof(core, pendingMatch.device_id, shareB64);
+          await bindExtensionDeviceWithWrapProof(core, pendingMatch.device_id, userId, shareB64);
           await writeDeviceId(pendingMatch.device_id);
           await clearDeviceDeferred();
           return {

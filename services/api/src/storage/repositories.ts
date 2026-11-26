@@ -2810,7 +2810,7 @@ export class DevicesRepository {
   }
 
   /**
-   * Replace only the signing public key after a device-share proof.
+   * Replace only the signing public key after a share-wrap proof.
    * The vault device share stays on the row. Status stays trusted or pending.
    */
   async rotateActiveDevicePublicKey(input: {
