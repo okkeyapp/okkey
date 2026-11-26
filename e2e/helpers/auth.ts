@@ -233,13 +233,14 @@ export async function registerViaInviteLinkAndUnlock(
 export async function unlockWithMasterPassword(
   page: Page,
   masterPassword = E2E_MASTER_PASSWORD,
+  expectedUrl: RegExp = /\/items/,
 ): Promise<void> {
   await expect(page.getByRole("heading", { name: /vault is locked/i })).toBeVisible({
     timeout: 30_000,
   });
   await page.locator("#unlock-master-password").fill(masterPassword);
   await page.getByRole("button", { name: /^unlock$/i }).click();
-  await expect(page).toHaveURL(/\/items/, { timeout: 60_000 });
+  await expect(page).toHaveURL(expectedUrl, { timeout: 60_000 });
   await expectNoPersistedServerKeyShare(page);
   await expectNoVaultUnlockSecretsInWebStorage(page);
 }
@@ -335,6 +336,26 @@ export async function clearTabVaultUnlock(page: Page): Promise<void> {
     sessionStorage.removeItem("okkey.vault.unlock.tab");
     localStorage.removeItem("okkey.vault.unlock.tab");
   });
+}
+
+/**
+ * Full navigation reloads the SPA — vault starts locked again (memory-only unlock).
+ * Unlocks via master password and lands on the requested path.
+ */
+export async function gotoUnlocked(
+  page: Page,
+  path: string,
+  masterPassword = E2E_MASTER_PASSWORD,
+  expectedUrl?: RegExp,
+): Promise<void> {
+  await page.goto(path);
+  const pathname = path.split("?")[0] ?? "/";
+  const escapedPath = pathname.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const targetUrl = expectedUrl ?? new RegExp(`^https?://[^/]+${escapedPath}(?:[?#]|$)`);
+  await expect(page.getByRole("heading", { name: /vault is locked/i })).toBeVisible({
+    timeout: 60_000,
+  });
+  await unlockWithMasterPassword(page, masterPassword, targetUrl);
 }
 
 /**

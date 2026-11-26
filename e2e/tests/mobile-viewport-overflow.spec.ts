@@ -3,6 +3,7 @@ import { devices, expect, test, type BrowserContext, type Page } from "@playwrig
 import {
   clearTabVaultUnlock,
   gotoItemsUnlocked,
+  gotoUnlocked,
   registerBootstrapAndUnlock,
   unlockWithMasterPassword,
 } from "../helpers/auth";
@@ -123,7 +124,7 @@ test("settings and mobile drawer fit viewport", async () => {
   await page.getByRole("button", { name: /^open menu$/i }).click();
   await assertDocumentFitsViewport(page);
 
-  await page.goto("/items?popup=settings");
+  await gotoUnlocked(page, "/items?popup=settings", E2E_MASTER_PASSWORD);
   const settings = page.locator("#settings");
   await expect(settings).toBeVisible({ timeout: 20_000 });
   await assertDocumentFitsViewport(page);

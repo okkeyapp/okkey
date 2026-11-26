@@ -77,7 +77,10 @@ test("2) create Login item → reload → DB has no plaintext", async () => {
   });
 
   await page.reload();
-  await gotoItemsUnlocked(page, E2E_MASTER_PASSWORD);
+  await expect(page.getByRole("heading", { name: /vault is locked/i })).toBeVisible({
+    timeout: 60_000,
+  });
+  await unlockWithMasterPassword(page, E2E_MASTER_PASSWORD);
   await expect(page.getByText(LOGIN_TITLE, { exact: false }).first()).toBeVisible({
     timeout: 60_000,
   });
