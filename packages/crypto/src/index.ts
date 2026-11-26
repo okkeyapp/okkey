@@ -348,7 +348,10 @@ export {
   unwrapUnlockMaterialWithPin,
   wrapUnlockMaterialWithBioKey,
   unwrapUnlockMaterialWithBioKey,
+  deriveBioWrapKeyFromPrf,
+  generateBioPrfSalt,
   generateDeviceBioWrapKey,
+  DEVICE_BIO_PRF_SALT_LEN,
   type PinUnlockWrap,
 } from "./device-unlock-wrap.js";
 

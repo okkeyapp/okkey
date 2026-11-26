@@ -131,7 +131,22 @@ async function extensionHasPriorVaultBundle(userId: string): Promise<boolean> {
 
 export async function readExtensionDevicePrefs(userId: string | null): Promise<VaultDevicePrefs> {
   const hasPrior = userId ? await extensionHasPriorVaultBundle(userId) : false;
-  return readVaultDevicePrefsMigratingLockOnSleep(userId, chromeLocalKvStorage(), hasPrior);
+  const prefs = await readVaultDevicePrefsMigratingLockOnSleep(
+    userId,
+    chromeLocalKvStorage(),
+    hasPrior,
+  );
+  if (!userId || !prefs.biometricEnabled) {
+    return prefs;
+  }
+  const { loadExtensionBioUnlockWrap } = await import("./extensionDeviceUnlockStore.ts");
+  const { wrap } = await loadExtensionBioUnlockWrap(userId);
+  if (wrap) {
+    return prefs;
+  }
+  const next = { ...prefs, biometricEnabled: false };
+  await writeExtensionDevicePrefs(userId, next);
+  return next;
 }
 
 export async function writeExtensionDevicePrefs(
