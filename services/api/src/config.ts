@@ -20,6 +20,7 @@ import {
   isEnterpriseModulesRequested,
   parseEnterpriseModulesEnv,
 } from "./enterprise-modules-env.ts";
+import { effectiveDeploymentMode } from "./deployment-mode.ts";
 import { resolveEmailDeliveryMode, type EmailDeliveryMode } from "./email/queue.ts";
 import {
   normalizeEmailLogoUrl,
@@ -40,7 +41,23 @@ export type DeploymentMode = "self_hosted" | "saas";
 export interface ApiConfig {
   nodeEnv: NodeEnv;
   deployEnv: DeployEnv;
-  /** Product deployment: self_hosted (default OSS) vs saas (multi-workspace via enterprise plugin). */
+  /**
+   * Env request from `OKKEY_DEPLOYMENT_MODE` (`saas` = hosted). An env value
+   * alone never makes the instance hosted — see {@link hostedDeploymentConfirmed}
+   * and {@link deploymentMode} (effective).
+   */
+  deploymentModeRequested: DeploymentMode;
+  /**
+   * Plugin confirmation that a signed hosted (SaaS) token is present.
+   * Default `false`. Set only via `setHostedDeploymentConfirmed`.
+   */
+  hostedDeploymentConfirmed: boolean;
+  /**
+   * Effective product deployment mode: hosted (`saas`) only when the env
+   * requests it and {@link hostedDeploymentConfirmed} is true; otherwise
+   * `self_hosted`. Always keep this in sync via `effectiveDeploymentMode` —
+   * do not assign the raw env value here.
+   */
   deploymentMode: DeploymentMode;
   /** Running core image tag (`OKKEY_VERSION`, else `OKKEY_IMAGE_TAG`). */
   systemVersion: string;
@@ -495,7 +512,12 @@ export function loadConfig(): ApiConfig {
     applyEnterpriseBackendEnvToProcess(loadEnterpriseBackendEnv(enterpriseBackendEnvDir));
   }
 
-  const deploymentMode = parseDeploymentMode(process.env.OKKEY_DEPLOYMENT_MODE);
+  const deploymentModeRequested = parseDeploymentMode(process.env.OKKEY_DEPLOYMENT_MODE);
+  const hostedDeploymentConfirmed = false;
+  const deploymentMode = effectiveDeploymentMode({
+    deploymentModeRequested,
+    hostedDeploymentConfirmed,
+  });
   const defaultWorkspacePlanTier: PlanTier = "FREE";
   const allowedCryptoProfileVersions = parseProfileVersions(
     process.env.CRYPTO_ALLOWED_PROFILE_VERSIONS,
@@ -527,6 +549,8 @@ export function loadConfig(): ApiConfig {
   return {
     nodeEnv,
     deployEnv,
+    deploymentModeRequested,
+    hostedDeploymentConfirmed,
     deploymentMode,
     systemVersion:
       (process.env.OKKEY_VERSION ?? process.env.OKKEY_IMAGE_TAG ?? "").trim() || "unknown",

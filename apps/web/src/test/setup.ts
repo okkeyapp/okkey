@@ -3,12 +3,15 @@ import "@testing-library/jest-dom/vitest";
 import { afterEach, beforeEach, vi } from "vitest";
 
 import { LOCALE_STORAGE_KEY } from "../locale/localeStorage";
+import { setBackendDeploymentMode } from "../workspace/planEntitlements";
 
-// Default web unit tests exercise SaaS `plan_tier` gating unless a case stubs otherwise.
+// Default web unit tests exercise confirmed hosted `plan_tier` gating unless a case stubs otherwise.
+// Vite alone never makes the client hosted — tests set the API probe explicitly.
 vi.stubEnv("VITE_DEPLOYMENT_MODE", "saas");
 vi.stubEnv("VITE_ENTERPRISE_MODULES_ACTIVE", "false");
 
 beforeEach(() => {
+  setBackendDeploymentMode("saas");
   try {
     localStorage.removeItem(LOCALE_STORAGE_KEY);
   } catch {

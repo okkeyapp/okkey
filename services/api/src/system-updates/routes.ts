@@ -1,6 +1,7 @@
 import type { IncomingMessage } from "node:http";
 
 import type { ApiConfig } from "../config.ts";
+import { effectiveDeploymentMode } from "../deployment-mode.ts";
 import { HttpRequestError, json, readJsonBody, readJsonBodyLimited, type RouteHandler } from "../http.ts";
 import { isSystemUpdateError } from "./errors.ts";
 import { BUNDLE_MAX_APPLY_BODY_BYTES } from "./offline-bundle.ts";
@@ -142,7 +143,7 @@ function hideInSaas(
   config: Pick<ApiConfig, "deploymentMode">,
   ctx: Parameters<RouteHandler>[0],
 ): boolean {
-  if (config.deploymentMode !== "saas") {
+  if (effectiveDeploymentMode(config) !== "saas") {
     return false;
   }
   json(ctx.res, 404, errorBody("NOT_FOUND", "Route not found", ctx.requestId));

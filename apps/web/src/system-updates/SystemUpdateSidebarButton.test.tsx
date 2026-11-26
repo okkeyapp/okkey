@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import SystemUpdateSidebarButton from "./SystemUpdateSidebarButton";
 import { SYSTEM_UPDATE_POPUP_ID } from "../routes/popupQuery";
+import { setBackendDeploymentMode } from "../workspace/planEntitlements";
 
 const fetchMock = vi.fn();
 const FULL_SHA = "6e6ee86fac86b6fb1a6cc05da1f71d7e99d70560";
@@ -142,6 +143,7 @@ describe("system update version button", () => {
     status.enterpriseLicenseLapsed = false;
     status.components = undefined;
     vi.stubEnv("VITE_DEPLOYMENT_MODE", "self_hosted");
+    setBackendDeploymentMode("self_hosted");
     vi.stubGlobal("fetch", fetchMock);
     fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
       const target = String(url);
@@ -313,6 +315,7 @@ describe("system update version button", () => {
 
   it("stays hidden in SaaS mode", () => {
     vi.stubEnv("VITE_DEPLOYMENT_MODE", "saas");
+    setBackendDeploymentMode("saas");
     renderButton();
     expect(screen.queryByTestId("system-update-version")).not.toBeInTheDocument();
     expect(fetchMock).not.toHaveBeenCalled();

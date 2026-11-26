@@ -4,7 +4,10 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import WorkspaceSettingsPage from "./WorkspaceSettingsPage";
-import { resetBackendEnterpriseModulesActiveForTests } from "../../../workspace/planEntitlements";
+import {
+  resetBackendEnterpriseModulesActiveForTests,
+  setBackendDeploymentMode,
+} from "../../../workspace/planEntitlements";
 
 vi.mock("./WorkspaceSettingsMobileHeader", () => ({ default: () => null }));
 vi.mock("../../../pages/workspace/WorkspaceForbiddenPage", () => ({ default: () => null }));
@@ -94,6 +97,7 @@ describe("workspace settings plan section", () => {
 
   it("EE + FREE plan_tier shows the enterprise plan section", () => {
     vi.stubEnv("VITE_DEPLOYMENT_MODE", "self_hosted");
+    setBackendDeploymentMode("self_hosted");
     vi.stubEnv("VITE_ENTERPRISE_MODULES_ACTIVE", "true");
 
     renderPlanPage("FREE");
@@ -104,6 +108,7 @@ describe("workspace settings plan section", () => {
 
   it("EE + paid keeps the enterprise plan section", () => {
     vi.stubEnv("VITE_DEPLOYMENT_MODE", "self_hosted");
+    setBackendDeploymentMode("self_hosted");
     vi.stubEnv("VITE_ENTERPRISE_MODULES_ACTIVE", "true");
 
     renderPlanPage("ENTERPRISE");
@@ -114,6 +119,7 @@ describe("workspace settings plan section", () => {
 
   it("non-EE + FREE shows the license request form and opens it", async () => {
     vi.stubEnv("VITE_DEPLOYMENT_MODE", "self_hosted");
+    setBackendDeploymentMode("self_hosted");
     vi.stubEnv("VITE_ENTERPRISE_MODULES_ACTIVE", "false");
 
     renderPlanPage("FREE");
@@ -134,6 +140,7 @@ describe("workspace settings plan section", () => {
 
   it("SaaS FREE keeps the catalog plan section", () => {
     vi.stubEnv("VITE_DEPLOYMENT_MODE", "saas");
+    setBackendDeploymentMode("saas");
     vi.stubEnv("VITE_ENTERPRISE_MODULES_ACTIVE", "true");
 
     renderPlanPage("FREE");

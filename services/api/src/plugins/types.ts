@@ -95,6 +95,8 @@ export type ApiEnterprisePluginContext = {
    * and again whenever license state changes). `verified: false` turns modules
    * off again (invalid / missing license) without clearing the lapse flag.
    * Confirming `true` clears lapse. Does not log license contents.
+   * On confirmed hosted mode, billing `plan_tier` drives entitlements instead;
+   * still call this so probes and self-host fallback stay accurate.
    */
   setEnterpriseLicenseVerified(verified: boolean): void;
   /**
@@ -106,8 +108,20 @@ export type ApiEnterprisePluginContext = {
    * A later accepted check clears it via `lapsed: false` (or via verify `true`).
    * For never-verified / invalid licenses without a lapse report, leave this
    * false so modules stay fully off (403), not soft-locked.
+   * Applies on self-host (including unconfirmed hosted env); ignored for
+   * entitlement soft-lock when hosted mode is confirmed.
    */
   setEnterpriseLicenseLapsed(lapsed: boolean): void;
+  /**
+   * Confirm or clear hosted (SaaS) deployment from a signed token issued by the
+   * license server (one token for our hosting). Default `false`.
+   * Hosted mode is effective only when `OKKEY_DEPLOYMENT_MODE` requests hosted
+   * **and** this is `true`. Without confirmation the instance runs as
+   * self-hosted (`plan_tier` ignored; license verify/lapse gates apply).
+   * Call `true` after verifying the hosted token; call `false` when it lapses
+   * or is absent so the instance falls back to self-hosted immediately.
+   */
+  setHostedDeploymentConfirmed(confirmed: boolean): void;
 };
 
 export interface ApiEnterprisePlugin {

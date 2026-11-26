@@ -103,7 +103,7 @@ export class PlanChangeRequestService {
   private readonly salesEmail: string;
   private readonly salesEmailDeliverable: boolean;
   private readonly resolveSalesEmailDeliverable?: () => Promise<boolean>;
-  private readonly deploymentMode: DeploymentMode;
+  private readonly resolveDeploymentMode: () => DeploymentMode;
   private readonly publicAppBaseUrl: string;
   private readonly resolvePublicAppBaseUrl?: PublicAppUrlResolver;
   private readonly nowMs: () => number;
@@ -125,7 +125,7 @@ export class PlanChangeRequestService {
     salesEmailDeliverable?: boolean;
     /** Re-checked at request time so UI SMTP settings apply without a restart. */
     resolveSalesEmailDeliverable?: () => Promise<boolean>;
-    deploymentMode: DeploymentMode;
+    deploymentMode: DeploymentMode | (() => DeploymentMode);
     publicAppBaseUrl?: string;
     /** Effective public origin at send time (database, otherwise env). */
     resolvePublicAppBaseUrl?: PublicAppUrlResolver;
@@ -140,7 +140,8 @@ export class PlanChangeRequestService {
     this.salesEmail = deps.salesEmail.trim();
     this.salesEmailDeliverable = deps.salesEmailDeliverable ?? true;
     this.resolveSalesEmailDeliverable = deps.resolveSalesEmailDeliverable;
-    this.deploymentMode = deps.deploymentMode;
+    const mode = deps.deploymentMode;
+    this.resolveDeploymentMode = typeof mode === "function" ? mode : () => mode;
     this.publicAppBaseUrl = (deps.publicAppBaseUrl ?? "").trim().replace(/\/$/, "");
     this.resolvePublicAppBaseUrl = deps.resolvePublicAppBaseUrl;
     this.nowMs = deps.nowMs ?? (() => Date.now());
@@ -278,7 +279,7 @@ export class PlanChangeRequestService {
       Number.isSafeInteger(rawMemberCount) &&
       rawMemberCount >= 1;
 
-    if (this.deploymentMode !== "saas" && !clientMemberCountValid) {
+    if (this.resolveDeploymentMode() !== "saas" && !clientMemberCountValid) {
       throw new PlanChangeRequestServiceError(
         "INVALID_REQUEST",
         400,
@@ -315,7 +316,7 @@ export class PlanChangeRequestService {
     // request is accepted when the stored plan_tier is already at or above the requested
     // tier (for example ENTERPRISE to ENTERPRISE). SaaS still requires a higher tier.
     if (
-      this.deploymentMode === "saas" &&
+      this.resolveDeploymentMode() === "saas" &&
       !canRequestPlanUpgrade(currentPlanTier, requestedPlanTier)
     ) {
       throw new PlanChangeRequestServiceError(
@@ -362,7 +363,7 @@ export class PlanChangeRequestService {
           locale,
           region: region ?? "",
           workspaceMemberCount,
-          deploymentMode: salesDeploymentLabel(this.deploymentMode),
+          deploymentMode: salesDeploymentLabel(this.resolveDeploymentMode()),
           actorUserId: input.actorUserId,
         },
       });

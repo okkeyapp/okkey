@@ -1,4 +1,5 @@
 import type { ApiConfig } from "../src/config.ts";
+import { effectiveDeploymentMode } from "../src/deployment-mode.ts";
 import type { SessionService } from "../src/session/service.ts";
 import {
   TEST_AUTH_RATE_LIMIT_REGISTER_COMPLETE_PER_EMAIL,
@@ -22,10 +23,21 @@ export function createMockSessionService(): Pick<SessionService, "createSession"
 
 /** Full `ApiConfig` for route/service unit tests (no missing keys after env changes). */
 export function createTestApiConfig(overrides: Partial<ApiConfig> = {}): ApiConfig {
+  const deploymentModeRequested =
+    overrides.deploymentModeRequested ?? overrides.deploymentMode ?? "self_hosted";
+  const hostedDeploymentConfirmed =
+    overrides.hostedDeploymentConfirmed ??
+    (overrides.deploymentModeRequested == null && deploymentModeRequested === "saas");
+  const deploymentMode = effectiveDeploymentMode({
+    deploymentModeRequested,
+    hostedDeploymentConfirmed,
+  });
   return {
     nodeEnv: "test",
     deployEnv: "dev",
-    deploymentMode: "self_hosted",
+    deploymentModeRequested,
+    hostedDeploymentConfirmed,
+    deploymentMode,
     systemVersion: "1.0.0-beta.2",
     gitSha: "",
     releaseTag: "",
@@ -117,5 +129,20 @@ export function createTestApiConfig(overrides: Partial<ApiConfig> = {}): ApiConf
     webauthnChallengeTtlSeconds: 300,
     faviconProvider: "direct",
     ...overrides,
+    // Keep effective mode consistent after overrides (confirmation / request win).
+    deploymentModeRequested:
+      overrides.deploymentModeRequested ?? overrides.deploymentMode ?? deploymentModeRequested,
+    hostedDeploymentConfirmed:
+      overrides.hostedDeploymentConfirmed ??
+      (overrides.deploymentModeRequested == null &&
+        (overrides.deploymentMode ?? deploymentModeRequested) === "saas"),
+    deploymentMode: effectiveDeploymentMode({
+      deploymentModeRequested:
+        overrides.deploymentModeRequested ?? overrides.deploymentMode ?? deploymentModeRequested,
+      hostedDeploymentConfirmed:
+        overrides.hostedDeploymentConfirmed ??
+        (overrides.deploymentModeRequested == null &&
+          (overrides.deploymentMode ?? deploymentModeRequested) === "saas"),
+    }),
   };
 }

@@ -6,6 +6,7 @@ import type { PlanTier, WorkspaceResourcePermissionDto, WorkspaceRoleListItemDto
 
 import { LocaleProvider } from "../../../../locale/LocaleContext";
 import WorkspaceSettingsRolesSection from "./WorkspaceSettingsRolesSection";
+import { setBackendDeploymentMode } from "../../../../workspace/planEntitlements";
 
 const enterpriseModuleMock = vi.hoisted(() => ({
   EnterpriseRolesSection: null as ComponentType<unknown> | null,
@@ -286,6 +287,7 @@ describe("WorkspaceSettingsRolesSection", () => {
 
   it("self-hosted enterprise modules and FREE keep custom roles editable", () => {
     vi.stubEnv("VITE_DEPLOYMENT_MODE", "self_hosted");
+    setBackendDeploymentMode("self_hosted");
     vi.stubEnv("VITE_ENTERPRISE_MODULES_ACTIVE", "true");
     enterpriseModuleMock.EnterpriseRolesSection = EnterpriseReadOnlyStub as ComponentType<unknown>;
     enterpriseModuleMock.BuiltInRoleCardPopup = null;
@@ -297,6 +299,7 @@ describe("WorkspaceSettingsRolesSection", () => {
 
   it("self-hosted without modules keeps custom roles read-only when plan_tier is ENTERPRISE", () => {
     vi.stubEnv("VITE_DEPLOYMENT_MODE", "self_hosted");
+    setBackendDeploymentMode("self_hosted");
     vi.stubEnv("VITE_ENTERPRISE_MODULES_ACTIVE", "false");
     enterpriseModuleMock.EnterpriseRolesSection = EnterpriseReadOnlyStub as ComponentType<unknown>;
     enterpriseModuleMock.BuiltInRoleCardPopup = null;
@@ -309,6 +312,7 @@ describe("WorkspaceSettingsRolesSection", () => {
 
   it("self-hosted enterprise modules and a paid plan keep custom roles editable", () => {
     vi.stubEnv("VITE_DEPLOYMENT_MODE", "self_hosted");
+    setBackendDeploymentMode("self_hosted");
     vi.stubEnv("VITE_ENTERPRISE_MODULES_ACTIVE", "true");
     enterpriseModuleMock.EnterpriseRolesSection = EnterpriseReadOnlyStub as ComponentType<unknown>;
     enterpriseModuleMock.BuiltInRoleCardPopup = null;
