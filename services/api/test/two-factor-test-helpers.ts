@@ -1,4 +1,5 @@
 import { testEntityId } from "./test-entity-id.ts";
+import { hostedTestConfig } from "./test-api-config.ts";
 import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -684,7 +685,7 @@ export async function registerUser(
     postgres: storage.postgres,
     redis: storage.redis,
     sessionService,
-    config: { ...config, deploymentMode: "saas" },
+    config: hostedTestConfig(config),
   });
 
   await storage.redis.setWithTtl(

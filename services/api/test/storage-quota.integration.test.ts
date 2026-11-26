@@ -1,4 +1,5 @@
 import test from "node:test";
+import { hostedTestConfig } from "./test-api-config.ts";
 import assert from "node:assert/strict";
 
 import { STORAGE_QUOTA_BYTES_PER_MIB } from "../../../packages/types/src/plan-features.ts";
@@ -18,7 +19,7 @@ test("integration: SaaS FREE counts item ciphertext and still accepts deletes", 
     t.skip(error instanceof Error ? error.message : "api config unavailable");
     return;
   }
-  const config = { ...loaded, deploymentMode: "saas" as const, enterpriseModulesEnabled: false };
+  const config = hostedTestConfig({ ...loaded, enterpriseModulesEnabled: false });
   const storage = await createIntegrationStorage(t, config);
   if (!storage) {
     return;

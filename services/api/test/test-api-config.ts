@@ -146,3 +146,13 @@ export function createTestApiConfig(overrides: Partial<ApiConfig> = {}): ApiConf
     }),
   };
 }
+
+/** Fixture for a plugin-confirmed hosted instance: env requests saas and the signed token is confirmed. */
+export function hostedTestConfig<T extends ApiConfig>(config: T): T {
+  return {
+    ...config,
+    deploymentModeRequested: "saas",
+    hostedDeploymentConfirmed: true,
+    deploymentMode: "saas",
+  };
+}

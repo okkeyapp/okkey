@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { hostedTestConfig } from "./test-api-config.ts";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -79,7 +80,7 @@ test("integration: device share migration clears inactive rows and backfill remo
     postgres: storage.postgres,
     redis: storage.redis,
     sessionService,
-    config: { ...config, deploymentMode: "saas" },
+    config: hostedTestConfig(config),
   });
   const devices = new DeviceService({
     devices: storage.repositories.devices,
