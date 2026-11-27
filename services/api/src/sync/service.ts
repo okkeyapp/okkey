@@ -185,7 +185,26 @@ export class SyncService {
   private readonly users: SyncServiceDeps["users"];
   private readonly workspaces: SyncServiceDeps["workspaces"];
   private readonly storageQuota: SyncServiceDeps["storageQuota"];
-  private readonly config: Pick<
+  /**
+   * Shared runtime config (or a test partial). Do not snapshot via object
+   * spread at construction — license / deployment flags are mutated later.
+   */
+  private readonly configSource: SyncServiceDeps["config"];
+  private readonly log: Logger | undefined;
+
+  constructor(deps: SyncServiceDeps) {
+    this.vaults = deps.vaults;
+    this.events = deps.events;
+    this.softDeletes = deps.softDeletes;
+    this.users = deps.users;
+    this.workspaces = deps.workspaces;
+    this.storageQuota = deps.storageQuota;
+    this.configSource = deps.config;
+    this.log = deps.log;
+  }
+
+  /** Merge defaults with the live shared config on every read. */
+  private get config(): Pick<
     ApiConfig,
     | "allowedCryptoProfileVersions"
     | "deployEnv"
@@ -199,17 +218,8 @@ export class SyncService {
     | "enterpriseModulesEnabled"
     | "enterpriseLicenseVerified"
     | "enterpriseLicenseLapsed"
-  >;
-  private readonly log: Logger | undefined;
-
-  constructor(deps: SyncServiceDeps) {
-    this.vaults = deps.vaults;
-    this.events = deps.events;
-    this.softDeletes = deps.softDeletes;
-    this.users = deps.users;
-    this.workspaces = deps.workspaces;
-    this.storageQuota = deps.storageQuota;
-    this.config = {
+  > {
+    return {
       allowedCryptoProfileVersions: [2],
       deployEnv: "dev",
       cryptoRolloutMode: "compat",
@@ -222,9 +232,8 @@ export class SyncService {
       enterpriseModulesEnabled: false,
       enterpriseLicenseVerified: false,
       enterpriseLicenseLapsed: false,
-      ...deps.config,
+      ...this.configSource,
     };
-    this.log = deps.log;
   }
 
   async listEvents(

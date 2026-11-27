@@ -207,13 +207,9 @@ export class CapsuleService {
   constructor(deps: CapsuleServiceDeps) {
     this.db = deps.db;
     this.redis = deps.redis;
-    this.config = {
-      ...deps.config,
-      cryptoRolloutMode: deps.config.cryptoRolloutMode ?? "compat",
-      cryptoRolloutEnabled: deps.config.cryptoRolloutEnabled ?? true,
-      cryptoRolloutState: deps.config.cryptoRolloutState ?? "resume",
-      cryptoRolloutStopWritePaths: deps.config.cryptoRolloutStopWritePaths ?? [],
-    };
+    // Hold the shared config object (not a spread snapshot). License /
+    // deployment flags are mutated after construction by the plugin hooks.
+    this.config = deps.config;
     this.users = deps.users;
     this.objectStorage = deps.objectStorage;
     this.storageQuota = deps.storageQuota;

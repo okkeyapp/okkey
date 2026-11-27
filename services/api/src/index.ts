@@ -330,7 +330,9 @@ async function main(): Promise<void> {
       enterpriseModulesPath: config.enterpriseModulesPath,
       error: enterpriseLoad.loadError,
     });
-    config = { ...config, enterpriseModulesEnabled: false };
+    // Mutate in place so services that already hold this config object stay
+    // consistent (do not replace the shared reference with a spread copy).
+    config.enterpriseModulesEnabled = false;
   }
   const enterprisePlugins = enterpriseLoad.plugins;
   const workspaceSharedVaultsService = new WorkspaceSharedVaultsService({
