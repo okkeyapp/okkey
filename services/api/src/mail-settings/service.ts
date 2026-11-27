@@ -1,4 +1,5 @@
 import type { ApiConfig } from "../config.ts";
+import { effectiveDeploymentMode } from "../deployment-mode.ts";
 import { deriveSmtpPasswordKey, openSecret, sealSecret } from "../crypto/server-aes.ts";
 import { wipeSecretBytes } from "../crypto/secret-lifecycle.ts";
 import type { EmailMessage } from "../email/service.ts";
@@ -234,7 +235,7 @@ export class MailSettingsService {
    * A failing check leaves mail inactive. Form saves and env seed are not probed.
    */
   async probeLegacySmtpOnce(): Promise<void> {
-    if (this.config.deploymentMode !== "self_hosted") {
+    if (effectiveDeploymentMode(this.config) !== "self_hosted") {
       return;
     }
     await this.ensureSeeded();

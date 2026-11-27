@@ -23,7 +23,7 @@ import { useAuthVault } from "../../auth/AuthVaultContext";
 import { readVaultBundle } from "../../auth/localVaultBundle";
 import { readStoredLocale } from "../../locale/localeStorage";
 import { useLocale } from "../../locale/LocaleContext";
-import { webEnterpriseModulesActive } from "../../workspace/planEntitlements";
+import { webDeploymentMode, webEnterpriseModulesActive } from "../../workspace/planEntitlements";
 import {
   MemberFavicon,
   memberDisplayName,
@@ -57,9 +57,10 @@ function formatAbsoluteDate(iso: string, locale: string): string {
  * (owner card matches MembersListCard).
  */
 export default function ContactsShareReleaseController() {
-  // Vite may load EE UI while API modules are off — gate polls on /public/features.
+  // Layout gates by plan_tier (hosted) or modules (self-host). Keep that split here.
   const enterpriseEnabled =
-    Boolean(accountRecoveryModule.ContactsRestorePanel) && webEnterpriseModulesActive();
+    Boolean(accountRecoveryModule.ContactsRestorePanel) &&
+    (webDeploymentMode() === "saas" || webEnterpriseModulesActive());
   const { t, locale } = useLocale();
   const { accessToken, userId, vaultUnlocked, vaultKey } = useAuthVault();
   const [pending, setPending] = useState<EnterpriseContactRecoveryRequestDto[]>([]);

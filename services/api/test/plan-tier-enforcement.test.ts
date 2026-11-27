@@ -189,6 +189,7 @@ test("self_hosted modules on and FREE still allow capsule access settings", asyn
     config: createTestApiConfig({
       deploymentMode: "self_hosted",
       enterpriseModulesEnabled: true,
+      enterpriseLicenseVerified: true,
       allowedCryptoProfileVersions: [2],
     }),
   });
@@ -255,6 +256,7 @@ test("self_hosted modules on and a paid plan still allow capsule access settings
     config: createTestApiConfig({
       deploymentMode: "self_hosted",
       enterpriseModulesEnabled: true,
+      enterpriseLicenseVerified: true,
       allowedCryptoProfileVersions: [2],
     }),
   });

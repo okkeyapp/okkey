@@ -25,6 +25,7 @@ const workspaceId = "1000000000000000100";
 const selfHostedEnterprise = entitlementConfig({
   deploymentMode: "self_hosted",
   enterpriseModulesEnabled: true,
+  enterpriseLicenseVerified: true,
 });
 
 const selfHostedOss = entitlementConfig({

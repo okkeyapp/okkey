@@ -1,4 +1,5 @@
 import test from "node:test";
+import { hostedTestConfig } from "./test-api-config.ts";
 import assert from "node:assert/strict";
 import { MASTER_PASSWORD_POLICY_VERSION } from "@okkey/types";
 import type { IncomingMessage, ServerResponse } from "node:http";
@@ -101,7 +102,7 @@ async function boot(
     postgres: storage.postgres,
     redis: storage.redis,
     sessionService,
-    config: { ...config, deploymentMode: "saas" },
+    config: hostedTestConfig(config),
   });
   const accountRecoveryService = new AccountRecoveryService({
     recovery: storage.repositories.accountRecovery,

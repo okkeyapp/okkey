@@ -38,7 +38,7 @@ import {
   subscribeSettingsPopupCache,
 } from "../settings/settingsPopupCache";
 import { useLocale } from "../../locale/LocaleContext";
-import { webEnterpriseModulesActive } from "../../workspace/planEntitlements";
+import { webDeploymentMode, webEnterpriseModulesActive } from "../../workspace/planEntitlements";
 import { emitDevicesChanged } from "./devicesEvents";
 
 function formatAbsoluteDate(iso: string, locale: string): string {
@@ -71,9 +71,10 @@ function isForbiddenRecoveryError(err: unknown): boolean {
  * approver list endpoint returns 403 — avoids spamming the API.
  */
 export default function DeviceRecoveryApprovalController() {
-  // Vite may load EE UI while API modules are off — gate polls on /public/features.
+  // Layout gates by plan_tier (hosted) or modules (self-host). Keep that split here.
   const enterpriseEnabled =
-    Boolean(accountRecoveryModule.DevicesRestorePanel) && webEnterpriseModulesActive();
+    Boolean(accountRecoveryModule.DevicesRestorePanel) &&
+    (webDeploymentMode() === "saas" || webEnterpriseModulesActive());
   const { t, locale } = useLocale();
   const core = useAuthenticatedCoreClient();
   const { accessToken, currentDeviceId, vaultUnlocked, vaultKey } = useAuthVault();

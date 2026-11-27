@@ -1,4 +1,5 @@
 import test from "node:test";
+import { hostedTestConfig } from "./test-api-config.ts";
 import assert from "node:assert/strict";
 import { testEntityId } from "./test-entity-id.ts";
 import { readFileSync } from "node:fs";
@@ -65,7 +66,7 @@ test("integration: registration completes user, workspace, vault, trusted device
     postgres: storage.postgres,
     redis: storage.redis,
     sessionService,
-    config: { ...config, deploymentMode: "saas" },
+    config: hostedTestConfig(config),
   });
 
   t.after(async () => {
@@ -206,7 +207,7 @@ test("integration: parallel completeRegistration creates single user", async (t)
     postgres: storage.postgres,
     redis: storage.redis,
     sessionService: sessionServiceParallel,
-    config: { ...config, deploymentMode: "saas" },
+    config: hostedTestConfig(config),
   });
 
   t.after(async () => {
@@ -326,7 +327,7 @@ test("integration: missing auth state returns AUTH_CHALLENGE_EXPIRED", async (t)
     postgres: storage.postgres,
     redis: storage.redis,
     sessionService: sessionServiceMissingState,
-    config: { ...config, deploymentMode: "saas" },
+    config: hostedTestConfig(config),
   });
 
   t.after(async () => {
@@ -406,7 +407,7 @@ test("integration: strict rollout rejects registration without PQ-capable device
     postgres: storage.postgres,
     redis: storage.redis,
     sessionService: sessionServiceStrict,
-    config: { ...config, deploymentMode: "saas" },
+    config: hostedTestConfig(config),
   });
 
   t.after(async () => {

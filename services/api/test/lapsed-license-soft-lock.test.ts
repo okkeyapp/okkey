@@ -136,7 +136,11 @@ test("shared-vault ITEM_CREATE follows granted sharedVaults and cannot return PL
   const allowed = evaluateSharedVaultItemCreateGate({
     vault: sharedVault,
     workspace,
-    config: { deploymentMode: "self_hosted", enterpriseModulesEnabled: true },
+    config: {
+      deploymentMode: "self_hosted",
+      enterpriseModulesEnabled: true,
+      enterpriseLicenseVerified: true,
+    },
   });
   assert.equal(allowed.ok, true);
 
@@ -148,7 +152,11 @@ test("shared-vault ITEM_CREATE follows granted sharedVaults and cannot return PL
       planCustomOverride: true,
       planFeatureOverrides: { sharedVaults: false },
     },
-    config: { deploymentMode: "self_hosted", enterpriseModulesEnabled: true },
+    config: {
+      deploymentMode: "self_hosted",
+      enterpriseModulesEnabled: true,
+      enterpriseLicenseVerified: true,
+    },
   });
   assert.equal(denied.ok, false);
   if (!denied.ok) {
@@ -194,9 +202,22 @@ test("SaaS ignores enterpriseLicenseLapsed and keeps using plan_tier", () => {
   assert.equal(getPlanQuotaLimits("FREE", flagged).storageQuota.baseMb, 100);
 });
 
-test("API runtime helpers do not carry enterpriseLicenseLapsed", () => {
-  const config = { deploymentMode: "self_hosted" as const, enterpriseModulesEnabled: true };
+test("API runtime helpers require license verification for module entitlements", () => {
+  const unverified = {
+    deploymentMode: "self_hosted" as const,
+    enterpriseModulesEnabled: true,
+  };
+  const unverifiedOptions = workspacePlanEntitlementOptions(unverified, { planTier: "FREE" });
+  assert.equal(unverifiedOptions.enterpriseModulesActive, false);
+  assert.equal(unverifiedOptions.enterpriseLicenseLapsed, undefined);
+
+  const config = {
+    deploymentMode: "self_hosted" as const,
+    enterpriseModulesEnabled: true,
+    enterpriseLicenseVerified: true,
+  };
   const options = workspacePlanEntitlementOptions(config, { planTier: "FREE" });
+  assert.equal(options.enterpriseModulesActive, true);
   assert.equal(options.enterpriseLicenseLapsed, undefined);
 
   const roles = workspacePlanFeatureWriteDecision(config, { planTier: "FREE" }, "customWorkspaceRoles");
@@ -217,4 +238,45 @@ test("API runtime helpers do not carry enterpriseLicenseLapsed", () => {
   const injected = getPlanQuotaLimits("ENTERPRISE", lapsedSelfHost);
   assert.equal(injected.maxAdditionalMembers, 10);
   assert.equal(injected.maxSharedVaults, 1);
+});
+
+test("lapsed soft-lock works when verification is cleared (expired license path)", () => {
+  const expired = {
+    deploymentMode: "self_hosted" as const,
+    enterpriseModulesEnabled: true,
+    enterpriseLicenseVerified: false,
+    enterpriseLicenseLapsed: true,
+  };
+  const options = workspacePlanEntitlementOptions(expired, { planTier: "ENTERPRISE" });
+  assert.equal(options.enterpriseModulesActive, false);
+  assert.equal(options.enterpriseLicenseLapsed, true);
+  assert.equal(isSelfHostedEnterpriseLicenseLapsed(options), true);
+
+  for (const feature of ENTERPRISE_MODULE_FEATURES) {
+    assert.equal(planFeatureAccess("ENTERPRISE", feature, options), "lapsed", feature);
+    assert.equal(planFeatureReadable("ENTERPRISE", feature, options), true, feature);
+    const write = workspacePlanFeatureWriteDecision(expired, { planTier: "ENTERPRISE" }, feature);
+    assert.equal(write.allowed, false, feature);
+    if (!write.allowed) {
+      assert.equal(write.code, PLAN_LICENSE_LAPSED, feature);
+      assert.equal(write.status, 402, feature);
+    }
+  }
+
+  const neverVerified = {
+    deploymentMode: "self_hosted" as const,
+    enterpriseModulesEnabled: true,
+    enterpriseLicenseVerified: false,
+    enterpriseLicenseLapsed: false,
+  };
+  const off = workspacePlanFeatureWriteDecision(
+    neverVerified,
+    { planTier: "ENTERPRISE" },
+    "customWorkspaceRoles",
+  );
+  assert.equal(off.allowed, false);
+  if (!off.allowed) {
+    assert.equal(off.code, "PLAN_FEATURE_REQUIRED");
+    assert.equal(off.status, 403);
+  }
 });

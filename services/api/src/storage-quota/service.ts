@@ -10,6 +10,7 @@ import {
 } from "@okkey/types";
 
 import {
+  planEntitlementRuntimeFromConfig,
   workspaceHasPlanFeature,
   type PlanEntitlementRuntimeConfig,
 } from "../plan-entitlements.ts";
@@ -167,10 +168,10 @@ export class WorkspaceStorageQuotaService {
     if (!workspaceHasPlanFeature(this.config, workspace, "storageQuotas")) {
       return { baseMb: null, perMemberMb: 0 };
     }
-    return getPlanQuotaLimits(workspace.planTier, {
-      deploymentMode: this.config.deploymentMode,
-      enterpriseModulesActive: this.config.enterpriseModulesEnabled,
-    }).storageQuota;
+    return getPlanQuotaLimits(
+      workspace.planTier,
+      planEntitlementRuntimeFromConfig(this.config),
+    ).storageQuota;
   }
 
   private async countMembers(workspaceId: string): Promise<number> {

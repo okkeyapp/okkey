@@ -13,7 +13,7 @@ const routesSource = readFileSync(
 
 test("setup routes hide wizard endpoints on SaaS with NOT_FOUND", () => {
   assert.match(routesSource, /function hideInSaas/);
-  assert.match(routesSource, /deploymentMode === "saas"/);
+  assert.match(routesSource, /effectiveDeploymentMode\(config\) === "saas"/);
   assert.match(routesSource, /NOT_FOUND/);
   // Status stays public so clients learn setup is not required; other routes call hideInSaas.
   assert.match(routesSource, /GET", "\/public\/setup\/status"/);

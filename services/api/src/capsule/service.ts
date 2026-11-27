@@ -105,7 +105,11 @@ export interface CapsuleServiceDeps {
     | "cryptoRolloutStopWritePaths"
     | "trustedProxyHops"
     | "deploymentMode"
+    | "deploymentModeRequested"
+    | "hostedDeploymentConfirmed"
     | "enterpriseModulesEnabled"
+    | "enterpriseLicenseVerified"
+    | "enterpriseLicenseLapsed"
   >;
   users?: Pick<UsersRepository, "findById">;
   objectStorage: Pick<ObjectStorage, "putObject" | "getObject" | "deleteObject">;

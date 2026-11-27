@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LocaleProvider } from "../../../../locale/LocaleContext";
 import WorkspaceSettingsProfilesSection from "./WorkspaceSettingsProfilesSection";
 import type { PlanTier, WorkspaceProfileListItemDto, WorkspaceResourcePermissionDto } from "@okkey/types";
+import { setBackendDeploymentMode } from "../../../../workspace/planEntitlements";
 
 const enterpriseModuleMock = vi.hoisted(() => ({
   EnterpriseProfilesSection: null as ComponentType<unknown> | null,
@@ -226,6 +227,7 @@ describe("WorkspaceSettingsProfilesSection", () => {
 
   it("self-hosted enterprise modules and FREE keep custom profiles editable", async () => {
     vi.stubEnv("VITE_DEPLOYMENT_MODE", "self_hosted");
+    setBackendDeploymentMode("self_hosted");
     vi.stubEnv("VITE_ENTERPRISE_MODULES_ACTIVE", "true");
     function EnterpriseStub({
       readOnly,
@@ -253,6 +255,7 @@ describe("WorkspaceSettingsProfilesSection", () => {
 
   it("self-hosted without modules keeps custom profiles read-only when plan_tier is ENTERPRISE", async () => {
     vi.stubEnv("VITE_DEPLOYMENT_MODE", "self_hosted");
+    setBackendDeploymentMode("self_hosted");
     vi.stubEnv("VITE_ENTERPRISE_MODULES_ACTIVE", "false");
     function EnterpriseStub({
       readOnly,
@@ -280,6 +283,7 @@ describe("WorkspaceSettingsProfilesSection", () => {
 
   it("self-hosted enterprise modules and a paid plan keep custom profiles editable", async () => {
     vi.stubEnv("VITE_DEPLOYMENT_MODE", "self_hosted");
+    setBackendDeploymentMode("self_hosted");
     vi.stubEnv("VITE_ENTERPRISE_MODULES_ACTIVE", "true");
     function EnterpriseStub({ readOnly }: { readOnly?: boolean }) {
       return <p>{readOnly ? "Enterprise profiles read-only" : "Enterprise profiles editable"}</p>;

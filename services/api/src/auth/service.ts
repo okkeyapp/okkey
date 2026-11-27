@@ -1,6 +1,7 @@
 import { createHash, randomBytes, randomInt } from "node:crypto";
 import { generateEntityId } from "../entity-id.ts";
 import type { ApiConfig } from "../config.ts";
+import { effectiveDeploymentMode } from "../deployment-mode.ts";
 import { loginVerifierMatches } from "../crypto/login-verifier.ts";
 import { isOutboundEmailDeliverable, type EmailTemplateService } from "../email/service.ts";
 import { incrementFixedWindow } from "../storage/fixed-window-counter.ts";
@@ -196,7 +197,7 @@ export interface MasterPasswordLoginInput {
  * SaaS and any instance that can send mail keep the emailed code.
  */
 export function isMasterPasswordLoginEnabled(config: ApiConfig): boolean {
-  return config.deploymentMode === "self_hosted" && !isOutboundEmailDeliverable(config);
+  return effectiveDeploymentMode(config) === "self_hosted" && !isOutboundEmailDeliverable(config);
 }
 
 function normalizeEmail(email: string): string {
@@ -325,7 +326,7 @@ export class AuthService {
       const allowed = await this.resolveRegistrationAllowed(email);
       if (!allowed) {
         const empty = !(await this.users.hasAnyUsers());
-        if (empty && this.config.deploymentMode === "self_hosted") {
+        if (empty && effectiveDeploymentMode(this.config) === "self_hosted") {
           throw new AuthError(
             "SETUP_REQUIRED",
             403,
@@ -552,7 +553,7 @@ export class AuthService {
   }
 
   private async emailDeliverable(): Promise<boolean> {
-    if (this.config.deploymentMode !== "self_hosted") {
+    if (effectiveDeploymentMode(this.config) !== "self_hosted") {
       return true;
     }
     if (this.resolveEmailDeliverable) {
@@ -613,7 +614,7 @@ export class AuthService {
     );
     if (!existingUser) {
       let inviteTokenHash: string | undefined;
-      if (this.config.deploymentMode === "self_hosted") {
+      if (effectiveDeploymentMode(this.config) === "self_hosted") {
         const hash = this.resolvePendingInstanceInviteTokenHash
           ? await this.resolvePendingInstanceInviteTokenHash(challenge.email)
           : null;
@@ -668,7 +669,7 @@ export class AuthService {
    * Used by the setup wizard. Concurrent callers: only one email holds the claim.
    */
   async claimEmptyCatalogBootstrap(email: string): Promise<boolean> {
-    if (this.config.deploymentMode !== "self_hosted") {
+    if (effectiveDeploymentMode(this.config) !== "self_hosted") {
       return false;
     }
     if (await this.users.hasAnyUsers()) {

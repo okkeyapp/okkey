@@ -1,5 +1,6 @@
 import type { Logger } from "../logger.ts";
 import type { ApiConfig } from "../config.ts";
+import { effectiveDeploymentMode } from "../deployment-mode.ts";
 import type { MailDeliverySnapshot } from "../mail-settings/types.ts";
 import {
   renderEmailTemplate,
@@ -587,7 +588,7 @@ export const UNDELIVERABLE_AUTH_CODE_LOG_MESSAGE = "[okkey] auth code (mail not 
  * SaaS and any configured provider keep those codes out of the logs.
  */
 export function shouldLogUndeliverableAuthCode(config: ApiConfig): boolean {
-  return config.deploymentMode === "self_hosted" && !isOutboundEmailDeliverable(config);
+  return effectiveDeploymentMode(config) === "self_hosted" && !isOutboundEmailDeliverable(config);
 }
 
 /** `ada@example.com` → `a***@example.com`. */
@@ -673,7 +674,7 @@ export async function createTransportEmailSender(
       undefined,
       {
         logger,
-        logInactiveAuthCode: config.deploymentMode === "self_hosted",
+        logInactiveAuthCode: effectiveDeploymentMode(config) === "self_hosted",
       },
     );
   }

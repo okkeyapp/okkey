@@ -11,7 +11,10 @@ import {
   DEFAULT_WORKSPACE_CAPSULE_POLICIES,
   isCapsuleAllowedForMember,
 } from "@okkey/types";
-import { webEnterpriseModulesActive, workspaceHasPlanFeature } from "./planEntitlements";
+import {
+  webEnterpriseSurfaceEnabled,
+  workspaceHasPlanFeature,
+} from "./planEntitlements";
 import {
   cn,
   DropdownMenuItem,
@@ -1103,7 +1106,12 @@ function WorkspaceShellWithItems({
       ? { ...item, onAddPointerDown: undefined }
       : item,
   );
-  const enterpriseModulesOn = webEnterpriseModulesActive();
+  const capsuleApprovalOn = webEnterpriseSurfaceEnabled(
+    currentWorkspace,
+    "capsuleAccessSettings",
+  );
+  const deviceRecoveryOn = webEnterpriseSurfaceEnabled(currentWorkspace, "accountRecovery");
+  const trustedContactsOn = webEnterpriseSurfaceEnabled(currentWorkspace, "trustedContacts");
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
 
   return (
@@ -1124,16 +1132,16 @@ function WorkspaceShellWithItems({
             workspaceId={resolvedWorkspaceId}
             workspace={currentWorkspace}
           />
-          {CapsuleApprovalController && enterpriseModulesOn ? (
+          {CapsuleApprovalController && capsuleApprovalOn ? (
             <CapsuleApprovalController />
           ) : null}
           <DeviceApprovalController />
-          {enterpriseModulesOn ? <DeviceRecoveryApprovalController /> : null}
-          {TrustedContactInviteController && enterpriseModulesOn ? (
+          {deviceRecoveryOn ? <DeviceRecoveryApprovalController /> : null}
+          {TrustedContactInviteController && trustedContactsOn ? (
             <TrustedContactInviteController />
           ) : null}
-          {enterpriseModulesOn ? <ContactsShareReleaseController /> : null}
-          {ContactsShareAutoEnrollController && enterpriseModulesOn ? (
+          {trustedContactsOn ? <ContactsShareReleaseController /> : null}
+          {ContactsShareAutoEnrollController && trustedContactsOn ? (
             <ContactsShareAutoEnrollController />
           ) : null}
           <EditItemPopup

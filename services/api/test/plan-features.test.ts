@@ -638,7 +638,7 @@ test("self_hosted license lapse is a license signal, not plan_tier", () => {
       enterpriseModulesActive: false,
       enterpriseLicenseLapsed: true,
     }),
-    false,
+    true,
   );
   assert.equal(
     planFeatureAccess("FREE", "customWorkspaceRoles", {
@@ -646,7 +646,25 @@ test("self_hosted license lapse is a license signal, not plan_tier", () => {
       enterpriseModulesActive: false,
       enterpriseLicenseLapsed: true,
     }),
-    "unavailable",
+    "lapsed",
+  );
+  const lapsedWriteWithoutActive = planFeatureWriteDecision("FREE", "customWorkspaceRoles", {
+    deploymentMode: "self_hosted",
+    enterpriseModulesActive: false,
+    enterpriseLicenseLapsed: true,
+  });
+  assert.equal(lapsedWriteWithoutActive.allowed, false);
+  if (!lapsedWriteWithoutActive.allowed) {
+    assert.equal(lapsedWriteWithoutActive.code, "PLAN_LICENSE_LAPSED");
+    assert.equal(lapsedWriteWithoutActive.status, 402);
+  }
+  assert.equal(
+    planFeatureReadable("FREE", "customWorkspaceRoles", {
+      deploymentMode: "self_hosted",
+      enterpriseModulesActive: false,
+      enterpriseLicenseLapsed: true,
+    }),
+    true,
   );
   const missingWrite = planFeatureWriteDecision("FREE", "customWorkspaceRoles");
   assert.equal(missingWrite.allowed, false);

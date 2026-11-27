@@ -122,7 +122,11 @@ test("self-hosted feature overrides do not change module quotas", () => {
   assert.equal(fromWorkspace.maxSharedVaults, 1);
 
   const modulesOnQuotas = workspaceGetPlanQuotaLimits(
-    { deploymentMode: "self_hosted", enterpriseModulesEnabled: true },
+    {
+      deploymentMode: "self_hosted",
+      enterpriseModulesEnabled: true,
+      enterpriseLicenseVerified: true,
+    },
     {
       planTier: "FREE",
       planCustomOverride: true,

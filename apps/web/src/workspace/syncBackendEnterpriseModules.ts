@@ -1,13 +1,23 @@
 import { getApiBaseUrl } from "../api/client";
-import { setBackendEnterpriseModulesActive } from "./planEntitlements";
+import {
+  setBackendDeploymentMode,
+  setBackendEnterpriseLicenseManagementAvailable,
+  setBackendEnterpriseModulesActive,
+} from "./planEntitlements";
+import type { DeploymentMode } from "@okkey/types";
 
 type PublicFeaturesResponse = {
   enterpriseModulesActive?: unknown;
+  enterpriseLicenseManagementAvailable?: unknown;
+  deploymentMode?: unknown;
 };
 
 /**
- * Probe API GET /public/features so Vite ACTIVE cannot show EE UI when the backend is FREE.
- * Fail-open on network errors (keep Vite flag) — only downgrade on an explicit `false`.
+ * Probe API GET /public/features so Vite ACTIVE cannot show EE UI when the backend is FREE,
+ * and so hosted mode is taken only from the API effective mode (never from Vite alone).
+ * Fail-open on network errors for modules (keep Vite flag) — only downgrade on an explicit `false`.
+ * License-management availability stays fail-closed until the API reports `true`.
+ * Hosted mode stays self-hosted until the API reports `saas`.
  */
 export async function syncBackendEnterpriseModules(): Promise<void> {
   try {
@@ -22,7 +32,14 @@ export async function syncBackendEnterpriseModules(): Promise<void> {
     if (typeof body.enterpriseModulesActive === "boolean") {
       setBackendEnterpriseModulesActive(body.enterpriseModulesActive);
     }
+    if (typeof body.enterpriseLicenseManagementAvailable === "boolean") {
+      setBackendEnterpriseLicenseManagementAvailable(body.enterpriseLicenseManagementAvailable);
+    }
+    if (body.deploymentMode === "saas" || body.deploymentMode === "self_hosted") {
+      setBackendDeploymentMode(body.deploymentMode as DeploymentMode);
+    }
   } catch {
-    // API unreachable during boot — keep Vite-only entitlements.
+    // API unreachable during boot — keep Vite-only module entitlements;
+    // license management and hosted mode stay fail-closed until a successful probe.
   }
 }

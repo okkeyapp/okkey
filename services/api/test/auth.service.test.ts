@@ -210,7 +210,7 @@ test("claimEmptyCatalogBootstrap is exclusive and idempotent for the same email"
 test("startEmailLogin empty catalog on saas still requires email OTP", async () => {
   const { service, sentEmails } = setupAuthService({
     hasAnyUsers: false,
-    configOverrides: { deploymentMode: "saas" },
+    configOverrides: { deploymentModeRequested: "saas", hostedDeploymentConfirmed: true, deploymentMode: "saas" },
   });
 
   const result = await service.startEmailLogin({
@@ -427,7 +427,7 @@ test("resendEmailCode blocks resend before cooldown", async () => {
 test("confirmEmailCode returns registration for unknown user", async () => {
   const { service } = setupAuthService({
     generatedCode: "111222",
-    configOverrides: { deploymentMode: "saas" },
+    configOverrides: { deploymentModeRequested: "saas", hostedDeploymentConfirmed: true, deploymentMode: "saas" },
   });
   const start = await service.startEmailLogin({
     email: "new@example.com",

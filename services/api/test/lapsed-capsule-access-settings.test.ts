@@ -74,6 +74,7 @@ const capsuleRow = {
 function serviceFor(input: {
   enterpriseLicenseLapsed?: boolean;
   enterpriseModulesEnabled?: boolean;
+  enterpriseLicenseVerified?: boolean;
   deploymentMode?: ApiConfig["deploymentMode"];
   planTier?: string;
 }): { service: CapsuleService; get transactionCalls(): number } {
@@ -117,6 +118,8 @@ function serviceFor(input: {
     config: createTestApiConfig({
       deploymentMode: input.deploymentMode ?? "self_hosted",
       enterpriseModulesEnabled: input.enterpriseModulesEnabled ?? true,
+      enterpriseLicenseVerified:
+        input.enterpriseLicenseVerified ?? (input.enterpriseModulesEnabled ?? true),
       enterpriseLicenseLapsed: input.enterpriseLicenseLapsed ?? false,
       allowedCryptoProfileVersions: [2],
     }),
