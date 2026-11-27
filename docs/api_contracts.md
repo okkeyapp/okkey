@@ -576,7 +576,7 @@ Lists workspaces the authenticated user may access (owner or `workspace_members`
 
 ### `POST /workspaces`
 
-**Enterprise SaaS only** (`workspace-tenancy` plugin when deployment mode is `saas`). Not registered on OSS / self-hosted Core. SaaS mode is supplied from `okkey-enterprise` when enterprise modules are loaded.
+**Enterprise SaaS only** (`workspace-tenancy` plugin when deployment mode is `saas`). Not registered on OSS / self-hosted Core. SaaS mode is supplied by the Enterprise plugin when enterprise modules are loaded.
 
 **Body:** `{ "name": string }`
 
@@ -623,7 +623,7 @@ Lists vaults in a workspace the user may access.
 
 Lists built-in workspace roles (`owner`, `admin`, `user`) with member counts. Open-core response includes built-in roles only.
 
-When the enterprise `workspace-roles` plugin is loaded (`ENTERPRISE_MODULES` requested and sibling loadable; see `services/api/.env.example`), the same route is served by the enterprise module and also returns custom roles with permissions. Permissions use a numeric matrix (`get`/`put`/`delete`: `0|1|2`, `post`: `0|1`). Custom-role writes still require a verified license / plan entitlement (`403 PLAN_FEATURE_REQUIRED` when the plugin is loaded but the feature is not entitled; `402 PLAN_LICENSE_LAPSED` when the license has lapsed). See `okkey-enterprise/docs/api/workspace-roles.md`.
+When the enterprise `workspace-roles` plugin is loaded (`ENTERPRISE_MODULES` requested and sibling loadable; see `services/api/.env.example`), the same route is served by the enterprise module and also returns custom roles with permissions. Permissions use a numeric matrix (`get`/`put`/`delete`: `0|1|2`, `post`: `0|1`). Custom-role writes still require a verified license / plan entitlement (`403 PLAN_FEATURE_REQUIRED` when the plugin is loaded but the feature is not entitled; `402 PLAN_LICENSE_LAPSED` when the license has lapsed). See the Enterprise edition docs for workspace-roles.
 
 **Auth:** Bearer preferred; optional `X-User-Id` when allowed by config.
 
