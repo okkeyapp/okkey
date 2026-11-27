@@ -19,6 +19,10 @@ import { blobToBytes } from "../../capsules/crypto";
 import { decryptCapsuleAttachmentFiles, openCapsuleItemFileFromVault } from "../../capsules/itemAttachments";
 import { storeCapsuleReturnUrl } from "../../auth/capsuleReturnUrl";
 import { captureCapsuleFragmentKey } from "../../capsules/fragmentKey";
+import {
+  getOrCreateGuestSessionId,
+  GuestSessionCryptoUnavailableError,
+} from "../../capsules/guestSessionId";
 import { calendarDaysBetween } from "../../lib/calendarDaysBetween";
 import PublicCapsuleContent from "./PublicCapsuleContent";
 import { useLocale } from "../../locale/LocaleContext";
@@ -44,6 +48,7 @@ type ViewerState =
   | "waiting"
   | "denied"
   | "blacklisted"
+  | "crypto_unavailable"
   | "decrypting"
   | "content";
 
@@ -60,22 +65,6 @@ const capsuleOpenCache = new Map<string, OpenedCapsuleContent>();
 function errorCode(cause: unknown): string {
   if (!(cause instanceof Error)) return "";
   return cause.message.split(":")[0]?.trim() ?? "";
-}
-
-function guestSessionKey(capsuleId: string): string {
-  return `okkey:capsule-guest:${capsuleId}`;
-}
-
-function getOrCreateGuestSessionId(capsuleId: string): string {
-  const key = guestSessionKey(capsuleId);
-  const existing = sessionStorage.getItem(key)?.trim();
-  if (existing) return existing;
-  const created =
-    typeof crypto !== "undefined" && "randomUUID" in crypto
-      ? crypto.randomUUID()
-      : `guest-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  sessionStorage.setItem(key, created);
-  return created;
 }
 
 export default function PublicCapsulePage() {
@@ -323,30 +312,37 @@ export default function PublicCapsulePage() {
       );
     };
     const timer = window.setInterval(() => {
-      void poll().then(async (result) => {
-        if (result.status === "approved" && result.approvalToken) {
-          setApprovalToken(result.approvalToken);
-          window.clearInterval(timer);
-          setState(metadata?.passwordRequired ? "password" : "decrypting");
-        } else if (result.status === "denied") {
-          window.clearInterval(timer);
-          try {
-            const eligibility: CapsuleApprovalEligibilityDto =
-              core && accessToken
-                ? await core.getCapsuleApprovalEligibility(capsuleId)
-                : await publicApi.current.get<CapsuleApprovalEligibilityDto>(
-                    `/capsules/${encodeURIComponent(capsuleId)}/approval-eligibility`,
-                  );
-            setState(
-              !eligibility.eligible && eligibility.reason === "blacklisted"
-                ? "blacklisted"
-                : "denied",
-            );
-          } catch {
-            setState("denied");
+      void poll()
+        .then(async (result) => {
+          if (result.status === "approved" && result.approvalToken) {
+            setApprovalToken(result.approvalToken);
+            window.clearInterval(timer);
+            setState(metadata?.passwordRequired ? "password" : "decrypting");
+          } else if (result.status === "denied") {
+            window.clearInterval(timer);
+            try {
+              const eligibility: CapsuleApprovalEligibilityDto =
+                core && accessToken
+                  ? await core.getCapsuleApprovalEligibility(capsuleId)
+                  : await publicApi.current.get<CapsuleApprovalEligibilityDto>(
+                      `/capsules/${encodeURIComponent(capsuleId)}/approval-eligibility`,
+                    );
+              setState(
+                !eligibility.eligible && eligibility.reason === "blacklisted"
+                  ? "blacklisted"
+                  : "denied",
+              );
+            } catch {
+              setState("denied");
+            }
           }
-        }
-      });
+        })
+        .catch((cause: unknown) => {
+          if (cause instanceof GuestSessionCryptoUnavailableError) {
+            window.clearInterval(timer);
+            setState("crypto_unavailable");
+          }
+        });
     }, 2_000);
     return () => window.clearInterval(timer);
   }, [
@@ -408,6 +404,10 @@ export default function PublicCapsulePage() {
       setApprovalRequestId(result.requestId);
       setState("waiting");
     } catch (cause) {
+      if (cause instanceof GuestSessionCryptoUnavailableError) {
+        setState("crypto_unavailable");
+        return;
+      }
       const code = errorCode(cause);
       if (code === "CAPSULE_APPROVAL_BLACKLISTED") {
         setState("blacklisted");
@@ -448,6 +448,9 @@ export default function PublicCapsulePage() {
         ) : null}
         {state === "unavailable" ? (
           <Centered>{t("web.capsules.public.unavailable")}</Centered>
+        ) : null}
+        {state === "crypto_unavailable" ? (
+          <Centered>{t("web.capsules.public.cryptoUnavailable")}</Centered>
         ) : null}
         {state === "login" ? (
           <Centered>

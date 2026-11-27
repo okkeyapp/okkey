@@ -1035,6 +1035,7 @@
   "web.capsules.public.missingKey": "The link has no decryption key. Copy the link using \"Copy link\" in Okkey (it must include the #key=… fragment) and paste the full URL — messengers often strip the part after #",
   "web.capsules.public.viewLimit": "This capsule's view limit has been reached",
   "web.capsules.public.unavailable": "This capsule is unavailable, not active, or has expired",
+  "web.capsules.public.cryptoUnavailable": "This browser cannot create a secure guest session. Use a modern browser with Web Crypto support, or sign in to continue.",
   "web.capsules.public.loginMessage": "Sign in to Okkey to view this capsule",
   "web.capsules.public.signIn": "Sign in",
   "web.capsules.public.password": "Capsule password",
