@@ -225,11 +225,13 @@ for (const planTier of ["FREE", "PREMIUM", "TEAM"] as const satisfies readonly N
     const created = await harness.service.createInvitations(workspaceId, actorId, inviteBatch(cap));
     assert.equal(created.created.length, cap);
     assert.equal(harness.invitationInserts(), cap);
-    assert.equal(harness.seatSql.length, 2);
+    // Fast-path check plus locked re-check inside the insert transaction.
+    assert.equal(harness.seatSql.length, 4);
     assert.match(harness.seatSql[0] ?? "", /user_id\s*<>/);
     assert.match(harness.seatSql[0] ?? "", /owner_id/);
     assert.match(harness.seatSql[1] ?? "", /status = 'pending'/);
     assert.match(harness.seatSql[1] ?? "", /expires_at/);
+    assert.deepEqual(harness.seatSql.slice(0, 2), harness.seatSql.slice(2, 4));
   });
 
   test(`${planTier} rejects the invite past maxAdditionalMembers`, async () => {
@@ -292,8 +294,11 @@ test("invite create and accept use the same seat count", async () => {
   await invite.service.createInvitations(workspaceId, actorId, inviteBatch(1));
   const accept = membersService({ planTier: "FREE", additionalMembers: 0, livePending: 1 });
   await accept.service.acceptInvitation("raw-token", inviteeId);
-  assert.deepEqual(invite.seatSql, accept.seatSql);
-  assert.equal(invite.seatSql.length, 2);
+  // create: fast-path + locked re-check; accept: one check under the invitation lock.
+  assert.equal(invite.seatSql.length, 4);
+  assert.equal(accept.seatSql.length, 2);
+  assert.deepEqual(invite.seatSql.slice(0, 2), accept.seatSql);
+  assert.deepEqual(invite.seatSql.slice(2, 4), accept.seatSql);
 });
 
 test("SaaS ENTERPRISE does not apply a numeric member cap", async () => {

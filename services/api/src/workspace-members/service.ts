@@ -165,6 +165,12 @@ export interface WorkspaceMembersServiceDeps {
   resolveOutboundMailActive?: () => Promise<boolean>;
   /** Optional structured logger for invite resend / copy-link actions. */
   logger?: { info(message: string, fields?: Record<string, unknown>): void };
+  /**
+   * Optional awaitable invoked at the start of the seat-reservation transaction,
+   * before the workspace row lock. Tests use this to force concurrent callers to
+   * interleave; production leaves it unset.
+   */
+  seatReservationHold?: () => Promise<void>;
   config?: PlanEntitlementRuntimeConfig;
   /**
    * When self_hosted, removing a member from the instance workspace blocks the account.
@@ -251,6 +257,7 @@ export class WorkspaceMembersService {
   private readonly resolvePublicAppBaseUrl?: PublicAppUrlResolver;
   private readonly resolveOutboundMailActive?: () => Promise<boolean>;
   private readonly logger?: WorkspaceMembersServiceDeps["logger"];
+  private readonly seatReservationHold?: () => Promise<void>;
   private readonly config?: PlanEntitlementRuntimeConfig;
   private readonly resolveDeploymentMode: () => DeploymentMode;
   private readonly workspaceKeys: WorkspaceMembersServiceDeps["workspaceKeys"];
@@ -264,6 +271,7 @@ export class WorkspaceMembersService {
     this.resolvePublicAppBaseUrl = deps.resolvePublicAppBaseUrl;
     this.resolveOutboundMailActive = deps.resolveOutboundMailActive;
     this.logger = deps.logger;
+    this.seatReservationHold = deps.seatReservationHold;
     this.config = deps.config;
     const mode = deps.deploymentMode;
     this.resolveDeploymentMode = typeof mode === "function" ? mode : () => mode;
@@ -444,6 +452,8 @@ export class WorkspaceMembersService {
     }
 
     this.assertAdditionalMembersConfigurable(workspace);
+    // Fast-path before preparation; the authoritative check runs again inside the
+    // insert transaction after locking the workspace row.
     await this.assertAdditionalMembersQuota(workspaceId, workspace, invitations.length);
     await this.assertMembers(workspaceId, actorId, "post");
     await ensureDefaultWorkspaceRoles(this.db, workspaceId, workspace.ownerId);
@@ -480,15 +490,18 @@ export class WorkspaceMembersService {
 
     const mailActive = hasEmailInvite ? await this.isOutboundMailActive() : false;
     const emailDeliveryStatus: InvitationDeliveryStatus = mailActive ? "sent" : "pending";
-    const created: Array<{
-      invitationId: string;
-      email: string | null;
+
+    type PreparedInvite = {
       roleId: string;
       deliveryMethod: InvitationDeliveryMethod;
-      inviteUrl?: string;
-      expiresAt?: string;
-    }> = [];
-
+      email: string | null;
+      role: { builtinKey: string | null; name: string };
+      invitationId: string;
+      rawToken: string;
+      tokenHash: string;
+      expiresAt: string;
+    };
+    const prepared: PreparedInvite[] = [];
     for (const item of normalizedItems) {
       if (!isEntityId(item.roleId)) {
         throw new WorkspaceMembersServiceError("BAD_REQUEST", 400, "invalid roleId");
@@ -503,11 +516,6 @@ export class WorkspaceMembersService {
       }
       this.assertAssignableWorkspaceRole(workspace, role);
 
-      const invitationId = generateEntityId();
-      const rawToken = randomBytes(32).toString("base64url");
-      const tokenHash = hashInviteToken(rawToken);
-      const expiresAt = new Date(Date.now() + INVITE_TTL_MS).toISOString();
-
       if (item.deliveryMethod === "link") {
         if (item.email != null && String(item.email).trim() !== "") {
           throw new WorkspaceMembersServiceError(
@@ -516,24 +524,17 @@ export class WorkspaceMembersService {
             "link invitations must not include an email",
           );
         }
-
-        await this.db.query(
-          `
-            INSERT INTO workspace_invitations (
-              id, workspace_id, email, role_id, invited_by_user_id, token_hash, status,
-              expires_at, delivery_status, delivery_method
-            ) VALUES ($1, $2, NULL, $3, $4, $5, 'pending', $6::timestamptz, 'sent', 'link')
-          `,
-          [invitationId, workspaceId, item.roleId, actorId, tokenHash, expiresAt],
-        );
-
-        created.push({
-          invitationId,
-          email: null,
+        const invitationId = generateEntityId();
+        const rawToken = randomBytes(32).toString("base64url");
+        prepared.push({
           roleId: item.roleId,
           deliveryMethod: "link",
-          inviteUrl: `${publicAppBaseUrl}/invite/${rawToken}`,
-          expiresAt,
+          email: null,
+          role,
+          invitationId,
+          rawToken,
+          tokenHash: hashInviteToken(rawToken),
+          expiresAt: new Date(Date.now() + INVITE_TTL_MS).toISOString(),
         });
         continue;
       }
@@ -542,112 +543,197 @@ export class WorkspaceMembersService {
       if (!email || !email.includes("@") || email.length > 254) {
         throw new WorkspaceMembersServiceError("BAD_REQUEST", 400, "invalid email");
       }
-
-      const alreadyMember = await this.db.query<{ ok: boolean }>(
-        `
-          SELECT EXISTS (
-            SELECT 1 FROM (
-              SELECT 1 AS x FROM workspaces w
-              JOIN users u ON u.id = w.owner_id
-              WHERE w.id = $1 AND lower(u.email) = $2
-              UNION ALL
-              SELECT 1 AS x FROM workspace_members wm
-              JOIN users u ON u.id = wm.user_id
-              WHERE wm.workspace_id = $1 AND lower(u.email) = $2
-            ) rows
-          ) AS ok
-        `,
-        [workspaceId, email],
-      );
-      if (alreadyMember[0]?.ok) {
-        throw new WorkspaceMembersServiceError(
-          "CONFLICT",
-          409,
-          `user already a member: ${email}`,
-        );
-      }
-
-      const existingPending = await this.db.query<{ id: string }>(
-        `
-          SELECT id FROM workspace_invitations
-          WHERE workspace_id = $1 AND lower(email) = $2 AND status = 'pending'
-          LIMIT 1
-        `,
-        [workspaceId, email],
-      );
-      if (existingPending[0]) {
-        throw new WorkspaceMembersServiceError(
-          "CONFLICT",
-          409,
-          `pending invitation already exists: ${email}`,
-        );
-      }
-
-      await this.db.query(
-        `
-          INSERT INTO workspace_invitations (
-            id, workspace_id, email, role_id, invited_by_user_id, token_hash, status,
-            expires_at, delivery_status, delivery_method
-          ) VALUES ($1, $2, $3, $4, $5, $6, 'pending', $7::timestamptz, $8, 'email')
-        `,
-        [
-          invitationId,
-          workspaceId,
-          email,
-          item.roleId,
-          actorId,
-          tokenHash,
-          expiresAt,
-          emailDeliveryStatus,
-        ],
-      );
-
-      if (mailActive) {
-        const inviteUrl = `${publicAppBaseUrl}/invite/${rawToken}`;
-        // Recipient profile locale wins; inviter Accept-Language is only a fallback
-        // for unknown recipients / null profile locale (see resolveEmailLocaleForRecipient).
-        const recipientLocale = await this.loadUserLocaleByEmail(email);
-        try {
-          await this.emailTemplates!.sendWorkspaceInvite({
-            to: email,
-            localeHints: {
-              userLocale: recipientLocale,
-              acceptLanguage: localeHints.acceptLanguage,
-            },
-            variables: {
-              inviterDisplayName: displayName(inviter),
-              inviterEmail: inviter.email,
-              workspaceName: workspace.name,
-              roleBuiltinKey:
-                role.builtinKey === "owner" ||
-                role.builtinKey === "admin" ||
-                role.builtinKey === "user"
-                  ? role.builtinKey
-                  : null,
-              roleName: role.name,
-              expiresAtIso: expiresAt,
-              inviteUrl,
-            },
-          });
-        } catch (error) {
-          await this.db.query(`DELETE FROM workspace_invitations WHERE id = $1`, [invitationId]);
-          if (error instanceof WorkspaceMembersServiceError) {
-            throw error;
-          }
-          throw new WorkspaceMembersServiceError(
-            "EMAIL_SEND_FAILED",
-            503,
-            "failed to send invitation email",
-          );
-        }
-      }
-
-      created.push({
-        invitationId,
-        email,
+      const invitationId = generateEntityId();
+      const rawToken = randomBytes(32).toString("base64url");
+      prepared.push({
         roleId: item.roleId,
         deliveryMethod: "email",
+        email,
+        role,
+        invitationId,
+        rawToken,
+        tokenHash: hashInviteToken(rawToken),
+        expiresAt: new Date(Date.now() + INVITE_TTL_MS).toISOString(),
       });
+    }
+
+    type CreatedInvite = {
+      invitationId: string;
+      email: string | null;
+      roleId: string;
+      deliveryMethod: InvitationDeliveryMethod;
+      inviteUrl?: string;
+      expiresAt?: string;
+    };
+    type PendingEmailSend = {
+      invitationId: string;
+      email: string;
+      role: { builtinKey: string | null; name: string };
+      rawToken: string;
+      expiresAt: string;
+    };
+
+    const { created, pendingEmails } = await this.runInTransaction(async (tx) => {
+      // Test-only hold so concurrent callers can rendezvous before the row lock.
+      await this.seatReservationHold?.();
+      // Serialize concurrent seat reservations for this workspace before counting/inserting.
+      await tx.query("SELECT id FROM workspaces WHERE id = $1 FOR UPDATE", [workspaceId]);
+      await this.assertAdditionalMembersQuota(workspaceId, workspace, invitations.length, tx);
+
+      const createdRows: CreatedInvite[] = [];
+      const emailQueue: PendingEmailSend[] = [];
+
+      for (const item of prepared) {
+        if (item.deliveryMethod === "link") {
+          await tx.query(
+            `
+              INSERT INTO workspace_invitations (
+                id, workspace_id, email, role_id, invited_by_user_id, token_hash, status,
+                expires_at, delivery_status, delivery_method
+              ) VALUES ($1, $2, NULL, $3, $4, $5, 'pending', $6::timestamptz, 'sent', 'link')
+            `,
+            [item.invitationId, workspaceId, item.roleId, actorId, item.tokenHash, item.expiresAt],
+          );
+
+          createdRows.push({
+            invitationId: item.invitationId,
+            email: null,
+            roleId: item.roleId,
+            deliveryMethod: "link",
+            inviteUrl: `${publicAppBaseUrl}/invite/${item.rawToken}`,
+            expiresAt: item.expiresAt,
+          });
+          continue;
+        }
+
+        const email = item.email!;
+        const alreadyMember = await tx.query<{ ok: boolean }>(
+          `
+            SELECT EXISTS (
+              SELECT 1 FROM (
+                SELECT 1 AS x FROM workspaces w
+                JOIN users u ON u.id = w.owner_id
+                WHERE w.id = $1 AND lower(u.email) = $2
+                UNION ALL
+                SELECT 1 AS x FROM workspace_members wm
+                JOIN users u ON u.id = wm.user_id
+                WHERE wm.workspace_id = $1 AND lower(u.email) = $2
+              ) rows
+            ) AS ok
+          `,
+          [workspaceId, email],
+        );
+        if (alreadyMember[0]?.ok) {
+          throw new WorkspaceMembersServiceError(
+            "CONFLICT",
+            409,
+            `user already a member: ${email}`,
+          );
+        }
+
+        const existingPending = await tx.query<{ id: string }>(
+          `
+            SELECT id FROM workspace_invitations
+            WHERE workspace_id = $1 AND lower(email) = $2 AND status = 'pending'
+            LIMIT 1
+          `,
+          [workspaceId, email],
+        );
+        if (existingPending[0]) {
+          throw new WorkspaceMembersServiceError(
+            "CONFLICT",
+            409,
+            `pending invitation already exists: ${email}`,
+          );
+        }
+
+        await tx.query(
+          `
+            INSERT INTO workspace_invitations (
+              id, workspace_id, email, role_id, invited_by_user_id, token_hash, status,
+              expires_at, delivery_status, delivery_method
+            ) VALUES ($1, $2, $3, $4, $5, $6, 'pending', $7::timestamptz, $8, 'email')
+          `,
+          [
+            item.invitationId,
+            workspaceId,
+            email,
+            item.roleId,
+            actorId,
+            item.tokenHash,
+            item.expiresAt,
+            emailDeliveryStatus,
+          ],
+        );
+
+        if (mailActive) {
+          emailQueue.push({
+            invitationId: item.invitationId,
+            email,
+            role: item.role,
+            rawToken: item.rawToken,
+            expiresAt: item.expiresAt,
+          });
+        }
+
+        createdRows.push({
+          invitationId: item.invitationId,
+          email,
+          roleId: item.roleId,
+          deliveryMethod: "email",
+        });
+      }
+
+      return { created: createdRows, pendingEmails: emailQueue };
+    });
+
+    // Emails go out after the insert transaction commits so the seat lock is not held
+    // across SMTP. On a send failure, drop every invite in this batch that never received
+    // an email (the failing one and any later ones). Invites already emailed stay; they
+    // match what the recipient got and continue to occupy seats. Never log SMTP errors
+    // here — they can carry secret-bearing transport details.
+    for (let index = 0; index < pendingEmails.length; index += 1) {
+      const pending = pendingEmails[index]!;
+      const inviteUrl = `${publicAppBaseUrl}/invite/${pending.rawToken}`;
+      // Recipient profile locale wins; inviter Accept-Language is only a fallback
+      // for unknown recipients / null profile locale (see resolveEmailLocaleForRecipient).
+      const recipientLocale = await this.loadUserLocaleByEmail(pending.email);
+      try {
+        await this.emailTemplates!.sendWorkspaceInvite({
+          to: pending.email,
+          localeHints: {
+            userLocale: recipientLocale,
+            acceptLanguage: localeHints.acceptLanguage,
+          },
+          variables: {
+            inviterDisplayName: displayName(inviter),
+            inviterEmail: inviter.email,
+            workspaceName: workspace.name,
+            roleBuiltinKey:
+              pending.role.builtinKey === "owner" ||
+              pending.role.builtinKey === "admin" ||
+              pending.role.builtinKey === "user"
+                ? pending.role.builtinKey
+                : null,
+            roleName: pending.role.name,
+            expiresAtIso: pending.expiresAt,
+            inviteUrl,
+          },
+        });
+      } catch (error) {
+        const unsentIds = pendingEmails.slice(index).map((row) => row.invitationId);
+        await this.db.query(`DELETE FROM workspace_invitations WHERE id = ANY($1::bigint[])`, [
+          unsentIds,
+        ]);
+        if (error instanceof WorkspaceMembersServiceError) {
+          throw error;
+        }
+        throw new WorkspaceMembersServiceError(
+          "EMAIL_SEND_FAILED",
+          503,
+          "failed to send invitation email",
+        );
+      }
     }
 
     const deliveryStatus: InvitationDeliveryStatus = hasEmailInvite
@@ -1952,6 +2038,11 @@ export class WorkspaceMembersService {
 
     // The pending invitation already occupies a seat. Reject only when occupied
     // seats are already over the cap (downgrade or a raced extra invite).
+    // Lock the workspace so seat counts stay consistent with createInvitations.
+    await this.seatReservationHold?.();
+    await tx.query("SELECT id FROM workspaces WHERE id = $1 FOR UPDATE", [
+      invitation.workspace_id,
+    ]);
     const workspace = await this.requireWorkspace(invitation.workspace_id);
     await this.assertAdditionalMembersQuota(invitation.workspace_id, workspace, 0, tx);
 
@@ -2182,6 +2273,17 @@ export class WorkspaceMembersService {
       403,
       "custom workspace profiles require a plan that includes them",
     );
+  }
+
+  /**
+   * Prefer a real DB transaction when available. Unit-test mocks often expose only
+   * `query`; those run the callback against the same executor without BEGIN/COMMIT.
+   */
+  private async runInTransaction<T>(fn: (tx: QueryExecutor) => Promise<T>): Promise<T> {
+    if (typeof this.db.transaction === "function") {
+      return this.db.transaction(fn);
+    }
+    return fn(this.db);
   }
 
   private async assertAdditionalMembersQuota(
