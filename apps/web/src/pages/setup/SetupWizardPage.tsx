@@ -128,7 +128,7 @@ function RequirementCrossIcon(props: SVGProps<SVGSVGElement>) {
 }
 
 export default function SetupWizardPage() {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const navigate = useNavigate();
   const {
     authClient,
@@ -588,6 +588,7 @@ export default function SetupWizardPage() {
         personal_vault_name: personalVaultName,
         first_name: firstName.trim(),
         last_name: lastName.trim(),
+        locale,
         ...(loginKeyB64 ? { login_key: loginKeyB64 } : {}),
         platform: browserEnv.platform,
         os_name: browserEnv.osName,

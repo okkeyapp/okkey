@@ -2069,6 +2069,11 @@ export interface RegisterCompleteRequestDto {
   first_name?: string;
   last_name?: string;
   /**
+   * Optional UI locale preference (`users.locale`).
+   * Server stores only supported AppLocale tags; unknown/absent → NULL.
+   */
+  locale?: string;
+  /**
    * Standard base64 of the 32-byte login key derived from the new master password.
    * Not the password and not password share C. Omitted by older clients.
    */

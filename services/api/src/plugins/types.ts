@@ -11,9 +11,12 @@ import type { VaultsRepository, WorkspacesRepository } from "../storage/reposito
 import type { CapsuleAccessSettingsProvider } from "../capsule/access-settings-provider.ts";
 import type { FixedWindowCounterRedis } from "../storage/fixed-window-counter.ts";
 import type { VaultSharingService } from "../vault-sharing/service.ts";
+import type { PluginOutboundEmailMessage } from "./outbound-mail.ts";
 
 /** Redis surface for fixed-window counters (and related enterprise rate limits). */
 export type ApiEnterprisePluginRedis = FixedWindowCounterRedis;
+
+export type { PluginOutboundEmailMessage };
 
 export type ApiEnterprisePluginContext = {
   app: HttpApp;
@@ -112,6 +115,18 @@ export type ApiEnterprisePluginContext = {
    * entitlement soft-lock when hosted mode is confirmed.
    */
   setEnterpriseLicenseLapsed(lapsed: boolean): void;
+  /**
+   * Whether Core outbound mail is active (OTP / invites).
+   * Uses verified database mail settings when present; otherwise env deliverability.
+   * `EMAIL_PROVIDER=logger` is not deliverable unless DB SMTP was verified.
+   * Does not expose SMTP credentials.
+   */
+  isOutboundMailActive(): Promise<boolean>;
+  /**
+   * Send mail through the same outbound sender and effective From as Core OTP / invite mail.
+   * Bounded connect/send timeout; never accepts or returns SMTP credentials.
+   */
+  sendOutboundEmail(message: PluginOutboundEmailMessage): Promise<void>;
   /**
    * Confirm or clear hosted (SaaS) deployment from a signed token issued by the
    * license server (one token for our hosting). Default `false`.

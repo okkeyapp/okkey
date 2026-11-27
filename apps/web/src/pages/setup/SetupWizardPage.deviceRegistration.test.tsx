@@ -340,6 +340,7 @@ describe("SetupWizardPage device registration retry", () => {
     expect(await screen.findByTestId("setup-device-registration-failed")).toBeTruthy();
     expect(completeRegistration).toHaveBeenCalledTimes(1);
     expect(completeRegistration.mock.calls[0]?.[0]?.auth_state_id).toBe("auth-state");
+    expect(completeRegistration.mock.calls[0]?.[0]?.locale).toBe("en");
 
     fireEvent.click(screen.getByRole("button", { name: "web.setupWizard.deviceRegistration.retry" }));
 
@@ -348,6 +349,7 @@ describe("SetupWizardPage device registration retry", () => {
     });
     expect(beginRegistration).toHaveBeenCalledTimes(2);
     expect(completeRegistration.mock.calls[1]?.[0]?.auth_state_id).toBe("auth-state-retry");
+    expect(completeRegistration.mock.calls[1]?.[0]?.locale).toBe("en");
     expect(await screen.findByText("ABCD-EFGH-IJKM")).toBeTruthy();
   });
 });

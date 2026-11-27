@@ -275,3 +275,102 @@ test("POST /auth/register/complete rejects a stale master-password policy versio
   const payload = JSON.parse(res.body) as { error: string };
   assert.equal(payload.error, "MASTER_PASSWORD_POLICY_REJECTED");
 });
+
+test("POST /auth/register/complete forwards a supported locale", async () => {
+  let captured: { locale?: string | null } | undefined;
+  const body = validRegisterBody();
+  body.locale = "ru";
+  const res = await dispatch({
+    body,
+    registrationService: createRegistrationStub(async (input) => {
+      captured = input as { locale?: string | null };
+      return {
+        userId: "u1",
+        workspaceId: "w1",
+        vaultId: "v1",
+        deviceId: "d1",
+        deviceStatus: "trusted",
+        accessToken: "tok-reg-1",
+        expiresAt: "2099-01-01T00:00:00.000Z",
+        tokenType: "Bearer" as const,
+        scope: "registration_recovery" as const,
+      };
+    }),
+  });
+  assert.equal(res.statusCode, 201);
+  assert.equal(captured?.locale, "ru");
+});
+
+test("POST /auth/register/complete normalizes BCP-47 locale tags", async () => {
+  let captured: { locale?: string | null } | undefined;
+  const body = validRegisterBody();
+  body.locale = "ru-RU";
+  const res = await dispatch({
+    body,
+    registrationService: createRegistrationStub(async (input) => {
+      captured = input as { locale?: string | null };
+      return {
+        userId: "u1",
+        workspaceId: "w1",
+        vaultId: "v1",
+        deviceId: "d1",
+        deviceStatus: "trusted",
+        accessToken: "tok-reg-1",
+        expiresAt: "2099-01-01T00:00:00.000Z",
+        tokenType: "Bearer" as const,
+        scope: "registration_recovery" as const,
+      };
+    }),
+  });
+  assert.equal(res.statusCode, 201);
+  assert.equal(captured?.locale, "ru");
+});
+
+test("POST /auth/register/complete ignores an unsupported locale", async () => {
+  let captured: { locale?: string | null } | undefined;
+  const body = validRegisterBody();
+  body.locale = "zh-CN";
+  const res = await dispatch({
+    body,
+    registrationService: createRegistrationStub(async (input) => {
+      captured = input as { locale?: string | null };
+      return {
+        userId: "u1",
+        workspaceId: "w1",
+        vaultId: "v1",
+        deviceId: "d1",
+        deviceStatus: "trusted",
+        accessToken: "tok-reg-1",
+        expiresAt: "2099-01-01T00:00:00.000Z",
+        tokenType: "Bearer" as const,
+        scope: "registration_recovery" as const,
+      };
+    }),
+  });
+  assert.equal(res.statusCode, 201);
+  assert.equal(captured?.locale, null);
+});
+
+test("POST /auth/register/complete omits locale when absent", async () => {
+  let captured: { locale?: string | null } | undefined;
+  const body = validRegisterBody();
+  const res = await dispatch({
+    body,
+    registrationService: createRegistrationStub(async (input) => {
+      captured = input as { locale?: string | null };
+      return {
+        userId: "u1",
+        workspaceId: "w1",
+        vaultId: "v1",
+        deviceId: "d1",
+        deviceStatus: "trusted",
+        accessToken: "tok-reg-1",
+        expiresAt: "2099-01-01T00:00:00.000Z",
+        tokenType: "Bearer" as const,
+        scope: "registration_recovery" as const,
+      };
+    }),
+  });
+  assert.equal(res.statusCode, 201);
+  assert.equal(captured?.locale, null);
+});

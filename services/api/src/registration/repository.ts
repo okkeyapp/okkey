@@ -37,6 +37,11 @@ export interface RegistrationBundleInput {
   /** Optional display name fields (stored server-side for UX after client storage loss). */
   firstName?: string | null;
   lastName?: string | null;
+  /**
+   * Preferred UI/email locale (`users.locale`).
+   * Already normalized to a supported tag, or null when unset/unknown.
+   */
+  locale?: string | null;
   /** Plan for the personal workspace created at registration. */
   planTier?: string;
   /** Slow hash of the client login key. Omitted until the client enrolls. */
@@ -78,12 +83,13 @@ export async function insertRegistrationBundle(
         password_kdf_params_version,
         first_name,
         last_name,
+        locale,
         last_vault_unlocked_at,
         login_verifier,
         login_verifier_salt,
         login_verifier_params_version
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::timestamptz, $13, $14, $15)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::timestamptz, $14, $15, $16)
       RETURNING id
     `,
     [
@@ -98,6 +104,7 @@ export async function insertRegistrationBundle(
       input.passwordKdfParamsVersion,
       input.firstName ?? null,
       input.lastName ?? null,
+      input.locale ?? null,
       input.nowIso,
       input.loginVerifier ? Buffer.from(input.loginVerifier) : null,
       input.loginVerifierSalt ? Buffer.from(input.loginVerifierSalt) : null,
