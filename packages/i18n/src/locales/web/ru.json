@@ -1746,6 +1746,7 @@
   "unlock.forgotPassword": "Забыли мастер-пароль?",
   "unlock.useMasterPassword": "Ввести мастер-пароль",
   "unlock.usePin": "Ввести PIN-код",
+  "unlock.useBiometrics": "Использовать биометрию",
   "unlock.biometricPending": "Ожидаем биометрию…",
   "unlock.biometricFailed": "Биометрия не сработала. Используйте другой способ разблокировки",
   "unlock.pinIncorrect": "Неверный PIN-код",

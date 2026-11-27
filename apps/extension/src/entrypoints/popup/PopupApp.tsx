@@ -4,9 +4,7 @@ import {
   useMemo,
   useRef,
   useState,
-  type ClipboardEvent,
   type FormEvent,
-  type KeyboardEvent,
 } from "react";
 import {
   AccountUserBar,
@@ -27,7 +25,7 @@ import {
   cn,
 } from "@okkey/ui";
 import { formatWebMessage, getWebLocaleNativeName, READY_WEB_LOCALES, type WebLocale, type WebMessageValues, intlLocaleTag } from "@okkey/i18n";
-import { buildVaultUnlockAttestation, UnsupportedIdentityBundleError, unwrapUnlockMaterialWithPin, wipeBytes } from "@okkey/crypto";
+import { buildVaultUnlockAttestation, UnsupportedIdentityBundleError } from "@okkey/crypto";
 import { isClientUpgradeRequiredError } from "@okkey/api";
 import {
   readShortMasterPasswordHintDismissed,
@@ -66,7 +64,10 @@ import {
   type PasskeyHandoffStored,
 } from "../../lib/passkeyHandoffPoll";
 import { clearExtensionDeviceSigningKey } from "../../lib/deviceSigningKey";
-import { readExtensionPinUnlockWrap } from "../../lib/extensionDeviceUnlockStore";
+import {
+  readExtensionBioUnlockWrap,
+  readExtensionPinUnlockWrap,
+} from "../../lib/extensionDeviceUnlockStore";
 import {
   clearExtensionServerKeyShareMemory,
   ensureExtensionVaultBundle,
@@ -92,7 +93,6 @@ import {
   resolveExtensionIdleLockMs,
   vaultIdleLockMsFromServerSeconds,
 } from "../../lib/extensionVaultSession";
-import { clearPinFailures, isPinLocked, recordPinFailure } from "../../lib/pinRateLimit";
 import {
   WEB_BASE_URL_UNREACHABLE_ERROR,
   probeWebBaseUrl,
@@ -118,24 +118,14 @@ import {
   type ExtensionSession,
 } from "../../lib/storage";
 import { readExtensionVaultBundle } from "../../lib/vaultStorage";
+import { ExtensionUnlockForm } from "./ExtensionUnlockForm";
 import { VaultPopup } from "./VaultPopup";
-
-type UnlockMode = "pin" | "master";
 
 /**
  * MVP: self-hosted server URL only. Set true (or wire to env later) to restore
  * SaaS / Self-hosted tabs without rewriting the sign-in flow.
  */
 const ENABLE_SAAS_SIGNIN = false;
-
-const PIN_LENGTH = 6;
-
-const pinCellClassName =
-  "h-[54px] w-full min-w-0 p-0 text-center text-lg font-semibold tabular-nums";
-
-function emptyPinDigits(): string[] {
-  return Array.from({ length: PIN_LENGTH }, () => "");
-}
 
 /**
  * Device sleep / OS lock and idle-after-popup-close are owned by the background
@@ -215,24 +205,17 @@ export function PopupApp() {
     "opening" | PasskeyHandoffStored["status"] | "error" | null
   >(null);
   const confirmedHandoffRef = useRef<string | null>(null);
-  const [masterPassword, setMasterPassword] = useState("");
   const [suggestLongerMasterPassword, setSuggestLongerMasterPassword] = useState(false);
-  const [unlockBusy, setUnlockBusy] = useState(false);
-  const [unlockMode, setUnlockMode] = useState<UnlockMode>("master");
+  const [biometricEnabled, setBiometricEnabled] = useState(false);
+  const [hasBioWrap, setHasBioWrap] = useState(false);
   const [pinEnabled, setPinEnabled] = useState(false);
-  const [pinDigits, setPinDigits] = useState(emptyPinDigits);
-  const [pinError, setPinError] = useState<string | null>(null);
+  const [hasPinWrap, setHasPinWrap] = useState(false);
+  const [unlockEpoch, setUnlockEpoch] = useState(0);
   const [unlockSecrets, setUnlockSecrets] = useState<UnlockWithMasterPasswordResult | null>(null);
   const [encryptedPrivateKeyPayload, setEncryptedPrivateKeyPayload] = useState<string | null>(null);
   const [vaultIdleLockMs, setVaultIdleLockMs] = useState(DEFAULT_EXTENSION_IDLE_LOCK_MS);
   const serverUrlInputRef = useRef<HTMLInputElement>(null);
-  const masterPasswordInputRef = useRef<HTMLInputElement>(null);
-  const pinInputsRef = useRef<(HTMLInputElement | null)[]>([]);
-  const pinAutoSubmitEnabledRef = useRef(true);
-  const pinSubmitInFlightRef = useRef(false);
   const unlockSecretsRef = useRef<UnlockWithMasterPasswordResult | null>(null);
-  const pinLabelId = "unlock-pin-label";
-  const pinValue = pinDigits.join("");
 
   const t = useCallback(
     (key: string, values?: WebMessageValues) => formatWebMessage(locale, key, values ?? {}),
@@ -360,7 +343,6 @@ export function PopupApp() {
     }
     setEncryptedPrivateKeyPayload(identityPayload);
     setVaultIdleLockMs(fresh.idleLockMs);
-    setMasterPassword("");
     void applyExtensionStoredTheme();
     setScreen("vault");
     void browser.runtime.sendMessage({ type: AUTOFILL_MSG.unlocked }).catch(() => {
@@ -379,7 +361,6 @@ export function PopupApp() {
     setSession(null);
     setTrust(null);
     setIdentity(null);
-    setMasterPassword("");
     setUnlockSecrets(null);
     setEncryptedPrivateKeyPayload(null);
     const lastServer = await readLastServer();
@@ -613,8 +594,8 @@ export function PopupApp() {
           unlockSecretsRef.current = null;
           setUnlockSecrets(null);
           setEncryptedPrivateKeyPayload(null);
-          setMasterPassword("");
           void clearExtensionUnlockSession();
+          setUnlockEpoch((n) => n + 1);
           setScreen("unlock");
         }
       });
@@ -642,7 +623,7 @@ export function PopupApp() {
       unlockSecretsRef.current = null;
       setUnlockSecrets(null);
       setEncryptedPrivateKeyPayload(null);
-      setMasterPassword("");
+      setUnlockEpoch((n) => n + 1);
       setScreen("unlock");
     };
     area.onChanged.addListener(onChanged);
@@ -662,7 +643,7 @@ export function PopupApp() {
     return () => window.clearTimeout(id);
   }, [screen, hostMode]);
 
-  // Prefer PIN when enabled on this device (same as web unlock).
+  // Prefer biometrics, then PIN, when enabled on this device (same as web unlock).
   useEffect(() => {
     if (screen !== "unlock" || !session) {
       return;
@@ -670,48 +651,22 @@ export function PopupApp() {
     let cancelled = false;
     void (async () => {
       const prefs = await readExtensionDevicePrefs(session.user_id);
-      const wrap = prefs.pinEnabled ? await readExtensionPinUnlockWrap(session.user_id) : null;
+      const [pinWrap, bioWrap] = await Promise.all([
+        prefs.pinEnabled ? readExtensionPinUnlockWrap(session.user_id) : Promise.resolve(null),
+        prefs.biometricEnabled ? readExtensionBioUnlockWrap(session.user_id) : Promise.resolve(null),
+      ]);
       if (cancelled) {
         return;
       }
-      const enabled = Boolean(prefs.pinEnabled && wrap);
-      setPinEnabled(enabled);
-      setUnlockMode(enabled ? "pin" : "master");
-      setPinDigits(emptyPinDigits());
-      setPinError(null);
-      pinAutoSubmitEnabledRef.current = true;
+      setPinEnabled(Boolean(prefs.pinEnabled));
+      setHasPinWrap(Boolean(pinWrap));
+      setBiometricEnabled(Boolean(prefs.biometricEnabled));
+      setHasBioWrap(Boolean(bioWrap));
     })();
     return () => {
       cancelled = true;
     };
   }, [screen, session]);
-
-  // Locked vault: focus PIN / master password on open, but do not steal focus
-  // if the user (or assistive tech) already focused something else in the popup.
-  useEffect(() => {
-    if (screen !== "unlock") {
-      return;
-    }
-    const id = window.setTimeout(() => {
-      const input =
-        unlockMode === "pin" ? pinInputsRef.current[0] : masterPasswordInputRef.current;
-      if (!input) {
-        return;
-      }
-      const active = document.activeElement;
-      if (
-        active instanceof HTMLElement &&
-        active !== document.body &&
-        active !== document.documentElement &&
-        active !== input &&
-        document.documentElement.contains(active)
-      ) {
-        return;
-      }
-      input.focus({ preventScroll: true });
-    }, 0);
-    return () => window.clearTimeout(id);
-  }, [screen, unlockMode]);
 
   useEffect(() => {
     if ((screen !== "pending" && screen !== "blocked") || !profile || !session) {
@@ -843,9 +798,9 @@ export function PopupApp() {
     unlockSecretsRef.current = null;
     setUnlockSecrets(null);
     setEncryptedPrivateKeyPayload(null);
-    setMasterPassword("");
     setSuggestLongerMasterPassword(false);
     void clearExtensionUnlockSession();
+    setUnlockEpoch((n) => n + 1);
     setScreen("unlock");
   }, []);
 
@@ -949,9 +904,6 @@ export function PopupApp() {
         /* Unlock stays successful if the identity upgrade cannot run. */
       }
       setEncryptedPrivateKeyPayload(identityPayload);
-      setMasterPassword("");
-      setPinDigits(emptyPinDigits());
-      setPinError(null);
       await persistExtensionUnlockSession({
         userId: session.user_id,
         secrets,
@@ -976,137 +928,23 @@ export function PopupApp() {
     [profile, session, t, vaultIdleLockMs],
   );
 
-  const setPinDigitAt = useCallback((index: number, char: string) => {
-    const d = char.replace(/\D/g, "").slice(-1);
-    setPinDigits((prev) => {
-      const next = [...prev];
-      next[index] = d;
-      return next;
-    });
-    if (d && index < PIN_LENGTH - 1) {
-      pinInputsRef.current[index + 1]?.focus();
-    }
-  }, []);
-
-  const handlePinCellChange = useCallback(
-    (index: number, value: string) => {
-      setPinError(null);
-      if (value.length > 1) {
-        const pasted = value.replace(/\D/g, "").slice(0, PIN_LENGTH);
-        if (pasted) {
-          setPinDigits(Array.from({ length: PIN_LENGTH }, (_, i) => pasted[i] ?? ""));
-          pinInputsRef.current[Math.min(pasted.length, PIN_LENGTH - 1)]?.focus();
-        }
-        return;
-      }
-      setPinDigitAt(index, value);
+  const onDeviceUnlockSecrets = useCallback(
+    async (secrets: UnlockWithMasterPasswordResult) => {
+      setSuggestLongerMasterPassword(false);
+      return finishUnlockWithSecrets(secrets);
     },
-    [setPinDigitAt],
+    [finishUnlockWithSecrets],
   );
 
-  const handlePinKeyDown = useCallback(
-    (index: number, e: KeyboardEvent<HTMLInputElement>) => {
-      if (e.key === "Backspace" && !pinDigits[index] && index > 0) {
-        pinInputsRef.current[index - 1]?.focus();
-      }
-      if (e.key === "ArrowLeft" && index > 0) {
-        pinInputsRef.current[index - 1]?.focus();
-      }
-      if (e.key === "ArrowRight" && index < PIN_LENGTH - 1) {
-        pinInputsRef.current[index + 1]?.focus();
-      }
-    },
-    [pinDigits],
-  );
-
-  const handlePinPaste = useCallback((e: ClipboardEvent<HTMLInputElement>) => {
-    e.preventDefault();
-    setPinError(null);
-    const text = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, PIN_LENGTH);
-    if (!text) {
-      return;
-    }
-    setPinDigits(Array.from({ length: PIN_LENGTH }, (_, i) => text[i] ?? ""));
-    pinInputsRef.current[Math.min(text.length, PIN_LENGTH - 1)]?.focus();
-  }, []);
-
-  const submitPinUnlock = useCallback(async () => {
-    if (!profile || !session || pinSubmitInFlightRef.current || unlockBusy) {
-      return;
-    }
-    const code = pinDigits.join("");
-    if (code.length !== PIN_LENGTH) {
-      return;
-    }
-    pinSubmitInFlightRef.current = true;
-    setUnlockBusy(true);
-    setPinError(null);
-    try {
-      if (isPinLocked(session.user_id)) {
-        setPinError(t("unlock.pinLocked"));
+  const onMasterPasswordUnlock = useCallback(
+    async (masterPassword: string) => {
+      if (!profile || !session) {
         return;
       }
-      const wrap = await readExtensionPinUnlockWrap(session.user_id);
-      if (!wrap) {
-        setPinEnabled(false);
-        setUnlockMode("master");
+      if (!masterPassword.trim()) {
+        toast.error(t("unlock.errorTitle"), { description: t("unlock.errorIncorrectPassword") });
         return;
       }
-      await initExtensionCrypto();
-      const pinBytes = new TextEncoder().encode(code);
-      try {
-        const unlocked = await unwrapUnlockMaterialWithPin({ wrap, pinUtf8: pinBytes });
-        clearPinFailures(session.user_id);
-        const secrets: UnlockWithMasterPasswordResult = {
-          vaultKey: unlocked.vaultKey,
-          passwordShareC: unlocked.passwordShareC,
-        };
-        setSuggestLongerMasterPassword(false);
-        await finishUnlockWithSecrets(secrets);
-      } catch {
-        const result = recordPinFailure(session.user_id);
-        setPinError(result.locked ? t("unlock.pinLocked") : t("unlock.pinIncorrect"));
-        setPinDigits(emptyPinDigits());
-        window.setTimeout(() => pinInputsRef.current[0]?.focus(), 0);
-      } finally {
-        wipeBytes(pinBytes);
-      }
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      toast.error(t("unlock.errorTitle"), { description: message });
-    } finally {
-      pinSubmitInFlightRef.current = false;
-      setUnlockBusy(false);
-    }
-  }, [finishUnlockWithSecrets, pinDigits, profile, session, t, unlockBusy]);
-
-  useEffect(() => {
-    if (screen !== "unlock" || unlockMode !== "pin" || !pinAutoSubmitEnabledRef.current || unlockBusy) {
-      return;
-    }
-    if (pinDigits.join("").length !== PIN_LENGTH) {
-      return;
-    }
-    pinAutoSubmitEnabledRef.current = false;
-    void submitPinUnlock();
-  }, [screen, unlockMode, pinDigits, unlockBusy, submitPinUnlock]);
-
-  const onUnlockSubmit = (event: FormEvent) => {
-    event.preventDefault();
-    if (!profile || !session || unlockBusy) {
-      return;
-    }
-    if (unlockMode === "pin") {
-      pinAutoSubmitEnabledRef.current = false;
-      void submitPinUnlock();
-      return;
-    }
-    if (!masterPassword.trim()) {
-      toast.error(t("unlock.errorTitle"), { description: t("unlock.errorIncorrectPassword") });
-      return;
-    }
-    setUnlockBusy(true);
-    void (async () => {
       try {
         const core = createCoreClient(profile.apiBaseUrl, session.access_token);
         const unlocked = await unlockExtensionVault({
@@ -1138,11 +976,10 @@ export function PopupApp() {
         }
         const message = err instanceof Error ? err.message : String(err);
         toast.error(t("unlock.errorTitle"), { description: message });
-      } finally {
-        setUnlockBusy(false);
       }
-    })();
-  };
+    },
+    [finishUnlockWithSecrets, profile, session, t],
+  );
 
   const shellLogo = <OkkeyLogoMark className="h-[60px] w-[61px]" />;
   const vaultCore = useMemo(() => {
@@ -1478,122 +1315,23 @@ export function PopupApp() {
     );
   }
 
-  const pinLocked = session?.user_id ? isPinLocked(session.user_id) : false;
-  const pinFieldsDisabled = unlockBusy || pinLocked;
-  const unlockSubmitDisabled =
-    unlockBusy ||
-    (unlockMode === "pin" ? pinValue.length !== PIN_LENGTH || pinLocked : masterPassword.length === 0);
-
   return (
     <PopupFrame>
       <AuthShell compact logo={shellLogo} title={t("unlock.title")} topRight={languageSelect}>
-        <form onSubmit={onUnlockSubmit} className="flex w-full flex-col gap-6" noValidate>
-          {identityBar}
-
-          {unlockMode === "pin" ? (
-            <div className="flex w-full flex-col gap-3">
-              <div className="flex items-center gap-2">
-                <span
-                  id={pinLabelId}
-                  className="min-w-0 flex-1 okkey-small font-medium text-copy-primary"
-                >
-                  {t("unlock.pin")}
-                </span>
-                <button
-                  type="button"
-                  className="okkey-small shrink-0 text-copy-secondary underline decoration-solid underline-offset-2 hover:text-copy-primary"
-                  disabled={unlockBusy}
-                  onClick={() => {
-                    setPinDigits(emptyPinDigits());
-                    setMasterPassword("");
-                    setPinError(null);
-                    setUnlockMode("master");
-                  }}
-                >
-                  {t("unlock.useMasterPassword")}
-                </button>
-              </div>
-              <div role="group" aria-labelledby={pinLabelId} className="grid w-full grid-cols-6 gap-2.5">
-                {pinDigits.map((digit, index) => (
-                  <Input
-                    key={index}
-                    ref={(el) => {
-                      pinInputsRef.current[index] = el;
-                    }}
-                    type="password"
-                    inputMode="numeric"
-                    autoComplete={index === 0 ? "one-time-code" : "off"}
-                    name={`unlock-pin-${index}`}
-                    maxLength={1}
-                    value={digit}
-                    disabled={pinFieldsDisabled}
-                    aria-label={t("auth.otp.digitAriaLabel", { n: index + 1, total: PIN_LENGTH })}
-                    className={pinCellClassName}
-                    onChange={(event) => handlePinCellChange(index, event.target.value)}
-                    onKeyDown={(event) => handlePinKeyDown(index, event)}
-                    onPaste={index === 0 ? handlePinPaste : undefined}
-                  />
-                ))}
-              </div>
-            </div>
-          ) : null}
-
-          {unlockMode === "master" ? (
-            <div className="flex w-full flex-col gap-3">
-              <div className="flex items-center gap-2">
-                <label
-                  htmlFor="unlock-master-password"
-                  className="min-w-0 flex-1 okkey-small font-medium text-copy-primary"
-                >
-                  {t("unlock.masterPassword")}
-                </label>
-                {pinEnabled ? (
-                  <button
-                    type="button"
-                    className="okkey-small shrink-0 text-copy-secondary underline decoration-solid underline-offset-2 hover:text-copy-primary"
-                    disabled={unlockBusy}
-                    onClick={() => {
-                      setPinDigits(emptyPinDigits());
-                      setMasterPassword("");
-                      setPinError(null);
-                      pinAutoSubmitEnabledRef.current = true;
-                      setUnlockMode("pin");
-                    }}
-                  >
-                    {t("unlock.usePin")}
-                  </button>
-                ) : null}
-              </div>
-              <Input
-                ref={masterPasswordInputRef}
-                id="unlock-master-password"
-                name="password"
-                type="password"
-                autoComplete="current-password"
-                value={masterPassword}
-                onChange={(e) => setMasterPassword(e.target.value)}
-                disabled={unlockBusy}
-              />
-            </div>
-          ) : null}
-
-          {pinError ? (
-            <p className="okkey-small text-destructive" role="alert">
-              {pinError}
-            </p>
-          ) : null}
-
-          <Button
-            type="submit"
-            variant="default"
-            className="w-full"
-            disabled={unlockSubmitDisabled}
-            aria-busy={unlockBusy || undefined}
-          >
-            {unlockBusy ? <Spinner className="size-4" /> : null}
-            {t("unlock.submit")}
-          </Button>
-        </form>
+        {session ? (
+          <ExtensionUnlockForm
+            userId={session.user_id}
+            identityBar={identityBar}
+            biometricEnabled={biometricEnabled}
+            hasBioWrap={hasBioWrap}
+            pinEnabled={pinEnabled}
+            hasPinWrap={hasPinWrap}
+            unlockEpoch={unlockEpoch}
+            t={t}
+            onUnlocked={onDeviceUnlockSecrets}
+            onMasterPasswordUnlock={onMasterPasswordUnlock}
+          />
+        ) : null}
       </AuthShell>
     </PopupFrame>
   );

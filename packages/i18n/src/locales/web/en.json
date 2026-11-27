@@ -1746,6 +1746,7 @@
   "unlock.forgotPassword": "Forgot master password?",
   "unlock.useMasterPassword": "Use master password",
   "unlock.usePin": "Use PIN code",
+  "unlock.useBiometrics": "Use biometrics",
   "unlock.biometricPending": "Waiting for biometrics…",
   "unlock.biometricFailed": "Biometrics failed. Use another unlock method",
   "unlock.pinIncorrect": "Incorrect PIN",
