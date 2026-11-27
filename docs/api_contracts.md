@@ -623,7 +623,7 @@ Lists vaults in a workspace the user may access.
 
 Lists built-in workspace roles (`owner`, `admin`, `user`) with member counts. Open-core response includes built-in roles only.
 
-When the enterprise `workspace-roles` plugin is enabled (`ENTERPRISE_MODULES=true`), the same route is served by the enterprise module and also returns custom roles with permissions. Permissions use a numeric matrix (`get`/`put`/`delete`: `0|1|2`, `post`: `0|1`). See `okkey-enterprise/docs/api/workspace-roles.md`.
+When the enterprise `workspace-roles` plugin is loaded (`ENTERPRISE_MODULES` bootstrap + loadable sibling) and licensed, the same route is served by the enterprise module and also returns custom roles with permissions. Permissions use a numeric matrix (`get`/`put`/`delete`: `0|1|2`, `post`: `0|1`). See `okkey-enterprise/docs/api/workspace-roles.md`.
 
 **Auth:** Bearer preferred; optional `X-User-Id` when allowed by config.
 
@@ -1273,7 +1273,7 @@ Replace lost device signing keys on an already-trusted (or pending) install and 
 
 ## Workspace invitations (enterprise plugin)
 
-These routes exist only when `ENTERPRISE_MODULES=true` and the `workspace-members` plugin is loaded. Without the plugin they return `404 NOT_FOUND`.
+These routes exist only when the enterprise plugin is loaded (`ENTERPRISE_MODULES` bootstrap + loadable sibling). Without the plugin they return `404 NOT_FOUND`. Writes still need a verified license (otherwise `403 PLAN_FEATURE_REQUIRED`).
 
 Invite create (`POST /workspaces/:workspaceId/invitations`) requires `PUBLIC_APP_URL` and a working email transport; otherwise `EMAIL_NOT_CONFIGURED` (503). Send failure deletes the pending row and returns `EMAIL_SEND_FAILED` (503).
 

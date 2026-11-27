@@ -128,9 +128,9 @@ yarn dev:api
 yarn dev:web
 ```
 
-New workspaces always get `plan_tier=FREE` (registration and SaaS `POST /workspaces`). On **self-hosted**, enterprise modules must be **requested and loadable** (sibling `okkey-enterprise`) for EE UI and paid create/edit (`plan_tier` ignored). Fail closed if the env flag is set but the sibling path is missing.
+New workspaces always get `plan_tier=FREE` (registration and SaaS `POST /workspaces`). On **self-hosted**, `ENTERPRISE_MODULES` only **loads** the sibling plugin (grammar in `services/api/.env.example`). Paid create/edit needs a **verified signed license** from that plugin (`plan_tier` ignored). Fail closed if the env requests load but the sibling path is missing. Without a valid license, writes return **403** `PLAN_FEATURE_REQUIRED`; an expired license soft-locks with **402** `PLAN_LICENSE_LAPSED`.
 
-Start the API with `ENTERPRISE_MODULES=true` **and** sibling present. Put SaaS `OKKEY_DEPLOYMENT_MODE=saas` in **`okkey-enterprise/backend/.env`** (not Core examples); Core loads it when modules are on so `POST /workspaces` and other SaaS routes register. Without that enterprise file / value, the create-workspace UI may appear (Vite) but `POST /workspaces` returns **404**.
+Start the API with `ENTERPRISE_MODULES=true` **and** sibling present. Put SaaS `OKKEY_DEPLOYMENT_MODE=saas` in **`okkey-enterprise/backend/.env`** (not Core examples); effective SaaS also needs a valid hosted-deployment token confirmed by the plugin. Without that, the create-workspace UI may appear (Vite) but `POST /workspaces` returns **404** / the instance stays self-hosted.
 
 Custom roles UI loads from `okkey-enterprise/web/workspace-roles/`.  
 Additional members UI: `okkey-enterprise/web/workspace-members/`.  
@@ -138,6 +138,6 @@ Shared vaults UI: `okkey-enterprise/web/workspace-shared-vaults/`.
 SaaS create UI and privacy-policy overlay: see `okkey-enterprise/web/.env.example` and `web/workspace-tenancy/`, `web/legal/`.  
 SaaS API deployment mode: see `okkey-enterprise/backend/.env.example`.
 
-Plan entitlements: SaaS → `hasPlanFeature(plan_tier)`; self-hosted without modules → FREE (+ `filesInItems`); self-hosted with modules → ENTERPRISE matrix (`plan_tier` ignored). Without modules, paid routes are absent (404).
+Plan entitlements: confirmed SaaS → `hasPlanFeature(plan_tier)`; self-hosted without plugin → FREE (+ `filesInItems`); self-hosted with plugin + verified license → ENTERPRISE matrix (`plan_tier` ignored). Without the plugin, paid routes are absent (404). Live UI state comes from `GET /public/features` (`enterpriseModulesActive`, `enterpriseLicenseManagementAvailable`).
 
-SaaS changes `plan_tier` via subscription; self-hosted paid access follows loaded modules (see `docs/architecture/12_open_core_boundary.md`).
+SaaS changes `plan_tier` via subscription; self-hosted paid access follows a verified license after plugin load (see `docs/architecture/12_open_core_boundary.md`).
