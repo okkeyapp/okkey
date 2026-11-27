@@ -118,19 +118,23 @@ Workspaces page: no additional-workspace create tile (self-hosted OSS = 1 worksp
 ```sh
 # repositories/okkey and repositories/okkey-enterprise as siblings
 cd okkey
-# Web: Core apps/web/.env → VITE_ENTERPRISE_MODULES=true (bootstrap only)
+# Web: Core apps/web/.env → VITE_ENTERPRISE_MODULES=true (build overlay; exact "true" only)
 #      okkey-enterprise/web/.env → VITE_DEPLOYMENT_MODE=saas
-# API: Core services/api/.env → ENTERPRISE_MODULES=true (bootstrap only)
+# API: Core services/api/.env → ENTERPRISE_MODULES=… (bootstrap only; see services/api/.env.example)
 #      okkey-enterprise/backend/.env → OKKEY_DEPLOYMENT_MODE=saas
-#      (API loads that file when modules are on — see okkey-enterprise/backend/.env.example)
+#      (API loads that file when the plugin is loaded - see okkey-enterprise/backend/.env.example)
 echo 'ENTERPRISE_MODULES=true' >> services/api/.env
 yarn dev:api
 yarn dev:web
 ```
 
-New workspaces always get `plan_tier=FREE` (registration and SaaS `POST /workspaces`). On **self-hosted**, enterprise modules must be **requested and loadable** (sibling `okkey-enterprise`) for EE UI and paid create/edit (`plan_tier` ignored). Fail closed if the env flag is set but the sibling path is missing.
+New workspaces always get `plan_tier=FREE` (registration and SaaS `POST /workspaces`). On **self-hosted**, `ENTERPRISE_MODULES` only requests plugin load when the sibling `okkey-enterprise` path is loadable. A loaded plugin exposes EE routes and the license-management UI. Paid create/edit require a verified signed license confirmed by that plugin (`plan_tier` ignored). Fail closed if load is requested but the sibling path is missing.
 
-Start the API with `ENTERPRISE_MODULES=true` **and** sibling present. Put SaaS `OKKEY_DEPLOYMENT_MODE=saas` in **`okkey-enterprise/backend/.env`** (not Core examples); Core loads it when modules are on so `POST /workspaces` and other SaaS routes register. Without that enterprise file / value, the create-workspace UI may appear (Vite) but `POST /workspaces` returns **404**.
+`ENTERPRISE_MODULES` grammar (load request only): see `services/api/.env.example`. Values `true` / `1` / `yes` / `all`, or a comma-separated list of known module ids, request load. The env alone never enables entitlements. Unknown tokens log a WARN and are ignored. If no known id remains, the plugin does not load (no license panel; EE plugin routes return **404**).
+
+`VITE_ENTERPRISE_MODULES` is a separate web build flag: only the exact value `true` enables the overlay. It is not an allowlist of module ids.
+
+Start the API with a load request (`ENTERPRISE_MODULES=true` or a known-id list) **and** sibling present. Put SaaS `OKKEY_DEPLOYMENT_MODE=saas` in **`okkey-enterprise/backend/.env`** (not Core examples); Core loads that file when the plugin is loaded so `POST /workspaces` and other SaaS routes can register. Effective hosted mode also requires plugin confirmation. Without that enterprise file / value, the create-workspace UI may appear (Vite) but `POST /workspaces` returns **404**.
 
 Custom roles UI loads from `okkey-enterprise/web/workspace-roles/`.  
 Additional members UI: `okkey-enterprise/web/workspace-members/`.  
@@ -138,6 +142,8 @@ Shared vaults UI: `okkey-enterprise/web/workspace-shared-vaults/`.
 SaaS create UI and privacy-policy overlay: see `okkey-enterprise/web/.env.example` and `web/workspace-tenancy/`, `web/legal/`.  
 SaaS API deployment mode: see `okkey-enterprise/backend/.env.example`.
 
-Plan entitlements: SaaS → `hasPlanFeature(plan_tier)`; self-hosted without modules → FREE (+ `filesInItems`); self-hosted with modules → ENTERPRISE matrix (`plan_tier` ignored). Without modules, paid routes are absent (404).
+Plan entitlements: confirmed hosted → `hasPlanFeature(plan_tier)`; self-hosted without a loaded plugin → FREE (+ `filesInItems`); self-hosted with a loaded plugin but no verified license → FREE matrix, license panel available, paid writes **403** `PLAN_FEATURE_REQUIRED`; self-hosted with verified license → ENTERPRISE matrix (`plan_tier` ignored). Lapsed license → soft-lock writes **402** `PLAN_LICENSE_LAPSED`. Without a loaded plugin, paid plugin routes are absent (**404**).
 
-SaaS changes `plan_tier` via subscription; self-hosted paid access follows loaded modules (see `docs/architecture/12_open_core_boundary.md`).
+Probe: `GET /public/features` returns `enterpriseModulesActive`, `enterpriseLicenseManagementAvailable`, and effective `deploymentMode` (see `docs/api_contracts.md`).
+
+SaaS changes `plan_tier` via subscription; self-hosted paid access follows a verified license after the plugin loads (see `docs/architecture/12_open_core_boundary.md`).
