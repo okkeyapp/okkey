@@ -449,7 +449,7 @@ run_docker() {
     docker build \
       -t "${image}" \
       --build-arg OPENSSL_VERSION="${OKKEY_PROXY_OPENSSL_VERSION:-3.5.9}" \
-      --build-arg NGINX_VERSION="${OKKEY_PROXY_NGINX_VERSION:-1.28.0}" \
+      --build-arg NGINX_VERSION="${OKKEY_PROXY_NGINX_VERSION:-1.30.8}" \
       "${ROOT}/nginx"
   fi
   local cport_inside="${OKKEY_COMPAT_LISTEN_INSIDE:-8443}"
