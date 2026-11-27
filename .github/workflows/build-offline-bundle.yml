@@ -25,6 +25,9 @@ on:
         description: Path of the written archive
         value: ${{ jobs.bundle.outputs.archive }}
 
+permissions:
+  contents: read
+
 jobs:
   bundle:
     name: offline-bundle

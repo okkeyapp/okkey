@@ -9,6 +9,9 @@ on:
       - "release/**"
       - "hotfix/**"
 
+permissions:
+  contents: read
+
 jobs:
   crypto-fuzz-quick:
     name: crypto-fuzz-quick
