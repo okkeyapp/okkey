@@ -5,7 +5,9 @@
 FROM debian:bookworm-slim@sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc AS build
 
 ARG OPENSSL_VERSION=3.5.9
-ARG NGINX_VERSION=1.28.0
+# nginx.org stable 1.30.x (pgp: Sergey Kandaurov / pluknet.key).
+ARG NGINX_VERSION=1.30.8
+ARG NGINX_SHA256=f867314ada32e717b949930859656c48a72dc6657aec598db58af2f98a40e1c1
 
 RUN apt-get update \
   && apt-get install -y --no-install-recommends \
@@ -22,7 +24,10 @@ WORKDIR /src
 RUN curl -fsSL "https://github.com/openssl/openssl/releases/download/openssl-${OPENSSL_VERSION}/openssl-${OPENSSL_VERSION}.tar.gz" \
     | tar xz \
   && curl -fsSL "https://nginx.org/download/nginx-${NGINX_VERSION}.tar.gz" \
-    | tar xz
+    -o "nginx-${NGINX_VERSION}.tar.gz" \
+  && echo "${NGINX_SHA256}  nginx-${NGINX_VERSION}.tar.gz" | sha256sum -c - \
+  && tar xz -f "nginx-${NGINX_VERSION}.tar.gz" \
+  && rm -f "nginx-${NGINX_VERSION}.tar.gz"
 
 WORKDIR /src/openssl-${OPENSSL_VERSION}
 RUN ./Configure --prefix=/usr/local/openssl --openssldir=/usr/local/openssl \

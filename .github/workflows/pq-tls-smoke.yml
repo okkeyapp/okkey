@@ -56,13 +56,19 @@ jobs:
         env:
           OKKEY_PQ_SMOKE_PREFIX: ${{ runner.temp }}/okkey-pq-smoke
           OPENSSL_VERSION: "3.5.9"
-          NGINX_VERSION: "1.28.0"
+          NGINX_VERSION: "1.30.8"
+          # nginx.org stable; cross-checked with official pgp (pluknet.key).
+          NGINX_SHA256: "f867314ada32e717b949930859656c48a72dc6657aec598db58af2f98a40e1c1"
         run: |
           set -euo pipefail
           mkdir -p "$OKKEY_PQ_SMOKE_PREFIX/src" "$OKKEY_PQ_SMOKE_PREFIX/prefix"
           cd "$OKKEY_PQ_SMOKE_PREFIX/src"
           curl -fsSL "https://github.com/openssl/openssl/releases/download/openssl-${OPENSSL_VERSION}/openssl-${OPENSSL_VERSION}.tar.gz" | tar xz
-          curl -fsSL "https://nginx.org/download/nginx-${NGINX_VERSION}.tar.gz" | tar xz
+          curl -fsSL "https://nginx.org/download/nginx-${NGINX_VERSION}.tar.gz" \
+            -o "nginx-${NGINX_VERSION}.tar.gz"
+          echo "${NGINX_SHA256}  nginx-${NGINX_VERSION}.tar.gz" | sha256sum -c -
+          tar xz -f "nginx-${NGINX_VERSION}.tar.gz"
+          rm -f "nginx-${NGINX_VERSION}.tar.gz"
           cd "openssl-${OPENSSL_VERSION}"
           ./Configure --prefix="$OKKEY_PQ_SMOKE_PREFIX/prefix" --openssldir="$OKKEY_PQ_SMOKE_PREFIX/prefix/ssl" \
             shared zlib no-docs -Wl,-rpath,"$OKKEY_PQ_SMOKE_PREFIX/prefix/lib"
