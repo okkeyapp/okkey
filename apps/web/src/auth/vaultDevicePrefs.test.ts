@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { finalizePendingVaultBundle, writeVaultBundle, type StoredVaultBundle } from "./localVaultBundle";
 import { VAULT_BUNDLE_PENDING_KEY, VAULT_BUNDLE_STORAGE_KEY, vaultBundleScopedStorageKey } from "./storageKeys";
 import { readVaultDevicePrefs, writeVaultDevicePrefs } from "./vaultDevicePrefs";
+import { writeBioUnlockWrap } from "./vaultDeviceUnlockStore";
 
 const USER = "user-sleep-lock";
 const PREFS_KEY = `okkey.vault.devicePrefs.v1.u.${USER}`;
@@ -121,5 +122,48 @@ describe("readVaultDevicePrefs lock on device sleep", () => {
     finalizePendingVaultBundle(USER);
     expect(localStorage.getItem(vaultBundleScopedStorageKey(USER))).toBeTruthy();
     expect(readVaultDevicePrefs(USER).lockOnDeviceSleep).toBe(false);
+  });
+
+  it("clears biometricEnabled when a legacy wrapKeyB64 bio record is wiped", () => {
+    writeVaultDevicePrefs(USER, {
+      lockOnDeviceSleep: false,
+      lockOnPopupClose: false,
+      clipboardClearSeconds: 0,
+      requireReauthZones: [],
+      pinEnabled: false,
+      biometricEnabled: true,
+    });
+    localStorage.setItem(
+      `okkey.vault.deviceUnlock.v1.u.${USER}`,
+      JSON.stringify({
+        pin: null,
+        bio: {
+          credentialIdB64: "cred",
+          ciphertextB64: "cipher",
+          wrapKeyB64: "legacy-secret-key-material",
+        },
+      }),
+    );
+    expect(readVaultDevicePrefs(USER).biometricEnabled).toBe(false);
+    expect(localStorage.getItem(`okkey.vault.deviceUnlock.v1.u.${USER}`)).not.toContain(
+      "wrapKeyB64",
+    );
+  });
+
+  it("keeps biometricEnabled when a PRF salt bio record is present", () => {
+    writeVaultDevicePrefs(USER, {
+      lockOnDeviceSleep: false,
+      lockOnPopupClose: false,
+      clipboardClearSeconds: 0,
+      requireReauthZones: [],
+      pinEnabled: false,
+      biometricEnabled: true,
+    });
+    writeBioUnlockWrap(USER, {
+      credentialIdB64: "cred",
+      ciphertextB64: "cipher",
+      prfSaltB64: "salt",
+    });
+    expect(readVaultDevicePrefs(USER).biometricEnabled).toBe(true);
   });
 });

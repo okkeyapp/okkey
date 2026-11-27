@@ -1,4 +1,5 @@
 import test from "node:test";
+import { hostedTestConfig } from "./test-api-config.ts";
 import assert from "node:assert/strict";
 import { testEntityId } from "./test-entity-id.ts";
 import { readFileSync } from "node:fs";
@@ -126,7 +127,7 @@ test("integration: registration + first unlock decrypts stored hybrid identity b
     postgres: storage.postgres,
     redis: storage.redis,
     sessionService,
-    config: { ...config, deploymentMode: "saas" },
+    config: hostedTestConfig(config),
   });
 
   await storage.redis.setWithTtl(

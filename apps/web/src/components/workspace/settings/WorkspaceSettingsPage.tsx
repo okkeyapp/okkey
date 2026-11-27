@@ -29,7 +29,11 @@ import WorkspaceSettingsProfilesSection from "./profiles/WorkspaceSettingsProfil
 import WorkspaceSettingsVaultsSection from "./vaults/WorkspaceSettingsVaultsSection";
 import WorkspaceSettingsMembersSection from "./members/WorkspaceSettingsMembersSection";
 import workspacePlanModule from "@okkey-enterprise/workspace-plan";
-import { webDeploymentMode, webDisplayPlanTier } from "../../../workspace/planEntitlements";
+import {
+  webDeploymentMode,
+  webDisplayPlanTier,
+  webEnterpriseLicenseManagementAvailable,
+} from "../../../workspace/planEntitlements";
 import SelfHostedFreePlanSection from "./plan/SelfHostedFreePlanSection";
 import WorkspaceSettingsMobileHeader from "./WorkspaceSettingsMobileHeader";
 import WorkspaceSettingsSidebar from "./WorkspaceSettingsSidebar";
@@ -87,12 +91,14 @@ export default function WorkspaceSettingsPage({
   const activeSection = requestedSection;
   const sectionPermissions = settingsSectionPermissionCell(workspacePermissions, activeSection);
   const displayPlanTier = webDisplayPlanTier(workspace);
-  // Self-hosted without modules → FREE display and the license request.
-  // Self-hosted with modules → ENTERPRISE display (stored plan_tier is ignored).
-  // SaaS → catalog plan_tier. Paid sections use the enterprise plan package when it is loaded.
+  // Self-hosted + plugin loaded → always the enterprise license panel (absent /
+  // invalid / expired / active). Core sales request only when no plugin.
+  // Confirmed hosted → billing catalog. PlanSection slot/props stay unchanged.
   const PlanSection =
-    webDeploymentMode() === "self_hosted" && displayPlanTier === "FREE"
-      ? SelfHostedFreePlanSection
+    webDeploymentMode() === "self_hosted"
+      ? webEnterpriseLicenseManagementAvailable() && workspacePlanModule.PlanSection
+        ? workspacePlanModule.PlanSection
+        : SelfHostedFreePlanSection
       : (workspacePlanModule.PlanSection ?? SelfHostedFreePlanSection);
 
   const workspaceName = workspace?.name ?? "…";

@@ -3,7 +3,10 @@
  * May have lived in sessionStorage before — `readStoredSession` migrates on read.
  */
 export const SESSION_STORAGE_KEY = "okkey.access.session";
-/** sessionStorage: unlocked vault key material for this tab (survives F5, not tab close). */
+/**
+ * Legacy sessionStorage key that once held cleartext vault unlock material.
+ * Web no longer writes secrets here; kept only so boot/lock can delete leftovers.
+ */
 export const VAULT_UNLOCK_TAB_KEY = "okkey.vault.unlock.tab";
 /** sessionStorage + localStorage: device share and KDF material. The server share is not stored here. */
 export const VAULT_BUNDLE_STORAGE_KEY = "okkey.vault.bundle";

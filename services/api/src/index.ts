@@ -8,6 +8,8 @@ import { RegistrationService } from "./registration/service.ts";
 import { createServer } from "node:http";
 import { createApiApp } from "./app.ts";
 import { isEnterpriseBackendLoadable, loadConfig } from "./config.ts";
+import { effectiveDeploymentMode } from "./deployment-mode.ts";
+import { isEnterpriseModulesEntitlementActive } from "./plan-entitlements.ts";
 import { ensureSelfHostedInstanceWorkspace } from "./setup/ensure-instance-workspace.ts";
 import { hasSelfHostedInstanceAccess } from "./setup/instance-access.ts";
 import { RedisDeviceBindChallengeStore } from "./device/bind-challenge-store.ts";
@@ -133,12 +135,12 @@ async function main(): Promise<void> {
     resolveRegistrationAllowed: async (email) => {
       if (!(await storage.repositories.users.hasAnyUsers())) {
         // Empty catalog: first owner must use the setup wizard, not email OTP.
-        return config.deploymentMode !== "self_hosted";
+        return effectiveDeploymentMode(config) !== "self_hosted";
       }
       if (!setupServiceRef) {
         return true;
       }
-      if (config.deploymentMode === "self_hosted") {
+      if (effectiveDeploymentMode(config) === "self_hosted") {
         // Reject at email start unless there is exactly one pending invite to the
         // instance workspace (email invites without the link).
         if (!resolvePendingInstanceInviteTokenHash) {
@@ -162,7 +164,7 @@ async function main(): Promise<void> {
     },
     resolveInstanceLoginAllowed: async (userId) =>
       hasSelfHostedInstanceAccess(storage.postgres, {
-        deploymentMode: config.deploymentMode,
+        deploymentMode: effectiveDeploymentMode(config),
         userId,
       }),
     resolvePendingInstanceInviteTokenHash: async (email) => {
@@ -184,7 +186,7 @@ async function main(): Promise<void> {
     config,
     assertInstanceAccess: async (userId) =>
       hasSelfHostedInstanceAccess(storage.postgres, {
-        deploymentMode: config.deploymentMode,
+        deploymentMode: effectiveDeploymentMode(config),
         userId,
       }),
   });
@@ -264,7 +266,7 @@ async function main(): Promise<void> {
     salesEmail: config.salesEmail,
     salesEmailDeliverable: isOutboundEmailDeliverable(config),
     resolveSalesEmailDeliverable: () => mailSettings.isOutboundActive(),
-    deploymentMode: config.deploymentMode,
+    deploymentMode: () => effectiveDeploymentMode(config),
     publicAppBaseUrl: config.publicAppBaseUrl,
     resolvePublicAppBaseUrl: () => mailSettings.publicAppBaseUrl(),
   });
@@ -283,9 +285,39 @@ async function main(): Promise<void> {
     storage.repositories.workspaces,
     storage.postgres,
   );
+  if (config.enterpriseModulesUnknownTokens.length > 0) {
+    logger.warn(
+      "ENTERPRISE_MODULES contains unknown module ids; they are ignored and do not enable anything extra",
+      {
+        unknownTokens: config.enterpriseModulesUnknownTokens,
+      },
+    );
+  }
+  if (
+    config.deploymentModeRequested === "saas" &&
+    config.hostedDeploymentConfirmed !== true
+  ) {
+    logger.warn(
+      "OKKEY_DEPLOYMENT_MODE requests hosted mode; running as self-hosted until the loaded plugin confirms a signed hosted token",
+      {
+        deploymentModeRequested: config.deploymentModeRequested,
+        deploymentMode: config.deploymentMode,
+      },
+    );
+  }
+  if (config.enterpriseModulesRequested) {
+    logger.warn(
+      "ENTERPRISE_MODULES is set; it no longer enables optional modules on its own. Modules stay off until the loaded plugin confirms a verified license",
+      {
+        enterpriseModulesPath: config.enterpriseModulesPath,
+        loadable: isEnterpriseBackendLoadable(config.enterpriseModulesPath),
+        pluginLoadable: config.enterpriseModulesEnabled,
+      },
+    );
+  }
   if (config.enterpriseModulesRequested && !config.enterpriseModulesEnabled) {
     logger.warn(
-      "ENTERPRISE_MODULES=true but enterprise backend is not loadable; continuing as FREE",
+      "ENTERPRISE_MODULES is set but enterprise backend is not loadable; continuing without optional modules",
       {
         enterpriseModulesPath: config.enterpriseModulesPath,
         loadable: isEnterpriseBackendLoadable(config.enterpriseModulesPath),
@@ -355,7 +387,7 @@ async function main(): Promise<void> {
     resolveOutboundMailActive: () => mailSettings.isOutboundActive(),
     logger,
     config,
-    deploymentMode: config.deploymentMode,
+    deploymentMode: () => effectiveDeploymentMode(config),
     workspaceKeys: workspaceKeyService,
   });
   resolveInviteRegistration = (rawToken, email) =>
@@ -386,7 +418,9 @@ async function main(): Promise<void> {
     workspaceMembers: workspaceMembersService,
     postgres: storage.postgres,
     config: {
-      deploymentMode: config.deploymentMode,
+      get deploymentMode() {
+        return effectiveDeploymentMode(config);
+      },
       nodeEnv: config.nodeEnv,
       registrationAuthStateTtlSeconds: config.registrationAuthStateTtlSeconds,
       sessionTtlSeconds: config.sessionTtlSeconds,
@@ -398,7 +432,7 @@ async function main(): Promise<void> {
   setupServiceRef = setupService;
   await ensureSelfHostedInstanceWorkspace({
     db: storage.postgres,
-    deploymentMode: config.deploymentMode,
+    deploymentMode: effectiveDeploymentMode(config),
     logger,
   });
   await setupService.ensureBootstrapCode();
@@ -554,7 +588,7 @@ async function main(): Promise<void> {
     setupService,
     assertUserInstanceAccess: async (userId) =>
       hasSelfHostedInstanceAccess(storage.postgres, {
-        deploymentMode: config.deploymentMode,
+        deploymentMode: effectiveDeploymentMode(config),
         userId,
       }),
   }, {
@@ -572,11 +606,17 @@ async function main(): Promise<void> {
   await whenCapsuleAccessSettingsBound();
 
   // Public capability probe for web/UI flag sync (registered here to avoid touching app.ts).
-  const enterpriseModulesActive = config.enterpriseModulesEnabled;
+  // Fail-closed: modules active only after the plugin confirms a verified license.
+  // deploymentMode is the effective mode (hosted only after plugin confirmation).
+  // enterpriseLicenseManagementAvailable = sibling plugin loaded (does not unlock modules).
+  const enterpriseModulesActive = () => isEnterpriseModulesEntitlementActive(config);
+  const enterpriseLicenseManagementAvailable = () => config.enterpriseModulesEnabled === true;
+  const publicDeploymentMode = () => effectiveDeploymentMode(config);
   app.route("GET", "/public/features", async (ctx) => {
     json(ctx.res, 200, {
-      enterpriseModulesActive,
-      deploymentMode: config.deploymentMode,
+      enterpriseModulesActive: enterpriseModulesActive(),
+      enterpriseLicenseManagementAvailable: enterpriseLicenseManagementAvailable(),
+      deploymentMode: publicDeploymentMode(),
       requestId: ctx.requestId,
     });
   });
@@ -587,8 +627,12 @@ async function main(): Promise<void> {
       nodeEnv: config.nodeEnv,
       port: config.port,
       logLevel: config.logLevel,
-      enterpriseModulesActive,
+      enterpriseModulesActive: enterpriseModulesActive(),
       enterpriseModulesRequested: config.enterpriseModulesRequested,
+      enterpriseLicenseVerified: config.enterpriseLicenseVerified,
+      deploymentMode: publicDeploymentMode(),
+      deploymentModeRequested: config.deploymentModeRequested,
+      hostedDeploymentConfirmed: config.hostedDeploymentConfirmed,
     });
   });
 

@@ -10,15 +10,30 @@ import {
   type PlanQuotaLimits,
 } from "@okkey/types";
 
-import type { ApiConfig } from "./config.ts";
+import type { ApiConfig, DeploymentMode } from "./config.ts";
+import { effectiveDeploymentMode } from "./deployment-mode.ts";
 
 export type PlanEntitlementRuntimeConfig = Pick<
   ApiConfig,
   "deploymentMode" | "enterpriseModulesEnabled"
 > & {
+  /** Env request; when set, preferred over {@link deploymentMode} for resolution. */
+  deploymentModeRequested?: DeploymentMode;
   /**
-   * Self-hosted license lapse. The enterprise feed sets this when the license
-   * is expired and clears it when a later check is accepted. `plan_tier` is not a lapse.
+   * Plugin-confirmed hosted mode. Default unset/false → not hosted even when
+   * the env requests `saas`.
+   */
+  hostedDeploymentConfirmed?: boolean;
+  /**
+   * Plugin-confirmed verified license. Default unset/false → modules inactive
+   * (fail-closed). Required for self-host ENTERPRISE entitlements.
+   */
+  enterpriseLicenseVerified?: boolean;
+  /**
+   * Self-hosted license lapse reported by the plugin (soft-lock).
+   * Independent of {@link enterpriseLicenseVerified}: expired licenses may clear
+   * verification while keeping this set so enterprise-module writes return 402.
+   * Default unset/false → not lapsed. `plan_tier` is not a lapse.
    */
   enterpriseLicenseLapsed?: boolean;
 };
@@ -29,7 +44,19 @@ export type WorkspacePlanEntitlementSource = {
   planFeatureOverrides?: PlanFeatureOverrides | null;
 };
 
-/** Runtime entitlement context from API config (deployment mode and whether modules loaded). */
+/**
+ * True only when the sibling plugin is loaded **and** has confirmed a verified
+ * license. `ENTERPRISE_MODULES` / `enterpriseModulesEnabled` alone never suffice.
+ * On confirmed hosted mode entitlements follow billing `plan_tier` instead;
+ * this flag still reports license state for probes.
+ */
+export function isEnterpriseModulesEntitlementActive(
+  config: Pick<PlanEntitlementRuntimeConfig, "enterpriseModulesEnabled" | "enterpriseLicenseVerified">,
+): boolean {
+  return config.enterpriseModulesEnabled === true && config.enterpriseLicenseVerified === true;
+}
+
+/** Runtime entitlement context from API config (effective mode and license-gated modules). */
 export function planEntitlementRuntimeFromConfig(
   config: PlanEntitlementRuntimeConfig,
 ): Pick<
@@ -37,8 +64,8 @@ export function planEntitlementRuntimeFromConfig(
   "deploymentMode" | "enterpriseModulesActive" | "enterpriseLicenseLapsed"
 > {
   return {
-    deploymentMode: config.deploymentMode,
-    enterpriseModulesActive: config.enterpriseModulesEnabled,
+    deploymentMode: effectiveDeploymentMode(config),
+    enterpriseModulesActive: isEnterpriseModulesEntitlementActive(config),
     ...(config.enterpriseLicenseLapsed === true ? { enterpriseLicenseLapsed: true } : {}),
   };
 }
@@ -68,9 +95,10 @@ export function workspacePlanFeatureWriteDecision(
 
 /**
  * Feature gate for create and update.
- * Self-hosted modules on → ENTERPRISE for every stored `plan_tier`.
+ * Confirmed hosted → catalog `plan_tier`.
+ * Self-hosted modules on (plugin loaded + license verified) → ENTERPRISE for every stored `plan_tier`.
  * Self-hosted modules off → FREE for every stored `plan_tier`.
- * SaaS → `plan_tier`. A lapsed license is a separate signal and is not read from `plan_tier`.
+ * A lapsed license is a separate signal and is not read from `plan_tier`.
  */
 export function workspaceHasPlanFeature(
   config: PlanEntitlementRuntimeConfig,

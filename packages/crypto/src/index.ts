@@ -161,14 +161,15 @@ export function sha256Digest(data: Uint8Array): Uint8Array {
   return sha256(data);
 }
 
-/** SHA-256 proof that the caller holds the vault device share for a bind challenge. */
-export function deviceBindShareProof(deviceShare: Uint8Array, message: Uint8Array): Uint8Array {
-  const prefix = new TextEncoder().encode("okkey-device-bind-share-v1\n");
-  const payload = new Uint8Array(prefix.length + deviceShare.length + message.length);
-  payload.set(prefix, 0);
-  payload.set(deviceShare, prefix.length);
-  payload.set(message, prefix.length + deviceShare.length);
-  return sha256Digest(payload);
+/**
+ * Sign a bind-session challenge with the share-wrap Ed25519 seed.
+ * The seed never leaves the device; the matching public key is in the hybrid share frame.
+ */
+export function deviceBindWrapSign(wrapEd25519Seed: Uint8Array, message: Uint8Array): Uint8Array {
+  if (wrapEd25519Seed.length !== 32) {
+    throw new Error("share-wrap Ed25519 seed must be 32 bytes");
+  }
+  return ed25519Sign(wrapEd25519Seed, message);
 }
 
 export function generatePQKeys(): Uint8Array {
@@ -348,7 +349,10 @@ export {
   unwrapUnlockMaterialWithPin,
   wrapUnlockMaterialWithBioKey,
   unwrapUnlockMaterialWithBioKey,
+  deriveBioWrapKeyFromPrf,
+  generateBioPrfSalt,
   generateDeviceBioWrapKey,
+  DEVICE_BIO_PRF_SALT_LEN,
   type PinUnlockWrap,
 } from "./device-unlock-wrap.js";
 

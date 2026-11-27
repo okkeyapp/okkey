@@ -445,7 +445,11 @@ test("self-hosted modules on and FREE grant trusted recovery with no license lap
       mockDevice({ fingerprint: "fp-current", status: "trusted" }),
       mockDevice({ fingerprint: "fp-other", status: "trusted" }),
     ],
-    config: { deploymentMode: "self_hosted", enterpriseModulesEnabled: true },
+    config: {
+      deploymentMode: "self_hosted",
+      enterpriseModulesEnabled: true,
+      enterpriseLicenseVerified: true,
+    },
   });
   const status = await allowed.getStatus("u1");
   assert.equal(status.entitlements.recoveryKey, true);
@@ -464,7 +468,11 @@ test("self-hosted modules on and a paid plan grant trusted recovery", async () =
   const blocked = createService({
     workspaces: [{ planTier: "ENTERPRISE" }],
     devices: [mockDevice({ fingerprint: "fp-current", status: "trusted" })],
-    config: { deploymentMode: "self_hosted", enterpriseModulesEnabled: true },
+    config: {
+      deploymentMode: "self_hosted",
+      enterpriseModulesEnabled: true,
+      enterpriseLicenseVerified: true,
+    },
   });
   const status = await blocked.getStatus("u1");
   assert.equal(status.entitlements.recoveryKey, true);
@@ -487,7 +495,11 @@ test("self-hosted modules on and a paid plan grant trusted recovery", async () =
       mockDevice({ fingerprint: "fp-current", status: "trusted" }),
       mockDevice({ fingerprint: "fp-other", status: "trusted" }),
     ],
-    config: { deploymentMode: "self_hosted", enterpriseModulesEnabled: true },
+    config: {
+      deploymentMode: "self_hosted",
+      enterpriseModulesEnabled: true,
+      enterpriseLicenseVerified: true,
+    },
   });
   const updated = await allowed.updateSettings(
     "u1",

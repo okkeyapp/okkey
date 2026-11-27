@@ -43,7 +43,7 @@ export const LOCALE_META: Record<AppLocale, LocaleMeta> = {
     docsPathPrefix: "/en",
     yearMonthOrder: "month-year",
     ready: true,
-    webCoveragePercent: 100,
+    webCoveragePercent: 94,
     emailCoveragePercent: 100,
   },
   "en": {
@@ -63,7 +63,7 @@ export const LOCALE_META: Record<AppLocale, LocaleMeta> = {
     docsPathPrefix: "/en",
     yearMonthOrder: "month-year",
     ready: true,
-    webCoveragePercent: 100,
+    webCoveragePercent: 94,
     emailCoveragePercent: 100,
   },
   "fr": {
@@ -73,7 +73,7 @@ export const LOCALE_META: Record<AppLocale, LocaleMeta> = {
     docsPathPrefix: "/en",
     yearMonthOrder: "month-year",
     ready: true,
-    webCoveragePercent: 100,
+    webCoveragePercent: 94,
     emailCoveragePercent: 100,
   },
   "nl": {
@@ -83,7 +83,7 @@ export const LOCALE_META: Record<AppLocale, LocaleMeta> = {
     docsPathPrefix: "/en",
     yearMonthOrder: "month-year",
     ready: true,
-    webCoveragePercent: 100,
+    webCoveragePercent: 94,
     emailCoveragePercent: 100,
   },
   "pt-BR": {
@@ -93,7 +93,7 @@ export const LOCALE_META: Record<AppLocale, LocaleMeta> = {
     docsPathPrefix: "/en",
     yearMonthOrder: "month-year",
     ready: true,
-    webCoveragePercent: 100,
+    webCoveragePercent: 94,
     emailCoveragePercent: 100,
   },
   "ru": {

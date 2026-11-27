@@ -25,14 +25,43 @@ type WorkspaceLike = {
  */
 let backendEnterpriseModulesActive: boolean | null = null;
 
+/**
+ * Backend license-management flag from GET /public/features.
+ * True when the sibling enterprise plugin is loaded (license UI available).
+ * Independent of {@link backendEnterpriseModulesActive}; does not unlock modules.
+ * `null` = not probed yet.
+ */
+let backendEnterpriseLicenseManagementAvailable: boolean | null = null;
+
+/**
+ * Effective deployment mode from GET /public/features.
+ * `null` = not probed yet. Hosted is never taken from Vite alone.
+ */
+let backendDeploymentMode: DeploymentMode | null = null;
+
 /** Apply API probe result so web entitlements cannot exceed backend modules. */
 export function setBackendEnterpriseModulesActive(active: boolean): void {
   backendEnterpriseModulesActive = active;
 }
 
+/**
+ * Apply API probe: sibling plugin loaded → license management UI may be shown.
+ * Does not enable gated features.
+ */
+export function setBackendEnterpriseLicenseManagementAvailable(available: boolean): void {
+  backendEnterpriseLicenseManagementAvailable = available;
+}
+
+/** Apply API effective deployment mode (hosted only after plugin confirmation). */
+export function setBackendDeploymentMode(mode: DeploymentMode): void {
+  backendDeploymentMode = mode === "saas" ? "saas" : "self_hosted";
+}
+
 /** Test helper — reset probe cache between vitest cases. */
 export function resetBackendEnterpriseModulesActiveForTests(): void {
   backendEnterpriseModulesActive = null;
+  backendEnterpriseLicenseManagementAvailable = null;
+  backendDeploymentMode = null;
 }
 
 function viteEnterpriseModulesActive(): boolean {
@@ -58,8 +87,25 @@ export function webEnterpriseModulesActive(): boolean {
   return true;
 }
 
+/**
+ * Whether self-hosted license management UI is available (plugin installed).
+ * Requires an explicit API `true` from `/public/features`. Does not unlock modules.
+ * A Vite sibling alias alone is not enough — wait for the probe.
+ */
+export function webEnterpriseLicenseManagementAvailable(): boolean {
+  return backendEnterpriseLicenseManagementAvailable === true;
+}
+
+/**
+ * Effective deployment mode for entitlements and UI.
+ * Hosted (`saas`) only when the API reported confirmed hosted mode.
+ * A Vite env value alone never makes the client hosted.
+ */
 export function webDeploymentMode(): DeploymentMode {
-  return import.meta.env.VITE_DEPLOYMENT_MODE === "saas" ? "saas" : "self_hosted";
+  if (backendDeploymentMode === "saas") {
+    return "saas";
+  }
+  return "self_hosted";
 }
 
 export function webPlanEntitlementOptions(workspace?: WorkspaceLike | null): PlanEntitlementOptions {
@@ -73,7 +119,7 @@ export function webPlanEntitlementOptions(workspace?: WorkspaceLike | null): Pla
 /**
  * Catalog tier for plan labels and the settings plan page on this client.
  * Self-hosted with modules → ENTERPRISE. Self-hosted without modules → FREE.
- * Stored `plan_tier` is ignored on self-host. SaaS → workspace `plan_tier`.
+ * Stored `plan_tier` is ignored on self-host. Confirmed hosted → workspace `plan_tier`.
  * Feature writes follow the same resolution via {@link webPlanFeatureAccess}.
  */
 export function webDisplayPlanTier(workspace?: WorkspaceLike | null): PlanTier {
@@ -87,7 +133,7 @@ export function webDisplayPlanTier(workspace?: WorkspaceLike | null): PlanTier {
  * Web feature gate for create and update.
  * Self-hosted modules on → ENTERPRISE for every stored `plan_tier`.
  * Self-hosted modules off → FREE for every stored `plan_tier`.
- * SaaS → `plan_tier`.
+ * Confirmed hosted → `plan_tier`.
  */
 export function workspaceHasPlanFeature(
   workspace: WorkspaceLike | null | undefined,
@@ -113,4 +159,20 @@ export function webEnterpriseModuleReadOnly(
   feature: PlanFeature,
 ): boolean {
   return webPlanFeatureAccess(workspace, feature) !== "granted";
+}
+
+/**
+ * Whether to mount enterprise UI surfaces (device recovery approval, trusted
+ * contacts invite/share-release, capsule approval).
+ * Confirmed hosted → billing `plan_tier` for the feature.
+ * Self-hosted → `enterpriseModulesActive` (license-gated modules).
+ */
+export function webEnterpriseSurfaceEnabled(
+  workspace: WorkspaceLike | null | undefined,
+  feature: PlanFeature,
+): boolean {
+  if (webDeploymentMode() === "saas") {
+    return workspaceHasPlanFeature(workspace, feature);
+  }
+  return webEnterpriseModulesActive();
 }

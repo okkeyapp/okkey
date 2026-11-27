@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { hostedTestConfig } from "./test-api-config.ts";
 import test from "node:test";
 
 import { CapsuleService, CapsuleServiceError } from "../src/capsule/service.ts";
@@ -21,7 +22,7 @@ function blob(value: string) {
 }
 
 test("capsules v2: owner pagination, isolation, approval and reactivation", async (t) => {
-  const config = { ...loadConfig(), deploymentMode: "saas" as const };
+  const config = hostedTestConfig(loadConfig());
   const storage = await createIntegrationStorage(t, config);
   if (!storage) {
     return;

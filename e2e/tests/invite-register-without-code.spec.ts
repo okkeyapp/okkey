@@ -1,6 +1,6 @@
 import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
 
-import { registerBootstrapAndUnlock, signInWithEmailOtp } from "../helpers/auth";
+import { gotoUnlocked, registerBootstrapAndUnlock, signInWithEmailOtp } from "../helpers/auth";
 import { resetE2eCatalog } from "../helpers/db";
 import { E2E_MASTER_PASSWORD, uniqueEmail } from "../helpers/env";
 import { dismissOpenItemDialog } from "../helpers/items";
@@ -32,7 +32,7 @@ test.afterAll(async () => {
 });
 
 async function openMembersInvitePopup(page: Page): Promise<void> {
-  await page.goto("/settings/members");
+  await gotoUnlocked(page, "/settings/members", E2E_MASTER_PASSWORD);
   await expect(page.getByRole("heading", { name: /workspace members|members/i }).first()).toBeVisible({
     timeout: 30_000,
   });

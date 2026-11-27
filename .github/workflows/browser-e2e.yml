@@ -15,6 +15,9 @@ on:
     - cron: "17 4 * * 1"
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 # Cancel superseded PR runs. Pushes, the weekly cron, and manual runs are left running.
 concurrency:
   group: browser-e2e-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}

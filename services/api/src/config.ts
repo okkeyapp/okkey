@@ -15,6 +15,12 @@ import {
   applyEnterpriseBackendEnvToProcess,
   loadEnterpriseBackendEnv,
 } from "./enterpriseEnv.ts";
+import {
+  enterpriseModulesUnknownTokens,
+  isEnterpriseModulesRequested,
+  parseEnterpriseModulesEnv,
+} from "./enterprise-modules-env.ts";
+import { effectiveDeploymentMode } from "./deployment-mode.ts";
 import { resolveEmailDeliveryMode, type EmailDeliveryMode } from "./email/queue.ts";
 import {
   normalizeEmailLogoUrl,
@@ -35,7 +41,23 @@ export type DeploymentMode = "self_hosted" | "saas";
 export interface ApiConfig {
   nodeEnv: NodeEnv;
   deployEnv: DeployEnv;
-  /** Product deployment: self_hosted (default OSS) vs saas (multi-workspace via enterprise plugin). */
+  /**
+   * Env request from `OKKEY_DEPLOYMENT_MODE` (`saas` = hosted). An env value
+   * alone never makes the instance hosted — see {@link hostedDeploymentConfirmed}
+   * and {@link deploymentMode} (effective).
+   */
+  deploymentModeRequested: DeploymentMode;
+  /**
+   * Plugin confirmation that a signed hosted (SaaS) token is present.
+   * Default `false`. Set only via `setHostedDeploymentConfirmed`.
+   */
+  hostedDeploymentConfirmed: boolean;
+  /**
+   * Effective product deployment mode: hosted (`saas`) only when the env
+   * requests it and {@link hostedDeploymentConfirmed} is true; otherwise
+   * `self_hosted`. Always keep this in sync via `effectiveDeploymentMode` —
+   * do not assign the raw env value here.
+   */
   deploymentMode: DeploymentMode;
   /** Running core image tag (`OKKEY_VERSION`, else `OKKEY_IMAGE_TAG`). */
   systemVersion: string;
@@ -122,14 +144,42 @@ export interface ApiConfig {
   twoFactorBackupCodesCount: number;
   /** In production, only Bearer sessions authenticate; X-User-Id is ignored */
   allowHeaderUserIdAuth: boolean;
-  /** Raw env request: `ENTERPRISE_MODULES=true` (may still fail closed if path unloadable). */
+  /**
+   * Raw `ENTERPRISE_MODULES` value (pass-through for the loaded plugin).
+   * Grammar: `true` / `all` / comma-separated module ids → requested;
+   * empty / `false` / `0` → off. Unknown tokens are ignored for enablement.
+   * Does **not** enable optional-module entitlements by itself.
+   */
+  enterpriseModulesEnv: string;
+  /**
+   * Parsed request: load the sibling plugin when the path is loadable.
+   * Fail-closed for entitlements until the plugin confirms a verified license
+   * via `setEnterpriseLicenseVerified`.
+   */
   enterpriseModulesRequested: boolean;
-  /** Load enterprise backend plugins from `enterpriseModulesPath`. */
+  /**
+   * Unknown tokens from `ENTERPRISE_MODULES` (logged at startup; never enable extras).
+   */
+  enterpriseModulesUnknownTokens: readonly string[];
+  /**
+   * Sibling plugin path is loadable and modules were requested.
+   * Plugin code may register; entitlements stay off until
+   * {@link enterpriseLicenseVerified} is set.
+   */
   enterpriseModulesEnabled: boolean;
   enterpriseModulesPath: string;
   /**
-   * Self-hosted license lapse. Set only when the enterprise update feed reports
-   * an expired license. Not read from the environment.
+   * License confirmation from the loaded enterprise plugin.
+   * Default `false` (fail-closed). Optional modules / ENTERPRISE entitlements
+   * on self-host require this to be `true`. Not read from the environment.
+   */
+  enterpriseLicenseVerified: boolean;
+  /**
+   * Self-hosted license lapse reported by the plugin (soft-lock).
+   * Independent of {@link enterpriseLicenseVerified}: expired licenses may clear
+   * verification while setting this so enterprise-module reads stay allowed and
+   * writes return 402. Default `false` (fail-closed when an older plugin never
+   * calls `setEnterpriseLicenseLapsed`). Not read from the environment.
    */
   enterpriseLicenseLapsed: boolean;
   defaultEmailLocale: string;
@@ -446,9 +496,13 @@ export function loadConfig(): ApiConfig {
 
   const nodeEnv = (process.env.NODE_ENV ?? "development") as NodeEnv;
   const deployEnv = resolveDeployEnv(nodeEnv, process.env.DEPLOY_ENV);
-  const enterpriseModulesRequested = parseBoolean(process.env.ENTERPRISE_MODULES, false);
+  const enterpriseModulesEnv = process.env.ENTERPRISE_MODULES ?? "";
+  const enterpriseModulesParsed = parseEnterpriseModulesEnv(process.env.ENTERPRISE_MODULES);
+  const enterpriseModulesRequested = isEnterpriseModulesRequested(enterpriseModulesParsed);
+  const enterpriseModulesUnknown = enterpriseModulesUnknownTokens(enterpriseModulesParsed);
   const enterpriseModulesPath = resolveEnterpriseModulesPath(process.env.ENTERPRISE_MODULES_PATH);
-  // Fail closed: env alone is not enough — sibling (or ENTERPRISE_MODULES_PATH) must be loadable.
+  // Env + loadable path only allow loading the plugin. Entitlements stay off until
+  // the plugin confirms a verified license (enterpriseLicenseVerified).
   const enterpriseModulesEnabled =
     enterpriseModulesRequested && isEnterpriseBackendLoadable(enterpriseModulesPath);
 
@@ -458,7 +512,12 @@ export function loadConfig(): ApiConfig {
     applyEnterpriseBackendEnvToProcess(loadEnterpriseBackendEnv(enterpriseBackendEnvDir));
   }
 
-  const deploymentMode = parseDeploymentMode(process.env.OKKEY_DEPLOYMENT_MODE);
+  const deploymentModeRequested = parseDeploymentMode(process.env.OKKEY_DEPLOYMENT_MODE);
+  const hostedDeploymentConfirmed = false;
+  const deploymentMode = effectiveDeploymentMode({
+    deploymentModeRequested,
+    hostedDeploymentConfirmed,
+  });
   const defaultWorkspacePlanTier: PlanTier = "FREE";
   const allowedCryptoProfileVersions = parseProfileVersions(
     process.env.CRYPTO_ALLOWED_PROFILE_VERSIONS,
@@ -490,6 +549,8 @@ export function loadConfig(): ApiConfig {
   return {
     nodeEnv,
     deployEnv,
+    deploymentModeRequested,
+    hostedDeploymentConfirmed,
     deploymentMode,
     systemVersion:
       (process.env.OKKEY_VERSION ?? process.env.OKKEY_IMAGE_TAG ?? "").trim() || "unknown",
@@ -507,6 +568,7 @@ export function loadConfig(): ApiConfig {
     ),
     updateEnterpriseFeedUrl: (process.env.OKKEY_UPDATE_ENTERPRISE_FEED_URL ?? "").trim(),
     enterpriseLicenseKey: (process.env.OKKEY_LICENSE_KEY ?? "").trim(),
+    enterpriseLicenseVerified: false,
     enterpriseLicenseLapsed: false,
     updateIsolated: parseBoolean(process.env.OKKEY_UPDATE_ISOLATED, false),
     updateAgentUrl: (process.env.OKKEY_UPDATE_AGENT_URL ?? "").trim(),
@@ -610,7 +672,9 @@ export function loadConfig(): ApiConfig {
     allowHeaderUserIdAuth:
       nodeEnv !== "production" ||
       parseBoolean(process.env.ALLOW_HEADER_USER_ID_AUTH, false),
+    enterpriseModulesEnv,
     enterpriseModulesRequested,
+    enterpriseModulesUnknownTokens: enterpriseModulesUnknown,
     enterpriseModulesEnabled,
     enterpriseModulesPath,
     defaultEmailLocale: process.env.EMAIL_DEFAULT_LOCALE ?? "en",

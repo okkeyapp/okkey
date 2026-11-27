@@ -29,6 +29,7 @@ const VALID_PQ = Buffer.alloc(1184, 2).toString("base64");
 const selfHostedEnterprise = entitlementConfig({
   deploymentMode: "self_hosted",
   enterpriseModulesEnabled: true,
+  enterpriseLicenseVerified: true,
 });
 
 function membersService(planTier: "FREE" | "ENTERPRISE") {
@@ -211,6 +212,7 @@ function memberVaultAccessService(input: {
       ? entitlementConfig({
           deploymentMode: "self_hosted",
           enterpriseModulesEnabled: true,
+          enterpriseLicenseVerified: true,
           enterpriseLicenseLapsed: true,
         })
       : selfHostedEnterprise,
@@ -270,6 +272,7 @@ function sharedVaultProfileService(
       ? entitlementConfig({
           deploymentMode: "self_hosted",
           enterpriseModulesEnabled: true,
+          enterpriseLicenseVerified: true,
           enterpriseLicenseLapsed: true,
         })
       : selfHostedEnterprise,

@@ -80,7 +80,11 @@ test("self-hosted storage quota never blocks writes", async () => {
     db: scriptedDb(() => {
       throw new Error("self-hosted modules on must not query usage for a write");
     }),
-    config: { deploymentMode: "self_hosted", enterpriseModulesEnabled: true },
+    config: {
+      deploymentMode: "self_hosted",
+      enterpriseModulesEnabled: true,
+      enterpriseLicenseVerified: true,
+    },
   });
   await modulesOn.assertAdditionalBytes({
     workspace: { id: "1000000000000000001", planTier: "FREE" },

@@ -2,6 +2,7 @@ import type { IncomingMessage } from "node:http";
 import type { AuthService } from "./auth/service.ts";
 import type { RegistrationService } from "./registration/service.ts";
 import type { ApiConfig } from "./config.ts";
+import { effectiveDeploymentMode } from "./deployment-mode.ts";
 import { workspacePlanFeatureWriteDecision } from "./plan-entitlements.ts";
 import type { DeviceService } from "./device/service.ts";
 import type { DeviceApprovalStatusService } from "./device/approval-status.ts";
@@ -534,7 +535,9 @@ export function createApiApp(
   const systemUpdateService =
     deps.systemUpdateService ??
     createSystemUpdateService({
-      deploymentMode: config.deploymentMode,
+      get deploymentMode() {
+        return effectiveDeploymentMode(config);
+      },
       currentVersion: config.systemVersion,
       commitSha: config.gitSha,
       releaseTag: config.releaseTag,
@@ -1657,11 +1660,21 @@ export function createApiApp(
         },
         assertEnterpriseModuleWrite: (workspace, feature) =>
           workspacePlanFeatureWriteDecision(config, workspace, feature),
+        setEnterpriseLicenseVerified: (verified) => {
+          config.enterpriseLicenseVerified = verified;
+          if (verified) {
+            config.enterpriseLicenseLapsed = false;
+          }
+        },
         setEnterpriseLicenseLapsed: (lapsed) => {
           config.enterpriseLicenseLapsed = lapsed;
         },
         isOutboundMailActive: () => outboundMail.isOutboundMailActive(),
         sendOutboundEmail: (message) => outboundMail.sendOutboundEmail(message),
+        setHostedDeploymentConfirmed: (confirmed) => {
+          config.hostedDeploymentConfirmed = confirmed;
+          config.deploymentMode = effectiveDeploymentMode(config);
+        },
       });
       if (plugin.capsuleAccessSettings) {
         registerCapsuleAccessSettingsProvider(plugin.capsuleAccessSettings);

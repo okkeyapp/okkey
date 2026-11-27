@@ -166,8 +166,11 @@ export interface WorkspaceMembersServiceDeps {
   /** Optional structured logger for invite resend / copy-link actions. */
   logger?: { info(message: string, fields?: Record<string, unknown>): void };
   config?: PlanEntitlementRuntimeConfig;
-  /** When self_hosted, removing a member from the instance workspace blocks the account. */
-  deploymentMode: DeploymentMode;
+  /**
+   * When self_hosted, removing a member from the instance workspace blocks the account.
+   * Prefer a getter so runtime hosted confirmation is visible without reconstructing the service.
+   */
+  deploymentMode: DeploymentMode | (() => DeploymentMode);
   workspaceKeys?: {
     rotateOnRemoval(
       workspaceId: string,
@@ -249,7 +252,7 @@ export class WorkspaceMembersService {
   private readonly resolveOutboundMailActive?: () => Promise<boolean>;
   private readonly logger?: WorkspaceMembersServiceDeps["logger"];
   private readonly config?: PlanEntitlementRuntimeConfig;
-  private readonly deploymentMode: DeploymentMode;
+  private readonly resolveDeploymentMode: () => DeploymentMode;
   private readonly workspaceKeys: WorkspaceMembersServiceDeps["workspaceKeys"];
 
   constructor(deps: WorkspaceMembersServiceDeps) {
@@ -262,7 +265,8 @@ export class WorkspaceMembersService {
     this.resolveOutboundMailActive = deps.resolveOutboundMailActive;
     this.logger = deps.logger;
     this.config = deps.config;
-    this.deploymentMode = deps.deploymentMode;
+    const mode = deps.deploymentMode;
+    this.resolveDeploymentMode = typeof mode === "function" ? mode : () => mode;
     this.workspaceKeys = deps.workspaceKeys;
   }
 
@@ -1411,7 +1415,7 @@ export class WorkspaceMembersService {
   ): Promise<void> {
     const run = async (tx: QueryExecutor) => {
       await this.deleteMemberRecordsInTx(tx, workspaceId, targetUserId);
-      if (this.deploymentMode !== "self_hosted") {
+      if (this.resolveDeploymentMode() !== "self_hosted") {
         return;
       }
       const settings = await readInstanceSettings(tx);

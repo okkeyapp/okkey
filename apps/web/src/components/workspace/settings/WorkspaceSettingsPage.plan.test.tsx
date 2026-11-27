@@ -4,7 +4,12 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import WorkspaceSettingsPage from "./WorkspaceSettingsPage";
-import { resetBackendEnterpriseModulesActiveForTests } from "../../../workspace/planEntitlements";
+import {
+  resetBackendEnterpriseModulesActiveForTests,
+  setBackendDeploymentMode,
+  setBackendEnterpriseLicenseManagementAvailable,
+  setBackendEnterpriseModulesActive,
+} from "../../../workspace/planEntitlements";
 
 vi.mock("./WorkspaceSettingsMobileHeader", () => ({ default: () => null }));
 vi.mock("../../../pages/workspace/WorkspaceForbiddenPage", () => ({ default: () => null }));
@@ -92,9 +97,52 @@ describe("workspace settings plan section", () => {
     resetBackendEnterpriseModulesActiveForTests();
   });
 
-  it("EE + FREE plan_tier shows the enterprise plan section", () => {
+  it("self-hosted + license management: absent (FREE display) shows the license panel", () => {
     vi.stubEnv("VITE_DEPLOYMENT_MODE", "self_hosted");
+    setBackendDeploymentMode("self_hosted");
     vi.stubEnv("VITE_ENTERPRISE_MODULES_ACTIVE", "true");
+    setBackendEnterpriseModulesActive(false);
+    setBackendEnterpriseLicenseManagementAvailable(true);
+
+    renderPlanPage("FREE");
+
+    expect(screen.getByTestId("ee-plan-section")).toHaveTextContent("ee-plan:FREE");
+    expect(screen.queryByRole("button", { name: licenseCtaName })).not.toBeInTheDocument();
+  });
+
+  it("self-hosted + license management: invalid (modules off) shows the license panel", () => {
+    vi.stubEnv("VITE_DEPLOYMENT_MODE", "self_hosted");
+    setBackendDeploymentMode("self_hosted");
+    vi.stubEnv("VITE_ENTERPRISE_MODULES_ACTIVE", "true");
+    setBackendEnterpriseModulesActive(false);
+    setBackendEnterpriseLicenseManagementAvailable(true);
+
+    renderPlanPage("ENTERPRISE");
+
+    // Stored plan_tier is ignored on self-host when modules are off → FREE display.
+    expect(screen.getByTestId("ee-plan-section")).toHaveTextContent("ee-plan:FREE");
+    expect(screen.queryByRole("button", { name: licenseCtaName })).not.toBeInTheDocument();
+  });
+
+  it("self-hosted + license management: expired (lapsed modules off) shows the license panel", () => {
+    vi.stubEnv("VITE_DEPLOYMENT_MODE", "self_hosted");
+    setBackendDeploymentMode("self_hosted");
+    vi.stubEnv("VITE_ENTERPRISE_MODULES_ACTIVE", "true");
+    setBackendEnterpriseModulesActive(false);
+    setBackendEnterpriseLicenseManagementAvailable(true);
+
+    renderPlanPage("TEAM");
+
+    expect(screen.getByTestId("ee-plan-section")).toHaveTextContent("ee-plan:FREE");
+    expect(screen.queryByRole("button", { name: licenseCtaName })).not.toBeInTheDocument();
+  });
+
+  it("self-hosted + license management: active modules keep the license panel", () => {
+    vi.stubEnv("VITE_DEPLOYMENT_MODE", "self_hosted");
+    setBackendDeploymentMode("self_hosted");
+    vi.stubEnv("VITE_ENTERPRISE_MODULES_ACTIVE", "true");
+    setBackendEnterpriseModulesActive(true);
+    setBackendEnterpriseLicenseManagementAvailable(true);
 
     renderPlanPage("FREE");
 
@@ -102,19 +150,12 @@ describe("workspace settings plan section", () => {
     expect(screen.queryByRole("button", { name: licenseCtaName })).not.toBeInTheDocument();
   });
 
-  it("EE + paid keeps the enterprise plan section", () => {
+  it("self-hosted without plugin falls back to the Core license request form", async () => {
     vi.stubEnv("VITE_DEPLOYMENT_MODE", "self_hosted");
-    vi.stubEnv("VITE_ENTERPRISE_MODULES_ACTIVE", "true");
-
-    renderPlanPage("ENTERPRISE");
-
-    expect(screen.getByTestId("ee-plan-section")).toHaveTextContent("ee-plan:ENTERPRISE");
-    expect(screen.queryByRole("button", { name: licenseCtaName })).not.toBeInTheDocument();
-  });
-
-  it("non-EE + FREE shows the license request form and opens it", async () => {
-    vi.stubEnv("VITE_DEPLOYMENT_MODE", "self_hosted");
+    setBackendDeploymentMode("self_hosted");
     vi.stubEnv("VITE_ENTERPRISE_MODULES_ACTIVE", "false");
+    setBackendEnterpriseModulesActive(false);
+    setBackendEnterpriseLicenseManagementAvailable(false);
 
     renderPlanPage("FREE");
 
@@ -134,7 +175,9 @@ describe("workspace settings plan section", () => {
 
   it("SaaS FREE keeps the catalog plan section", () => {
     vi.stubEnv("VITE_DEPLOYMENT_MODE", "saas");
+    setBackendDeploymentMode("saas");
     vi.stubEnv("VITE_ENTERPRISE_MODULES_ACTIVE", "true");
+    setBackendEnterpriseLicenseManagementAvailable(false);
 
     renderPlanPage("FREE");
 

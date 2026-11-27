@@ -3,10 +3,13 @@ import test from "node:test";
 import { readFile } from "node:fs/promises";
 
 import {
+  deriveBioWrapKeyFromPrf,
+  generateBioPrfSalt,
   generateDeviceBioWrapKey,
   initCrypto,
   unwrapUnlockMaterialWithBioKey,
   unwrapUnlockMaterialWithPin,
+  wipeBytes,
   wrapUnlockMaterialWithBioKey,
   wrapUnlockMaterialWithPin,
 } from "../dist/index.js";
@@ -119,6 +122,60 @@ test("PIN and biometric wraps reject short keys", async () => {
         passwordShareC,
         bioWrapKey: short,
       }),
+    /32 bytes/,
+  );
+});
+
+test("PRF-derived bio wrap key round-trips and depends on salt", async () => {
+  const vaultKey = random32();
+  const passwordShareC = random32();
+  const prfOutput = random32();
+  const salt = await generateBioPrfSalt();
+  assert.equal(salt.length, 32);
+
+  const wrapKey = await deriveBioWrapKeyFromPrf({ prfOutput, salt });
+  assert.equal(wrapKey.length, 32);
+
+  const ciphertextB64 = await wrapUnlockMaterialWithBioKey({
+    vaultKey,
+    passwordShareC,
+    bioWrapKey: wrapKey,
+  });
+  const opened = await unwrapUnlockMaterialWithBioKey({
+    ciphertextB64,
+    bioWrapKey: wrapKey,
+  });
+  assert.deepEqual(opened.vaultKey, vaultKey);
+  assert.deepEqual(opened.passwordShareC, passwordShareC);
+
+  const otherSalt = await generateBioPrfSalt();
+  const otherKey = await deriveBioWrapKeyFromPrf({ prfOutput, salt: otherSalt });
+  assert.notDeepEqual(otherKey, wrapKey);
+  await assert.rejects(() =>
+    unwrapUnlockMaterialWithBioKey({
+      ciphertextB64,
+      bioWrapKey: otherKey,
+    }),
+  );
+
+  wipeBytes(wrapKey);
+  wipeBytes(otherKey);
+  wipeBytes(prfOutput);
+  wipeBytes(salt);
+  wipeBytes(otherSalt);
+  assert.ok(wrapKey.every((b) => b === 0));
+  assert.ok(prfOutput.every((b) => b === 0));
+});
+
+test("deriveBioWrapKeyFromPrf rejects wrong lengths", async () => {
+  const prfOutput = random32();
+  const salt = await generateBioPrfSalt();
+  await assert.rejects(
+    () => deriveBioWrapKeyFromPrf({ prfOutput: new Uint8Array(16), salt }),
+    /32 bytes/,
+  );
+  await assert.rejects(
+    () => deriveBioWrapKeyFromPrf({ prfOutput, salt: new Uint8Array(16) }),
     /32 bytes/,
   );
 });

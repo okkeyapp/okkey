@@ -1,6 +1,7 @@
 import type { VaultsRepository, WorkspacesRepository } from "../storage/repositories.ts";
 import type { QueryExecutor } from "../storage/postgres.ts";
 import type { ApiConfig } from "../config.ts";
+import { effectiveDeploymentMode } from "../deployment-mode.ts";
 import { workspacePlanFeatureWriteDecision } from "../plan-entitlements.ts";
 import { readInstanceSettings } from "../setup/instance-access.ts";
 import {
@@ -76,7 +77,15 @@ export interface WorkspaceSettingsServiceDeps {
   >;
   vaults: Pick<VaultsRepository, "findById">;
   db: QueryExecutor;
-  config: Pick<ApiConfig, "deploymentMode" | "enterpriseModulesEnabled">;
+  config: Pick<
+    ApiConfig,
+    | "deploymentMode"
+    | "deploymentModeRequested"
+    | "hostedDeploymentConfirmed"
+    | "enterpriseModulesEnabled"
+    | "enterpriseLicenseVerified"
+    | "enterpriseLicenseLapsed"
+  >;
   storageQuota?: WorkspaceStorageQuotaService;
 }
 
@@ -176,7 +185,7 @@ export class WorkspaceSettingsService {
         "confirmation name does not match workspace name",
       );
     }
-    if (this.config.deploymentMode === "self_hosted") {
+    if (effectiveDeploymentMode(this.config) === "self_hosted") {
       const settings = await readInstanceSettings(this.db);
       if (settings.workspaceId != null && settings.workspaceId === workspaceId) {
         throw new WorkspaceSettingsServiceError(

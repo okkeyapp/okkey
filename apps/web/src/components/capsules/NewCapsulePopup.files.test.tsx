@@ -67,6 +67,7 @@ vi.mock("../../auth/SectionReauthContext", () => ({
 }));
 
 import NewCapsulePopup from "./NewCapsulePopup";
+import { setBackendDeploymentMode } from "../../workspace/planEntitlements";
 
 const t = (key: string) =>
   (
@@ -122,11 +123,13 @@ function renderPopup(planTier: Workspace["planTier"]) {
 describe("NewCapsulePopup file attach control", () => {
   afterEach(() => {
     vi.stubEnv("VITE_DEPLOYMENT_MODE", "saas");
+    setBackendDeploymentMode("saas");
     vi.stubEnv("VITE_ENTERPRISE_MODULES_ACTIVE", "false");
   });
 
   it("keeps the file type visible but disabled on SaaS FREE", () => {
     vi.stubEnv("VITE_DEPLOYMENT_MODE", "saas");
+    setBackendDeploymentMode("saas");
     renderPopup("FREE");
 
     expect(screen.getByRole("button", { name: "Text" })).toBeInTheDocument();
@@ -140,6 +143,7 @@ describe("NewCapsulePopup file attach control", () => {
 
   it("shows the file upload button on SaaS PREMIUM", () => {
     vi.stubEnv("VITE_DEPLOYMENT_MODE", "saas");
+    setBackendDeploymentMode("saas");
     renderPopup("PREMIUM");
 
     fireEvent.click(screen.getByRole("button", { name: "File" }));
@@ -148,6 +152,7 @@ describe("NewCapsulePopup file attach control", () => {
 
   it("shows the file upload button on self-hosted FREE", () => {
     vi.stubEnv("VITE_DEPLOYMENT_MODE", "self_hosted");
+    setBackendDeploymentMode("self_hosted");
     vi.stubEnv("VITE_ENTERPRISE_MODULES_ACTIVE", "false");
     renderPopup("FREE");
 

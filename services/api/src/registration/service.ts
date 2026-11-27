@@ -1,5 +1,6 @@
 import type { AuthService } from "../auth/service.ts";
 import type { ApiConfig } from "../config.ts";
+import { effectiveDeploymentMode } from "../deployment-mode.ts";
 import {
   CRYPTO_CAPABILITY_REQUIRED,
   CRYPTO_CAPABILITY_REQUIRED_STATUS_CODE,
@@ -322,7 +323,7 @@ export class RegistrationService {
     try {
       const encryptedPrivateKey = this.validateEncryptedPrivateKey(input.encryptedPrivateKey);
       const inviteTokenHash = authState.inviteTokenHash?.trim() || null;
-      const selfHosted = this.config.deploymentMode === "self_hosted";
+      const selfHosted = effectiveDeploymentMode(this.config) === "self_hosted";
       const catalogHasUsers = await this.users.hasAnyUsers();
 
       // Self-hosted: only the first owner (empty catalog / setup wizard) may create a workspace.

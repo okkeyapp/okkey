@@ -3,6 +3,8 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 
+import { setBackendDeploymentMode } from "../../workspace/planEntitlements";
+
 const cryptoMock = vi.hoisted(() => ({
   encryptCapsulePayload: vi.fn(),
   decryptCapsuleMetadata: vi.fn(),
@@ -102,6 +104,7 @@ function workspace(mode: "saas" | "self_hosted"): Workspace {
 function renderPopup(mode: "saas" | "self_hosted") {
   vi.stubEnv("VITE_DEPLOYMENT_MODE", mode);
   vi.stubEnv("VITE_ENTERPRISE_MODULES_ACTIVE", "false");
+  setBackendDeploymentMode(mode);
   return render(
     <MemoryRouter initialEntries={["/capsules?popup=newCapsule"]}>
       <NewCapsulePopup t={t} workspaceId="workspace-1" workspace={workspace(mode)} />
