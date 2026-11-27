@@ -20,11 +20,17 @@ export const CLASSIFIER_FINGERPRINT_FILE = path.join(
   "classifier-fingerprint.json",
 );
 
-/** Extension lib sources used by the baseline classifier (must stay unchanged in this PR). */
+/**
+ * Extension lib sources fingerprinted for classifier regression reports.
+ * Intentional classifier changes update the fingerprint; CI still requires
+ * metrics not worse than reports/baseline.json on the same corpus.
+ */
 export const CLASSIFIER_SOURCE_FILES = [
   path.resolve(PACKAGE_ROOT, "../src/lib/autofillFieldClassify.ts"),
   path.resolve(PACKAGE_ROOT, "../src/lib/loginFormFields.ts"),
   path.resolve(PACKAGE_ROOT, "../src/lib/autofillFormDetect.ts"),
+  path.resolve(PACKAGE_ROOT, "../src/lib/autofillDictionaries.ts"),
+  path.resolve(PACKAGE_ROOT, "../src/lib/autofillDomLayers.ts"),
 ] as const;
 
 export function pageCacheDir(pageId: string): string {

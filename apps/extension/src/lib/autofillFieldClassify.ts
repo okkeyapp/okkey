@@ -1,3 +1,98 @@
+/**
+ * Autofill field classification via an ordered signal ladder.
+ *
+ * Ladder (first confident step wins; lower steps never overwrite):
+ * 1. SAWF-style `data-form-type`
+ * 2. `autocomplete` per WHATWG (tolerating common site mistakes)
+ * 3. `type`
+ * 4. label / aria
+ * 5. name / id / placeholder
+ * 6. position / context (optional {@link ClassifyContext})
+ *
+ * Cards and addresses use the same ladder. No ML. Dictionaries are owned EN+RU.
+ */
+
+import {
+  ADDITIONAL_NAME,
+  ADDRESS_FULL,
+  APARTMENT,
+  BACKUP_RECOVERY_CODE_HINT,
+  BANK_ACCOUNT,
+  BANK_HOLDER,
+  BANK_NAME,
+  BARE_NAME_TOKEN,
+  BDAY_HINT,
+  CC_CSC,
+  CC_EXP,
+  CC_NAME,
+  CC_NUMBER,
+  CITY,
+  COUNTRY,
+  CRYPTO_ADDR,
+  CRYPTO_PHRASE,
+  CRYPTO_PIN,
+  DB_NAME,
+  DB_PASS,
+  DB_PORT,
+  DB_SERVER,
+  DB_SID,
+  DB_USER,
+  DENYLIST_HINT,
+  EMAIL_HINT,
+  EMAIL_OTP_URL as EMAIL_OTP_URL_RE,
+  FAMILY_NAME,
+  GIVEN_NAME,
+  HOUSE,
+  IBAN,
+  NICKNAME_HINT,
+  NON_PERSON_NAME_CONTEXT,
+  ORG_HINT,
+  ORG_TITLE,
+  OTP_HINT,
+  PASSPORT_EXPIRY,
+  PASSPORT_ISSUE,
+  PASSPORT_NUMBER,
+  PASSPORT_TYPE,
+  PERSON_FULL_NAME_STRONG,
+  POSTAL,
+  SAWF_DATA_FORM_TYPE_MAP,
+  SEARCH_HINT,
+  SEX_HINT,
+  STATE,
+  STREET,
+  SWIFT,
+  TEL_HINT,
+  USER_NAME,
+  WHATWG_AUTOCOMPLETE_KIND,
+  NATIONALITY,
+  ISSUING_AUTH,
+  BIRTH_PLACE,
+  LOYALTY_PROVIDER,
+  LOYALTY_CARD_NUMBER,
+  LOYALTY_BARCODE,
+  LOYALTY_EXPIRY,
+  LOYALTY_CONTEXT,
+  LOYALTY_FORM_HEADING,
+  VEHICLE_MAKE_MODEL,
+  VEHICLE_PLATE,
+  VEHICLE_VIN,
+  VEHICLE_INSPECTION,
+  VEHICLE_POLICY,
+  VEHICLE_INSURER,
+  VEHICLE_INSURANCE_UNTIL,
+  VEHICLE_FORM_HEADING,
+  TRAVEL_TRANSPORT,
+  TRAVEL_CARRIER,
+  TRAVEL_TRIP,
+  TRAVEL_DEPARTURE,
+  TRAVEL_FROM,
+  TRAVEL_TO,
+  TRAVEL_BOOKING_REF,
+  TRAVEL_PASSENGERS,
+  TRAVEL_SEATS,
+  TRAVEL_FORM_HEADING,
+} from "./autofillDictionaries.ts";
+
 /** Semantic kinds for page input classification (aligned with vault extract keys + login/otp). */
 export type AutofillFieldKind =
   | "username"
@@ -45,7 +140,29 @@ export type AutofillFieldKind =
   | "db-sid"
   | "crypto-address"
   | "crypto-pin"
-  | "crypto-passphrase";
+  | "crypto-passphrase"
+  | "loyalty-provider"
+  | "loyalty-card-number"
+  | "loyalty-barcode"
+  | "loyalty-expiry"
+  | "vehicle-make-model"
+  | "vehicle-plate"
+  | "vehicle-vin"
+  | "vehicle-inspection-due"
+  | "vehicle-insurance-policy-number"
+  | "vehicle-insurer"
+  | "vehicle-insurance-valid-until"
+  | "travel-transport-type"
+  | "travel-carrier"
+  | "travel-trip-number"
+  | "travel-departure-at"
+  | "travel-from"
+  | "travel-to"
+  | "travel-booking-reference"
+  | "travel-passengers"
+  | "travel-seats";
+
+export type SpecialtyFormScope = "loyalty" | "vehicle" | "travel";
 
 export type AutofillInputHints = {
   type: string;
@@ -58,109 +175,117 @@ export type AutofillInputHints = {
   inputMode?: string;
   maxLength?: number;
   role?: string;
+  /** SAWF-style hint from `data-form-type` (read when present). */
+  dataFormType?: string;
+  /** Containing form/section specialty scope (never concatenated into labelText). */
+  specialtyForm?: SpecialtyFormScope;
 };
 
-/**
- * OTP / email one-time password (not vault password).
- * Includes npm-style `login_otp` / `name=otp` / «One-Time Password» / email-otp.
- */
-const OTP_NAME =
-  /one[-_\s]?time(?:[-_\s]?pass(?:word|code)?)?|email[-_]?otp|login[-_]?otp|otp|totp|2fa|mfa|authenticator|verification[-_]?code|auth[-_]?code|passcode|^code$/i;
+/** Optional DOM/context signals for ladder step 6 (position / context). */
+export type ClassifyContext = {
+  /** Field kinds already classified earlier in document order. */
+  precedingKinds?: readonly AutofillFieldKind[];
+  /** Page / form heading text (Sign in / Register / …). */
+  formHeading?: string;
+  /** True when this is the first text-like field immediately before a password. */
+  firstTextBeforePassword?: boolean;
+  /** Index among consecutive password fields (0 = first). */
+  passwordIndexAmongPasswords?: number;
+  /** Total consecutive password fields in the group. */
+  passwordGroupSize?: number;
+};
 
-/** URL path/query cues for email-OTP / 2FA steps (npm `/login/email-otp`, etc.). */
-export const EMAIL_OTP_URL =
-  /email[-_]?otp|(?:^|\/)otp(?:\/|$|\?)|one[-_]?time|two[-_]?factor|\b2fa\b|\bmfa\b|verify(?:[-_]?code)?/i;
+/** Re-export URL cue for callers that imported it from this module. */
+export const EMAIL_OTP_URL = EMAIL_OTP_URL_RE;
 
-/** Fields that must never receive autofill / Okkey toggle. */
-const DENYLIST_HINT =
-  /\b(search|filter|query|find|look[-_]?up|комментар|comment|message|chat|captcha|recaptcha|csrf|token(?![-_]?auth)|honeypot|website[-_]?url|promo[-_]?code|coupon|newsletter|subscribe)\b/i;
+const KIND_SET = new Set<string>([
+  "username",
+  "password",
+  "otp",
+  "email",
+  "given-name",
+  "family-name",
+  "additional-name",
+  "name",
+  "tel",
+  "bday",
+  "sex",
+  "organization",
+  "organization-title",
+  "address",
+  "street-address",
+  "address-house",
+  "address-apartment",
+  "address-level1",
+  "address-level2",
+  "postal-code",
+  "country",
+  "cc-number",
+  "cc-exp",
+  "cc-csc",
+  "cc-name",
+  "bank-name",
+  "bank-account-holder",
+  "bank-account-number",
+  "iban",
+  "swift",
+  "passport-number",
+  "passport-type",
+  "nationality",
+  "issuing-authority",
+  "birth-place",
+  "passport-issue",
+  "passport-expiry",
+  "db-server",
+  "db-port",
+  "db-name",
+  "db-username",
+  "db-password",
+  "db-sid",
+  "crypto-address",
+  "crypto-pin",
+  "crypto-passphrase",
+  "loyalty-provider",
+  "loyalty-card-number",
+  "loyalty-barcode",
+  "loyalty-expiry",
+  "vehicle-make-model",
+  "vehicle-plate",
+  "vehicle-vin",
+  "vehicle-inspection-due",
+  "vehicle-insurance-policy-number",
+  "vehicle-insurer",
+  "vehicle-insurance-valid-until",
+  "travel-transport-type",
+  "travel-carrier",
+  "travel-trip-number",
+  "travel-departure-at",
+  "travel-from",
+  "travel-to",
+  "travel-booking-reference",
+  "travel-passengers",
+  "travel-seats",
+]);
 
-const SEARCH_HINT = /\b(search|найти|поиск|искать|filter|фильтр)\b/i;
-
-/** Email / mail heuristics (EN + RU + common variants). */
-const EMAIL_HINT =
-  /e[-_.\s]?mail|emailaddress|mail(addr|to)?|user[-_]?mail|эл\.?\s*почт|электронн[а-яёa-z]*\s*почт|почт[аеуы]?|е[-]?мейл|имейл|courriel/i;
-
-/** Login / account identifier — nickname is identity (`autocomplete=nickname`), not this list. */
-const USER_NAME =
-  /user(name)?|login|account|identifier|userid|user[-_]?id|логин|пользовател|учётн|учетн/i;
-/** Identity nickname (personal_data); maps to vault username, never login.username source. */
-const NICKNAME_HINT = /\bnick(?:[-_]?name)?\b|псевдоним|никнейм/i;
-
-const GIVEN_NAME = /given[-_]?name|first[-_]?name|fname|forename|имя(?!\s*пользовател)|имя\b/i;
-const FAMILY_NAME = /family[-_]?name|last[-_]?name|surname|lname|фамил/i;
-const ADDITIONAL_NAME = /additional[-_]?name|middle[-_]?name|отчеств/i;
-/**
- * Strong person-name cues (full/legal/display). Bare «Name» alone is handled separately
- * so entity labels like «Ruleset Name» do not become personal_data.
- */
-const PERSON_FULL_NAME_STRONG =
-  /\b(full[-_\s]?name|display[-_\s]?name|legal[-_\s]?name|your[-_\s]?name|имя\s*и\s*фамил|полное\s*имя|\bфио\b)\b/i;
-/**
- * Bare `name` token: label «Name*», id/name ≈ name / name-input.
- * Must not steal first/last/user/nick — those rules run earlier.
- */
-const BARE_NAME_TOKEN = /(?:^|[^a-z0-9])name(?:[^a-z0-9]|$)/i;
-/**
- * Non-person entity «… Name» (GitHub rulesets, repos, workflows, runners, orgs, …).
- * When present, bare/strong-name heuristics must not classify as personal name.
- */
-const NON_PERSON_NAME_CONTEXT =
-  /\b(?:ruleset|repositor(?:y|ies)|repos?|workflow|runner|organization|organisation|\borg\b|project|team|workspace|branch|label|tag|variable|secret|environment|service|server|host(?:name)?|cluster|namespace|package|module|app(?:lication)?|product|file|folder|director(?:y|ies)|group|role|policy|permission|channel|bot|webhook|job|pipeline|artifact|bucket|schema|table|column|token|certificate|domain|site|page|section|field|form|item|resource|instance|container|image|volume|queue|topic|subscription|campaign|event|meeting|invoice|order|sku|subject|title|репозитор|проект|организац|набор\s*правил|рабоч\w*\s*процесс)\b[-_\s]*(?:name|название|имя)\b|\b(?:name|название|имя)\b[-_\s]*(?:of\s+)?(?:the\s+)?(?:ruleset|repositor(?:y|ies)|repos?|workflow|runner|organization|organisation|\borg\b|project|team|workspace)\b/i;
-const TEL_HINT = /\b(phone|mobile|tel|cellphone|телефон|мобил)/i;
-const BDAY_HINT = /bday|birth[-_]?date|date[-_]?of[-_]?birth|\bdob\b|дата\s*рожд/i;
-const SEX_HINT = /\bsex\b|\bgender\b|пол\b/i;
-const ORG_HINT = /organization|company|employer|компани|организац/i;
-const ORG_TITLE = /organization[-_]?title|job[-_]?title|position|title|должност|позици/i;
-
-const STREET =
-  /\b(street|address[-_]?line1|addr(?:ess)?[-_]?1)\b|улиц/i;
-/** Single one-line address field (not street / city / house / apt specifically). */
-const ADDRESS_FULL =
-  /\b(street[-_]?address|address(?![-_]?(?:line|level|house|apartment|apt|unit|flat))\b|addr(?![-_]?\d))\b|(?<!электронн\S*\s)(?<!эл\.?\s)адрес(?!\s*(?:кошель|дома|квартир))/i;
-const HOUSE = /\b(house|building|bldg|дом)\b|address[-_]?house/i;
-const APARTMENT =
-  /\b(apartment|appt?|unit|suite|flat|кв\.?|квартир|офис)\b|address[-_]?line2|address[-_]?apartment/i;
-const CITY = /address[-_]?level[-_]?2|\bcity\b|\btown\b|suburb|город/i;
-const STATE = /address[-_]?level[-_]?1|\bstate\b|province|region|област|регион|край/i;
-const POSTAL = /postal|zip|postcode|индекс/i;
-const COUNTRY = /\bcountry\b|стран[аы]|nationality|гражданств|issuing[-_]?country/i;
-
-const CC_NUMBER = /cc[-_]?number|card[-_]?number|cardnumber|pan\b|номер\s*карт/i;
-/** Card expiry — do not match date placeholders like `dd/mm/yyyy` (see `(?!y)`). */
-const CC_EXP = /cc[-_]?exp|expir|card[-_]?exp|срок\s*действ|месяц.*год|\bmm\s*\/\s*yy(?!y)/i;
-const CC_CSC = /cc[-_]?csc|cc[-_]?cvv|cvc|cvv|security[-_]?code|код\s*безопас/i;
-const CC_NAME = /cc[-_]?name|card[-_]?holder|cardholder|имя\s*владельц|держател/i;
-
-const IBAN = /\biban\b/i;
-const SWIFT = /swift|bic\b/i;
-const BANK_ACCOUNT = /account[-_]?number|bank[-_]?account|расчётн|расчетн|номер\s*сч[её]т/i;
-const BANK_NAME = /bank[-_]?name|название\s*банк|банк\b/i;
-const BANK_HOLDER = /account[-_]?holder|beneficiary|получател|владел.*сч/i;
-
-const PASSPORT_NUMBER = /passport[-_]?number|passport[-_]?no|номер\s*паспорт|серия.*номер/i;
-const PASSPORT_TYPE = /passport[-_]?type|тип\s*паспорт/i;
-const NATIONALITY = /nationality|гражданств/i;
-const ISSUING_AUTH = /issuing[-_]?authority|орган.*выдав|кем\s*выдан/i;
-const BIRTH_PLACE = /birth[-_]?place|place[-_]?of[-_]?birth|место\s*рожд/i;
-const PASSPORT_ISSUE = /issue[-_]?date|date[-_]?of[-_]?issue|дата\s*выдач/i;
-const PASSPORT_EXPIRY = /passport[-_]?exp|expiry[-_]?date|date[-_]?of[-_]?expiry|срок\s*действ.*паспорт|годен\s*до/i;
-
-const DB_SERVER = /db[-_]?host|db[-_]?server|hostname|host\b|сервер/i;
-const DB_PORT = /db[-_]?port|port\b|порт/i;
-const DB_NAME = /db[-_]?name|database|база\s*данных/i;
-const DB_USER = /db[-_]?user|db[-_]?login|db[-_]?username/i;
-const DB_PASS = /db[-_]?pass|db[-_]?password/i;
-const DB_SID = /\bsid\b|service[-_]?name/i;
-
-const CRYPTO_ADDR = /wallet[-_]?address|crypto[-_]?address|btc|eth[-_]?address|адрес\s*кошель/i;
-const CRYPTO_PIN = /crypto[-_]?pin|access[-_]?pin|wallet[-_]?pin/i;
-const CRYPTO_PHRASE = /passphrase|seed[-_]?phrase|mnemonic|сид[-_]?фраз|мнемоник/i;
+function asKind(value: string | undefined | null): AutofillFieldKind | null {
+  if (!value || !KIND_SET.has(value)) {
+    return null;
+  }
+  return value as AutofillFieldKind;
+}
 
 export function attrBlob(el: AutofillInputHints): string {
   return [el.name, el.id, el.autocomplete, el.placeholder, el.ariaLabel, el.labelText]
     .filter(Boolean)
     .join(" ");
+}
+
+function labelAriaBlob(el: AutofillInputHints): string {
+  return [el.labelText, el.ariaLabel].filter(Boolean).join(" ");
+}
+
+function nameIdPlaceholderBlob(el: AutofillInputHints): string {
+  return [el.name, el.id, el.placeholder].filter(Boolean).join(" ");
 }
 
 function acToken(ac: string, token: string): boolean {
@@ -170,7 +295,7 @@ function acToken(ac: string, token: string): boolean {
   });
 }
 
-/** Exact `autocomplete=name` (not given-name / family-name / cc-name — those use other tokens). */
+/** Exact `autocomplete=name` (not given-name / family-name / cc-name). */
 function acExactName(ac: string): boolean {
   const otherNameKinds = new Set([
     "given-name",
@@ -185,15 +310,13 @@ function acExactName(ac: string): boolean {
     if (p === "name") {
       return true;
     }
-    // Rare compound tokens like `billing-name`; skip known non-person name kinds.
     return p.endsWith("-name") && !otherNameKinds.has(p);
   });
 }
 
 /**
- * Person full-name field: autocomplete=name, strong cues (Full name / ФИО), or bare «Name»
- * without an entity prefix (Ruleset / Repository / Workflow / …).
- * Username / nickname cues beat bare name="name" / id=*name* (e.g. npm signup Username).
+ * Person full-name field: autocomplete=name, strong cues, or bare «Name»
+ * without an entity prefix.
  */
 export function isPersonFullNameField(blob: string, autocomplete = ""): boolean {
   const ac = autocomplete.trim().toLowerCase();
@@ -206,7 +329,6 @@ export function isPersonFullNameField(blob: string, autocomplete = ""): boolean 
   if (PERSON_FULL_NAME_STRONG.test(blob)) {
     return true;
   }
-  // Label/aria «Username» / login cues win over bare name attr (signup_name / name="name").
   if (
     acToken(ac, "username") ||
     acToken(ac, "nickname") ||
@@ -219,23 +341,9 @@ export function isPersonFullNameField(blob: string, autocomplete = ""): boolean 
   return BARE_NAME_TOKEN.test(blob);
 }
 
-function firstMatch(
-  blob: string,
-  ac: string,
-  rules: Array<{ key: AutofillFieldKind; ac?: string | string[]; re: RegExp }>,
-): AutofillFieldKind | null {
-  for (const rule of rules) {
-    if (rule.ac) {
-      const tokens = Array.isArray(rule.ac) ? rule.ac : [rule.ac];
-      if (tokens.some((t) => acToken(ac, t))) {
-        return rule.key;
-      }
-    }
-    if (rule.re.test(blob)) {
-      return rule.key;
-    }
-  }
-  return null;
+export function isBackupOrRecoveryCodeField(input: AutofillInputHints): boolean {
+  const blob = attrBlob(input);
+  return BACKUP_RECOVERY_CODE_HINT.test(blob);
 }
 
 /**
@@ -261,7 +369,10 @@ export function isDeniedAutofillField(input: AutofillInputHints): boolean {
   }
 
   const ac = (input.autocomplete ?? "").toLowerCase().trim();
-  if (acToken(ac, "search") || ac.split(/\s+/).some((part) => part === "search" || part.endsWith("-search"))) {
+  if (
+    acToken(ac, "search") ||
+    ac.split(/\s+/).some((part) => part === "search" || part.endsWith("-search"))
+  ) {
     return true;
   }
 
@@ -271,14 +382,16 @@ export function isDeniedAutofillField(input: AutofillInputHints): boolean {
     return true;
   }
   if (SEARCH_HINT.test(blob) || DENYLIST_HINT.test(blob)) {
-    // Allow real identity fields that only mention deny-words inside a longer unrelated phrase
-    // via explicit email/username/password autocomplete.
     if (
       acToken(ac, "email") ||
       acToken(ac, "username") ||
       acToken(ac, "current-password") ||
       acToken(ac, "new-password") ||
-      ac.includes("one-time")
+      ac.includes("one-time") ||
+      TRAVEL_BOOKING_REF.test(blob) ||
+      LOYALTY_CARD_NUMBER.test(blob) ||
+      VEHICLE_VIN.test(blob) ||
+      VEHICLE_PLATE.test(blob)
     ) {
       return false;
     }
@@ -287,174 +400,637 @@ export function isDeniedAutofillField(input: AutofillInputHints): boolean {
   return false;
 }
 
+function matchKeywordKind(blob: string): AutofillFieldKind | null {
+  if (!blob) {
+    return null;
+  }
+  // Backup/recovery before OTP so reserve codes never become otp.
+  if (BACKUP_RECOVERY_CODE_HINT.test(blob)) {
+    return null;
+  }
+  if (OTP_HINT.test(blob)) {
+    return "otp";
+  }
+  if (CRYPTO_ADDR.test(blob)) {
+    return "crypto-address";
+  }
+  if (CRYPTO_PHRASE.test(blob)) {
+    return "crypto-passphrase";
+  }
+  if (CRYPTO_PIN.test(blob)) {
+    return "crypto-pin";
+  }
+  if (EMAIL_HINT.test(blob)) {
+    return "email";
+  }
+  if (BDAY_HINT.test(blob)) {
+    return "bday";
+  }
+  // Loyalty before payment card — «loyalty card number» / membership must not become cc-number.
+  if (LOYALTY_PROVIDER.test(blob)) {
+    return "loyalty-provider";
+  }
+  if (LOYALTY_CARD_NUMBER.test(blob)) {
+    return "loyalty-card-number";
+  }
+  if (LOYALTY_BARCODE.test(blob)) {
+    return "loyalty-barcode";
+  }
+  if (LOYALTY_EXPIRY.test(blob)) {
+    return "loyalty-expiry";
+  }
+  if (VEHICLE_VIN.test(blob)) {
+    return "vehicle-vin";
+  }
+  if (VEHICLE_PLATE.test(blob)) {
+    return "vehicle-plate";
+  }
+  if (VEHICLE_MAKE_MODEL.test(blob)) {
+    return "vehicle-make-model";
+  }
+  if (VEHICLE_INSPECTION.test(blob)) {
+    return "vehicle-inspection-due";
+  }
+  if (VEHICLE_POLICY.test(blob)) {
+    return "vehicle-insurance-policy-number";
+  }
+  if (VEHICLE_INSURER.test(blob)) {
+    return "vehicle-insurer";
+  }
+  if (VEHICLE_INSURANCE_UNTIL.test(blob)) {
+    return "vehicle-insurance-valid-until";
+  }
+  if (TRAVEL_BOOKING_REF.test(blob)) {
+    return "travel-booking-reference";
+  }
+  if (TRAVEL_TRIP.test(blob)) {
+    return "travel-trip-number";
+  }
+  if (TRAVEL_DEPARTURE.test(blob)) {
+    return "travel-departure-at";
+  }
+  if (TRAVEL_TRANSPORT.test(blob)) {
+    return "travel-transport-type";
+  }
+  if (TRAVEL_CARRIER.test(blob)) {
+    return "travel-carrier";
+  }
+  if (TRAVEL_FROM.test(blob)) {
+    return "travel-from";
+  }
+  if (TRAVEL_TO.test(blob)) {
+    return "travel-to";
+  }
+  if (TRAVEL_PASSENGERS.test(blob)) {
+    return "travel-passengers";
+  }
+  if (TRAVEL_SEATS.test(blob)) {
+    return "travel-seats";
+  }
+  if (CC_NUMBER.test(blob)) {
+    // Soft remap when the same field blob also carries loyalty cues.
+    if (LOYALTY_CONTEXT.test(blob)) {
+      return "loyalty-card-number";
+    }
+    return "cc-number";
+  }
+  if (CC_EXP.test(blob)) {
+    return "cc-exp";
+  }
+  if (CC_CSC.test(blob)) {
+    return "cc-csc";
+  }
+  if (CC_NAME.test(blob)) {
+    return "cc-name";
+  }
+  if (APARTMENT.test(blob)) {
+    return "address-apartment";
+  }
+  if (HOUSE.test(blob)) {
+    return "address-house";
+  }
+  if (STREET.test(blob)) {
+    return "street-address";
+  }
+  if (ADDRESS_FULL.test(blob)) {
+    return "address";
+  }
+  if (CITY.test(blob)) {
+    return "address-level2";
+  }
+  if (STATE.test(blob)) {
+    return "address-level1";
+  }
+  if (POSTAL.test(blob)) {
+    return "postal-code";
+  }
+  if (COUNTRY.test(blob)) {
+    return "country";
+  }
+  if (IBAN.test(blob)) {
+    return "iban";
+  }
+  if (SWIFT.test(blob)) {
+    return "swift";
+  }
+  if (BANK_ACCOUNT.test(blob)) {
+    return "bank-account-number";
+  }
+  if (BANK_HOLDER.test(blob)) {
+    return "bank-account-holder";
+  }
+  if (BANK_NAME.test(blob)) {
+    return "bank-name";
+  }
+  if (PASSPORT_NUMBER.test(blob)) {
+    return "passport-number";
+  }
+  if (PASSPORT_TYPE.test(blob)) {
+    return "passport-type";
+  }
+  if (NATIONALITY.test(blob)) {
+    return "nationality";
+  }
+  if (ISSUING_AUTH.test(blob)) {
+    return "issuing-authority";
+  }
+  if (BIRTH_PLACE.test(blob)) {
+    return "birth-place";
+  }
+  if (PASSPORT_ISSUE.test(blob)) {
+    return "passport-issue";
+  }
+  if (PASSPORT_EXPIRY.test(blob)) {
+    return "passport-expiry";
+  }
+  if (DB_PASS.test(blob)) {
+    return "db-password";
+  }
+  if (DB_USER.test(blob)) {
+    return "db-username";
+  }
+  if (DB_NAME.test(blob)) {
+    return "db-name";
+  }
+  if (DB_PORT.test(blob)) {
+    return "db-port";
+  }
+  if (DB_SERVER.test(blob)) {
+    return "db-server";
+  }
+  if (DB_SID.test(blob)) {
+    return "db-sid";
+  }
+  if (GIVEN_NAME.test(blob)) {
+    return "given-name";
+  }
+  if (FAMILY_NAME.test(blob)) {
+    return "family-name";
+  }
+  if (ADDITIONAL_NAME.test(blob)) {
+    return "additional-name";
+  }
+  if (TEL_HINT.test(blob)) {
+    return "tel";
+  }
+  if (SEX_HINT.test(blob)) {
+    return "sex";
+  }
+  if (ORG_HINT.test(blob)) {
+    return "organization";
+  }
+  if (ORG_TITLE.test(blob)) {
+    return "organization-title";
+  }
+  if (NICKNAME_HINT.test(blob)) {
+    return "username";
+  }
+  if (USER_NAME.test(blob)) {
+    return "username";
+  }
+  return null;
+}
+
+/** Ladder step 1: SAWF-style data-form-type. */
+function classifyFromSawf(input: AutofillInputHints): AutofillFieldKind | null {
+  const raw = (input.dataFormType ?? "").trim().toLowerCase();
+  if (!raw) {
+    return null;
+  }
+  if (BACKUP_RECOVERY_CODE_HINT.test(raw)) {
+    return null;
+  }
+  const mapped = SAWF_DATA_FORM_TYPE_MAP[raw];
+  return asKind(mapped);
+}
+
+/**
+ * Ladder step 2: autocomplete (WHATWG tokens + common site mistakes).
+ * Non-standard values do not block lower steps when unrecognized.
+ */
+function classifyFromAutocomplete(input: AutofillInputHints): AutofillFieldKind | null {
+  const ac = (input.autocomplete ?? "").toLowerCase().trim();
+  if (!ac || ac === "on" || ac === "off") {
+    return null;
+  }
+  const parts = ac.split(/\s+/).filter(Boolean);
+  // Prefer the last recognizable detail token (section-* / shipping / billing prefixes).
+  for (let i = parts.length - 1; i >= 0; i -= 1) {
+    const part = parts[i]!;
+    if (part.startsWith("section-") || part === "shipping" || part === "billing" || part === "home" || part === "work" || part === "mobile" || part === "fax" || part === "pager") {
+      continue;
+    }
+    // Strip optional contact type prefixes already handled; map known tokens.
+    const mapped = WHATWG_AUTOCOMPLETE_KIND[part];
+    if (mapped) {
+      if (mapped === "otp" && isBackupOrRecoveryCodeField(input)) {
+        return null;
+      }
+      return asKind(mapped);
+    }
+    // Compound: billing-email → email
+    for (const [token, kind] of Object.entries(WHATWG_AUTOCOMPLETE_KIND)) {
+      if (part === token || part.endsWith(`-${token}`)) {
+        if (kind === "otp" && isBackupOrRecoveryCodeField(input)) {
+          return null;
+        }
+        return asKind(kind);
+      }
+    }
+  }
+  // Partial: one-time without full one-time-code
+  if (ac.includes("one-time")) {
+    return isBackupOrRecoveryCodeField(input) ? null : "otp";
+  }
+  return null;
+}
+
+/** Ladder step 3: HTML input type (and strong type-adjacent cues). */
+function classifyFromType(input: AutofillInputHints): AutofillFieldKind | null {
+  const type = (input.type || "text").toLowerCase();
+  if (type === "password") {
+    if (isBackupOrRecoveryCodeField(input)) {
+      return "password";
+    }
+    // Digit OTP boxes sometimes use type=password.
+    if (input.maxLength === 1 && (input.inputMode === "numeric" || input.inputMode === "decimal")) {
+      return "otp";
+    }
+    return "password";
+  }
+  if (type === "email" || input.inputMode === "email") {
+    return "email";
+  }
+  if (type === "tel" && TEL_HINT.test(attrBlob(input))) {
+    return "tel";
+  }
+  return null;
+}
+
+/** Ladder step 4: explicit label / aria. */
+function classifyFromLabelAria(input: AutofillInputHints): AutofillFieldKind | null {
+  const blob = labelAriaBlob(input);
+  if (!blob) {
+    return null;
+  }
+  if (isBackupOrRecoveryCodeField(input)) {
+    return null;
+  }
+  const kind = matchKeywordKind(blob);
+  if (kind) {
+    return kind;
+  }
+  if (isPersonFullNameField(blob, "")) {
+    return "name";
+  }
+  return null;
+}
+
+/** Ladder step 5: name / id / placeholder. */
+function classifyFromNameIdPlaceholder(input: AutofillInputHints): AutofillFieldKind | null {
+  const blob = nameIdPlaceholderBlob(input);
+  if (!blob) {
+    return null;
+  }
+  if (isBackupOrRecoveryCodeField(input)) {
+    return null;
+  }
+  const kind = matchKeywordKind(blob);
+  if (kind) {
+    return kind;
+  }
+  // Bare name=name / id=*name* without username cues.
+  if (isPersonFullNameField(attrBlob(input), input.autocomplete ?? "")) {
+    return "name";
+  }
+  return null;
+}
+
+/**
+ * Ladder step 6: position / context.
+ * - First text field before a password → username
+ * - Two passwords in a row → new + confirm (both password kind; roles resolved elsewhere)
+ * Heading Sign in / Register is consumed by form-type detection; here we only fill gaps.
+ */
+function classifyFromPositionContext(
+  input: AutofillInputHints,
+  context: ClassifyContext | undefined,
+): AutofillFieldKind | null {
+  if (!context) {
+    return null;
+  }
+  const type = (input.type || "text").toLowerCase();
+  if (type === "password") {
+    return "password";
+  }
+  if (context.firstTextBeforePassword) {
+    const t = type === "text" || type === "email" || type === "tel" || type === "";
+    if (t) {
+      return type === "email" ? "email" : "username";
+    }
+  }
+  return null;
+}
+
+/**
+ * Numeric OTP heuristics applied after ladder steps when still unresolved,
+ * or to refine password → otp for one-time boxes.
+ */
+function refineOtpHeuristics(
+  input: AutofillInputHints,
+  current: AutofillFieldKind | null,
+): AutofillFieldKind | null {
+  if (isBackupOrRecoveryCodeField(input)) {
+    return current === "otp" ? null : current;
+  }
+  const type = (input.type || "text").toLowerCase();
+  const blob = attrBlob(input);
+  const numericOtp =
+    input.inputMode === "numeric" ||
+    input.inputMode === "decimal" ||
+    type === "tel" ||
+    type === "number";
+
+  if (current === "password") {
+    if (OTP_HINT.test(blob)) {
+      return "otp";
+    }
+    if (input.maxLength === 1 && numericOtp) {
+      return "otp";
+    }
+    return current;
+  }
+
+  if (current) {
+    return current;
+  }
+
+  if (OTP_HINT.test(blob)) {
+    return "otp";
+  }
+  // Segmented OTP digit boxes (owned fixtures: 4 / 6 / 8 cells) — with or without
+  // autocomplete=one-time-code on every cell.
+  if (input.maxLength === 1 && numericOtp) {
+    return "otp";
+  }
+  if (numericOtp && (input.maxLength === 6 || input.maxLength === 8) && /code|pass/i.test(blob)) {
+    return "otp";
+  }
+  return null;
+}
+
+const LOYALTY_SCOPE_KINDS = new Set<AutofillFieldKind>([
+  "loyalty-provider",
+  "loyalty-card-number",
+  "loyalty-barcode",
+  "loyalty-expiry",
+]);
+const VEHICLE_SCOPE_KINDS = new Set<AutofillFieldKind>([
+  "vehicle-make-model",
+  "vehicle-plate",
+  "vehicle-vin",
+  "vehicle-inspection-due",
+  "vehicle-insurance-policy-number",
+  "vehicle-insurer",
+  "vehicle-insurance-valid-until",
+]);
+const TRAVEL_SCOPE_KINDS = new Set<AutofillFieldKind>([
+  "travel-transport-type",
+  "travel-carrier",
+  "travel-trip-number",
+  "travel-departure-at",
+  "travel-from",
+  "travel-to",
+  "travel-booking-reference",
+  "travel-passengers",
+  "travel-seats",
+]);
+
+/**
+ * Resolve ambiguous bare labels («Card number», «Expiry date», «Provider», «Plate»,
+ * «Valid until», «From», «To») when the containing form/section clearly belongs to a
+ * specialty category. Never runs on login/checkout forms (guarded in scope detection).
+ */
+function refineSpecialtyFormKind(
+  input: AutofillInputHints,
+  kind: AutofillFieldKind | null,
+): AutofillFieldKind | null {
+  const scope = input.specialtyForm;
+  if (!scope) {
+    return kind;
+  }
+  const blob = attrBlob(input);
+  if (scope === "loyalty") {
+    if (kind === "cc-number") {
+      return "loyalty-card-number";
+    }
+    if (kind === "cc-exp" || kind === "passport-expiry") {
+      return "loyalty-expiry";
+    }
+    if (kind === null || kind === "name" || kind === "organization") {
+      if (
+        /\bcard[-_\s]*(?:number|no|id)\b|\bmember(?:ship)?\b|номер\s*карт|номер\s*участник/iu.test(
+          blob,
+        )
+      ) {
+        return "loyalty-card-number";
+      }
+      if (
+        /\b(?:provider|program(?:me)?|store|merchant|brand|shop|retailer|issuer|company|organization)\b|провайдер|программ|магазин|сеть|бренд|компани|организац|название/iu.test(
+          blob,
+        )
+      ) {
+        return "loyalty-provider";
+      }
+      if (/\bqr\b|штрих|баркод/iu.test(blob)) {
+        return "loyalty-barcode";
+      }
+      if (
+        /expir|valid[-_\s]*(?:until|thru|to)|срок\s*действ|годен\s*до|действует\s*до/iu.test(blob)
+      ) {
+        return "loyalty-expiry";
+      }
+    }
+    return kind;
+  }
+  if (scope === "vehicle") {
+    if (kind === "cc-exp" || kind === "passport-expiry") {
+      return "vehicle-insurance-valid-until";
+    }
+    if (kind === null) {
+      if (/\bplate\b|\breg(?:istration)?[-_\s]*(?:number|no)\b|гос\.?\s*номер|номер\s*авто/iu.test(blob)) {
+        return "vehicle-plate";
+      }
+      if (/\bmake\b|\bmodel\b|марк|модел/iu.test(blob)) {
+        return "vehicle-make-model";
+      }
+      if (/inspection|\bmot\b|техосмотр/iu.test(blob)) {
+        return "vehicle-inspection-due";
+      }
+      if (/valid[-_\s]*(?:until|thru|to)|expir|действует\s*до|срок\s*действ|годен\s*до/iu.test(blob)) {
+        return "vehicle-insurance-valid-until";
+      }
+      if (/policy|полис/iu.test(blob)) {
+        return "vehicle-insurance-policy-number";
+      }
+      if (/insur|страхов/iu.test(blob)) {
+        return "vehicle-insurer";
+      }
+    }
+    return kind;
+  }
+  if (scope === "travel") {
+    if (kind === null) {
+      if (
+        /\b(?:ref(?:erence)?|pnr|confirmation|booking[-_\s]*code)\b|код\s*брон|номер\s*брон|бронь/iu.test(
+          blob,
+        )
+      ) {
+        return "travel-booking-reference";
+      }
+      if (/\boperator\b|\bcarrier\b|\bairline\b|перевозчик|авиакомпани/iu.test(blob)) {
+        return "travel-carrier";
+      }
+      if (/\bfrom\b|откуда/iu.test(blob)) {
+        return "travel-from";
+      }
+      if (/\bto\b|куда/iu.test(blob)) {
+        return "travel-to";
+      }
+      if (/\bdeparture\b|отправлен|вылет/iu.test(blob)) {
+        return "travel-departure-at";
+      }
+      if (/\bflight\b|\btrip\b|\btrain\b|рейс|поезд/iu.test(blob)) {
+        return "travel-trip-number";
+      }
+      if (/\bseat\b|место(?!\s*рожд)/iu.test(blob)) {
+        return "travel-seats";
+      }
+      if (/\bpassenger|\btraveller|\btraveler|пассажир/iu.test(blob)) {
+        return "travel-passengers";
+      }
+    }
+    return kind;
+  }
+  return kind;
+}
+
 /**
  * Classify a page input for autofill (login + personal / finance / docs / db / crypto).
  * Returns null when the field is not a known autofill target.
+ *
+ * Signal ladder: SAWF → autocomplete → type → label/aria → name/id/placeholder → position.
+ * The first confident step wins; later steps do not overwrite.
  */
-export function classifyAutofillInput(input: AutofillInputHints): AutofillFieldKind | null {
-  const type = (input.type || "text").toLowerCase();
-  const ac = (input.autocomplete ?? "").toLowerCase().trim();
-  const blob = attrBlob(input);
-
+export function classifyAutofillInput(
+  input: AutofillInputHints,
+  context?: ClassifyContext,
+): AutofillFieldKind | null {
   if (isDeniedAutofillField(input)) {
     return null;
   }
 
-  if (type === "password") {
-    // OTP often uses type=password on multi-box / one-time fields — never treat as password.
-    if (ac.includes("one-time") || ac === "one-time-code" || OTP_NAME.test(blob)) {
-      return "otp";
+  // Backup/recovery codes are never OTP and are not login password targets.
+  if (isBackupOrRecoveryCodeField(input)) {
+    return null;
+  }
+
+  let kind: AutofillFieldKind | null = null;
+
+  // 1. SAWF
+  kind = classifyFromSawf(input);
+  if (kind) {
+    return refineOtpHeuristics(input, kind) ?? kind;
+  }
+
+  // 2. autocomplete
+  kind = classifyFromAutocomplete(input);
+  if (kind) {
+    // type=password + autocomplete current/new stays password; otp tokens → otp
+    if (kind === "password" && (input.type || "").toLowerCase() === "password") {
+      return refineOtpHeuristics(input, "password") ?? "password";
     }
-    // Single-digit password boxes are almost always OTP digit groups, not a password field.
-    if (input.maxLength === 1 && (input.inputMode === "numeric" || input.inputMode === "decimal")) {
-      return "otp";
+    return refineOtpHeuristics(input, kind) ?? kind;
+  }
+
+  // 3. type
+  kind = classifyFromType(input);
+  if (kind) {
+    // Password type alone is confident; still allow OTP refine for digit boxes / OTP names.
+    if (kind === "password") {
+      const refined = refineOtpHeuristics(input, kind);
+      // DB / crypto password specializations from name blob (step 5 cues on password type).
+      const blob = attrBlob(input);
+      if (refined === "password" || refined === null) {
+        if (DB_PASS.test(blob)) {
+          return "db-password";
+        }
+        if (CRYPTO_PHRASE.test(blob)) {
+          return "crypto-passphrase";
+        }
+        if (CRYPTO_PIN.test(blob)) {
+          return "crypto-pin";
+        }
+      }
+      return refined ?? kind;
     }
-    if (DB_PASS.test(blob)) {
-      return "db-password";
-    }
-    if (CRYPTO_PHRASE.test(blob) || CRYPTO_PIN.test(blob)) {
-      return CRYPTO_PHRASE.test(blob) ? "crypto-passphrase" : "crypto-pin";
-    }
-    return "password";
+    return kind;
   }
 
-  const numericOtp =
-    input.inputMode === "numeric" || input.inputMode === "decimal" || type === "tel" || type === "number";
-  if (
-    ac.includes("one-time-code") ||
-    ac.includes("one-time") ||
-    ac === "otp" ||
-    OTP_NAME.test(blob) ||
-    // Numeric code boxes: OTP copy is enough (maxLength optional — npm has none).
-    (numericOtp && OTP_NAME.test(blob)) ||
-    (numericOtp && (input.maxLength === 6 || input.maxLength === 8) && /code|pass/i.test(blob))
-  ) {
-    return "otp";
+  // 4. label / aria
+  kind = classifyFromLabelAria(input);
+  if (kind) {
+    return refineSpecialtyFormKind(input, kind);
   }
 
-  const crypto = firstMatch(blob, ac, [
-    { key: "crypto-address", ac: undefined, re: CRYPTO_ADDR },
-    { key: "crypto-passphrase", ac: undefined, re: CRYPTO_PHRASE },
-    { key: "crypto-pin", ac: undefined, re: CRYPTO_PIN },
-  ]);
-  if (crypto) {
-    return crypto;
+  // 5. name / id / placeholder
+  kind = classifyFromNameIdPlaceholder(input);
+  if (kind) {
+    return refineSpecialtyFormKind(input, kind);
   }
 
-  // Email before address: labels like "Email address" must not become street-address.
-  if (
-    type === "email" ||
-    input.inputMode === "email" ||
-    acToken(ac, "email") ||
-    ac.includes("email") ||
-    EMAIL_HINT.test(blob)
-  ) {
-    return "email";
+  // 6. position / context
+  kind = classifyFromPositionContext(input, context);
+  if (kind) {
+    return refineSpecialtyFormKind(input, kind);
   }
 
-  // Birthday before card-expiry: placeholders like `dd/mm/yyyy` used to match CC_EXP's mm/yy.
-  if (acToken(ac, "bday") || ac.includes("bday") || BDAY_HINT.test(blob)) {
-    return "bday";
+  // Specialty form scope fallback for bare labels (e.g. «Provider», «Plate», «Valid until»).
+  const specialty = refineSpecialtyFormKind(input, null);
+  if (specialty) {
+    return specialty;
   }
 
-  const cc = firstMatch(blob, ac, [
-    { key: "cc-number", ac: "cc-number", re: CC_NUMBER },
-    { key: "cc-exp", ac: ["cc-exp", "cc-exp-month", "cc-exp-year"], re: CC_EXP },
-    { key: "cc-csc", ac: "cc-csc", re: CC_CSC },
-    { key: "cc-name", ac: "cc-name", re: CC_NAME },
-  ]);
-  if (cc) {
-    return cc;
-  }
-
-  const address = firstMatch(blob, ac, [
-    { key: "address-apartment", ac: ["address-line2", "address-level3"], re: APARTMENT },
-    { key: "address-house", ac: undefined, re: HOUSE },
-    // street-address / address-line1 → street component (full one-liner decided at fill time)
-    { key: "street-address", ac: ["street-address", "address-line1"], re: STREET },
-    { key: "address", ac: undefined, re: ADDRESS_FULL },
-    { key: "address-level2", ac: "address-level2", re: CITY },
-    { key: "address-level1", ac: "address-level1", re: STATE },
-    { key: "postal-code", ac: "postal-code", re: POSTAL },
-    { key: "country", ac: ["country", "country-name"], re: COUNTRY },
-  ]);
-  if (address) {
-    return address;
-  }
-
-  const bank = firstMatch(blob, ac, [
-    { key: "iban", ac: undefined, re: IBAN },
-    { key: "swift", ac: undefined, re: SWIFT },
-    { key: "bank-account-number", ac: undefined, re: BANK_ACCOUNT },
-    { key: "bank-account-holder", ac: undefined, re: BANK_HOLDER },
-    { key: "bank-name", ac: undefined, re: BANK_NAME },
-  ]);
-  if (bank) {
-    return bank;
-  }
-
-  const passport = firstMatch(blob, ac, [
-    { key: "passport-number", ac: undefined, re: PASSPORT_NUMBER },
-    { key: "passport-type", ac: undefined, re: PASSPORT_TYPE },
-    { key: "nationality", ac: undefined, re: NATIONALITY },
-    { key: "issuing-authority", ac: undefined, re: ISSUING_AUTH },
-    { key: "birth-place", ac: undefined, re: BIRTH_PLACE },
-    { key: "passport-issue", ac: undefined, re: PASSPORT_ISSUE },
-    { key: "passport-expiry", ac: undefined, re: PASSPORT_EXPIRY },
-  ]);
-  if (passport) {
-    return passport;
-  }
-
-  const db = firstMatch(blob, ac, [
-    { key: "db-password", ac: undefined, re: DB_PASS },
-    { key: "db-username", ac: undefined, re: DB_USER },
-    { key: "db-name", ac: undefined, re: DB_NAME },
-    { key: "db-port", ac: undefined, re: DB_PORT },
-    { key: "db-server", ac: undefined, re: DB_SERVER },
-    { key: "db-sid", ac: undefined, re: DB_SID },
-  ]);
-  if (db) {
-    return db;
-  }
-
-  const personal = firstMatch(blob, ac, [
-    { key: "given-name", ac: "given-name", re: GIVEN_NAME },
-    { key: "family-name", ac: "family-name", re: FAMILY_NAME },
-    { key: "additional-name", ac: "additional-name", re: ADDITIONAL_NAME },
-    { key: "tel", ac: ["tel", "tel-national", "tel-local"], re: TEL_HINT },
-    { key: "bday", ac: ["bday", "bday-day", "bday-month", "bday-year"], re: BDAY_HINT },
-    { key: "sex", ac: "sex", re: SEX_HINT },
-    { key: "organization", ac: "organization", re: ORG_HINT },
-    { key: "organization-title", ac: "organization-title", re: ORG_TITLE },
-  ]);
-  if (personal) {
-    return personal;
-  }
-  // After given/family/additional: full name only with person cues / bare Name (not Ruleset Name).
-  if (isPersonFullNameField(blob, ac)) {
-    return "name";
-  }
-
-  // Identity nickname → username kind for personal_data fill (not login cipher username).
-  if (acToken(ac, "nickname") || NICKNAME_HINT.test(blob)) {
-    return "username";
-  }
-
-  if (acToken(ac, "username") || ac.includes("username") || USER_NAME.test(blob)) {
-    return "username";
-  }
-
-  if (type === "tel" && TEL_HINT.test(blob)) {
-    return "tel";
-  }
-
-  return null;
+  // Residual OTP numeric heuristics when nothing else matched.
+  return refineOtpHeuristics(input, null);
 }
 
 /** Login-oriented classification (email → username for fill buckets). */
-export function classifyLoginInput(input: AutofillInputHints): "username" | "password" | "otp" | null {
-  const kind = classifyAutofillInput(input);
+export function classifyLoginInput(
+  input: AutofillInputHints,
+  context?: ClassifyContext,
+): "username" | "password" | "otp" | null {
+  const kind = classifyAutofillInput(input, context);
   if (kind === "password" || kind === "otp") {
     return kind;
   }
@@ -464,7 +1040,7 @@ export function classifyLoginInput(input: AutofillInputHints): "username" | "pas
   return null;
 }
 
-/** Nearby label / heading text to the left or above the input (BW-style richer labels). */
+/** Nearby label / heading text to the left or above the input. */
 function nearbyLabelText(el: HTMLInputElement): string {
   const parts: string[] = [];
   const dataLabel =
@@ -483,7 +1059,6 @@ function nearbyLabelText(el: HTMLInputElement): string {
         parts.push(text);
       }
     }
-    // Closest fieldset legend / form heading above this input.
     const fieldset = el.closest("fieldset");
     const legend = fieldset?.querySelector(":scope > legend");
     if (legend?.textContent) {
@@ -498,6 +1073,7 @@ function nearbyLabelText(el: HTMLInputElement): string {
 /**
  * Query fillable inputs under root, including open shadow roots (cheap BFS).
  * Same-origin iframes stay out of scope — routed by their own content script.
+ * Closed shadow roots are not accessible from a content script and are not pierced.
  */
 export function queryAutofillInputs(root: ParentNode): HTMLInputElement[] {
   const found: HTMLInputElement[] = [];
@@ -529,7 +1105,7 @@ export function queryAutofillInputs(root: ParentNode): HTMLInputElement[] {
   return found;
 }
 
-export function collectInputHints(el: HTMLInputElement): AutofillInputHints {
+function collectRawInputHints(el: HTMLInputElement): AutofillInputHints {
   let labelText = "";
   try {
     if (el.labels && el.labels.length > 0) {
@@ -552,7 +1128,6 @@ export function collectInputHints(el: HTMLInputElement): AutofillInputHints {
   if (nearby) {
     labelText = `${labelText} ${nearby}`.trim();
   }
-  // Prefer content attribute — some pages set autocomplete=name while the IDL is empty/"on".
   const autocompleteAttr = el.getAttribute("autocomplete")?.trim() || undefined;
   const autocompleteIdl = el.autocomplete?.trim() || undefined;
   const autocomplete =
@@ -561,6 +1136,11 @@ export function collectInputHints(el: HTMLInputElement): AutofillInputHints {
       : autocompleteIdl && autocompleteIdl !== "on" && autocompleteIdl !== "off"
         ? autocompleteIdl
         : autocompleteAttr || autocompleteIdl || undefined;
+
+  const dataFormType =
+    el.getAttribute("data-form-type")?.trim() ||
+    el.getAttribute("data-formtype")?.trim() ||
+    undefined;
 
   return {
     type: el.type,
@@ -573,7 +1153,100 @@ export function collectInputHints(el: HTMLInputElement): AutofillInputHints {
     inputMode: el.inputMode,
     maxLength: el.maxLength,
     role: el.getAttribute("role") ?? undefined,
+    dataFormType,
   };
+}
+
+function headingMetaForSpecialtyScope(scope: Element): string {
+  const parts: string[] = [];
+  const push = (text: string | null | undefined) => {
+    const trimmed = text?.trim() ?? "";
+    if (trimmed && trimmed.length < 160) {
+      parts.push(trimmed);
+    }
+  };
+  push(scope.id);
+  push(scope.getAttribute("name"));
+  push(scope.getAttribute("aria-label"));
+  try {
+    const headings = scope.querySelectorAll(
+      "h1, h2, h3, h4, h5, h6, legend, [role='heading'], .form-title",
+    );
+    for (const h of Array.from(headings).slice(0, 3)) {
+      push(h.textContent);
+    }
+    if (scope.tagName === "FORM") {
+      const prev = scope.previousElementSibling;
+      if (prev && (/^H[1-6]$/i.test(prev.tagName) || prev.getAttribute("role") === "heading")) {
+        push(prev.textContent);
+      }
+      const section = scope.closest("section, fieldset");
+      const sectionHeading = section?.querySelector(
+        ":scope > h1, :scope > h2, :scope > h3, :scope > h4, :scope > legend",
+      );
+      push(sectionHeading?.textContent);
+    }
+  } catch {
+    /* ignore */
+  }
+  return parts.join(" ");
+}
+
+function detectSpecialtyFormForElement(el: HTMLInputElement): SpecialtyFormScope | undefined {
+  try {
+    const scope =
+      el.form ?? el.closest("form") ?? el.closest("fieldset") ?? el.closest("section");
+    if (!scope || scope === el.ownerDocument.body || scope === el.ownerDocument.documentElement) {
+      return undefined;
+    }
+    const siblings = Array.from(scope.querySelectorAll("input")).filter(
+      (node): node is HTMLInputElement => node instanceof HTMLInputElement,
+    );
+    // Disqualify login/register and payment-card checkout forms from specialty remapping.
+    let siblingScope: SpecialtyFormScope | undefined;
+    for (const sib of siblings) {
+      if (sib.type.toLowerCase() === "password") {
+        return undefined;
+      }
+      const rawKind = classifyAutofillInput(collectRawInputHints(sib));
+      if (rawKind === "password" || rawKind === "cc-csc") {
+        return undefined;
+      }
+      if (!siblingScope && rawKind) {
+        if (LOYALTY_SCOPE_KINDS.has(rawKind)) {
+          siblingScope = "loyalty";
+        } else if (VEHICLE_SCOPE_KINDS.has(rawKind)) {
+          siblingScope = "vehicle";
+        } else if (TRAVEL_SCOPE_KINDS.has(rawKind)) {
+          siblingScope = "travel";
+        }
+      }
+    }
+    const meta = headingMetaForSpecialtyScope(scope);
+    if (meta) {
+      if (LOYALTY_FORM_HEADING.test(meta)) {
+        return "loyalty";
+      }
+      if (VEHICLE_FORM_HEADING.test(meta)) {
+        return "vehicle";
+      }
+      if (TRAVEL_FORM_HEADING.test(meta)) {
+        return "travel";
+      }
+    }
+    return siblingScope;
+  } catch {
+    return undefined;
+  }
+}
+
+export function collectInputHints(el: HTMLInputElement): AutofillInputHints {
+  const hints = collectRawInputHints(el);
+  const specialtyForm = detectSpecialtyFormForElement(el);
+  if (specialtyForm) {
+    hints.specialtyForm = specialtyForm;
+  }
+  return hints;
 }
 
 export function collectPageFieldKinds(root: ParentNode): AutofillFieldKind[] {
@@ -590,7 +1263,7 @@ export function collectPageFieldKinds(root: ParentNode): AutofillFieldKind[] {
 /**
  * Field kinds sent to the autofill suggestion query.
  * When a field is focused, only that field's kind is used so sibling inputs
- * (e.g. cardNumber next to email on checkout) cannot mix suggestion types.
+ * cannot mix suggestion types.
  */
 export function suggestionFieldKindsForFocus(
   focusedKind: AutofillFieldKind | null | undefined,
@@ -606,10 +1279,10 @@ export function suggestionFieldKindsForFocus(
  * Extra OTP detection when classify returns null but the page is clearly an
  * email-OTP / 2FA step (URL + numeric/text code field).
  */
-export function looksLikeEmailOtpField(
-  input: AutofillInputHints,
-  pageUrl: string,
-): boolean {
+export function looksLikeEmailOtpField(input: AutofillInputHints, pageUrl: string): boolean {
+  if (isBackupOrRecoveryCodeField(input)) {
+    return false;
+  }
   if (classifyAutofillInput(input) === "otp") {
     return true;
   }
@@ -625,9 +1298,11 @@ export function looksLikeEmailOtpField(
   }
   const blob = attrBlob(input);
   const numeric =
-    input.inputMode === "numeric" || input.inputMode === "decimal" || type === "tel" || type === "number";
-  // On email-otp URLs, a numeric field or any OTP-ish copy is the code input.
-  return numeric || OTP_NAME.test(blob) || /pass(?:word|code)|code/i.test(blob);
+    input.inputMode === "numeric" ||
+    input.inputMode === "decimal" ||
+    type === "tel" ||
+    type === "number";
+  return numeric || OTP_HINT.test(blob) || /pass(?:word|code)|code/i.test(blob);
 }
 
 /**

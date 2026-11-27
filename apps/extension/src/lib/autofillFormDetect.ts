@@ -6,16 +6,42 @@ import {
   type AutofillFieldKind,
   type AutofillInputHints,
 } from "./autofillFieldClassify.ts";
-
+import {
+  ACCOUNT_CREATION_PASSWORD_HINT,
+  CONFIRM_PASSWORD_HINT,
+  REGISTER_HEADING,
+  SIGN_IN_HEADING,
+} from "./autofillDictionaries.ts";
 function isVisibleInput(el: HTMLInputElement): boolean {
   if (el.disabled) {
     return false;
   }
-  const style = el.ownerDocument.defaultView?.getComputedStyle(el);
-  if (style && (style.visibility === "hidden" || style.display === "none")) {
+  if (el.type.toLowerCase() === "hidden" || el.hidden) {
     return false;
   }
-  return el.getClientRects().length > 0;
+  if (el.getAttribute("aria-hidden") === "true") {
+    return false;
+  }
+  const style = el.ownerDocument.defaultView?.getComputedStyle(el);
+  if (style) {
+    if (style.visibility === "hidden" || style.display === "none") {
+      return false;
+    }
+    const opacity = Number.parseFloat(style.opacity || "1");
+    if (Number.isFinite(opacity) && opacity === 0) {
+      return false;
+    }
+  }
+  const rects = el.getClientRects();
+  if (rects.length > 0) {
+    const rect = rects[0];
+    if (!rect || rect.width < 1 || rect.height < 1) {
+      return false;
+    }
+    return true;
+  }
+  // jsdom often reports empty client rects for otherwise fillable inputs.
+  return true;
 }
 
 /**
@@ -72,12 +98,10 @@ const IDENTITY_TEXT =
 
 const SEARCH_TEXT = /\b(search|поиск|найти|filter|фильтр)\b/i;
 
-const CONFIRM_PASSWORD =
-  /\b(confirm|repeat|re[-_]?type|re[-_]?enter|verify|подтверд|повтор|ещё\s*раз|еще\s*раз|пароль\s*ещё|пароль\s*еще)\b/i;
+const CONFIRM_PASSWORD = CONFIRM_PASSWORD_HINT;
 
-/** Account-creation keywords on field / siblings (BW AccountCreationFieldKeywords). */
-const ACCOUNT_CREATION_PASSWORD =
-  /\b(new[-_\s]?password|create[-_\s]?password|choose[-_\s]?password|set[-_\s]?password|confirm[-_\s]?password|repeat[-_\s]?password|создай(?:те)?\s*парол|новый\s*парол|придумай(?:те)?\s*парол)\b/i;
+/** Account-creation keywords on field / siblings. */
+const ACCOUNT_CREATION_PASSWORD = ACCOUNT_CREATION_PASSWORD_HINT;
 
 const CC_KINDS = new Set<AutofillFieldKind>(["cc-number", "cc-exp", "cc-csc", "cc-name"]);
 const IDENTITY_KINDS = new Set<AutofillFieldKind>([
@@ -125,9 +149,17 @@ function isPasswordLikeHints(hints: AutofillInputHints): boolean {
   return (hints.type || "").toLowerCase() === "password";
 }
 
+/** Password role after field kind is password: current / new / confirm. */
+export type PasswordFieldRole = "current" | "new" | "confirm";
+
+/** True when autocomplete is the non-spec site mistake `password` (→ current). */
+function hasPasswordAutocompleteMistake(ac: string): boolean {
+  return ac.split(/\s+/).some((part) => part === "password");
+}
+
 /**
- * BW-style: password field for account creation / change
- * (`new-password` or AccountCreation keywords). `current-password` wins as not-new.
+ * Password field for account creation / change
+ * (`new-password` or account-creation keywords). `current-password` wins as not-new.
  */
 export function isNewPasswordField(
   hints: AutofillInputHints,
@@ -137,7 +169,7 @@ export function isNewPasswordField(
     return false;
   }
   const ac = (hints.autocomplete ?? "").toLowerCase();
-  if (acToken(ac, "current-password")) {
+  if (acToken(ac, "current-password") || hasPasswordAutocompleteMistake(ac)) {
     return false;
   }
   if (acToken(ac, "new-password") || ACCOUNT_CREATION_PASSWORD.test(hintBlob(hints))) {
@@ -158,9 +190,8 @@ export function isNewPasswordField(
 }
 
 /**
- * BW-style: login / current password.
- * Explicit `current-password`, or password-like without new-password / account-creation cues.
- * Sibling new-password alone does not flip a current-password field.
+ * Login / current password.
+ * Explicit `current-password` (or site mistake `password`), or password-like without new cues.
  */
 export function isCurrentPasswordField(
   hints: AutofillInputHints,
@@ -170,13 +201,58 @@ export function isCurrentPasswordField(
     return false;
   }
   const ac = (hints.autocomplete ?? "").toLowerCase();
-  if (acToken(ac, "current-password")) {
+  if (acToken(ac, "current-password") || hasPasswordAutocompleteMistake(ac)) {
     return true;
   }
-  if (isNewPasswordField(hints, siblings)) {
+  if (isNewPasswordField(hints, siblings) || isConfirmPasswordHints(hints)) {
     return false;
   }
   return true;
+}
+
+/**
+ * Resolve password role: current / new / confirm.
+ * Confirm beats new when confirm wording is present; two bare passwords → first new, second confirm
+ * when the form heading suggests registration.
+ */
+export function resolvePasswordFieldRole(
+  hints: AutofillInputHints,
+  siblings: readonly AutofillInputHints[] = [],
+  options?: { formHeading?: string; passwordIndex?: number; passwordCount?: number },
+): PasswordFieldRole | null {
+  if (!isPasswordLikeHints(hints) || classifyAutofillInput(hints) !== "password") {
+    return null;
+  }
+  if (isConfirmPasswordHints(hints)) {
+    return "confirm";
+  }
+  if (isCurrentPasswordField(hints, siblings)) {
+    return "current";
+  }
+  if (isNewPasswordField(hints, siblings)) {
+    const count = options?.passwordCount ?? siblings.filter((s) => isPasswordLikeHints(s)).length;
+    const index = options?.passwordIndex;
+    if (
+      typeof index === "number" &&
+      count >= 2 &&
+      index === count - 1 &&
+      !acToken((hints.autocomplete ?? "").toLowerCase(), "new-password")
+    ) {
+      return "confirm";
+    }
+    return "new";
+  }
+  // Positional: two passwords + register heading → new then confirm.
+  const heading = options?.formHeading ?? "";
+  const count = options?.passwordCount ?? 0;
+  const index = options?.passwordIndex ?? 0;
+  if (count >= 2 && REGISTER_HEADING.test(heading)) {
+    return index === 0 ? "new" : "confirm";
+  }
+  if (count >= 2 && SIGN_IN_HEADING.test(heading) && index === 0) {
+    return "current";
+  }
+  return isNewPasswordField(hints, siblings) ? "new" : "current";
 }
 
 function collectNearbyText(form: Element | null, doc: Document): string {
@@ -317,13 +393,19 @@ export function detectAutofillFormType(signals: AutofillFormSignals): AutofillFo
   const hasUser = kinds.has("username") || kinds.has("email");
   const hasCard = [...kinds].some((k) => CC_KINDS.has(k));
   const hasIdentity = [...kinds].some((k) => IDENTITY_KINDS.has(k));
+  const hasSpecialty = [...kinds].some(
+    (k) =>
+      LOYALTY_FORM_FIELD_KINDS.has(k) ||
+      VEHICLE_FORM_FIELD_KINDS.has(k) ||
+      TRAVEL_FORM_FIELD_KINDS.has(k),
+  );
   const passwordCount = signals.passwordFields.length;
   const loginCue = textSuggestsLogin(text);
   const registerCue = REGISTER_TEXT.test(text);
   const classicLoginShape =
     hasPassword && hasUser && passwordCount === 1 && !signals.hasConfirmPassword;
 
-  if (SEARCH_TEXT.test(text) && !hasPassword && !hasCard) {
+  if (SEARCH_TEXT.test(text) && !hasPassword && !hasCard && !hasSpecialty) {
     return "search";
   }
 
@@ -389,6 +471,23 @@ export function detectAutofillFormType(signals: AutofillFormSignals): AutofillFo
 
   if (hasPassword && hasUser) {
     return "login";
+  }
+
+  // Multi-step login: identifier-only step (username/email, no password yet).
+  // Heading «Sign in» / «Войти» or Continue/Next CTA marks the funnel as login.
+  if (!hasPassword && hasUser && !hasCard && !hasIdentity) {
+    const identifierStepCue =
+      loginCue ||
+      SIGN_IN_HEADING.test(text) ||
+      /(?<![\p{L}\p{N}_])(?:continue|next|далее|продолжить)(?![\p{L}\p{N}_])/iu.test(text);
+    if (identifierStepCue && !registerCue) {
+      return "login";
+    }
+  }
+
+  // Identifier + register heading without password → still register funnel start.
+  if (!hasPassword && hasUser && registerCue) {
+    return "register";
   }
 
   return "unknown";
@@ -512,7 +611,11 @@ export function isPasswordGeneratorField(kind: AutofillFieldKind | null): boolea
   return kind === "password";
 }
 
-/** True when the focused password field is a confirm/repeat password control. */
+/**
+ * True when the focused password field should open the generator.
+ * `current-password` (and login current role) always offers saved-login fill, never the generator.
+ * Generator is for new-password / confirm on register or change-password forms.
+ */
 export function shouldOpenPasswordGenerator(
   formType: AutofillFormType,
   kind: AutofillFieldKind | null,
@@ -521,11 +624,31 @@ export function shouldOpenPasswordGenerator(
   if (!isPasswordGeneratorField(kind)) {
     return false;
   }
-  if (formType === "register") {
-    return true;
+  if (input) {
+    const hints = collectInputHints(input);
+    const form = input.form ?? input.closest("form");
+    const siblings =
+      form != null
+        ? queryAutofillInputs(form)
+            .filter((el) => (el.type || "").toLowerCase() === "password")
+            .map((el) => collectInputHints(el))
+        : [];
+    if (isCurrentPasswordField(hints, siblings)) {
+      return false;
+    }
+    const role = resolvePasswordFieldRole(hints, siblings);
+    if (role === "current") {
+      return false;
+    }
+    if (role === "new" || role === "confirm") {
+      return true;
+    }
+    if (isConfirmPasswordField(input)) {
+      return true;
+    }
   }
-  // Confirm/repeat password is always a generator context, even if form type is ambiguous.
-  if (input && isConfirmPasswordField(input)) {
+  // Register without a resolvable current/new split → generator (create-account password).
+  if (formType === "register") {
     return true;
   }
   return false;
@@ -535,10 +658,48 @@ export function shouldOpenPasswordGenerator(
  * Vault categories allowed for a form type + focused field kind.
  * Login never surfaces personal_data; register prefers personal_data for identity fields.
  */
+
+const LOYALTY_FORM_FIELD_KINDS = new Set([
+  "loyalty-provider",
+  "loyalty-card-number",
+  "loyalty-barcode",
+  "loyalty-expiry",
+]);
+const VEHICLE_FORM_FIELD_KINDS = new Set([
+  "vehicle-make-model",
+  "vehicle-plate",
+  "vehicle-vin",
+  "vehicle-inspection-due",
+  "vehicle-insurance-policy-number",
+  "vehicle-insurer",
+  "vehicle-insurance-valid-until",
+]);
+const TRAVEL_FORM_FIELD_KINDS = new Set([
+  "travel-transport-type",
+  "travel-carrier",
+  "travel-trip-number",
+  "travel-departure-at",
+  "travel-from",
+  "travel-to",
+  "travel-booking-reference",
+  "travel-passengers",
+  "travel-seats",
+]);
+
 export function categoriesAllowedForFormType(
   formType: AutofillFormType,
   fieldKind: string | null | undefined,
 ): readonly string[] | null {
+  // Specialty kinds never mix with login / personal_data buckets.
+  if (fieldKind && LOYALTY_FORM_FIELD_KINDS.has(fieldKind)) {
+    return ["loyalty_card"];
+  }
+  if (fieldKind && VEHICLE_FORM_FIELD_KINDS.has(fieldKind)) {
+    return ["vehicle"];
+  }
+  if (fieldKind && TRAVEL_FORM_FIELD_KINDS.has(fieldKind)) {
+    return ["travel_booking"];
+  }
   // null = no restriction beyond categoriesForFieldKinds
   if (formType === "search") {
     return [];

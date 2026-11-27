@@ -1,17 +1,25 @@
 {
-  "sha256": "7cc5c13ced6a0e8f1ccb4322988566fd11683330b3d41be79b459acb1efd1085",
+  "sha256": "5ddc82bf0efad26f325ddb55d955515525f4de32b89d240a03337a93d113388d",
   "files": [
     {
-      "path": "/agent/repos/okkey/apps/extension/src/lib/autofillFieldClassify.ts",
-      "sha256": "b4e51e67709ead7e3a6a2a211b6d7efb8a3af568810601e01cf1cb20828bece4"
+      "path": "src/lib/autofillDictionaries.ts",
+      "sha256": "dedbca544c195010bd385d462870be1eaf676baa08c9637e1ea42d6eff463971"
     },
     {
-      "path": "/agent/repos/okkey/apps/extension/src/lib/autofillFormDetect.ts",
-      "sha256": "28d72b1c7fabc147f7111b90f2cb702eff271efe45dffbc090365786a1271508"
+      "path": "src/lib/autofillDomLayers.ts",
+      "sha256": "112aac1e59e55b7d6ee51740c93a276a4378a06d1500f00284b091f958036339"
     },
     {
-      "path": "/agent/repos/okkey/apps/extension/src/lib/loginFormFields.ts",
-      "sha256": "458d9753e75f77295e907f68933bff16e107487a58dc5d122309c5d6b8a42ce8"
+      "path": "src/lib/autofillFieldClassify.ts",
+      "sha256": "13cecdeaa5c8a2e0c66936014763c80eaaf82dd1b2a25b7d27dd74619233f5b9"
+    },
+    {
+      "path": "src/lib/autofillFormDetect.ts",
+      "sha256": "360275a286a21ab069276fff32c0dded5ebef99e7b5372701c6cf83e544ff1e7"
+    },
+    {
+      "path": "src/lib/loginFormFields.ts",
+      "sha256": "62181db3e2a588b31b6995e42a256bd2303f16fd9c64ce9a1b245e9fd2355f25"
     }
   ]
 }

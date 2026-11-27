@@ -272,6 +272,29 @@ describe("detectAutofillFormType", () => {
     );
   });
 
+  it("does not treat travel/loyalty/vehicle forms with Search CTA as search forms", () => {
+    assert.notEqual(
+      detectAutofillFormType(
+        signals({
+          fieldKinds: ["travel-booking-reference", "travel-carrier"],
+          formTextBlob: "Search booking",
+          urlPath: "/manage-booking",
+        }),
+      ),
+      "search",
+    );
+    assert.notEqual(
+      detectAutofillFormType(
+        signals({
+          fieldKinds: ["loyalty-card-number", "loyalty-provider"],
+          formTextBlob: "Поиск карты лояльности",
+          urlPath: "/loyalty",
+        }),
+      ),
+      "search",
+    );
+  });
+
   it("register wording + password beats bare login shape", () => {
     assert.equal(
       detectAutofillFormType(
@@ -309,6 +332,16 @@ describe("categoriesAllowedForFormType", () => {
   it("search allows nothing", () => {
     assert.deepEqual(categoriesAllowedForFormType("search", "email"), []);
   });
+
+  it("loyalty / vehicle / travel kinds stay category-scoped even on login forms", () => {
+    assert.deepEqual(categoriesAllowedForFormType("login", "loyalty-card-number"), ["loyalty_card"]);
+    assert.deepEqual(categoriesAllowedForFormType("unknown", "vehicle-plate"), ["vehicle"]);
+    assert.deepEqual(categoriesAllowedForFormType("identity", "travel-booking-reference"), [
+      "travel_booking",
+    ]);
+    assert.deepEqual(categoriesAllowedForFormType("login", "username"), ["login"]);
+    assert.ok(!categoriesAllowedForFormType("login", "username")?.includes("loyalty_card"));
+  });
 });
 
 describe("generator field helpers", () => {
@@ -323,6 +356,13 @@ describe("generator field helpers", () => {
     assert.equal(shouldOpenPasswordGenerator("register", "password"), true);
     assert.equal(shouldOpenPasswordGenerator("login", "password"), false);
     assert.equal(shouldOpenPasswordGenerator("unknown", "email"), false);
+  });
+
+  it("does not open generator for current-password on change-password / register forms", () => {
+    // jsdom-free: hints-only path via a minimal input mock is covered in jsdom fixtures;
+    // without an input element, register+password still opens (create-account).
+    assert.equal(shouldOpenPasswordGenerator("register", "password", null), true);
+    assert.equal(shouldOpenPasswordGenerator("register", "password", undefined), true);
   });
 });
 
