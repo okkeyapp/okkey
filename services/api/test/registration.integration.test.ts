@@ -207,7 +207,7 @@ test("integration: registration stores supported locale and leaves invalid/absen
     postgres: storage.postgres,
     redis: storage.redis,
     sessionService,
-    config: { ...config, deploymentMode: "saas" },
+    config: hostedTestConfig(config),
   });
 
   const share32 = new Uint8Array(32).fill(11);
