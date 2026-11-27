@@ -40,8 +40,18 @@ test("WorkspaceSharedVaultsService.createSharedVault rejects FREE once the share
     },
     db: {
       query: async () => [{ count: "1" }],
-      transaction: async <T>(fn: (tx: { query: () => Promise<unknown[]> }) => Promise<T>) =>
-        fn({ query: async () => [] }),
+      transaction: async <T>(fn: (tx: { query: (sql: string) => Promise<unknown[]> }) => Promise<T>) =>
+        fn({
+          query: async (sql: string) => {
+            if (sql.includes("COUNT") && sql.includes("is_personal")) {
+              return [{ count: "1" }];
+            }
+            if (sql.includes("FOR UPDATE") && sql.includes("workspaces")) {
+              return [{ id: "w1" }];
+            }
+            return [];
+          },
+        }),
     },
     config: entitlementConfig(),
   });
@@ -576,8 +586,9 @@ test("WorkspaceMembersService.createInvitations requires PUBLIC_APP_URL", async 
   );
 });
 
-test("WorkspaceMembersService.createInvitations rolls back when send fails", async () => {
-  const deleted: string[] = [];
+test("WorkspaceMembersService.createInvitations deletes all unsent invites when the first email fails", async () => {
+  const deletedBatches: string[][] = [];
+  const insertedIds: string[] = [];
   const service = paidMembersService({
     publicAppBaseUrl: "http://localhost:5173",
     emailTemplates: {
@@ -587,8 +598,13 @@ test("WorkspaceMembersService.createInvitations rolls back when send fails", asy
     },
     db: {
       query: ownerAwareQuery((sql, params) => {
+        if (sql.includes("INSERT INTO workspace_invitations")) {
+          insertedIds.push(String(params?.[0] ?? ""));
+          return [];
+        }
         if (sql.includes("DELETE FROM workspace_invitations")) {
-          deleted.push(String(params?.[0] ?? ""));
+          const ids = params?.[0];
+          deletedBatches.push(Array.isArray(ids) ? ids.map(String) : [String(ids ?? "")]);
           return [];
         }
         return undefined;
@@ -600,6 +616,8 @@ test("WorkspaceMembersService.createInvitations rolls back when send fails", asy
     () =>
       service.createInvitations("1000000000000000100", "u1", [
         { email: "a@example.com", roleId: "1000000000000000001" },
+        { email: "b@example.com", roleId: "1000000000000000001" },
+        { email: "c@example.com", roleId: "1000000000000000001" },
       ]),
     (error: unknown) => {
       assert.ok(error instanceof WorkspaceMembersServiceError);
@@ -608,8 +626,60 @@ test("WorkspaceMembersService.createInvitations rolls back when send fails", asy
       return true;
     },
   );
-  assert.equal(deleted.length, 1);
-  assert.ok(deleted[0]);
+  assert.equal(insertedIds.length, 3);
+  assert.equal(deletedBatches.length, 1);
+  assert.deepEqual(deletedBatches[0], insertedIds);
+});
+
+test("WorkspaceMembersService.createInvitations keeps emailed invites and drops the rest on a middle send failure", async () => {
+  const deletedBatches: string[][] = [];
+  const insertedIds: string[] = [];
+  let sendAttempts = 0;
+  const service = paidMembersService({
+    publicAppBaseUrl: "http://localhost:5173",
+    emailTemplates: {
+      sendWorkspaceInvite: async () => {
+        sendAttempts += 1;
+        if (sendAttempts === 2) {
+          throw new Error("smtp down");
+        }
+      },
+    },
+    db: {
+      query: ownerAwareQuery((sql, params) => {
+        if (sql.includes("INSERT INTO workspace_invitations")) {
+          insertedIds.push(String(params?.[0] ?? ""));
+          return [];
+        }
+        if (sql.includes("DELETE FROM workspace_invitations")) {
+          const ids = params?.[0];
+          deletedBatches.push(Array.isArray(ids) ? ids.map(String) : [String(ids ?? "")]);
+          return [];
+        }
+        return undefined;
+      }),
+    } as never,
+  });
+
+  await assert.rejects(
+    () =>
+      service.createInvitations("1000000000000000100", "u1", [
+        { email: "a@example.com", roleId: "1000000000000000001" },
+        { email: "b@example.com", roleId: "1000000000000000001" },
+        { email: "c@example.com", roleId: "1000000000000000001" },
+      ]),
+    (error: unknown) => {
+      assert.ok(error instanceof WorkspaceMembersServiceError);
+      assert.equal(error.code, "EMAIL_SEND_FAILED");
+      assert.equal(error.statusCode, 503);
+      return true;
+    },
+  );
+  assert.equal(sendAttempts, 2);
+  assert.equal(insertedIds.length, 3);
+  assert.equal(deletedBatches.length, 1);
+  // First invite was emailed successfully and must remain; failing + later ones go.
+  assert.deepEqual(deletedBatches[0], insertedIds.slice(1));
 });
 
 test("WorkspaceMembersService.createInvitations uses the effective public app URL", async () => {

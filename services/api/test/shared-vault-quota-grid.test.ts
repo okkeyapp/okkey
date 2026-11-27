@@ -46,9 +46,18 @@ function serviceFor(input: {
     },
     db: {
       query: async () => [{ count: input.sharedVaultCount }],
-      transaction: async () => {
-        throw new Error("quota gate should reject before insert");
-      },
+      transaction: async <T>(fn: (tx: { query: (sql: string) => Promise<unknown[]> }) => Promise<T>) =>
+        fn({
+          query: async (sql: string) => {
+            if (sql.includes("COUNT") && sql.includes("is_personal")) {
+              return [{ count: input.sharedVaultCount }];
+            }
+            if (sql.includes("FOR UPDATE") && sql.includes("workspaces")) {
+              return [{ id: "w1" }];
+            }
+            throw new Error("quota gate should reject before insert");
+          },
+        }),
     },
     config: entitlementConfig({
       deploymentMode: input.deploymentMode,

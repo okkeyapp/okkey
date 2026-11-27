@@ -227,7 +227,9 @@ export class WorkspaceSharedVaultsService {
         "shared vaults are not available on the current plan",
       );
     }
-    await this.assertSharedVaultQuota(workspaceId, workspace);
+    // Fast-path before validation; the authoritative check runs again inside the
+    // insert transaction after locking the workspace row.
+    await this.assertSharedVaultQuota(workspaceId, workspace, this.db);
     await this.assertVaults(workspaceId, actorId, "post");
 
     const name = input.name.trim();
@@ -284,6 +286,10 @@ export class WorkspaceSharedVaultsService {
     }
 
     return this.db.transaction(async (tx) => {
+      // Serialize concurrent creates for this workspace before counting/inserting.
+      await tx.query("SELECT id FROM workspaces WHERE id = $1 FOR UPDATE", [workspaceId]);
+      await this.assertSharedVaultQuota(workspaceId, workspace, tx);
+
       const vaultId = generateEntityId();
       const description = input.description?.trim() ?? "";
       const icon = input.icon?.trim() ?? "";
@@ -853,15 +859,13 @@ export class WorkspaceSharedVaultsService {
   private async assertSharedVaultQuota(
     workspaceId: string,
     workspace: WorkspaceRecord,
+    db: QueryExecutor,
   ): Promise<void> {
-    if (!this.db) {
-      throw new WorkspaceSharedVaultsServiceError("INTERNAL_SERVER_ERROR", 500, "database not configured");
-    }
     const { maxSharedVaults } = workspaceGetPlanQuotaLimits(this.config, workspace);
     if (maxSharedVaults === null) {
       return;
     }
-    const rows = await this.db.query<{ count: string }>(
+    const rows = await db.query<{ count: string }>(
       `
         SELECT COUNT(*)::text AS count
         FROM vaults
