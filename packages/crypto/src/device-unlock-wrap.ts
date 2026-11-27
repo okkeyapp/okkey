@@ -1,8 +1,9 @@
 /**
  * Wrap vault unlock material (VaultKey + password share C) for PIN / biometric device unlock.
- * Secrets never leave the client; wrap keys are derived locally (PIN) or via WebAuthn PRF/raw key.
+ * Secrets never leave the client. PIN wrap keys are Argon2id-derived; biometric wrap keys
+ * are derived from WebAuthn PRF output (never persisted).
  */
-import { aead_decrypt, aead_encrypt, kdf_derive, random_bytes } from "@okkey/crypto-wasm";
+import { aead_decrypt, aead_encrypt, kdf_derive, random_bytes, sha256 } from "@okkey/crypto-wasm";
 import { ensureWasm } from "./wasm-init.js";
 import { OKKEY_PASSWORD_KDF_PARAMS_V1 } from "./registration.js";
 import { wipeBytes } from "./secret-buffer.js";
@@ -10,10 +11,15 @@ import { wipeBytes } from "./secret-buffer.js";
 const NONCE_LEN = 24;
 const SHARE_LEN = 32;
 const KDF_SALT_LEN = 16;
+const BIO_PRF_SALT_LEN = 32;
 const UNLOCK_BLOB_VERSION = 1;
 
 const PIN_WRAP_AAD = new TextEncoder().encode("okkey-device-unlock-pin-wrap-v1");
 const BIO_WRAP_AAD = new TextEncoder().encode("okkey-device-unlock-bio-wrap-v1");
+/** Domain separation for PRF → bio wrap key (fixed context string). */
+const BIO_WRAP_KEY_DOMAIN = new TextEncoder().encode("okkey-device-unlock-bio-wrap-key-v1\n");
+
+export const DEVICE_BIO_PRF_SALT_LEN = BIO_PRF_SALT_LEN;
 
 
 function encodeUnlockPlaintext(vaultKey: Uint8Array, passwordShareC: Uint8Array): Uint8Array {
@@ -135,7 +141,41 @@ export async function unwrapUnlockMaterialWithPin(input: {
   }
 }
 
-/** Wrap under a 32-byte key from WebAuthn (PRF output or locally generated secret). */
+/**
+ * Derive the biometric wrap key from WebAuthn PRF output and the stored PRF eval salt.
+ * Domain-separated SHA-256 (fixed context || prf || salt). Caller must wipe the result.
+ */
+export async function deriveBioWrapKeyFromPrf(input: {
+  prfOutput: Uint8Array;
+  salt: Uint8Array;
+}): Promise<Uint8Array> {
+  await ensureWasm();
+  if (input.prfOutput.length !== SHARE_LEN) {
+    throw new Error("PRF output must be 32 bytes");
+  }
+  if (input.salt.length !== BIO_PRF_SALT_LEN) {
+    throw new Error("bio PRF salt must be 32 bytes");
+  }
+  const payload = new Uint8Array(
+    BIO_WRAP_KEY_DOMAIN.length + input.prfOutput.length + input.salt.length,
+  );
+  payload.set(BIO_WRAP_KEY_DOMAIN, 0);
+  payload.set(input.prfOutput, BIO_WRAP_KEY_DOMAIN.length);
+  payload.set(input.salt, BIO_WRAP_KEY_DOMAIN.length + input.prfOutput.length);
+  try {
+    return sha256(payload);
+  } finally {
+    wipeBytes(payload);
+  }
+}
+
+/** Random salt used as WebAuthn PRF `eval.first` input (stored; wrap key is not). */
+export async function generateBioPrfSalt(): Promise<Uint8Array> {
+  await ensureWasm();
+  return random_bytes(BIO_PRF_SALT_LEN);
+}
+
+/** Wrap under a 32-byte key derived from WebAuthn PRF (never persist the key). */
 export async function wrapUnlockMaterialWithBioKey(input: {
   vaultKey: Uint8Array;
   passwordShareC: Uint8Array;
@@ -174,6 +214,7 @@ export async function unwrapUnlockMaterialWithBioKey(input: {
   }
 }
 
+/** @deprecated Prefer deriveBioWrapKeyFromPrf; kept for pin/bio AEAD unit tests. */
 export async function generateDeviceBioWrapKey(): Promise<Uint8Array> {
   await ensureWasm();
   return random_bytes(SHARE_LEN);

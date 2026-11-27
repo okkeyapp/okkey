@@ -20,6 +20,7 @@ import {
 } from "@okkey/vault";
 
 import { VAULT_BUNDLE_STORAGE_KEY, vaultBundleScopedStorageKey } from "./storageKeys";
+import { loadBioUnlockWrap } from "./vaultDeviceUnlockStore";
 
 export type { SectionReauthZoneId, VaultDevicePrefs };
 export {
@@ -70,12 +71,28 @@ function applyLockOnSleepReadPlan(userId: string): VaultDevicePrefs {
   return plan.prefs;
 }
 
+function clearBiometricEnabledIfWrapMissing(
+  userId: string,
+  prefs: VaultDevicePrefs,
+): VaultDevicePrefs {
+  if (!prefs.biometricEnabled) {
+    return prefs;
+  }
+  const { wrap } = loadBioUnlockWrap(userId);
+  if (wrap) {
+    return prefs;
+  }
+  const next = { ...prefs, biometricEnabled: false };
+  writeVaultDevicePrefs(userId, next);
+  return next;
+}
+
 export function readVaultDevicePrefs(userId: string | null): VaultDevicePrefs {
   if (!userId || typeof localStorage === "undefined") {
     return { ...DEFAULT_VAULT_DEVICE_PREFS };
   }
   try {
-    return applyLockOnSleepReadPlan(userId);
+    return clearBiometricEnabledIfWrapMissing(userId, applyLockOnSleepReadPlan(userId));
   } catch {
     return { ...DEFAULT_VAULT_DEVICE_PREFS };
   }

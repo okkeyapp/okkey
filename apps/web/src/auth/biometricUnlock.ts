@@ -1,10 +1,11 @@
 /**
- * WebAuthn-gated device biometric unlock.
- * Platform authenticator (Touch ID / Face ID / Windows Hello) gates access to a
- * locally stored wrap key that decrypts VaultKey + password share C.
+ * WebAuthn PRF-gated device biometric unlock.
+ * Platform authenticator (Touch ID / Face ID / Windows Hello) evaluates the PRF
+ * extension; the wrap key is derived from `prf.results.first` and never persisted.
  */
 import {
-  generateDeviceBioWrapKey,
+  deriveBioWrapKeyFromPrf,
+  generateBioPrfSalt,
   wrapUnlockMaterialWithBioKey,
   unwrapUnlockMaterialWithBioKey,
   wipeBytes,
@@ -17,6 +18,7 @@ export type BiometricUnlockErrorCode =
   | "unsupported"
   | "insecure_context"
   | "unavailable"
+  | "prf_unavailable"
   | "cancelled"
   | "timeout"
   | "security"
@@ -47,6 +49,8 @@ export function biometricErrorMessageKey(code: BiometricUnlockErrorCode): string
       return "web.settingsPopup.vault.biometric.error.insecureContext";
     case "unavailable":
       return "web.settingsPopup.vault.biometric.error.unavailable";
+    case "prf_unavailable":
+      return "web.settingsPopup.vault.biometric.error.prfUnavailable";
     case "cancelled":
       return "web.settingsPopup.vault.biometric.error.cancelled";
     case "timeout":
@@ -109,6 +113,44 @@ function base64UrlToBuffer(value: string): ArrayBuffer {
   return out.buffer;
 }
 
+function base64UrlToBytes(value: string): Uint8Array {
+  return new Uint8Array(base64UrlToBuffer(value));
+}
+
+type PrfExtensionResults = {
+  prf?: {
+    enabled?: boolean;
+    results?: { first?: unknown };
+  };
+};
+
+/** Exported for unit tests. */
+export function readPrfFirst(extensionResults: PrfExtensionResults): Uint8Array | null {
+  const first = extensionResults.prf?.results?.first;
+  if (typeof first === "string" && first.trim()) {
+    try {
+      const bytes = base64UrlToBytes(first.trim());
+      return bytes.length === 32 ? bytes : null;
+    } catch {
+      return null;
+    }
+  }
+  if (first instanceof ArrayBuffer) {
+    const bytes = new Uint8Array(first);
+    return bytes.length === 32 ? bytes : null;
+  }
+  if (ArrayBuffer.isView(first)) {
+    const view = first as ArrayBufferView;
+    const bytes = new Uint8Array(view.buffer, view.byteOffset, view.byteLength);
+    return bytes.length === 32 ? bytes.slice() : null;
+  }
+  return null;
+}
+
+function prfEnabled(extensionResults: PrfExtensionResults): boolean {
+  return extensionResults.prf?.enabled === true || Boolean(extensionResults.prf?.results?.first);
+}
+
 export async function getBiometricUnlockCapability(): Promise<BiometricCapability> {
   if (typeof window === "undefined" || !window.PublicKeyCredential) {
     return { status: "unsupported", code: "unsupported" };
@@ -131,6 +173,39 @@ export async function getBiometricUnlockCapability(): Promise<BiometricCapabilit
   return { status: "ready" };
 }
 
+async function evaluatePrfForCredential(input: {
+  credentialId: ArrayBuffer;
+  salt: Uint8Array;
+}): Promise<Uint8Array | null> {
+  const challenge = crypto.getRandomValues(new Uint8Array(32));
+  const assertion = (await navigator.credentials.get({
+    publicKey: {
+      challenge,
+      rpId: window.location.hostname,
+      allowCredentials: [
+        {
+          type: "public-key",
+          id: input.credentialId,
+          transports: ["internal"],
+        },
+      ],
+      userVerification: "required",
+      timeout: 60_000,
+      extensions: {
+        prf: {
+          eval: {
+            first: input.salt,
+          },
+        },
+      },
+    },
+  })) as PublicKeyCredential | null;
+  if (!assertion) {
+    return null;
+  }
+  return readPrfFirst(assertion.getClientExtensionResults() as PrfExtensionResults);
+}
+
 export async function setupBiometricUnlock(input: {
   userId: string;
   vaultKey: Uint8Array;
@@ -141,7 +216,11 @@ export async function setupBiometricUnlock(input: {
     return { ok: false, code: capability.code };
   }
 
+  let salt: Uint8Array | null = null;
+  let prfOutput: Uint8Array | null = null;
+  let wrapKey: Uint8Array | null = null;
   try {
+    salt = await generateBioPrfSalt();
     const challenge = crypto.getRandomValues(new Uint8Array(32));
     // Fresh random user handle each setup avoids InvalidStateError when re-enrolling
     // the same discoverable credential user id on the platform authenticator.
@@ -165,13 +244,41 @@ export async function setupBiometricUnlock(input: {
           residentKey: "preferred",
         },
         timeout: 60_000,
+        // Request PRF at create so the authenticator provisions hmac-secret.
+        extensions: {
+          prf: {
+            eval: {
+              first: salt,
+            },
+          },
+        },
       },
     })) as PublicKeyCredential | null;
     if (!credential) {
       return { ok: false, code: "cancelled" };
     }
 
-    const wrapKey = await generateDeviceBioWrapKey();
+    const createExt = credential.getClientExtensionResults() as PrfExtensionResults;
+    prfOutput = readPrfFirst(createExt);
+    if (!prfOutput) {
+      if (!prfEnabled(createExt)) {
+        return { ok: false, code: "prf_unavailable" };
+      }
+      // Some authenticators enable PRF on create but only return results on get.
+      try {
+        prfOutput = await evaluatePrfForCredential({
+          credentialId: credential.rawId,
+          salt,
+        });
+      } catch (error) {
+        return { ok: false, code: mapWebAuthnError(error) };
+      }
+    }
+    if (!prfOutput) {
+      return { ok: false, code: "prf_unavailable" };
+    }
+
+    wrapKey = await deriveBioWrapKeyFromPrf({ prfOutput, salt });
     try {
       const ciphertextB64 = await wrapUnlockMaterialWithBioKey({
         vaultKey: input.vaultKey,
@@ -181,16 +288,18 @@ export async function setupBiometricUnlock(input: {
       writeBioUnlockWrap(input.userId, {
         credentialIdB64: bufferToBase64Url(credential.rawId),
         ciphertextB64,
-        wrapKeyB64: bytesToBase64(wrapKey),
+        prfSaltB64: bytesToBase64(salt),
       });
       return { ok: true };
     } catch {
       return { ok: false, code: "crypto_failed" };
-    } finally {
-      wipeBytes(wrapKey);
     }
   } catch (error) {
     return { ok: false, code: mapWebAuthnError(error) };
+  } finally {
+    wipeBytes(salt);
+    wipeBytes(prfOutput);
+    wipeBytes(wrapKey);
   }
 }
 
@@ -208,9 +317,13 @@ export async function tryUnlockWithBiometrics(userId: string): Promise<Biometric
     return { ok: false, code: capability.code };
   }
 
+  let salt: Uint8Array | null = null;
+  let prfOutput: Uint8Array | null = null;
+  let wrapKey: Uint8Array | null = null;
   try {
+    salt = base64ToBytes(stored.prfSaltB64);
     const challenge = crypto.getRandomValues(new Uint8Array(32));
-    const assertion = await navigator.credentials.get({
+    const assertion = (await navigator.credentials.get({
       publicKey: {
         challenge,
         rpId: window.location.hostname,
@@ -223,12 +336,23 @@ export async function tryUnlockWithBiometrics(userId: string): Promise<Biometric
         ],
         userVerification: "required",
         timeout: 60_000,
+        extensions: {
+          prf: {
+            eval: {
+              first: salt,
+            },
+          },
+        },
       },
-    });
+    })) as PublicKeyCredential | null;
     if (!assertion) {
       return { ok: false, code: "cancelled" };
     }
-    const wrapKey = base64ToBytes(stored.wrapKeyB64);
+    prfOutput = readPrfFirst(assertion.getClientExtensionResults() as PrfExtensionResults);
+    if (!prfOutput) {
+      return { ok: false, code: "prf_unavailable" };
+    }
+    wrapKey = await deriveBioWrapKeyFromPrf({ prfOutput, salt });
     try {
       const material = await unwrapUnlockMaterialWithBioKey({
         ciphertextB64: stored.ciphertextB64,
@@ -237,10 +361,12 @@ export async function tryUnlockWithBiometrics(userId: string): Promise<Biometric
       return { ok: true, vaultKey: material.vaultKey, passwordShareC: material.passwordShareC };
     } catch {
       return { ok: false, code: "crypto_failed" };
-    } finally {
-      wipeBytes(wrapKey);
     }
   } catch (error) {
     return { ok: false, code: mapWebAuthnError(error) };
+  } finally {
+    wipeBytes(salt);
+    wipeBytes(prfOutput);
+    wipeBytes(wrapKey);
   }
 }
