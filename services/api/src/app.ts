@@ -134,6 +134,7 @@ import {
   createWorkspaceCustomProfileDeleteRoute,
 } from "./routes/workspace-built-in-profiles.ts";
 import { markCallerSessionRecoveryProved } from "./plugins/recovery-session.ts";
+import { createPluginOutboundMailApi } from "./plugins/outbound-mail.ts";
 import type { ApiEnterprisePlugin, ApiEnterprisePluginContext } from "./plugins/types.ts";
 import type { QueryExecutor } from "./storage/postgres.ts";
 import type { WorkspaceBuiltInRolesService } from "./workspace-roles/list-service.ts";
@@ -285,6 +286,11 @@ export interface CreateApiAppOptions {
   >;
   vaultsRepository?: ApiEnterprisePluginContext["repositories"]["vaults"];
   emailTemplates?: ApiEnterprisePluginContext["emailTemplates"];
+  /**
+   * Same outbound sender Core uses for OTP / invite mail.
+   * Wired into {@link ApiEnterprisePluginContext.sendOutboundEmail}.
+   */
+  emailSender?: import("./email/service.ts").EmailSender;
   publicAppBaseUrl?: string;
   redis?: ApiEnterprisePluginContext["redis"];
   geoIp?: ApiEnterprisePluginContext["geoIp"];
@@ -1610,6 +1616,12 @@ export function createApiApp(
       return;
     }
     for (const plugin of enterprisePlugins) {
+      const outboundMail = createPluginOutboundMailApi({
+        config,
+        mailSettings: deps.mailSettingsService,
+        emailSender: options.emailSender,
+        fallbackFrom: config.emailFrom,
+      });
       const registration = plugin.register({
         app,
         config,
@@ -1648,6 +1660,8 @@ export function createApiApp(
         setEnterpriseLicenseLapsed: (lapsed) => {
           config.enterpriseLicenseLapsed = lapsed;
         },
+        isOutboundMailActive: () => outboundMail.isOutboundMailActive(),
+        sendOutboundEmail: (message) => outboundMail.sendOutboundEmail(message),
       });
       if (plugin.capsuleAccessSettings) {
         registerCapsuleAccessSettingsProvider(plugin.capsuleAccessSettings);

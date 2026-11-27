@@ -563,6 +563,7 @@ async function main(): Promise<void> {
     workspacesRepository: storage.repositories.workspaces,
     vaultsRepository: storage.repositories.vaults,
     emailTemplates,
+    emailSender,
     publicAppBaseUrl: config.publicAppBaseUrl,
     redis: storage.redis,
     geoIp,
