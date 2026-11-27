@@ -128,9 +128,11 @@ yarn dev:api
 yarn dev:web
 ```
 
-New workspaces always get `plan_tier=FREE` (registration and SaaS `POST /workspaces`). On **self-hosted**, enterprise modules must be **requested and loadable** (sibling `okkey-enterprise`) for EE UI and paid create/edit (`plan_tier` ignored). Fail closed if the env flag is set but the sibling path is missing.
+`ENTERPRISE_MODULES` / `VITE_ENTERPRISE_MODULES` only **bootstrap** the sibling plugin load. They do **not** unlock entitlements. Grammar: see `services/api/.env.example` (`true` / `all` / known comma-list ids). An allowlist of **only unknown** ids does **not** load the plugin. Web bootstrap is `VITE_ENTERPRISE_MODULES === "true"` only.
 
-Start the API with `ENTERPRISE_MODULES=true` **and** sibling present. Put SaaS `OKKEY_DEPLOYMENT_MODE=saas` in **`okkey-enterprise/backend/.env`** (not Core examples); Core loads it when modules are on so `POST /workspaces` and other SaaS routes register. Without that enterprise file / value, the create-workspace UI may appear (Vite) but `POST /workspaces` returns **404**.
+New workspaces always get `plan_tier=FREE` (registration and SaaS `POST /workspaces`). On **self-hosted**, `plan_tier` is **ignored** for gating. Paid create/edit requires `enterpriseModulesActive` (sibling plugin loaded **and** verified license). Fail closed if the env requests load but the sibling path is missing, or if the plugin is loaded without a verified license.
+
+Start the API with an `ENTERPRISE_MODULES` load request **and** sibling present so the plugin can load. Put SaaS `OKKEY_DEPLOYMENT_MODE=saas` in **`okkey-enterprise/backend/.env`** (not Core examples); Core loads that file when the plugin load is requested. **`OKKEY_DEPLOYMENT_MODE=saas` alone is insufficient**: hosted mode is effective only after the loaded plugin confirms a signed hosted token. Without that confirmation, effective mode stays `self_hosted` (create-workspace UI may appear from Vite, but SaaS routes stay unavailable).
 
 Custom roles UI loads from `okkey-enterprise/web/workspace-roles/`.  
 Additional members UI: `okkey-enterprise/web/workspace-members/`.  
@@ -138,6 +140,14 @@ Shared vaults UI: `okkey-enterprise/web/workspace-shared-vaults/`.
 SaaS create UI and privacy-policy overlay: see `okkey-enterprise/web/.env.example` and `web/workspace-tenancy/`, `web/legal/`.  
 SaaS API deployment mode: see `okkey-enterprise/backend/.env.example`.
 
-Plan entitlements: SaaS → `hasPlanFeature(plan_tier)`; self-hosted without modules → FREE (+ `filesInItems`); self-hosted with modules → ENTERPRISE matrix (`plan_tier` ignored). Without modules, paid routes are absent (404).
+Self-hosted Plan settings mount the license panel when `enterpriseLicenseManagementAvailable` is true (plugin loaded) for **all** license states: absent / invalid / expired / active. That flag does **not** unlock gated features.
 
-SaaS changes `plan_tier` via subscription; self-hosted paid access follows loaded modules (see `docs/architecture/12_open_core_boundary.md`).
+Plan entitlements (see `GET /public/features` and `docs/architecture/12_open_core_boundary.md`):
+
+| Context | Entitlement source |
+|---------|-------------------|
+| Confirmed SaaS (plugin confirmed hosted token) | `plan_tier` (+ optional custom overrides) |
+| Self-hosted without plugin | FREE (+ `SELF_HOSTED_FREE_EXTRA`, e.g. `filesInItems`) |
+| Self-hosted plugin loaded + verified license (`enterpriseModulesActive`) | ENTERPRISE matrix (`plan_tier` ignored) |
+
+Without a verified license on self-host, paid plugin routes stay absent or read-only as implemented (404 / soft-lock). SaaS changes `plan_tier` via subscription; self-hosted paid access follows the verified license, not env flags alone.

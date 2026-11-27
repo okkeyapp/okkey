@@ -623,7 +623,7 @@ Lists vaults in a workspace the user may access.
 
 Lists built-in workspace roles (`owner`, `admin`, `user`) with member counts. Open-core response includes built-in roles only.
 
-When the enterprise `workspace-roles` plugin is enabled (`ENTERPRISE_MODULES=true`), the same route is served by the enterprise module and also returns custom roles with permissions. Permissions use a numeric matrix (`get`/`put`/`delete`: `0|1|2`, `post`: `0|1`). See `okkey-enterprise/docs/api/workspace-roles.md`.
+When the enterprise `workspace-roles` plugin is loaded (`ENTERPRISE_MODULES` load request + loadable sibling), the same route is served by the enterprise module and also returns custom roles with permissions. Permissions use a numeric matrix (`get`/`put`/`delete`: `0|1|2`, `post`: `0|1`). See `okkey-enterprise/docs/api/workspace-roles.md`.
 
 **Auth:** Bearer preferred; optional `X-User-Id` when allowed by config.
 
@@ -1271,9 +1271,9 @@ Replace lost device signing keys on an already-trusted (or pending) install and 
 
 ---
 
-## Workspace invitations (enterprise plugin)
+## Workspace invitations (Core)
 
-These routes exist only when `ENTERPRISE_MODULES=true` and the `workspace-members` plugin is loaded. Without the plugin they return `404 NOT_FOUND`.
+Invitations are Core routes (not an enterprise plugin). They are quota-limited by `additionalWorkspaceMembers` / `maxAdditionalMembers`. Enterprise UI overlays for members may load when the enterprise plugin is loaded (`ENTERPRISE_MODULES` load request + loadable sibling); that does not gate these HTTP routes.
 
 Invite create (`POST /workspaces/:workspaceId/invitations`) requires `PUBLIC_APP_URL` and a working email transport; otherwise `EMAIL_NOT_CONFIGURED` (503). Send failure deletes the pending row and returns `EMAIL_SEND_FAILED` (503).
 
@@ -1338,6 +1338,27 @@ Document them when routes are added.
 - **4.10** — approve / reject and approval errors.
 - **4.9** — registration split-key: `POST /auth/register/complete` (this document).
 - **4.11** — TOTP + backup codes, session bootstrap, Bearer auth for Vault/Sync/Device (this document).
+
+---
+
+## Public features probe
+
+### `GET /public/features`
+
+Unauthenticated capability probe for web/UI flag sync.
+
+**Response `200`:**
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `enterpriseModulesActive` | boolean | `true` only when the sibling plugin is loaded **and** it has confirmed a verified license. Env flags alone never set this. |
+| `enterpriseLicenseManagementAvailable` | boolean | `true` when the sibling plugin is loaded. Does **not** unlock gated features. Self-hosted Plan settings mount the license panel when this is true (absent / invalid / expired / active). |
+| `deploymentMode` | `"self_hosted"` \| `"saas"` | **Effective** mode. Hosted (`saas`) only after env requests it and the plugin confirms a signed hosted token; otherwise `self_hosted`. |
+| `requestId` | string | Request correlation id. |
+
+**Write codes (gated create/update):** `403 PLAN_FEATURE_REQUIRED` when modules are off without lapse, or when the feature is outside claims/allowlist; `402 PLAN_LICENSE_LAPSED` only on actual license lapse.
+
+`ENTERPRISE_MODULES` grammar → see `services/api/.env.example` (load request only; does not enable entitlements). `VITE_ENTERPRISE_MODULES` is web build bootstrap (`=== "true"`), not an allowlist.
 
 ---
 
