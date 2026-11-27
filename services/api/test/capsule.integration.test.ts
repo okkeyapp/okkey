@@ -782,3 +782,117 @@ test("integration: password capsule stays usable after downgrade and paid edits 
   assert.equal(deleted.status, 200);
   assert.equal(deleted.json.deleted, true);
 });
+
+/**
+ * Recipients-only and approval capsules after EE access-settings / provider are gone.
+ * Core hashAccessWrite stores recipient hashes; open without a provider still enforces them.
+ * approval_required without a provider returns FEATURE_NOT_AVAILABLE on open.
+ */
+test("integration: recipients-only capsule stays usable after modules off; approval_required is denied", async (t) => {
+  const config = { ...loadConfig(), deploymentMode: "saas" as const };
+  const storage = await createIntegrationStorage(t, config);
+  if (!storage) {
+    return;
+  }
+  await applyMigrations(storage);
+
+  const email = `capsule-modules-off-${testEntityId()}@okkey.local`;
+  t.after(async () => {
+    resetCapsuleAccessSettingsProviderForTests();
+    try {
+      await cleanupUserData(storage, email);
+    } finally {
+      await storage.close();
+    }
+  });
+
+  const { userId } = await registerUser(storage, config, email);
+  const workspaceRows = await storage.postgres.query<{ id: string }>(
+    "SELECT id FROM workspaces WHERE owner_id = $1 LIMIT 1",
+    [userId],
+  );
+  const workspaceId = workspaceRows[0]?.id;
+  assert.ok(workspaceId);
+  await storage.postgres.query("UPDATE workspaces SET plan_tier = 'TEAM' WHERE id = $1", [workspaceId]);
+
+  // No provider: TEAM has capsuleAccessSettings, so create uses core hashAccessWrite.
+  resetCapsuleAccessSettingsProviderForTests();
+
+  const capsules = new CapsuleService({
+    db: storage.postgres,
+    redis: storage.redis,
+    objectStorage: storage.objectStorage,
+    config,
+  });
+
+  const recipientsOnly = await capsules.createCapsule(workspaceId, userId, {
+    type: "text",
+    encryptedPayload: mkBlob("recipient-secret"),
+    encryptedMetadata: mkBlob("recipient-meta"),
+    ownerKeyWrap: mkBlob("recipient-wrap"),
+    keyTransportMode: "fragment",
+    allowedRecipientEmails: ["allowed@okkey.local"],
+  });
+  assert.ok(recipientsOnly.capsuleId);
+
+  // Create approval_required while a provider is present, then remove it (modules off).
+  registerCapsuleAccessSettingsProvider({
+    prepareWrite: async ({ input }) => ({
+      accessPolicy: {},
+      activateAt: null,
+      deactivateAt: null,
+      deleteAt: null,
+      maxViews: null,
+      viewLimitAction: "deactivate",
+      passwordAttemptLimit: null,
+      approvalRequired: Boolean(input.approvalRequired),
+    }),
+    assertOpen: async () => ({ approvalRequestId: null }),
+  });
+  const approvalCapsule = await capsules.createCapsule(workspaceId, userId, {
+    type: "text",
+    encryptedPayload: mkBlob("approval-secret"),
+    encryptedMetadata: mkBlob("approval-meta"),
+    ownerKeyWrap: mkBlob("approval-wrap"),
+    keyTransportMode: "fragment",
+    approvalRequired: true,
+  });
+  assert.ok(approvalCapsule.capsuleId);
+  assert.equal(approvalCapsule.approvalRequired, true);
+
+  resetCapsuleAccessSettingsProviderForTests();
+  await storage.postgres.query("UPDATE workspaces SET plan_tier = 'FREE' WHERE id = $1", [workspaceId]);
+
+  const opened = await capsules.openCapsule(
+    recipientsOnly.capsuleId,
+    "127.0.0.1",
+    undefined,
+    "allowed@okkey.local",
+    "fragment",
+  );
+  assert.equal(
+    Buffer.from(opened.encryptedPayload.payload, "base64").toString("utf8"),
+    "recipient-secret",
+  );
+
+  await assert.rejects(
+    () =>
+      capsules.openCapsule(
+        recipientsOnly.capsuleId,
+        "127.0.0.1",
+        undefined,
+        "stranger@okkey.local",
+        "fragment",
+      ),
+    (err: unknown) =>
+      err instanceof CapsuleServiceError && err.code === "CAPSULE_RECIPIENT_FORBIDDEN",
+  );
+
+  await assert.rejects(
+    () => capsules.openCapsule(approvalCapsule.capsuleId, "127.0.0.1", undefined, undefined, "fragment"),
+    (err: unknown) =>
+      err instanceof CapsuleServiceError &&
+      err.code === "FEATURE_NOT_AVAILABLE" &&
+      err.statusCode === 403,
+  );
+});

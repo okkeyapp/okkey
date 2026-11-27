@@ -375,6 +375,123 @@ test("acceptInvitation rejects revoked link invites", async () => {
   );
 });
 
+const ACCEPTED_BY_OTHER = "1000000000000000088";
+const SAME_ACCEPTOR = "1000000000000000099";
+const PERSONAL_VAULT_ID = "1000000000000000400";
+
+/** Docs: invitation links are single-use — only the acceptor may re-enter. */
+test("acceptInvitation returns 409 CONFLICT when another user already accepted the link", async () => {
+  const token = "already-accepted-link-token";
+  const acceptedInvite = {
+    id: INVITE_ID,
+    workspace_id: WORKSPACE_ID,
+    email: null,
+    delivery_method: "link" as const,
+    token_hash: hashInviteToken(token),
+    role_id: ROLE_ID,
+    status: "accepted",
+    expires_at: new Date(Date.now() + 86_400_000),
+    invited_by_user_id: ACTOR_ID,
+    accepted_user_id: ACCEPTED_BY_OTHER,
+  };
+  const service = membersService({
+    emailTemplates: undefined,
+    db: {
+      query: async (sql: string) => {
+        if (sql.includes("FROM workspace_invitations") && sql.includes("FOR UPDATE")) {
+          return [acceptedInvite];
+        }
+        if (sql.includes("SELECT email FROM users")) {
+          return [{ email: "latecomer@example.com" }];
+        }
+        return [];
+      },
+      transaction: async <T>(fn: (tx: { query: (sql: string) => Promise<unknown[]> }) => Promise<T>) =>
+        fn({
+          query: async (sql: string) => {
+            if (sql.includes("FROM workspace_invitations") && sql.includes("FOR UPDATE")) {
+              return [acceptedInvite];
+            }
+            if (sql.includes("SELECT email FROM users")) {
+              return [{ email: "latecomer@example.com" }];
+            }
+            return [];
+          },
+        }),
+    } as never,
+  });
+
+  await assert.rejects(
+    () => service.acceptInvitation(token, SAME_ACCEPTOR),
+    (error: unknown) => {
+      assert.ok(error instanceof WorkspaceMembersServiceError);
+      assert.equal(error.code, "CONFLICT");
+      assert.equal(error.statusCode, 409);
+      return true;
+    },
+  );
+});
+
+test("acceptInvitation is idempotent for the same user without a second workspace_members row", async () => {
+  const token = "idempotent-link-token";
+  const acceptedInvite = {
+    id: INVITE_ID,
+    workspace_id: WORKSPACE_ID,
+    email: null,
+    delivery_method: "link" as const,
+    token_hash: hashInviteToken(token),
+    role_id: ROLE_ID,
+    status: "accepted",
+    expires_at: new Date(Date.now() + 86_400_000),
+    invited_by_user_id: ACTOR_ID,
+    accepted_user_id: SAME_ACCEPTOR,
+  };
+  const memberInserts: string[] = [];
+  const service = membersService({
+    emailTemplates: undefined,
+    db: {
+      query: async (sql: string) => {
+        if (sql.includes("INSERT INTO workspace_members")) {
+          memberInserts.push(sql);
+        }
+        if (sql.includes("FROM workspace_invitations") && sql.includes("FOR UPDATE")) {
+          return [acceptedInvite];
+        }
+        if (sql.includes("SELECT email FROM users")) {
+          return [{ email: "anyone@example.com" }];
+        }
+        if (sql.includes("SELECT id FROM vaults")) {
+          return [{ id: PERSONAL_VAULT_ID }];
+        }
+        return [];
+      },
+      transaction: async <T>(fn: (tx: { query: (sql: string) => Promise<unknown[]> }) => Promise<T>) =>
+        fn({
+          query: async (sql: string) => {
+            if (sql.includes("INSERT INTO workspace_members")) {
+              memberInserts.push(sql);
+            }
+            if (sql.includes("FROM workspace_invitations") && sql.includes("FOR UPDATE")) {
+              return [acceptedInvite];
+            }
+            if (sql.includes("SELECT email FROM users")) {
+              return [{ email: "anyone@example.com" }];
+            }
+            if (sql.includes("SELECT id FROM vaults")) {
+              return [{ id: PERSONAL_VAULT_ID }];
+            }
+            return [];
+          },
+        }),
+    } as never,
+  });
+
+  const result = await service.acceptInvitation(token, SAME_ACCEPTOR);
+  assert.equal(result.workspaceId, WORKSPACE_ID);
+  assert.equal(result.vaultId, PERSONAL_VAULT_ID);
+  assert.equal(memberInserts.length, 0);
+});
+
 test("previewInvitation returns null email for link invites", async () => {
   const token = "preview-link-token";
   const service = membersService({
