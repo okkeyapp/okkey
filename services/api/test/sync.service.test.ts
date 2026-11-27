@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { SyncService, SyncServiceError } from "../src/sync/service.ts";
 import { CryptoDowngradeInvariantError, VersionConflictError } from "../src/storage/errors.ts";
+import { createTestApiConfig } from "./test-api-config.ts";
 import { testEntityId } from "./test-entity-id.ts";
 
 const TEST_ITEM_ID = testEntityId();
@@ -275,6 +276,106 @@ test("appendEvent rejects ITEM_CREATE in shared vault without sharedVaults plan"
       error instanceof SyncServiceError &&
       error.code === "PLAN_FEATURE_REQUIRED" &&
       error.statusCode === 403,
+  );
+});
+
+test("TSK-436: SyncService reads license and rollout flags live after construction", async () => {
+  const config = createTestApiConfig({
+    deploymentMode: "self_hosted",
+    enterpriseModulesEnabled: true,
+    enterpriseLicenseVerified: false,
+    cryptoRolloutEnabled: true,
+  });
+  const itemId = testEntityId();
+  let appended = 0;
+  const service = new SyncService({
+    vaults: {
+      findById: async () => ({
+        id: "1000000000000000004",
+        workspaceId: "1000000000000000001",
+        name: "Shared",
+        isPersonal: false,
+        ownerId: "1000000000000000003",
+        cryptoVersion: 2,
+        createdAt: "",
+        updatedAt: "",
+      }),
+      canReadVault: async () => true,
+    },
+    workspaces: {
+      findById: async () => ({
+        id: "1000000000000000001",
+        name: "Workspace",
+        ownerId: "1000000000000000003",
+        planTier: "FREE",
+        planCustomOverride: false,
+        planFeatureOverrides: {},
+        createdAt: "",
+        updatedAt: "",
+      }),
+    },
+    users: {
+      findById: async () => ({
+        id: "1000000000000000003",
+        email: "u1@okkey.local",
+        publicKey: "cHVibGljLWtleQ==",
+        publicPqKey: "cHEta2V5",
+        locale: "en",
+        createdAt: "",
+        updatedAt: "",
+      }),
+    },
+    config,
+    events: {
+      listAfterVersion: async () => [],
+      hasItemCreateEvent: async () => false,
+      findByIdempotencyKey: async () => null,
+      append: async () => {
+        appended += 1;
+        return {
+          id: `e-${appended}`,
+          vaultId: "1000000000000000004",
+          actorId: "1000000000000000003",
+          eventType: "ITEM_CREATE",
+          encryptedPayload: new Uint8Array([1]),
+          payloadSchemaVersion: 1,
+          idempotencyKey: `idem-${appended}`,
+          clientCreatedAt: null,
+          referencedItemId: itemId,
+          itemSoftDeleted: null,
+          version: appended,
+          createdAt: "2026-01-01T00:00:00.000Z",
+        };
+      },
+    },
+  });
+
+  // License confirmed after construction on the shared config object.
+  config.enterpriseLicenseVerified = true;
+  const created = await service.appendEvent("1000000000000000004", "1000000000000000003", {
+    eventType: "ITEM_CREATE",
+    encryptedBlob: mkBlob("x"),
+    baseVersion: 0,
+    referencedItemId: itemId,
+    idempotencyKey: testEntityId(),
+  });
+  assert.equal(created.eventType, "ITEM_CREATE");
+
+  // A post-startup flag flip on the shared object must be visible (no construction snapshot).
+  config.cryptoRolloutEnabled = false;
+  await assert.rejects(
+    () =>
+      service.appendEvent("1000000000000000004", "1000000000000000003", {
+        eventType: "ITEM_CREATE",
+        encryptedBlob: mkBlob("y"),
+        baseVersion: 1,
+        referencedItemId: testEntityId(),
+        idempotencyKey: testEntityId(),
+      }),
+    (error: unknown) =>
+      error instanceof SyncServiceError &&
+      error.code === "CRYPTO_ROLLOUT_PAUSED" &&
+      error.statusCode === 503,
   );
 });
 
