@@ -41,8 +41,8 @@ Entitlements are resolved via `hasPlanFeature` in `@okkey/types` (`PLAN_FEATURE_
 
 | Deployment | Paid-feature source |
 |---|---|
-| **SaaS** | `workspace.plan_tier` (+ optional custom overrides) |
-| **Self-hosted** | enterprise modules active (env ∧ loadable sibling) → ENTERPRISE matrix; otherwise FREE + `SELF_HOSTED_FREE_EXTRA`. **Do not** use `plan_tier` for gating. |
+| **Confirmed hosted (`saas`)** | `workspace.plan_tier` (+ optional custom overrides) |
+| **Self-hosted** | verified signed license after the enterprise plugin loads → ENTERPRISE matrix; otherwise FREE + `SELF_HOSTED_FREE_EXTRA`. **Do not** use `plan_tier` for gating. |
 
 Soft numeric limits live in `PLAN_QUOTA_LIMITS` / `getPlanQuotaLimits` (same self-host rule).
 
@@ -65,39 +65,42 @@ Soft numeric limits live in `PLAN_QUOTA_LIMITS` / `getPlanQuotaLimits` (same sel
 
 ‡ `PLAN_FEATURE_MATRIX.FREE.storageQuotas` is true (SaaS FREE). Self-hosted FREE forces `storageQuotas` off.
 
-Do **not** confuse `plan_tier` with `ENTERPRISE_MODULES` (plugin loading).
+Do **not** confuse `plan_tier` with `ENTERPRISE_MODULES` (plugin load request).
 
 ### Self-host enterprise enablement vs `plan_tier`
 
-Two gates on self-hosted:
+Three related signals on self-hosted:
 
-| Gate | Meaning |
+| Signal | Meaning |
 |---|---|
-| Enterprise modules on? | `ENTERPRISE_MODULES` / `VITE_ENTERPRISE_MODULES=true` **and** loadable sibling `okkey-enterprise` → EE UI/plugins available. Without modules, only plugin routes (custom workspace roles, custom profiles, and similar paid plugins) are absent (404). Invitations (`POST /workspaces/:id/invitations`) and shared vaults (`/vaults`) are Core routes: on FREE they return 2xx within quota and `403 PLAN_QUOTA_EXCEEDED` above it (self-hosted FREE: 10 additional members, 1 shared vault). The feature matrix is FREE even if SQL says ENTERPRISE. |
-| Workspace feature matrix | With modules loaded → ENTERPRISE matrix via `resolveEntitlementPlanTier` / `hasPlanFeature` (`plan_tier` ignored). Modules off → FREE + `SELF_HOSTED_FREE_EXTRA`. |
+| Plugin load request | `ENTERPRISE_MODULES` (see `services/api/.env.example`) requests load when the sibling Enterprise plugin path is loadable. Grammar: `true` / `1` / `yes` / `all`, or a comma-separated list of known module ids. Unknown tokens log a WARN and are ignored. If no known id remains, the plugin does not load. `VITE_ENTERPRISE_MODULES` is a separate web build flag (exact value `true` only; not an allowlist). |
+| Plugin loaded | EE plugin routes register; `GET /public/features.enterpriseLicenseManagementAvailable=true`; self-host license panel mounts. Without a loaded plugin those plugin routes return **404**, the license panel is absent, and the feature matrix is FREE even if SQL says ENTERPRISE. Invitations (`POST /workspaces/:id/invitations`) and shared vaults (`/vaults`) are Core routes: on FREE they return 2xx within quota and `403 PLAN_QUOTA_EXCEEDED` above it (self-hosted FREE: 10 additional members, 1 shared vault). |
+| Entitlements active | `enterpriseModulesActive` = plugin loaded **and** plugin confirmed a verified signed license. Then ENTERPRISE matrix via `resolveEntitlementPlanTier` / `hasPlanFeature` (`plan_tier` ignored). Without a verified license: FREE + `SELF_HOSTED_FREE_EXTRA`; paid writes return **403** `PLAN_FEATURE_REQUIRED`. Lapsed license: soft-lock writes **402** `PLAN_LICENSE_LAPSED` (panel still available while the plugin is loaded). |
 
-Setting `plan_tier=ENTERPRISE` alone does **not** load modules. Future signed license from **`okkey-license`** may bind instance claims; interim self-host paid access is modules-only.
+`ENTERPRISE_MODULES` alone never enables entitlements. Setting `plan_tier=ENTERPRISE` alone does not load the plugin and does not unlock paid create/edit.
 
-Canonical contract: Project store `docs/license-and-updates.md`. Enterprise docs: `okkey-enterprise/docs/architecture/04_feature_gating.md`, `10_license_enforcement.md`.
+Behavior change: earlier builds treated a loadable sibling plus `ENTERPRISE_MODULES=true` as enough for the ENTERPRISE matrix. Now a verified signed license is required; after upgrade, instances without a valid license file lose module entitlements while the license panel remains if the plugin still loads.
+
+Enterprise docs: feature gating and license enforcement in the Enterprise edition architecture docs.
 
 ### How `plan_tier` changes (SaaS vs Self-hosted)
 
 | Deployment | Who changes `plan_tier` | Mechanism (future product surfaces) |
 |---|---|---|
-| **SaaS** | Subscription / billing lifecycle | Checkout → payment webhook → update `plan_tier` (and seats). Self-serve “Сменить тариф”. |
-| **Self-hosted** | Display / catalog only | Modules decide paid create/edit. `plan_tier` stays FREE for new workspaces and does not gate features. **No** self-serve Stripe on self-hosted. |
+| **Confirmed hosted** | Subscription / billing lifecycle | Checkout → payment webhook → update `plan_tier` (and seats). Self-serve change-plan UI. |
+| **Self-hosted** | Display / catalog only | Verified license decides paid create/edit. `plan_tier` stays FREE for new workspaces and does not gate features. **No** self-serve Stripe on self-hosted. |
 
-Core stores the tier and matrix; commercial write paths (subscribe, invoices) live in `okkey-enterprise`. Self-host license issuance lives in **`okkey-license`**.
+Core stores the tier and matrix; commercial write paths (subscribe, invoices) live in the Enterprise edition. Self-host license files are verified by the loaded enterprise plugin.
 
-### Enterprise modules fail-closed
+### Enterprise plugin load fail-closed
 
-`ENTERPRISE_MODULES=true` / `VITE_ENTERPRISE_MODULES=true` enables plugins **only** when the sibling `okkey-enterprise` path exists and is loadable. Otherwise modules stay off (FREE matrix on self-host), even if SQL has `plan_tier=ENTERPRISE`.
+`ENTERPRISE_MODULES` / `VITE_ENTERPRISE_MODULES=true` load the sibling plugin **only** when the sibling Enterprise plugin path exists and is loadable. Otherwise the plugin stays off (FREE matrix on self-host), even if SQL has `plan_tier=ENTERPRISE`.
 
 ### Existing `ENTERPRISE` rows (dev strategy)
 
-- Rows already on `ENTERPRISE` **stay** `ENTERPRISE` — no remapping to `TEAM` / `PREMIUM`.
-- New workspaces always default to `plan_tier=FREE` (including when modules are on). On self-host, paid create/edit require modules only (`plan_tier` ignored).
-- Optional local display upgrade (does not change self-host gating when modules are on):
+- Rows already on `ENTERPRISE` **stay** `ENTERPRISE` - no remapping to `TEAM` / `PREMIUM`.
+- New workspaces always default to `plan_tier=FREE` (including when the plugin is loaded). On self-host, paid create/edit require a verified license (`plan_tier` ignored).
+- Optional local display upgrade (does not change self-host gating):
 
 ```sql
 UPDATE workspaces
@@ -116,7 +119,7 @@ Runtime keys `OKKEY_DEPLOYMENT_MODE` (API) / `VITE_DEPLOYMENT_MODE` (web):
 | `self_hosted` | yes | Owner may have **at most one** workspace (API-enforced) |
 | `saas` | no | Multi-workspace **create** only via private enterprise tenancy plugin |
 
-**Open-core committed examples do not document SaaS env.** When `ENTERPRISE_MODULES=true`, the API loads `OKKEY_DEPLOYMENT_MODE` from `okkey-enterprise/backend/.env`; Vite loads `VITE_DEPLOYMENT_MODE` from `okkey-enterprise/web/.env`. See those repos’ `.env.example` files.
+**Open-core committed examples do not document SaaS env.** When the enterprise plugin is loaded, the API may load `OKKEY_DEPLOYMENT_MODE` from the Enterprise backend `.env`; Vite may load `VITE_DEPLOYMENT_MODE` from the Enterprise web `.env`. See the Enterprise edition `.env.example` files. Effective hosted mode also requires plugin confirmation; without it the instance runs as `self_hosted`.
 
 List / switch / delete stay in Core. **`POST /workspaces` is not a Core route.**
 
@@ -126,11 +129,11 @@ List / switch / delete stay in Core. **`POST /workspaces` is not a Core route.**
 
 The open-source Core provides the FREE plan baseline:
 
-- Upgrade to paid **SaaS** tiers uses `plan_tier`. Self-hosted enterprise uses modules + sibling (interim) or a signed license token (future) — not `plan_tier` as the enablement gate.
+- Upgrade to paid **hosted** tiers uses `plan_tier`. Self-hosted enterprise uses a verified signed license after the plugin loads - not `plan_tier` as the enablement gate.
 - Authentication via email + email code.
 - 2FA: authenticator app and backup codes.
 - Self-hosted: only one workspace; enterprise feature modules unavailable in OSS builds.
-- SaaS multi-workspace create is **not** open-source (lives in `okkey-enterprise`).
+- SaaS multi-workspace create is **not** open-source (lives in the Enterprise edition).
 - One personal vault per workspace. Shared vaults are Core (`sharedVaults` is granted on every catalog tier, including FREE) and limited by `maxSharedVaults` (self-hosted FREE: 1; over quota `403 PLAN_QUOTA_EXCEEDED`).
 - Folders are available.
 - Capsules are available; access settings are unavailable (no expiry, view limits, password, or recipient restrictions).
@@ -156,7 +159,7 @@ The open-source Core provides the FREE plan baseline:
 
 Enterprise code:
 
-- lives only in `okkey-enterprise/`
+- lives only in the Enterprise edition
 - attaches via Plugin Registry / Feature Interfaces
 - cannot modify core tables (only add new tables)
 - cannot override core auth or crypto flows
@@ -206,9 +209,9 @@ Open-source build:
 Enterprise / SaaS build:
 
 - includes enterprise plugins
-- ships as `okkey-enterprise/*` images
-- SaaS: deployment mode `saas` (from enterprise env when modules load) + `ENTERPRISE_MODULES=true` (workspace features via `plan_tier`)
-- Self-hosted enterprise: `self_hosted` + enterprise modules / loadable sibling. Modules unlock EE UI and paid create/edit (`plan_tier` ignored). Modules off → FREE + `SELF_HOSTED_FREE_EXTRA`.
+- ships as Enterprise edition images
+- Hosted: effective deployment mode `saas` (enterprise env request plus plugin confirmation) + loaded plugin (workspace features via `plan_tier`)
+- Self-hosted enterprise: `self_hosted` + loaded plugin. Plugin load unlocks EE routes and the license panel; a verified signed license unlocks paid create/edit (`plan_tier` ignored). Without a verified license → FREE + `SELF_HOSTED_FREE_EXTRA` (writes **403**; lapsed → **402**).
 
 ---
 
@@ -218,6 +221,6 @@ Core schema is stable and public.
 Enterprise migrations **only add** tables and indexes.
 No core table is altered or removed by enterprise code.
 
-On self-hosted with modules loaded, entitlements are ENTERPRISE regardless of `plan_tier`. SaaS uses catalog tiers / billing webhooks.
+On self-hosted with a verified license, entitlements are ENTERPRISE regardless of `plan_tier`. Confirmed hosted uses catalog tiers / billing webhooks.
 
 Custom selective plans use `plan_custom_override` + `plan_feature_overrides` (migration `0031_workspace_plan_custom_override.sql`) instead of inventing a `CUSTOM` tier string.

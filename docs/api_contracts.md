@@ -576,7 +576,7 @@ Lists workspaces the authenticated user may access (owner or `workspace_members`
 
 ### `POST /workspaces`
 
-**Enterprise SaaS only** (`workspace-tenancy` plugin when deployment mode is `saas`). Not registered on OSS / self-hosted Core. SaaS mode is supplied from `okkey-enterprise` when enterprise modules are loaded.
+**Enterprise SaaS only** (`workspace-tenancy` plugin when deployment mode is `saas`). Not registered on OSS / self-hosted Core. SaaS mode is supplied by the Enterprise plugin when enterprise modules are loaded.
 
 **Body:** `{ "name": string }`
 
@@ -623,7 +623,7 @@ Lists vaults in a workspace the user may access.
 
 Lists built-in workspace roles (`owner`, `admin`, `user`) with member counts. Open-core response includes built-in roles only.
 
-When the enterprise `workspace-roles` plugin is enabled (`ENTERPRISE_MODULES=true`), the same route is served by the enterprise module and also returns custom roles with permissions. Permissions use a numeric matrix (`get`/`put`/`delete`: `0|1|2`, `post`: `0|1`). See `okkey-enterprise/docs/api/workspace-roles.md`.
+When the enterprise `workspace-roles` plugin is loaded (`ENTERPRISE_MODULES` requested and sibling loadable; see `services/api/.env.example`), the same route is served by the enterprise module and also returns custom roles with permissions. Permissions use a numeric matrix (`get`/`put`/`delete`: `0|1|2`, `post`: `0|1`). Custom-role writes still require a verified license / plan entitlement (`403 PLAN_FEATURE_REQUIRED` when the plugin is loaded but the feature is not entitled; `402 PLAN_LICENSE_LAPSED` when the license has lapsed). See the Enterprise edition docs for workspace-roles.
 
 **Auth:** Bearer preferred; optional `X-User-Id` when allowed by config.
 
@@ -1271,9 +1271,9 @@ Replace lost device signing keys on an already-trusted (or pending) install and 
 
 ---
 
-## Workspace invitations (enterprise plugin)
+## Workspace invitations (Core)
 
-These routes exist only when `ENTERPRISE_MODULES=true` and the `workspace-members` plugin is loaded. Without the plugin they return `404 NOT_FOUND`.
+Invitations and member seats are Core routes (always registered). They are quota-limited by `additionalWorkspaceMembers` / `maxAdditionalMembers`; over quota returns `403 PLAN_QUOTA_EXCEEDED`. They do not require `ENTERPRISE_MODULES`.
 
 Invite create (`POST /workspaces/:workspaceId/invitations`) requires `PUBLIC_APP_URL` and a working email transport; otherwise `EMAIL_NOT_CONFIGURED` (503). Send failure deletes the pending row and returns `EMAIL_SEND_FAILED` (503).
 
@@ -1317,6 +1317,36 @@ Creates `workspace_members` (role from the invite), a personal vault in that wor
 **Auth:** Bearer + `members:get`.
 
 **Response `200`:** `{ "workspaceId": "<id>", "wraps": [ { "userId", "vaultId", "profileId", "publicKey", "publicPqKey" } ] }`
+
+---
+
+## Public capability probe
+
+### `GET /public/features`
+
+Unauthenticated probe for web/UI flag sync.
+
+**Auth:** none.
+
+**Response `200`:**
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `enterpriseModulesActive` | boolean | Plugin loaded **and** confirmed a verified signed license (self-host ENTERPRISE entitlements). |
+| `enterpriseLicenseManagementAvailable` | boolean | Sibling enterprise plugin is loaded. Does not unlock module entitlements. When `false` on self-host, the license panel is not mounted. |
+| `deploymentMode` | `"self_hosted"` \| `"saas"` | Effective mode. Hosted only after plugin confirmation. |
+| `requestId` | string | Correlates with server logs. |
+
+Example (plugin loaded, no verified license yet):
+
+```json
+{
+  "enterpriseModulesActive": false,
+  "enterpriseLicenseManagementAvailable": true,
+  "deploymentMode": "self_hosted",
+  "requestId": "req_01HZZZZ"
+}
+```
 
 ---
 
